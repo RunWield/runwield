@@ -1,4 +1,6 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
+import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
@@ -66,9 +68,11 @@ function isStaleReviewError(message) {
 
 export function PlanReviewSurface({ payload, presentation = "standalone" }) {
     const source = payload || readEmbeddedPayload("review-payload") || DEFAULT_PLAN_PAYLOAD;
-    return source.sequenceDocuments?.length
-        ? <SequenceReviewSurface payload={source} presentation={presentation} />
-        : <PlanReviewDocument payload={source} presentation={presentation} />;
+    return source.sequenceDocuments?.length ? (
+        <SequenceReviewSurface payload={source} presentation={presentation} />
+    ) : (
+        <PlanReviewDocument payload={source} presentation={presentation} />
+    );
 }
 
 function SequenceReviewSurface({ payload, presentation }) {
@@ -107,9 +111,10 @@ function SequenceReviewSurface({ payload, presentation }) {
                 label="Sequence Plans"
                 tabs={documents.map((document, index) => ({
                     value: document.planId,
-                    label: index === 0
-                        ? "Sequence overview"
-                        : `${index}. ${document.plan.match(/^# (.+)$/m)?.[1] || document.planName}`,
+                    label:
+                        index === 0
+                            ? "Sequence overview"
+                            : `${index}. ${document.plan.match(/^# (.+)$/m)?.[1] || document.planName}`,
                     children: (
                         <PlanReviewDocument
                             key={document.planId}
@@ -132,9 +137,10 @@ function SequenceReviewSurface({ payload, presentation }) {
 
 function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup, active = true }) {
     useDocumentPrintMode();
-    const initialPayload = useMemo(() => payload || readEmbeddedPayload("review-payload") || DEFAULT_PLAN_PAYLOAD, [
-        payload,
-    ]);
+    const initialPayload = useMemo(
+        () => payload || readEmbeddedPayload("review-payload") || DEFAULT_PLAN_PAYLOAD,
+        [payload],
+    );
     const submittedPlan = initialPayload.plan || "";
     const agentLabel = initialPayload.agentLabel || "Planner";
     const reviewDraftKey = planReviewDraftKey(
@@ -150,8 +156,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [isPlanDiffActive, setIsPlanDiffActive] = useState(false);
     const [planDiffMode, setPlanDiffMode] = useState("clean");
     const [uiPreferences, setUiPreferences] = useState(() => getUIPreferences());
-    const [compactLayout, setCompactLayout] = useState(() =>
-        globalThis.matchMedia?.("(max-width: 980px)").matches ?? false
+    const [compactLayout, setCompactLayout] = useState(
+        () => globalThis.matchMedia?.("(max-width: 980px)").matches ?? false,
     );
     const [sidebarOpen, setSidebarOpen] = useState(() => !compactLayout && getUIPreferences().tocEnabled);
     const [sidebarTab, setSidebarTab] = useState("toc");
@@ -167,6 +173,20 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         media.addEventListener("change", syncLayout);
         return () => media.removeEventListener("change", syncLayout);
     }, []);
+    const [questionAnswers, setQuestionAnswers] = useState([]);
+    const questions = useMemo(() => parsePlanQuestions(plan), [plan]);
+    const [questionContextAttached, setQuestionContextAttached] = useState(true);
+    useEffect(() => {
+        const ids = new Set(questions.filter((block) => block.question && !block.error).map((block) => block.id));
+        setQuestionAnswers((answers) => answers.filter((answer) => ids.has(answer.id)));
+    }, [questions]);
+    function answerQuestion(id, value) {
+        setQuestionContextAttached(true);
+        setQuestionAnswers((answers) => [
+            ...answers.filter((answer) => answer.id !== id),
+            ...(typeof value === "string" && !value.trim() ? [] : [{ id, value }]),
+        ]);
+    }
     const [annotations, setAnnotations] = useState([]);
     const [codeAnnotations, setCodeAnnotations] = useState([]);
     const [annotationsOpen, setAnnotationsOpen] = useReviewAnnotations(annotations.length + codeAnnotations.length);
@@ -221,12 +241,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         () => buildRunWieldDirectEditPanel(reviewBasePlan, directlyEditedPlan ?? reviewBasePlan),
         [directlyEditedPlan, reviewBasePlan],
     );
-    const hasReviewFeedback = annotations.length > 0 || codeAnnotations.length > 0 || globalAttachments.length > 0 ||
+    const hasReviewFeedback =
+        questionAnswers.length > 0 ||
+        annotations.length > 0 ||
+        codeAnnotations.length > 0 ||
+        globalAttachments.length > 0 ||
         directlyEditedPlan !== null;
     const hasGroupFeedback = hasReviewFeedback || Boolean(reviewGroup?.hasFeedback);
-    const planWidthMode = initialPayload.mode === "workspace" || presentation === "workspace"
-        ? "wide"
-        : uiPreferences.planWidth;
+    const planWidthMode =
+        initialPayload.mode === "workspace" || presentation === "workspace" ? "wide" : uiPreferences.planWidth;
     const planMaxWidth = useMemo(
         () =>
             planWidthMode === "wide"
@@ -241,20 +264,27 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             frontmatter: frontmatterResult.frontmatter,
         };
     }, [plan]);
-    const planTitle = parsed.blocks.find((block) => block.type === "heading" && block.level === 1)?.content.trim() ||
-        initialPayload.planTitle?.trim() || initialPayload.planName?.trim() || "Untitled plan";
+    const planTitle =
+        parsed.blocks.find((block) => block.type === "heading" && block.level === 1)?.content.trim() ||
+        initialPayload.planTitle?.trim() ||
+        initialPayload.planName?.trim() ||
+        "Untitled plan";
     useEffect(() => {
         if (active) document.title = `Plan Review - ${planTitle}`;
     }, [active, planTitle]);
     // Do not update the hidden Viewer on each keystroke: its DOM work resets the editor selection.
     const printPlan = editorMode === "edit" ? printDraftPlan : plan;
-    const printablePlan = useMemo(() => ({
-        blocks: parseMarkdownToBlocks(printPlan),
-        frontmatter: extractFrontmatter(printPlan).frontmatter,
-    }), [printPlan]);
-    const legacyPreviousPlan = typeof initialPayload.previousPlan === "string" && initialPayload.previousPlan.trim()
-        ? initialPayload.previousPlan
-        : null;
+    const printablePlan = useMemo(
+        () => ({
+            blocks: parseMarkdownToBlocks(printPlan),
+            frontmatter: extractFrontmatter(printPlan).frontmatter,
+        }),
+        [printPlan],
+    );
+    const legacyPreviousPlan =
+        typeof initialPayload.previousPlan === "string" && initialPayload.previousPlan.trim()
+            ? initialPayload.previousPlan
+            : null;
     const planVersions = useMemo(
         () =>
             normalizePlanReviewVersions(
@@ -264,23 +294,27 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             ),
         [initialPayload.planVersions, legacyPreviousPlan, submittedPlan],
     );
-    const versionInfo = planVersions.length > 1
-        ? { version: planVersions.length, totalVersions: planVersions.length, project: "RunWield" }
-        : null;
-    const previousPlan = planVersions.length > 1 ? planVersions.at(-2)?.plan ?? null : null;
-    const planDiffFetchers = useMemo(() => ({
-        fetchVersion: (version) => {
-            const entry = planVersions.find((candidate) => candidate.version === version);
-            if (!entry) return Promise.reject(new Error(`Plan version ${version} is unavailable.`));
-            return Promise.resolve({ plan: entry.plan, version: entry.version });
-        },
-        fetchVersions: () =>
-            Promise.resolve({
-                project: "RunWield",
-                slug: initialPayload.planPath || "plan",
-                versions: planVersions.map(({ version, timestamp }) => ({ version, timestamp })),
-            }),
-    }), [initialPayload.planPath, planVersions]);
+    const versionInfo =
+        planVersions.length > 1
+            ? { version: planVersions.length, totalVersions: planVersions.length, project: "RunWield" }
+            : null;
+    const previousPlan = planVersions.length > 1 ? (planVersions.at(-2)?.plan ?? null) : null;
+    const planDiffFetchers = useMemo(
+        () => ({
+            fetchVersion: (version) => {
+                const entry = planVersions.find((candidate) => candidate.version === version);
+                if (!entry) return Promise.reject(new Error(`Plan version ${version} is unavailable.`));
+                return Promise.resolve({ plan: entry.plan, version: entry.version });
+            },
+            fetchVersions: () =>
+                Promise.resolve({
+                    project: "RunWield",
+                    slug: initialPayload.planPath || "plan",
+                    versions: planVersions.map(({ version, timestamp }) => ({ version, timestamp })),
+                }),
+        }),
+        [initialPayload.planPath, planVersions],
+    );
     const planDiff = usePlanDiff(
         plan,
         plannerDiffBase || previousPlan,
@@ -291,33 +325,37 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const selectedVersionLabel = plannerDiffBase
         ? `the Plan before the ${agentLabel} update`
         : planDiff.diffBaseVersion
-        ? `version ${planDiff.diffBaseVersion}`
-        : "previous version";
+          ? `version ${planDiff.diffBaseVersion}`
+          : "previous version";
     const affectedPaths = useMemo(
         () =>
             Array.isArray(parsed.frontmatter?.affectedPaths)
                 ? parsed.frontmatter.affectedPaths
-                    .filter((path) => typeof path === "string" && path.trim())
-                    .map(normalizeReferencedPath)
+                      .filter((path) => typeof path === "string" && path.trim())
+                      .map(normalizeReferencedPath)
                 : [],
         [parsed.frontmatter],
     );
-    const buildFileContentUrl = useCallback((requestedPath) => {
-        const filePath = requestedPath.replace(/#.*$/, "").replace(/:\d+(?:-\d+)?$/, "");
-        const devContents = initialPayload.linkedFiles?.[filePath];
-        if (initialPayload.mode === "dev") {
-            const body = typeof devContents === "string"
-                ? { codeFile: true, contents: devContents, filepath: filePath }
-                : { codeFile: false, error: `File not found in project: ${filePath}` };
-            return `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(body))}`;
-        }
-        const params = new URLSearchParams({ path: requestedPath, base: "docs/plans" });
-        if (initialPayload.mode === "workspace" && initialPayload.projectId) {
-            return `/api/owner/projects/${encodeURIComponent(initialPayload.projectId)}/files/content?${params}`;
-        }
-        params.set("token", initialPayload.token);
-        return `/api/file-content?${params}`;
-    }, [initialPayload.linkedFiles, initialPayload.mode, initialPayload.projectId, initialPayload.token]);
+    const buildFileContentUrl = useCallback(
+        (requestedPath) => {
+            const filePath = requestedPath.replace(/#.*$/, "").replace(/:\d+(?:-\d+)?$/, "");
+            const devContents = initialPayload.linkedFiles?.[filePath];
+            if (initialPayload.mode === "dev") {
+                const body =
+                    typeof devContents === "string"
+                        ? { codeFile: true, contents: devContents, filepath: filePath }
+                        : { codeFile: false, error: `File not found in project: ${filePath}` };
+                return `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(body))}`;
+            }
+            const params = new URLSearchParams({ path: requestedPath, base: "docs/plans" });
+            if (initialPayload.mode === "workspace" && initialPayload.projectId) {
+                return `/api/owner/projects/${encodeURIComponent(initialPayload.projectId)}/files/content?${params}`;
+            }
+            params.set("token", initialPayload.token);
+            return `/api/file-content?${params}`;
+        },
+        [initialPayload.linkedFiles, initialPayload.mode, initialPayload.projectId, initialPayload.token],
+    );
     const codeFilePopout = useCodeFilePopout({ buildUrl: buildFileContentUrl });
     const trustedPolicy = readPlanReviewExecutionPolicy(initialPayload, parsed.frontmatter);
     const planClassification = trustedPolicy.classification;
@@ -334,55 +372,76 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [executionPolicy, setExecutionPolicy] = useState(trustedPolicy);
     const executionAgent = executionPolicy.executionAgent;
     const collaborationRecommendation = executionPolicy.collaborationRecommendation;
-    const conversationEnabled = initialPayload.mode === "dev" || Boolean(initialPayload.conversationStatusUrl) ||
+    const conversationEnabled =
+        initialPayload.mode === "dev" ||
+        Boolean(initialPayload.conversationStatusUrl) ||
         Boolean(
-            initialPayload.operationStatusUrl && initialPayload.planDetailUrl &&
-                initialPayload.interactionAnswerBaseUrl,
+            initialPayload.operationStatusUrl &&
+            initialPayload.planDetailUrl &&
+            initialPayload.interactionAnswerBaseUrl,
         );
-    const reviewContextCount = annotations.length + codeAnnotations.length + globalAttachments.length +
-        (directlyEditedPlan === null ? 0 : 1);
-    const attachedContextLabel = conversationContextAttached && hasGroupFeedback
-        ? reviewContextCount > 0
-            ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"} attached`
-            : "Sequence review notes attached"
+    const reviewContextCount =
+        annotations.length + codeAnnotations.length + globalAttachments.length + (directlyEditedPlan === null ? 0 : 1);
+    const attachedContextParts = [];
+    if (conversationContextAttached && (reviewContextCount > 0 || reviewGroup?.hasFeedback)) {
+        attachedContextParts.push(
+            reviewContextCount > 0
+                ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"}`
+                : "Sequence review notes",
+        );
+    }
+    if (questionContextAttached && questionAnswers.length > 0) {
+        attachedContextParts.push(
+            `${questionAnswers.length} question ${questionAnswers.length === 1 ? "answer" : "answers"}`,
+        );
+    }
+    const attachedContextLabel = attachedContextParts.length
+        ? `${attachedContextParts.join(" and ")} attached`
         : undefined;
 
-    const persistReviewDraftLocally = useCallback((reportError = true) => {
-        try {
-            if (
-                !hasReviewFeedback &&
-                (!reviewGroup ||
-                    (executionAgent === trustedPolicy.executionAgent &&
-                        collaborationRecommendation === trustedPolicy.collaborationRecommendation))
-            ) {
-                globalThis.localStorage?.removeItem(reviewDraftKey);
-            } else {
-                const draft = createPlanReviewDraft({
-                    basePlan: reviewBasePlan,
-                    annotations,
-                    codeAnnotations,
-                    globalAttachments,
-                    editedPlan: directlyEditedPlan,
-                    executionPolicy: reviewGroup ? buildPlanReviewExecutionPolicyPayload(executionPolicy) : undefined,
-                });
-                globalThis.localStorage?.setItem(reviewDraftKey, serializePlanReviewDraft(draft));
+    const persistReviewDraftLocally = useCallback(
+        (reportError = true) => {
+            try {
+                if (
+                    !hasReviewFeedback &&
+                    (!reviewGroup ||
+                        (executionAgent === trustedPolicy.executionAgent &&
+                            collaborationRecommendation === trustedPolicy.collaborationRecommendation))
+                ) {
+                    globalThis.localStorage?.removeItem(reviewDraftKey);
+                } else {
+                    const draft = createPlanReviewDraft({
+                        basePlan: reviewBasePlan,
+                        annotations,
+                        questionAnswers,
+                        codeAnnotations,
+                        globalAttachments,
+                        editedPlan: directlyEditedPlan,
+                        executionPolicy: reviewGroup
+                            ? buildPlanReviewExecutionPolicyPayload(executionPolicy)
+                            : undefined,
+                    });
+                    globalThis.localStorage?.setItem(reviewDraftKey, serializePlanReviewDraft(draft));
+                }
+                if (reportError) setReviewDraftStorageError("");
+            } catch {
+                if (reportError) {
+                    setReviewDraftStorageError("This review draft could not be saved in the browser.");
+                }
             }
-            if (reportError) setReviewDraftStorageError("");
-        } catch {
-            if (reportError) {
-                setReviewDraftStorageError("This review draft could not be saved in the browser.");
-            }
-        }
-    }, [
-        annotations,
-        codeAnnotations,
-        directlyEditedPlan,
-        globalAttachments,
-        hasReviewFeedback,
-        reviewDraftKey,
-        reviewBasePlan,
-        executionPolicy,
-    ]);
+        },
+        [
+            annotations,
+            codeAnnotations,
+            directlyEditedPlan,
+            globalAttachments,
+            hasReviewFeedback,
+            questionAnswers,
+            reviewDraftKey,
+            reviewBasePlan,
+            executionPolicy,
+        ],
+    );
 
     useEffect(() => {
         setReviewDraftReady(false);
@@ -390,7 +449,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             const raw = globalThis.localStorage?.getItem(reviewDraftKey);
             const recovered = raw ? parsePlanReviewDraft(raw, submittedPlan) : null;
             if (raw && !recovered) globalThis.localStorage?.removeItem(reviewDraftKey);
-            setPendingReviewDraft(recovered);
+            setQuestionAnswers(recovered?.questionAnswers ?? []);
+            const hasSavedNotes =
+                recovered &&
+                (recovered.annotations.length > 0 ||
+                    recovered.codeAnnotations.length > 0 ||
+                    recovered.globalAttachments.length > 0 ||
+                    recovered.editedPlan !== null ||
+                    recovered.executionPolicy);
+            setPendingReviewDraft(hasSavedNotes ? recovered : null);
         } catch {
             setReviewDraftStorageError("This review draft could not be read from the browser.");
         } finally {
@@ -416,11 +483,26 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }, [pendingReviewDraft, persistReviewDraftLocally, reviewDraftReady, submitted]);
 
     async function submitApprove(approvalAction) {
+        if (submitting !== null) return;
+        const unanswered = reviewGroup
+            ? 0
+            : parsePlanQuestions(currentPlan()).filter(
+                  (block) =>
+                      block.question && !block.error && !questionAnswers.some((answer) => answer.id === block.id),
+              ).length;
+        if (
+            unanswered &&
+            !globalThis.confirm(
+                `${unanswered} ${unanswered === 1 ? "question is" : "questions are"} not answered. The recommended answers will be used.`,
+            )
+        )
+            return;
         setSubmitting("approve");
         reviewGroup?.setBusy(true);
         try {
             const result = await submit("decision", {
                 approved: true,
+                questionAnswers,
                 approvalAction,
                 ...buildApprovalPolicyPayload(),
                 ...buildReviewPayload(),
@@ -429,9 +511,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             if (result?.status === "recovery_required" || result?.result?.kind === "recovery_required") return;
             if (!reviewGroup) clearReviewDraft();
             const complete = reviewGroup ? reviewGroup.complete : setSubmitted;
-            complete(
-                approvalAction === PLAN_APPROVAL_ACTIONS.LATER ? "approved-later" : `approved-${approvalAction}`,
-            );
+            complete(approvalAction === PLAN_APPROVAL_ACTIONS.LATER ? "approved-later" : `approved-${approvalAction}`);
         } catch {
             // submit() owns the visible error state.
         } finally {
@@ -468,10 +548,17 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
     async function sendPlannerMessage() {
         const message = conversationComposer.trim();
-        const attachedFeedback = conversationContextAttached && hasGroupFeedback
+        const attachedFeedback = attachedContextLabel
             ? reviewGroup
-                ? reviewGroup.collect().map((document) => document.feedback || "").filter(Boolean).join("\n\n")
-                : currentFeedback()
+                ? reviewGroup
+                      .collect()
+                      .map((document) => document.feedback || "")
+                      .filter(Boolean)
+                      .join("\n\n")
+                : currentFeedback(currentPlan(), {
+                      includeNotes: conversationContextAttached,
+                      includeAnswers: questionContextAttached,
+                  })
             : "";
         if ((!message && !attachedFeedback) || plannerWorking) return;
         const contextLabel = attachedFeedback ? attachedContextLabel : undefined;
@@ -486,12 +573,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         setPlannerError("");
         setError("");
         setConversationComposer("");
-        setConversationMessages((items) => [...items, {
-            id: userMessageId,
-            role: "user",
-            body: message || "Review annotations",
-            ...(contextLabel && { contextLabel }),
-        }]);
+        setConversationMessages((items) => [
+            ...items,
+            {
+                id: userMessageId,
+                role: "user",
+                body: message || "Review annotations",
+                ...(contextLabel && { contextLabel }),
+            },
+        ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -514,16 +604,18 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
             if (initialPayload.mode === "dev") {
                 await pause(700);
-                const revisedPlan = initialPayload.plannerConversation?.revisedPlan ||
+                const revisedPlan =
+                    initialPayload.plannerConversation?.revisedPlan ||
                     `${priorPlan}\n\n## ${agentLabel} update\n\n- Added after the conversation turn.`;
                 applyPlannerRevision({
                     priorPlan,
                     revisedPlan,
                     interactionId: `dev-${crypto.randomUUID()}`,
-                    reply: initialPayload.plannerConversation?.reply ||
+                    reply:
+                        initialPayload.plannerConversation?.reply ||
                         "I tightened the Plan and added a clearer verification step.",
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback),
+                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -534,7 +626,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     previousRevision: conversationRevision,
                     eventStartIndex,
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback),
+                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -544,7 +636,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 previousInteractionId: activeInteractionId,
                 eventStartIndex,
                 agentMessageId,
-                clearAttachedContext: Boolean(attachedFeedback),
+                clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
             });
         } catch (caught) {
             setPlannerError(caught instanceof Error ? caught.message : String(caught));
@@ -580,7 +672,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     priorPlan: options.priorPlan,
                     revisedPlan: conversation.plan,
                     interactionId: `conversation-${conversation.revision}`,
-                    reply: reply.text ||
+                    reply:
+                        reply.text ||
                         (conversation.plan === options.priorPlan
                             ? `I reviewed that request and left the Plan unchanged.`
                             : `I updated the Plan. The changes are open in the diff.`),
@@ -609,7 +702,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
             const interaction = operation.liveInteraction;
             if (
-                interaction?.interactionId && interaction.interactionId !== options.previousInteractionId &&
+                interaction?.interactionId &&
+                interaction.interactionId !== options.previousInteractionId &&
                 interaction.request?.type === "plan_review"
             ) {
                 if (reviewGroup && interaction.request?.planReview?.sequenceDocuments) {
@@ -630,7 +724,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     priorPlan: options.priorPlan,
                     revisedPlan,
                     interactionId: interaction.interactionId,
-                    reply: reply.text ||
+                    reply:
+                        reply.text ||
                         (revisedPlan === options.priorPlan
                             ? "I reviewed that request and left the Plan unchanged."
                             : "I updated the Plan. The changes are open in the diff."),
@@ -657,6 +752,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             );
             updateReviewInteractionUrl(options.interactionId);
         }
+        setQuestionContextAttached(true);
         setPlannerDiffBase(options.priorPlan);
         setPlannerDiffRevision((value) => value + 1);
         setReviewBasePlan(options.revisedPlan);
@@ -680,7 +776,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             const existing = items.findIndex((item) => item.id === messageId);
             const message = { id: messageId, role: "agent", body };
             if (existing < 0) return [...items, message];
-            return items.map((item, index) => index === existing ? message : item);
+            return items.map((item, index) => (index === existing ? message : item));
         });
     }
 
@@ -717,13 +813,13 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
     function removeCodeAnnotation(id) {
         setCodeAnnotations((items) => items.filter((item) => item.id !== id));
-        setSelectedCodeAnnotationId((selectedId) => selectedId === id ? null : selectedId);
+        setSelectedCodeAnnotationId((selectedId) => (selectedId === id ? null : selectedId));
     }
 
     function removeAnnotation(id) {
         viewerHandleRef.current?.removeHighlight?.(id);
         setAnnotations((items) => items.filter((item) => item.id !== id));
-        setSelectedAnnotationId((selectedId) => selectedId === id ? null : selectedId);
+        setSelectedAnnotationId((selectedId) => (selectedId === id ? null : selectedId));
     }
 
     function toggleCheckbox(blockId, checked) {
@@ -796,7 +892,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }
 
     function currentPlan() {
-        return editorMode === "edit" ? editorHandleRef.current?.getMarkdown?.() ?? draftPlan : plan;
+        return editorMode === "edit" ? (editorHandleRef.current?.getMarkdown?.() ?? draftPlan) : plan;
     }
 
     function buildReviewPayload() {
@@ -810,19 +906,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         };
     }
 
-    function currentFeedback(reviewedPlan = currentPlan()) {
+    function currentFeedback(reviewedPlan = currentPlan(), { includeNotes = true, includeAnswers = true } = {}) {
         return buildPlanReviewFeedback({
             blocks: parsed.blocks,
-            annotations,
-            codeAnnotations,
-            globalAttachments,
-            basePlan: reviewBasePlan,
+            annotations: includeNotes ? annotations : [],
+            codeAnnotations: includeNotes ? codeAnnotations : [],
+            globalAttachments: includeNotes ? globalAttachments : [],
+            basePlan: includeNotes ? reviewBasePlan : reviewedPlan,
             reviewedPlan,
+            questionAnswers: includeAnswers ? questionAnswers : [],
         });
     }
 
     function restoreReviewDraft() {
         if (!pendingReviewDraft) return;
+        setQuestionAnswers(pendingReviewDraft.questionAnswers ?? []);
         setAnnotations(pendingReviewDraft.annotations);
         setCodeAnnotations(pendingReviewDraft.codeAnnotations);
         setGlobalAttachments(pendingReviewDraft.globalAttachments);
@@ -838,6 +936,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }
 
     function discardReviewDraft() {
+        setQuestionAnswers([]);
         try {
             globalThis.localStorage?.removeItem(reviewDraftKey);
         } catch {
@@ -915,25 +1014,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const reviewTools = (
         <>
             {affectedPaths.length > 0 && <AffectedFilesMenu paths={affectedPaths} onOpen={codeFilePopout.open} />}
-            {isPlanDiffActive
-                ? (
-                    <span className="rw-plan-diff-context" role="status">
-                        Comparing current revision with {selectedVersionLabel}
-                    </span>
-                )
-                : editorMode === "view"
-                ? (
-                    <RunWieldAnnotationToolstrip
-                        inputMethod={inputMethod}
-                        onInputMethodChange={setInputMethod}
-                        mode={annotationMode}
-                        onModeChange={setAnnotationMode}
-                        taterMode={false}
-                        compact
-                        showHelpLink={false}
-                    />
-                )
-                : null}
+            {isPlanDiffActive ? (
+                <span className="rw-plan-diff-context" role="status">
+                    Comparing current revision with {selectedVersionLabel}
+                </span>
+            ) : editorMode === "view" ? (
+                <RunWieldAnnotationToolstrip
+                    inputMethod={inputMethod}
+                    onInputMethodChange={setInputMethod}
+                    mode={annotationMode}
+                    onModeChange={setAnnotationMode}
+                    taterMode={false}
+                    compact
+                    showHelpLink={false}
+                />
+            ) : null}
         </>
     );
 
@@ -963,8 +1058,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     data-review-mode={initialPayload.mode}
                     data-plan-width={planWidthMode}
                 >
-                    {presentation === "workspace"
-                        ? (active && (
+                    {presentation === "workspace" ? (
+                        active && (
                             <WorkspaceHeaderActionsPortal>
                                 <PlanReviewHeaderActions
                                     compactLayout={compactLayout}
@@ -979,38 +1074,38 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     isLoading={submitting === "approve"}
                                 />
                             </WorkspaceHeaderActionsPortal>
-                        ))
-                        : (
-                            <header className="rw-plannotator-toolbar">
-                                <div className="rw-plan-review-heading">
-                                    <PlanReviewOptionsMenu
-                                        iconOnly
-                                        onOpenExport={() => setExportOpen(true)}
-                                        onOpenSettings={() => setSettingsOpen(true)}
-                                        onPrint={printReview}
-                                    />
-                                    <img src="/brand/logo.svg" alt="" aria-hidden="true" />
-                                    <h1>Plan Review</h1>
-                                    {initialPayload.mode === "dev" && (
-                                        <p className="rw-plan-review-dev-notice" role="status">
-                                            DEV MODE — Feedback and approval won’t go anywhere.
-                                        </p>
-                                    )}
-                                </div>
-                                <PlanReviewHeaderActions
-                                    compactLayout={compactLayout}
-                                    showExecutionPolicyControls={showExecutionPolicyControls}
-                                    executionAgent={executionAgent}
-                                    collaborationRecommendation={collaborationRecommendation}
-                                    setExecutionPolicy={setExecutionPolicy}
-                                    disabled={submitting !== null || plannerWorking || reviewGroup?.busy}
-                                    primaryApprovalAction={primaryApprovalAction}
-                                    sequenceCount={reviewGroup?.count}
-                                    onApprove={submitApprove}
-                                    isLoading={submitting === "approve"}
+                        )
+                    ) : (
+                        <header className="rw-plannotator-toolbar">
+                            <div className="rw-plan-review-heading">
+                                <PlanReviewOptionsMenu
+                                    iconOnly
+                                    onOpenExport={() => setExportOpen(true)}
+                                    onOpenSettings={() => setSettingsOpen(true)}
+                                    onPrint={printReview}
                                 />
-                            </header>
-                        )}
+                                <img src="/brand/logo.svg" alt="" aria-hidden="true" />
+                                <h1>Plan Review</h1>
+                                {initialPayload.mode === "dev" && (
+                                    <p className="rw-plan-review-dev-notice" role="status">
+                                        DEV MODE — Feedback and approval won’t go anywhere.
+                                    </p>
+                                )}
+                            </div>
+                            <PlanReviewHeaderActions
+                                compactLayout={compactLayout}
+                                showExecutionPolicyControls={showExecutionPolicyControls}
+                                executionAgent={executionAgent}
+                                collaborationRecommendation={collaborationRecommendation}
+                                setExecutionPolicy={setExecutionPolicy}
+                                disabled={submitting !== null || plannerWorking || reviewGroup?.busy}
+                                primaryApprovalAction={primaryApprovalAction}
+                                sequenceCount={reviewGroup?.count}
+                                onApprove={submitApprove}
+                                isLoading={submitting === "approve"}
+                            />
+                        </header>
+                    )}
                     {initialPayload.reviewNotice && (
                         <section
                             className={`rw-plan-review-notice state-${initialPayload.reviewNotice.state || "info"}`}
@@ -1018,13 +1113,11 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         >
                             <strong>{initialPayload.reviewNotice.title || "Review status"}</strong>
                             <p>{initialPayload.reviewNotice.message}</p>
-                            {initialPayload.reviewNotice.actionLabel && initialPayload.reviewNotice.actionHref
-                                ? (
-                                    <a href={initialPayload.reviewNotice.actionHref}>
-                                        {initialPayload.reviewNotice.actionLabel}
-                                    </a>
-                                )
-                                : null}
+                            {initialPayload.reviewNotice.actionLabel && initialPayload.reviewNotice.actionHref ? (
+                                <a href={initialPayload.reviewNotice.actionHref}>
+                                    {initialPayload.reviewNotice.actionLabel}
+                                </a>
+                            ) : null}
                         </section>
                     )}
                     {pendingReviewDraft && (
@@ -1035,12 +1128,14 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                             <div>
                                 <strong id="rw-plan-review-draft-title">Unfinished review found</strong>
                                 <p>
-                                    Restore {planReviewDraftDescription(pendingReviewDraft)}{" "}
-                                    from this browser, or discard it and start fresh.
+                                    Restore {planReviewDraftDescription(pendingReviewDraft)} from this browser, or
+                                    discard it and start fresh.
                                 </p>
                             </div>
                             <div className="rw-plan-review-draft-actions">
-                                <Button size="xs" type="button" onClick={restoreReviewDraft}>Restore draft</Button>
+                                <Button size="xs" type="button" onClick={restoreReviewDraft}>
+                                    Restore draft
+                                </Button>
                                 <Button size="xs" type="button" variant="ghost" onClick={discardReviewDraft}>
                                     Discard
                                 </Button>
@@ -1048,46 +1143,48 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         </section>
                     )}
                     {reviewDraftStorageError && (
-                        <p className="rw-review-error" role="alert">{reviewDraftStorageError}</p>
+                        <p className="rw-review-error" role="alert">
+                            {reviewDraftStorageError}
+                        </p>
                     )}
-                    {error && !staleReviewError && <p className="rw-review-error" role="alert">{error}</p>}
-                    {staleReviewError
-                        ? (
-                            <section className="rw-plan-review-notice state-recovery" role="alert">
-                                <strong>Review is out of date</strong>
-                                <p>{error}</p>
+                    {error && !staleReviewError && (
+                        <p className="rw-review-error" role="alert">
+                            {error}
+                        </p>
+                    )}
+                    {staleReviewError ? (
+                        <section className="rw-plan-review-notice state-recovery" role="alert">
+                            <strong>Review is out of date</strong>
+                            <p>{error}</p>
+                            <button
+                                type="button"
+                                className="rw-plan-review-recovery-action"
+                                onClick={() => globalThis.location.reload()}
+                            >
+                                Reload review
+                            </button>
+                        </section>
+                    ) : null}
+                    {recoveryRequest ? (
+                        <section className="rw-plan-review-notice state-recovery" role="alert">
+                            <strong>Recovery needed</strong>
+                            <p>{recoveryRequest.message}</p>
+                            {recoveryRequest.url ? (
                                 <button
                                     type="button"
                                     className="rw-plan-review-recovery-action"
-                                    onClick={() => globalThis.location.reload()}
+                                    disabled={submitting !== null}
+                                    onClick={runRecoveryAction}
                                 >
-                                    Reload review
+                                    {submitting === "recovery" ? (
+                                        <RunWieldThinkingDots label="Recovering" />
+                                    ) : (
+                                        "Recover in Workspace"
+                                    )}
                                 </button>
-                            </section>
-                        )
-                        : null}
-                    {recoveryRequest
-                        ? (
-                            <section className="rw-plan-review-notice state-recovery" role="alert">
-                                <strong>Recovery needed</strong>
-                                <p>{recoveryRequest.message}</p>
-                                {recoveryRequest.url
-                                    ? (
-                                        <button
-                                            type="button"
-                                            className="rw-plan-review-recovery-action"
-                                            disabled={submitting !== null}
-                                            onClick={runRecoveryAction}
-                                        >
-                                            {submitting === "recovery"
-                                                ? <RunWieldThinkingDots label="Recovering" />
-                                                : "Recover in Workspace"}
-                                        </button>
-                                    )
-                                    : null}
-                            </section>
-                        )
-                        : null}
+                            ) : null}
+                        </section>
+                    ) : null}
                     <ScrollViewportContext.Provider value={scrollViewport}>
                         <div
                             className="rw-plannotator-plan-layout"
@@ -1221,21 +1318,17 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             )}
                                         </RunWieldSegmentedControl>
                                         {compactLayout
-                                            ? (
-                                                editorMode !== "edit" && (
-                                                    <RunWieldMenu label="Review tools" align="end">
-                                                        <div className="rw-compact-review-tools">{reviewTools}</div>
-                                                    </RunWieldMenu>
-                                                )
-                                            )
+                                            ? editorMode !== "edit" && (
+                                                  <RunWieldMenu label="Review tools" align="end">
+                                                      <div className="rw-compact-review-tools">{reviewTools}</div>
+                                                  </RunWieldMenu>
+                                              )
                                             : reviewTools}
                                     </div>
                                     <div className="rw-review-toolbar-edge rw-review-toolbar-edge-right rw-plan-review-sidebar-restore rw-plan-review-sidebar-restore-right">
                                         {editorMode === "edit" && !isPlanDiffActive && (
                                             <div className="rw-editor-save-controls">
-                                                <span role="status">
-                                                    {editorDirty ? "Unsaved changes" : "Saved"}
-                                                </span>
+                                                <span role="status">{editorDirty ? "Unsaved changes" : "Saved"}</span>
                                                 <button
                                                     className="rw-toolbar-button"
                                                     type="button"
@@ -1255,7 +1348,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     animateSidebarUpdate(() => {
                                                         setAnnotationsOpen(true);
                                                         if (compactLayout) setSidebarOpen(false);
-                                                    })}
+                                                    })
+                                                }
                                             >
                                                 <ToggleIcon name="annotations" />
                                                 <span>Annotations</span>
@@ -1282,81 +1376,89 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             />
                                         </div>
                                     )}
-                                    {isPlanDiffActive && planDiff.diffBlocks && planDiff.diffStats
-                                        ? (
-                                            <OverlayScrollArea
-                                                className="rw-plannotator-scroll-area rw-plan-diff-scroll"
-                                                onViewportReady={setScrollViewport}
-                                            >
-                                                <div className="rw-plan-document-canvas rw-plan-diff-canvas">
-                                                    <PlanDiffViewer
-                                                        diffBlocks={planDiff.diffBlocks}
-                                                        diffStats={planDiff.diffStats}
-                                                        diffMode={planDiffMode}
-                                                        onDiffModeChange={setPlanDiffMode}
-                                                        onPlanDiffToggle={showPlanView}
-                                                        baseVersionLabel={selectedVersionLabel}
-                                                        maxWidth={planMaxWidth ?? undefined}
-                                                        annotations={annotations}
-                                                        onAddAnnotation={addAnnotation}
-                                                        onSelectAnnotation={setSelectedAnnotationId}
-                                                        selectedAnnotationId={selectedAnnotationId}
-                                                        mode={annotationMode}
-                                                    />
-                                                </div>
-                                            </OverlayScrollArea>
-                                        )
-                                        : editorMode === "view"
-                                        ? (
-                                            <OverlayScrollArea
-                                                className="rw-plannotator-scroll-area"
-                                                onViewportReady={setScrollViewport}
-                                            >
-                                                <div className="rw-plan-document-canvas">
-                                                    <Viewer
-                                                        key={plan}
-                                                        ref={viewerHandleRef}
-                                                        blocks={parsed.blocks}
-                                                        markdown={plan}
-                                                        frontmatter={parsed.frontmatter}
-                                                        annotations={annotations}
-                                                        globalAttachments={globalAttachments}
-                                                        onAddGlobalAttachment={(image) =>
-                                                            setGlobalAttachments((items) => [...items, image])}
-                                                        onRemoveGlobalAttachment={(path) =>
-                                                            setGlobalAttachments((items) =>
-                                                                items.filter((item) => item.path !== path)
-                                                            )}
-                                                        onAddAnnotation={addAnnotation}
-                                                        onSelectAnnotation={setSelectedAnnotationId}
-                                                        selectedAnnotationId={selectedAnnotationId}
-                                                        mode={annotationMode}
-                                                        inputMethod={inputMethod}
-                                                        taterMode={false}
-                                                        stickyActions={uiPreferences.stickyActionsEnabled}
-                                                        gridEnabled={gridEnabled}
-                                                        maxWidth={planMaxWidth}
-                                                        imageBaseDir={initialPayload.imageBaseDir}
-                                                        disableCodePathValidation
-                                                        onOpenCodeFile={codeFilePopout.open}
-                                                        onOpenLinkedDoc={codeFilePopout.open}
-                                                        onToggleCheckbox={toggleCheckbox}
-                                                    />
-                                                </div>
-                                            </OverlayScrollArea>
-                                        )
-                                        : (
-                                            <div className="rw-markdown-editor-pane">
-                                                <MarkdownEditor
-                                                    markdown={draftPlan}
-                                                    documentId={initialPayload.token || "dev-plan"}
-                                                    editorHandleRef={editorHandleRef}
-                                                    onMarkdownChange={setDraftPlan}
-                                                    maxWidth={planMaxWidth}
-                                                    gridEnabled={gridEnabled}
+                                    {isPlanDiffActive && planDiff.diffBlocks && planDiff.diffStats ? (
+                                        <OverlayScrollArea
+                                            className="rw-plannotator-scroll-area rw-plan-diff-scroll"
+                                            onViewportReady={setScrollViewport}
+                                        >
+                                            <div className="rw-plan-document-canvas rw-plan-diff-canvas">
+                                                <PlanDiffViewer
+                                                    diffBlocks={planDiff.diffBlocks}
+                                                    diffStats={planDiff.diffStats}
+                                                    diffMode={planDiffMode}
+                                                    onDiffModeChange={setPlanDiffMode}
+                                                    onPlanDiffToggle={showPlanView}
+                                                    baseVersionLabel={selectedVersionLabel}
+                                                    maxWidth={planMaxWidth ?? undefined}
+                                                    annotations={annotations}
+                                                    onAddAnnotation={addAnnotation}
+                                                    onSelectAnnotation={setSelectedAnnotationId}
+                                                    selectedAnnotationId={selectedAnnotationId}
+                                                    mode={annotationMode}
                                                 />
                                             </div>
-                                        )}
+                                        </OverlayScrollArea>
+                                    ) : editorMode === "view" ? (
+                                        <OverlayScrollArea
+                                            className="rw-plannotator-scroll-area"
+                                            onViewportReady={setScrollViewport}
+                                        >
+                                            <div className="rw-plan-document-canvas">
+                                                <Viewer
+                                                    key={plan}
+                                                    ref={viewerHandleRef}
+                                                    blocks={parsed.blocks}
+                                                    markdown={plan}
+                                                    frontmatter={parsed.frontmatter}
+                                                    annotations={annotations}
+                                                    globalAttachments={globalAttachments}
+                                                    onAddGlobalAttachment={(image) =>
+                                                        setGlobalAttachments((items) => [...items, image])
+                                                    }
+                                                    onRemoveGlobalAttachment={(path) =>
+                                                        setGlobalAttachments((items) =>
+                                                            items.filter((item) => item.path !== path),
+                                                        )
+                                                    }
+                                                    onAddAnnotation={addAnnotation}
+                                                    onSelectAnnotation={setSelectedAnnotationId}
+                                                    selectedAnnotationId={selectedAnnotationId}
+                                                    mode={annotationMode}
+                                                    inputMethod={inputMethod}
+                                                    taterMode={false}
+                                                    stickyActions={uiPreferences.stickyActionsEnabled}
+                                                    gridEnabled={gridEnabled}
+                                                    maxWidth={planMaxWidth}
+                                                    imageBaseDir={initialPayload.imageBaseDir}
+                                                    disableCodePathValidation
+                                                    onOpenCodeFile={codeFilePopout.open}
+                                                    onOpenLinkedDoc={codeFilePopout.open}
+                                                    onToggleCheckbox={toggleCheckbox}
+                                                />
+                                                {!reviewGroup && (
+                                                    <PlanQuestionBlocks
+                                                        containerRef={reviewRef}
+                                                        markdown={plan}
+                                                        blocks={parsed.blocks}
+                                                        questions={questions}
+                                                        answers={questionAnswers}
+                                                        onAnswer={answerQuestion}
+                                                    />
+                                                )}
+                                            </div>
+                                        </OverlayScrollArea>
+                                    ) : (
+                                        <div className="rw-markdown-editor-pane">
+                                            <MarkdownEditor
+                                                markdown={draftPlan}
+                                                documentId={initialPayload.token || "dev-plan"}
+                                                editorHandleRef={editorHandleRef}
+                                                onMarkdownChange={setDraftPlan}
+                                                maxWidth={planMaxWidth}
+                                                gridEnabled={gridEnabled}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </main>
                             {annotationsOpen && (
@@ -1367,53 +1469,51 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     aria-label="Review sidebar"
                                 >
                                     <div className="rw-plan-review-annotation-heading p-2">
-                                        {conversationEnabled
-                                            ? (
-                                                <div
-                                                    className="rw-underline-tabs rw-review-sidebar-tabs"
-                                                    role="tablist"
-                                                    aria-label="Review sidebar"
+                                        {conversationEnabled ? (
+                                            <div
+                                                className="rw-underline-tabs rw-review-sidebar-tabs"
+                                                role="tablist"
+                                                aria-label="Review sidebar"
+                                            >
+                                                <button
+                                                    className={rightSidebarView === "annotations" ? "active" : ""}
+                                                    type="button"
+                                                    role="tab"
+                                                    aria-selected={rightSidebarView === "annotations"}
+                                                    onClick={() => setRightSidebarView("annotations")}
+                                                    title="Annotations"
                                                 >
-                                                    <button
-                                                        className={rightSidebarView === "annotations" ? "active" : ""}
-                                                        type="button"
-                                                        role="tab"
-                                                        aria-selected={rightSidebarView === "annotations"}
-                                                        onClick={() => setRightSidebarView("annotations")}
-                                                        title="Annotations"
-                                                    >
-                                                        <ToggleIcon name="annotations" />
-                                                        <span>Annotations</span>
-                                                        {annotations.length + codeAnnotations.length > 0 && (
-                                                            <span className="rw-review-annotation-count">
-                                                                {annotations.length + codeAnnotations.length}
-                                                            </span>
-                                                        )}
-                                                    </button>
-                                                    <button
-                                                        className={rightSidebarView === "planner" ? "active" : ""}
-                                                        type="button"
-                                                        role="tab"
-                                                        aria-selected={rightSidebarView === "planner"}
-                                                        onClick={() => setRightSidebarView("planner")}
-                                                        title={agentLabel}
-                                                    >
-                                                        <PlannerChatIcon />
-                                                        <span>{agentLabel}</span>
-                                                    </button>
-                                                </div>
-                                            )
-                                            : (
-                                                <div>
                                                     <ToggleIcon name="annotations" />
-                                                    <h2 id="rw-plan-review-annotations-heading">Annotations</h2>
+                                                    <span>Annotations</span>
                                                     {annotations.length + codeAnnotations.length > 0 && (
                                                         <span className="rw-review-annotation-count">
                                                             {annotations.length + codeAnnotations.length}
                                                         </span>
                                                     )}
-                                                </div>
-                                            )}
+                                                </button>
+                                                <button
+                                                    className={rightSidebarView === "planner" ? "active" : ""}
+                                                    type="button"
+                                                    role="tab"
+                                                    aria-selected={rightSidebarView === "planner"}
+                                                    onClick={() => setRightSidebarView("planner")}
+                                                    title={agentLabel}
+                                                >
+                                                    <PlannerChatIcon />
+                                                    <span>{agentLabel}</span>
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <ToggleIcon name="annotations" />
+                                                <h2 id="rw-plan-review-annotations-heading">Annotations</h2>
+                                                {annotations.length + codeAnnotations.length > 0 && (
+                                                    <span className="rw-review-annotation-count">
+                                                        {annotations.length + codeAnnotations.length}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                         <RunWieldIconButton
                                             className="rw-plan-review-annotation-close"
                                             type="button"
@@ -1424,89 +1524,91 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             <PanelCollapseIcon side="right" />
                                         </RunWieldIconButton>
                                     </div>
-                                    {rightSidebarView === "annotations"
-                                        ? (
-                                            <>
-                                                <div className="rw-review-feedback-action rw-review-action p-2">
-                                                    <FeedbackButton
-                                                        onClick={submitFeedback}
-                                                        disabled={!hasGroupFeedback || submitting !== null ||
-                                                            plannerWorking}
-                                                        isLoading={submitting === "feedback"}
-                                                        label="Send Annotations"
-                                                        loadingLabel={
-                                                            <RunWieldThinkingDots label="Sending Annotations" />
-                                                        }
-                                                        title={!hasReviewFeedback
+                                    {rightSidebarView === "annotations" ? (
+                                        <>
+                                            <div className="rw-review-feedback-action rw-review-action p-2">
+                                                <FeedbackButton
+                                                    onClick={submitFeedback}
+                                                    disabled={
+                                                        !hasGroupFeedback || submitting !== null || plannerWorking
+                                                    }
+                                                    isLoading={submitting === "feedback"}
+                                                    label="Send Annotations"
+                                                    loadingLabel={<RunWieldThinkingDots label="Sending Annotations" />}
+                                                    title={
+                                                        !hasReviewFeedback
                                                             ? "Add a Plan or file annotation, attachment, or direct Plan edit before sending annotations"
-                                                            : "Send annotations"}
-                                                    />
-                                                    {conversationEnabled && (
-                                                        <button
-                                                            className="rw-review-context-to-chat"
-                                                            type="button"
-                                                            disabled={!hasGroupFeedback || plannerWorking}
-                                                            onClick={attachReviewContextToConversation}
-                                                        >
-                                                            <PlannerChatIcon />
-                                                            Add to {agentLabel} chat
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <AnnotationPanel
-                                                    isOpen
-                                                    presentation="embedded"
-                                                    annotations={annotations}
-                                                    codeAnnotations={codeAnnotations}
-                                                    blocks={parsed.blocks}
-                                                    onSelect={(id) => {
-                                                        setSelectedCodeAnnotationId(null);
-                                                        setSelectedAnnotationId(id);
-                                                    }}
-                                                    onDelete={removeAnnotation}
-                                                    onEdit={(id, updates) =>
-                                                        setAnnotations((items) =>
-                                                            items.map((item) =>
-                                                                item.id === id ? { ...item, ...updates } : item
-                                                            )
-                                                        )}
-                                                    onSelectCodeAnnotation={(id) => {
-                                                        const annotation = codeAnnotations.find((item) =>
-                                                            item.id === id
-                                                        );
-                                                        if (!annotation) return;
-                                                        setSelectedAnnotationId(null);
-                                                        setSelectedCodeAnnotationId(id);
-                                                        codeFilePopout.open(annotation.filePath);
-                                                    }}
-                                                    onDeleteCodeAnnotation={removeCodeAnnotation}
-                                                    onEditCodeAnnotation={(id, updates) =>
-                                                        setCodeAnnotations((items) =>
-                                                            items.map((item) =>
-                                                                item.id === id ? { ...item, ...updates } : item
-                                                            )
-                                                        )}
-                                                    onQuickCopy={() => copyTextToClipboard(currentFeedback())}
-                                                    selectedId={selectedCodeAnnotationId || selectedAnnotationId}
-                                                    sharingEnabled={false}
-                                                    directEdits={directEditPanel}
+                                                            : "Send annotations"
+                                                    }
                                                 />
-                                            </>
-                                        )
-                                        : (
-                                            <ArtifactConversationSidebar
-                                                agentLabel={agentLabel}
-                                                messages={conversationMessages}
-                                                composer={conversationComposer}
-                                                attachedContextLabel={attachedContextLabel}
-                                                working={plannerWorking}
-                                                disabled={submitting !== null}
-                                                error={plannerError}
-                                                onComposerChange={setConversationComposer}
-                                                onSend={sendPlannerMessage}
-                                                onDetachContext={() => setConversationContextAttached(false)}
+                                                {conversationEnabled && (
+                                                    <button
+                                                        className="rw-review-context-to-chat"
+                                                        type="button"
+                                                        disabled={!hasGroupFeedback || plannerWorking}
+                                                        onClick={attachReviewContextToConversation}
+                                                    >
+                                                        <PlannerChatIcon />
+                                                        Add to {agentLabel} chat
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <AnnotationPanel
+                                                isOpen
+                                                presentation="embedded"
+                                                annotations={annotations}
+                                                codeAnnotations={codeAnnotations}
+                                                blocks={parsed.blocks}
+                                                onSelect={(id) => {
+                                                    setSelectedCodeAnnotationId(null);
+                                                    setSelectedAnnotationId(id);
+                                                }}
+                                                onDelete={removeAnnotation}
+                                                onEdit={(id, updates) =>
+                                                    setAnnotations((items) =>
+                                                        items.map((item) =>
+                                                            item.id === id ? { ...item, ...updates } : item,
+                                                        ),
+                                                    )
+                                                }
+                                                onSelectCodeAnnotation={(id) => {
+                                                    const annotation = codeAnnotations.find((item) => item.id === id);
+                                                    if (!annotation) return;
+                                                    setSelectedAnnotationId(null);
+                                                    setSelectedCodeAnnotationId(id);
+                                                    codeFilePopout.open(annotation.filePath);
+                                                }}
+                                                onDeleteCodeAnnotation={removeCodeAnnotation}
+                                                onEditCodeAnnotation={(id, updates) =>
+                                                    setCodeAnnotations((items) =>
+                                                        items.map((item) =>
+                                                            item.id === id ? { ...item, ...updates } : item,
+                                                        ),
+                                                    )
+                                                }
+                                                onQuickCopy={() => copyTextToClipboard(currentFeedback())}
+                                                selectedId={selectedCodeAnnotationId || selectedAnnotationId}
+                                                sharingEnabled={false}
+                                                directEdits={directEditPanel}
                                             />
-                                        )}
+                                        </>
+                                    ) : (
+                                        <ArtifactConversationSidebar
+                                            agentLabel={agentLabel}
+                                            messages={conversationMessages}
+                                            composer={conversationComposer}
+                                            attachedContextLabel={attachedContextLabel}
+                                            working={plannerWorking}
+                                            disabled={submitting !== null}
+                                            error={plannerError}
+                                            onComposerChange={setConversationComposer}
+                                            onSend={sendPlannerMessage}
+                                            onDetachContext={() => {
+                                                setConversationContextAttached(false);
+                                                setQuestionContextAttached(false);
+                                            }}
+                                        />
+                                    )}
                                 </aside>
                             )}
                         </div>
@@ -1529,15 +1631,16 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     {codeFilePopout.popoutProps && (
                         <CodeFilePopout
                             {...codeFilePopout.popoutProps}
-                            annotations={codeAnnotations.filter((item) =>
-                                item.filePath === codeFilePopout.popoutProps?.filepath
+                            annotations={codeAnnotations.filter(
+                                (item) => item.filePath === codeFilePopout.popoutProps?.filepath,
                             )}
                             selectedAnnotationId={selectedCodeAnnotationId}
                             onAddAnnotation={addCodeAnnotation}
                             onEditAnnotation={(id, updates) =>
                                 setCodeAnnotations((items) =>
-                                    items.map((item) => item.id === id ? { ...item, ...updates } : item)
-                                )}
+                                    items.map((item) => (item.id === id ? { ...item, ...updates } : item)),
+                                )
+                            }
                             onDeleteAnnotation={removeCodeAnnotation}
                             onSelectAnnotation={(id) => {
                                 setSelectedAnnotationId(null);
@@ -1574,7 +1677,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             console.log("Plan review dev decision", { endpoint, body });
             return { status: "accepted" };
         }
-        const targetUrl = activeInteractionAnswerUrl || initialPayload.submitUrl ||
+        const targetUrl =
+            activeInteractionAnswerUrl ||
+            initialPayload.submitUrl ||
             `/api/review/${endpoint}?token=${encodeURIComponent(initialPayload.token)}`;
         const headers = {
             "content-type": "application/json",
@@ -1588,13 +1693,13 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             body: JSON.stringify(
                 activeInteractionAnswerUrl
                     ? {
-                        requestId,
-                        runwieldSessionId: initialPayload.runwieldSessionId,
-                        response: { outcome: "accepted", _meta: body },
-                    }
+                          requestId,
+                          runwieldSessionId: initialPayload.runwieldSessionId,
+                          response: { outcome: "accepted", _meta: body },
+                      }
                     : initialPayload.submitUrl
-                    ? { requestId, action: endpoint, ...body }
-                    : body,
+                      ? { requestId, action: endpoint, ...body }
+                      : body,
             ),
         });
         const contentType = response.headers.get("content-type") || "";
@@ -1602,7 +1707,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         const result = payload?.result || payload;
         if (result?.status === "recovery_required" || result?.kind === "recovery_required") {
             setRecoveryRequest({
-                message: result.message || payload?.error ||
+                message:
+                    result.message ||
+                    payload?.error ||
                     "Plan review recovery is required before this decision can be applied.",
                 url: initialPayload.recoveryUrl,
                 expectedGeneration: initialPayload.recoveryExpectedGeneration,
@@ -1640,15 +1747,17 @@ function PlanReviewHeaderActions({
                     updatePlanReviewExecutionPolicy(current, {
                         field: "executionAgent",
                         value,
-                    })
-                )}
+                    }),
+                )
+            }
             onRecommendationChange={(value) =>
                 setExecutionPolicy((current) =>
                     updatePlanReviewExecutionPolicy(current, {
                         field: "collaborationRecommendation",
                         value,
-                    })
-                )}
+                    }),
+                )
+            }
             disabled={disabled}
         />
     );
@@ -1661,13 +1770,14 @@ function PlanReviewHeaderActions({
             {sequenceCount !== undefined && (
                 <span className="rw-sequence-review-scope">Sequence and {sequenceCount} Plans</span>
             )}
-            {showExecutionPolicyControls && (compactLayout
-                ? (
+            {showExecutionPolicyControls &&
+                (compactLayout ? (
                     <RunWieldMenu label="Execution options" align="end">
                         <div className="rw-compact-review-tools">{executionControls}</div>
                     </RunWieldMenu>
-                )
-                : executionControls)}
+                ) : (
+                    executionControls
+                ))}
             <PlanApprovalSplitButton
                 sequence={sequenceCount !== undefined}
                 primaryAction={primaryApprovalAction}
@@ -1711,9 +1821,11 @@ function PlanApprovalSplitButton({ primaryAction, onApprove, disabled, isLoading
                         iconLeft={<CheckIcon />}
                     >
                         <span className="md:hidden">
-                            {isLoading
-                                ? <RunWieldThinkingDots label="Approving" showLabel={false} />
-                                : primaryMobileLabel}
+                            {isLoading ? (
+                                <RunWieldThinkingDots label="Approving" showLabel={false} />
+                            ) : (
+                                primaryMobileLabel
+                            )}
                         </span>
                         <span className="hidden md:inline">
                             {isLoading ? <RunWieldThinkingDots label={loadingLabel} /> : primaryLabel}
@@ -1739,11 +1851,13 @@ function PlanApprovalSplitButton({ primaryAction, onApprove, disabled, isLoading
                     onClick={() => submitForLater(closeMenu)}
                     icon={<ClockIcon />}
                     label="Approve for Later"
-                    subtitle={sequence
-                        ? "Approve and save the Sequence and all child Plans for later execution."
-                        : isProject
-                        ? "Approve and save this Epic for later Slicer decomposition."
-                        : "Approve and save this Plan for later execution."}
+                    subtitle={
+                        sequence
+                            ? "Approve and save the Sequence and all child Plans for later execution."
+                            : isProject
+                              ? "Approve and save this Epic for later Slicer decomposition."
+                              : "Approve and save this Plan for later execution."
+                    }
                 />
             )}
         </ActionMenu>
@@ -1851,10 +1965,8 @@ function AffectedFilesMenu({ paths, onOpen }) {
 
 function normalizeReferencedPath(path) {
     const trimmed = path.trim();
-    return trimmed.length >= 2 && (
-            (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-            (trimmed.startsWith("'") && trimmed.endsWith("'"))
-        )
+    return trimmed.length >= 2 &&
+        ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))
         ? trimmed.slice(1, -1)
         : trimmed;
 }
@@ -1905,8 +2017,7 @@ function ToggleIcon({ name }) {
         annotations: "M7 8h10M7 12h6m-8 8 3.5-4H19a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z",
         engineer: "M14.7 6.3a4 4 0 0 0-5 5L4 17l3 3 5.7-5.7a4 4 0 0 0 5-5l-2.4 2.4-3-3 2.4-2.4z",
         frontend: "M4 5h16v10H4z M8 19h8 M12 15v4",
-        pair:
-            "M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 20a5 5 0 0 1 10 0 M11 20a5 5 0 0 1 10 0",
+        pair: "M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 20a5 5 0 0 1 10 0 M11 20a5 5 0 0 1 10 0",
         autonomous:
             "M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M18.4 5.6l-2.1 2.1 M7.7 16.3l-2.1 2.1 M12 9l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.2-2.4 1.2.5-2.6-1.9-1.8 2.6-.4L12 9z",
     };
@@ -1952,11 +2063,7 @@ function ChevronDownIcon() {
 function ClockIcon() {
     return (
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 6v6l4 2M12 22a10 10 0 110-20 10 10 0 010 20z"
-            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2M12 22a10 10 0 110-20 10 10 0 010 20z" />
         </svg>
     );
 }
@@ -2049,9 +2156,10 @@ function reviewOutcomeCopy(submitted, classification, sessionLabel, sequence = f
     if (submitted === "approved-later") {
         return {
             title: "Approved for later",
-            subtitle: classification === "PROJECT"
-                ? "This Epic is approved and saved for later decomposition."
-                : "This Plan is approved and saved for later execution.",
+            subtitle:
+                classification === "PROJECT"
+                    ? "This Epic is approved and saved for later decomposition."
+                    : "This Plan is approved and saved for later execution.",
         };
     }
     if (submitted === "approved-decompose") {

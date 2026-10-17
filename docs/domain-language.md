@@ -740,6 +740,11 @@ _Avoid_: Classification tool, triage result tool
 **Plan-Written Tool**: The `plan_written` Custom Tool that starts the Review Loop and returns the Plan outcome. _Avoid_:
 Review tool, approval tool
 
+**Plan Question**: The Plan-surface form of the **User-Interview Tool**: an embedded interview question written as a
+`wld-question` block in a Plan, answered by the owner in browser review, and resolved into question-and-answer text on
+approval. Unlike the User-Interview Tool, it is in the Plan body and answered asynchronously, not a blocking tool call
+in the conversation.
+
 **User-Interview Tool**: The `user_interview` Custom Tool for structured clarification questions. _Avoid_: Question
 tool, clarification form
 

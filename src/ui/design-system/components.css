@@ -464,21 +464,31 @@ svg.animate-spin > * {
     border: 1px solid color-mix(in srgb, var(--primary, var(--rw-accent)) 56%, transparent) !important;
     border-radius: var(--rw-radius-control) !important;
     padding: 0.5rem 0.9rem !important;
-    background: color-mix(in srgb, var(--primary, var(--rw-accent)) 84%, var(--rw-surface-raised, transparent))
-        !important;
+    background: color-mix(
+        in srgb,
+        var(--primary, var(--rw-accent)) 84%,
+        var(--rw-surface-raised, transparent)
+    ) !important;
     color: var(--primary-foreground, var(--rw-on-accent)) !important;
     box-shadow: none !important;
     font-size: 0.78rem !important;
     font-weight: 650 !important;
     line-height: 1.2 !important;
-    transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, opacity 150ms ease !important;
+    transition:
+        border-color 150ms ease,
+        background-color 150ms ease,
+        color 150ms ease,
+        opacity 150ms ease !important;
 }
 
 .rw-modal-primary-button:hover:not(:disabled),
 .rw-modal-primary-button:focus-visible:not(:disabled) {
     border-color: color-mix(in srgb, var(--primary, var(--rw-accent)) 76%, transparent) !important;
-    background: color-mix(in srgb, var(--primary, var(--rw-accent)) 92%, var(--rw-surface-raised, transparent))
-        !important;
+    background: color-mix(
+        in srgb,
+        var(--primary, var(--rw-accent)) 92%,
+        var(--rw-surface-raised, transparent)
+    ) !important;
 }
 
 .rw-modal-primary-button:focus-visible {
@@ -548,7 +558,11 @@ svg.animate-spin > * {
     font-weight: 750;
     line-height: 1.2;
     text-decoration: none;
-    transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+    transition:
+        border-color 150ms ease,
+        background-color 150ms ease,
+        box-shadow 150ms ease,
+        color 150ms ease;
 }
 
 .rw-review-action [data-slot="button"]:hover:not(:disabled),
@@ -801,7 +815,10 @@ svg.animate-spin > * {
 .clickable-card {
     cursor: pointer;
     position: relative;
-    transition: border-color 0.15s ease, box-shadow 0.18s ease, transform 0.15s ease;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.18s ease,
+        transform 0.15s ease;
 }
 
 .clickable-card:hover {
@@ -1299,7 +1316,9 @@ button.danger-action:disabled {
 
 .plan-card.is-drag-source {
     border-color: var(--rw-accent-strong);
-    box-shadow: 0 26px 70px #0008, 0 0 0 2px color-mix(in srgb, var(--rw-accent) 40%, transparent);
+    box-shadow:
+        0 26px 70px #0008,
+        0 0 0 2px color-mix(in srgb, var(--rw-accent) 40%, transparent);
     opacity: 0.55;
     transform: rotate(1deg) scale(1.015);
 }
@@ -1762,7 +1781,9 @@ button.danger-action:disabled {
     margin-block: var(--rw-space-panel);
     padding: var(--rw-space-panel);
     border: 0;
-    box-shadow: inset 2px 0 var(--rw-brand), inset 0 0 0 1px var(--rw-border);
+    box-shadow:
+        inset 2px 0 var(--rw-brand),
+        inset 0 0 0 1px var(--rw-border);
     border-radius: 0;
     background: var(--rw-surface-raised);
     overflow-wrap: anywhere;
@@ -2342,4 +2363,45 @@ button.danger-action:disabled {
     .rw-delivery-report-checks > div {
         margin-block: 12px;
     }
+}
+
+/* Embedded Plan Questions reuse the interview form controls. */
+.rw-plan-question-mounted > pre,
+.rw-plan-question-mounted > button {
+    display: none;
+}
+.rw-plan-question-mounted .rw-question-card {
+    width: 100%;
+    box-sizing: border-box;
+    color: var(--rw-text);
+    font: inherit;
+}
+.rw-plan-question-mounted legend {
+    margin-bottom: 0.5rem;
+    padding: 0;
+    font-weight: 600;
+}
+.rw-plan-question-mounted .rw-question-field {
+    gap: 0.25rem;
+}
+.rw-plan-question-mounted .rw-question-option {
+    min-height: 1.75rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+.rw-plan-question-mounted .rw-plan-question-other {
+    min-height: 4.5rem;
+    padding: 0.5rem;
+    border: 0;
+    background: transparent;
+}
+.rw-plan-question-mounted textarea:focus-visible,
+.rw-plan-question-mounted input:focus-visible {
+    outline: 2px solid var(--rw-accent);
+    outline-offset: 2px;
+}
+.rw-plan-question-mounted input[type="radio"] {
+    accent-color: var(--rw-accent);
 }
