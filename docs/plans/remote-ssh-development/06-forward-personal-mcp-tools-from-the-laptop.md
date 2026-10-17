@@ -26,6 +26,7 @@ dependencies:
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "87ea3ab6e393315e2030863aaa77bf417e28e84a"
 ---
 
 # Forward Personal MCP Tools from the Laptop
