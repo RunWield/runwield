@@ -125,7 +125,10 @@ try {
                             agentName: "remote-runtime",
                             customTools: turnTools,
                         })
-                        .then((result) => report("turn", result.ok, result.error)),
+                        .then(
+                            (result) => report("turn", result.ok, result.error),
+                            (error: Error) => report("turn", false, String(error)),
+                        ),
                 );
                 report("turn-started", true);
             } else if (command.kind === "cancel") {

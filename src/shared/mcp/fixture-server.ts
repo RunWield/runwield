@@ -110,6 +110,18 @@ function fixtureTools(): JsonMap[] {
 
 const delayed = new Map<string | number, ReturnType<typeof setTimeout>>();
 let rootsCallId: string | number | undefined;
+async function waitForRelease(variable: string) {
+    const path = process.env[variable];
+    if (!path) return;
+    while (true) {
+        try {
+            readFileSync(path);
+            return;
+        } catch {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+    }
+}
 let buffer = "";
 await log({ event: "started", pid: process.pid, host: hostname(), cwd: process.cwd() });
 function logShutdown(): void {
@@ -150,6 +162,8 @@ for await (const chunk of process.stdin) {
                 });
                 rootsCallId = undefined;
             } else if (message.method === "initialize") {
+                await log({ event: "initializing" });
+                await waitForRelease("RUNWIELD_MCP_FIXTURE_INIT_RELEASE");
                 if (fixtureShouldInitError()) {
                     send({
                         jsonrpc: "2.0",
@@ -257,6 +271,7 @@ for await (const chunk of process.stdin) {
                             params: { progressToken, progress: 1, total: 2, message: "Fixture halfway done." },
                         });
                     }
+                    await waitForRelease("RUNWIELD_MCP_FIXTURE_PROGRESS_RELEASE");
                     send({
                         jsonrpc: "2.0",
                         id: message.id ?? null,

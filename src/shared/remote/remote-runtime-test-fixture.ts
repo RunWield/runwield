@@ -127,6 +127,7 @@ async function startProcess(
         cwd: input.cwd,
         env: {
             HOME: remoteHome,
+            TMPDIR: join(remoteHome, "tmp"),
             WLD_TEST_SANDBOX_HOME: remoteHome,
             MNEMOTECA_DB_PATH: join(remoteHome, "memory.db"),
             PATH: remotePath,
@@ -179,6 +180,7 @@ export async function withRemoteRuntimeFixture(
         async (local) => {
             const remoteProject = await repositories.checkout();
             const remoteHome = await fsMkdtemp(join(tmpdir(), "remote-runtime-home-"));
+            await fsMkdir(join(remoteHome, "tmp"));
             const remoteBin = await writeWorkflowBinaryFixtures(remoteHome);
             await fsRm(join(remoteBin, "mnemoteca"));
             const remotePath = `${remoteBin}:/usr/bin:/bin`;

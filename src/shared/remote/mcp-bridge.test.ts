@@ -23,7 +23,11 @@ async function withBridge(run: (f: BridgeFixture) => Promise<void>, env: Record<
         const definition = {
             command: process.execPath,
             args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-            env: { RUNWIELD_MCP_FIXTURE_LOG: log, ...env },
+            env: {
+                RUNWIELD_MCP_FIXTURE_LOG: log,
+                RUNWIELD_MCP_FIXTURE_PROGRESS_RELEASE: join(local.homeDir, "progress-release"),
+                ...env,
+            },
         };
         await writeFile(
             join(local.homeDir, ".wld", "mcp.json"),
@@ -96,10 +100,6 @@ async function waitForLog(path: string, marker: string): Promise<string> {
     throw new Error(`Missing fixture event: ${marker}`);
 }
 
-interface OutputDetails {
-    fullOutputPath?: string;
-}
-
 test("one Pi extension preserves native personal results, shared resources, roots and progress", async () => {
     await withBridge(
         async (f) => {
@@ -119,13 +119,32 @@ test("one Pi extension preserves native personal results, shared resources, root
                 assertStringIncludes(JSON.stringify(await call(tool, "error")), "fixture-error");
                 assertStringIncludes(JSON.stringify(await call(tool, "image-resource")), '"type":"image"');
                 assertStringIncludes(JSON.stringify(await call(tool, "roots")), pathToFileURL(f.projectRoot).href);
-                const progress: string[] = [];
-                await call(tool, "progress", undefined, (update) => progress.push(JSON.stringify(update)));
-                assertStringIncludes(progress.join("\n"), "halfway");
-                const output = await call(tool, "resource-link");
-                const details = output.details as OutputDetails;
-                assert(details.fullOutputPath);
-                assertStringIncludes(await readFile(details.fullOutputPath, "utf8"), "t".repeat(20_000));
+                const release = join(f.homeDir, "progress-release");
+                let completed = false;
+                let observeProgress!: (text: string) => void;
+                const progress = new Promise<string>((resolve) => {
+                    observeProgress = resolve;
+                });
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                const pending = call(tool, "progress", undefined, (update) =>
+                    observeProgress(JSON.stringify(update)),
+                ).finally(() => {
+                    completed = true;
+                });
+                try {
+                    const update = await Promise.race([
+                        progress,
+                        new Promise<string>((_, reject) => {
+                            timer = setTimeout(() => reject(new Error("No live progress")), 2000);
+                        }),
+                    ]);
+                    assertStringIncludes(update, "halfway");
+                    assertEquals(completed, false);
+                } finally {
+                    clearTimeout(timer);
+                    await writeFile(release, "release");
+                    await pending;
+                }
                 // Pi owns a single set of resource tools, with both servers selectable.
                 const resourceList = tools.find((tool) => tool.name === "list_mcp_resources");
                 assert(resourceList, tools.map((tool) => tool.name).join(","));

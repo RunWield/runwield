@@ -211,3 +211,115 @@ test("a personal call cancelled behind a sequential Agent tool is never dispatch
         assertEquals(evidence.includes('"event":"call"'), false);
     });
 });
+
+test("Cancel during personal discovery on a resumed Session prevents model and tool dispatch", async () => {
+    await withRemoteRuntimeFixture(async (f) => {
+        f.setModelResponseFactories([() => fauxAssistantMessage(fauxText("Saved."))]);
+        const child = await f.start();
+        await child.read();
+        await child.send({ kind: "turn", text: "Create saved history." });
+        const saved = await child.read();
+        assertEquals(saved.ok, true);
+        await child.send({ kind: "load", sessionId: saved.savedId });
+        assertEquals((await child.read()).ok, true);
+        const log = join(f.homeDir, "startup.log");
+        const release = join(f.homeDir, "init-release");
+        await writeFile(
+            join(f.homeDir, ".wld/mcp.json"),
+            JSON.stringify({
+                mcpServers: {
+                    personal: {
+                        command: process.execPath,
+                        args: runtimeSourceArgs([
+                            "run",
+                            "-A",
+                            fileURLToPath(new URL("../mcp/fixture-server.ts", import.meta.url)),
+                        ]),
+                        env: { RUNWIELD_MCP_FIXTURE_LOG: log, RUNWIELD_MCP_FIXTURE_INIT_RELEASE: release },
+                    },
+                },
+            }),
+            { mode: 0o600 },
+        );
+        const requestsBefore = f.modelRequests.length;
+        f.setModelResponseFactories([
+            () => fauxAssistantMessage(fauxToolCall("mcp__personal__fixture_echo", { marker: "must-not-run" })),
+            () => fauxAssistantMessage(fauxText("Done.")),
+        ]);
+        await child.send({ kind: "turn-start" });
+        await child.read();
+        try {
+            let initializing = false;
+            for (let i = 0; i < 200; i++) {
+                if ((await readFile(log, "utf8").catch(() => "")).includes('"event":"initializing"')) {
+                    initializing = true;
+                    break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            assertEquals(initializing, true);
+            await child.send({ kind: "cancel" });
+            assertEquals((await child.read()).ok, true);
+        } finally {
+            await writeFile(release, "release");
+        }
+        const turn = await child.read();
+        assertEquals(turn.kind, "turn");
+        assertEquals(turn.dormant, true);
+        assertEquals(f.modelRequests.length, requestsBefore);
+        assertEquals((await readFile(log, "utf8")).includes('"event":"call"'), false);
+    });
+});
+
+interface SavedOutputDetails {
+    fullOutputPath?: string;
+}
+test("Pi saves personal oversized output in remote storage and the remote read tool consumes it", async () => {
+    await withRemoteRuntimeFixture(async (f) => {
+        await writeFile(
+            join(f.homeDir, ".wld/mcp.json"),
+            JSON.stringify({
+                mcpServers: {
+                    personal: {
+                        command: process.execPath,
+                        args: runtimeSourceArgs([
+                            "run",
+                            "-A",
+                            fileURLToPath(new URL("../mcp/fixture-server.ts", import.meta.url)),
+                        ]),
+                    },
+                },
+            }),
+            { mode: 0o600 },
+        );
+        let savedPath = "";
+        let consumed = false;
+        f.setModelResponseFactories([
+            () => fauxAssistantMessage(fauxToolCall("mcp__personal__fixture_echo", { marker: "resource-link" })),
+            (context) => {
+                const result = context.messages.find(
+                    (message) => message.role === "toolResult" && message.toolName === "mcp__personal__fixture_echo",
+                );
+                if (!result || result.role !== "toolResult") throw new Error("Missing MCP result");
+                savedPath = (result.details as SavedOutputDetails).fullOutputPath || "";
+                assertEquals(savedPath.startsWith(join(f.remoteHome, "tmp") + "/"), true, savedPath);
+                return fauxAssistantMessage(fauxToolCall("read", { path: savedPath, limit: 1 }));
+            },
+            (context) => {
+                const result = context.messages.find(
+                    (message) => message.role === "toolResult" && message.toolName === "read",
+                );
+                if (!result || result.role !== "toolResult") throw new Error("Missing remote read result");
+                assertEquals(result.isError, false);
+                assertStringIncludes(JSON.stringify(result.content), "t".repeat(1000));
+                consumed = true;
+                return fauxAssistantMessage(fauxText("Read the remote output."));
+            },
+        ]);
+        const child = await f.start();
+        await child.read();
+        await child.send({ kind: "turn", text: "Read oversized personal output." });
+        assertEquals((await child.read()).ok, true);
+        assertEquals(consumed, true);
+    });
+});
