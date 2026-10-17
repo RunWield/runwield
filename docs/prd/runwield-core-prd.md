@@ -534,6 +534,9 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 - Given stale locks, inconsistent settings or storage, or mismatched Plan bookkeeping, RunWield restores its own state
   and continues.
+- Given a restarted process or a reused PID, validation compares process birth evidence with its saved owner and
+  resumes the preserved checkpoint when the original owner is provably gone. A live matching owner still excludes
+  another validation run; unavailable process identity evidence never authorizes takeover.
 - Given a lock whose run status query returns an empty or unreadable result, recovery keeps the lock and the work
   continues.
 - Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current

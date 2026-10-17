@@ -196,6 +196,7 @@
     "src/shared/plan-deviations.test.ts",
     "src/shared/primary-checkout.test.ts",
     "src/shared/private-json-file.test.ts",
+    "src/shared/process-identity.test.ts",
     "src/shared/process-liveness.test.ts",
     "src/shared/project-context-publication.test.ts",
     "src/shared/project-runtime-entry.integration.test.ts",
