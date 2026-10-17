@@ -49,7 +49,7 @@
         "workspace:dev": "bun node_modules/astro/bin/astro.mjs dev --config src/ui/workspace/astro.config.mjs --host 127.0.0.1 --port 5173 --open /dev",
         "workspace:remote:build": "bun run workspace:build && bun scripts/build-workspace-runtime.js && bun scripts/build-plan-server-runtime.js",
         "workspace:remote": "bun src/ui/workspace/remote-server.ts",
-        "workspace:remote:image:check": "bun scripts/assert-plan-server-image.js",
+        "workspace:remote:image:check": "bun scripts/assert-plan-server-image.ts",
         "workspace:react:check": "bun run workspace:check",
         "workspace:test": "bun scripts/run-tests.js --isolated src/ui/workspace src/cmd/plans/ui.test.ts",
         "ux:new-user": "podman build --target wld-ux-latest --build-arg WLD_INSTALL_REFRESH=$(date +%s) -f Containerfile.wld-ux -t runwield-wld-ux:local . && podman run --rm -it -e ANTHROPIC_API_KEY -e OPENAI_API_KEY -e GOOGLE_API_KEY -e MISTRAL_API_KEY runwield-wld-ux:local",
