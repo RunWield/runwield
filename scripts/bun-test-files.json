@@ -659,6 +659,7 @@
     "src/ui/workspace/react/use-review-annotations.test.tsx",
     "src/ui/workspace/review-completion.test.tsx",
     "src/ui/workspace/routes/api/review-actions.test.ts",
+    "src/ui/workspace/routes/api/review-file-containment.test.ts",
     "src/ui/workspace/routes/api/review-file-content.test.ts",
     "src/ui/workspace/routes/api/review-file-handlers.test.ts",
     "src/ui/workspace/routes/api/review-guide-cwd.test.ts",

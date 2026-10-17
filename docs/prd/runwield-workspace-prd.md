@@ -661,6 +661,11 @@ workbench below the header, and opening one closes the other. The compact Plan R
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
 
+**Requirement: Contained working-file reads.** Code Review validates the OS-resolved path of the opened file before
+reading response bytes from that same file object. A concurrent directory replacement cannot redirect the read outside
+the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
+or change access controls.
+
 **Requirement: Chat in the review.** Plan and Code Review chats accept attached annotations without a typed message:
 attaching annotations enables Send and its keyboard shortcut. The Agent receives the notes as review context, and the
 conversation shows the submission. Working or unavailable chats stay disabled. While an Epic is in review,
@@ -723,6 +728,9 @@ every action stays available.
 
 - Given a Workspace Plan or Code Review, submitting approval or feedback returns to its Session in the same tab; a
   failed decision stays in review.
+- Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
+- Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
+  the read; outside files stay unchanged.
 - Given a Plan changed since the review opened, approval shows the changed content first.
 - Given the same approval click delivered twice, the action runs once; Approve for Later starts no execution.
 - Given a saved Epic in review, two message-and-reply rounds with Architect stay on the page, and explicit review
