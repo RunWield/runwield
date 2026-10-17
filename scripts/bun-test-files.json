@@ -38,7 +38,7 @@
     "scripts/release-legacy-assets.test.ts",
     "scripts/release-policy.test.js",
     "scripts/release.test.js",
-    "scripts/retain-test-evidence.test.js",
+    "scripts/retain-test-evidence.test.ts",
     "scripts/router-eval-utils.test.js",
     "scripts/run-bun-tests.test.ts",
     "scripts/run-ci.test.ts",

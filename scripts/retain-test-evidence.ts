@@ -2,8 +2,7 @@ import { mkdir as fsMkdir, readdir as fsReaddir, rename as fsRename } from "node
 /** Keep Golden diagnostics outside the disposable test sandbox, not its cache or HOME. */
 import { join } from "node:path";
 
-/** @param {string} sandbox @param {string} destination */
-export async function retainTestEvidence(sandbox, destination) {
+export async function retainTestEvidence(sandbox: string, destination: string): Promise<void> {
     for await (const slot of await fsReaddir(sandbox, { withFileTypes: true })) {
         if (!slot.isDirectory()) continue;
         const temp = slot.name.startsWith("tmp-") ? join(sandbox, slot.name) : join(sandbox, slot.name, "tmp");

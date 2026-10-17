@@ -30,7 +30,7 @@ import process from "node:process";
  * Bun refuses legacy runtime permission flags instead of silently dropping
  * their restrictions. Only the frozen, installed dependency graph is used.
  */
-import { retainTestEvidence } from "./retain-test-evidence.js";
+import { retainTestEvidence } from "./retain-test-evidence.ts";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
