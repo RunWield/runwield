@@ -56,7 +56,7 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                     }),
                 },
             );
-            const data: RootResponse = await response.json().catch(() => ({}));
+            const data: RootResponse = response.ok ? await response.json() : await response.json().catch(() => ({}));
             if (response.status === 409 && data.code === "directory_confirmation_required" && data.confirmation) {
                 setStatus("");
                 setConfirmation({

@@ -306,6 +306,35 @@ for (const projectId of [undefined, "relink-project"]) {
         });
     });
 
+    test(`Project ${operation}: interrupted successful response preserves input without navigation`, async () => {
+        await withRootForm(projectId, async ({ container, inputs, values, button, status, navigations, send }) => {
+            globalThis.fetch = () =>
+                Promise.resolve(
+                    new Response(
+                        new ReadableStream({
+                            start(controller) {
+                                controller.error(new TypeError("Connection lost while reading response"));
+                            },
+                        }),
+                        { status: 200 },
+                    ),
+                );
+            await send();
+            assertEquals(
+                status.textContent,
+                `Project ${operation} could not be confirmed. Check your connection and try again.`,
+            );
+            assertEquals(
+                inputs.map((input) => input.value),
+                values,
+            );
+            assert(inputs.every((input) => !input.disabled));
+            assertEquals(button.disabled, false);
+            assertEquals(navigations, []);
+            assertEquals(container.querySelector(".rw-thinking-glyph"), null);
+        });
+    });
+
     test(`Project ${operation}: HTTP errors retain server feedback without navigation`, async () => {
         await withRootForm(projectId, async ({ container, button, status, navigations, send }) => {
             globalThis.fetch = () =>
