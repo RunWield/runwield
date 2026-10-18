@@ -143,24 +143,31 @@ test("ACP Artifact Review feedback rejects cross-origin submissions and cancels"
             },
             controller.signal,
         );
-        const ready = await Promise.race([
-            notified.promise.then((questionUrl) => ({ questionUrl })),
-            Promise.resolve(pending).then((response) => ({ response })),
-        ]);
-        if ("response" in ready) {
-            assertEquals(ready.response.outcome, "unsupported");
-            return;
+        try {
+            const ready = await Promise.race([
+                notified.promise.then((questionUrl) => ({ questionUrl })),
+                Promise.resolve(pending).then((response) => ({ response })),
+            ]);
+            if ("response" in ready) {
+                throw new Error(`Artifact Review feedback page did not open: ${JSON.stringify(ready.response)}`);
+            }
+            const questionUrl = ready.questionUrl;
+            const page = await fetch(questionUrl);
+            await page.body?.cancel();
+            assertEquals(page.status, 200);
+
+            const noOrigin = await fetch(questionUrl.replace("/session-question", "/api/session-question/answer"), {
+                method: "POST",
+                body: new URLSearchParams({ answer: "Ada" }),
+            });
+            await noOrigin.body?.cancel();
+            assertEquals(noOrigin.status, 403);
+
+            controller.abort();
+            assertEquals((await pending).outcome, "canceled");
+        } finally {
+            controller.abort();
+            await pending;
         }
-        const questionUrl = ready.questionUrl;
-
-        const noOrigin = await fetch(questionUrl.replace("/session-question", "/api/session-question/answer"), {
-            method: "POST",
-            body: new URLSearchParams({ answer: "Ada" }),
-        });
-        assertEquals(noOrigin.status, 403);
-        await noOrigin.body?.cancel();
-
-        controller.abort();
-        assertEquals((await pending).outcome, "canceled");
     });
 });
