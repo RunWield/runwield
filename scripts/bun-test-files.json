@@ -49,7 +49,7 @@
     "scripts/run-with-snip.test.ts",
     "scripts/script-process.test.ts",
     "scripts/test-evidence.test.ts",
-    "scripts/test-timings.test.js",
+    "scripts/test-timings.test.ts",
     "scripts/write-router-judgement-csv.test.ts",
     "scripts/write-version.test.js",
     "src/acp/background-task-wire.test.js",
