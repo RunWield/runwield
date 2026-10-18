@@ -335,8 +335,11 @@ Run locally and adapt the harness to your Project.
 - Create, load, continue, cancel, and close Sessions through compatible clients, with history, progress, usage, and
   browser Plan review links.
 - Select models and reasoning levels through native ACP configuration controls.
-- Use advertised shared slash commands and structured questions, with conversational interview fallback for clients
-  without native forms.
+- Use advertised shared slash commands and answer select, text, and approval questions through native forms when
+  supported, or chat otherwise, including `/load-plan`, `/agent`, and `/model` menus.
+- Answer chat menus by number or a unique exact option label/value, ignoring case and surrounding whitespace; unmatched
+  `cancel` cancels a menu. Text and interview answers keep their own rules.
+- Follow browser links for Plan, Code, and Artifact Review; Artifact Review feedback keeps its browser question page.
 - Receive completed background-task results over the live ACP Session without another prompt.
 - Treat ACP `session/delete` as reversible archive; Workspace can unarchive it. `session/list` remains unsupported.
 - Keep RunWield planning, browser review, execution, validation, and project memory when working from an external
