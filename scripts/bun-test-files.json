@@ -23,7 +23,7 @@
     "scripts/evaluate-router-judgements.test.js",
     "scripts/extract-router-decisions.test.js",
     "scripts/homebrew-tap-access-policy.test.ts",
-    "scripts/install-integrity.test.js",
+    "scripts/install-integrity.test.ts",
     "scripts/install-interaction.test.js",
     "scripts/install-platforms.test.js",
     "scripts/integrate-release-branch.test.ts",
