@@ -12,6 +12,7 @@ import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { computeBuildIdentity, sha256File, verifyBuildArtifact } from "./build-metadata.js";
+import type { ArtifactMetadata } from "./build-metadata.js";
 import { prepareDevelopmentArtifacts } from "./release-assets.js";
 import { writeBuildIdentityFile } from "./write-version.js";
 
@@ -123,7 +124,7 @@ test("development bundle verifies all checksums, build identities and GNU target
             "checksum",
         );
         await fsWriteFile(paths[1], "binary 1");
-        const bad = JSON.parse(await fsReadFile(`${paths[2]}.build.json`, "utf8"));
+        const bad: ArtifactMetadata = JSON.parse(await fsReadFile(`${paths[2]}.build.json`, "utf8"));
         bad.buildId = "b".repeat(64);
         await fsWriteFile(`${paths[2]}.build.json`, JSON.stringify(bad));
         await assertRejects(
