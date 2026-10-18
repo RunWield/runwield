@@ -22,6 +22,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "d36e84d37b55a585e5b763f3b74a3d5f5c1d24ea"
+workRecord:
+    status: "generated"
+    recordId: "4539f59e-2074-4614-9e77-548b593621df"
+    path: "docs/work-records/2026-10-18-acp-chat-menus-for-commands-and-workflow-questions.md"
+    lastAttemptAt: "2026-10-18T23:19:32.760Z"
 ---
 
 # ACP Chat Menus for Commands
