@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "4539f59e-2074-4614-9e77-548b593621df"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -14,7 +14,6 @@ supersedes:
     - "ffc792b8-5c03-4c7f-80d7-4b8bc215c410"
     - "d140df78-c3cc-43d8-a0c8-8f588a67a5e7"
 ---
-
 # ACP chat menus for commands and workflow questions
 
 ## Summary

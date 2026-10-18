@@ -13,7 +13,6 @@ provenance:
         - "0793ef3b-1dfa-465e-8873-2035c55d4f8b"
 supersededBy: "4539f59e-2074-4614-9e77-548b593621df"
 ---
-
 # Conversational Pair checkpoints and ACP interview chat fallback
 
 ## Summary
