@@ -91,7 +91,7 @@
         "@earendil-works/pi-coding-agent": "1.0.4",
         "@earendil-works/pi-mcp": "1.0.4",
         "@earendil-works/pi-tui": "1.0.4",
-        "@lezer/common": "1.5.2",
+        "@lezer/common": "1.5.3",
         "@lezer/highlight": "1.2.5",
         "@modelcontextprotocol/sdk": "1.30.0",
         "@pierre/diffs": "1.4.2",
