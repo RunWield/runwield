@@ -814,10 +814,11 @@ prefix of the current segment as one ordered Session timeline, including complet
 results. _Avoid_: Concatenated transcript, merged session, segment hydration
 
 **Pending Structured Interaction**: A live in-process wait for a user answer, such as `user_interview` or Plan review
-input. In a no-form ACP interview, each question ends one ACP request while the original Runtime operation and tool wait
-remain live; the next request answers that wait. Pending interactions are process-local. The interaction becomes durable
-only when Pi writes the completed tool result; if the owner process is lost first, the user asks the Agent to retry. A
-Pair Checkpoint is not a Pending Structured Interaction; its report and resolution records are durable Session data.
+input. In a no-form ACP client, each chat question (interview, command menu, text, or approval) ends one ACP request while
+Runtime work and its command or tool wait remain live; the next request answers that wait. Pending interactions are
+process-local. The interaction becomes durable only when Pi writes the completed tool result; if the owner process is
+lost first, the user asks the Agent to retry. A Pair Checkpoint is not a Pending Structured Interaction; its report and
+resolution records are durable Session data.
 _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 ## Relationships
