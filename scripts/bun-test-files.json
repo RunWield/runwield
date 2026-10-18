@@ -51,7 +51,7 @@
     "scripts/test-evidence.test.ts",
     "scripts/test-timings.test.js",
     "scripts/write-router-judgement-csv.test.ts",
-    "scripts/write-version.test.js",
+    "scripts/write-version.test.ts",
     "src/acp/background-task-wire.test.js",
     "src/acp/interaction-mapper.test.js",
     "src/acp/interview-chat.test.ts",
