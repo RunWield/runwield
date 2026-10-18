@@ -4,7 +4,7 @@
     "scripts/build-metadata.test.js",
     "scripts/build-plan-server-runtime.test.js",
     "scripts/build-stable-docs.test.ts",
-    "scripts/build-workspace-runtime.test.js",
+    "scripts/build-workspace-runtime.test.ts",
     "scripts/bun-lint.test.ts",
     "scripts/bun-remote-runtime.test.ts",
     "scripts/check-doc-links.test.js",
