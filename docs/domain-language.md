@@ -125,8 +125,10 @@ reads that history offline in the normal renderer without a composer and with a 
 continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
 journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
 provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
-remain stable through history and reconnect. Remote Memory uses the laptop service; delivery workflows remain target
-scope; production-provider and platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended
+remain stable through history and reconnect. Remote Memory uses the laptop service. Delivery workflows run remotely
+with laptop-owned Session records and segment rollover; reconnect checks remote evidence without automatic replay.
+Automatic local browser forwarding and full owned-process termination remain target scope. Production-provider and
+platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended
 worker, remote Session type
 
 **Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
@@ -157,7 +159,8 @@ _Avoid_: Resource sync, copied profile, confined mount
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
 `.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
 Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
-state stays with the remote checkout, not with laptop personal history. Remote workflow support remains target scope.
+state stays with the remote checkout, not with laptop personal history. Delivery workflows use that remote state;
+artifacts, Plan Associations, review references, and Session segments are saved by the laptop owner.
 _Avoid_: project settings, project config, all of `.wld/`
 
 **Project Runtime Entry**: The shared migration-or-verification operation that runs before normal Project Runtime State

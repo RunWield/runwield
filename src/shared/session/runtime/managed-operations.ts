@@ -14,7 +14,6 @@ import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { requireLocalSessionWriter } from "../../remote/personal-resources.ts";
 
 import {
     normalizeManagedActiveModelState,
@@ -60,92 +59,7 @@ type RuntimeManagedSyncDependency = Pick<
     "ensureInitialSessionGeneration" | "synchronizeManagedSession"
 >;
 type RuntimeWorkflowsDependency = Pick<RuntimeWorkflows, "restoreDormantManagedInvariant">;
-type ActivationProof = import("../../owner-coordination/session-activations.js").ActivationProof;
-type FileSessionStore = import("../file-session-store-types.ts").FileSessionStore;
-interface ManagedOperationCapabilityOptions {
-    runtimeSessionId: string;
-    runwieldSessionId: string;
-    operationId: string;
-    proof: ActivationProof;
-    sessionStore: FileSessionStore;
-}
-
-class ManagedOperationCapability {
-    readonly runtimeSessionId: string;
-    readonly runwieldSessionId: string;
-    readonly operationId: string;
-
-    constructor(options: ManagedOperationCapabilityOptions) {
-        this.runtimeSessionId = options.runtimeSessionId;
-        this.runwieldSessionId = options.runwieldSessionId;
-        this.operationId = options.operationId;
-        this.#proof = options.proof;
-        this.#sessionStore = options.sessionStore;
-    }
-
-    #proof: ActivationProof;
-    readonly #sessionStore: FileSessionStore;
-    #settled = false;
-    readonly #abortController = new AbortController();
-
-    get proof() {
-        return this.#proof;
-    }
-
-    get settled() {
-        return this.#settled;
-    }
-
-    get signal() {
-        return this.#abortController.signal;
-    }
-
-    cancel() {
-        this.assertLive();
-        this.#abortController.abort();
-    }
-
-    registerArtifact(options: import(".././file-session-store-types.ts").RegisterSessionArtifactOptions) {
-        this.assertLive();
-        return this.#sessionStore.registerSessionArtifact(this.#proof, options);
-    }
-
-    recordLastPlanReview(
-        review: Pick<
-            import("../file-session-store-types.ts").LastPlanReviewReference,
-            "planId" | "planName" | "planningAgentName"
-        >,
-    ) {
-        this.assertLive();
-        return this.#sessionStore.recordLastPlanReview(this.#proof, review);
-    }
-
-    stagePlanAssociation(entry: import(".././file-session-store-types.ts").PlanAssociation) {
-        this.assertLive();
-        return this.#sessionStore.stagePlanAssociation(this.#proof, entry);
-    }
-
-    getCurrentSegmentKind() {
-        this.assertLive();
-        return this.#sessionStore.getCurrentSessionSegment(this.runwieldSessionId)?.kind || "session";
-    }
-
-    updateProof(proof: ActivationProof) {
-        this.assertLive();
-        if (proof.runwieldSessionId !== this.runwieldSessionId || proof.operationId !== this.operationId) {
-            throw new Error("Managed operation proof does not match capability");
-        }
-        this.#proof = proof;
-    }
-
-    assertLive() {
-        if (this.#settled) throw new Error("Managed operation capability is settled");
-    }
-
-    settle() {
-        this.#settled = true;
-    }
-}
+import { ManagedOperationCapability } from "./managed-operation-capability.ts";
 
 export class RuntimeManagedOperations {
     private events!: RuntimeEventsDependency;
@@ -523,8 +437,21 @@ export class RuntimeManagedOperations {
                     return capabilitySettled;
                 },
                 signal,
-                registerArtifact() {
-                    throw requireLocalSessionWriter();
+                registerArtifact(options) {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("artifact", JSON.stringify(options)).contents);
+                },
+                stagePlanAssociation(entry) {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("plan-association", JSON.stringify(entry)).contents);
+                },
+                recordLastPlanReview(review) {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("plan-review", JSON.stringify(review)).contents);
+                },
+                getCurrentSegmentKind() {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("segment").contents);
                 },
                 cancel() {
                     abort.abort();
@@ -547,7 +474,12 @@ export class RuntimeManagedOperations {
                 [hydration.manager.getHeader()!, ...hydration.manager.getEntries()],
                 managed.generation,
             );
-            session.setManagedMetadata(hydratedMetadata);
+            const records = persistence.records(session);
+            session.setManagedMetadata({ ...hydratedMetadata, remoteRecords: records });
+            if (options.initialTutorialContext !== undefined) {
+                session.updateTutorialContext(options.initialTutorialContext, records.planAssociations);
+            }
+            await restoreExecutionWorkflow(session);
             this.events.beginLiveCapture(sessionId);
             const pending = session.getPendingManagedTurnIntent();
             const manager = hydration.manager;
@@ -566,7 +498,9 @@ export class RuntimeManagedOperations {
             }
             if (descriptor.activateAgent !== false) {
                 const resumeAgent = await resolveResumeAgentName(manager);
-                const agentName = options.agentName || pending.agentName || resumeAgent;
+                const executionRootConfiguration = resolvePersistedExecutionRootConfiguration(session);
+                const agentName =
+                    executionRootConfiguration?.agentName || options.agentName || pending.agentName || resumeAgent;
                 const persistedManual = readPersistedManualModelState(manager, agentName);
                 const preparedModelOverride =
                     "preparedModelOverride" in options && typeof options.preparedModelOverride === "string"
@@ -589,7 +523,12 @@ export class RuntimeManagedOperations {
                     agentName,
                     model,
                     toolNames: options.toolNames,
-                    customTools: options.customTools || configuration.customTools,
+                    customTools:
+                        options.customTools || executionRootConfiguration?.customTools || configuration.customTools,
+                    ...(executionRootConfiguration?.cwd ? { cwd: executionRootConfiguration.cwd } : {}),
+                    ...(executionRootConfiguration?.projectStateContext
+                        ? { projectStateContext: executionRootConfiguration.projectStateContext }
+                        : {}),
                     includeEditFallback: options.includeEditFallback,
                     thinkingLevelOverride:
                         pending.thinkingLevel || hydratedMetadata.thinkingLevel
@@ -606,9 +545,11 @@ export class RuntimeManagedOperations {
                 body({ acceptedTurnId, hasPendingImages, capability: capability! }),
             );
             hydration.bridge.assertHealthy();
+            // Read laptop records while this operation still holds its owner. These are not cached writes.
+            const savedRecords = persistence.records(session);
             await persistence.control.checkpoint(hydration.operation);
             session.dehydrateManagedSession();
-            await persistence.synchronize(session);
+            await persistence.synchronize(session, savedRecords);
             return result;
         } catch (error) {
             session.dehydrateManagedSession();

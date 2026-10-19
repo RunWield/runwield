@@ -3,11 +3,16 @@
  * Transactional Session Transcript Segment Rollover orchestration.
  */
 
+import { REMOTE_SESSION_IDENTITY_ENTRY } from "../remote/session-protocol.ts";
 import type { ManagedSessionMetadata } from "./hosted-session.js";
 import type { FileActivationProof } from "./file-session-store-types.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
-import { recordPendingSegmentContinuation, recordSegmentLineageEvidence } from "./workflow-context-session.js";
+import {
+    recordNormalizedWorkflowContext,
+    recordPendingSegmentContinuation,
+    recordSegmentLineageEvidence,
+} from "./workflow-context-session.js";
 import { appendExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { recordTutorialContext } from "./tutorial-context-session.ts";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
@@ -44,10 +49,13 @@ type RollSessionTranscriptSegmentOptions = {
     operationId?: string;
     /** A laptop remote owner can retain its current native lock across the handoff. */
     activeProof?: FileActivationProof;
+    successorSessionDir?: string;
+    retainActivation?: boolean;
     now?: () => string;
 };
 
 export type SegmentRolloverResult = {
+    successorProof?: FileActivationProof;
     runwieldSessionId: string;
     projectId: string;
     predecessorSegmentId: string;
@@ -122,10 +130,22 @@ export async function rollSessionTranscriptSegment(
             proof = options.ownerCoordinationStore.changeSessionActivationPhase(proof, "hydrated");
         }
         proof = options.ownerCoordinationStore.changeSessionActivationPhase(proof, "checkpointing");
-        const successorManager = await createRootSessionManager("new", transcriptCwd);
+        const successorManager = await createRootSessionManager("new", transcriptCwd, options.successorSessionDir);
         const successorPiSessionId = successorManager.getSessionId();
-        const successorTranscriptPath = await resolveCreatedRootSessionPath(transcriptCwd, successorManager);
+        const successorTranscriptPath = await resolveCreatedRootSessionPath(
+            transcriptCwd,
+            successorManager,
+            options.successorSessionDir,
+        );
         const successorSegmentId = crypto.randomUUID();
+        if (options.successorSessionDir) {
+            recordNormalizedWorkflowContext(successorManager, managed.workflowContext);
+            successorManager.appendCustomEntry(REMOTE_SESSION_IDENTITY_ENTRY, {
+                projectId: managed.projectId,
+                currentSegmentId: successorSegmentId,
+                piSessionId: successorPiSessionId,
+            });
+        }
         recordSegmentLineageEvidence(successorManager, {
             segmentId: successorSegmentId,
             runwieldSessionId: managed.runwieldSessionId,
@@ -151,6 +171,7 @@ export async function rollSessionTranscriptSegment(
         });
         const generation = (proof.expectedGeneration ?? -1) + 1;
         const committed = options.ownerCoordinationStore.commitSegmentRolloverAndPublish(proof, {
+            retainActivation: options.retainActivation,
             predecessorSegmentId: predecessor.segmentId,
             predecessorEvidence,
             successor: {
@@ -191,6 +212,7 @@ export async function rollSessionTranscriptSegment(
             });
         }
         return {
+            ...(committed.successorProof ? { successorProof: committed.successorProof } : {}),
             runwieldSessionId: managed.runwieldSessionId,
             projectId: managed.projectId,
             predecessorSegmentId: predecessor.segmentId,

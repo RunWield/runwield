@@ -132,3 +132,15 @@ Manual verification steps for remote-ssh-development/06-forward-personal-mcp-too
 - [ ] Drop the SSH connection during a tool call, reconnect, and confirm the call is not replayed and no owned laptop server process remains.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
+## Carry Remote Context Through Delivery Workflows
+
+Manual verification steps for remote-ssh-development/07-carry-remote-context-through-delivery-workflows
+
+- [ ] On `sct`, take a remote-only Plan through planning, approval, execution, validation, AI review, any required repair, Work Record generation, merge, and confirmed publication. Confirm the laptop sentinel tree remains unchanged.
+- [ ] Complete a remote execution handoff, disconnect, reconnect, and run `/resume`. Confirm it continues in the successor segment and shows laptop-saved lineage.
+- [ ] Disconnect during validation and during publication. Reconnect and run `/resume`; confirm it reports proven and uncertain outcomes and does not repeat an external action until you choose.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->

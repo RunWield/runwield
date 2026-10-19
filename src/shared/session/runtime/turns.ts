@@ -17,35 +17,12 @@ import {
     SessionTurnInProgressError,
 } from "./support.ts";
 import { isManagedOperationFailure } from "./types.ts";
-import type { PromptSessionOptions, PromptTurnContext } from "./types.ts";
+import type { PromptSessionOptions, PromptTurnContext, PromptSessionResult, UserPromptResult } from "./types.ts";
 import { SlashCommandMetricsTracker } from "../../workflow/command-metrics.ts";
 
 interface TaskTranscriptEntry {
     type?: string;
     message?: { role?: string; content?: string | Array<{ type: string; text?: string }> };
-}
-
-interface PromptSessionResult {
-    ok: boolean;
-    turns: number;
-    error?: string;
-    replacementSessionId?: string;
-    templateNewSession?: boolean;
-    _validationResult?: import("./workflows.ts").RuntimeValidationResult | null;
-    namedInvocation?: {
-        kind: string;
-        name: string;
-        expansionDigest: string;
-        profile: import("../named-invocation.ts").NamedInvocationPayload["profile"];
-        messageCount: number;
-    };
-}
-
-interface UserPromptResult extends PromptSessionResult {
-    managed: boolean;
-    submittedRequest: string;
-    restoreDraft: boolean;
-    historyText?: string;
 }
 
 import type { RuntimeServices } from "./base.ts";
@@ -678,6 +655,11 @@ export class RuntimeTurns {
     ) {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) throw new Error("SessionRuntime.rollManagedSessionSegment: session not found");
+        if (this.services.remotePersistence) {
+            if (this.managedOperations.hasOperation(sessionId))
+                throw new Error("Session rollover requires a settled operation");
+            return await this.services.remotePersistence.rollover(hostedSession, options);
+        }
         if (!this.services.sessionStore) throw new Error("Session storage is unavailable");
         return await rollSessionTranscriptSegment({
             hostedSession,

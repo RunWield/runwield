@@ -280,7 +280,7 @@ export function startRemoteControlService(
             const owner = sessionOwners.get(input.operation);
             if (owner) return Response.json(owner.handle(input));
             if (!sessions) throw new Error("Stale Session operation");
-            return Response.json(sessions.handleSave(input));
+            return Response.json(await sessions.handleSave(input));
         } catch {
             return new Response(null, { status: 409 });
         }

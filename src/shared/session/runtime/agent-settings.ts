@@ -267,19 +267,24 @@ export class RuntimeAgentSettings {
         const session = this.services.sessionHost.getSession(sessionId);
         const managed = session?.getManagedMetadata?.() || null;
         if (!session || !managed) return { ok: false, error: "not_managed" };
-        if (!this.services.sessionStore) return { ok: false, error: "session_store_unavailable" };
-        const committedPlanAssociations = this.services.sessionStore.listSessionPlanAssociations(
-            managed.runwieldSessionId,
-            managed.projectId,
-        );
+        if (!this.services.sessionStore && !this.services.remotePersistence)
+            return { ok: false, error: "session_store_unavailable" };
         try {
             return await this.managedOperations.runManagedStandaloneMutation(
                 sessionId,
                 "workflow_operation",
-                (activeSession) => ({
-                    ok: true,
-                    tutorialContext: activeSession.updateTutorialContext(update, committedPlanAssociations),
-                }),
+                (activeSession) => {
+                    const committedPlanAssociations = this.services.remotePersistence
+                        ? this.services.remotePersistence.records(activeSession).planAssociations
+                        : this.services.sessionStore!.listSessionPlanAssociations(
+                              managed.runwieldSessionId,
+                              managed.projectId,
+                          );
+                    return {
+                        ok: true,
+                        tutorialContext: activeSession.updateTutorialContext(update, committedPlanAssociations),
+                    };
+                },
                 { activateAgent: false },
             );
         } catch (error) {
