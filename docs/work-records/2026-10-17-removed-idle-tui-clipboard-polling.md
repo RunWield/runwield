@@ -27,16 +27,16 @@ Validation scope is the configured workflow gate. See the delivery card's test r
 The recorder draft below is preserved verbatim as historical context. Its publication-pending and outstanding-validation statements describe the earlier snapshot, not the current delivery status. Implementation details, deviations and deferred work remain available here; consult the delivery evidence for final validation outcomes.
 
 > # Removed idle TUI clipboard polling
-> 
+>
 > ## Summary
-> 
+>
 > Removed idle clipboard polling and made image detection private to explicit Ctrl-V reads. Added “No image in clipboard” feedback and a post-disposal paste guard while preserving previews, text paste, read ordering, and temporary-file cleanup. Updated Core requirements and feature documentation. The 65-test focused suite passed. The rebuilt, locally installed binary produced zero idle clipboard calls across three sessions for 30 seconds; the old binary produced four probes in five seconds. This removes the observed polling problem, not a proven macOS lockup cause.
-> 
+>
 > ## Deferred Work
-> 
+>
 > Carlos’s real screenshot-to-model check remains. Lockup prevention still requires normal-use observation after reboot; the LaunchServices identifier-wrap explanation remains a hypothesis.
-> 
+>
 > ## Future Planning Notes
-> 
+>
 > Existing RunWield processes must restart to load the fix. Keep clipboard detection private to explicit reads so future status hints cannot reintroduce polling.
-> 
+>

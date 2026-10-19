@@ -27,14 +27,14 @@ Validation scope is the configured workflow gate. See the delivery card's test r
 The recorder draft below is preserved verbatim as historical context. Its publication-pending and outstanding-validation statements describe the earlier snapshot, not the current delivery status. Implementation details, deviations and deferred work remain available here; consult the delivery evidence for final validation outcomes.
 
 > # Recover planning worktrees after Epic history rewrites
-> 
+>
 > ## Summary
-> 
+>
 > Fixed planning refresh to measure child-owned changes from the recorded base instead of a merge base. After an Epic history rewrite, preparation-only worktrees now rebuild on the new target, preserve saved planning edits, retain a recovery ref, and update the registry. Real implementation and conflicting edits remain protected. Recovery also protects ignored files, detects concurrent editor changes, and resumes interrupted journals automatically. Updated the Core PRD acceptance scenario.
-> 
+>
 > Reported focused verification passed 120 tests across five files, with mutation checks confirming regression sensitivity. Preparing the already-recovered child 09 again left its HEAD and saved Plan bytes unchanged.
-> 
+>
 > ## Future Planning Notes
-> 
+>
 > Use the recorded worktree base to distinguish child changes from rewritten upstream history. Changing only the implementation-change check is insufficient: merging old and rewritten histories can still create conflicts or retain duplicate history.
-> 
+>

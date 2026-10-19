@@ -109,27 +109,8 @@ interface SubmitPlanForReviewOptions {
     browser: BrowserPort;
 }
 
-// ─── Main Function ────────────────────────────────────────────────────
-
-/**
- * Submit a plan for interactive review via the browser review surface.
- */
-export async function submitPlanForReview({
-    cwd,
-    sequenceDocuments,
-    planName,
-    planPath,
-    previousPlan,
-    planVersions,
-    reviewConversation,
-    agentLabel,
-    triageMeta,
-    onOutput,
-    onSurfaceReady,
-    signal,
-    browser,
-}: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
-    // 1. Read plan
+/** Compose the same document-only payload for Core and Attached review hosts. */
+export async function preparePlanReviewPayload(planPath: string, triageMeta?: Partial<PlanFrontMatter>) {
     const plan = await loadPlanFileStrict(planPath);
     if (plan.kind !== "loaded") {
         if (plan.kind === "malformed") throw plan.error;
@@ -137,7 +118,6 @@ export async function submitPlanForReview({
     }
     const { attrs, body, revision: planRevision } = plan;
 
-    // 2. Present document fields only; workflow state stays in the controller.
     assertSharedPlanWriteAllowed(attrs);
     const fmOverrides: Partial<PlanFrontMatter> = {
         ...attrs,
@@ -159,6 +139,34 @@ export async function submitPlanForReview({
     const trustedClassification = fmOverrides.classification;
     const trustedWorkKind = fmOverrides.workKind;
     const planWithFm = planDocumentMarkdown(injectFrontMatter(body, fmOverrides));
+
+    return { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind };
+}
+
+// ─── Main Function ────────────────────────────────────────────────────
+
+/**
+ * Submit a plan for interactive review via the browser review surface.
+ */
+export async function submitPlanForReview({
+    cwd,
+    sequenceDocuments,
+    planName,
+    planPath,
+    previousPlan,
+    planVersions,
+    reviewConversation,
+    agentLabel,
+    triageMeta,
+    onOutput,
+    onSurfaceReady,
+    signal,
+    browser,
+}: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
+    const { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } = await preparePlanReviewPayload(
+        planPath,
+        triageMeta,
+    );
 
     // 4. Start the real review surface; only browser opening crosses the port.
     const server = await startPlanReviewSurface<PlanReviewDecision>({
@@ -184,9 +192,9 @@ export async function submitPlanForReview({
             }
             signal?.addEventListener("abort", () => resolveCanceled({ _cancelled: true }), { once: true });
         });
-        const decision: PlanReviewDecision = await (
-            signal ? Promise.race([server.waitForDecision(), canceled]) : server.waitForDecision()
-        );
+        const decision: PlanReviewDecision = await (signal
+            ? Promise.race([server.waitForDecision(), canceled])
+            : server.waitForDecision());
         keepSurfaceOpen = decision.conversationTurn === true;
 
         // Handle cancellation triggered from the TUI or review timeout/exit before

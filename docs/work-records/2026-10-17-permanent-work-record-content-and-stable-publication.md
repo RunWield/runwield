@@ -27,16 +27,16 @@ Validation scope is the configured workflow gate. See the delivery card's test r
 The recorder draft below is preserved verbatim as historical context. Its publication-pending and outstanding-validation statements describe the earlier snapshot, not the current delivery status. Implementation details, deviations and deferred work remain available here; consult the delivery evidence for final validation outcomes.
 
 > # Permanent Work Record content and stable publication
-> 
+>
 > ## Summary
-> 
+>
 > Work Records describe durable outcomes rather than validation receipts, delivery status, or run events. Recorder content rules live in Markdown, and generation receives source data only; new records use Out of Scope instead of Deferred Work. RunWield renders recorded Plan Deviations and completion labels deterministically, and publication approves the sealed record without rewriting its body. Legacy sections, stored Session events, and exact legacy-wrapper recovery remain supported, with identity checks, supersession, and retry behavior preserved.
-> 
+>
 > ## Deferred Work
-> 
+>
 > Cleanup of existing Work Records and investigation of duplicate records remain separate work; existing records are unchanged.
-> 
+>
 > ## Future Planning Notes
-> 
+>
 > Keep content rules in the Recorder definition and deterministic metadata in RunWield. Delivery commits belong in source Plan Delivery Evidence, not record prose. Behavior-change summaries depend on the Plan and execution report; the Recorder does not inspect the diff.
-> 
+>

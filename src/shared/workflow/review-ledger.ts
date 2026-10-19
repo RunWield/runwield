@@ -13,7 +13,7 @@
  * scratch, so anything held in a loop local is lost on every nudge.
  */
 
-import type { ReviewFinding } from "../../tools/review-complete.ts";
+import type { ReviewFinding } from "./review-outcome.ts";
 
 export type ReviewIssueStatus = "new" | "fix_claimed" | "fix_confirmed" | "fix_rejected";
 
@@ -46,28 +46,32 @@ export function normalizeLedger(value: unknown): ReviewLedger {
     const candidate = value as { items?: unknown; sequence?: unknown };
     const items: LedgerItem[] = Array.isArray(candidate.items)
         ? candidate.items.flatMap((entry): LedgerItem[] => {
-            if (!entry || typeof entry !== "object") return [];
-            const item = entry as Record<string, unknown>;
-            if (typeof item.id !== "string" || !item.id) return [];
-            return [{
-                id: item.id,
-                openedInRound: typeof item.openedInRound === "number" ? item.openedInRound : 1,
-                resolvedInRound: typeof item.resolvedInRound === "number" ? item.resolvedInRound : null,
-                title: typeof item.title === "string" ? item.title : "",
-                requirement: typeof item.requirement === "string" ? item.requirement : "",
-                evidence: typeof item.evidence === "string" ? item.evidence : "",
-                status: typeof item.resolvedInRound === "number"
-                    ? "fix_confirmed"
-                    : item.status === "fix_claimed" || item.status === "fix_rejected"
-                    ? item.status
-                    : "new",
-                rejectionReason: typeof item.rejectionReason === "string" ? item.rejectionReason : "",
-            }];
-        })
+              if (!entry || typeof entry !== "object") return [];
+              const item = entry as Record<string, unknown>;
+              if (typeof item.id !== "string" || !item.id) return [];
+              return [
+                  {
+                      id: item.id,
+                      openedInRound: typeof item.openedInRound === "number" ? item.openedInRound : 1,
+                      resolvedInRound: typeof item.resolvedInRound === "number" ? item.resolvedInRound : null,
+                      title: typeof item.title === "string" ? item.title : "",
+                      requirement: typeof item.requirement === "string" ? item.requirement : "",
+                      evidence: typeof item.evidence === "string" ? item.evidence : "",
+                      status:
+                          typeof item.resolvedInRound === "number"
+                              ? "fix_confirmed"
+                              : item.status === "fix_claimed" || item.status === "fix_rejected"
+                                ? item.status
+                                : "new",
+                      rejectionReason: typeof item.rejectionReason === "string" ? item.rejectionReason : "",
+                  },
+              ];
+          })
         : [];
-    const sequence = typeof candidate.sequence === "number" && candidate.sequence >= items.length
-        ? candidate.sequence
-        : items.length;
+    const sequence =
+        typeof candidate.sequence === "number" && candidate.sequence >= items.length
+            ? candidate.sequence
+            : items.length;
     return { items, sequence };
 }
 
@@ -88,7 +92,7 @@ export function claimReviewFixes(ledger: ReviewLedger): ReviewLedger {
     return {
         ...ledger,
         items: ledger.items.map((item) =>
-            item.resolvedInRound == null ? { ...item, status: "fix_claimed" } : { ...item }
+            item.resolvedInRound == null ? { ...item, status: "fix_claimed" } : { ...item },
         ),
     };
 }
@@ -105,14 +109,13 @@ export function claimReviewFixes(ledger: ReviewLedger): ReviewLedger {
  * @param {ReviewFinding[] | undefined} findings
  * @returns {string[]}
  */
-export function unaccountedOpenItems(
-    ledger: ReviewLedger,
-    findings: ReviewFinding[] | undefined,
-): string[] {
+export function unaccountedOpenItems(ledger: ReviewLedger, findings: ReviewFinding[] | undefined): string[] {
     const mentioned = new Set(
         (findings || []).map((finding) => finding?.id).filter((id) => typeof id === "string" && id),
     );
-    return openItems(ledger).map((item) => item.id).filter((id) => !mentioned.has(id));
+    return openItems(ledger)
+        .map((item) => item.id)
+        .filter((id) => !mentioned.has(id));
 }
 
 /**

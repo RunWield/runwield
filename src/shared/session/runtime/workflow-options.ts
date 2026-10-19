@@ -17,63 +17,52 @@ export interface RuntimeTriageFields {
     validationSemanticRounds?: number;
     worktree?: import("../../workflow/plan-actions.ts").PlanWorktreeExpectation;
 }
-export type RuntimePersistedTriageInput =
-    & Omit<import("../../../plan-store.js").PlanFrontMatter, "status" | "executionAgent">
-    & {
-        status?: string;
-        worktree?: import("../../workflow/plan-actions.ts").PlanWorktreeExpectation;
-    };
+export type RuntimePersistedTriageInput = Omit<
+    import("../../../plan-store.js").PlanFrontMatter,
+    "status" | "executionAgent"
+> & {
+    status?: string;
+    worktree?: import("../../workflow/plan-actions.ts").PlanWorktreeExpectation;
+};
 export type RuntimeTriageInput =
     | RuntimeTriageFields
     | RuntimePersistedTriageInput
     | import("../../../tools/plan-written.ts").TriageMeta
     | import("../../../plan-store.js").PlanFrontMatter;
-export type RuntimeExecutePlanOptions =
-    & Partial<
-        Omit<
-            import("../../workflow/plan-executor.ts").ExecutePlanOptions,
-            "hostedSession" | "triageMeta"
-        >
-    >
-    & {
-        triageMeta?: RuntimeTriageInput;
-        expectedGeneration?: number;
-        initialRequest?: string;
-        planContent?: string;
-    };
-export type RuntimePlanningOptions =
-    & Partial<
-        Omit<
-            import("../../workflow/planning-agent.ts").RunPlanningAgentOptions,
-            "hostedSession" | "sessionManager" | "triageMeta"
-        >
-    >
-    & { triageMeta?: RuntimeTriageInput };
-export type RuntimeSlicerOptions = Partial<
+export type RuntimeExecutePlanOptions = Partial<
+    Omit<import("../../workflow/plan-executor.ts").ExecutePlanOptions, "hostedSession" | "triageMeta">
+> & {
+    triageMeta?: RuntimeTriageInput;
+    expectedGeneration?: number;
+    initialRequest?: string;
+    planContent?: string;
+};
+export type RuntimePlanningOptions = Partial<
     Omit<
-        import("../../workflow/workflow-slicer.ts").RunSlicerAgentOptions,
-        "hostedSession" | "sessionManager"
+        import("../../workflow/planning-agent.ts").RunPlanningAgentOptions,
+        "hostedSession" | "sessionManager" | "triageMeta"
     >
+> & { triageMeta?: RuntimeTriageInput };
+export type RuntimeSlicerOptions = Partial<
+    Omit<import("../../workflow/workflow-slicer.ts").RunSlicerAgentOptions, "hostedSession" | "sessionManager">
 >;
-export type RuntimeValidationOptions =
-    & Partial<
-        Omit<
-            import("../../workflow/validation-supervisor.ts").ContinueWorkflowValidationArgs,
-            | "triageMeta"
-            | "hostedSession"
-            | "sessionManager"
-            | "git"
-            | "semanticReviewPort"
-            | "localCI"
-            | "workRecordMnemotecaPort"
-            | "supportsSemanticRepairHandoff"
-        >
+export type RuntimeValidationOptions = Partial<
+    Omit<
+        import("../../workflow/validation.ts").ContinueWorkflowValidationArgs,
+        | "triageMeta"
+        | "hostedSession"
+        | "sessionManager"
+        | "git"
+        | "semanticReviewPort"
+        | "localCI"
+        | "workRecordMnemotecaPort"
+        | "supportsSemanticRepairHandoff"
     >
-    & {
-        triageMeta?: RuntimeTriageInput;
-        expectedGeneration?: number;
-        skipPendingSegmentResume?: boolean;
-    };
+> & {
+    triageMeta?: RuntimeTriageInput;
+    expectedGeneration?: number;
+    skipPendingSegmentResume?: boolean;
+};
 export type RuntimeWorkflowOptions =
     | RuntimeExecutePlanOptions
     | RuntimePlanningOptions

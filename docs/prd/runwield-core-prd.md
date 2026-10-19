@@ -558,6 +558,49 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 **Acceptance scenarios:**
 
+- Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
+  other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
+- Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
+- Given a new Plan, identity assignment does not reuse the registered ID of a Plan whose execution document is missing.
+  **Requirement: Continue Attached delivery through the shared completion authority.**
+
+After accepted semantic review, Attached validation continues automatically into configured Code Review, recording, and
+publication, as Core execution does. It does not stop at `awaiting_delivery`. Saved child 05 `reviewed` records resume
+the same delivery flow. Shared publication owns sealing, landing-branch proof, lifecycle settlement, and cleanup;
+Attached coordination does not create a second publication authority.
+
+Git Verified and Attached `delivered` closure require shared publication proof. Passed local checks, staged metadata,
+host prose, or a successful subprocess alone are not proof. Non-Git work keeps consented shared in-place completion, not
+Git publication; its host recording runs before Verified. An interruption retains Plans, work, records, and useful
+recovery evidence. Recovery reconciles uncertain effects and does not repeat accepted work. Failed publication, retry
+limits, cancellation, and quota loss leave continuation available, not automatic abandonment.
+
+Attached delivery starts no Core model turns and needs no RunWield model preset. The external host owns Recorder and
+repair reasoning. Core keeps its existing Recorder and Manual QA turns. Attached skips Core Manual QA, including the
+Epic-child checklist artifact; its host can suggest checks after delivery without saving them or claiming they ran.
+[Connect](runwield-connect-prd.md#shared-plan-and-verification-outcomes) owns the host interaction requirements.
+
+**Attached delivery maturity:** Automated real-Git and fresh-process checks cover delivery and recovery. Headed MCP
+checks confirm feedback, a refreshed diff, approval, and pending-review restore. Live Claude Code 2.1.299 confirms fresh
+Recorder dispatch, proven publication, indexed recording, and private-conversation exclusion. Complete Claude FEATURE
+Preview release and live integrated support remain **TARGET** until child 08. Attached review chat uses the host
+conversation and restores pending turns after process loss; see
+[Connect review experience](runwield-connect-prd.md#shared-plan-and-verification-outcomes). Core review chat keeps its existing repair Agent behavior.
+
+**Acceptance scenarios: Attached completion and recovery.**
+
+- **Shared automatic continuation:** Given accepted semantic review or a saved child 05 `reviewed` record, Attached
+  continues into Core's configured delivery gates without an `awaiting_delivery` stop or a separate delivery command.
+- **Proven Git closure:** Given no publication proof, Attached cannot report Verified or close as `delivered`. Shared
+  proof of landing permits both outcomes; it does not claim an onward merge from a Plan Branch.
+- **Non-Git completion:** Given consented non-Git work, host recording precedes shared in-place completion and Verified.
+  The result makes no Git publication claim.
+- **Saved-point recovery:** Given interruption at Code Review, recording, accepted sections, sealing, publication, or
+  cleanup, a fresh process resumes from durable evidence without repeating accepted effects. Uncertain publication is
+  reconciled before retry. Recoverable work and artifacts stay available.
+- **No hidden model turn:** Given Attached delivery without RunWield presets, all repair and Recorder calls use the
+  external host. No Core Recorder or Manual QA turn starts, and no Attached checklist artifact is saved. Core execution
+  retains its own post-verification turns.
 - Given stale locks, inconsistent settings or storage, or mismatched Plan bookkeeping, RunWield restores its own state
   and continues.
 - Given a restarted process or a reused PID, validation compares process birth evidence with its saved owner and
@@ -847,6 +890,78 @@ are reset, and earlier publication evidence and repairs are kept. An unchanged c
 integration that may already be pushed keeps its publication proof. A publication retry recovers unstaged
 formatting-only Plan drift and keeps changed definitions, body text, and staged or committed changes.
 
+Acceptance scenarios:
+
+- Given an implemented Plan with review findings and committed and uncommitted repairs, when the user revises and
+  approves it again, execution continues in the same worktree with the approved revision and all repairs intact.
+- Given a restarted Session without cached execution details, approval finds the existing attempt in the registry
+  instead of creating a replacement. The primary checkout's unrelated edits remain unchanged.
+- Given an explicitly abandoned attempt, approval does not reactivate it or discard its preserved files.
+
+**Requirement: RunWield repairs its own machinery automatically.**
+
+Internal inconsistencies involving locks, settings, storage, lifecycle metadata, registries, or Plan synchronization are
+RunWield's responsibility. It diagnoses, reconciles, repairs, and continues automatically without requiring the user to
+inspect files, choose storage strategies, run internal repair commands, or understand bookkeeping. These repairs stay
+out of the ordinary user experience. Detailed diagnostics remain available for deliberate support/developer inspection;
+an explanatory error message alone does not satisfy recovery.
+
+Automatic repair preserves user content, truthful validation, and real permissions. It must not guess that work was
+published, overwrite user decisions, repeat uncertain external side effects, or destroy work to make internal state
+consistent. A broken internal state never removes the obligation to retain and recover the workflow.
+
+**Requirement: Settle implementation effects before accepting completion.**
+
+Shared completion holds the Plan and attempt locks while it checks issued document evidence, restores a missing
+execution Plan from its recorded baseline, and settles lifecycle, Git checkpoint, journal, and registry effects. A
+recorded `implementation_finished` event alone does not prove that checkpoint settlement finished. Retry completes
+remaining effects without repeating the lifecycle event. Carriers may require the issued Plan revision and body;
+ordinary Session completion does not acquire that extra requirement.
+
+**Acceptance scenarios (current shared execution preparation and completion):**
+
+- Given remembered planned-work consent in a non-Git project and process loss after preparation, when preparation is
+  retried against the same `in_progress` Plan, Core continues in the same files without repeating the execution-start
+  lifecycle transition. It reconciles proven settled preparation journals before retry. The Attached carrier uses this
+  same authority; its host journey is owned by
+  [Connect isolated implementation](runwield-connect-prd.md#isolated-implementation).
+- Given process loss after a first Git worktree is registered but before its Plan is materialized, retry reconciles the
+  original source preparation evidence before document selection and continues the same attempt. It still requires the
+  approved source revision and the existing worktree safety checks.
+- Given process loss after `implementation_finished` but before the Git checkpoint or registry settlement, completion
+  retry saves the worker changes, settles the journal and registry, and only then accepts implementation.
+- Given completion bound to an issued Plan and a body edit while completion waits for the Plan lock, Core rejects the
+  stale completion without recording implementation. Baseline restoration and replay after complete Core settlement
+  still work when the issued body is unchanged.
+
+**Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.**
+
+When the user genuinely must act, explain what happened, what RunWield is protecting, the specific missing evidence or
+external prerequisite, the action they can take, what Retry will continue, and what each choice means. Offer deliberate
+abandonment with work preserved at the safest recoverable point. Commands are copy-ready with real values when an
+external action actually requires a command; never substitute internal labels, hashes, or a generic "restore from
+backup" instruction. Waiting for that action remains part of the open workflow. Do not make repetitive retry clicks the
+normal way to repair RunWield-owned inconsistencies.
+
+**Requirement: Universal Plan Deviation availability.**
+
+Plan Engineer and Frontend Engineer always have `record_plan_deviation` during Plan execution, independent of
+collaboration style or Execution Backend. Availability remains intact after Session restore, compaction, segment
+handoff, and validation repair. The focused Validation Repair Engineer also has this capability. Tool availability does
+not grant authority to write without an active execution Plan and checkout, or after execution pauses or stops.
+Execution ownership is durable from the first execution turn, before any Pair checkpoint. The next writable turn
+restores it automatically under the Session Writer Lock. An explicit clear, pause, or Stop survives restore and
+compaction; missing cached state must not undo those decisions.
+
+**Requirement: Explicit Plan Deviation confirmation and durability.**
+
+An effective Plan requirement changes only after dedicated user confirmation records the exact superseded requirement,
+replacement requirement, and optional reason in the authoritative execution Plan. Confirmed entries survive reload and
+supersede conflicting original text in execution, Semantic Review, and Work Records. Retrying a committed tool-call ID
+returns the saved entry without another write or transcript approval replay. Ordinary feedback and direct Plan-file
+edits are not confirmed deviations. Canceled, unsupported, blocked, or stale confirmation leaves the requirement
+unchanged. A changed execution identity or Plan revision invalidates pending confirmation. Unsupported confirmation
+preserves work and stops the turn without creating Pair checkpoint state in autonomous execution.
 **Requirement: Missing execution documents stay contained.** When one Plan's execution document is missing, other
 Plans' catalog reads and validation continue. Loading the affected Plan reports the exact missing path and keeps all
 work, runtime state, and its Plan ID.
@@ -933,6 +1048,62 @@ post-validation context, once. Review quality is judged by useful convergence an
 
 **Requirement: Suggest code by editing the diff.**
 
+The Reviewer receives the actual approved Plan content. Rounds one and two must read the complete diff for every changed
+file. Round three onward must read the complete repair diff and assess every open issue; those rounds do not rediscover
+unrelated defects in the original change. Both approving and rejecting require complete coverage of the relevant diff.
+An incomplete decision returns the unread file chunks and instructions for reading them, in the same review context.
+Listing files, rereading one chunk, or reading the wrong diff scope cannot satisfy coverage. Coverage proves that the
+code was supplied to the Reviewer, not that the judgment is correct.
+
+**Requirement: Bind saved human approval to the current candidate.**
+
+Attached Code Review uses the shared page and the project's `codeReview` mode (`none`, `ask`, or `always`). Core saves
+its pending wait with the candidate diff hash. Approval must match the current hash; changed code cannot use stale
+approval. Submitted Feedback becomes a `human_feedback` repair action for a fresh host worker. Core reruns configured
+re-verification before a new human review round. The host owns repair reasoning, not review gates.
+
+**Acceptance scenarios: Saved Attached Code Review.**
+
+- **Diff-bound approval:** Given a saved human review and a changed candidate, Core rejects the old approval and does
+  not publish. A fresh process restores the pending review without inventing a decision.
+- **Feedback re-verification:** Given submitted human Feedback, a fresh host worker repairs it. Core reruns configured
+  re-verification, then presents the repaired diff in a new Code Review round before publication.
+
+**Requirement: Distinguish repair claims from confirmed fixes.**
+
+Issue states are `new`, `fix claimed`, `fix confirmed`, and `fix rejected`. Accepted repair completion claims a fix for
+each supplied open issue. Independent review confirms or rejects each claim; rejection retains the issue identity and
+explains what is still wrong. Only confirmed fixes close issues. These states and rejection reasons survive recovery.
+Metrics separately distinguish first-round findings, defects missed in the original change, repair-introduced defects,
+and existing issues still open. Origin is Reviewer attribution for diagnosis, not a new issue state or proof of cause.
+
+Semantic and human-feedback repairs receive focused, fresh context in the same user-visible Session and Plan workflow.
+Human feedback, annotations, and images must survive the handoff. Unclear references require clarification, not guesses.
+Repair is about correctness; it does not introduce Pair design checkpoints.
+
+After three automatic rounds and their repair/checks, users choose another verification round or Human Code Review.
+Choosing human review transfers the decision to the user: feedback triggers repair and CI, then returns to human review.
+No automatic round limit ends a human-driven review. A stalled Reviewer or repair Agent can be nudged in its existing
+conversation with progress preserved; every pause explains what continuing will do.
+
+When Code Review is offered, users can open it, skip it, or close the prompt to come back later. Closing keeps the
+review pending and preserves the Plan and its implementation without publishing. Loading the Plan again with `load-plan`
+and continuing validation offers the same choice again.
+
+Canceling an open Code Review, including Escape in the terminal, leaves approval pending. Cancellation status text and
+unsubmitted draft fields never become revision feedback, approval, or counted review/revision receipts. The UI clearly
+states that review is pending and offers Retry or Plan resume; reopening presents a current working review link.
+Previously completed checks and the implementation remain available. Explicitly submitted feedback still starts repair
+and records the corresponding review decision and revision, followed by checks and another Code Review.
+
+The round limit bounds automatic review effort, not workflow life. The user can continue toward publication or
+deliberately abandon; an exhausted or stalled review cannot become an automatic terminal outcome. Internal dispatch,
+lock, and bookkeeping failures use [automatic workflow recovery](#execution-validation-and-recovery), not another review
+decision for the user.
+
+Final nonblocking advisories may accompany the delivered Plan as clearly labeled post-validation context, never new
+approved requirements or a full review diary. Revalidation must not duplicate them. Review quality is judged by useful
+convergence without more escaped defects, not approval rate alone.
 Code Review settings provide an experimental **Edit code to suggest** switch, off by default. There is no announcement
 or first-run prompt. When enabled, Edit is available in the all-files diff on both standalone and Workspace review
 pages, one file at a time, but not in Guided Review. Finished edits become suggestion annotations in the feedback. The
@@ -1302,6 +1473,46 @@ Guide and Recorder can inspect historical records with their labels. Retrieval i
 knowledge is a Workspace requirement. Older records with a `Result` section read as summaries; an invalid record stops
 backfill with its filename and the required repair.
 
+**Requirement: Accept host Recorder sections through shared record rules.**
+
+For Attached delivery, Core saves a Recorder action with canonical Plan, diff, and validation evidence. The host returns
+structured `work_record_completed` sections. Shared Core validation, persistence, deduplication, and indexing remain
+authoritative; host conversation text is not a record source. Accepted sections survive process loss and are reused
+before publication sealing, not generated again.
+
+An invalid submission returns its validation errors and allows one retry. A second invalid submission saves the record
+failure and permits publication to continue. Recording failure never blocks or reverses proven delivery. The completion
+notice shows both outcomes and the existing backfill option. Attached supersession proposals resolve as “decide later”;
+the notice names `wld wr supersede`. A proposal alone does not replace a current record.
+
+**Acceptance scenarios: Attached recording.**
+
+- **Shared canonical recording:** Given valid host sections from canonical artifacts, Core persists and indexes the
+  eligible record under its existing rules, without importing host transcripts or starting a Core Recorder Session.
+- **One invalid retry:** Given an invalid submission, Core returns errors for one retry. A second invalid submission
+  saves failure, continues publication, and reports recording separately from delivery.
+- **Reuse accepted sections:** Given process loss after accepted sections but before publication, recovery reuses the
+  same sections and record identity. It does not repeat recording or fabricate publication proof.
+- **Deferred replacement:** Given an Attached supersession proposal, the earlier record remains current. The completion
+  notice names `wld wr supersede` for later confirmation.
+
+**Acceptance scenario: Recorder recovery and partial completion.** Given a completed eligible Plan, when the Recorder
+returns text without submitting its tool event, one corrective turn can finish the record. If both turns omit the event,
+no record is fabricated; the Plan retains the failure reason and successful delivery is labeled with the remaining Work
+Record failure and retry command. Failures while reading existing records are also retained on the source Plan before
+delivery; remote publication reports that outcome from the sealed Plan even after worktree cleanup. When the last child
+completes an Epic, final completion reports the parent Epic's recording outcome, including after remote cleanup.
+
+Core retrieval is Project-scoped. Cross-Project knowledge and browser navigation are Workspace requirements. Richer
+cross-artifact authorship, manual/imported record creation, and guidance for substantial retrospective edits remain
+follow-up product questions.
+
+**Target: explicit external provenance.** A maintainer may explicitly record substantial externally contributed work,
+including the source change, contributor, reviewing maintainer, and validation that actually ran. These records are
+opt-in and cannot claim RunWield validation. No merge is required to have a Plan or Work Record: Git owns commit-level
+history, and RunWield-owned merges should clearly point back to their Plans. Optional record review, historical
+compression/reorganization without changing source Plans, and richer authorship remain separately labeled follow-up
+scope.
 **Requirement: Maintain records deliberately.** Minor corrections update a record. A later record replaces an earlier
 one through a user-confirmed relation, including a declaration in an approved Plan. Archival and restoration keep the
 record and its completion meaning. Records come from completed Plans; QUICK_FIX work and ordinary external merges have

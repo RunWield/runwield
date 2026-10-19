@@ -8,7 +8,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 /**
  * @typedef {"routing"|"planning"|"execution"|"validation"|"recovery"|"model_selection"|"tool_usage"|"command"|"model_usage"|"context"} WorkflowMetricCategory
@@ -108,7 +108,9 @@ export async function hashMetricCwd(value) {
     if (cached) return cached;
     const bytes = new TextEncoder().encode(value);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    const hash = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const hash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
     cwdHashCache.set(value, hash);
     return hash;
 }
@@ -160,9 +162,10 @@ function sanitizeMetricValue(key, value) {
         return value.length > MAX_STRING_LENGTH ? `${value.slice(0, MAX_STRING_LENGTH)}…` : value;
     }
     if (Array.isArray(value)) {
-        return value.slice(0, MAX_ARRAY_LENGTH).map((item) => sanitizeMetricValue(key, item)).filter((item) =>
-            item !== undefined
-        );
+        return value
+            .slice(0, MAX_ARRAY_LENGTH)
+            .map((item) => sanitizeMetricValue(key, item))
+            .filter((item) => item !== undefined);
     }
     if (isPlainObject(value)) {
         /** @type {{[key: string]: SafeMetricDetails}} */
@@ -636,13 +639,16 @@ let metricsWriteQueue = Promise.resolve();
 function waitForMetrics(pending, timeoutMs) {
     return new Promise((resolve) => {
         const timer = setTimeout(resolve, timeoutMs);
-        void pending.then(() => {
-            clearTimeout(timer);
-            resolve();
-        }, () => {
-            clearTimeout(timer);
-            resolve();
-        });
+        void pending.then(
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+        );
     });
 }
 
@@ -708,15 +714,15 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
             if (typeof value === "boolean" || value === null) record[key] = value;
         } else if (key === "coverage" && isPlainObject(value)) {
             record.coverage = Object.fromEntries(
-                ["tools", "usage", "context"].filter((part) =>
-                    typeof value[part] === "string" && V2_ENUMS.availability.has(value[part])
-                ).map((part) => [part, value[part]]),
+                ["tools", "usage", "context"]
+                    .filter((part) => typeof value[part] === "string" && V2_ENUMS.availability.has(value[part]))
+                    .map((part) => [part, value[part]]),
             );
         } else if (key === "staticCategoryCounts" && isPlainObject(value)) {
             record.staticCategoryCounts = Object.fromEntries(
-                ["systemTokens", "toolsTokens", "messagesTokens"].filter((part) =>
-                    allowNonNegativeInteger(value[part]) !== undefined
-                ).map((part) => [part, value[part]]),
+                ["systemTokens", "toolsTokens", "messagesTokens"]
+                    .filter((part) => allowNonNegativeInteger(value[part]) !== undefined)
+                    .map((part) => [part, value[part]]),
             );
         } else if (key === "unavailableReason") {
             if (value === null || value === "not_reported" || value === "source_unavailable") record[key] = value;
@@ -756,9 +762,10 @@ export async function recordWorkflowMetric(metric, cwd) {
             if (!record) return null;
         } else {
             const eventName = typeof metric.event === "string" ? metric.event : "";
-            const categoryName = typeof metric.category === "string"
-                ? /** @type {WorkflowMetricCategory} */ (metric.category)
-                : "execution";
+            const categoryName =
+                typeof metric.category === "string"
+                    ? /** @type {WorkflowMetricCategory} */ (metric.category)
+                    : "execution";
             const dedicatedFrontendEvent = DEDICATED_FRONTEND_EVENTS.has(eventName);
             const dedicatedDetails = dedicatedFrontendEvent
                 ? sanitizeDedicatedFrontendMetricDetails(eventName, metric.details)
@@ -774,35 +781,39 @@ export async function recordWorkflowMetric(metric, cwd) {
                 ...(!dedicatedFrontendEvent && metric.planName ? { planName: String(metric.planName) } : {}),
                 ...(!dedicatedFrontendEvent && metric.agentName ? { agentName: String(metric.agentName) } : {}),
                 ...(dedicatedFrontendEvent
-                    ? dedicatedDetails !== undefined ? { details: dedicatedDetails } : {}
+                    ? dedicatedDetails !== undefined
+                        ? { details: dedicatedDetails }
+                        : {}
                     : metric.details !== undefined
-                    ? { details: sanitizeMetricDetails(metric.details) }
-                    : {}),
+                      ? { details: sanitizeMetricDetails(metric.details) }
+                      : {}),
             };
         }
 
         const serialized = `${JSON.stringify(record)}\n`;
-        metricsWriteQueue = metricsWriteQueue.then(async () => {
-            try {
-                await fsMkdir(dirname(filePath), { recursive: true });
-                // The queue orders this producer only. Keep a persistent sidecar so
-                // every process appends under the same OS-backed lock identity.
-                const lock = openNativeFileLock(`${filePath}.lock`);
+        metricsWriteQueue = metricsWriteQueue
+            .then(async () => {
                 try {
-                    const deadline = performance.now() + 1000;
-                    while (!lock.tryLockSync(true)) {
-                        // Metrics remain optional even when another writer stalls.
-                        if (performance.now() >= deadline) return;
-                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    await fsMkdir(dirname(filePath), { recursive: true });
+                    // The queue orders this producer only. Keep a persistent sidecar so
+                    // every process appends under the same OS-backed lock identity.
+                    const lock = openNativeFileLock(`${filePath}.lock`);
+                    try {
+                        const deadline = performance.now() + 1000;
+                        while (!lock.tryLockSync(true)) {
+                            // Metrics remain optional even when another writer stalls.
+                            if (performance.now() >= deadline) return;
+                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        }
+                        await fsWriteFile(filePath, serialized, { flag: "a" });
+                    } finally {
+                        lock.close();
                     }
-                    await fsWriteFile(filePath, serialized, { flag: "a" });
-                } finally {
-                    lock.close();
+                } catch {
+                    // Fail-open: metric writes must never disrupt execution.
                 }
-            } catch {
-                // Fail-open: metric writes must never disrupt execution.
-            }
-        }).catch(() => {});
+            })
+            .catch(() => {});
 
         // v2 observations do not wait for a blocked disk write. Settlement uses the bounded drain.
         if (metric.v !== 2) await waitForMetrics(metricsWriteQueue, 100);
@@ -887,12 +898,15 @@ export function classifyToolSubUsage(toolName, args = undefined) {
 export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName) {
     const subUsage = classifyToolSubUsage(toolName, args);
     activeToolCalls.set(toolCallId, { subUsage, startedAt: Date.now() });
-    return recordWorkflowMetric({
-        category: "tool_usage",
-        event: "tool_call_started",
-        agentName,
-        details: { toolName, subUsage },
-    }, cwd);
+    return recordWorkflowMetric(
+        {
+            category: "tool_usage",
+            event: "tool_call_started",
+            agentName,
+            details: { toolName, subUsage },
+        },
+        cwd,
+    );
 }
 
 /**
@@ -907,15 +921,18 @@ export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agent
     const started = activeToolCalls.get(toolCallId);
     activeToolCalls.delete(toolCallId);
     const now = Date.now();
-    return recordWorkflowMetric({
-        category: "tool_usage",
-        event: "tool_call_finished",
-        agentName,
-        details: {
-            toolName,
-            subUsage: started?.subUsage || classifyToolSubUsage(toolName),
-            isError,
-            durationMs: started ? now - started.startedAt : undefined,
+    return recordWorkflowMetric(
+        {
+            category: "tool_usage",
+            event: "tool_call_finished",
+            agentName,
+            details: {
+                toolName,
+                subUsage: started?.subUsage || classifyToolSubUsage(toolName),
+                isError,
+                durationMs: started ? now - started.startedAt : undefined,
+            },
         },
-    }, cwd);
+        cwd,
+    );
 }

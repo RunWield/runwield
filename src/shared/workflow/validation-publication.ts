@@ -1,4 +1,7 @@
 import { stat as fsStat } from "node:fs/promises";
+import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
+import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { runHostRecorder } from "./validation-host-recorder.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -28,7 +31,6 @@ import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.js";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
@@ -43,7 +45,6 @@ import type {
     ValidationLoopArgs,
     ValidationPhaseResult,
 } from "./validation-types.ts";
-import type { OpaqueToolDefinition } from "./validation-ports.ts";
 import type { EpicContinuationResolution } from "./epic-continuation.ts";
 import { MAX_AGENT_MERGE_REPAIRS } from "./validation-types.ts";
 import {
@@ -153,10 +154,10 @@ async function prepareEpicChildManualQaArtifact(
     cwd: string,
     projectRoot: string,
 ): Promise<ManualQaPreparationResult> {
+    if (args.hostTurn) return { kind: "ready" };
     const plan = await loadPlan(cwd, args.planName).catch(() => null);
-    const parentPlan = typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim()
-        ? plan.attrs.parentPlan.trim()
-        : "";
+    const parentPlan =
+        typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim() ? plan.attrs.parentPlan.trim() : "";
     if (!parentPlan) return { kind: "ready" };
     const parent = await loadPlan(cwd, parentPlan).catch(() => null);
     if (parent?.attrs.classification !== "PROJECT") return { kind: "ready" };
@@ -188,12 +189,12 @@ async function prepareEpicChildManualQaArtifact(
             "### Source context",
             args.planContent,
         ].join("\n");
-        const tool = createQaChecklistGeneratedTool({
+        const manualQa = {
             projectRoot: cwd,
             epicPlanName: parentPlan,
             childPlanName: args.planName,
             childHeading: firstMarkdownHeading(args.planContent, args.planName),
-        });
+        };
         let outcome;
         try {
             outcome = await args.session.runIsolatedAgentSession({
@@ -201,8 +202,7 @@ async function prepareEpicChildManualQaArtifact(
                 agentName: AGENTS.OPERATOR,
                 userRequest,
                 cwd,
-                customTools: [tool as unknown as OpaqueToolDefinition],
-                sessionManager: args.session.createInMemorySessionManager(cwd),
+                manualQa,
             });
         } catch (caught) {
             const error = caught instanceof Error ? caught : new Error(String(caught));
@@ -264,7 +264,7 @@ export async function runPublicationPhase(
         args.planName,
         async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
     );
-    if (!outcome.recorded && await preparePublicationRevalidation(context.projectRoot, args.planName)) {
+    if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
         emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
         return {
             recorded: false,
@@ -295,12 +295,19 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
+        if (args.hostTurn) await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
             ...humanReviewMetadata,
         });
-        await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
+        if (args.hostTurn) {
+            await completeInPlaceWorkRecord(
+                context.executionCwd || context.projectRoot,
+                args.planName,
+                args.workRecordMnemotecaPort,
+            );
+        } else await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
         return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
     }
 
@@ -313,8 +320,7 @@ async function runLockedPublicationPhase(
         ? await resolveTargetBranchName(context.projectRoot, requestedTarget)
         : context.worktreeBaseBranch;
     if (!worktreeBaseBranch) {
-        const reason =
-            `Target branch metadata is missing for worktree branch ${context.worktreeBranch}; Workflow Validation cannot publish Delivery Evidence without a concrete target branch.`;
+        const reason = `Target branch metadata is missing for worktree branch ${context.worktreeBranch}; Workflow Validation cannot publish Delivery Evidence without a concrete target branch.`;
         const failure = classifyValidationOperationalError({
             source: "validation_state",
             kind: "worktree_record_missing",
@@ -341,12 +347,12 @@ async function runLockedPublicationPhase(
     }
     const worktreeId = context.worktreeId;
     const storedAttempt = worktreeId
-        ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId, { migrate: false }).catch(() =>
-            null
-        )
+        ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId, { migrate: false }).catch(
+              () => null,
+          )
         : null;
-    let publicationAttempt: PublicationAttempt | null = storedAttempt?.publication ||
-        await loadPublicationAttempt(context.projectRoot, worktreeId);
+    let publicationAttempt: PublicationAttempt | null =
+        storedAttempt?.publication || (await loadPublicationAttempt(context.projectRoot, worktreeId));
     if (publicationAttempt && publicationAttempt.targetBranch !== targetBranch) {
         const message = buildValidationUserMessage({
             kind: "publication_target_changed",
@@ -362,7 +368,9 @@ async function runLockedPublicationPhase(
     let epicResolution: EpicContinuationResolution | undefined;
     let repairMergeWorktreePath = publicationAttempt?.failure?.repairRoot;
     if (repairMergeWorktreePath) {
-        const exists = await fsStat(repairMergeWorktreePath).then((value) => value.isDirectory()).catch(() => false);
+        const exists = await fsStat(repairMergeWorktreePath)
+            .then((value) => value.isDirectory())
+            .catch(() => false);
         if (!exists) repairMergeWorktreePath = undefined;
     }
     let agentRepairs = 0;
@@ -464,11 +472,9 @@ async function runLockedPublicationPhase(
         if (decision.action === "pause" && decision.result.recoveryClass !== "missing_information") {
             const retryPauseMessage = buildValidationUserMessage({
                 kind: "user_action",
-                whatHappened:
-                    `Git could not publish "${args.planName}" to ${targetBranch} after ${publicationOperationalAttempt} automatic attempts.`,
+                whatHappened: `Git could not publish "${args.planName}" to ${targetBranch} after ${publicationOperationalAttempt} automatic attempts.`,
                 details: [reason, `Source branch: ${executionBranch}`, `Target branch: ${targetBranch}`],
-                doThis:
-                    `Restore the remote connection or wait for ${targetBranch} to stop changing, then run \`wld load-plan ${args.planName}\` and retry publication.`,
+                doThis: `Restore the remote connection or wait for ${targetBranch} to stop changing, then run \`wld load-plan ${args.planName}\` and retry publication.`,
             });
             const recovery = { ...decision.result, message: retryPauseMessage };
             emitStatus(args, retryPauseMessage, "warning");
@@ -510,7 +516,7 @@ async function runLockedPublicationPhase(
                 },
             };
         }
-        if (await pauseForUserAction(args, pause) === "retry") {
+        if ((await pauseForUserAction(args, pause)) === "retry") {
             // The user may have staged resolutions, left unstaged repair files, or
             // committed some/all of the repair themselves. Normalize every one of
             // those valid states before publication reads the repaired candidate.
@@ -535,8 +541,7 @@ async function runLockedPublicationPhase(
                 awaitingUserAction: true,
                 // The execution Plan stays `validated`: tests and review are final,
                 // while the registry keeps publication pending for a later retry.
-                reason:
-                    `${pause.whatHappened} ${pause.doThis} Run this Plan again when you are ready and RunWield will pick up at the merge.`,
+                reason: `${pause.whatHappened} ${pause.doThis} Run this Plan again when you are ready and RunWield will pick up at the merge.`,
             },
         };
     }
@@ -547,6 +552,7 @@ async function runLockedPublicationPhase(
         try {
             return { kind: "published", outcome: await publishOnce() };
         } catch (caught) {
+            if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
             const error = caught instanceof Error ? caught : new Error(String(caught));
             const failure = normalizePublicationFailure(error);
             // A source can change after this invocation sealed it. Recover in
@@ -583,6 +589,7 @@ async function runLockedPublicationPhase(
             try {
                 return await action();
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 const error = caught instanceof Error ? caught : new Error(String(caught));
                 throw annotatePublicationStage(error, stage);
             }
@@ -625,14 +632,17 @@ async function runLockedPublicationPhase(
                 async () => await ensureRunWieldOwnedGitignoreBlock(context.executionCwd),
             );
             const targetHeadAtSeal = await args.git.branchHead(context.projectRoot, targetBranch);
-            const candidate = await atStage("candidate_checkpoint", async () =>
-                await checkpointExecutionWorktree({
-                    worktreePath: context.executionCwd,
-                    branch: executionBranch,
-                    planName: args.planName,
-                    planDescription: args.triageMeta?.summary,
-                    mergeTargetRef: targetHeadAtSeal,
-                }));
+            const candidate = await atStage(
+                "candidate_checkpoint",
+                async () =>
+                    await checkpointExecutionWorktree({
+                        worktreePath: context.executionCwd,
+                        branch: executionBranch,
+                        planName: args.planName,
+                        planDescription: args.triageMeta?.summary,
+                        mergeTargetRef: targetHeadAtSeal,
+                    }),
+            );
             publicationAttempt = await startPublicationAttempt({
                 projectRoot: context.projectRoot,
                 attemptId: worktreeId,
@@ -678,16 +688,19 @@ async function runLockedPublicationPhase(
                 "artifact_preparation",
                 async () => await runPostVerificationHandoffs(args, context.executionCwd, true),
             );
-            const artifactCandidate = await atStage("candidate_sealing", async () =>
-                await checkpointExecutionWorktree({
-                    worktreePath: context.executionCwd,
-                    branch: executionBranch,
-                    planName: args.planName,
-                    planDescription: args.triageMeta?.summary,
-                    mergeTargetRef: publicationAttempt?.targetHeadAtSeal,
-                    publicationAttemptId: publicationAttempt?.attemptId,
-                    publicationPlanPaths: staging.planPaths.length > 0 ? staging.planPaths : [planPath],
-                }));
+            const artifactCandidate = await atStage(
+                "candidate_sealing",
+                async () =>
+                    await checkpointExecutionWorktree({
+                        worktreePath: context.executionCwd,
+                        branch: executionBranch,
+                        planName: args.planName,
+                        planDescription: args.triageMeta?.summary,
+                        mergeTargetRef: publicationAttempt?.targetHeadAtSeal,
+                        publicationAttemptId: publicationAttempt?.attemptId,
+                        publicationPlanPaths: staging.planPaths.length > 0 ? staging.planPaths : [planPath],
+                    }),
+            );
             publicationAttempt = await advanceStoredPublication(
                 context.projectRoot,
                 publicationAttempt,
@@ -708,75 +721,76 @@ async function runLockedPublicationPhase(
                     cwd: context.executionCwd,
                     completedPlanName: args.planName,
                     completedStatus: "validated",
-                })
+                }),
             );
         }
         if (publicationAttempt.phase !== "publication_verified") {
-            await atStage("git_publication", async () =>
-                await publishExecutionWorktreeIsolated({
-                    projectRoot: context.projectRoot,
-                    executionCwd: context.executionCwd,
-                    executionBranch,
-                    targetBranch,
-                    planName: args.planName,
-                    planDescription: args.triageMeta?.summary,
-                    sealedExecutionCommit: artifactCommit,
-                    allowedPlanPaths: planPaths,
-                    publicationRoot: publicationAttempt?.publicationRoot,
-                    repairedPublicationRoot: repairMergeWorktreePath || undefined,
-                    recordedTargetBaseCommit: publicationAttempt?.targetBaseCommit,
-                    onIntegrated: async (evidence) => {
-                        if (!publicationAttempt) throw new Error("Publication attempt disappeared before integration.");
-                        publicationAttempt = await advanceStoredPublication(
-                            context.projectRoot,
-                            publicationAttempt,
-                            "target_integrated",
-                            evidence,
-                        );
-                    },
-                    onPublished: async (evidence) => {
-                        if (!publicationAttempt) throw new Error("Publication attempt disappeared before publication.");
-                        publicationAttempt = await advanceStoredPublication(
-                            context.projectRoot,
-                            publicationAttempt,
-                            "target_published",
-                            evidence,
-                        );
-                    },
-                    onVerified: async () => {
-                        if (!publicationAttempt) {
-                            throw new Error("Publication attempt disappeared before verification.");
-                        }
-                        publicationAttempt = await advanceStoredPublication(
-                            context.projectRoot,
-                            publicationAttempt,
-                            "publication_verified",
-                            { verifiedAt: new Date().toISOString() },
-                        );
-                    },
-                    onProgress: (phase) => {
-                        const message = buildValidationUserMessage({
-                            kind: "publication_progress",
-                            phase,
-                            targetBranch,
-                        });
-                        if (phase === "preparing") {
-                            emitProgress(
-                                args,
-                                message,
-                                "info",
-                                { outcome: "running", stage: "merge", checks: { merge: "running" } },
+            await atStage(
+                "git_publication",
+                async () =>
+                    await publishExecutionWorktreeIsolated({
+                        projectRoot: context.projectRoot,
+                        executionCwd: context.executionCwd,
+                        executionBranch,
+                        targetBranch,
+                        planName: args.planName,
+                        planDescription: args.triageMeta?.summary,
+                        sealedExecutionCommit: artifactCommit,
+                        allowedPlanPaths: planPaths,
+                        publicationRoot: publicationAttempt?.publicationRoot,
+                        repairedPublicationRoot: repairMergeWorktreePath || undefined,
+                        recordedTargetBaseCommit: publicationAttempt?.targetBaseCommit,
+                        onIntegrated: async (evidence) => {
+                            if (!publicationAttempt)
+                                throw new Error("Publication attempt disappeared before integration.");
+                            publicationAttempt = await advanceStoredPublication(
+                                context.projectRoot,
+                                publicationAttempt,
+                                "target_integrated",
+                                evidence,
                             );
-                            return;
-                        }
-                        emitStatus(args, message);
-                    },
-                }));
+                        },
+                        onPublished: async (evidence) => {
+                            if (!publicationAttempt)
+                                throw new Error("Publication attempt disappeared before publication.");
+                            publicationAttempt = await advanceStoredPublication(
+                                context.projectRoot,
+                                publicationAttempt,
+                                "target_published",
+                                evidence,
+                            );
+                        },
+                        onVerified: async () => {
+                            if (!publicationAttempt) {
+                                throw new Error("Publication attempt disappeared before verification.");
+                            }
+                            publicationAttempt = await advanceStoredPublication(
+                                context.projectRoot,
+                                publicationAttempt,
+                                "publication_verified",
+                                { verifiedAt: new Date().toISOString() },
+                            );
+                        },
+                        onProgress: (phase) => {
+                            const message = buildValidationUserMessage({
+                                kind: "publication_progress",
+                                phase,
+                                targetBranch,
+                            });
+                            if (phase === "preparing") {
+                                emitProgress(args, message, "info", {
+                                    outcome: "running",
+                                    stage: "merge",
+                                    checks: { merge: "running" },
+                                });
+                                return;
+                            }
+                            emitStatus(args, message);
+                        },
+                    }),
+            );
         }
-        emitStatus(
-            args,
-            buildValidationUserMessage({ kind: "publication_progress", phase: "cleanup", targetBranch }),
-        );
+        emitStatus(args, buildValidationUserMessage({ kind: "publication_progress", phase: "cleanup", targetBranch }));
         await args.session.handoffVerifiedPublication(context.projectRoot);
         const cleanup = await cleanupStoredPublication(
             context.projectRoot,
@@ -832,6 +846,7 @@ export async function runPostVerificationHandoffs(
     pendingPublication = false,
 ): Promise<void> {
     if (!isPlannedChangeClassification(args.triageMeta?.classification)) return;
+    if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,
         planContent: args.planContent,
@@ -851,9 +866,10 @@ export async function buildVerifiedResult(
     const workRecordFailed = publication
         ? await publishedWorkRecordFailed(projectRoot, publication)
         : (await resolveTargetedWorkRecordSource(projectRoot, args.planName)).source?.attrs.workRecord?.status ===
-            "failed";
+          "failed";
     if (workRecordFailed && publication) await retainPublishedWorkRecordSource(projectRoot, publication);
-    const message = buildValidationUserMessage({ kind: "verified", planName: args.planName, targetBranch }) +
+    const message =
+        buildValidationUserMessage({ kind: "verified", planName: args.planName, targetBranch }) +
         (workRecordFailed
             ? " Work Record failed. Retry this Plan from the completion menu or use wld wr retry <plan-name>. The wld wr backfill command regenerates missing or failed records across completed Plans."
             : "");
@@ -865,7 +881,8 @@ export async function buildVerifiedResult(
     const current = args.session.getCurrentProgress();
     const sealed = publication ? await readPublishedDeliverySources(projectRoot, publication) : undefined;
     const local = sealed ? undefined : await loadPlan(projectRoot, args.planName);
-    const recordingOwner = sealed?.workRecordOwner ||
+    const recordingOwner =
+        sealed?.workRecordOwner ||
         (!publication ? (await resolveTargetedWorkRecordSource(projectRoot, args.planName)).source : undefined);
     const deliveredAttrs = sealed?.delivered.attrs || local?.attrs || args.triageMeta;
     const evidence = await readDeliveryEvidence(
@@ -875,24 +892,27 @@ export async function buildVerifiedResult(
     );
     const publicationArtifact = publication ? await savePublicationEvidence(projectRoot, publication) : null;
     if (publicationArtifact) evidence.artifacts.push(publicationArtifact);
-    const planArtifact = publication && sealed
-        ? await saveDeliveredPlanEvidence(projectRoot, publication, sealed.delivered.markdown)
-        : null;
+    const planArtifact =
+        publication && sealed
+            ? await saveDeliveredPlanEvidence(projectRoot, publication, sealed.delivered.markdown)
+            : null;
     if (planArtifact) evidence.artifacts.push(planArtifact);
     const recordPath = recordingOwner?.attrs.workRecord?.path;
-    const recordMarkdown = publication && recordPath
-        ? await readPublishedRecordMarkdown(projectRoot, publication, recordPath)
-        : null;
-    const recordArtifact = publication && recordMarkdown
-        ? await saveDeliveredWorkRecordEvidence(projectRoot, publication, recordMarkdown)
-        : null;
+    const recordMarkdown =
+        publication && recordPath ? await readPublishedRecordMarkdown(projectRoot, publication, recordPath) : null;
+    const recordArtifact =
+        publication && recordMarkdown
+            ? await saveDeliveredWorkRecordEvidence(projectRoot, publication, recordMarkdown)
+            : null;
     if (recordArtifact) evidence.artifacts.push(recordArtifact);
     const deliveryReport = buildDeliveryReport({
         planName: args.planName,
         attrs: {
             ...deliveredAttrs,
             workRecord: publication
-                ? (recordArtifact ? { ...recordingOwner?.attrs.workRecord, path: recordArtifact.path } : undefined)
+                ? recordArtifact
+                    ? { ...recordingOwner?.attrs.workRecord, path: recordArtifact.path }
+                    : undefined
                 : recordingOwner?.attrs.workRecord,
         },
         planPath: !publication && local?.path ? relative(projectRoot, local.path).replaceAll("\\", "/") : undefined,
@@ -934,6 +954,7 @@ export async function buildVerifiedResult(
         kind: "verified",
         planName: args.planName,
         projectRoot,
+        workRecord: recordingOwner?.attrs.workRecord,
         classification: args.triageMeta?.classification,
         ...(shouldContinueParentEpicAfterValidation(args.triageMeta)
             ? { epicContinuation: { completedPlanName: args.planName, projectRoot, resolution: epicResolution } }

@@ -48,7 +48,9 @@ bun run compile
 `bun run ci` runs all ten static gates, then the source tests and Golden TUI portfolio in one isolated worker queue.
 `bun run pr:check` is an alias for that complete local gate. Successful CI prints one summary; failure diagnostics are
 filtered through Snip and retained in the reported log. Use `bun run ci --source-only` when a separate required Golden
-job owns those scenarios, as the PR and release workflows do.
+job owns those scenarios, as the PR and release workflows do. On macOS, CI prevents automatic idle sleep while its
+checks run and releases the sleep assertion when they finish. The display can still sleep. Manual sleep and lid closure
+can still suspend CI.
 
 `bun run test` remains the focused source suite. `bun run test:golden-tui` runs the composed TUI scenarios and their
 harness tests; `test:golden-tui:extensive` runs the same complete portfolio. Always use these tasks or

@@ -30,6 +30,10 @@ import {
     waitForValidationRetryWithSessionCancellation,
 } from "./validation-recovery.ts";
 
+import { renderOpenItems } from "./review-ledger.ts";
+import { runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
+import { requestHostRepair, saveHostCheckpoint } from "./validation-host-state.ts";
+
 const ENGINEER_FOLLOW_UP_OPTIONS: UserActionOption[] = [
     { value: "engineer_follow_up", label: "Engineer follow-up" },
     { value: "retry", label: "Retry" },
@@ -67,6 +71,19 @@ async function handleMechanicalOperationalFailure(
     });
     await recordOperationalRecoveryMetric(args, context.projectRoot, decision.result);
     emitStatus(args, decision.result.message, decision.action === "halt" ? "error" : "warning");
+    if (decision.action === "retry" && args.hostTurn) {
+        await saveHostCheckpoint(args, { operationalAttempts: operationalAttempt });
+        return {
+            kind: "done",
+            result: {
+                kind: "paused",
+                planName: args.planName,
+                projectRoot: context.projectRoot,
+                reason: decision.result.message,
+                recovery: decision.result,
+            },
+        };
+    }
     if (decision.action === "retry") {
         const wait = await waitForValidationRetryWithSessionCancellation(args, decision.delayMs, "mechanical");
         if (wait === "completed") return { kind: "retry" };
@@ -101,20 +118,47 @@ async function requestEngineerFollowUpFeedback(
     return typeof response.value === "string" && response.value.trim() ? response.value.trim() : defaultValue;
 }
 
-async function continueLastRepairSession(args: ValidationLoopArgs, prompt: string, defaultValue: string) {
+async function continueLastRepairSession(
+    args: ValidationLoopArgs,
+    context: PhaseContext,
+    prompt: string,
+    defaultValue: string,
+) {
     const feedback = await requestEngineerFollowUpFeedback(args, prompt, defaultValue);
     if (feedback === null) return null;
+    if (args.hostTurn) {
+        const plan = await loadPlan(context.executionCwd, args.planName);
+        const review = args.validationCheckpoint?.reviewState;
+        return await requestHostRepair(
+            args,
+            context,
+            [
+                "Continue the interrupted validation repair in this checkout. Inspect the current files before editing.",
+                plan?.markdown || "",
+                review ? renderOpenItems(review.reviewLedger) : "",
+                review?.lastRepairReport || "",
+                String(plan?.attrs.failureReason || ""),
+                "User follow-up:",
+                feedback,
+                "After completing the repair, call task_completed. RunWield will rerun CI.",
+            ]
+                .filter(Boolean)
+                .join("\n\n"),
+            "engineer_follow_up",
+        );
+    }
     return await args.session.continueLastRepairTurn(feedback);
 }
 
 async function reloadValidationPlanSnapshot(args: ValidationLoopArgs): Promise<ValidationPhaseResult | null> {
     const projectRoot = getProjectRoot(args);
     const activeWorkflow = args.session.getActiveWorkflow();
-    const planCwd = activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
-        ? activeWorkflow.executionCwd
-        : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
-        ? args.executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
+            ? activeWorkflow.executionCwd
+            : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
+              ? args.executionContext.executionCwd
+              : projectRoot;
     const plan = await loadPlan(planCwd, args.planName);
     if (!plan) {
         const message = buildValidationUserMessage({
@@ -133,7 +177,7 @@ async function reloadValidationPlanSnapshot(args: ValidationLoopArgs): Promise<V
 
 export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
     let ciAttempts = readCiAttempts(args.triageMeta);
-    let operationalAttempts = 0;
+    let operationalAttempts = args.hostTurn ? args.validationCheckpoint?.operationalAttempts || 0 : 0;
     for (;;) {
         const reloadFailure = await reloadValidationPlanSnapshot(args);
         if (reloadFailure) return reloadFailure;
@@ -153,47 +197,82 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                 checks: { ci: "running" },
             },
         );
-        const ciResult = await args.localCI.run({ cwd: phase.context.executionCwd });
-        await recordDeliveryEvidence(
-            phase.context.projectRoot,
-            args.planName,
-            phase.context.worktreeId || "in-place",
-            "ci",
-            ciResult.kind === "completed" ? `Exit ${ciResult.exitCode}` : ciResult.kind,
-            ciResult.output ? "````text\n" + ciResult.output + "\n````" : "No command output recorded.",
-        );
-        if (ciResult.kind === "operational_failure") {
-            operationalAttempts += 1;
-            const recovery = await handleMechanicalOperationalFailure(
-                args,
-                phase.context,
-                ciResult,
-                operationalAttempts,
+        const pending = args.hostTurn && args.validationCheckpoint?.pendingCiDecision;
+        const resumePending = pending && args.hostTurn?.resume?.kind === "decision" && !args.hostTurn.consumed;
+        let ciResult: ValidationLocalCIResult;
+        if (resumePending) {
+            ciResult = { kind: "completed", exitCode: 1, output: pending.failureReason };
+        } else if (args.hostTurn) {
+            if (pending) {
+                await saveHostCheckpoint(args, {
+                    pendingCiDecision: undefined,
+                    pendingHostDecision: undefined,
+                    hostDecisionChoices: undefined,
+                });
+            }
+            let commandResult = await runValidationCommand({
+                cwd: phase.context.executionCwd,
+                settingsPolicy: "exact-project",
+            });
+            if (commandResult.kind === "command_missing") {
+                const response = await requestInteraction(args, {
+                    type: ValidationInteractionTypes.TEXT,
+                    prompt: buildValidationUserMessage({ kind: "validation_command_prompt" }),
+                    allowEmpty: false,
+                });
+                await saveValidationCommand(phase.context.executionCwd, String(response.value || ""), "exact-project");
+                commandResult = await runValidationCommand({
+                    cwd: phase.context.executionCwd,
+                    settingsPolicy: "exact-project",
+                });
+            }
+            if (commandResult.kind === "command_missing") throw new Error("Validation command is still missing.");
+            ciResult = commandResult;
+        } else ciResult = await args.localCI.run({ cwd: phase.context.executionCwd });
+        if (!resumePending) {
+            await recordDeliveryEvidence(
+                phase.context.projectRoot,
+                args.planName,
+                phase.context.worktreeId || "in-place",
+                "ci",
+                ciResult.kind === "completed" ? `Exit ${ciResult.exitCode}` : ciResult.kind,
+                ciResult.output ? "````text\n" + ciResult.output + "\n````" : "No command output recorded.",
             );
-            if (recovery.kind === "retry") continue;
-            return recovery.result;
+            if (ciResult.kind === "operational_failure") {
+                operationalAttempts += 1;
+                const recovery = await handleMechanicalOperationalFailure(
+                    args,
+                    phase.context,
+                    ciResult,
+                    operationalAttempts,
+                );
+                if (recovery.kind === "retry") continue;
+                return recovery.result;
+            }
+            operationalAttempts = 0;
+            if (args.hostTurn && args.validationCheckpoint?.operationalAttempts) {
+                await saveHostCheckpoint(args, { operationalAttempts: 0 });
+            }
+            await recordMetric(args, phase.context.projectRoot, {
+                category: "validation",
+                event: "ci_attempt",
+                planName: args.planName,
+                details: {
+                    semanticRound: readSemanticRound(args.triageMeta) + 1,
+                    mechanicalAttempt: ciAttempts + 1,
+                    exitCode: ciResult.kind === "completed" ? ciResult.exitCode : 130,
+                    passed: ciResult.kind === "completed" && ciResult.exitCode === 0,
+                    canceled: ciResult.kind === "canceled",
+                },
+            });
         }
-        operationalAttempts = 0;
-        await recordMetric(args, phase.context.projectRoot, {
-            category: "validation",
-            event: "ci_attempt",
-            planName: args.planName,
-            details: {
-                semanticRound: readSemanticRound(args.triageMeta) + 1,
-                mechanicalAttempt: ciAttempts + 1,
-                exitCode: ciResult.kind === "completed" ? ciResult.exitCode : 130,
-                passed: ciResult.kind === "completed" && ciResult.exitCode === 0,
-                canceled: ciResult.kind === "canceled",
-            },
-        });
-
         if (ciResult.kind === "canceled") {
             const pause: UserActionPause = {
-                whatHappened:
-                    `The tests for "${args.planName}" were stopped before they finished, so RunWield cannot tell yet whether the work is good.`,
-                doThis: `Pick Engineer follow-up to return to the ${
-                    args.session.getAgentDisplayName(phase.context.executionAgent, phase.context.projectRoot)
-                } session, Retry to run them again now, or Stop to come back to this later.`,
+                whatHappened: `The tests for "${args.planName}" were stopped before they finished, so RunWield cannot tell yet whether the work is good.`,
+                doThis: `Pick Engineer follow-up to return to the ${args.session.getAgentDisplayName(
+                    phase.context.executionAgent,
+                    phase.context.projectRoot,
+                )} session, Retry to run them again now, or Stop to come back to this later.`,
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
             const action = await pauseForUserAction(args, pause);
@@ -204,7 +283,7 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
             return pausedResult(args, phase.context, `${pause.whatHappened} Run this Plan again when you are ready.`);
         }
 
-        if (ciResult.exitCode === 0) {
+        if (ciResult.kind === "completed" && ciResult.exitCode === 0) {
             await recordLifecycleEvent(args, phase.context.projectRoot, "mechanical_validation_passed", "implemented");
             preserveValidationContinuationState(args, phase.context);
             emitProgress(args, buildValidationUserMessage({ kind: "checks_passed" }), "success", {
@@ -223,21 +302,32 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
         const failureReason = getCiFailureReason(ciResult);
         if (ciAttempts >= CI_REPAIR_CYCLES) {
             const pause: UserActionPause = {
-                whatHappened: `The tests for "${args.planName}" are still failing. ${
-                    args.session.getAgentDisplayName(AGENTS.REVIEWER_FEEDBACK_ENGINEER, phase.context.projectRoot)
-                } tried ${CI_REPAIR_CYCLES} times and could not get them passing.`,
-                doThis:
-                    "Pick Engineer follow-up to reopen the last repair session, Retry only after you fixed the tests outside RunWield, or Stop to come back to this later.",
+                whatHappened: `The tests for "${args.planName}" are still failing. ${args.session.getAgentDisplayName(
+                    AGENTS.REVIEWER_FEEDBACK_ENGINEER,
+                    phase.context.projectRoot,
+                )} tried ${CI_REPAIR_CYCLES} times and could not get them passing.`,
+                doThis: "Pick Engineer follow-up to reopen the last repair session, Retry only after you fixed the tests outside RunWield, or Stop to come back to this later.",
                 details: [failureReason],
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
+            if (args.hostTurn && !resumePending) {
+                await saveHostCheckpoint(args, { pendingCiDecision: { ciAttempts, failureReason } });
+            }
             const action = await pauseForUserAction(args, pause);
+            if (args.hostTurn && action !== "engineer_follow_up") {
+                await saveHostCheckpoint(args, {
+                    pendingCiDecision: undefined,
+                    pendingHostDecision: undefined,
+                    hostDecisionChoices: undefined,
+                });
+            }
             if (action === "retry") {
                 continue;
             }
             if (action === "engineer_follow_up") {
                 const followUp = await continueLastRepairSession(
                     args,
+                    phase.context,
                     "Tell the Validation Repair Engineer what to try next.",
                     failureReason,
                 );
@@ -305,9 +395,10 @@ function pauseForEngineerFollowUp(
         kind: "paused",
         planName: args.planName,
         projectRoot: context.projectRoot,
-        reason: `Mechanical Validation paused for ${
-            args.session.getAgentDisplayName(context.executionAgent, context.projectRoot)
-        } follow-up. ${reason}`,
+        reason: `Mechanical Validation paused for ${args.session.getAgentDisplayName(
+            context.executionAgent,
+            context.projectRoot,
+        )} follow-up. ${reason}`,
         awaitingTaskCompletion: true,
     };
 }
@@ -334,8 +425,8 @@ export async function dispatchCiRepair(
         "ci-repair",
         "Started",
     );
-    const outcome = await args.session.runIndependentRepairTurn({
-        kind: "validation",
+    const request = {
+        kind: "validation" as const,
         agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
         userRequest: buildValidationRepairPrompt({
             executionCwd: context.executionCwd,
@@ -352,8 +443,9 @@ export async function dispatchCiRepair(
                 getCiFailureReason(ciResult),
         }),
         cwd: context.executionCwd,
-    });
-    return outcome;
+    };
+    if (args.hostTurn) return await requestHostRepair(args, context, request.userRequest, "ci");
+    return await args.session.runIndependentRepairTurn(request);
 }
 
 export function getCiFailureReason(ciResult: ValidationLocalCIResult): string {

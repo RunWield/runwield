@@ -106,8 +106,7 @@ independent daemon or operating-system service is required.
 graph TD
     subgraph Claude["Claude Code"]
         Command["Explicit RunWield command"]
-        Hooks["Hooks and permission controls"]
-        Skills["Generated Skills and subagents"]
+        Subagents["Subagents"]
         Tools["MCP structured tools"]
     end
 
@@ -131,11 +130,10 @@ graph TD
     end
 
     Command --> CLI
-    Hooks --> CLI
     Tools --> MCP
     MCP --> Coordinator
     CLI --> Coordinator
-    Skills -. "host-owned model turns" .-> Coordinator
+    Subagents -. "host-owned model turns" .-> Coordinator
     Coordinator --> Record
     Coordinator --> Contracts
     Coordinator --> Review
@@ -170,10 +168,12 @@ review from canonical state; review need not remain available while Claude is cl
 - **Plan Lifecycle and Plan Store** — remain the only authorities for canonical Plan content, Plan Events, Plan Status,
   approval, readiness, and verification. Attached operations must call the same transition services as Core Session
   workflows.
-- **Consequential-work ownership** — must recognize the Attached Workflow without introducing a host-owned lifecycle.
-  Reuse controller revision checks and existing transition/registry protections; coordinate ownership so two host turns
-  cannot advance the same pending action. Host session identifiers are binding evidence, not authority. The current
-  glossary does not define a Plan Workflow Lease; do not assume an archived lease proposal is implemented.
+- **Consequential-work ownership** — the Attached Workflow Record references its Plan but does not claim exclusive
+  ownership of it. Expected-revision checks on the record stop two host turns from advancing the same pending action,
+  and existing Plan transition guards protect the Plan. A Plan written in an Attached Workflow is an ordinary Plan; the
+  user may later run it with `wld`, which is a welcome conversion path, not a conflict. Host session identifiers are
+  binding evidence, not authority. Preventing one Plan from running in two places at once is not a feature today and is
+  out of scope for this Epic.
 - **Worktree Registry and Git** — retain ownership of worktree identity, path, baseline, registry status, physical Git
   state, merge-back, and cleanup. Claude workers operate in a handed-off RunWield worktree and never create a competing
   worktree lifecycle.
@@ -185,10 +185,11 @@ review from canonical state; review need not remain available while Claude is cl
   their checkpoints or receipts. [ADR-016](../adr/016-proof-bearing-publication-state-machine.md) governs publication
   evidence, restart reconciliation, and cleanup; a successful validation result alone does not prove delivery.
 - **Compatibility Matrix** — owns tested capability claims for supported Claude Code and adapter/Core version ranges.
-  Preview preflight uses this versioned data and fails before relying on an unsupported hook, worker, permission, or
-  worktree capability.
-- **Generated Claude assets** — are projections of canonical layered RunWield agent definitions and Skills. They carry a
-  version stamp and may be regenerated or removed; they never become the source of role policy.
+  Preview preflight uses this versioned data and fails before relying on an unsupported worker, permission, or worktree
+  capability.
+- **Role instructions** — are resolved at run time from the canonical layered agent definitions (project, then home,
+  then bundled) and returned in the coordinator response that hands a role to the host. The adapter ships no generated
+  Skills or copied role prompts, so nothing can go stale.
 
 ### Coordination contract
 
@@ -212,8 +213,7 @@ lifecycle command suite; the primary user action remains the host-native equival
 
 MCP tools expose the same typed operations to Claude's model within the host-owned server process. They may validate
 protocol framing and translate errors, but they call the coordinator surface and contain no Plan, worktree, validation,
-or recovery decisions. Deterministic hooks invoke the CLI directly because Planning Gate enforcement and host lifecycle
-callbacks must not depend on the model choosing to call a tool.
+or recovery decisions.
 
 ### Critical control flow
 
@@ -231,8 +231,8 @@ sequenceDiagram
     A->>C: Preflight and bind request
     C-->>A: Triage role contract and workflow token
     H->>C: Submit structured Triage outcome
-    C->>D: Validate routing and establish Plan ownership
-    C-->>H: Planner contract and active Planning Gate
+    C->>D: Validate routing
+    C-->>H: Planner instructions and contract
     H->>C: Submit canonical Plan
     C->>P: Persist pending review and open review surface
     P-->>C: Durable Feedback or approval decision
@@ -256,14 +256,12 @@ baseline, lifecycle position, and completion contract.
 - Installation presents the integration as **RunWield Connect for Claude Code**, uses Claude Code's first-party plugin
   mechanism, and obtains or verifies a compatible local RunWield Core without asking for model credentials or a RunWield
   account.
-- Activation is per request. Hooks, role context, and mutation restrictions are inert unless their host session is bound
-  to a live Attached Workflow.
-- The Planning Gate uses Claude's deterministic pre-tool permission/hook controls to deny edits and mutating command
-  paths during planning, with baseline/working-tree inspection as defense in depth. The capability matrix discloses any
-  path the tested host version cannot observe; the adapter may not describe prompt instructions as a hard gate.
-- Canonical role prompts and Skills are materialized from local Core's effective layered assets. Install/update obtains
-  the bundled baseline; activation must also respect the current project's and user's overrides. Preflight rejects stale
-  materializations rather than running an older copied prompt against a newer contract.
+- Activation is per request. Role context applies only after the user runs `/runwield`; ordinary prompts reach no
+  RunWield code.
+- RunWield does not restrict Claude's tools during an Attached Workflow. As in Core, the Planner is told to write only
+  Plan files and is trusted to follow that instruction; other MCP servers and shell commands stay available.
+- Role instructions come from local Core's effective layered agent definitions at run time, so project and user
+  overrides apply at once. The only version check is whether the plugin speaks Core's contract version.
 - Fresh Claude-hosted subagents provide implementation, independent Semantic Code Review, repair, re-verification, and
   bounded recording contexts where independence affects trust. The invoking conversation remains the user-facing
   coordinator; no RunWield process invokes `claude -p` or another model process for Attached work.
@@ -293,11 +291,11 @@ baseline, lifecycle position, and completion contract.
   resumption remain to be established without copying engine policy.
 - `src/shared/workflow/validation-semantic.ts` constructs a review-diff tool through `review-diff-tool.js`, whose
   implementation imports Pi packages. Direct-import checks alone do not prove an Attached execution path is independent
-  of SessionRuntime or serializable across calls. Host-specific executable tool materialization belongs at the adapter
-  boundary; shared inspection and review semantics remain Core-owned.
+  of SessionRuntime or serializable across calls. Host-specific executable tools belong at the adapter boundary; shared
+  inspection and review semantics remain Core-owned.
 - `src/shared/session/agent-assets.ts` exposes bundled role assets without requiring a Session. It is a reusable
-  baseline, not by itself the resolver of effective project/home/bundled policy. Generated assets must preserve existing
-  layered customization and avoid independent copies of role policy.
+  baseline, not by itself the resolver of effective project/home/bundled policy. Attached role instructions must use the
+  same layered resolution as Core Sessions and avoid independent copies of role policy.
 - `src/ui/review/review-launcher.ts` exposes Plannotator through the Workspace review server. In
   `src/ui/workspace/server.js`, `startReviewWorkspaceServer()` starts a server in the calling process and returns an
   in-memory decision promise. Durable reviewed-revision decisions and browser-process ownership must both be covered.
@@ -342,26 +340,25 @@ child decomposition. If discovery changes approved scope or ownership, return th
   so both carriers use one semantic contract. This Epic must not recreate validation sequencing here or in the adapter.
 - `src/tools/` — make existing Core Session protected tools consume the same structured outcome contracts where needed
   to prevent semantic drift; tools remain Session carriers, not sources of workflow policy.
-- `src/shared/session/agent-assets.ts` and related asset-resolution modules — expose the canonical layered role/Skill
-  inputs and version evidence needed for host-native materialization without creating an Attached dependency on
-  SessionRuntime.
-- `src/shared/workflow/plan-lifecycle.js`, `state-transition.ts`, and `controller-registry.ts` — coordinate Attached
-  ownership while preserving revision checks, transition guards, and existing durable authorities.
+- `src/shared/session/agent-assets.ts`, `agents.js`, and related asset-resolution modules — resolve the effective
+  layered role instructions for Attached responses. Attached code may import them; it must not start a model turn.
+- `src/shared/workflow/plan-lifecycle.js`, `state-transition.ts`, and `controller-registry.ts` — reused unchanged for
+  Plan transitions, revision checks, and transition guards.
 - `src/shared/worktree.js`, `src/shared/worktree-registry.js`, and execution-context services — support a host worker
   handoff and recovery packet without transferring worktree lifecycle ownership to Claude.
 - `src/ui/review/review-launcher.ts` and `src/ui/workspace/` review endpoints — persist pending plan/code review
   decisions, waiting reasons, and resumable review identifiers for process-per-call coordination while preserving the
   existing Plannotator experience.
-- `src/attached/claude/` — package the RunWield Connect for Claude Code plugin manifest, command/Skill/subagent
-  templates, hooks, MCP transport adapter, asset materializer, install/update/disable/uninstall integration, and
-  black-box host fixtures. Domain decisions are forbidden from this adapter area.
+- `src/attached/claude/` — package the RunWield Connect for Claude Code plugin manifest, `/runwield` command, MCP
+  transport configuration, install/update/disable/uninstall integration, and black-box host fixtures. Domain decisions
+  are forbidden from this adapter area.
 - `README.md`, `docs/`, and `docs/prd/runwield-connect-prd.md` — document Preview installation, explicit activation,
   capability limits, permissions, privacy, review, recovery, update/disable/uninstall, and the Connect/Core/Workspace
   product family without implying untested host parity.
 - `docs/prd/runwield-core-prd.md` — update shared capability scenarios only where delivered shared behavior changes,
   keeping Connect-specific requirements in Connect and preserving the capability ownership mapping above.
 - `docs/domain-language.md` — add agreed coordinator/record terms and ownership relationships in the implementation
-  change that makes them true, without treating generated assets or compatibility projections as authorities.
+  change that makes them true, without treating compatibility projections as authorities.
 
 ## Reuse Opportunities
 
@@ -374,7 +371,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
 - `src/shared/workflow/validation-engine.ts` plus `validation-local-ci.ts`, `review-ledger.ts`, delivery hierarchy, and
   merge-verification modules — reuse one validation policy and evidence model across runtimes.
 - `src/shared/session/agent-assets.ts` and layered resource resolution — reuse canonical project/home/bundled precedence
-  when materializing Claude-native assets.
+  when building Attached role instructions.
 - `src/ui/review/review-launcher.ts` and Workspace review endpoints — reuse Plannotator instead of building a
   Claude-only approval or code-review product.
 - `src/shared/work-records/` and existing memory candidate flows — synthesize durable knowledge from canonical evidence
@@ -387,15 +384,16 @@ child decomposition. If discovery changes approved scope or ownership, return th
 - Automated: every Attached child Plan runs targeted tests through `deno run -A scripts/run-tests.js <test paths>`; the
   integrated Epic gate is `deno task ci`. Never run `deno test` directly.
 - Automated: black-box Claude adapter coverage runs against each declared Preview-compatible Claude Code version and
-  records the tested capability matrix. Test fixtures must verify hook inactivity outside Attached Workflows, Planning
-  Gate denial, structured MCP/CLI parity, subagent role isolation, worktree handoff, cancellation, stale-version
+  records the tested capability matrix. Test fixtures must verify that ordinary prompts outside Attached Workflows reach
+  no RunWield code, structured MCP/CLI parity, subagent role isolation, worktree handoff, cancellation, contract-version
   preflight, and disable/uninstall behavior.
 - Automated: interruption suites terminate the Core process after durable planning/review checkpoints and after
   execution/validation side effects, then resume from a fresh process. Tests prove automatic reconciliation of internal
   effects and distinguish safely retryable operations from unresolved external uncertainty requiring a user decision.
-- Automated: architecture tests enforce that Attached coordination modules do not import Pi AgentSession,
-  SessionRuntime, TUI, ACP, or Claude adapter modules; MCP and Claude packaging modules cannot import Plan Lifecycle,
-  worktree, or validation internals except through the coordinator operation surface.
+- Automated: the Attached path never starts a model turn. Attached code may import shared modules that load Pi, such as
+  settings and agent-definition loading; it must not construct a Hosted Session or `AgentSession` or call a model
+  provider. MCP and Claude packaging modules reach Plan Lifecycle, worktree, and validation only through the coordinator
+  operation surface.
 - Manual: on a supported Claude Code version, install from the documented flow in an uninitialized trusted Git
   repository and complete the PRD's full 16-step FEATURE Preview journey, including Plannotator Feedback/resubmission,
   independent review/repair, optional human review when configured, merge-back, Work Record creation, and two
@@ -417,9 +415,9 @@ child decomposition. If discovery changes approved scope or ownership, return th
   Core saves its pending identity and relevant Plan/candidate revision. A fresh process accepts the matching outcome
   once and resumes the shared phase. Duplicate and delayed outcomes cannot repeat effects or advance superseded work.
   Host contracts do not depend on serializing Pi tool objects or process-local reviewer handles.
-- **Attached is a true sibling runtime** — `src/shared/attached/` has no imports from Pi AgentSession packages,
-  `src/shared/session/session-runtime.ts`, `src/acp/`, or `src/ui/tui/`; transitive execution paths do not construct a
-  HostedSession or execute a Core-owned model turn. SessionRuntime and ACP have no imports from Attached modules.
+- **Attached is a true sibling runtime** — Attached execution paths do not construct a HostedSession or `AgentSession`
+  or execute a Core-owned model turn. Importing shared modules that also load Pi is allowed. SessionRuntime and ACP have
+  no imports from Attached modules.
 - **The CLI is canonical and MCP is translation-only** — every MCP tool maps to a typed coordinator operation also
   reachable through `wld attached`; MCP/Claude adapter modules contain no direct Plan Status mutation, validation,
   worktree registry, merge, or Work Record logic.
@@ -427,16 +425,13 @@ child decomposition. If discovery changes approved scope or ownership, return th
   Claude/Pi model subprocess started by Core across planning, implementation, review, repair, and recording; each role
   result is traceable to the External Agent Host adapter.
 - **Inactive installation is a no-op** — black-box tests show that a normal Claude request without an active workflow
-  receives no RunWield context injection, tool denial, repository inspection, or Attached state mutation.
-- **Role policy cannot silently drift** — installed Claude Skills/subagents are generated from the effective canonical
-  RunWield assets, carry matching Core/contract versions, and preflight fails with an actionable update path after
-  either side becomes stale.
-- **Planning blocks implementation mutation** — supported-version black-box tests deny editing and mutating command
-  paths while the Attached Workflow awaits approval/readiness, and post-turn Git inspection detects baseline changes;
-  the Preview capability matrix names any path that cannot be proven observable.
-- **One workflow has one consequential owner** — two Claude sessions racing the same workflow or Plan cannot both commit
-  an operation; expected-revision and canonical ownership checks reconcile or reject stale work rather than overwriting
-  state. A host session identifier alone cannot claim lifecycle authority.
+  receives no RunWield context injection, repository inspection, or Attached state mutation.
+- **Role policy cannot silently drift** — the role instructions in each Attached response come from the effective
+  layered RunWield agent definitions at that moment; a project override changes the next response without any
+  regeneration step.
+- **One workflow advances once per action** — two Claude sessions racing the same workflow cannot both commit an
+  operation; expected-revision checks reject stale work rather than overwriting state. A host session identifier alone
+  cannot claim lifecycle authority.
 - **Structured host claims cannot skip guards** — fabricated completion, review-pass, repair, CI, or merge claims fail
   when the expected Plan Event position, worktree, diff, validation evidence, review ledger, or Git result is absent.
 - **Verified has one meaning** — the Attached FEATURE journey reaches `verified` only after approval/readiness,
@@ -484,8 +479,8 @@ Existing behavior that must remain protected after every child lands:
 Behavior expected to stop existing:
 
 - No existing Core Session, ACP, Plan Lifecycle, or validation behavior is intentionally removed by this Epic.
-- Within the new Attached path, prompt-only planning enforcement, copied role prompts, host-prose lifecycle transitions,
-  in-memory-only review waits, and adapter-owned Plan/worktree/validation state must never exist as accepted behavior.
+- Within the new Attached path, copied role prompts, host-prose lifecycle transitions, in-memory-only review waits, and
+  adapter-owned Plan/worktree/validation state must never exist as accepted behavior.
 
 ### Integration Notes
 
@@ -541,14 +536,12 @@ Left by the reviewers of individual children for the integration review. These a
 - **Extraction versus Attached readiness** — extraction is complete, but a synchronous runtime interface is not proof of
   durable host continuation. Preserve shared sequencing while establishing saved host actions and fresh-process outcome
   acceptance; do not add an Attached-only loop or temporary policy copy.
-- **Host/Core/asset version skew** — preflight must fail before activation with exact update or regeneration guidance;
-  it must not discover incompatibility after a Plan or worktree transition.
-- **Two host conversations in one Project** — workflow tokens, host-session evidence, expected revisions, and canonical
-  Plan/controller ownership protections prevent split-brain while unrelated ordinary conversations remain untouched.
+- **Host/Core version skew** — preflight must fail before activation with exact update guidance; it must not discover
+  incompatibility after a Plan or worktree transition.
+- **Two host conversations in one Project** — workflow tokens, host-session evidence, expected revisions, and existing
+  Plan transition guards prevent split-brain while unrelated ordinary conversations remain untouched.
 - **Unstable host session identity** — treat host identifiers as evidence, not as durable truth by themselves. Recovery
   must rebind through Core-owned workflow identity and explicit user confirmation rather than matching transcript text.
-- **Unobservable mutation paths** — capability preflight must disclose them and either use an existing explicit fallback
-  or refuse the Preview journey. Post-turn inspection is defense in depth, not proof that a hard pre-tool gate existed.
 - **Dirty or nonstandard repositories** — preserve the existing Git/non-Git consent and worktree safety semantics.
   RunWield Connect must not silently clean, stash, reset, or relocate host work.
 - **Worktree handoff failure** — prefer a fresh Claude subagent started in the RunWield worktree. Use only an existing

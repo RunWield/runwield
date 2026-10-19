@@ -6,7 +6,7 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { encodeCwdForSessionDir } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
     captureTranscriptEvidence,
     createReplayEvents,
@@ -24,7 +24,7 @@ async function removeTempDir(path) {
             await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
             lastError = error;
             await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
         }
@@ -67,21 +67,24 @@ test("committed projection verifies exact prefix and ignores later tail", async 
         const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
         await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-1.jsonl");
-        const committed = [
-            { type: "session", id: "pi-1", cwd, timestamp: "2026-01-01T00:00:00.000Z" },
-            {
-                type: "message",
-                id: "entry-user",
-                timestamp: "2026-01-01T00:00:01.000Z",
-                message: { role: "user", content: "hello" },
-            },
-            {
-                type: "message",
-                id: "entry-assistant",
-                timestamp: "2026-01-01T00:00:02.000Z",
-                message: { role: "assistant", content: "hi" },
-            },
-        ].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+        const committed =
+            [
+                { type: "session", id: "pi-1", cwd, timestamp: "2026-01-01T00:00:00.000Z" },
+                {
+                    type: "message",
+                    id: "entry-user",
+                    timestamp: "2026-01-01T00:00:01.000Z",
+                    message: { role: "user", content: "hello" },
+                },
+                {
+                    type: "message",
+                    id: "entry-assistant",
+                    timestamp: "2026-01-01T00:00:02.000Z",
+                    message: { role: "assistant", content: "hi" },
+                },
+            ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n";
         await fsWriteFile(
             sessionPath,
             committed +
@@ -102,52 +105,65 @@ test("committed projection verifies exact prefix and ignores later tail", async 
             terminalEntryId: evidence.terminalEntryId,
             digestHex: evidence.digestHex,
         });
-        assertEquals(projected.events.map((event) => event.eventId), [
-            "entry-user:user_message:0",
-            "entry-assistant:assistant_text_delta:0",
-        ]);
-        assertEquals(projected.events.map((event) => event.type), ["user_message", "assistant_text_delta"]);
+        assertEquals(
+            projected.events.map((event) => event.eventId),
+            ["entry-user:user_message:0", "entry-assistant:assistant_text_delta:0"],
+        );
+        assertEquals(
+            projected.events.map((event) => event.type),
+            ["user_message", "assistant_text_delta"],
+        );
     });
 });
 
 test("committed projection replays Agy backend status as display-only system status", () => {
-    const events = createReplayEvents("projection", [
-        {
-            type: "custom",
-            customType: "runwield.backend_status",
-            data: {
-                version: 1,
-                backend: "agy-cli",
-                kind: "non_zero_exit",
-                message: "Antigravity CLI exited before completing the turn.",
+    const events = createReplayEvents(
+        "projection",
+        [
+            {
+                type: "custom",
+                customType: "runwield.backend_status",
+                data: {
+                    version: 1,
+                    backend: "agy-cli",
+                    kind: "non_zero_exit",
+                    message: "Antigravity CLI exited before completing the turn.",
+                },
             },
-        },
-        {
-            type: "custom",
-            id: "agy-warning",
-            customType: "runwield.backend_status",
-            data: {
-                version: 1,
-                backend: "agy-cli",
-                kind: "non_zero_exit",
-                afterAcceptedTerminal: true,
-                message: "Late Agy host failure after accepted workflow result.",
+            {
+                type: "custom",
+                id: "agy-warning",
+                customType: "runwield.backend_status",
+                data: {
+                    version: 1,
+                    backend: "agy-cli",
+                    kind: "non_zero_exit",
+                    afterAcceptedTerminal: true,
+                    message: "Late Agy host failure after accepted workflow result.",
+                },
             },
-        },
-        {
-            type: "custom",
-            customType: "runwield.backend_status",
-            data: {
-                version: 1,
-                backend: "claude-cli",
-                kind: "canceled",
-                message: "Claude Code turn canceled.",
+            {
+                type: "custom",
+                customType: "runwield.backend_status",
+                data: {
+                    version: 1,
+                    backend: "claude-cli",
+                    kind: "canceled",
+                    message: "Claude Code turn canceled.",
+                },
             },
-        },
-    ], { projectRoot: getCwd() });
+        ],
+        { projectRoot: getCwd() },
+    );
 
-    assertEquals(events.map((event) => event.type), ["system_status", "system_status", "system_status"]);
-    assertEquals(events.map((event) => event.level), ["error", "warning", "warning"]);
+    assertEquals(
+        events.map((event) => event.type),
+        ["system_status", "system_status", "system_status"],
+    );
+    assertEquals(
+        events.map((event) => event.level),
+        ["error", "warning", "warning"],
+    );
     assertEquals(events[0].messageId.includes("agy-cli-backend-status"), true);
     assertEquals(events[2].messageId.includes("claude-cli-backend-status"), true);
     assertEquals(JSON.stringify(events).includes("workflow_tool_event"), false);
@@ -160,45 +176,52 @@ test("committed projection replays CLI backend final messages as ordinary transc
         const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
         await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_claude.jsonl");
-        const committed = [
-            { type: "session", id: "claude", cwd, timestamp: "2026-01-01T00:00:00.000Z" },
-            {
-                type: "custom",
-                id: "backend-claude",
-                customType: "runwield.execution_backend",
-                data: { backend: "claude-cli" },
-            },
-            {
-                type: "message",
-                id: "user-claude",
-                message: { role: "user", content: [{ type: "text", text: "hi claude" }] },
-            },
-            { type: "model_change", id: "model-claude", provider: "claude-cli", modelId: "sonnet" },
-            {
-                type: "message",
-                id: "assistant-claude",
-                message: { role: "assistant", content: [{ type: "text", text: "stream complete" }] },
-            },
-            {
-                type: "custom",
-                id: "agent-agy",
-                customType: "runwield.active_agent",
-                data: { agentName: "planner" },
-            },
-            {
-                type: "custom",
-                id: "backend-agy",
-                customType: "runwield.execution_backend",
-                data: { backend: "agy-cli", model: "gemini-fixture" },
-            },
-            { type: "message", id: "user-agy", message: { role: "user", content: [{ type: "text", text: "hi agy" }] } },
-            { type: "model_change", id: "model-agy", provider: "agy-cli", modelId: "gemini-fixture" },
-            {
-                type: "message",
-                id: "assistant-agy",
-                message: { role: "assistant", content: [{ type: "text", text: "agy complete" }] },
-            },
-        ].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+        const committed =
+            [
+                { type: "session", id: "claude", cwd, timestamp: "2026-01-01T00:00:00.000Z" },
+                {
+                    type: "custom",
+                    id: "backend-claude",
+                    customType: "runwield.execution_backend",
+                    data: { backend: "claude-cli" },
+                },
+                {
+                    type: "message",
+                    id: "user-claude",
+                    message: { role: "user", content: [{ type: "text", text: "hi claude" }] },
+                },
+                { type: "model_change", id: "model-claude", provider: "claude-cli", modelId: "sonnet" },
+                {
+                    type: "message",
+                    id: "assistant-claude",
+                    message: { role: "assistant", content: [{ type: "text", text: "stream complete" }] },
+                },
+                {
+                    type: "custom",
+                    id: "agent-agy",
+                    customType: "runwield.active_agent",
+                    data: { agentName: "planner" },
+                },
+                {
+                    type: "custom",
+                    id: "backend-agy",
+                    customType: "runwield.execution_backend",
+                    data: { backend: "agy-cli", model: "gemini-fixture" },
+                },
+                {
+                    type: "message",
+                    id: "user-agy",
+                    message: { role: "user", content: [{ type: "text", text: "hi agy" }] },
+                },
+                { type: "model_change", id: "model-agy", provider: "agy-cli", modelId: "gemini-fixture" },
+                {
+                    type: "message",
+                    id: "assistant-agy",
+                    message: { role: "assistant", content: [{ type: "text", text: "agy complete" }] },
+                },
+            ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n";
         await fsWriteFile(sessionPath, committed);
         const evidence = await captureTranscriptEvidence({
             transcriptPath: sessionPath,
@@ -215,7 +238,7 @@ test("committed projection replays CLI backend final messages as ordinary transc
             digestHex: evidence.digestHex,
         });
         const replayedText = projected.events.map((event) =>
-            "text" in event ? event.text : "delta" in event ? event.delta : ""
+            "text" in event ? event.text : "delta" in event ? event.delta : "",
         );
         assertEquals(replayedText.includes("hi claude"), true);
         assertEquals(replayedText.includes("stream complete"), true);
@@ -232,12 +255,13 @@ test("committed projection rejects mismatched evidence", async () => {
         const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
         await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-1.jsonl");
-        const content = JSON.stringify({
-            type: "session",
-            id: "pi-1",
-            cwd,
-            timestamp: "2026-01-01T00:00:00.000Z",
-        }) + "\n";
+        const content =
+            JSON.stringify({
+                type: "session",
+                id: "pi-1",
+                cwd,
+                timestamp: "2026-01-01T00:00:00.000Z",
+            }) + "\n";
         await fsWriteFile(sessionPath, content);
         await assertRejects(
             () =>
@@ -257,53 +281,64 @@ test("committed projection rejects mismatched evidence", async () => {
 });
 
 test("projection resolves active agent machine names to display names", () => {
-    const events = createReplayEvents("projection", [
-        { type: "custom", id: "agent", customType: "runwield.active_agent", data: { agentName: "frontend-engineer" } },
-        {
-            type: "message",
-            id: "reply",
-            message: { role: "assistant", content: [{ type: "text", text: "Done." }] },
-        },
-    ], { projectRoot: getCwd() });
+    const events = createReplayEvents(
+        "projection",
+        [
+            {
+                type: "custom",
+                id: "agent",
+                customType: "runwield.active_agent",
+                data: { agentName: "frontend-engineer" },
+            },
+            {
+                type: "message",
+                id: "reply",
+                message: { role: "assistant", content: [{ type: "text", text: "Done." }] },
+            },
+        ],
+        { projectRoot: getCwd() },
+    );
     assertEquals(events.find((event) => event.type === "assistant_text_delta")?.agentName, "Frontend Engineer");
 });
 
 test("projection emits RunWield notices only for later different active Agents", () => {
-    const events = createReplayEvents("projection", [
-        {
-            type: "custom",
-            id: "agent-guide",
-            customType: "runwield.active_agent",
-            data: { agentName: "guide", displayName: "Guide" },
-        },
-        {
-            type: "message",
-            id: "guide-reply",
-            message: { role: "assistant", content: [{ type: "text", text: "Plan first." }] },
-        },
-        {
-            type: "custom",
-            id: "agent-guide-repeat",
-            customType: "runwield.active_agent",
-            data: { agentName: "guide", displayName: "Guide" },
-        },
-        {
-            type: "custom",
-            id: "agent-operator",
-            customType: "runwield.active_agent",
-            data: { agentName: "operator", displayName: "Operator" },
-        },
-        {
-            type: "message",
-            id: "operator-reply",
-            message: { role: "assistant", content: [{ type: "text", text: "Operate." }] },
-        },
-    ], { projectRoot: getCwd() });
+    const events = createReplayEvents(
+        "projection",
+        [
+            {
+                type: "custom",
+                id: "agent-guide",
+                customType: "runwield.active_agent",
+                data: { agentName: "guide", displayName: "Guide" },
+            },
+            {
+                type: "message",
+                id: "guide-reply",
+                message: { role: "assistant", content: [{ type: "text", text: "Plan first." }] },
+            },
+            {
+                type: "custom",
+                id: "agent-guide-repeat",
+                customType: "runwield.active_agent",
+                data: { agentName: "guide", displayName: "Guide" },
+            },
+            {
+                type: "custom",
+                id: "agent-operator",
+                customType: "runwield.active_agent",
+                data: { agentName: "operator", displayName: "Operator" },
+            },
+            {
+                type: "message",
+                id: "operator-reply",
+                message: { role: "assistant", content: [{ type: "text", text: "Operate." }] },
+            },
+        ],
+        { projectRoot: getCwd() },
+    );
 
     assertEquals(
-        events.map((
-            event,
-        ) => [
+        events.map((event) => [
             event.type,
             event.eventId,
             event.message || event.delta || "",
@@ -325,7 +360,10 @@ test("projection cursor selection returns only later events and advances summary
         { type: "assistant_text_delta", eventId: "three" },
     ];
     const selected = selectProjectedEventsAfterCursor({ events, cursorEventId: "two" });
-    assertEquals(selected.events.map((event) => event.eventId), ["three"]);
+    assertEquals(
+        selected.events.map((event) => event.eventId),
+        ["three"],
+    );
     assertEquals(selected.nextCursor, "three");
     const summaryOnly = selectProjectedEventsAfterCursor({ events: [], cursorEventId: null });
     assertEquals(summaryOnly.events, []);
@@ -495,10 +533,13 @@ test("^projection replays Claude backend failure entries as display-only status$
         },
     ];
     const events = createReplayEvents("projection", entries);
-    assertEquals(events.map((event) => ({ type: event.type, level: event.level, messageId: event.messageId })), [
-        { type: "system_status", level: "error", messageId: "backend-failure" },
-        { type: "system_status", level: "warning", messageId: "backend-canceled" },
-    ]);
+    assertEquals(
+        events.map((event) => ({ type: event.type, level: event.level, messageId: event.messageId })),
+        [
+            { type: "system_status", level: "error", messageId: "backend-failure" },
+            { type: "system_status", level: "warning", messageId: "backend-canceled" },
+        ],
+    );
     assertEquals(events[0].message, "Claude Code authentication failed. Sign in to Claude Code, then retry this turn.");
     assertEquals(getCommittedTranscriptAuthorityFacts({ snapshot: summarizeProjectedEntries(entries) }), {
         activeAgent: "engineer",
@@ -592,17 +633,20 @@ test("accepted workflow transitions replay their result even when the tool stopp
         const events = createReplayEvents(
             "session",
             withProviderResult
-                ? [...entries, {
-                    type: "message",
-                    id: "result",
-                    message: {
-                        role: "toolResult",
-                        toolName: "task_completed",
-                        toolCallId: "completed-1",
-                        content: [{ type: "text", text: "Delivered and verified." }],
-                        details: { outcome: "task_completed", message: "Delivered and verified." },
-                    },
-                }]
+                ? [
+                      ...entries,
+                      {
+                          type: "message",
+                          id: "result",
+                          message: {
+                              role: "toolResult",
+                              toolName: "task_completed",
+                              toolCallId: "completed-1",
+                              content: [{ type: "text", text: "Delivered and verified." }],
+                              details: { outcome: "task_completed", message: "Delivered and verified." },
+                          },
+                      },
+                  ]
                 : entries,
         );
         assertEquals(events.filter((event) => event.type === "tool_end").length, 1);
@@ -610,18 +654,23 @@ test("accepted workflow transitions replay their result even when the tool stopp
         assertEquals(events.find((event) => event.workflowMessage === "task_completed")?.toolCallId, "completed-1");
         assertEquals(events.find((event) => event.type === "tool_end")?.isError, false);
     }
-    assertEquals(createReplayEvents("session", entries.slice(0, 1)).some((event) => event.type === "tool_end"), false);
-    const triage = createReplayEvents("session", [{
-        type: "custom",
-        id: "triage",
-        customType: "runwield.workflow_tool_event",
-        data: {
-            state: "accepted",
-            kind: "triage_report",
-            toolCallId: "triage-1",
-            payload: { routingIntent: "QUICK_FIX", complexity: "LOW", summary: "Fix the broken image send." },
+    assertEquals(
+        createReplayEvents("session", entries.slice(0, 1)).some((event) => event.type === "tool_end"),
+        false,
+    );
+    const triage = createReplayEvents("session", [
+        {
+            type: "custom",
+            id: "triage",
+            customType: "runwield.workflow_tool_event",
+            data: {
+                state: "accepted",
+                kind: "triage_report",
+                toolCallId: "triage-1",
+                payload: { routingIntent: "QUICK_FIX", complexity: "LOW", summary: "Fix the broken image send." },
+            },
         },
-    }]);
+    ]);
     assertEquals(triage[0].type, "tool_end");
     assertEquals(triage[0].toolName, "triage_report");
     assertEquals(triage[0].details.summary, "Fix the broken image send.");
@@ -646,18 +695,19 @@ test("Session replay preserves images and every text block as one user message",
             id: "image-only",
             message: {
                 role: "user",
-                content: [
-                    { type: "image", data: "b3RoZXI=", mimeType: "image/jpeg" },
-                ],
+                content: [{ type: "image", data: "b3RoZXI=", mimeType: "image/jpeg" }],
             },
         },
     ]);
-    assertEquals(events.map((event) => ({ type: event.type, text: event.text, images: event.images })), [
-        {
-            type: "user_message",
-            text: "Look at this\nand explain it.",
-            images: [{ base64: "aW1hZ2U=", mimeType: "image/png" }],
-        },
-        { type: "user_message", text: "", images: [{ base64: "b3RoZXI=", mimeType: "image/jpeg" }] },
-    ]);
+    assertEquals(
+        events.map((event) => ({ type: event.type, text: event.text, images: event.images })),
+        [
+            {
+                type: "user_message",
+                text: "Look at this\nand explain it.",
+                images: [{ base64: "aW1hZ2U=", mimeType: "image/png" }],
+            },
+            { type: "user_message", text: "", images: [{ base64: "b3RoZXI=", mimeType: "image/jpeg" }] },
+        ],
+    );
 });

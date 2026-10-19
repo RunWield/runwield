@@ -135,6 +135,10 @@ export async function captureWorktreeTree(cwd: string, forcePaths: string[] = []
             await fsRm(indexPath);
         }
         await runGit(cwd, ["add", "-A", "--", "."], env);
+        // A copied index has a new timestamp. Its cached stat data can otherwise
+        // hide same-size edits whose file times match the old index. Re-read the
+        // tracked contents in this temporary index; never change the real index.
+        await runGit(cwd, ["add", "--renormalize", "-u", "--", "."], env);
         if (forcePaths.length > 0) await runGit(cwd, ["add", "-f", "--", ...forcePaths], env);
         return (await runGit(cwd, ["write-tree"], env)).trim();
     } finally {

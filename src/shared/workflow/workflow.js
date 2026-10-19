@@ -156,7 +156,11 @@ export function assertReusableWorktreeTargetMatches(reusableBaseBranch, targetBr
  * @returns {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>}
  */
 export function startActiveExecutionWorkflow(options) {
-    return /** @type {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>} */ (startActiveExecutionWorkflowImpl(
-        options,
-    ));
+    return /** @type {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>} */ (
+        startActiveExecutionWorkflowImpl({
+            ...options,
+            cwd: options.cwd ?? options.hostedSession?.cwd,
+            existingExecution: options.existingExecution ?? options.hostedSession?.getActiveExecutionWorkflow?.(),
+        })
+    );
 }

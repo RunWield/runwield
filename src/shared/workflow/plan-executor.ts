@@ -561,6 +561,8 @@ export async function executeSingleEngineerPlan({
             triageMeta,
             currentStatus,
             hostedSession,
+            cwd: hostedSession.cwd,
+            existingExecution: hostedSession.getActiveExecutionWorkflow?.(),
             collaborationStyle,
             collaborationRecommendation,
             ports: createExecutionStartPorts(),

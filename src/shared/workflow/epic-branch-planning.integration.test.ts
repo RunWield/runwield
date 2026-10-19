@@ -841,7 +841,7 @@ for (const action of ["resume", "planner_re_review", "review", "proceed"]) {
     });
 }
 
-for (const status of ["approved", "ready_for_work"]) {
+for (const status of ["approved", "ready_for_work"] as const) {
     test(`${status} Sequence child execution creates and promotes a worktree from the newest remote head`, async () => {
         const repo = await journeyFixture.checkout();
         const head = await advanceRemoteEpic(repo, status);

@@ -123,11 +123,13 @@ interface SetupSelection {
     confirmed: boolean;
 }
 
-async function selectSetupCommand(session: HostedSession, cwd: string): Promise<SetupSelection | null> {
+async function selectSetupCommand(session: HostedSession | undefined, cwd: string): Promise<SetupSelection | null> {
     const exact = getExactProjectCustomSetting("worktree_setup_command", cwd);
     const configured = typeof exact === "string" ? exact : getCustomSetting("worktree_setup_command", "project", cwd);
     if (typeof configured === "string") return { command: configured.trim(), confirmed: false };
     if (!(await hasCommitHooks(cwd))) return null;
+    if (!session)
+        throw new Error("Git hooks require an approved worktree_setup_command in project settings before execution.");
     const response = await requestHostedSessionInteraction(
         session,
         {
@@ -251,18 +253,20 @@ async function captureSettingsWrite(cwd: string, command: string): Promise<Setup
 }
 
 /** Run only explicit project configuration or an interactive answer, before lifecycle writes or Git hooks. */
-export async function prepareExecutionSetup(session: HostedSession, cwd: string): Promise<void> {
+export async function prepareExecutionSetup(session: HostedSession | undefined, cwd: string): Promise<void> {
     await enterProjectRuntime(cwd);
     const saved = await readExecutionSetup(cwd);
     const previous = saved ? await finishSettingsWrite(cwd, saved) : null;
     if (previous?.state === "prepared") return;
     const interactionId = `execution-setup:${crypto.randomUUID()}`;
     const controller = new AbortController();
-    session.addActiveInteraction(interactionId, { abortController: controller });
+    session?.addActiveInteraction(interactionId, { abortController: controller });
     try {
         if (previous) await assertSetupFilesUnchanged(cwd, previous);
         let selection: SetupSelection | null;
         if (previous) {
+            if (!session)
+                throw new Error("Worktree setup retry needs confirmation in a Core Session; execution remains paused.");
             // Retry is also the repair path for a mistyped or obsolete command.
             const response = await requestHostedSessionInteraction(
                 session,
@@ -302,7 +306,7 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
             if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
             return;
         }
-        emitSystemStatus(session, `Preparing worktree dependencies: ${command}`);
+        if (session) emitSystemStatus(session, `Preparing worktree dependencies: ${command}`);
         const process = spawnForegroundShell({ command, cwd, signal: controller.signal });
         const [outcome, stdout, stderr] = await Promise.all([
             process.done,
@@ -310,7 +314,7 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
             captureProcessStreamTail(process.stderr, PROCESS_STREAM_OUTPUT_LIMIT_BYTES),
         ]);
         const output = formatCapturedProcessOutput(stdout, stderr).trim();
-        if (output) emitSystemStatus(session, output);
+        if (output && session) emitSystemStatus(session, output);
         if (controller.signal.aborted || outcome.terminatedBy !== null || outcome.exitCode !== 0) {
             throw new Error(
                 `Worktree setup ${outcome.terminatedBy !== null || controller.signal.aborted ? "canceled" : `failed (exit ${outcome.exitCode})`}. ` +
@@ -321,7 +325,7 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
         await writeReceipt(cwd, { ...receipt, state: "ready" });
         if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
     } finally {
-        session.removeActiveInteraction(interactionId);
+        session?.removeActiveInteraction(interactionId);
     }
 }
 

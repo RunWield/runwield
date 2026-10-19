@@ -27,16 +27,16 @@ Validation scope is the configured workflow gate. See the delivery card's test r
 The recorder draft below is preserved verbatim as historical context. Its publication-pending and outstanding-validation statements describe the earlier snapshot, not the current delivery status. Implementation details, deviations and deferred work remain available here; consult the delivery evidence for final validation outcomes.
 
 > # Inline Plan Questions in browser review
-> 
+>
 > ## Summary
-> 
+>
 > Implemented inline Plan Question forms with saved-answer recovery and automatic answer attachment to Planner feedback. Approval resolves valid question blocks on the server into recorded answers, using recommendations when unanswered and warning before approval. Installed local Planner instructions; the bundled prompt remains unchanged, keeping question generation local to the experiment. Focused tests and desktop and phone browser checks covered recovery, Planner revision, cancellation, and approval fallback.
-> 
+>
 > ## Deferred Work
-> 
+>
 > Two broken documentation links remain in `docs/plans/archived/home-system-folder-warning.md`.
-> 
+>
 > ## Future Planning Notes
-> 
+>
 > Question forms depend on Plannotator’s rendered block markup. Keep the real-Viewer mounting regression test when upgrading Plannotator. Sequence child Plan question resolution and interactive TUI questions remain outside this experiment.
-> 
+>

@@ -34,6 +34,16 @@
  */
 
 /**
+ * @typedef {Object} AgentRolePrompt
+ * @property {string} rolePrompt - Merged agent prompt and shared practice, without the Core system prompt template
+ */
+
+/**
+ * An agent definition loaded from its layered files.
+ * @typedef {AgentDefinition & AgentRolePrompt} LoadedAgentDefinition
+ */
+
+/**
  * @typedef {{
  *   role: string,
  *   content: SessionContentBlock[],

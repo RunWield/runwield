@@ -39,6 +39,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
  * @property {ReviewPlanSave} [planSave]
+ * @property {number} [reviewRevision]
  *
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
@@ -46,11 +47,18 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [classification]
  * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
+ * @property {number} [reviewRevision]
  *
  * @typedef {Object} ReviewRequestState
  * @property {string} cwd
  * @property {string} [reviewToken]
  * @property {ReviewPayload} [reviewPayload]
+ * @property {ReviewDecisionSink} [onDecision]
+ * @property {boolean} [keepConversationTurns]
+ *
+ * @callback ReviewDecisionSink
+ * @param {ReviewDecision} decision
+ * @returns {Promise<void>}
  *
  * @typedef {Object} ReviewRequestContext
  * @property {Request} req
@@ -240,6 +248,16 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
+    if (
+        ctx.state?.reviewPayload?.reviewRevision !== undefined &&
+        body?.reviewRevision !== ctx.state.reviewPayload.reviewRevision
+    ) {
+        return jsonError(
+            "stale_sequence_review",
+            "This browser page shows a superseded review revision. Reload it.",
+            409,
+        );
+    }
     const decision = createDecision(body || {});
     if (decision instanceof Response) return decision;
     if (ctx.state?.reviewPayload?.sequenceDocuments && !decision.exit) {
@@ -250,7 +268,14 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
-    if (!resolveReviewDecision(token, decision)) {
+    if (ctx.state?.onDecision) {
+        try {
+            await ctx.state.onDecision(decision);
+        } catch (error) {
+            return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
+        }
+    }
+    if (!(decision.conversationTurn && ctx.state?.keepConversationTurns) && !resolveReviewDecision(token, decision)) {
         return jsonError("review_not_found", "Review expired or completed.", 404);
     }
     return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });

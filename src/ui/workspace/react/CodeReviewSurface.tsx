@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
@@ -28,6 +29,7 @@ import { PlanReviewSettings } from "./PlanReviewSettings.tsx";
 import { WorkspaceHeaderActionsPortal } from "./WorkspaceHeaderActionsPortal.tsx";
 import { ReviewContextBar } from "./ReviewContextBar.tsx";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
+import { mergeSavedReviewMessages, useSavedReviewConversation } from "./use-saved-review-conversation.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { editHunksToAnnotations, editorCommentToAnnotation } from "./code-review-edit-suggestions.ts";
@@ -171,6 +173,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
     const [error, setError] = useState("");
+    const { fields: reviewRevisionFields, update: updateReviewRevision } = useReviewRevision(
+        initialPayload,
+        submitted === "feedback",
+        setError,
+    );
     const [viewedFiles, setViewedFiles] = useState(new Set());
     const [fileNavigationTarget, setFileNavigationTarget] = useState(null);
     const [allFilesContentFits, setAllFilesContentFits] = useState(false);
@@ -651,6 +658,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     function buildReviewPayload() {
         const workflowAnnotations = toWorkflowAnnotations(annotations);
         return {
+            ...reviewRevisionFields,
             feedback: feedbackMarkdown,
             annotations: workflowAnnotations,
         };
@@ -737,6 +745,28 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setAgentError("");
     }
 
+    useSavedReviewConversation(
+        initialPayload,
+        (snapshot, advanced) => {
+            if (submitted === "feedback") return;
+            updateReviewRevision(snapshot.reviewRevision);
+            setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
+            setAgentWorking(snapshot.pending);
+            if (advanced) {
+                const event = snapshot.events.at(-1);
+                applyAgentRevision({
+                    rawPatch: snapshot.rawPatch,
+                    reviewStatus: snapshot.reviewStatus || null,
+                    interactionId: `conversation-${snapshot.revision}`,
+                    reply: event?.delta,
+                    agentMessageId: event ? `agent-${event.messageId}` : undefined,
+                    clearAttachedContext: true,
+                });
+            }
+        },
+        setAgentError,
+    );
+
     async function sendAgentMessage(attachAnnotations = false) {
         const message = conversationComposer.trim();
         const attachedFeedback =
@@ -754,17 +784,18 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setAgentError("");
         setError("");
         setConversationComposer("");
-        setConversationMessages((items) => [
-            ...items,
-            {
-                id: userMessageId,
-                role: "user",
-                body: message || "Review annotations",
-                ...(attachedFeedback && {
-                    contextLabel: attachedContextLabel || `${annotations.length} code annotations attached`,
-                }),
-            },
-        ]);
+        if (!initialPayload.savedConversation)
+            setConversationMessages((items) => [
+                ...items,
+                {
+                    id: userMessageId,
+                    role: "user",
+                    body: message || "Review annotations",
+                    ...(attachedFeedback && {
+                        contextLabel: attachedContextLabel || `${annotations.length} code annotations attached`,
+                    }),
+                },
+            ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -780,13 +811,16 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             }
 
             await submit("deny", {
+                ...reviewRevisionFields,
                 approved: false,
-                feedback: buildArtifactConversationFeedback({
-                    message,
-                    attachedFeedback,
-                    agentLabel,
-                    artifactKind: "code",
-                }),
+                feedback: initialPayload.savedConversation
+                    ? [message, attachedFeedback].filter(Boolean).join("\n\n")
+                    : buildArtifactConversationFeedback({
+                          message,
+                          attachedFeedback,
+                          agentLabel,
+                          artifactKind: "code",
+                      }),
                 annotations: attachedFeedback ? toWorkflowAnnotations(annotations) : [],
                 conversationTurn: true,
             });
@@ -806,6 +840,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 });
                 return;
             }
+
+            if (initialPayload.savedConversation) return;
 
             if (initialPayload.conversationStatusUrl) {
                 await waitForStandaloneCodeReview({
@@ -901,7 +937,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     function applyAgentRevision(options) {
-        upsertAgentReply(options.agentMessageId, options.reply);
+        if (options.reply) upsertAgentReply(options.agentMessageId, options.reply);
         const nextFiles = parseDiffToFiles(options.rawPatch);
         const nextFileIndex = nextFiles.findIndex((file) => file.path === currentFile?.path);
         setActiveFileIndex(nextFileIndex < 0 ? 0 : nextFileIndex);
