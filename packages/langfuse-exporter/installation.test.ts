@@ -119,6 +119,10 @@ test("real absolute-directory install, owner approval, grant, journal, and worke
                         contract: 1,
                         id: "langfuse",
                         entry: "./exporter.ts",
+                        credentials: [
+                            { key: "publicKey", label: "Public key", secret: false },
+                            { key: "secretKey", label: "Secret key", secret: true },
+                        ],
                     });
                     globalThis.prompt = () => "n";
                     await runInstallCommand([source]);
