@@ -7,7 +7,7 @@ affectedPaths:
     - "src/shared/session/session-runtime.js"
     - "src/shared/session/session-runtime.ts"
     - "src/shared/session/runtime/"
-    - "src/shared/session/architecture-boundary.test.js"
+    - "src/shared/session/architecture-boundary.test.ts"
     - "src/shared/session/session-runtime.test.js"
     - "src/shared/session/session-runtime-method-policy.test.ts"
     - "src/shared/session/managed-operation.ts"

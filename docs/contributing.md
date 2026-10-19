@@ -104,6 +104,23 @@ Deno-specific test flags are rejected, including permissions, coverage, watch an
 options remain available. Workspace development/build commands require explicitly exported environment variables;
 ambient `.env` loading is disabled. Production-equivalent container sandboxing is deferred for the test images.
 
+### Remote development bundle
+
+`wld remote` uses an explicitly built development bundle. Build the launcher and both Linux targets from the same
+unchanged checkout, then assemble them:
+
+```bash
+bun run compile --output bin/wld
+BUILD_ID=$(bun -e 'console.log((await Bun.file("bin/wld.build.json").json()).buildId)')
+bun run compile --target x86_64-unknown-linux-gnu --output bin/wld-linux-x64 --expect-build-id "$BUILD_ID"
+bun run compile --target aarch64-unknown-linux-gnu --output bin/wld-linux-arm64 --expect-build-id "$BUILD_ID"
+bun scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
+```
+
+Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never
+compiles on demand or substitutes a released binary. Remote host prerequisites are in the
+[Core PRD](prd/runwield-core-prd.md#remote-connection).
+
 ## Codebase guide
 
 Use this as an orientation map, not a directory inventory:
@@ -160,6 +177,11 @@ Timing does not require verbose output. Reports under `.ci-cache/` contain:
 - `tests[-N-of-M]-timings.json` and `golden[-N-of-M]-timings.json`: file timing history used for scheduling.
 - `*-report/run.json`: file durations, prewarm time, worker count, and pass/fail/skip totals for the latest run.
 - `*-report/*.xml`: the isolated runner's JUnit results with each test's name, duration, failure, and ignored status.
+
+Every launched file must exit successfully and produce a fresh JUnit report containing registered tests. Comment-only
+files and early successful exits fail the gate. Files containing only explicit skips are reported as skipped, never
+as passing. The report directory belongs to one invocation: old XML and `run.json` are removed before scheduling,
+including reports for files skipped by fail-fast. Remove obsolete empty test files from discovery and the Bun inventory.
 
 Use `--report-dir <directory>` for separate benchmark runs and `--timings-file <file>` for an explicit history. CI
 uploads these reports even on failure. Timing history starts slow files first from the first observation. Dependency

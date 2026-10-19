@@ -126,11 +126,8 @@ test("Session surface retains an HTTP-rejected image draft and sends a corrected
     const { create } = await import("react-test-renderer");
     try {
         for (const key of globals) {
-            const value = key === "window"
-                ? browser
-                : key === "matchMedia"
-                ? browser.matchMedia.bind(browser)
-                : browser[key];
+            const value =
+                key === "window" ? browser : key === "matchMedia" ? browser.matchMedia.bind(browser) : browser[key];
             Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -140,9 +137,12 @@ test("Session surface retains an HTTP-rejected image draft and sends a corrected
                 if (options.method === "POST") {
                     submissions.push(JSON.parse(options.body));
                     return submissions.length === 1
-                        ? Response.json({ error: "Antigravity CLI sessions do not support image attachments." }, {
-                            status: 422,
-                        })
+                        ? Response.json(
+                              { error: "Antigravity CLI sessions do not support image attachments." },
+                              {
+                                  status: 422,
+                              },
+                          )
                         : Response.json({ operationId: "accepted-image", status: "running" }, { status: 202 });
                 }
                 if (path.includes("session-options")) {
@@ -185,7 +185,10 @@ test("Session surface retains an HTTP-rejected image draft and sends a corrected
         await act(async () => {
             await composer().props.onSubmit();
         });
-        assertEquals(submissions.map((item) => item.text), ["  describe image  ", "  corrected image request  "]);
+        assertEquals(
+            submissions.map((item) => item.text),
+            ["  describe image  ", "  corrected image request  "],
+        );
         assertEquals(submissions[1].images, [{ base64: btoa("img"), mimeType: "image/png" }]);
         assertEquals(composer().props.draft, "");
         assertEquals(composer().props.imageAttachments, []);
@@ -254,10 +257,7 @@ test("file-locked Sessions wait for the active surface without offering takeover
         generation: 0,
     });
     assertEquals(availability.key, "active");
-    assertEquals(
-        availability.explanation,
-        "Steer the agent or queue a follow-up.",
-    );
+    assertEquals(availability.explanation, "Steer the agent or queue a follow-up.");
 });
 
 test("Session timeline labels transitions without inventing an initial Agent", () => {
@@ -290,28 +290,38 @@ test("Session timeline labels transitions without inventing an initial Agent", (
         { type: "recovery_event", eventId: "recover-2", message: "Restarted validation." },
     ]);
     const systemEvents = items.filter((item) => item.kind === "system-event");
-    assertEquals(systemEvents.map((item) => item.text), [
-        "Plan Engineer",
-        "Semantic Repair",
-        "Recovered stale action.\nRestarted validation.",
-    ]);
+    assertEquals(
+        systemEvents.map((item) => item.text),
+        ["Plan Engineer", "Semantic Repair", "Recovered stale action.\nRestarted validation."],
+    );
     assertEquals(systemEvents.at(-1)?.lines, ["Recovered stale action.", "Restarted validation."]);
-    assertEquals(items.some((item) => String(item.text || "").includes("segment-id")), false);
+    assertEquals(
+        items.some((item) => String(item.text || "").includes("segment-id")),
+        false,
+    );
 });
 
 test("Session interaction answers preserve Runtime outcome identity", () => {
     assertEquals(
-        sessionInteractionChoiceResponse("select", {
-            type: "select",
-            options: [{ value: "router", label: "Router" }],
-        }, { value: "router", label: "Router" }),
+        sessionInteractionChoiceResponse(
+            "select",
+            {
+                type: "select",
+                options: [{ value: "router", label: "Router" }],
+            },
+            { value: "router", label: "Router" },
+        ),
         { outcome: "selected", value: "router", valueLabel: "Router" },
     );
     assertEquals(
-        sessionInteractionChoiceResponse("approval", {
-            type: "approval",
-            options: [{ value: "approve", label: "Approve", _meta: { accepted: true } }],
-        }, { value: "approve", label: "Approve" }),
+        sessionInteractionChoiceResponse(
+            "approval",
+            {
+                type: "approval",
+                options: [{ value: "approve", label: "Approve", _meta: { accepted: true } }],
+            },
+            { value: "approve", label: "Approve" },
+        ),
         { outcome: "accepted", value: "approve", valueLabel: "Approve" },
     );
     assertEquals(sessionInteractionTypedResponse("select", "custom answer", true), {
@@ -332,10 +342,7 @@ test("Session availability observes idle Sessions too, so TUI turns appear autom
         false,
     );
     assertEquals(shouldRefreshSessionAvailability({ mode: "detail", state: "idle" }), true);
-    assertEquals(
-        shouldRefreshSessionAvailability({ mode: "detail", state: "idle", queuedMessageCount: 1 }),
-        true,
-    );
+    assertEquals(shouldRefreshSessionAvailability({ mode: "detail", state: "idle", queuedMessageCount: 1 }), true);
     assertEquals(shouldRefreshSessionAvailability({ mode: "new", state: "active" }), false);
 });
 
@@ -436,7 +443,10 @@ test("Session timeline puts usage and stop time on the assistant block", () => {
             timestamp: completedAt,
         },
     ]);
-    assertEquals(items.map((item) => item.kind), ["message", "message"]);
+    assertEquals(
+        items.map((item) => item.kind),
+        ["message", "message"],
+    );
     assertEquals(displayAgentName(items[1]?.agentName), "Frontend Engineer");
     assertEquals(items[1]?.footerText, "Usage: 1569 in / 74 out tokens");
     assertEquals(items[1]?.completedTimestamp, completedAt);
@@ -452,10 +462,16 @@ test("Session timeline groups completed technical activity after agent content r
         { type: "assistant_thinking_end", eventId: "th2", messageId: "think-1" },
         { type: "assistant_text_delta", eventId: "a1", messageId: "a1", delta: "Done." },
     ]);
-    assertEquals(items.map((item) => item.kind), ["message", "activity", "message"]);
+    assertEquals(
+        items.map((item) => item.kind),
+        ["message", "activity", "message"],
+    );
     assertEquals(items[1]?.title, "Activity");
     assertEquals(items[1]?.count, 2);
-    assertEquals(items[1]?.items?.map((item) => item.kind), ["tool", "thinking"]);
+    assertEquals(
+        items[1]?.items?.map((item) => item.kind),
+        ["tool", "thinking"],
+    );
     assertEquals(items[1]?.items?.[0]?.output, "src/app.js");
 });
 
@@ -473,10 +489,15 @@ test("Activity stays open as it grows and only synchronizes Thinking disclosures
             { type: "assistant_thinking_end", eventId: "th1e", messageId: "thinking-1" },
             ...(extra
                 ? [
-                    { type: "tool_end", eventId: "t2e", toolCallId: "t2", toolName: "read", output: "second file" },
-                    { type: "assistant_thinking_delta", eventId: "th2", messageId: "thinking-2", delta: "More checks" },
-                    { type: "assistant_thinking_end", eventId: "th2e", messageId: "thinking-2" },
-                ]
+                      { type: "tool_end", eventId: "t2e", toolCallId: "t2", toolName: "read", output: "second file" },
+                      {
+                          type: "assistant_thinking_delta",
+                          eventId: "th2",
+                          messageId: "thinking-2",
+                          delta: "More checks",
+                      },
+                      { type: "assistant_thinking_end", eventId: "th2e", messageId: "thinking-2" },
+                  ]
                 : []),
             { type: "assistant_text_delta", eventId: "a1", messageId: "a1", delta: "Done" },
         ]).filter((item) => item.kind === "activity");
@@ -504,13 +525,25 @@ test("Activity stays open as it grows and only synchronizes Thinking disclosures
         assertEquals(group().props.open, true);
         await act(() => renderer.update(createElement(SessionTimeline, { items: expanded })));
         assertEquals(group().props.open, true);
-        assertEquals(thinking().map((node) => node.props.open), [false, true]);
+        assertEquals(
+            thinking().map((node) => node.props.open),
+            [false, true],
+        );
         assertEquals(tools()[0] === firstTool, true);
-        assertEquals(tools().every((node) => node.props.open === undefined && node.props.onToggle === undefined), true);
+        assertEquals(
+            tools().every((node) => node.props.open === undefined && node.props.onToggle === undefined),
+            true,
+        );
         await toggle(group(), false);
-        assertEquals(thinking().map((node) => node.props.open), [false, false]);
+        assertEquals(
+            thinking().map((node) => node.props.open),
+            [false, false],
+        );
         await toggle(group(), true);
-        assertEquals(thinking().map((node) => node.props.open), [true, true]);
+        assertEquals(
+            thinking().map((node) => node.props.open),
+            [true, true],
+        );
         // Nested toggle events must never change the parent disclosure.
         await act(() => group().props.onToggle({ currentTarget: { open: false }, target: {} }));
         assertEquals(group().props.open, true);
@@ -526,14 +559,20 @@ test("Session timeline keeps trailing or running technical activity visible", ()
         { type: "tool_start", eventId: "t1s", toolCallId: "t1", toolName: "read", title: "read src/app.js" },
         { type: "tool_end", eventId: "t1e", toolCallId: "t1", toolName: "read", output: "full file output" },
     ]);
-    assertEquals(trailing.map((item) => item.kind), ["tool"]);
+    assertEquals(
+        trailing.map((item) => item.kind),
+        ["tool"],
+    );
     assertEquals(compactToolLine(trailing[0]), "read src/app.js");
 
     const running = reduceSessionEvents([
         { type: "tool_start", eventId: "t2s", toolCallId: "t2", toolName: "edit", title: "edit src/app.js" },
         { type: "assistant_text_delta", eventId: "a1", messageId: "a1", delta: "Working." },
     ]);
-    assertEquals(running.map((item) => item.kind), ["tool", "message"]);
+    assertEquals(
+        running.map((item) => item.kind),
+        ["tool", "message"],
+    );
     assertEquals(running[0]?.status, "running");
     assertEquals(compactToolLine(running[0]), "edit src/app.js running");
 });
@@ -580,7 +619,10 @@ test("live Plan attachment updates sidebar state without replacing committed his
     assertEquals(planning.nextCursor, "committed-1");
     assertEquals(planning.generation, 1);
     assertEquals(planning.snapshot.activeAgent, "planner");
-    assertEquals(planning.snapshot.planAssociations.map((item) => item.planId), ["plan-1", "plan-2"]);
+    assertEquals(
+        planning.snapshot.planAssociations.map((item) => item.planId),
+        ["plan-1", "plan-2"],
+    );
     assertEquals(mergeLiveSessionInfo(planning, planning.snapshot).snapshot.planAssociations.length, 2);
     assertEquals(planning.snapshot.thinkingLevel, "high");
     const executing = mergeLiveSessionInfo(planning, {
@@ -620,9 +662,7 @@ test("Session workflow sidebar uses canonical progress stages", async () => {
         buildWorkflowPresentation({
             planName: "plan-demo",
             status: "validated_ci",
-            progressFacts: [
-                { kind: "validation_checkpoint", phase: "semantic", state: "running" },
-            ],
+            progressFacts: [{ kind: "validation_checkpoint", phase: "semantic", state: "running" }],
         }).stages.map((stage) => stage.label),
         ["Planning", "Execution", "Verification Command", "AI review", "Code Review", "Publication", "Completion"],
     );
@@ -713,11 +753,12 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
     let root;
     try {
         for (const key of globals) {
-            const value = key === "window"
-                ? browser
-                : key === "matchMedia"
-                ? (query) => query === "(max-width: 900px)" ? media : browser.matchMedia(query)
-                : browser[key];
+            const value =
+                key === "window"
+                    ? browser
+                    : key === "matchMedia"
+                      ? (query) => (query === "(max-width: 900px)" ? media : browser.matchMedia(query))
+                      : browser[key];
             Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -725,7 +766,7 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
             Promise.resolve().then(() =>
                 String(url).includes("session-options")
                     ? Response.json({ agents: [], models: [], commands: [], defaults: {} })
-                    : Response.json({ state: "idle", generation: 0, events: [], complete: true, snapshot: {} })
+                    : Response.json({ state: "idle", generation: 0, events: [], complete: true, snapshot: {} }),
             );
         root = createRoot(container);
         await act(async () =>
@@ -734,26 +775,32 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
                     projectId: crypto.randomUUID(),
                     runwieldSessionId: crypto.randomUUID(),
                 }),
-            )
+            ),
         );
         const stream = container.querySelector(".session-stream-panel");
         assertEquals(stream?.inert, false);
         await act(() => header.querySelector('[aria-label="Show Session sidebar"]').click());
         assertEquals(stream?.inert, true);
         const tabs = () => [...header.querySelectorAll('[role="tab"]')];
-        assertEquals(tabs().map((tab) => tab.tabIndex), [-1, 0, -1]);
+        assertEquals(
+            tabs().map((tab) => tab.tabIndex),
+            [-1, 0, -1],
+        );
         assertEquals(tabs()[1].getAttribute("aria-controls"), "session-context-panel");
         assertEquals(container.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby"), tabs()[1].id);
         await act(() =>
-            tabs()[1].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+            tabs()[1].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
         );
         assertEquals(tabs()[2].getAttribute("aria-selected"), "true");
-        assertEquals(tabs().map((tab) => tab.tabIndex), [-1, -1, 0]);
+        assertEquals(
+            tabs().map((tab) => tab.tabIndex),
+            [-1, -1, 0],
+        );
         assertEquals(container.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby"), tabs()[2].id);
         await act(() => tabs()[2].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "Home", bubbles: true })));
         assertEquals(tabs()[0].getAttribute("aria-selected"), "true");
         await act(() =>
-            tabs()[0].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))
+            tabs()[0].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })),
         );
         assertEquals(tabs()[2].getAttribute("aria-selected"), "true");
         await act(() => tabs()[2].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "End", bubbles: true })));
@@ -827,8 +874,14 @@ test("review_diff stays collapsed while review_complete is an expanded workflow 
         { type: "tool_end", toolCallId: "read", toolName: "read", output: "Plan requirements" },
         { type: "tool_end", toolCallId: "review", toolName: "review_complete", output: "Review approved." },
     ]);
-    assertEquals(items.map((item) => item.kind), ["activity", "workflow"]);
-    assertEquals(items[0].items.map((item) => item.toolName), ["review_diff", "read"]);
+    assertEquals(
+        items.map((item) => item.kind),
+        ["activity", "workflow"],
+    );
+    assertEquals(
+        items[0].items.map((item) => item.toolName),
+        ["review_diff", "read"],
+    );
     assertEquals(items[1].workflowMessage, "review_complete");
 });
 
@@ -893,7 +946,11 @@ test("all workflow tools remain expanded outside routine activity, with accepted
             type: "tool_end",
             toolCallId: "record",
             toolName: "work_record_completed",
-            details: { title: "Image sending", summary: "Verified in browser and TUI.", deferredWork: "None." },
+            details: {
+                title: "Image sending",
+                summary: "Verified in browser and TUI.",
+                outOfScope: "This work does not include image editing.",
+            },
         },
         {
             type: "tool_end",
@@ -904,7 +961,17 @@ test("all workflow tools remain expanded outside routine activity, with accepted
         },
     ])[0];
     assertEquals(workflowToolMarkdown(workRecord).includes("Verified in browser and TUI."), true);
-    assertEquals(workflowToolMarkdown(workRecord).includes("Deferred work"), true);
+    assertStringIncludes(
+        workflowToolMarkdown(workRecord),
+        "### Out of scope\n\nThis work does not include image editing.",
+    );
+    assertEquals(workflowToolMarkdown(workRecord).includes("Deferred work"), false);
+    const historicalRecord = {
+        toolName: "work_record_completed",
+        details: { summary: "Historical outcome.", deferredWork: "Old scope.", deviationsFromPlan: "Old notes." },
+    };
+    assertStringIncludes(workflowToolMarkdown(historicalRecord), "### Deferred work\n\nOld scope.");
+    assertStringIncludes(workflowToolMarkdown(historicalRecord), "### Deviations from Plan\n\nOld notes.");
     const review = {
         markdown: "Approved.",
         details: { advisories: [{ title: "Follow-up", detail: "Keep this visible." }] },
@@ -931,17 +998,21 @@ test("all workflow tools remain expanded outside routine activity, with accepted
     ]);
     assertEquals(savedChecklist.length, 1);
     assertEquals(savedChecklist[0].workflowMessage, "manual_qa_completed");
-    const artifact = reduceSessionEvents([{
-        type: "tool_end",
-        toolCallId: "artifact",
-        toolName: "artifact_written",
-        output: "Report registered.",
-        details: { artifact: { artifactId: "report-1", title: "Session findings" } },
-    }]);
-    const artifactHtml = renderToStaticMarkup(createElement(SessionTimeline, {
-        items: artifact,
-        sessionPath: "/projects/project-1/sessions/session-1",
-    }));
+    const artifact = reduceSessionEvents([
+        {
+            type: "tool_end",
+            toolCallId: "artifact",
+            toolName: "artifact_written",
+            output: "Report registered.",
+            details: { artifact: { artifactId: "report-1", title: "Session findings" } },
+        },
+    ]);
+    const artifactHtml = renderToStaticMarkup(
+        createElement(SessionTimeline, {
+            items: artifact,
+            sessionPath: "/projects/project-1/sessions/session-1",
+        }),
+    );
     assertEquals(artifactHtml.includes('href="/projects/project-1/sessions/session-1/artifacts/report-1"'), true);
     assertEquals(artifactHtml.includes("Open Session findings"), true);
 });
@@ -952,19 +1023,21 @@ test("Plan deviation card and pair programming card render as Markdown with corr
     const { renderToStaticMarkup } = await import("react-dom/server");
 
     // 1. Plan deviation workflow card from structured details
-    const deviationFromDetails = reduceSessionEvents([{
-        type: "tool_end",
-        toolCallId: "dev-1",
-        toolName: "record_plan_deviation",
-        details: {
-            entry: {
-                supersededRequirement: "Keep monolithic router",
-                replacementRequirement: "Split router into sub-modules",
-                reason: "Improve testability",
-                approvedAt: "2026-10-11T12:00:00Z",
+    const deviationFromDetails = reduceSessionEvents([
+        {
+            type: "tool_end",
+            toolCallId: "dev-1",
+            toolName: "record_plan_deviation",
+            details: {
+                entry: {
+                    supersededRequirement: "Keep monolithic router",
+                    replacementRequirement: "Split router into sub-modules",
+                    reason: "Improve testability",
+                    approvedAt: "2026-10-11T12:00:00Z",
+                },
             },
         },
-    }]);
+    ]);
     assertEquals(deviationFromDetails[0].kind, "workflow");
     const mdDetails = workflowToolMarkdown(deviationFromDetails[0]);
     assertEquals(mdDetails.includes("**Superseded requirement:**\n\nKeep monolithic router"), true);
@@ -986,13 +1059,14 @@ test("Plan deviation card and pair programming card render as Markdown with corr
     assertEquals(htmlDeviationDetails.includes("<p>Split router into sub-modules</p>"), true);
 
     // 2. Plan deviation workflow card from prompt output string
-    const deviationFromString = reduceSessionEvents([{
-        type: "tool_end",
-        toolCallId: "dev-2",
-        toolName: "record_plan_deviation",
-        output:
-            "Plan Deviation recorded in the execution Plan. Reread the effective Plan projection and continue under this replacement.\n\n1. Superseded requirement: Single file\n   Replacement requirement: Multi file\n   Reason: Modular\n   Approved at: 2026-10-11T13:00:00Z",
-    }]);
+    const deviationFromString = reduceSessionEvents([
+        {
+            type: "tool_end",
+            toolCallId: "dev-2",
+            toolName: "record_plan_deviation",
+            output: "Plan Deviation recorded in the execution Plan. Reread the effective Plan projection and continue under this replacement.\n\n1. Superseded requirement: Single file\n   Replacement requirement: Multi file\n   Reason: Modular\n   Approved at: 2026-10-11T13:00:00Z",
+        },
+    ]);
     const mdString = workflowToolMarkdown(deviationFromString[0]);
     assertEquals(mdString.includes("**Superseded requirement:**\n\nSingle file"), true);
     assertEquals(mdString.includes("**Replacement requirement:**\n\nMulti file"), true);
@@ -1010,18 +1084,20 @@ test("Plan deviation card and pair programming card render as Markdown with corr
     assertEquals(htmlDeviationString.includes("<p>Multi file</p>"), true);
 
     // 3. Pair programming workflow card from details
-    const pairFromDetails = reduceSessionEvents([{
-        type: "tool_end",
-        toolCallId: "pair-1",
-        toolName: "pair_checkpoint",
-        details: {
-            checkpointNumber: 2,
-            final: false,
-            summary: "Extracted database adapters.",
-            nextIncrement: "Wire migration tests.",
-            evidence: ["src/adapters/db.ts exists"],
+    const pairFromDetails = reduceSessionEvents([
+        {
+            type: "tool_end",
+            toolCallId: "pair-1",
+            toolName: "pair_checkpoint",
+            details: {
+                checkpointNumber: 2,
+                final: false,
+                summary: "Extracted database adapters.",
+                nextIncrement: "Wire migration tests.",
+                evidence: ["src/adapters/db.ts exists"],
+            },
         },
-    }]);
+    ]);
     const mdPairDetails = workflowToolMarkdown(pairFromDetails[0]);
     assertEquals(mdPairDetails.includes("**Pair checkpoint 2.**"), true);
     assertEquals(mdPairDetails.includes("**Summary**\n\nExtracted database adapters."), true);
@@ -1036,13 +1112,14 @@ test("Plan deviation card and pair programming card render as Markdown with corr
     assertEquals(htmlPairDetails.includes("<p>Wire migration tests.</p>"), true);
 
     // 4. Pair programming workflow card from output string
-    const pairFromString = reduceSessionEvents([{
-        type: "tool_end",
-        toolCallId: "pair-2",
-        toolName: "pair_checkpoint",
-        output:
-            "**Pair checkpoint 1.**\n\nThe folder rename and script updates are ready.\n\nNext increment: Update CI references and documentation.\n\nReply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
-    }]);
+    const pairFromString = reduceSessionEvents([
+        {
+            type: "tool_end",
+            toolCallId: "pair-2",
+            toolName: "pair_checkpoint",
+            output: "**Pair checkpoint 1.**\n\nThe folder rename and script updates are ready.\n\nNext increment: Update CI references and documentation.\n\nReply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
+        },
+    ]);
     const htmlPairString = renderToStaticMarkup(createElement(SessionTimeline, { items: pairFromString }));
     assertEquals(htmlPairString.includes('<strong class="quikdown-strong">Pair checkpoint 1.</strong>'), true);
     assertEquals(htmlPairString.includes("<p>The folder rename and script updates are ready.</p>"), true);
@@ -1050,13 +1127,14 @@ test("Plan deviation card and pair programming card render as Markdown with corr
     assertEquals(htmlPairString.includes("<p>Update CI references and documentation.</p>"), true);
 
     // 5. Plan deviation interaction card
-    const deviationInteraction = reduceSessionEvents([{
-        type: "interaction_requested",
-        interactionId: "dev-confirm-1",
-        interactionType: "plan_deviation_confirmation",
-        prompt:
-            "Confirm this Plan Deviation before I treat it as authority.\n\nSuperseded requirement: Inline CSS styles\n\nReplacement requirement: Design system tokens\n\nReason: Consistent styling\n\nConfirmed text will be saved in the Plan and Work Record.",
-    }]);
+    const deviationInteraction = reduceSessionEvents([
+        {
+            type: "interaction_requested",
+            interactionId: "dev-confirm-1",
+            interactionType: "plan_deviation_confirmation",
+            prompt: "Confirm this Plan Deviation before I treat it as authority.\n\nSuperseded requirement: Inline CSS styles\n\nReplacement requirement: Design system tokens\n\nReason: Consistent styling\n\nConfirmed text will be saved in the Plan and Work Record.",
+        },
+    ]);
     assertEquals(deviationInteraction[0].kind, "interaction");
     const htmlDeviationInteraction = renderToStaticMarkup(
         createElement(SessionTimeline, { items: deviationInteraction }),
@@ -1077,12 +1155,14 @@ test("Plan deviation card and pair programming card render as Markdown with corr
     assertEquals(htmlDeviationInteraction.includes("<p>Consistent styling</p>"), true);
 
     // 6. Pair programming interaction card
-    const pairInteraction = reduceSessionEvents([{
-        type: "interaction_requested",
-        interactionId: "pair-input-1",
-        interactionType: "pair_checkpoint",
-        prompt: "**Pair checkpoint 1.**\n\nStep 1 complete.\n\nNext increment: Step 2 verification.",
-    }]);
+    const pairInteraction = reduceSessionEvents([
+        {
+            type: "interaction_requested",
+            interactionId: "pair-input-1",
+            interactionType: "pair_checkpoint",
+            prompt: "**Pair checkpoint 1.**\n\nStep 1 complete.\n\nNext increment: Step 2 verification.",
+        },
+    ]);
     const htmlPairInteraction = renderToStaticMarkup(createElement(SessionTimeline, { items: pairInteraction }));
     assertEquals(htmlPairInteraction.includes("<strong>Pair checkpoint</strong>"), true);
     assertEquals(htmlPairInteraction.includes('<div class="markdown-view">'), true);
@@ -1117,9 +1197,15 @@ test("Core busy events show Working at the live edge before any assistant output
     assertEquals(items.filter((item) => item.kind === "busy").length, 1);
     assertEquals(items.at(-1).kind, "busy");
     events.push({ type: "busy_changed", busy: false });
-    assertEquals(reduceOperationTransientItems(events).some((item) => item.kind === "busy"), false);
+    assertEquals(
+        reduceOperationTransientItems(events).some((item) => item.kind === "busy"),
+        false,
+    );
     // An old busy event must not turn a reopened transcript into a running Session.
-    assertEquals(reduceSessionEvents(events.slice(0, 2)).some((item) => item.kind === "busy"), false);
+    assertEquals(
+        reduceSessionEvents(events.slice(0, 2)).some((item) => item.kind === "busy"),
+        false,
+    );
     assertEquals(reduceOperationTransientItems([]).length, 0);
 });
 
@@ -1129,9 +1215,10 @@ test("Workspace displays a reported backend denial once", () => {
         { type: "terminal_error", message: "Blocked: read_file", messageAlreadyReported: true },
         { type: "terminal_error", message: "A different failure" },
     ]);
-    assertEquals(items.filter((item) => item.kind === "system-event").map((item) => item.text), [
-        "Blocked: read_file\nA different failure",
-    ]);
+    assertEquals(
+        items.filter((item) => item.kind === "system-event").map((item) => item.text),
+        ["Blocked: read_file\nA different failure"],
+    );
 });
 
 test("Workspace shows a saved provider interruption as history, not a running retry", () => {
@@ -1185,12 +1272,12 @@ test("Session composer preserves drafts across focus changes and shares one Stop
                 createNodeMock(element) {
                     return element.type === "textarea"
                         ? {
-                            style: {},
-                            scrollHeight: 48,
-                            focus() {
-                                focused++;
-                            },
-                        }
+                              style: {},
+                              scrollHeight: 48,
+                              focus() {
+                                  focused++;
+                              },
+                          }
                         : null;
                 },
             });
@@ -1198,9 +1285,9 @@ test("Session composer preserves drafts across focus changes and shares one Stop
         const form = () => renderer.root.findByType("form");
         const textarea = () => renderer.root.findByType("textarea");
         const primary = () =>
-            renderer.root.findAllByType("button").find((button) =>
-                button.props.className?.includes("session-send-button")
-            );
+            renderer.root
+                .findAllByType("button")
+                .find((button) => button.props.className?.includes("session-send-button"));
         const summary = () => renderer.root.findByProps({ className: "session-composer-summary" });
         assertEquals(form().props["data-expanded"], false);
         assertEquals(textarea().props.hidden, true);
@@ -1219,16 +1306,18 @@ test("Session composer preserves drafts across focus changes and shares one Stop
             form().props.onBlurCapture({
                 currentTarget: { contains: (target) => target === settings },
                 relatedTarget: settings,
-            })
+            }),
         );
         assertEquals(form().props["data-expanded"], true);
         await act(() =>
-            renderer.update(createElement(SessionComposer, {
-                ...props,
-                draft: "Keep this draft",
-                canSend: true,
-                imageAttachments: [{ id: "image-1", name: "draft.png", mimeType: "image/png", base64: "aW1n" }],
-            }))
+            renderer.update(
+                createElement(SessionComposer, {
+                    ...props,
+                    draft: "Keep this draft",
+                    canSend: true,
+                    imageAttachments: [{ id: "image-1", name: "draft.png", mimeType: "image/png", base64: "aW1n" }],
+                }),
+            ),
         );
         assertEquals(primary().props["aria-label"], "Send");
         assertEquals(primary().props.type, "submit");
@@ -1245,12 +1334,14 @@ test("Session composer preserves drafts across focus changes and shares one Stop
         await act(() => form().props.onSubmit({ preventDefault() {} }));
         assertEquals(sent, 1);
         await act(() =>
-            renderer.update(createElement(SessionComposer, {
-                ...props,
-                draft: " ",
-                canSend: true,
-                imageAttachments: [{ id: "image-1", name: "draft.png", mimeType: "image/png", base64: "aW1n" }],
-            }))
+            renderer.update(
+                createElement(SessionComposer, {
+                    ...props,
+                    draft: " ",
+                    canSend: true,
+                    imageAttachments: [{ id: "image-1", name: "draft.png", mimeType: "image/png", base64: "aW1n" }],
+                }),
+            ),
         );
         assertEquals(primary().props["aria-label"], "Send");
         await act(() => renderer.update(createElement(SessionComposer, { ...props, draft: " " })));
@@ -1284,45 +1375,38 @@ test("saved and live reports reconcile by call and retain chronological Activity
             toolCallId: `${prefix}-${n}`,
             timestamp: time(minute),
         }));
-    const saved = reduceSessionEvents([
-        ...report("first", "24"),
-        ...tools("saved", "25"),
-        ...report("second", "53"),
-    ]);
-    const live = reduceSessionEvents([
-        ...report("first", "24"),
-        ...tools("saved", "25"),
-        { type: "assistant_thinking_end", messageId: "review-thinking", timestamp: time("28") },
-        ...tools("review", "29"),
-        {
-            type: "assistant_text_delta",
-            workflowMessage: "review_complete",
-            toolCallId: "review",
-            messageId: "review-report",
-            delta: "Repair required",
-            timestamp: time("30"),
-        },
-        ...report("second", "53"),
-    ], { source: "transient" });
+    const saved = reduceSessionEvents([...report("first", "24"), ...tools("saved", "25"), ...report("second", "53")]);
+    const live = reduceSessionEvents(
+        [
+            ...report("first", "24"),
+            ...tools("saved", "25"),
+            { type: "assistant_thinking_end", messageId: "review-thinking", timestamp: time("28") },
+            ...tools("review", "29"),
+            {
+                type: "assistant_text_delta",
+                workflowMessage: "review_complete",
+                toolCallId: "review",
+                messageId: "review-report",
+                delta: "Repair required",
+                timestamp: time("30"),
+            },
+            ...report("second", "53"),
+        ],
+        { source: "transient" },
+    );
     const items = mergeSessionTimelineItems(saved, live);
-    assertEquals(items.map((item) => item.workflowMessage || item.kind), [
-        "task_completed",
-        "activity",
-        "review_complete",
-        "task_completed",
-    ]);
-    assertEquals(items.filter((item) => item.kind === "workflow").map((item) => item.timestamp), [
-        time("24"),
-        time("30"),
-        time("53"),
-    ]);
-    assertEquals(items[1].items.map((item) => item.toolCallId || item.kind), [
-        "saved-1",
-        "saved-2",
-        "thinking",
-        "review-1",
-        "review-2",
-    ]);
+    assertEquals(
+        items.map((item) => item.workflowMessage || item.kind),
+        ["task_completed", "activity", "review_complete", "task_completed"],
+    );
+    assertEquals(
+        items.filter((item) => item.kind === "workflow").map((item) => item.timestamp),
+        [time("24"), time("30"), time("53")],
+    );
+    assertEquals(
+        items[1].items.map((item) => item.toolCallId || item.kind),
+        ["saved-1", "saved-2", "thinking", "review-1", "review-2"],
+    );
     assertEquals(new Set(items[1].items.map((item) => item.key)).size, 5);
 });
 
@@ -1339,17 +1423,17 @@ test("Activity never spans a user message or special report", () => {
         tool("e"),
         { type: "assistant_text_delta", messageId: "reply", delta: "Done" },
     ]);
-    assertEquals(items.map((item) => item.kind), [
-        "activity",
-        "message",
-        "activity",
-        "workflow",
-        "activity",
-        "message",
-    ]);
+    assertEquals(
+        items.map((item) => item.kind),
+        ["activity", "message", "activity", "workflow", "activity", "message"],
+    );
     assertEquals(
         items.filter((item) => item.kind === "activity").map((item) => item.items.map((entry) => entry.kind)),
-        [["tool", "tool"], ["tool", "thinking"], ["tool", "tool"]],
+        [
+            ["tool", "tool"],
+            ["tool", "thinking"],
+            ["tool", "tool"],
+        ],
     );
 });
 
@@ -1377,11 +1461,13 @@ test("nested completion reports keep their call identity and accepted time after
         { type: "tool_end", toolName: "task_completed", toolCallId: "outer", timestamp: time("53") },
         { type: "tool_end", toolName: "task_completed", toolCallId: "inner", timestamp: time("54") },
     ]);
-    assertEquals(items.map((item) => [item.toolCallId, item.markdown, item.timestamp]), [[
-        "outer",
-        "Outer report",
-        time("25"),
-    ], ["inner", "Inner report", time("26")]]);
+    assertEquals(
+        items.map((item) => [item.toolCallId, item.markdown, item.timestamp]),
+        [
+            ["outer", "Outer report", time("25")],
+            ["inner", "Inner report", time("26")],
+        ],
+    );
 });
 
 test("live updates finish saved running tools without dropping later repeated user text", () => {
@@ -1389,13 +1475,25 @@ test("live updates finish saved running tools without dropping later repeated us
         { type: "user_message", messageId: "saved-user", text: "Continue", timestamp: "2026-09-19T20:00:01Z" },
         { type: "tool_start", toolCallId: "call", toolName: "read", timestamp: "2026-09-19T20:01:00Z" },
     ]);
-    const live = reduceSessionEvents([
-        { type: "user_message", messageId: "live-user", text: "Continue", timestamp: "2026-09-19T20:00:00Z" },
-        { type: "tool_end", toolCallId: "call", toolName: "read", output: "Result", timestamp: "2026-09-19T20:02:00Z" },
-        { type: "user_message", messageId: "later-user", text: "Continue", timestamp: "2026-09-19T20:03:00Z" },
-    ], { source: "transient" });
+    const live = reduceSessionEvents(
+        [
+            { type: "user_message", messageId: "live-user", text: "Continue", timestamp: "2026-09-19T20:00:00Z" },
+            {
+                type: "tool_end",
+                toolCallId: "call",
+                toolName: "read",
+                output: "Result",
+                timestamp: "2026-09-19T20:02:00Z",
+            },
+            { type: "user_message", messageId: "later-user", text: "Continue", timestamp: "2026-09-19T20:03:00Z" },
+        ],
+        { source: "transient" },
+    );
     const items = mergeSessionTimelineItems(saved, live);
-    assertEquals(items.map((item) => item.kind), ["message", "tool", "message"]);
+    assertEquals(
+        items.map((item) => item.kind),
+        ["message", "tool", "message"],
+    );
     assertEquals(items[1].status, "completed");
     assertEquals(items[1].output, "Result");
     assertEquals(items[2].timestamp, "2026-09-19T20:03:00Z");
@@ -1439,11 +1537,12 @@ test("Workflow Resume submits the committed version and reports progress and err
     let root;
     try {
         for (const key of globals) {
-            const value = key === "window"
-                ? browser
-                : key === "matchMedia"
-                ? (query) => query === "(max-width: 900px)" ? media : browser.matchMedia(query)
-                : browser[key];
+            const value =
+                key === "window"
+                    ? browser
+                    : key === "matchMedia"
+                      ? (query) => (query === "(max-width: 900px)" ? media : browser.matchMedia(query))
+                      : browser[key];
             Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -1471,17 +1570,19 @@ test("Workflow Resume submits the committed version and reports progress and err
                 return Promise.resolve(Response.json({ agents: [], models: [], commands: [], defaults: {} }));
             }
             if (path.includes("/timeline?")) timelineReads++;
-            return Promise.resolve(Response.json({
-                state: "idle",
-                plan: { status: planStatus },
-                canResume: true,
-                generation,
-                events: [],
-                complete: true,
-                snapshot: {
-                    workflowContext: { planId: "repair-plan", planName: "Repair Plan" },
-                },
-            }));
+            return Promise.resolve(
+                Response.json({
+                    state: "idle",
+                    plan: { status: planStatus },
+                    canResume: true,
+                    generation,
+                    events: [],
+                    complete: true,
+                    snapshot: {
+                        workflowContext: { planId: "repair-plan", planName: "Repair Plan" },
+                    },
+                }),
+            );
         };
         root = createRoot(container);
         await act(async () =>
@@ -1490,7 +1591,7 @@ test("Workflow Resume submits the committed version and reports progress and err
                     projectId: crypto.randomUUID(),
                     runwieldSessionId: crypto.randomUUID(),
                 }),
-            )
+            ),
         );
         await act(() => header.querySelector('[aria-label="Show Session sidebar"]').click());
         const sidebar = () => container.querySelector('[aria-label="Workflow"]');
@@ -1515,7 +1616,7 @@ test("Workflow Resume submits the committed version and reports progress and err
         await act(() => resume().click());
         assertEquals(submissions[1].expectedGeneration, 8);
         await act(() =>
-            settle(Response.json({ error: "Session is busy. Try again when the turn finishes." }, { status: 409 }))
+            settle(Response.json({ error: "Session is busy. Try again when the turn finishes." }, { status: 409 })),
         );
         assertEquals(resume().disabled, false);
         assertStringIncludes(sidebar().querySelector('[role="alert"]').textContent, "Session is busy");
@@ -1525,16 +1626,23 @@ test("Workflow Resume submits the committed version and reports progress and err
                 operationId: "resumed-validation",
                 status: "running",
                 remote: true,
-                events: [{
-                    type: "system_status",
-                    message: "Running the tests in the execution worktree.",
-                    validationProgress: {
-                        kind: "workflow",
-                        outcome: "running",
-                        stage: "ci",
-                        checks: { ci: "running", semanticReview: "pending", humanReview: "pending", merge: "pending" },
+                events: [
+                    {
+                        type: "system_status",
+                        message: "Running the tests in the execution worktree.",
+                        validationProgress: {
+                            kind: "workflow",
+                            outcome: "running",
+                            stage: "ci",
+                            checks: {
+                                ci: "running",
+                                semanticReview: "pending",
+                                humanReview: "pending",
+                                merge: "pending",
+                            },
+                        },
                     },
-                }],
+                ],
             };
             globalThis.dispatchEvent(new Event("focus"));
         });
@@ -1548,11 +1656,13 @@ test("Workflow Resume submits the committed version and reports progress and err
         liveOperation = null;
         planStatus = "ready_for_work";
         await act(async () =>
-            root.render((await import("react")).createElement(SessionSurface, {
-                key: "saved-plan",
-                projectId: "project",
-                runwieldSessionId: "saved-session",
-            }))
+            root.render(
+                (await import("react")).createElement(SessionSurface, {
+                    key: "saved-plan",
+                    projectId: "project",
+                    runwieldSessionId: "saved-session",
+                }),
+            ),
         );
         await act(() => header.querySelector('[aria-label="Show Session sidebar"]').click());
         assertEquals(resume().textContent, "Review Plan");
@@ -1618,11 +1728,12 @@ test("mobile Answer agent reveals the waiting question", async () => {
     let root;
     try {
         for (const key of globals) {
-            const value = key === "window"
-                ? browser
-                : key === "matchMedia"
-                ? (query) => query === "(max-width: 900px)" ? media : browser.matchMedia(query)
-                : browser[key];
+            const value =
+                key === "window"
+                    ? browser
+                    : key === "matchMedia"
+                      ? (query) => (query === "(max-width: 900px)" ? media : browser.matchMedia(query))
+                      : browser[key];
             Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -1646,17 +1757,19 @@ test("mobile Answer agent reveals the waiting question", async () => {
             if (path.includes("session-options")) {
                 return Promise.resolve(Response.json({ agents: [], models: [], commands: [], defaults: {} }));
             }
-            return Promise.resolve(Response.json({
-                state: "idle",
-                plan: { status: planStatus },
-                canResume: true,
-                generation,
-                events: [],
-                complete: true,
-                snapshot: {
-                    workflowContext: { planId: "repair-plan", planName: "Repair Plan" },
-                },
-            }));
+            return Promise.resolve(
+                Response.json({
+                    state: "idle",
+                    plan: { status: planStatus },
+                    canResume: true,
+                    generation,
+                    events: [],
+                    complete: true,
+                    snapshot: {
+                        workflowContext: { planId: "repair-plan", planName: "Repair Plan" },
+                    },
+                }),
+            );
         };
         root = createRoot(container);
         await act(async () =>
@@ -1665,7 +1778,7 @@ test("mobile Answer agent reveals the waiting question", async () => {
                     projectId: crypto.randomUUID(),
                     runwieldSessionId: crypto.randomUUID(),
                 }),
-            )
+            ),
         );
         await act(() => header.querySelector('[aria-label="Show Session sidebar"]').click());
         const sidebar = () => container.querySelector('[aria-label="Workflow"]');
@@ -1714,11 +1827,8 @@ test("New Session selects a registered Project by route and creates only with de
             Object.defineProperty(globalThis, key, {
                 configurable: true,
                 writable: true,
-                value: key === "window"
-                    ? browser
-                    : key === "matchMedia"
-                    ? browser.matchMedia.bind(browser)
-                    : browser[key],
+                value:
+                    key === "window" ? browser : key === "matchMedia" ? browser.matchMedia.bind(browser) : browser[key],
             });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -1740,21 +1850,25 @@ test("New Session selects a registered Project by route and creates only with de
                 );
             }
             if (path === "/api/owner/projects") {
-                return Promise.resolve(Response.json({
-                    projects: [
-                        { projectId: "project-a", displayName: "A", enabled: true },
-                        { projectId: "project-b", displayName: "B", enabled: true },
-                        { projectId: "disabled", displayName: "Disabled", enabled: false },
-                    ],
-                }));
+                return Promise.resolve(
+                    Response.json({
+                        projects: [
+                            { projectId: "project-a", displayName: "A", enabled: true },
+                            { projectId: "project-b", displayName: "B", enabled: true },
+                            { projectId: "disabled", displayName: "Disabled", enabled: false },
+                        ],
+                    }),
+                );
             }
             if (path.includes("session-options")) {
-                return Promise.resolve(Response.json({
-                    agents: [{ name: path.includes("project-b") ? "guide" : "router", displayName: "Agent" }],
-                    models: [],
-                    thinkingLevels: [],
-                    defaults: { agentName: path.includes("project-b") ? "guide" : "router" },
-                }));
+                return Promise.resolve(
+                    Response.json({
+                        agents: [{ name: path.includes("project-b") ? "guide" : "router", displayName: "Agent" }],
+                        models: [],
+                        thinkingLevels: [],
+                        defaults: { agentName: path.includes("project-b") ? "guide" : "router" },
+                    }),
+                );
             }
             if (path.includes("session-operations")) {
                 return Promise.resolve(Response.json({ status: "running", events: [] }));
@@ -1768,7 +1882,9 @@ test("New Session selects a registered Project by route and creates only with de
         const composer = () => renderer.root.findByType(SessionComposer);
         assertEquals(choice().props.value, "project-a");
         assertEquals(
-            choice().props.children.flat(Infinity).some((option) => option?.props?.value === "disabled"),
+            choice()
+                .props.children.flat(Infinity)
+                .some((option) => option?.props?.value === "disabled"),
             false,
         );
         assertEquals(composer().props.disabled, false);
@@ -1799,7 +1915,10 @@ test("New Session selects a registered Project by route and creates only with de
         await act(async () => {
             await composer().props.onSubmit();
         });
-        assertEquals(posts.map((item) => item.path), ["/api/owner/projects/project-b/sessions"]);
+        assertEquals(
+            posts.map((item) => item.path),
+            ["/api/owner/projects/project-b/sessions"],
+        );
         assertEquals(posts[0].body.agentName, "guide");
         assertEquals(posts[0].body.model, "");
         assertEquals(renderer.root.findAllByProps({ id: "new-session-project" }).length, 0);
@@ -1843,11 +1962,8 @@ async function withNewSessionSurface(run, fetchResponse = defaultNewSessionRespo
             Object.defineProperty(globalThis, key, {
                 configurable: true,
                 writable: true,
-                value: key === "window"
-                    ? browser
-                    : key === "matchMedia"
-                    ? browser.matchMedia.bind(browser)
-                    : browser[key],
+                value:
+                    key === "window" ? browser : key === "matchMedia" ? browser.matchMedia.bind(browser) : browser[key],
             });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -1900,25 +2016,28 @@ function deferredResponse() {
 test("New Session ignores a late create response after opening another surface", async () => {
     const pending = deferredResponse();
     const navigations = [];
-    await withNewSessionSurface(async ({ mount, composer, act }) => {
-        document.addEventListener("runwield:workspace-navigate", (event) => {
-            event.preventDefault();
-            navigations.push(event.detail.href);
-        });
-        await mount();
-        await act(() => composer().props.onDraftChange("Start A"));
-        let send;
-        await act(() => {
-            send = composer().props.onSubmit();
-        });
-        await mount("project-b"); // Sidebar navigation unmounts A before its POST settles.
-        await act(async () => {
-            pending.resolve(Response.json({ runwieldSessionId: "a-session" }, { status: 202 }));
-            await send;
-        });
-        assertEquals(navigations, []);
-        assertEquals(composer().props.disabled, false);
-    }, (url, options) => options.method === "POST" ? pending.promise : defaultNewSessionResponse(url));
+    await withNewSessionSurface(
+        async ({ mount, composer, act }) => {
+            document.addEventListener("runwield:workspace-navigate", (event) => {
+                event.preventDefault();
+                navigations.push(event.detail.href);
+            });
+            await mount();
+            await act(() => composer().props.onDraftChange("Start A"));
+            let send;
+            await act(() => {
+                send = composer().props.onSubmit();
+            });
+            await mount("project-b"); // Sidebar navigation unmounts A before its POST settles.
+            await act(async () => {
+                pending.resolve(Response.json({ runwieldSessionId: "a-session" }, { status: 202 }));
+                await send;
+            });
+            assertEquals(navigations, []);
+            assertEquals(composer().props.disabled, false);
+        },
+        (url, options) => (options.method === "POST" ? pending.promise : defaultNewSessionResponse(url)),
+    );
 });
 
 function defaultNewSessionResponse(url) {
@@ -1985,23 +2104,25 @@ test("New Session waits for reads and ignores stale Project options", async () =
             assertEquals(composer().props.disabled, true);
             await mount("project-b");
             await act(() =>
-                optionsB.resolve(Response.json({ agents: [{ name: "guide" }], defaults: { agentName: "guide" } }))
+                optionsB.resolve(Response.json({ agents: [{ name: "guide" }], defaults: { agentName: "guide" } })),
             );
             assertEquals(composer().props.agentValue, "guide");
             assertEquals(composer().props.disabled, false);
             await act(() =>
-                optionsA.resolve(Response.json({ agents: [{ name: "old" }], defaults: { agentName: "old" } }))
+                optionsA.resolve(Response.json({ agents: [{ name: "old" }], defaults: { agentName: "old" } })),
             );
             assertEquals(composer().props.agentValue, "guide");
         },
         (url) =>
             url === "/api/owner/projects"
-                ? ++projectReads === 1 ? projects.promise : defaultNewSessionResponse(url)
+                ? ++projectReads === 1
+                    ? projects.promise
+                    : defaultNewSessionResponse(url)
                 : url.includes("project-a/session-options")
-                ? optionsA.promise
-                : url.includes("project-b/session-options")
-                ? optionsB.promise
-                : defaultNewSessionResponse(url),
+                  ? optionsA.promise
+                  : url.includes("project-b/session-options")
+                    ? optionsB.promise
+                    : defaultNewSessionResponse(url),
     );
 });
 
@@ -2017,16 +2138,16 @@ test("New Session read failures offer Retry without sending or losing a draft", 
             assertEquals(composer().props.disabled, true);
             assertStringIncludes(JSON.stringify(surface.renderer.toJSON()), "Projects could not load");
             projectsFails = false;
-            const retryProjects = surface.renderer.root.findAllByType("button").find((button) =>
-                button.props.children === "Retry" && button.parent?.props.role === "alert"
-            );
+            const retryProjects = surface.renderer.root
+                .findAllByType("button")
+                .find((button) => button.props.children === "Retry" && button.parent?.props.role === "alert");
             await act(() => retryProjects.props.onClick());
             assertEquals(choice().props.disabled, true);
             assertStringIncludes(JSON.stringify(surface.renderer.toJSON()), "Session settings could not load");
             optionsFails = false;
-            const retryOptions = surface.renderer.root.findAllByType("button").find((button) =>
-                button.props.children === "Retry"
-            );
+            const retryOptions = surface.renderer.root
+                .findAllByType("button")
+                .find((button) => button.props.children === "Retry");
             await act(() => retryOptions.props.onClick());
             assertEquals(composer().props.draft, "keep me");
             assertEquals(composer().props.disabled, false);
@@ -2035,45 +2156,48 @@ test("New Session read failures offer Retry without sending or losing a draft", 
             url === "/api/owner/projects" && projectsFails
                 ? Promise.reject(new Error("offline"))
                 : url.includes("session-options") && optionsFails
-                ? Promise.reject(new Error("offline"))
-                : defaultNewSessionResponse(url),
+                  ? Promise.reject(new Error("offline"))
+                  : defaultNewSessionResponse(url),
     );
 });
 
 test("New Session pending and network-error retry stay bound to the original Project", async () => {
     const pending = deferredResponse();
     const posts = [];
-    await withNewSessionSurface(async ({ mount, choice, composer, act }) => {
-        await mount("project-b");
-        await act(() => composer().props.onDraftChange("Retry B"));
-        let send;
-        await act(() => {
-            send = composer().props.onSubmit();
-        });
-        assertEquals(choice().props.disabled, true);
-        assertEquals(composer().props.disabled, true);
-        await act(async () => {
-            pending.reject(new Error("network lost"));
-            await send;
-        });
-        assertEquals(choice().props.disabled, true);
-        assertEquals(composer().props.draft, "Retry B");
-        await act(() => composer().props.onDraftChange(""));
-        assertEquals(choice().props.disabled, true);
-        await act(() => composer().props.onDraftChange("Retry B"));
-        await act(() => composer().props.onSubmit());
-        assertEquals(posts.length, 2);
-        assertEquals(posts[0].url, "/api/owner/projects/project-b/sessions");
-        assertEquals(posts[1].url, posts[0].url);
-        assertEquals(posts[1].body.requestId, posts[0].body.requestId);
-        assertEquals(choice(), undefined);
-    }, (url, options) => {
-        if (options.method !== "POST") return defaultNewSessionResponse(url);
-        posts.push({ url, body: JSON.parse(options.body) });
-        return posts.length === 1
-            ? pending.promise
-            : Response.json({ operationId: "accepted-b", status: "running" }, { status: 202 });
-    });
+    await withNewSessionSurface(
+        async ({ mount, choice, composer, act }) => {
+            await mount("project-b");
+            await act(() => composer().props.onDraftChange("Retry B"));
+            let send;
+            await act(() => {
+                send = composer().props.onSubmit();
+            });
+            assertEquals(choice().props.disabled, true);
+            assertEquals(composer().props.disabled, true);
+            await act(async () => {
+                pending.reject(new Error("network lost"));
+                await send;
+            });
+            assertEquals(choice().props.disabled, true);
+            assertEquals(composer().props.draft, "Retry B");
+            await act(() => composer().props.onDraftChange(""));
+            assertEquals(choice().props.disabled, true);
+            await act(() => composer().props.onDraftChange("Retry B"));
+            await act(() => composer().props.onSubmit());
+            assertEquals(posts.length, 2);
+            assertEquals(posts[0].url, "/api/owner/projects/project-b/sessions");
+            assertEquals(posts[1].url, posts[0].url);
+            assertEquals(posts[1].body.requestId, posts[0].body.requestId);
+            assertEquals(choice(), undefined);
+        },
+        (url, options) => {
+            if (options.method !== "POST") return defaultNewSessionResponse(url);
+            posts.push({ url, body: JSON.parse(options.body) });
+            return posts.length === 1
+                ? pending.promise
+                : Response.json({ operationId: "accepted-b", status: "running" }, { status: 202 });
+        },
+    );
 });
 
 test("New Session HTTP 422 preserves the editable draft and Project", async () => {
@@ -2105,11 +2229,11 @@ test("New Session ignores late Project choices from an unmounted surface", async
             await mount("project-b");
             assertEquals(choice().props.value, "project-b");
             await act(() =>
-                oldProjects.resolve(Response.json({
-                    projects: [
-                        { projectId: "project-a", displayName: "A", enabled: true },
-                    ],
-                }))
+                oldProjects.resolve(
+                    Response.json({
+                        projects: [{ projectId: "project-a", displayName: "A", enabled: true }],
+                    }),
+                ),
             );
             assertEquals(choice().props.value, "project-b");
             assertEquals(composer().props.disabled, false);
@@ -2131,91 +2255,100 @@ test("New Session fallback does not overlap a slow operation read", async () => 
     const pending = deferredResponse();
     const reads = [];
     let stream;
-    await withNewSessionSurface(async (surface) => {
-        globalThis.EventSource = class {
-            constructor() {
-                stream = this;
+    await withNewSessionSurface(
+        async (surface) => {
+            globalThis.EventSource = class {
+                constructor() {
+                    stream = this;
+                }
+                close() {}
+            };
+            await startObservedNewSession(surface);
+            // A broken stream switches the mounted surface to the HTTP fallback.
+            await surface.act(() => stream.onerror());
+            assertEquals(reads.length, 1);
+            await new Promise((resolve) => setTimeout(resolve, 1650));
+            assertEquals(reads.length, 1);
+            await surface.act(() => pending.resolve(Response.json({ status: "running", events: [] })));
+            await new Promise((resolve) => setTimeout(resolve, 1650));
+            assertEquals(reads.length >= 2, true);
+        },
+        (url, options) => {
+            if (options.method === "POST") {
+                return Response.json({ operationId: "slow-operation", status: "running" }, { status: 202 });
             }
-            close() {}
-        };
-        await startObservedNewSession(surface);
-        // A broken stream switches the mounted surface to the HTTP fallback.
-        await surface.act(() => stream.onerror());
-        assertEquals(reads.length, 1);
-        await new Promise((resolve) => setTimeout(resolve, 1650));
-        assertEquals(reads.length, 1);
-        await surface.act(() => pending.resolve(Response.json({ status: "running", events: [] })));
-        await new Promise((resolve) => setTimeout(resolve, 1650));
-        assertEquals(reads.length >= 2, true);
-    }, (url, options) => {
-        if (options.method === "POST") {
-            return Response.json({ operationId: "slow-operation", status: "running" }, { status: 202 });
-        }
-        if (url === "/api/owner/session-operations/slow-operation") {
-            reads.push(options.signal);
-            return reads.length === 1 ? pending.promise : Response.json({ status: "running", events: [] });
-        }
-        return defaultNewSessionResponse(url);
-    });
+            if (url === "/api/owner/session-operations/slow-operation") {
+                reads.push(options.signal);
+                return reads.length === 1 ? pending.promise : Response.json({ status: "running", events: [] });
+            }
+            return defaultNewSessionResponse(url);
+        },
+    );
 });
 
 test("New Session abandons an old fallback read on navigation and unmount", async () => {
     const pending = deferredResponse();
     const reads = [];
     let stream;
-    await withNewSessionSurface(async (surface) => {
-        globalThis.EventSource = class {
-            constructor() {
-                stream = this;
+    await withNewSessionSurface(
+        async (surface) => {
+            globalThis.EventSource = class {
+                constructor() {
+                    stream = this;
+                }
+                close() {}
+            };
+            await startObservedNewSession(surface);
+            await surface.act(() => stream.onerror());
+            assertEquals(reads.length, 1);
+            await surface.mount("project-b");
+            assertEquals(reads[0].aborted, true);
+            await surface.act(() => pending.resolve(Response.json({ status: "unknown", events: [] })));
+            assertEquals(surface.composer().props.disabled, false);
+            assertEquals(JSON.stringify(surface.renderer.toJSON()).includes("interrupted"), false);
+        },
+        (url, options) => {
+            if (options.method === "POST") {
+                return Response.json({ operationId: "old-operation", status: "running" }, { status: 202 });
             }
-            close() {}
-        };
-        await startObservedNewSession(surface);
-        await surface.act(() => stream.onerror());
-        assertEquals(reads.length, 1);
-        await surface.mount("project-b");
-        assertEquals(reads[0].aborted, true);
-        await surface.act(() => pending.resolve(Response.json({ status: "unknown", events: [] })));
-        assertEquals(surface.composer().props.disabled, false);
-        assertEquals(JSON.stringify(surface.renderer.toJSON()).includes("interrupted"), false);
-    }, (url, options) => {
-        if (options.method === "POST") {
-            return Response.json({ operationId: "old-operation", status: "running" }, { status: 202 });
-        }
-        if (url === "/api/owner/session-operations/old-operation") {
-            reads.push(options.signal);
-            return pending.promise;
-        }
-        return defaultNewSessionResponse(url);
-    });
+            if (url === "/api/owner/session-operations/old-operation") {
+                reads.push(options.signal);
+                return pending.promise;
+            }
+            return defaultNewSessionResponse(url);
+        },
+    );
 });
 
 test("New Session terminal stream message followed by error does not report an interruption", async () => {
     const streams = [];
     const reads = [];
-    await withNewSessionSurface(async (surface) => {
-        globalThis.EventSource = class {
-            constructor() {
-                streams.push(this);
+    await withNewSessionSurface(
+        async (surface) => {
+            globalThis.EventSource = class {
+                constructor() {
+                    streams.push(this);
+                }
+                close() {}
+            };
+            await startObservedNewSession(surface);
+            assertEquals(streams.length, 1);
+            await surface.act(() => {
+                streams[0].onmessage({ data: JSON.stringify({ status: "completed", events: [] }) });
+                streams[0].onerror();
+            });
+            await new Promise((resolve) => setTimeout(resolve, 1650));
+            assertEquals(reads, []);
+            assertEquals(JSON.stringify(surface.renderer.toJSON()).includes("interrupted"), false);
+        },
+        (url, options) => {
+            if (options.method === "POST") {
+                return Response.json({ operationId: "finished-operation", status: "running" }, { status: 202 });
             }
-            close() {}
-        };
-        await startObservedNewSession(surface);
-        assertEquals(streams.length, 1);
-        await surface.act(() => {
-            streams[0].onmessage({ data: JSON.stringify({ status: "completed", events: [] }) });
-            streams[0].onerror();
-        });
-        await new Promise((resolve) => setTimeout(resolve, 1650));
-        assertEquals(reads, []);
-        assertEquals(JSON.stringify(surface.renderer.toJSON()).includes("interrupted"), false);
-    }, (url, options) => {
-        if (options.method === "POST") {
-            return Response.json({ operationId: "finished-operation", status: "running" }, { status: 202 });
-        }
-        if (url.includes("session-operations")) reads.push(url);
-        return defaultNewSessionResponse(url);
-    });
+            if (url.includes("session-operations")) reads.push(url);
+            return defaultNewSessionResponse(url);
+        },
+    );
 });
 
 test("Session history confirms busy archive before any request and guards duplicate actions", async () => {
@@ -2253,9 +2386,9 @@ test("Session history confirms busy archive before any request and guards duplic
             );
         });
         const archive = () =>
-            renderer.root.findAllByType("button").find((button) =>
-                button.props["aria-label"] === "Archive Busy Session"
-            );
+            renderer.root
+                .findAllByType("button")
+                .find((button) => button.props["aria-label"] === "Archive Busy Session");
         await act(async () => {
             await archive().props.onClick();
         });
@@ -2384,12 +2517,14 @@ test("Archived Sessions fetches the selected page and keeps saved links when Una
             const page = Number(query.get("page"));
             return Promise.resolve(
                 Response.json({
-                    sessions: [{
-                        runwieldSessionId: `saved-${page}`,
-                        displayName: `Saved ${page}`,
-                        archivedAt: "2026-10-02",
-                        state: "idle",
-                    }],
+                    sessions: [
+                        {
+                            runwieldSessionId: `saved-${page}`,
+                            displayName: `Saved ${page}`,
+                            archivedAt: "2026-10-02",
+                            state: "idle",
+                        },
+                    ],
                     page,
                     pageSize: 30,
                     total: 31,
@@ -2408,9 +2543,10 @@ test("Archived Sessions fetches the selected page and keeps saved links when Una
         assertEquals(reads[1], { archiveState: "archived", page: "1" });
         assertEquals(byText("Next 30").props.disabled, true);
         await act(async () => {
-            await renderer.root.findAllByType("button").find((button) =>
-                button.props["aria-label"] === "Unarchive Saved 1"
-            ).props.onClick();
+            await renderer.root
+                .findAllByType("button")
+                .find((button) => button.props["aria-label"] === "Unarchive Saved 1")
+                .props.onClick();
         });
         assertEquals(
             renderer.root.findAllByType("a").some((link) => link.props.href === "/projects/p/sessions/saved-1"),
@@ -2462,7 +2598,7 @@ test("fresh Session history restores a previously removed ID and empty later pag
         await act(() =>
             renderer.update(
                 createElement(SessionList, { projectId: "p", data: { ...data, sessions: [...data.sessions] } }),
-            )
+            ),
         );
         assertEquals(renderer.root.findAllByProps({ className: "session-list-name" }).length, 1);
     } finally {
@@ -2493,9 +2629,12 @@ test("Plan Session archive keeps the row and switches its action; stale idle bus
             requests.push({ url: String(url), body: JSON.parse(options.body) });
             return Promise.resolve(
                 requests.length === 1
-                    ? Response.json({ error: "This Session is busy. Confirm to stop its work and archive it." }, {
-                        status: 409,
-                    })
+                    ? Response.json(
+                          { error: "This Session is busy. Confirm to stop its work and archive it." },
+                          {
+                              status: 409,
+                          },
+                      )
                     : Response.json({}),
             );
         };
@@ -2511,9 +2650,9 @@ test("Plan Session archive keeps the row and switches its action; stale idle bus
             );
         });
         const action = () =>
-            renderer.root.findAllByType("button").find((button) =>
-                button.props["aria-label"]?.includes("Plan Session")
-            );
+            renderer.root
+                .findAllByType("button")
+                .find((button) => button.props["aria-label"]?.includes("Plan Session"));
         await act(async () => {
             await action().props.onClick();
         });
@@ -2571,11 +2710,12 @@ for (const surface of ["archived", "history"]) {
             for (const key of keys) {
                 Object.defineProperty(globalThis, key, {
                     configurable: true,
-                    value: key === "window"
-                        ? browser
-                        : key === "matchMedia"
-                        ? browser.matchMedia.bind(browser)
-                        : browser[key],
+                    value:
+                        key === "window"
+                            ? browser
+                            : key === "matchMedia"
+                              ? browser.matchMedia.bind(browser)
+                              : browser[key],
                 });
             }
             globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -2586,7 +2726,7 @@ for (const surface of ["archived", "history"]) {
                         settle.push(() => {
                             removed.add(String(url).split("/").at(-2));
                             resolve(Response.json({}));
-                        })
+                        }),
                     );
                 }
                 const page = Number(new URL(String(url), "http://localhost").searchParams.get("page"));
@@ -2616,17 +2756,21 @@ for (const surface of ["archived", "history"]) {
                 );
             });
             await act(() => {
-                renderer.root.findAllByType("button").find((button) => button.children.join("").includes("Next")).props
-                    .onClick();
+                renderer.root
+                    .findAllByType("button")
+                    .find((button) => button.children.join("").includes("Next"))
+                    .props.onClick();
             });
             let one, two;
             await act(() => {
-                one = renderer.root.findAllByType("button").find((button) =>
-                    button.props["aria-label"]?.endsWith("last-one")
-                ).props.onClick();
-                two = renderer.root.findAllByType("button").find((button) =>
-                    button.props["aria-label"]?.endsWith("last-two")
-                ).props.onClick();
+                one = renderer.root
+                    .findAllByType("button")
+                    .find((button) => button.props["aria-label"]?.endsWith("last-one"))
+                    .props.onClick();
+                two = renderer.root
+                    .findAllByType("button")
+                    .find((button) => button.props["aria-label"]?.endsWith("last-two"))
+                    .props.onClick();
             });
             await act(async () => {
                 settle.forEach((resolve) => resolve());
@@ -2675,22 +2819,29 @@ test("Session composer removes mascot markup and keeps controls when hidden", as
 test("New Session honors loaded mascot options without flashing while loading", async () => {
     for (const mascot of [false, undefined]) {
         const options = deferredResponse();
-        await withNewSessionSurface(async ({ mount, composer, act }) => {
-            await mount();
-            assertEquals(composer().props.mascotVisible, false);
-            await act(() =>
-                options.resolve(Response.json({
-                    mascot,
-                    agents: [],
-                    models: [],
-                    defaults: { agentName: "router" },
-                }))
-            );
-            assertEquals(composer().props.mascotVisible, mascot !== false);
-            assertEquals(
-                composer().findAllByType("svg").some((node) => node.props["data-agent-mascot"]),
-                mascot !== false,
-            );
-        }, (url) => url.includes("session-options") ? options.promise : defaultNewSessionResponse(url));
+        await withNewSessionSurface(
+            async ({ mount, composer, act }) => {
+                await mount();
+                assertEquals(composer().props.mascotVisible, false);
+                await act(() =>
+                    options.resolve(
+                        Response.json({
+                            mascot,
+                            agents: [],
+                            models: [],
+                            defaults: { agentName: "router" },
+                        }),
+                    ),
+                );
+                assertEquals(composer().props.mascotVisible, mascot !== false);
+                assertEquals(
+                    composer()
+                        .findAllByType("svg")
+                        .some((node) => node.props["data-agent-mascot"]),
+                    mascot !== false,
+                );
+            },
+            (url) => (url.includes("session-options") ? options.promise : defaultNewSessionResponse(url)),
+        );
     }
 });

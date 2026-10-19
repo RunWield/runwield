@@ -190,7 +190,7 @@ export async function readEpicDeliveryState(
 ): Promise<EpicDeliveryState | null> {
     if (!(await isGitRepository(projectRoot))) return null;
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
-    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
+    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName, { readOnly: true });
     const epic = location.plan;
     if (!epic || epic.attrs.classification !== "PROJECT" || epic.attrs.type === "sequence") return null;
     const branch = epicBranchOf(epic.attrs);

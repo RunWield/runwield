@@ -36,31 +36,31 @@ behavior.
 ## Before You Write
 
 1. **Discover the project's conventions**
-   - Read existing tests to identify framework, assertion style, file naming, and fixture patterns.
-   - Check project configuration files (package manager, build scripts, test runner config).
-   - If the project has a memory store, recall testing preferences.
-   - If framework-specific skills exist in the project or user's global skills (e.g., `playwright`, `pytest`, `vitest`),
-     load them for detailed guidance.
+    - Read existing tests to identify framework, assertion style, file naming, and fixture patterns.
+    - Check project configuration files (package manager, build scripts, test runner config).
+    - If the project has a memory store, recall testing preferences.
+    - If framework-specific skills exist in the project or user's global skills (e.g., `playwright`, `pytest`, `vitest`),
+      load them for detailed guidance.
 
 2. **Understand what to test**
-   - Read the implementation code. Identify the public API or module contract.
-   - Prioritize: happy path first, then edge cases, then error handling.
-   - Do not invent tests for behaviors that were not requested unless they protect against evidenced regression risk.
-   - One test = one focused behavior. Do not combine multiple scenarios into a single assertion block.
+    - Read the implementation code. Identify the public API or module contract.
+    - Prioritize: happy path first, then edge cases, then error handling.
+    - Do not invent tests for behaviors that were not requested unless they protect against evidenced regression risk.
+    - One test = one focused behavior. Do not combine multiple scenarios into a single assertion block.
 
 3. **Shape the test module around one behavioral domain**
-   - Before appending to an existing file, inspect what contracts it already owns and whether it is becoming a
-     mixed-responsibility or serial-critical module.
-   - Group tests by behavioral/domain contract, not by convenience of shared setup.
-   - If unrelated behaviors are colocated or one module is concentrating the runner's critical path, split the module
-     first and extract only fixtures that are safe to use in parallel.
-   - This step is complete when every changed test has one clear domain home and unrelated behavior is not colocated
-     merely to reuse setup.
+    - Before appending to an existing file, inspect what contracts it already owns and whether it is becoming a
+      mixed-responsibility or serial-critical module.
+    - Group tests by behavioral/domain contract, not by convenience of shared setup.
+    - If unrelated behaviors are colocated or one module is concentrating the runner's critical path, split the module
+      first and extract only fixtures that are safe to use in parallel.
+    - This step is complete when every changed test has one clear domain home and unrelated behavior is not colocated
+      merely to reuse setup.
 
 4. **Know what not to test**
-   - Implementation details (private functions, internal state transitions not exposed through the interface)
-   - Trivial delegation (a function that simply passes through to another function)
-   - Third-party library behavior (assume the library works, test that your code uses it correctly)
+    - Implementation details (private functions, internal state transitions not exposed through the interface)
+    - Trivial delegation (a function that simply passes through to another function)
+    - Third-party library behavior (assume the library works, test that your code uses it correctly)
 
 ## How to Write Tests
 
@@ -94,6 +94,10 @@ Order of preference:
 Faking a genuine boundary is correct and usually necessary: it is slow, it is not yours, and you are not testing it. The
 obligation that comes with it is to test everything derived from it — the happy path _and_ every failure it can hand
 you. A faked boundary is a way to reach your own error handling cheaply, not a reason to skip it.
+
+For each check, test three cases: a positive yes, a positive no, and could not tell. Empty, unreadable, timed-out,
+truncated, or unknown output means "could not tell". In that test, assert that the code takes the safe path: it keeps
+the item and does not report success.
 
 But faking a boundary cannot verify that you are _calling_ it correctly. A wrong flag, a reversed argument, or a misread
 exit code stays wrong forever behind a fake, because the fake answers the question you assumed rather than the one you
@@ -211,13 +215,14 @@ should:
 2. **Confirm each new behavior's test can fail.** Break the behavior on purpose — invert a condition, drop the call,
    return the wrong value — and check that this test, specifically, goes red. Then undo it.
 
-   Passing is the weaker signal: a test that asserts nothing also passes, and you cannot tell which kind you wrote by
-   watching it pass. This is per distinct behavior, not per assertion — rewriting twelve tests over one behavior earns
-   one mutation, not twelve.
+    Passing is the weaker signal: a test that asserts nothing also passes, and you cannot tell which kind you wrote by
+    watching it pass. This is per distinct behavior, not per assertion — rewriting twelve tests over one behavior earns
+    one mutation, not twelve.
 
-   It is worth the minute it costs. A test whose fixture over-specifies, whose subject is faked out from under it, or
-   whose assertion was quietly satisfied by the setup will pass forever and protect nothing, and the only cheap way to
-   find out is to make the code wrong once.
+    It is worth the minute it costs. A test whose fixture over-specifies, whose subject is faked out from under it, or
+    whose assertion was quietly satisfied by the setup will pass forever and protect nothing, and the only cheap way to
+    find out is to make the code wrong once.
+
 3. **Run focused tests, then full validation** — in a RunWield-managed implementation or repair, RunWield runs the full
    configured suite after `task_completed`; leave that result pending instead of duplicating the run. Outside that
    workflow, run the full suite yourself. Run it earlier when diagnosis or an explicit user instruction requires it.

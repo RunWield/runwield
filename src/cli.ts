@@ -14,8 +14,20 @@
  *   bun src/cli.ts "<user request>"
  */
 
-import { argv, env, exit } from "node:process";
+import { argv, env, execArgv, execPath, exit, ppid } from "node:process";
 import { parseArgs } from "./shared/cli-args.ts";
+import { isStandaloneExecutable } from "./shared/runtime-identity.ts";
+import { superviseRuntime } from "./shared/runtime-supervisor.ts";
+
+// Keep the supervisor outside every command and startup import. A native Bun
+// abort cannot reach JavaScript catch/finally blocks in the working runtime.
+// Match the actual parent so nested wld invocations get their own supervisor.
+if (env.WLD_RUNTIME_SUPERVISOR_PID !== String(ppid)) {
+    // Bun consumes one leading separator on source startup. Preserve a literal
+    // separator when the supervisor starts the working CLI.
+    const sourceArgs = [...execArgv, argv[1], ...(argv[2] === "--" ? ["--"] : []), ...argv.slice(2)];
+    exit(await superviseRuntime(execPath, isStandaloneExecutable() ? argv.slice(2) : sourceArgs));
+}
 const cliArgs = argv.slice(2);
 
 // Keep private runtime entries ahead of helper exposure, browser startup and
@@ -104,7 +116,15 @@ function resolveHelpRequest(
 }
 
 async function main(): Promise<void> {
-    const args = cliArgs;
+    let allowSystemDirectory = false;
+    const args = [...cliArgs];
+    // Only consume the acknowledgement in the leading global prefix.
+    for (let index = 0; index < args.length; index++) {
+        if (args[index] === "--allow-system-directory") {
+            allowSystemDirectory = true;
+            args.splice(index--, 1);
+        } else if (!["--continue", "-c", "--help", "-h", "--version", "-v"].includes(args[index])) break;
+    }
 
     const parsed = parseArgs(args, {
         stopEarly: true,
@@ -140,7 +160,7 @@ async function main(): Promise<void> {
         return;
     }
 
-    const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface } =
+    const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface, requiresProjectDirectoryConsent } =
         await import("./cmd/registry.js");
     const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.js");
 
@@ -172,6 +192,22 @@ async function main(): Promise<void> {
     if (firstPositional === COMMAND_NAMES.ACP && normalizedArgs[1] === COMMAND_NAMES.LOGIN) {
         await commandRegistry[COMMAND_NAMES.LOGIN].execute(normalizedArgs.slice(2));
         return;
+    }
+
+    // Invalid options cannot start project work and must keep their usage error.
+    if (normalizedArgs[0]?.startsWith("-") && normalizedArgs[0] !== "--") {
+        console.error(`[RunWield] Unknown option: ${normalizedArgs[0]}`);
+        console.error("Use positional commands, for example: wld <command> [args]");
+        exit(1);
+    }
+
+    if (requiresProjectDirectoryConsent(firstPositional, normalizedArgs.slice(1))) {
+        const { confirmProjectDirectory } = await import("./ui/tui/directory-warning.ts");
+        const { getCwd } = await import("./constants.js");
+        if (!(await confirmProjectDirectory(getCwd(), allowSystemDirectory))) return;
+        const { resolvePrimaryCheckoutRoot } = await import("./shared/primary-checkout.ts");
+        const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());
+        if (primaryRoot !== getCwd() && !(await confirmProjectDirectory(primaryRoot, allowSystemDirectory))) return;
     }
 
     if (firstPositional === "guided-review") {
@@ -220,6 +256,8 @@ async function main(): Promise<void> {
 try {
     await main();
 } catch (err) {
+    const { DirectoryStartupCanceled } = await import("./ui/tui/directory-warning.ts");
+    if (err instanceof DirectoryStartupCanceled) exit(0);
     if (!isProtocolOnlyStartup(cliArgs)) {
         try {
             const { stopTUI } = await import("./ui/tui/tui.ts");

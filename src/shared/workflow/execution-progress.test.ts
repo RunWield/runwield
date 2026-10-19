@@ -53,7 +53,7 @@ const PLAN_ID = "execution-progress-plan";
 
 function messagesFrom(events: RuntimeStatusEvent[]): string[] {
     return events
-        .map((event) => typeof event.message === "string" ? event.message : "")
+        .map((event) => (typeof event.message === "string" ? event.message : ""))
         .filter((message) => message.length > 0);
 }
 
@@ -100,9 +100,11 @@ function makeHostedSession(id: string, cwd: string, events: RuntimeStatusEvent[]
 test("execution preparation progress reports fresh worktree setup before launching Engineer", async () => {
     await withRuntimeCommandFixture("execution-progress-fresh-", async ({ setModelMessages }) => {
         setModelMessages([fauxAssistantMessage(fauxText("Execution remains paused in the fixture."))]);
-        const projectRoot = await makeWorkflowProject([{
-            name: "fresh-progress",
-        }]);
+        const projectRoot = await makeWorkflowProject([
+            {
+                name: "fresh-progress",
+            },
+        ]);
         await fsWriteFile(join(projectRoot, ".gitignore"), ".wld/\n");
         const events: RuntimeStatusEvent[] = [];
         const hostedSession = makeHostedSession("fresh-progress", projectRoot, events);
@@ -143,8 +145,8 @@ test("execution preparation progress reports fresh worktree setup before launchi
             console.warn = originalWarn;
             hostedSession.dispose();
             if (executionCwd) {
-                await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() =>
-                    undefined
+                await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(
+                    () => undefined,
                 );
             }
             await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
@@ -153,9 +155,11 @@ test("execution preparation progress reports fresh worktree setup before launchi
 });
 
 test("execution preparation progress reports reused worktree without claiming creation", async () => {
-    const projectRoot = await makeWorkflowProject([{
-        name: "reuse-progress",
-    }]);
+    const projectRoot = await makeWorkflowProject([
+        {
+            name: "reuse-progress",
+        },
+    ]);
     const events: RuntimeStatusEvent[] = [];
     const hostedSession = makeHostedSession("reuse-progress", projectRoot, events);
     let executionCwd = "";
@@ -193,7 +197,10 @@ test("execution preparation progress reports reused worktree without claiming cr
 
         const messages = messagesFrom(events);
         assertStringIncludes(messages.join("\n"), `Reusing worktree ${firstWorkflow.worktreeBranch}`);
-        assertEquals(messages.some((message) => message.includes("Creating the worktree")), false);
+        assertEquals(
+            messages.some((message) => message.includes("Creating the worktree")),
+            false,
+        );
     } finally {
         if (executionCwd) {
             await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() => undefined);
@@ -317,7 +324,12 @@ test("restart resumes a dirty ready-for-work worktree without repeating preparat
             ports: createExecutionStartPorts(),
         });
         assertEquals(resumedWorkflow.baselineTree, worktree.baseTree);
-        assertEquals(await fsStat(recoveryPath).then(() => true).catch(() => false), false);
+        assertEquals(
+            await fsStat(recoveryPath)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
     } finally {
         resumedSession?.dispose();
         hostedSession.dispose();
@@ -380,12 +392,7 @@ test("restart accepts an existing Plan-only preparation commit", async () => {
         assertEquals((await loadPlan(worktree.path, "prepared-restart"))?.attrs.status, "in_progress");
         assertEquals(workflow.baselineTree, worktree.baseTree);
         assertEquals(
-            await git(worktree.path, [
-                "merge-base",
-                "--is-ancestor",
-                firstPreparation.preparationCommit,
-                "HEAD",
-            ]),
+            await git(worktree.path, ["merge-base", "--is-ancestor", firstPreparation.preparationCommit, "HEAD"]),
             "",
         );
         assertEquals(
@@ -461,8 +468,8 @@ for (const checkpointed of [false, true]) {
         } finally {
             hostedSession.dispose();
             if (executionCwd) {
-                await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() =>
-                    undefined
+                await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(
+                    () => undefined,
                 );
             }
             await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
@@ -541,15 +548,18 @@ test("execution starts with registered sibling scope moves and leftover planning
         await updateWorktreeRegistryEntry(projectRoot, worktree.id, { status: "planning" });
         const sibling = await loadPlan(worktree.path, siblingName);
         assert(sibling);
-        await fsWriteFile(
-            sibling.path,
-            `${sibling.markdown}\nUse the laptop-owned save bridge from child 03.\n`,
-        );
+        await fsWriteFile(sibling.path, `${sibling.markdown}\nUse the laptop-owned save bridge from child 03.\n`);
         const legacy = await loadPlan(worktree.path, "legacy-plan");
         assert(legacy);
-        await updatePlanFrontMatter(worktree.path, "legacy-plan", { status: "feedback" }, {}, {
-            expectedRevision: legacy.revision,
-        });
+        await updatePlanFrontMatter(
+            worktree.path,
+            "legacy-plan",
+            { status: "feedback" },
+            {},
+            {
+                expectedRevision: legacy.revision,
+            },
+        );
         await savePlan(worktree.path, "save-proof", "# Earlier planning proof\n", {
             status: "ready_for_work",
             planId: "earlier-proof",
@@ -617,7 +627,10 @@ test("execution preparation progress reports non-Git in-place preparation withou
             "Preparing in-place work because Git is unavailable...",
             "Marking the Plan as in progress...",
         ]);
-        assertEquals(messages.some((message) => message.includes("worktree")), false);
+        assertEquals(
+            messages.some((message) => message.includes("worktree")),
+            false,
+        );
     } finally {
         await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
@@ -632,7 +645,10 @@ for (const tutorial of [false, true]) {
             const glossary = "# Domain Language\n\n## Fixture\n\nCurrent fixture terminology.\n";
             setModelMessages([
                 fauxAssistantMessage(
-                    fauxToolCall("init_save_verification_command", { command: "printf init-verified" }),
+                    fauxToolCall("init_save_verification_command", {
+                        command: "printf init-verified",
+                        setupCommand: "",
+                    }),
                 ),
                 fauxAssistantMessage(fauxToolCall("write", { path: "docs/domain-language.md", content: glossary })),
                 fauxAssistantMessage(fauxText("Init complete.")),
@@ -718,9 +734,15 @@ for (const tutorial of [false, true]) {
                 assertEquals(await fsReadFile(join(projectRoot, ".wld/settings.json"), "utf8"), settings);
                 const resumed = await loadPlan(executionCwd, "init-context");
                 assert(resumed);
-                await updatePlanFrontMatter(executionCwd, "init-context", { status: "reviewed" }, {}, {
-                    expectedRevision: resumed.revision,
-                });
+                await updatePlanFrontMatter(
+                    executionCwd,
+                    "init-context",
+                    { status: "reviewed" },
+                    {},
+                    {
+                        expectedRevision: resumed.revision,
+                    },
+                );
                 await git(executionCwd, ["add", "."]);
                 await git(executionCwd, ["commit", "-m", "Reviewed context update"]);
                 await publishExecutionWorktreeIsolated({

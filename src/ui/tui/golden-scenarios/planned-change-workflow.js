@@ -470,6 +470,8 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "select", promptIncludes: "were stopped before they finished", value: "stop" },
         { type: "select", promptIncludes: "Resume tutorial guidance", value: "resume" },
         { type: "select", promptIncludes: "Plan recovery", value: "validate" },
+        // The recap can settle before the second reload. Otherwise startup asks to resume guidance.
+        { type: "select", promptIncludes: "Resume tutorial guidance", value: "resume", optional: true },
     ],
     script: [
         {
@@ -533,8 +535,10 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "enter" },
         { type: "enter" },
         { type: "waitForEventCount", event: "runtime:tool:end:task_completed", count: 2, timeoutMs: 240000 },
-        { type: "waitForEventCount", event: "runtime:turn_end", count: 9, timeoutMs: 60000 },
-        { type: "escape" },
+        // Agent turn counts do not locate the validation phase. Wait for the recap
+        // before this reload so Escape cannot cancel its pending presentation.
+        // The first reload above still covers interrupted checks and recovery.
+        { type: "waitForScreen", text: "Tutorial complete", timeoutMs: 240000 },
         { type: "waitForIdle", timeoutMs: 60000 },
         { type: "captureProjectState", planNames: ["plan"], key: "tutorialRepairedState" },
         { type: "restartTui", sessionStartMode: "continue" },

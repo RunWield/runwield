@@ -1,4 +1,12 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import {
+    prepareExecutionSetup,
+    readExecutionSetup,
+    completeExecutionSetup,
+    assertExecutionSetupRetrySafe,
+    recordExecutionSetupCheckpoint,
+    recordExecutionSetupLifecycle,
+} from "./execution-setup.ts";
 import { isMissingExecutableError } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
@@ -56,7 +64,7 @@ import {
     emitReusingExecutionWorktree,
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { recordWorkflowMetric } from "./metrics.js";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
@@ -64,6 +72,7 @@ import { CollaborationStyles, resolveExecutionOwner } from "./execution-collabor
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
 export function normalizeExecutionTargetBranch(value) {
@@ -302,13 +311,27 @@ export async function startActiveExecutionWorkflow({
 }: ExecutionStartOptions): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const sourceLocation = await reconcileExecutionPreparationLocation(projectRoot, planName);
+    let sourceLocation = await reconcileExecutionPreparationLocation(projectRoot, planName, { readOnly: true });
+    if (!sourceLocation.resumeInterruptedPreparation) {
+        await prepareSessionPlanningWorktree(projectRoot, planName);
+        sourceLocation = await reconcileExecutionPreparationLocation(projectRoot, planName);
+    }
     if (sourceLocation.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${planName} before executing it.`);
     }
     if (sourceLocation.plan) {
         triageMeta = sourceLocation.plan.attrs;
         currentStatus = sourceLocation.plan.attrs.status;
+    }
+    if (currentStatus === "approved") {
+        triageMeta = await recordPlanEvent({
+            cwd: sourceLocation.documentRoot,
+            planName,
+            event: "readiness_passed",
+            currentStatus,
+            details: { triageMeta },
+        });
+        currentStatus = triageMeta.status;
     }
     const findReusable = ports.findReusableWorktree;
     // Worktree policy and the Plan restore are RunWield's own: they stay imported so a
@@ -431,6 +454,7 @@ export async function startActiveExecutionWorkflow({
         }
         const activeWorkflow =
             /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
+        await completeExecutionSetup(activeWorkflow.executionCwd);
         hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
         return activeWorkflow;
     }
@@ -533,11 +557,14 @@ export async function startActiveExecutionWorkflow({
             worktreePath: reusable.path,
             baseRef: reusableBaseRef,
         }));
+    if (reusable) await assertExecutionSetupRetrySafe(reusable.path);
+    const setupReceipt = reusable ? await readExecutionSetup(reusable.path) : null;
+    const unfinishedSetup = Boolean(setupReceipt && setupReceipt.state !== "prepared");
     const continuingReusableWorktree =
+        !unfinishedSetup &&
         Boolean(reusable) &&
         (authorityStatus === "in_progress" || reusableHasExecutionChanges || reusableHasPreparationCheckpoint);
-    const needsPreparationCheckpoint =
-        !continuingReusableWorktree || (reusableHasPreparationCheckpoint && !reusableHasExecutionChanges);
+    const needsPreparationCheckpoint = !continuingReusableWorktree || !reusableHasExecutionChanges;
     const needsExecutionStartedEvent = authorityStatus !== "in_progress";
     /** @type {Extract<Awaited<ReturnType<typeof loadCanonicalExecutionPlanSource>>, {kind:"loaded"}> | undefined} */
     let lockedCanonicalPlanSource;
@@ -651,6 +678,14 @@ export async function startActiveExecutionWorkflow({
                     baseCommit: worktreeArtifacts.baseCommit,
                 });
                 registerRollback("remove_clean_created_worktree_and_registry_entry", async () => {
+                    // Explicit setup commands can leave valuable output, even on failure.
+                    // Keep their directory and attempt for retry instead of force-removing it.
+                    if (await readExecutionSetup(worktreeArtifacts.path)) {
+                        await updateWorktreeRegistryEntry(projectRoot, worktreeArtifacts.id, {
+                            status: "execution_failed",
+                        });
+                        return;
+                    }
                     await removeWorktreeGitArtifacts({
                         projectRoot,
                         path: worktreeArtifacts.path,
@@ -729,6 +764,7 @@ export async function startActiveExecutionWorkflow({
                     reusedWorktree,
                 );
             }
+            if (needsPreparationCheckpoint) await prepareExecutionSetup(hostedSession, worktree.path);
             const executionPlan = await loadPlan(worktree.path, planName);
             if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
             // Re-entering an in-progress attempt must keep the tree from before the
@@ -801,6 +837,19 @@ export async function startActiveExecutionWorkflow({
             }
             if (needsExecutionStartedEvent) {
                 emitUpdatingPlanStatusToInProgress(hostedSession);
+                await recordExecutionSetupLifecycle(
+                    worktree.path,
+                    planFile.relativePath,
+                    buildPlanEventUpdates("execution_started", authorityStatus, {
+                        triageMeta: executionPlan.attrs,
+                        executionBaselineTree: baselineTree,
+                        worktreeId: worktree.id,
+                        worktreePath: worktree.path,
+                        worktreeBranch: worktree.branch,
+                        worktreeBaseBranch,
+                        worktreeStatus: "active",
+                    }),
+                );
                 await recordPlanEvent({
                     cwd: worktree.path,
                     planName,
@@ -830,7 +879,9 @@ export async function startActiveExecutionWorkflow({
                         ? editedSiblingPaths
                         : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];
+                const preparationToken = await recordExecutionSetupCheckpoint(worktree.path);
                 const preparation = await checkpointExecutionPreparation({
+                    preparationToken,
                     worktreePath: worktree.path,
                     branch: worktree.branch,
                     baseCommit: worktree.baseCommit,
@@ -951,6 +1002,7 @@ export async function startActiveExecutionWorkflow({
     }
     const activeWorkflow =
         /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
+    await completeExecutionSetup(activeWorkflow.executionCwd);
     hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
     return activeWorkflow;
 }

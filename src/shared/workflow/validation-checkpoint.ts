@@ -8,6 +8,7 @@
  * this record alone.
  */
 
+import type { ProcessIdentity } from "../process-identity.ts";
 import { normalizeLedger, type ReviewLedger } from "./review-ledger.ts";
 
 export const VALIDATION_CHECKPOINT_VERSION = 1;
@@ -45,6 +46,7 @@ export type ValidationCheckpoint = {
     state: ValidationCheckpointState;
     ownerPid?: number;
     ownerHostname?: string;
+    ownerIdentity?: ProcessIdentity;
     repairKind?: string;
     repairGeneration?: string;
     repairCompletedOperationId?: string;
@@ -135,6 +137,7 @@ export function makeValidationCheckpoint(args: {
     state: ValidationCheckpointState;
     ownerPid?: number;
     ownerHostname?: string;
+    ownerIdentity?: ProcessIdentity;
     repairKind?: string;
     repairGeneration?: string;
     repairCompletedOperationId?: string;
@@ -158,6 +161,7 @@ export function makeValidationCheckpoint(args: {
         state: args.state,
         ...(args.ownerPid !== undefined ? { ownerPid: args.ownerPid } : {}),
         ...(args.ownerHostname !== undefined ? { ownerHostname: args.ownerHostname } : {}),
+        ...(args.ownerIdentity !== undefined ? { ownerIdentity: args.ownerIdentity } : {}),
         ...(args.repairKind !== undefined ? { repairKind: args.repairKind } : {}),
         ...(args.repairGeneration !== undefined ? { repairGeneration: args.repairGeneration } : {}),
         ...(args.repairCompletedOperationId !== undefined

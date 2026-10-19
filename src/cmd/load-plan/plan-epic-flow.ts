@@ -9,13 +9,7 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.js";
-import {
-    compareChildPlansByOrder,
-    findPlansByParent,
-    isTerminalArchivableStatus,
-    loadPlan,
-    resolvePlan,
-} from "../../plan-store.js";
+import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus, loadPlan } from "../../plan-store.js";
 import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
@@ -23,14 +17,12 @@ import {
     formatWorkRecordAutoGenerationResult,
 } from "../../shared/work-records/auto-generation.js";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
-import {
-    findTargetBranchPlansByParent,
-    preparePlanningWorktreeForPlan,
-} from "../../shared/workflow/planning-worktree.ts";
+import { findTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { isGitRepository } from "../../shared/git.ts";
 import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
 import { reconcileEpicDelivery } from "../../shared/workflow/epic-integration.ts";
 import { archiveEpicWithChildren } from "./plan-epic-archive.ts";
+import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { readControllerWorktree } from "../../shared/workflow/controller-registry.ts";
 import {
@@ -93,7 +85,7 @@ export async function handleEpicPlan({
     let epicGateReady = false;
     if (await isGitRepository(projectRoot)) {
         try {
-            const branch = await ensureEpicBranch(projectRoot, plan.planName);
+            const branch = await ensureEpicBranch(projectRoot, plan.planName, { seedChildren: false });
             if (branch.kind === "ready" && branch.created) {
                 uiAPI.appendSystemMessage(
                     `Created the Epic branch ${branch.branch} from the latest primary branch.`,
@@ -128,25 +120,31 @@ export async function handleEpicPlan({
         if (refreshed) plan.attrs = { ...plan.attrs, ...refreshed.attrs };
     }
     const targetBranch = typeof plan.attrs.targetBranch === "string" ? plan.attrs.targetBranch.trim() : "";
-    const familyChildren = targetBranch && await isGitRepository(projectRoot)
-        ? await findTargetBranchPlansByParent(projectRoot, targetBranch, plan.planName)
-        : await findPlansByParent(projectRoot, plan.planName);
-    const children = familyChildren.filter((child) => isPlannedChangeClassification(child.attrs.classification)).sort(
-        compareChildPlansByOrder,
-    );
+    const familyChildren =
+        targetBranch && (await isGitRepository(projectRoot))
+            ? await findTargetBranchPlansByParent(projectRoot, targetBranch, plan.planName)
+            : await findPlansByParent(projectRoot, plan.planName);
+    const children = familyChildren
+        .filter((child) => isPlannedChangeClassification(child.attrs.classification))
+        .sort(compareChildPlansByOrder);
     const hasChildren = children.length > 0;
-    const pendingPublication = (await Promise.all(children.map(async (child) => {
-        if (child.attrs.status !== "reviewed" && child.attrs.status !== "validated") return null;
-        const attempt = await readControllerWorktree(projectRoot, {
-            planName: child.name,
-            planId: child.attrs.planId,
-        });
-        return attempt ? child : null;
-    }))).filter((child) => child !== null);
+    const pendingPublication = (
+        await Promise.all(
+            children.map(async (child) => {
+                if (child.attrs.status !== "reviewed" && child.attrs.status !== "validated") return null;
+                const attempt = await readControllerWorktree(projectRoot, {
+                    planName: child.name,
+                    planId: child.attrs.planId,
+                });
+                return attempt ? child : null;
+            }),
+        )
+    ).filter((child) => child !== null);
     const isApprovedEpic = plan.attrs.status === "approved";
-    const hasLegacyExecutableEpicStatus = ["in_progress", "failed"].includes(plan.attrs.status) ||
-        isInValidation(plan.attrs.status);
-    const canPickChild = hasChildren &&
+    const hasLegacyExecutableEpicStatus =
+        ["in_progress", "failed"].includes(plan.attrs.status) || isInValidation(plan.attrs.status);
+    const canPickChild =
+        hasChildren &&
         (sequence
             ? plan.attrs.status === "ready_for_work"
             : isDecomposedEpicStatus(plan.attrs) || isApprovedEpic || hasLegacyExecutableEpicStatus);
@@ -192,22 +190,34 @@ export async function handleEpicPlan({
         );
     }
 
-    const canReviewWithArchitect = plan.attrs.status === "draft" || plan.attrs.status === "feedback" ||
-        plan.attrs.status === "approved" || (sequence && plan.attrs.status === "ready_for_work" &&
+    const canReviewWithArchitect =
+        plan.attrs.status === "draft" ||
+        plan.attrs.status === "feedback" ||
+        plan.attrs.status === "approved" ||
+        (sequence &&
+            plan.attrs.status === "ready_for_work" &&
             children.every((child) =>
-                ["draft", "feedback", "approved", "ready_for_work"].includes(child.attrs.status)
+                ["draft", "feedback", "approved", "ready_for_work"].includes(child.attrs.status),
             ));
-    const canDirectReview = !sequence && (plan.attrs.status === "draft" || plan.attrs.status === "feedback" ||
-        plan.attrs.status === "approved" || plan.attrs.status === "ready_for_work");
-    const canOpenSlicer = !sequence && (isApprovedEpic || hasLegacyExecutableEpicStatus ||
-        plan.attrs.status === "ready_for_decomposition" || plan.attrs.status === "ready_for_work");
+    const canDirectReview =
+        !sequence &&
+        (plan.attrs.status === "draft" ||
+            plan.attrs.status === "feedback" ||
+            plan.attrs.status === "approved" ||
+            plan.attrs.status === "ready_for_work");
+    const canOpenSlicer =
+        !sequence &&
+        (isApprovedEpic ||
+            hasLegacyExecutableEpicStatus ||
+            plan.attrs.status === "ready_for_decomposition" ||
+            plan.attrs.status === "ready_for_work");
 
     if (canReviewWithArchitect) {
         const action = sequence
             ? "Review the Sequence and all children with Planner."
             : canOpenSlicer
-            ? "Review it with Architect or resume Slicer decomposition to create child plans."
-            : "Review it with Architect to continue planning.";
+              ? "Review it with Architect or resume Slicer decomposition to create child plans."
+              : "Review it with Architect to continue planning.";
         uiAPI.appendSystemMessage(
             `This PROJECT ${sequence ? "Sequence" : "Epic"} contains child Plans. ${action}`,
             false,
@@ -237,10 +247,12 @@ export async function handleEpicPlan({
                 ? [{ value: "done_enough", label: `Mark ${sequence ? "Sequence" : "Epic"} done enough for now` }]
                 : []),
             ...(isUserVerifiableStatus(plan.attrs.status)
-                ? [{
-                    value: "user_verify",
-                    label: "Mark Epic as User Verified (user attestation; no Workflow Validation claim)",
-                }]
+                ? [
+                      {
+                          value: "user_verify",
+                          label: "Mark Epic as User Verified (user attestation; no Workflow Validation claim)",
+                      },
+                  ]
                 : []),
             ...(isHoldableStatus(plan.attrs.status) ? [{ value: "hold", label: "Put Epic on hold" }] : []),
             ...(isTerminalArchivableStatus(plan.attrs.status) && pendingPublication.length === 0
@@ -359,7 +371,7 @@ export async function handleEpicPlan({
             } catch (error) {
                 const reason = error instanceof Error ? error.message : String(error);
                 workRecordResult = {
-                    status: /** @type {const} */ ("failed"),
+                    status: /** @type {const} */ "failed",
                     planName: plan.planName,
                     error: reason,
                     message: formatWorkRecordAutoGenerationResult({
@@ -375,7 +387,8 @@ export async function handleEpicPlan({
             }
             if (
                 (workRecordResult.status === "generated" || workRecordResult.status === "linked") &&
-                workRecordResult.recordId && workRecordResult.supersessionProposals?.length
+                workRecordResult.recordId &&
+                workRecordResult.supersessionProposals?.length
             ) {
                 await resolveWorkRecordSupersessionProposalsWithUi({
                     projectRoot,
@@ -394,11 +407,13 @@ export async function handleEpicPlan({
                 const nextChild = children.find(isActionableNextChild);
                 const childOptions = [
                     ...(nextChild
-                        ? [{
-                            value: "__next_child__",
-                            label: formatNextChildLabel(nextChild),
-                            description: formatChildPlanDescription(nextChild),
-                        }]
+                        ? [
+                              {
+                                  value: "__next_child__",
+                                  label: formatNextChildLabel(nextChild),
+                                  description: formatChildPlanDescription(nextChild),
+                              },
+                          ]
                         : []),
                     ...children.map((child) => ({
                         value: child.name,
@@ -410,12 +425,6 @@ export async function handleEpicPlan({
                 if (!childPlanName) break;
                 if (childPlanName === "__next_child__") {
                     if (!nextChild) break;
-                    if (
-                        typeof nextChild.attrs.targetBranch === "string" && nextChild.attrs.planId &&
-                        await isGitRepository(projectRoot)
-                    ) {
-                        await preparePlanningWorktreeForPlan(projectRoot, nextChild.name, nextChild.attrs);
-                    }
                     await loadChildPlan(nextChild.name);
                     return "handled";
                 }
@@ -432,20 +441,16 @@ export async function handleEpicPlan({
                     if (!childAction || childAction === "back") break;
 
                     if (childAction === "load") {
-                        const selectedChild = children.find((child) => child.name === String(childPlanName));
-                        if (
-                            selectedChild && typeof selectedChild.attrs.targetBranch === "string" &&
-                            selectedChild.attrs.planId && await isGitRepository(projectRoot)
-                        ) {
-                            await preparePlanningWorktreeForPlan(projectRoot, selectedChild.name, selectedChild.attrs);
-                        }
                         await loadChildPlan(String(childPlanName));
                         return "handled";
                     }
 
                     if (childAction === "view") {
                         try {
-                            const childPlan = await resolvePlan(projectRoot, String(childPlanName));
+                            const { plan: childPlan } = await resolvePlanWithPrimaryRecovery(
+                                projectRoot,
+                                String(childPlanName),
+                            );
                             uiAPI.appendSystemMessage(
                                 `Planned Change: ${childPlan.planName}\n\n${buildPlanSummary(childPlan)}`,
                                 false,

@@ -11,13 +11,15 @@ interface FixtureOutput {
 function makeClipboardPort(
     outputs: Array<FixtureOutput | Error>,
     os: typeof process.platform = "darwin",
-): ClipboardSystemPort & { calls: Array<{ command: string; args: string[] }>; removed: string[] } {
+): ClipboardSystemPort & { calls: Array<{ command: string; args: string[] }>; removed: string[]; created: string[] } {
     const calls: Array<{ command: string; args: string[] }> = [];
     const removed: string[] = [];
+    const created: string[] = [];
     return {
         os,
         calls,
         removed,
+        created,
         runCommand(command, args) {
             calls.push({ command, args });
             const next = outputs.shift();
@@ -28,7 +30,10 @@ function makeClipboardPort(
                 stdout: new TextEncoder().encode(next.stdout ?? ""),
             });
         },
-        makeTempFile: () => Promise.resolve("/fixture/runwield-clip.png"),
+        makeTempFile(options) {
+            created.push(`${options.prefix}${options.suffix}`);
+            return Promise.resolve("/fixture/runwield-clip.png");
+        },
         remove(path) {
             removed.push(path);
             return Promise.resolve();
@@ -39,18 +44,21 @@ function makeClipboardPort(
 test("clipboard images are unavailable outside macOS", async () => {
     const port = makeClipboardPort([], "linux");
     const reader = createClipboardReader(port);
-    assertEquals(await reader.hasClipboardImage(), false);
     assertEquals(await reader.readClipboardImage(), null);
     assertEquals(port.calls, []);
 });
 
-test("clipboard image detection reflects the AppleScript result", async () => {
-    const imagePort = makeClipboardPort([{ success: true, stdout: "image\n" }]);
-    assertEquals(await createClipboardReader(imagePort).hasClipboardImage(), true);
-    assertEquals(imagePort.calls.map(({ command }) => command), ["osascript"]);
-
-    const emptyPort = makeClipboardPort([{ success: true, stdout: "none\n" }]);
-    assertEquals(await createClipboardReader(emptyPort).hasClipboardImage(), false);
+test("clipboard image reads stop after an empty or non-image probe", async () => {
+    for (const stdout of ["none\n", "", "unrecognized"]) {
+        const port = makeClipboardPort([{ success: true, stdout }]);
+        assertEquals(await createClipboardReader(port).readClipboardImage(), null);
+        assertEquals(
+            port.calls.map(({ command }) => command),
+            ["osascript"],
+        );
+        assertEquals(port.removed, []);
+        assertEquals(port.created, []);
+    }
 });
 
 test("clipboard image reads extract, encode, and clean up the png", async () => {
@@ -63,15 +71,15 @@ test("clipboard image reads extract, encode, and clean up the png", async () => 
         base64: "YWJjZA==",
         mimeType: "image/png",
     });
-    assertEquals(port.calls.map(({ command }) => command), ["osascript", "osascript", "base64"]);
+    assertEquals(
+        port.calls.map(({ command }) => command),
+        ["osascript", "osascript", "base64"],
+    );
     assertEquals(port.removed, ["/fixture/runwield-clip.png"]);
 });
 
 test("clipboard image reads clean up after extraction and encoding failures", async () => {
-    const extractFailure = makeClipboardPort([
-        { success: true, stdout: "image\n" },
-        { success: false },
-    ]);
+    const extractFailure = makeClipboardPort([{ success: true, stdout: "image\n" }, { success: false }]);
     assertEquals(await createClipboardReader(extractFailure).readClipboardImage(), null);
     assertEquals(extractFailure.removed, ["/fixture/runwield-clip.png"]);
 
@@ -82,4 +90,27 @@ test("clipboard image reads clean up after extraction and encoding failures", as
     ]);
     assertEquals(await createClipboardReader(encodingFailure).readClipboardImage(), null);
     assertEquals(encodingFailure.removed, ["/fixture/runwield-clip.png"]);
+});
+
+test("clipboard image reads clean up after an extraction exception or failed encoder exit", async () => {
+    for (const outputs of [
+        [{ success: true, stdout: "image" }, new Error("extract unavailable")],
+        [{ success: true, stdout: "image" }, { success: true }, { success: false }],
+    ]) {
+        const port = makeClipboardPort(outputs);
+        assertEquals(await createClipboardReader(port).readClipboardImage(), null);
+        assertEquals(port.removed, ["/fixture/runwield-clip.png"]);
+    }
+});
+
+test("clipboard image reads stop safely when the probe fails", async () => {
+    for (const output of [{ success: false, stdout: "image" }, new Error("osascript unavailable")]) {
+        const port = makeClipboardPort([output]);
+        assertEquals(await createClipboardReader(port).readClipboardImage(), null);
+        assertEquals(
+            port.calls.map(({ command }) => command),
+            ["osascript"],
+        );
+        assertEquals(port.created, []);
+    }
 });

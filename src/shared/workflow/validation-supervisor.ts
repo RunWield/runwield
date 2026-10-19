@@ -1,7 +1,8 @@
 import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
-import { getLockHostname, isPidAlive } from "../process-liveness.ts";
+import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
+import { getLockHostname } from "../process-liveness.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
 import { hostSemanticRepairPrompt, requestHostRepair } from "./validation-host-state.ts";
 import { runValidationLoop } from "./validation-engine.ts";
@@ -79,7 +80,7 @@ function checkpointRecord(
 
 async function ownerIsAlive(checkpoint: ValidationCheckpoint): Promise<boolean> {
     if (!checkpoint.ownerPid || checkpoint.ownerHostname !== getLockHostname()) return false;
-    return await isPidAlive(checkpoint.ownerPid);
+    return await isRecordedProcessAlive(checkpoint.ownerPid, checkpoint.updatedAt, checkpoint.ownerIdentity);
 }
 
 async function validationPlanCwd(args: RunValidationAttemptArgs): Promise<string> {
@@ -132,6 +133,7 @@ async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimRes
             state: "running",
             ownerPid: process.pid,
             ownerHostname: getLockHostname(),
+            ownerIdentity: await readProcessIdentity(process.pid),
             repairGeneration: compatible ? prior.repairGeneration : undefined,
             repairKind: compatible ? prior.repairKind : undefined,
             repairCompletedOperationId: compatible ? prior.repairCompletedOperationId : undefined,
@@ -183,6 +185,7 @@ async function settleValidation(
                       ...current,
                       ownerPid: undefined,
                       ownerHostname: undefined,
+                      ownerIdentity: undefined,
                       attemptId: plan.attrs.worktreeId || current.attemptId,
                       generation: current.generation,
                       status: plan.attrs.status,
@@ -260,6 +263,7 @@ export async function recordValidationRepairCompletion(args: ValidationRepairCom
             ...checkpoint,
             ownerPid: ownedRepair ? checkpoint.ownerPid : undefined,
             ownerHostname: ownedRepair ? checkpoint.ownerHostname : undefined,
+            ownerIdentity: ownedRepair ? checkpoint.ownerIdentity : undefined,
             pendingRepair: undefined,
             pendingCiDecision: undefined,
             pendingHostDecision: undefined,

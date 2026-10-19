@@ -92,8 +92,14 @@ export interface HandleOnHoldPlanOptions {
  * @returns {boolean}
  */
 export function isHoldableStatus(status: string): boolean {
-    return Boolean(status) && status !== "validated" && status !== "verified" && status !== "user_verified" &&
-        status !== "closed_without_verification" && status !== "on_hold";
+    return (
+        Boolean(status) &&
+        status !== "validated" &&
+        status !== "verified" &&
+        status !== "user_verified" &&
+        status !== "closed_without_verification" &&
+        status !== "on_hold"
+    );
 }
 
 /**
@@ -101,17 +107,20 @@ export function isHoldableStatus(status: string): boolean {
  * @returns {boolean}
  */
 export function isUserVerifiableStatus(status: string): boolean {
-    return Boolean(status) && [
-        "draft",
-        "feedback",
-        "approved",
-        "ready_for_decomposition",
-        "ready_for_work",
-        "in_progress",
-        "implemented",
-        "validated_ci",
-        "reviewed",
-    ].includes(String(status));
+    return (
+        Boolean(status) &&
+        [
+            "draft",
+            "feedback",
+            "approved",
+            "ready_for_decomposition",
+            "ready_for_work",
+            "in_progress",
+            "implemented",
+            "validated_ci",
+            "reviewed",
+        ].includes(String(status))
+    );
 }
 
 /**
@@ -151,9 +160,7 @@ export async function confirmHoldWarning(uiAPI: UiAPI, message: string): Promise
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
-export async function putPlanOnHold(
-    { projectRoot, plan, uiAPI }: PutPlanOnHoldOptions,
-): Promise<boolean> {
+export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldOptions): Promise<boolean> {
     if (!isHoldableStatus(plan.attrs.status)) {
         uiAPI.appendSystemMessage(`Plans with status ${plan.attrs.status} cannot be put on hold.`, true, "RunWield");
         return false;
@@ -177,7 +184,7 @@ export async function putPlanOnHold(
 
     let holdReason = "";
     if (typeof uiAPI.promptText === "function") {
-        holdReason = String(await uiAPI.promptText("Optional hold reason:") || "").trim();
+        holdReason = String((await uiAPI.promptText("Optional hold reason:")) || "").trim();
     }
 
     const updatedAttrs = await recordPlanEvent({
@@ -209,9 +216,12 @@ export async function putPlanOnHold(
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
-export async function markPlanUserVerified(
-    { projectRoot, plan, uiAPI, session }: MarkPlanUserVerifiedOptions,
-): Promise<boolean> {
+export async function markPlanUserVerified({
+    projectRoot,
+    plan,
+    uiAPI,
+    session,
+}: MarkPlanUserVerifiedOptions): Promise<boolean> {
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     if (!isUserVerifiableStatus(plan.attrs.status)) {
         uiAPI.appendSystemMessage(
@@ -251,7 +261,7 @@ export async function markPlanUserVerified(
         details: { triageMeta: plan.attrs, userVerificationNote: note },
     });
     plan.attrs = { ...plan.attrs, ...updatedAttrs };
-    const { plan: refreshed } = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
+    const { plan: refreshed } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true });
     if (refreshed) Object.assign(plan, refreshed);
     await completeUserVerification({ projectRoot, plan, uiAPI, session });
     projectRoot = primaryRoot;
@@ -266,14 +276,12 @@ export async function markPlanUserVerified(
         workRecordMessage = ` ${workRecordResult.message}`;
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        workRecordMessage = ` ${
-            formatWorkRecordAutoGenerationResult({
-                status: "failed",
-                planName: plan.planName,
-                error: reason,
-                message: "",
-            })
-        }`;
+        workRecordMessage = ` ${formatWorkRecordAutoGenerationResult({
+            status: "failed",
+            planName: plan.planName,
+            error: reason,
+            message: "",
+        })}`;
     }
     uiAPI.appendSystemMessage(
         `Plan marked User Verified. RunWield Workflow Validation was not claimed.${workRecordMessage}`,
@@ -281,8 +289,10 @@ export async function markPlanUserVerified(
         "RunWield",
     );
     if (
-        workRecordResult && (workRecordResult.status === "generated" || workRecordResult.status === "linked") &&
-        workRecordResult.recordId && workRecordResult.supersessionProposals?.length
+        workRecordResult &&
+        (workRecordResult.status === "generated" || workRecordResult.status === "linked") &&
+        workRecordResult.recordId &&
+        workRecordResult.supersessionProposals?.length
     ) {
         await resolveWorkRecordSupersessionProposalsWithUi({
             projectRoot,
@@ -320,12 +330,18 @@ export async function runResumeCheck({
                     projectRoot: projectRoot,
                     path: worktreeContext.path,
                     branch: worktreeContext.branch,
-                    baseTree: plan.attrs.executionBaselineTree || worktreeContext.executionBaselineTree ||
-                        worktreeContext.baseTree || worktreeContext.baseCommit,
+                    baseTree:
+                        plan.attrs.executionBaselineTree ||
+                        worktreeContext.executionBaselineTree ||
+                        worktreeContext.baseTree ||
+                        worktreeContext.baseCommit,
                 });
                 if (!status.exists) failures.push(`Recorded worktree is missing: ${worktreeContext.path}`);
                 if (
-                    status.exists && worktreeContext.branch && status.branch && status.branch !== worktreeContext.branch
+                    status.exists &&
+                    worktreeContext.branch &&
+                    status.branch &&
+                    status.branch !== worktreeContext.branch
                 ) {
                     failures.push(
                         `Recorded branch mismatch: expected ${worktreeContext.branch}, found ${status.branch}.`,
@@ -361,10 +377,12 @@ export async function runResumeCheck({
         try {
             const commits = await listCommitsTouchingPathsSince(projectRoot, baseline, affectedPaths);
             if (commits.length > 0) {
-                warnings.push([
-                    `${commits.length} commit(s) touched affected paths since the Resume Check baseline (${baseline}).`,
-                    ...formatCommitHeadsUp(commits),
-                ].join("\n"));
+                warnings.push(
+                    [
+                        `${commits.length} commit(s) touched affected paths since the Resume Check baseline (${baseline}).`,
+                        ...formatCommitHeadsUp(commits),
+                    ].join("\n"),
+                );
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -384,20 +402,16 @@ export async function runResumeCheck({
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
-export async function resetHeldPlanToDraft({
-    projectRoot,
-    plan,
-    uiAPI,
-}: ResetHeldPlanOptions): Promise<boolean> {
+export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHeldPlanOptions): Promise<boolean> {
     const worktreeContext = await resolveRecoveryWorktree(projectRoot, plan);
     let action = "reset_keep";
     if (hasWorktreeContext(worktreeContext)) {
         action = String(
-            await uiAPI.promptSelect("Reset status to draft and handle the recorded worktree:", [
+            (await uiAPI.promptSelect("Reset status to draft and handle the recorded worktree:", [
                 { value: "reset_keep", label: "Reset metadata and keep worktree for manual rescue" },
                 { value: "reset_delete", label: "Delete worktree and reset metadata" },
                 { value: "cancel", label: "Cancel" },
-            ]) || "cancel",
+            ])) || "cancel",
         );
         if (action === "cancel") return false;
         if (action === "reset_delete") {

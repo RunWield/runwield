@@ -32,6 +32,7 @@ import { getCwd } from "../../../constants.js";
  * @property {"select"|"text"|"approval"} type
  * @property {string} [promptIncludes]
  * @property {string|null} [value]
+ * @property {boolean} [optional] The prompt may be absent when asynchronous work finished before reload.
  * @property {{ path: string, text: string, target?: "project"|"execution"|"repair", planName?: string, commands?: string[] }} [userFixesFirst] what the user does in the
  * project before answering. RunWield pauses precisely when it needs a person to change
  * something, so a scenario that cannot model the person changing it can only ever test
@@ -132,9 +133,9 @@ export class ScriptedInteractionSurface {
         }
         if (interaction.promptIncludes && !String(request.prompt || "").includes(interaction.promptIncludes)) {
             throw new Error(
-                `Unexpected Runtime interaction prompt for ${type}: expected ${
-                    JSON.stringify(interaction.promptIncludes)
-                }, got ${JSON.stringify(String(request.prompt || ""))}`,
+                `Unexpected Runtime interaction prompt for ${type}: expected ${JSON.stringify(
+                    interaction.promptIncludes,
+                )}, got ${JSON.stringify(String(request.prompt || ""))}`,
             );
         }
         /** @type {{ request: Record<string, unknown>, interaction: ScriptedRuntimeInteraction, userFixCwd?: string, userFixPath?: string }} */
@@ -142,11 +143,12 @@ export class ScriptedInteractionSurface {
         this.consumed.push(consumed);
         if (interaction.userFixesFirst) {
             const repairMatch = String(request.prompt || "").match(/Open ([^,\n]+), fix the files/);
-            const cwd = interaction.userFixesFirst.target === "execution"
-                ? this.resolveExecutionCwd(interaction.userFixesFirst.planName)
-                : interaction.userFixesFirst.target === "repair"
-                ? repairMatch?.[1]
-                : getCwd();
+            const cwd =
+                interaction.userFixesFirst.target === "execution"
+                    ? this.resolveExecutionCwd(interaction.userFixesFirst.planName)
+                    : interaction.userFixesFirst.target === "repair"
+                      ? repairMatch?.[1]
+                      : getCwd();
             if (!cwd) throw new Error("The interaction did not name a publication repair checkout.");
             const target = `${cwd}/${interaction.userFixesFirst.path}`;
             fsWriteFileSync(target, interaction.userFixesFirst.text);
@@ -164,8 +166,9 @@ export class ScriptedInteractionSurface {
     }
 
     assertComplete() {
-        if (this.interactions.length) {
-            throw new Error(`Unused scripted Runtime interactions: ${this.interactions.length}`);
+        const required = this.interactions.filter((interaction) => !interaction.optional);
+        if (required.length) {
+            throw new Error(`Unused scripted Runtime interactions: ${required.length}`);
         }
     }
 }

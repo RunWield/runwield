@@ -78,6 +78,12 @@ jobs:
                   cp src/snip-filters/*.yaml "$HOME/.config/snip/filters/"
                   echo "$RUNNER_TEMP/runwield-ci-bin" >> "$GITHUB_PATH"
 
+            - name: Configure local core dumps
+              # Piped dump handlers ignore the crash fixtures' ulimit -c 0.
+              run: |
+                  sysctl kernel.core_pattern
+                  sudo sysctl -w kernel.core_pattern=core
+
             - name: Run source-quality gate
               run: bun run ci --source-only
 

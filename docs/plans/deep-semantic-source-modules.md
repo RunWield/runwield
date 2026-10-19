@@ -324,7 +324,7 @@ Configuration, scripts, and documentation:
 - `scripts/language-policy-baseline.json` — 210 literal `src/**` paths, every one of which changes.
 - `scripts/write-version.js`, `scripts/check-doc-links.js`, `scripts/build-workspace-runtime.js`,
   `scripts/build-plan-server-runtime.js`, `scripts/assert-workspace-review-runtime.js`,
-  `scripts/assert-plan-server-image.js`, `scripts/run-prototype.js`, and `scripts/lint-rules/` — all reference source
+  `scripts/assert-plan-server-image.ts`, `scripts/run-prototype.js`, and `scripts/lint-rules/` — all reference source
   paths.
 - `.vscode/launch.json` and `.githooks/` if they name `src/cli.ts`.
 - `docs/architecture.md` (76KB) — rewrite the source guide and dependency diagrams to match the final tree.
@@ -536,7 +536,7 @@ module evaluation rather than at call time, the binary breaks and the source-run
 Every existing test is expected to survive this Plan. Nothing here removes a feature, so a test that no longer compiles
 must be rewritten against the new path or the new module shape — never deleted. Three areas need explicit care:
 
-- `src/ui/theme/theme-json.test.js` and `theme-registry.test.js` split along with their subjects. The JSON-policy cases
+- `src/ui/theme/theme-json.test.ts` and `theme-registry.test.js` split along with their subjects. The JSON-policy cases
   (`mergeThemeJson`, `resolveThemeVars`) follow Core; the Pi-`Theme` construction cases (`createThemeFromJson`,
   `splitFgBgColors`, `detectColorMode`) follow `consumers/cli/style/`. No case is dropped.
 - `src/cmd/plans/collaboration-commands.integration.test.ts` splits between the Core operation and the command. The

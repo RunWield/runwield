@@ -188,6 +188,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
                                   state: "running",
                                   ownerPid: checkpoint.ownerPid,
                                   ownerHostname: checkpoint.ownerHostname,
+                                  ownerIdentity: checkpoint.ownerIdentity,
                                   lastSettledOperationId: checkpoint.lastSettledOperationId,
                               })
                             : null,

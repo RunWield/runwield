@@ -1,5 +1,6 @@
+diffstat only, patch not produced. Full patch: git show -p <rev>
 {
-	"_variables": {
-		"lastUpdateCheck": 1791259619924
-	}
+    "_variables": {
+        "lastUpdateCheck": 1792343865553
+    }
 }

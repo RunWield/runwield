@@ -122,6 +122,9 @@ negative margins or extra top padding to simulate a shared row. The navigation b
 scrolls. Embedded workflow content uses its host's tab header and scroll area, with compact square rows and separators,
 not a second heading or nested card stack.
 
+Render the Workspace sidebar opener in the initial header markup, and retain that same button during navigation data
+updates. The collapsed mobile drawer must remain reachable before Project and Session lists finish loading.
+
 ## Component architecture
 
 ### Connection feedback
@@ -155,6 +158,13 @@ ARIA behavior.
 Plan and Code Review share `ReviewCompletion` for successful decisions. Workspace reviews return to the originating
 Session in the same tab; standalone reviews retain the completion overlay and its auto-close preference. Workspace must
 never mount the standalone auto-close behavior.
+
+### Embedded Plan Questions
+
+Each Plan Question uses one `.rw-question-card` around a `.rw-question-field` fieldset. The prompt is its legend.
+Inside `.rw-plan-question-mounted`, radio options are borderless rows, not separate cards. The Other text field has no
+border or nested surface; its focus outline stays visible. Use the shared `--rw-*` surface, text, border, and accent
+tokens.
 
 ### Delivery evidence card
 
@@ -208,12 +218,22 @@ Do not wrap a whole section, a step list, or a verification list in a callout, a
 box. A marker with text on the same line is an ordinary quote. The Changes view shows callouts as plain quotes with
 their text intact; matching callout styling there is deferred.
 
+### Plan Review document defaults
+
+Plan Review starts Wide unless a valid standalone width choice is saved. Workspace review uses the full document width.
+The front matter card starts hidden; a framed `.rw-review-toolbar-trigger` in the View toolbar switches between Show
+front matter and Hide front matter and exposes `aria-expanded`. It shares its border, fill, spacing, and active state
+with Files. Use the document-field icon, a tooltip, and an accessible label; keep the icon visible when toolbar text is
+hidden on phones. Omit the toggle for documents without front matter.
+Edit keeps the full Markdown and editable YAML, independent of the card's visibility.
+
 ### Phone review layout
 
 Embedded reviews constrain the Workspace grid column to the viewport. At phone widths, header actions and document
 controls wrap; every sidebar-state combination uses one document column, with open sidebars shown as overlays. The
 document scroll area takes the remaining height below the header and controls. Only standalone reviews reserve space for
-a fixed bottom action bar. Long prose and metadata wrap inside the document instead of widening the page.
+a fixed bottom action bar. Long prose and metadata wrap inside the document instead of widening the page. Plan document
+actions occupy their own row above the title so hidden front matter cannot leave the title beside a floating toolbar.
 
 ### Shared loaders
 
@@ -1108,3 +1128,11 @@ Artifact links sit beside the corresponding evidence row (and the approved Plan 
 button group or “in browser” suffix. TUI mouse links open the same registered artifact reader; Esc then Alt+] remains
 the keyboard path. An explicitly skipped Code Review replaces its selection controls with the ordinary RunWield status
 “Code Review skipped”. Dismissed offers remain pending and do not claim a decision.
+
+## Confirmation dialog
+
+`RunWieldConfirmationDialog.tsx` is the shared compact Continue/Quit modal for Project root consent. It uses a native
+`dialog` for keyboard containment and Escape dismissal, initially focuses Quit, and restores focus on close. The detail
+wraps long entered paths. `.rw-confirmation-dialog` and its detail/actions classes use semantic `--rw-*` surface, text,
+border, and page-background tokens with existing rectangular action buttons. Use it for a cancelable warning; it is not
+an authentication prompt or a destructive-operation approval. Add and relink share `ProjectRootForm.tsx`.

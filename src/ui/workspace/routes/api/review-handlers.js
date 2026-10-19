@@ -18,6 +18,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  *
  * @typedef {Object} ReviewDecisionFields
  * @property {string} [plan]
+ * @property {import("../../../../shared/plan-questions.ts").PlanQuestionAnswer[]} [questionAnswers]
  * @property {string} [savedPath]
  * @property {string} [agentSwitch]
  * @property {string} [permissionMode]
@@ -124,6 +125,14 @@ export async function reviewDecisionApi(ctx) {
         if (executionPolicy instanceof Response) return executionPolicy;
         return {
             approved: true,
+            ...(Array.isArray(body.questionAnswers) && {
+                questionAnswers: body.questionAnswers.filter(
+                    (answer) =>
+                        answer &&
+                        typeof answer.id === "string" &&
+                        (typeof answer.value === "boolean" || typeof answer.value === "string"),
+                ),
+            }),
             feedback: typeof body.feedback === "string" ? body.feedback : undefined,
             annotations: Array.isArray(body.annotations) ? body.annotations : [],
             ...reviewImageDecisionFields(body),

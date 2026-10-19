@@ -16,7 +16,7 @@ affectedPaths:
     - "docs/adr/014-attached-workflow-coordination-boundary.md"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
-devServerCommand: "deno task workspace:dev"
+devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173/dev/plan-review"
 devServerHmr: true
 createdAt: "2026-10-07T03:22:46.617Z"
@@ -180,23 +180,23 @@ records. `docs/prd/runwield-core-prd.md` needs no requirement change; check its 
    With no sink, every response is byte-identical to today.
 4. `src/shared/attached/review-host.ts` exports the hosting functions used by the MCP carrier:
    `ensureReviewHosted(
-   projectRoot, workflow)` calls `openAttachedReviewRound`, composes the browser payload through
+projectRoot, workflow)` calls `openAttachedReviewRound`, composes the browser payload through
    the helper extracted from `submitPlanForReview` (with `agentLabel: "Claude"` and no conversation events), starts the
    surface with `onDecision` routed to `applyAttachedReviewDecision`, and opens the browser. A hosted surface is keyed
    by `workflowId`; a resubmission reuses the live page through `beginReviewRound` instead of a new server. Hosting
    registers with the existing process-exit cleanup so surfaces stop when the MCP process exits.
 5. `coordinator.ts` exports `applyAttachedReviewDecision(projectRoot, workflowId, round, decision)`:
-   - A decision whose round is already `applied` returns the saved `outcome` unchanged (idempotent repeat).
-   - A decision for any other round, or a record not in `awaiting_review`, is rejected `action_superseded`.
-   - The decision is validated with `isAnsweredPlanReview`; `canceled` / `exit` close the round into `awaiting_planning`
-     with a pending planner action whose note says the user canceled the browser review (user-confirmed decision).
-   - Feedback: `applySharedPlanReviewDecision` records `review_feedback`; the record moves to `awaiting_planning` with a
-     pending planner action carrying the feedback text and feedback image paths (`loadReviewFeedbackImages`).
-   - Approval: `applySharedPlanReviewDecision` records `review_approved`, then `recordPlanEvent("readiness_passed")`
-     makes the Plan `ready_for_work`; the record moves to `plan_ready` with no pending action.
-   - The Plan-store writes happen first; the record transaction (which marks `review.status = "applied"` with the
-     outcome) commits before the sink returns. A sink rejection (stale content, invalid policy) leaves the record
-     unchanged with the round still pending.
+    - A decision whose round is already `applied` returns the saved `outcome` unchanged (idempotent repeat).
+    - A decision for any other round, or a record not in `awaiting_review`, is rejected `action_superseded`.
+    - The decision is validated with `isAnsweredPlanReview`; `canceled` / `exit` close the round into `awaiting_planning`
+      with a pending planner action whose note says the user canceled the browser review (user-confirmed decision).
+    - Feedback: `applySharedPlanReviewDecision` records `review_feedback`; the record moves to `awaiting_planning` with a
+      pending planner action carrying the feedback text and feedback image paths (`loadReviewFeedbackImages`).
+    - Approval: `applySharedPlanReviewDecision` records `review_approved`, then `recordPlanEvent("readiness_passed")`
+      makes the Plan `ready_for_work`; the record moves to `plan_ready` with no pending action.
+    - The Plan-store writes happen first; the record transaction (which marks `review.status = "applied"` with the
+      outcome) commits before the sink returns. A sink rejection (stale content, invalid policy) leaves the record
+      unchanged with the round still pending.
 6. `viewOf` exposes the review summary (`round`, `status`, `outcome`) and, for `awaiting_review`, `nextAction` is
    `{ kind: "review", round, planName }`; for `plan_ready` it is `{ kind: "plan_ready", planName }` with guidance that
    execution is a later Preview step (honest availability — child 04 adds the execution action). The post-feedback
@@ -236,27 +236,27 @@ records. `docs/prd/runwield-core-prd.md` needs no requirement change; check its 
 ## Verification Plan
 
 - Automated:
-  `deno run -A scripts/run-tests.js src/shared/attached/ src/attached/claude/ src/cmd/attached/
-  src/ui/review/review-launcher.test.ts src/ui/review/plan-review.test.ts
-  src/ui/workspace/plan-review-decision-route.test.ts src/shared/workflow/plan-review-actions.test.ts
-  src/shared/workflow/plan-review-recovery.test.js`.
+  `bun scripts/run-tests.js src/shared/attached/ src/attached/claude/ src/cmd/attached/
+src/ui/review/review-launcher.test.ts src/ui/review/plan-review.test.ts
+src/ui/workspace/plan-review-decision-route.test.ts src/shared/workflow/plan-review-actions.test.ts
+src/shared/workflow/plan-review-recovery.test.ts`.
 - Durability (coordinator/review tests over the real record store and a real Git fixture):
-  - Persist-before-open: after `plan_written`, the record on disk shows `awaiting_review` with round, actionId,
-    planRevision, and waiting reason — before any surface exists. This fails if the review identity lives only in
-    process memory.
-  - Decision-before-ack: the browser route's `{ ok: true }` is observable only after the record shows
-    `review.status === "applied"`. A sink rejection produces the 409 shape and leaves the record pending.
-  - Fresh-process restore: stop the hosted surface, call `openAttachedReviewRound` + hosting again (new port), and
-    submit the decision; it applies to the same round. This fails against an in-memory-only implementation.
-  - Retrieve-after-loss: apply a decision, then call only `status` from a fresh entry point; the outcome (feedback text
-    and image paths, or `plan_ready` + `ready_for_work`) is returned without repeating any transition.
-  - Duplicate callback: the same round's decision repeated returns the saved outcome; the Plan file bytes do not change.
-  - Staleness: a meaningful Plan edit during review rejects the decision and the record stays pending; a formatting-only
-    rewrite still approves (mirrors `plan-review.test.ts` semantics through the attached sink).
-  - Cancel: a canceled/exit decision returns to `awaiting_planning` with the cancel note; the Plan stays `draft`.
-  - Readiness: approval records `review_approved` then `readiness_passed` and the Plan is `ready_for_work`; approval
-    after the Plan advanced in Core reconciles instead of double-transitioning.
-  - `status` without `workflowId` returns the project's most recent non-closed workflow.
+    - Persist-before-open: after `plan_written`, the record on disk shows `awaiting_review` with round, actionId,
+      planRevision, and waiting reason — before any surface exists. This fails if the review identity lives only in
+      process memory.
+    - Decision-before-ack: the browser route's `{ ok: true }` is observable only after the record shows
+      `review.status === "applied"`. A sink rejection produces the 409 shape and leaves the record pending.
+    - Fresh-process restore: stop the hosted surface, call `openAttachedReviewRound` + hosting again (new port), and
+      submit the decision; it applies to the same round. This fails against an in-memory-only implementation.
+    - Retrieve-after-loss: apply a decision, then call only `status` from a fresh entry point; the outcome (feedback text
+      and image paths, or `plan_ready` + `ready_for_work`) is returned without repeating any transition.
+    - Duplicate callback: the same round's decision repeated returns the saved outcome; the Plan file bytes do not change.
+    - Staleness: a meaningful Plan edit during review rejects the decision and the record stays pending; a formatting-only
+      rewrite still approves (mirrors `plan-review.test.ts` semantics through the attached sink).
+    - Cancel: a canceled/exit decision returns to `awaiting_planning` with the cancel note; the Plan stays `draft`.
+    - Readiness: approval records `review_approved` then `readiness_passed` and the Plan is `ready_for_work`; approval
+      after the Plan advanced in Core reconciles instead of double-transitioning.
+    - `status` without `workflowId` returns the project's most recent non-closed workflow.
 - MCP (`src/attached/claude/mcp.test.ts`): the tool list is still exactly `activate`, `triage_report`, `status`,
   `plan_written`; a `plan_written` result carries `review.url` and round; a `status` result for a pending review carries
   the URL; transport close stops hosted surfaces.
@@ -267,11 +267,11 @@ records. `docs/prd/runwield-core-prd.md` needs no requirement change; check its 
   same browser page; (2) approve and confirm the Plan is `ready_for_work` and the record is `plan_ready`; (3) kill the
   MCP server while a review is pending, restart Claude, run `/runwield:plan-review` in a fresh conversation, and confirm
   the review reopens on a new port with the old endpoint dead and no decision fabricated.
-- UI baseline: `deno task workspace:dev` serves `http://127.0.0.1:5173/dev/plan-review` with HMR; the fixture is not
+- UI baseline: `bun run workspace:dev` serves `http://127.0.0.1:5173/dev/plan-review` with HMR; the fixture is not
   proof of durable Attached behavior — verify the production review flow too. Any visible change uses
   `docs/design-system.md` tokens and primitives.
 - Protected behavior: Core TUI review (`plan-review.test.ts`, `runtime-interaction-adapter` tests,
-  `plan-review-actions.test.ts`, `plan-review-recovery.test.js`, the Core cases of `plan-review-decision-route.test.ts`)
+  `plan-review-actions.test.ts`, `plan-review-recovery.test.ts`, the Core cases of `plan-review-decision-route.test.ts`)
   passes unchanged; child 01/02 coordinator, CLI, and MCP tests pass. Behavior expected to stop existing: the
   `plan_submitted` state and its `nextAction` (child 02 assertions updated to `awaiting_review`); nothing else is
   removed.

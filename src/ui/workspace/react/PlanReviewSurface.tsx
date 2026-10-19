@@ -1,4 +1,6 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
+import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
@@ -35,7 +37,8 @@ import { useConfigValue } from "@plannotator/ui/config/index.ts";
 import { getPlanSaveSettings } from "@plannotator/ui/utils/planSave.ts";
 import { extractFrontmatter, parseMarkdownToBlocks } from "@plannotator/ui/utils/parser.ts";
 import { copyTextToClipboard } from "@plannotator/ui/utils/clipboard.ts";
-import { getUIPreferences, PLAN_WIDTH_OPTIONS } from "@plannotator/ui/utils/uiPreferences.ts";
+import { PLAN_WIDTH_OPTIONS } from "@plannotator/ui/utils/uiPreferences.ts";
+import { getPlanReviewPreferences } from "./plan-review-preferences.ts";
 import { PlanReviewSettings } from "./PlanReviewSettings.tsx";
 import {
     buildPlanReviewExecutionPolicyPayload,
@@ -154,24 +157,39 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [editorMode, setEditorMode] = useState("view");
     const [isPlanDiffActive, setIsPlanDiffActive] = useState(false);
     const [planDiffMode, setPlanDiffMode] = useState("clean");
-    const [uiPreferences, setUiPreferences] = useState(() => getUIPreferences());
+    const [uiPreferences, setUiPreferences] = useState(() => getPlanReviewPreferences());
+    const [frontmatterVisible, setFrontmatterVisible] = useState(false);
     const [compactLayout, setCompactLayout] = useState(
         () => globalThis.matchMedia?.("(max-width: 980px)").matches ?? false,
     );
-    const [sidebarOpen, setSidebarOpen] = useState(() => !compactLayout && getUIPreferences().tocEnabled);
+    const [sidebarOpen, setSidebarOpen] = useState(() => !compactLayout && uiPreferences.tocEnabled);
     const [sidebarTab, setSidebarTab] = useState("toc");
 
     useEffect(() => {
         const media = globalThis.matchMedia("(max-width: 980px)");
         const syncLayout = () => {
             setCompactLayout(media.matches);
-            setSidebarOpen(!media.matches && getUIPreferences().tocEnabled);
+            setSidebarOpen(!media.matches && getPlanReviewPreferences().tocEnabled);
             if (media.matches) setAnnotationsOpen(false);
         };
         syncLayout();
         media.addEventListener("change", syncLayout);
         return () => media.removeEventListener("change", syncLayout);
     }, []);
+    const [questionAnswers, setQuestionAnswers] = useState([]);
+    const questions = useMemo(() => parsePlanQuestions(plan), [plan]);
+    const [questionContextAttached, setQuestionContextAttached] = useState(true);
+    useEffect(() => {
+        const ids = new Set(questions.filter((block) => block.question && !block.error).map((block) => block.id));
+        setQuestionAnswers((answers) => answers.filter((answer) => ids.has(answer.id)));
+    }, [questions]);
+    function answerQuestion(id, value) {
+        setQuestionContextAttached(true);
+        setQuestionAnswers((answers) => [
+            ...answers.filter((answer) => answer.id !== id),
+            ...(typeof value === "string" && !value.trim() ? [] : [{ id, value }]),
+        ]);
+    }
     const [annotations, setAnnotations] = useState([]);
     const [codeAnnotations, setCodeAnnotations] = useState([]);
     const [annotationsOpen, setAnnotationsOpen] = useReviewAnnotations(annotations.length + codeAnnotations.length);
@@ -227,6 +245,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         [directlyEditedPlan, reviewBasePlan],
     );
     const hasReviewFeedback =
+        questionAnswers.length > 0 ||
         annotations.length > 0 ||
         codeAnnotations.length > 0 ||
         globalAttachments.length > 0 ||
@@ -384,12 +403,22 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         );
     const reviewContextCount =
         annotations.length + codeAnnotations.length + globalAttachments.length + (directlyEditedPlan === null ? 0 : 1);
-    const attachedContextLabel =
-        conversationContextAttached && hasGroupFeedback
-            ? reviewContextCount > 0
-                ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"} attached`
-                : "Sequence review notes attached"
-            : undefined;
+    const attachedContextParts = [];
+    if (conversationContextAttached && (reviewContextCount > 0 || reviewGroup?.hasFeedback)) {
+        attachedContextParts.push(
+            reviewContextCount > 0
+                ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"}`
+                : "Sequence review notes",
+        );
+    }
+    if (questionContextAttached && questionAnswers.length > 0) {
+        attachedContextParts.push(
+            `${questionAnswers.length} question ${questionAnswers.length === 1 ? "answer" : "answers"}`,
+        );
+    }
+    const attachedContextLabel = attachedContextParts.length
+        ? `${attachedContextParts.join(" and ")} attached`
+        : undefined;
 
     const persistReviewDraftLocally = useCallback(
         (reportError = true) => {
@@ -405,6 +434,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     const draft = createPlanReviewDraft({
                         basePlan: reviewBasePlan,
                         annotations,
+                        questionAnswers,
                         codeAnnotations,
                         globalAttachments,
                         editedPlan: directlyEditedPlan,
@@ -427,6 +457,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             directlyEditedPlan,
             globalAttachments,
             hasReviewFeedback,
+            questionAnswers,
             reviewDraftKey,
             reviewBasePlan,
             executionPolicy,
@@ -439,7 +470,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             const raw = globalThis.localStorage?.getItem(reviewDraftKey);
             const recovered = raw ? parsePlanReviewDraft(raw, submittedPlan) : null;
             if (raw && !recovered) globalThis.localStorage?.removeItem(reviewDraftKey);
-            setPendingReviewDraft(recovered);
+            setQuestionAnswers(recovered?.questionAnswers ?? []);
+            const hasSavedNotes =
+                recovered &&
+                (recovered.annotations.length > 0 ||
+                    recovered.codeAnnotations.length > 0 ||
+                    recovered.globalAttachments.length > 0 ||
+                    recovered.editedPlan !== null ||
+                    recovered.executionPolicy);
+            setPendingReviewDraft(hasSavedNotes ? recovered : null);
         } catch {
             setReviewDraftStorageError("This review draft could not be read from the browser.");
         } finally {
@@ -465,11 +504,26 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }, [pendingReviewDraft, persistReviewDraftLocally, reviewDraftReady, submitted]);
 
     async function submitApprove(approvalAction) {
+        if (submitting !== null) return;
+        const unanswered = reviewGroup
+            ? 0
+            : parsePlanQuestions(currentPlan()).filter(
+                  (block) =>
+                      block.question && !block.error && !questionAnswers.some((answer) => answer.id === block.id),
+              ).length;
+        if (
+            unanswered &&
+            !globalThis.confirm(
+                `${unanswered} ${unanswered === 1 ? "question is" : "questions are"} not answered. The recommended answers will be used.`,
+            )
+        )
+            return;
         setSubmitting("approve");
         reviewGroup?.setBusy(true);
         try {
             const result = await submit("decision", {
                 approved: true,
+                questionAnswers,
                 approvalAction,
                 ...buildApprovalPolicyPayload(),
                 ...buildReviewPayload(),
@@ -515,16 +569,18 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
     async function sendPlannerMessage() {
         const message = conversationComposer.trim();
-        const attachedFeedback =
-            conversationContextAttached && hasGroupFeedback
+        const attachedFeedback = attachedContextLabel
+            ? reviewGroup
                 ? reviewGroup
-                    ? reviewGroup
-                          .collect()
-                          .map((document) => document.feedback || "")
-                          .filter(Boolean)
-                          .join("\n\n")
-                    : currentFeedback()
-                : "";
+                      .collect()
+                      .map((document) => document.feedback || "")
+                      .filter(Boolean)
+                      .join("\n\n")
+                : currentFeedback(currentPlan(), {
+                      includeNotes: conversationContextAttached,
+                      includeAnswers: questionContextAttached,
+                  })
+            : "";
         if ((!message && !attachedFeedback) || plannerWorking) return;
         const contextLabel = attachedFeedback ? attachedContextLabel : undefined;
         const userMessageId = `user-${crypto.randomUUID()}`;
@@ -580,7 +636,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         initialPayload.plannerConversation?.reply ||
                         "I tightened the Plan and added a clearer verification step.",
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback),
+                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -591,7 +647,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     previousRevision: conversationRevision,
                     eventStartIndex,
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback),
+                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -601,7 +657,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 previousInteractionId: activeInteractionId,
                 eventStartIndex,
                 agentMessageId,
-                clearAttachedContext: Boolean(attachedFeedback),
+                clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
             });
         } catch (caught) {
             setPlannerError(caught instanceof Error ? caught.message : String(caught));
@@ -717,6 +773,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             );
             updateReviewInteractionUrl(options.interactionId);
         }
+        setQuestionContextAttached(true);
         setPlannerDiffBase(options.priorPlan);
         setPlannerDiffRevision((value) => value + 1);
         setReviewBasePlan(options.revisedPlan);
@@ -870,19 +927,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         };
     }
 
-    function currentFeedback(reviewedPlan = currentPlan()) {
+    function currentFeedback(reviewedPlan = currentPlan(), { includeNotes = true, includeAnswers = true } = {}) {
         return buildPlanReviewFeedback({
             blocks: parsed.blocks,
-            annotations,
-            codeAnnotations,
-            globalAttachments,
-            basePlan: reviewBasePlan,
+            annotations: includeNotes ? annotations : [],
+            codeAnnotations: includeNotes ? codeAnnotations : [],
+            globalAttachments: includeNotes ? globalAttachments : [],
+            basePlan: includeNotes ? reviewBasePlan : reviewedPlan,
             reviewedPlan,
+            questionAnswers: includeAnswers ? questionAnswers : [],
         });
     }
 
     function restoreReviewDraft() {
         if (!pendingReviewDraft) return;
+        setQuestionAnswers(pendingReviewDraft.questionAnswers ?? []);
         setAnnotations(pendingReviewDraft.annotations);
         setCodeAnnotations(pendingReviewDraft.codeAnnotations);
         setGlobalAttachments(pendingReviewDraft.globalAttachments);
@@ -898,6 +957,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }
 
     function discardReviewDraft() {
+        setQuestionAnswers([]);
         try {
             globalThis.localStorage?.removeItem(reviewDraftKey);
         } catch {
@@ -1282,6 +1342,23 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                 </button>
                                             )}
                                         </RunWieldSegmentedControl>
+                                        {editorMode === "view" && !isPlanDiffActive && parsed.frontmatter && (
+                                            <button
+                                                type="button"
+                                                className={`rw-review-toolbar-trigger ${frontmatterVisible ? "active" : ""}`}
+                                                aria-label={
+                                                    frontmatterVisible ? "Hide front matter" : "Show front matter"
+                                                }
+                                                title={frontmatterVisible ? "Hide front matter" : "Show front matter"}
+                                                aria-expanded={frontmatterVisible}
+                                                onClick={() => setFrontmatterVisible((visible) => !visible)}
+                                            >
+                                                <ToggleIcon name="frontmatter" />
+                                                <span>
+                                                    {frontmatterVisible ? "Hide front matter" : "Show front matter"}
+                                                </span>
+                                            </button>
+                                        )}
                                         {compactLayout
                                             ? editorMode !== "edit" && (
                                                   <RunWieldMenu label="Review tools" align="end">
@@ -1328,7 +1405,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             <Viewer
                                                 blocks={printablePlan.blocks}
                                                 markdown={printPlan}
-                                                frontmatter={printablePlan.frontmatter}
+                                                frontmatter={frontmatterVisible ? printablePlan.frontmatter : null}
                                                 annotations={[]}
                                                 onAddAnnotation={() => {}}
                                                 onSelectAnnotation={() => {}}
@@ -1374,7 +1451,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     ref={viewerHandleRef}
                                                     blocks={parsed.blocks}
                                                     markdown={plan}
-                                                    frontmatter={parsed.frontmatter}
+                                                    frontmatter={frontmatterVisible ? parsed.frontmatter : null}
                                                     annotations={annotations}
                                                     globalAttachments={globalAttachments}
                                                     onAddGlobalAttachment={(image) =>
@@ -1400,6 +1477,16 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     onOpenLinkedDoc={codeFilePopout.open}
                                                     onToggleCheckbox={toggleCheckbox}
                                                 />
+                                                {!reviewGroup && (
+                                                    <PlanQuestionBlocks
+                                                        containerRef={reviewRef}
+                                                        markdown={plan}
+                                                        blocks={parsed.blocks}
+                                                        questions={questions}
+                                                        answers={questionAnswers}
+                                                        onAnswer={answerQuestion}
+                                                    />
+                                                )}
                                             </div>
                                         </OverlayScrollArea>
                                     ) : (
@@ -1561,7 +1648,10 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             error={plannerError}
                                             onComposerChange={setConversationComposer}
                                             onSend={sendPlannerMessage}
-                                            onDetachContext={() => setConversationContextAttached(false)}
+                                            onDetachContext={() => {
+                                                setConversationContextAttached(false);
+                                                setQuestionContextAttached(false);
+                                            }}
                                         />
                                     )}
                                 </aside>
@@ -1892,7 +1982,7 @@ function AffectedFilesMenu({ paths, onOpen }) {
                 <button
                     type="button"
                     onClick={toggleMenu}
-                    className={`rw-affected-files-trigger ${isOpen ? "active" : ""}`}
+                    className={`rw-review-toolbar-trigger ${isOpen ? "active" : ""}`}
                     aria-expanded={isOpen}
                     title="Inspect files referenced by this Plan"
                 >
@@ -1970,6 +2060,7 @@ function ToggleIcon({ name }) {
     const paths = {
         contents: "M4 6h16M4 10h16M4 14h10M4 18h10",
         versions: "M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
+        frontmatter: "M5 3h14v18H5z M8 7h2 M13 7h3 M8 11h2 M13 11h3 M8 15h8",
         view: "M2.25 12s3.75-6 9.75-6 9.75 6 9.75 6-3.75 6-9.75 6-9.75-6-9.75-6z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
         edit: "M16.862 4.487 19.5 7.125 8.25 18.375 5 19l.625-3.25L16.862 4.487z",
         changes: "M7 7h10M7 12h6M7 17h10",

@@ -38,8 +38,8 @@ async function matchesGitDocument(
     return hashes[0] === hashes[1];
 }
 
-/** Preserve recorder prose as history; lifecycle facts are owned by publication. */
-function finalizedRecord(sealedRecord: string, sealedCommit: string, targetBranch?: string): string {
+/** Match only the exact wrapper emitted by older publishers; never write this form. */
+function legacyWrappedRecord(sealedRecord: string, sealedCommit: string, targetBranch?: string): string {
     const original = parseWorkRecordMarkdown(sealedRecord);
     if (original.attrs.status !== "pending_verification") {
         return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
@@ -63,6 +63,12 @@ function finalizedRecord(sealedRecord: string, sealedCommit: string, targetBranc
         ...original.body.split("\n").map((line) => `> ${line}`),
     ].join("\n");
     return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, body);
+}
+
+/** Publication approves the sealed content without changing its prose. */
+function finalizedRecord(sealedRecord: string): string {
+    const original = parseWorkRecordMarkdown(sealedRecord);
+    return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
 }
 
 /**
@@ -120,17 +126,23 @@ export async function finalizePublicationLifecycle(
         }
         const sealedRecord = await sealedDocument(cwd, sealedCommit, recordPath);
         if (!sealedRecord) throw new Error(`Work Record is absent from the sealed candidate: ${recordPath}`);
-        const original = parseWorkRecordMarkdown(sealedRecord);
-        const legacyApproved = formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
-        const approved = finalizedRecord(sealedRecord, sealedCommit, targetBranch);
+        const approved = finalizedRecord(sealedRecord);
+        const legacyWrapped = await matchesGitDocument(
+            cwd,
+            recordPath,
+            recordText,
+            legacyWrappedRecord(sealedRecord, sealedCommit, targetBranch),
+        );
         if (
             !(await matchesGitDocument(cwd, recordPath, recordText, sealedRecord)) &&
             !(await matchesGitDocument(cwd, recordPath, recordText, approved)) &&
-            !(await matchesGitDocument(cwd, recordPath, recordText, legacyApproved))
+            !legacyWrapped
         ) {
             throw new Error(`Work Record changed outside its sealed publication: ${recordPath}`);
         }
-        if (!(await matchesGitDocument(cwd, recordPath, recordText, approved))) writes.set(recordPath, approved);
+        if (!legacyWrapped && !(await matchesGitDocument(cwd, recordPath, recordText, approved))) {
+            writes.set(recordPath, approved);
+        }
         const predecessorIds =
             typeof record.attrs.supersedes === "string" ? [record.attrs.supersedes] : record.attrs.supersedes || [];
         if (predecessorIds.length) {
@@ -188,11 +200,10 @@ export async function hasFinalizedPublicationLifecycle(
             const originalText = await sealedDocument(cwd, sealedCommit, source.workRecord.path);
             const finalText = await sealedDocument(cwd, commit, source.workRecord.path);
             if (!originalText || !finalText) return false;
-            const record = parseWorkRecordMarkdown(originalText);
-            // Previously published versions finalized only frontmatter; their proof remains valid.
+            // Both historical wrapper publication and status-only approval remain valid proof.
             if (
-                finalText !== finalizedRecord(originalText, sealedCommit, targetBranch) &&
-                finalText !== formatWorkRecordMarkdown({ ...record.attrs, status: "approved" }, record.body)
+                finalText !== finalizedRecord(originalText) &&
+                finalText !== legacyWrappedRecord(originalText, sealedCommit, targetBranch)
             ) {
                 return false;
             }
@@ -207,6 +218,48 @@ async function git(cwd: string, args: string[]): Promise<string> {
     return new TextDecoder().decode(result.stdout).trim();
 }
 
+/** A failed listing must stop publication, not imply that the branch is unchecked out. */
+async function localPublicationCheckout(cwd: string, targetBranch: string): Promise<string | null> {
+    const listing = await git(cwd, ["worktree", "list", "--porcelain", "-z"]);
+    for (const entry of listing.split("\0\0")) {
+        const fields = entry.split("\0");
+        if (!fields.includes(`branch refs/heads/${targetBranch}`)) continue;
+        const checkout = fields.find((field) => field.startsWith("worktree "));
+        if (!checkout) throw new Error(`Cannot identify the checkout holding ${targetBranch}.`);
+        return checkout.slice("worktree ".length);
+    }
+    return null;
+}
+
+/** Check the complete metadata scope before moving a ref or restoring any files. */
+async function checkLocalPublicationMetadata(cwd: string, beforeRef: string, afterRef: string): Promise<string[]> {
+    const paths = (await git(cwd, ["diff", "--name-only", "-z", beforeRef, afterRef, "--"]))
+        .split("\0")
+        .filter(Boolean);
+    const blockingPaths: string[] = [];
+    for (const path of paths) {
+        if (!/^docs\/(plans|work-records)\/.+\.md$/.test(path)) throw new Error("Unexpected delivery metadata path.");
+        const before = await sealedDocument(cwd, beforeRef, path);
+        const after = await sealedDocument(cwd, afterRef, path);
+        const disk = await fsReadFile(join(cwd, path), "utf8").catch(() => null);
+        const index = await sealedDocument(cwd, "", path);
+        if (
+            (!(await matchesGitDocument(cwd, path, disk, before)) &&
+                !(await matchesGitDocument(cwd, path, disk, after))) ||
+            (index !== before && index !== after)
+        ) {
+            blockingPaths.push(path);
+        }
+    }
+    if (blockingPaths.length) {
+        throw Object.assign(new Error(`Preserved edited delivery metadata: ${blockingPaths.join(", ")}`), {
+            mergeFailureKind: "primary_checkout_dirty",
+            blockingPaths,
+        });
+    }
+    return paths;
+}
+
 /** Restore only exact old/new bytes after a metadata ref update interrupted the checkout refresh. */
 export async function recoverLocalPublicationLifecycle(
     cwd: string,
@@ -217,21 +270,7 @@ export async function recoverLocalPublicationLifecycle(
     if (branch !== targetBranch) return;
     const message = await git(cwd, ["show", "-s", "--format=%B", "HEAD"]);
     if (!message.split("\n").includes(`RunWield-Delivery-Candidate: ${sealedCommit}`)) return;
-    const paths = (await git(cwd, ["diff", "--name-only", "HEAD^", "HEAD", "--"])).split("\n").filter(Boolean);
-    for (const path of paths) {
-        if (!/^docs\/(plans|work-records)\/.+\.md$/.test(path)) throw new Error("Unexpected delivery metadata path.");
-        const before = await sealedDocument(cwd, "HEAD^", path);
-        const after = await sealedDocument(cwd, "HEAD", path);
-        const disk = await fsReadFile(join(cwd, path), "utf8").catch(() => null);
-        const index = await sealedDocument(cwd, "", path);
-        if (
-            (!(await matchesGitDocument(cwd, path, disk, before)) &&
-                !(await matchesGitDocument(cwd, path, disk, after))) ||
-            (index !== before && index !== after)
-        ) {
-            throw new Error(`Preserved edited delivery metadata: ${path}`);
-        }
-    }
+    const paths = await checkLocalPublicationMetadata(cwd, "HEAD^", "HEAD");
     if (paths.length) await git(cwd, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...paths]);
 }
 
@@ -243,7 +282,8 @@ export async function finalizeLocalPublicationLifecycle(
     sealedCommit: string,
     allowedPlanPaths: string[],
 ): Promise<string> {
-    await recoverLocalPublicationLifecycle(cwd, targetBranch, sealedCommit);
+    const checkout = await localPublicationCheckout(cwd, targetBranch);
+    if (checkout) await recoverLocalPublicationLifecycle(checkout, targetBranch, sealedCommit);
     const before = await git(cwd, ["rev-parse", `refs/heads/${targetBranch}`]);
     const temporary = await mkdtemp(join(tmpdir(), "runwield-delivery-metadata-"));
     let attached = false;
@@ -267,8 +307,10 @@ export async function finalizeLocalPublicationLifecycle(
             `RunWield-Delivery-Candidate: ${sealedCommit}`,
         ]);
         const commit = await git(temporary, ["rev-parse", "HEAD"]);
+        const targetCheckout = await localPublicationCheckout(cwd, targetBranch);
+        if (targetCheckout) await checkLocalPublicationMetadata(targetCheckout, before, commit);
         await git(cwd, ["update-ref", `refs/heads/${targetBranch}`, commit, before]);
-        await recoverLocalPublicationLifecycle(cwd, targetBranch, sealedCommit);
+        if (targetCheckout) await recoverLocalPublicationLifecycle(targetCheckout, targetBranch, sealedCommit);
         return commit;
     } finally {
         if (attached) await git(cwd, ["worktree", "remove", "--force", temporary]);

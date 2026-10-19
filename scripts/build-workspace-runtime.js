@@ -278,14 +278,14 @@ function sortBundledManifestAssets(source) {
 }
 
 /**
- * Astro can return before all generated server chunks are immediately visible to
- * a follow-up subprocess on every filesystem. Wait for entrypoint imports before
- * invoking `bun build`, so release builds do not race the server output.
+ * Astro can expose the entry before its chunks and final manifest are ready.
+ * Wait for both before invoking `bun build`, so the runtime does not retain
+ * Astro's temporary manifest placeholder.
  *
  * @param {string} serverEntry
  * @returns {Promise<void>}
  */
-async function waitForServerEntryImports(serverEntry) {
+async function waitForFinalServerEntry(serverEntry) {
     const entryDir = dirname(serverEntry);
     const deadline = Date.now() + 5000;
     while (true) {
@@ -298,9 +298,14 @@ async function waitForServerEntryImports(serverEntry) {
             });
             if (!stat?.isFile()) missing.push(path);
         }
-        if (missing.length === 0) return;
+        const manifestPending = source.includes("@@ASTRO_MANIFEST_REPLACE@@");
+        if (missing.length === 0 && !manifestPending) return;
         if (Date.now() >= deadline) {
-            throw new Error(`Workspace server imports are missing: ${missing.join(", ")}`);
+            throw new Error(
+                manifestPending
+                    ? "Workspace server manifest is not finalized."
+                    : `Workspace server imports are missing: ${missing.join(", ")}`,
+            );
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -339,7 +344,7 @@ export async function buildWorkspaceRuntime(options, port) {
     });
     await fsMkdir(dirname(serverOutput), { recursive: true });
 
-    await waitForServerEntryImports(serverEntry);
+    await waitForFinalServerEntry(serverEntry);
     await port.run(process.execPath, ["build", "--target", "bun", "--minify", "--outfile", serverOutput, serverEntry]);
     await waitForFile(serverOutput);
     await fsWriteFile(

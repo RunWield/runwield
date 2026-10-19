@@ -29,8 +29,8 @@ import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { isGitRepository } from "../git.ts";
-import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
-import { ensureEpicBranch } from "./epic-branch.ts";
+import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
@@ -100,7 +100,7 @@ export async function resolveEpicContinuation({
     completedPlanName,
     completedStatus: knownCompletedStatus,
 }: ResolveEpicContinuationOptions): Promise<EpicContinuationResolution> {
-    const completedLocation = await resolveWorkflowPlanLocation(cwd, completedPlanName);
+    const completedLocation = await resolveWorkflowPlanLocation(cwd, completedPlanName, { readOnly: true });
     let completedAttrs = completedLocation.plan?.attrs;
     let completedDeclaredStatus =
         knownCompletedStatus ||
@@ -137,10 +137,12 @@ export async function resolveEpicContinuation({
         return { kind: "none", reason: "completed_plan_not_completed_child_feature", completedPlanName };
     }
     if (!parentPlanName) return { kind: "none", reason: "completed_plan_has_no_parent_epic", completedPlanName };
-    let parentLocation = await resolveWorkflowPlanLocation(cwd, parentPlanName);
+    let parentLocation = await resolveWorkflowPlanLocation(cwd, parentPlanName, { readOnly: true });
     if (!parentLocation.plan && resolvePrimaryCheckoutRoot(cwd) !== cwd) {
         // A child's execution checkout is based on the Epic branch, which carries the children but not the Epic.
-        parentLocation = await resolveWorkflowPlanLocation(resolvePrimaryCheckoutRoot(cwd), parentPlanName);
+        parentLocation = await resolveWorkflowPlanLocation(resolvePrimaryCheckoutRoot(cwd), parentPlanName, {
+            readOnly: true,
+        });
     }
     const parent = parentLocation.plan;
     if (!parent) return { kind: "none", reason: "parent_epic_missing", completedPlanName, parentPlanName };
@@ -280,17 +282,7 @@ export async function runEpicChildContinuation({
 }: RunEpicChildContinuationOptions): Promise<WorkflowValidationResult | null> {
     if (!["plan", "readiness_execute", "execute"].includes(resolution.kind) || !resolution.childPlanName) return null;
     const planName = resolution.childPlanName;
-    let planRoot = hostedSession.cwd;
-    if (
-        resolution.childAttrs?.parentPlan &&
-        typeof resolution.childAttrs.targetBranch === "string" &&
-        ["draft", "feedback", "approved", "ready_for_work"].includes(resolution.childAttrs.status) &&
-        (await isGitRepository(hostedSession.cwd))
-    ) {
-        await ensureEpicBranch(hostedSession.cwd, resolution.childAttrs.parentPlan);
-        const planning = await preparePlanningWorktreeForPlan(hostedSession.cwd, planName, resolution.childAttrs);
-        planRoot = planning.entry.path;
-    }
+    const { documentRoot: planRoot } = await prepareSessionPlanningWorktree(hostedSession.cwd, planName);
     const plan = await presentEpicChildPlan(hostedSession, planName, planRoot);
     if (!plan) return null;
 

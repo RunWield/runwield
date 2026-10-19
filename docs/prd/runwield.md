@@ -196,13 +196,13 @@ scope belong to [Core Work records](runwield-core-prd.md#work-records).
 These five documents are this project's living PRDs. The product-family capabilities below own shared product promises;
 each surface document owns its detailed behavior. A reference adds context, not another independently maintained copy.
 
-| Owning PRD                                                     | Capability scope                                                                                                                          |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [RunWield](#capability-requirements)                           | Reviewed intent, consistent cross-surface outcomes, durable knowledge, public documentation, independent adoption and privacy             |
-| [Core](runwield-core-prd.md#capability-requirements)           | Routing, Plan review/lifecycle, execution, validation, recovery, Sessions, context, records, customization, PRD authoring                 |
-| [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, Project access, knowledge/code search, pairing, later team governance/review |
-| [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                               |
-| [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance                          |
+| Owning PRD                                                     | Capability scope                                                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [RunWield](#capability-requirements)                           | Reviewed intent, consistent cross-surface outcomes, durable knowledge, public documentation, independent adoption and privacy        |
+| [Core](runwield-core-prd.md#capability-requirements)           | Routing, Plan review/lifecycle, execution, validation, recovery, Sessions, context, records, customization, PRD authoring            |
+| [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, Project access, knowledge search, pairing, later team governance/review |
+| [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                          |
+| [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance                     |
 
 When behavior changes, update the owning capability and its acceptance scenarios in the same implementation change.
 Other PRDs and Plans link to that owner. Proposed additions, changes, and removals stay labeled until reconciled with
@@ -336,7 +336,7 @@ Detailed owners: [Connect first-class use](runwield-connect-prd.md#first-class-c
 
 ### Public documentation
 
-**Scope and maturity:** Target until `docs.runwield.dev` is deployed from the release-aligned documentation branch.
+**Scope and maturity:** Current. `docs.runwield.dev` is deployed from the release-aligned documentation branch.
 
 **Requirement: Find usable instructions.** Users can search and navigate a public manual for installing, using,
 configuring, and troubleshooting RunWield. Internal PRDs, Plans, audits, research, and product proposals do not appear
@@ -347,6 +347,10 @@ Stable release. Candidate and unreleased `main` behavior does not replace those 
 
 **Requirement: Correct documentation independently.** Maintainers can correct the current Stable manual without
 publishing or changing a product release. Corrections remain present when the next Stable release updates the manual.
+
+**Requirement: Release the manual with Stable.** A Stable release publishes its qualified manual archive and deploys
+that manual without operator recovery. `docs/stable` gains one commit per Stable release. Retries reuse that commit;
+independent corrections remain supported.
 
 **Shared requirements:** [Core installation and updates](runwield-core-prd.md#installation-and-updates) owns truthful
 package availability. [Core execution, validation, and recovery](runwield-core-prd.md#execution-validation-and-recovery)
@@ -360,6 +364,12 @@ remains authoritative for product delivery and recovery.
   identify and describe the latest Stable release.
 - Given an error in Stable documentation, when a reviewed correction is published, the manual changes while the Stable
   product tag and assets remain unchanged; the correction is retained in the next Stable manual.
+- Given a Candidate release, when publication succeeds, no docs asset is attached, `docs/stable` gains no commit, and
+  the live manual stays on the latest Stable.
+- Given a Stable release, when publication succeeds, its qualified manual archive is published with the binaries and
+  deployed from `docs/stable` without rebuilding; a correction made during qualification is preserved.
+- Given a retried Stable publication, when docs deployment runs again, it reuses the release merge commit and
+  `docs/stable` gains no new commit.
 - Given a failed or stale documentation deployment, when publication stops or is retried, the last valid manual remains
   live and an older release cannot replace a newer one.
 

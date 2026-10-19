@@ -4,6 +4,7 @@ import { open as fsOpen } from "node:fs/promises";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { realpathSync as fsRealpathSync } from "node:fs";
 import {
+    lstat as fsLstat,
     mkdir as fsMkdir,
     readdir as fsReaddir,
     readFile as fsReadFile,
@@ -20,7 +21,13 @@ import {
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
 } from "../project-runtime-layout.ts";
-import { inspectWorktreeRegistry, inspectWorktreeRegistryAtPath } from "../worktree-registry.js";
+import {
+    inspectWorktreeRegistry,
+    inspectWorktreeRegistryAtPath,
+    type WorktreeRegistryEntry,
+} from "../worktree-registry.js";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { parsePlanFrontMatter } from "../../plan-store.js";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
 import {
     CONTROLLER_STATE_FIELDS,
@@ -324,6 +331,26 @@ export async function readControllerWorktree(cwd: string, identity: WorkflowIden
     return result.kind === "live" && result.entry.status !== "planning" ? result.entry : null;
 }
 
+/** Prove that an older failed creation never saved the identity it was about to own. */
+async function isRolledBackAnonymousCreation(cwd: string, entry: WorktreeRegistryEntry): Promise<boolean> {
+    try {
+        await fsLstat(entry.path);
+        return false;
+    } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    const head = await captureForegroundProcess("git", {
+        cwd,
+        args: ["rev-parse", "--verify", `refs/heads/${entry.branch}`],
+    });
+    if (head.code !== 0 || new TextDecoder().decode(head.stdout).trim() !== entry.baseCommit) return false;
+    const document = await captureForegroundProcess("git", {
+        cwd,
+        args: ["show", `${entry.baseCommit}:docs/plans/${entry.planName}.md`],
+    });
+    return document.code === 0 && !parsePlanFrontMatter(new TextDecoder().decode(document.stdout)).attrs.planId;
+}
+
 /** Document candidates include reopened Plans, but never expose retired attempt IDs as live. */
 export async function listControllerDocumentWorktrees(cwd: string) {
     return await withProjectRuntimeReadScope(async () => {
@@ -338,6 +365,7 @@ export async function listControllerDocumentWorktrees(cwd: string) {
             if (selected.has(entry.planName)) continue;
             const controller = await readControllerRecord(cwd, { planName: entry.planName, planId: entry.planId });
             if (controller?.state.documentWorktreeId !== entry.id) continue;
+            if (await isRolledBackAnonymousCreation(projectRoot(cwd), entry)) continue;
             live.push(entry);
             selected.add(entry.planName);
         }

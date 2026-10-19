@@ -20,7 +20,7 @@ Make RunWield usable from external clients through **Agent Client Protocol (ACP)
 behavior, and Plan workflows available in the TUI.
 
 **Current compatibility (owner confirmed 2026-10-06):** JetBrains AI Chat and the Air plugin can drive RunWield. OpenAB
-works end to end with Discord and its other supported chat platforms. Other ACP-compatible clients are expected to work
+works end to end with Discord, Slack, and its other supported chat platforms. Other ACP-compatible clients are expected to work
 through the same protocol. Internal conformance checklists do not make these working integrations future scope.
 
 The continuing product requirements are:
@@ -138,6 +138,14 @@ another lifecycle.
   client while retaining RunWield planning, review, execution, and validation.
 - Given OpenAB connected to Discord or another supported chat platform, the user can complete the RunWield workflow end
   to end from that chat, following browser review links when needed.
+- Given a no-form ACP chat client and two saved Plans, `/load-plan` lists numbered Plan choices in chat without a
+  loopback question link or form request. Replying `2` loads the second Plan and shows its action menu. Replying
+  `View plan details` shows the summary and menu again. Replying `Cancel` ends the command without changing the Plan
+  file; a later ordinary prompt reaches the model.
+- Given `/load-plan` starts an Agent turn through Resume planning, its `user_interview` questions arrive in chat and
+  replies reach the same waiting tool with the interview answer rules.
+- Given `/agent` in a no-form client, replying with the exact value `guide` switches to Guide, sends one Agent-change
+  notice, and updates the native configuration selection. `/model` and other command menus use the same chat path.
 - Given another ACP-compatible client, ordinary workflows use the advertised protocol without a client-specific fork.
 - Given a mapped or persisted ACP Session ID, when the client sends `session/delete`, it receives `{}` and the owning
   stable Session is archived with all transcript segments and Plan Associations intact. Repeating the request or
@@ -197,22 +205,31 @@ Stage 1 proves the reference journey through the shared Session experience. Prot
   Cancelling a live Session also stops its owned Background Tasks; it does not send a late generated result turn.
 - ACP sends `available_commands_update` for enabled built-ins, prompt templates, and Skills. Built-in names and aliases
   have precedence over prompt resources, including built-ins unavailable on ACP.
-- Clients that advertise ACP forms receive native forms for select, text, and approval interactions. No OpenAB form
-  contribution is required to answer `user_interview` in chat.
+- Clients that advertise `clientCapabilities.elicitation.form` receive native forms for select, text, and approval
+  interactions before any chat fallback. Without forms, these interactions, including all command menus and workflow
+  questions, appear as chat messages answered by the next user message. No OpenAB form contribution is required.
 - Pair Execution uses ordinary ACP prompt turns and messages, not form elicitation. A checkpoint report ends one ACP
   request; questions and a later natural-language decision continue the same saved Session and execution context.
-- Without forms, `user_interview` select and text questions appear in ordinary chat. Each question ends its ACP request
-  while the Runtime tool and Session writer lock stay live. A later prompt answers through the existing broker. A number
-  or unique exact label selects an option; other meaningful text selects Other with its full text. Bare Other gets one
-  text follow-up. Blank required input and unsupported attachments do not answer. A lost process requires retry.
-- Other no-form select, text, and approval questions still use a loopback browser URL. Command menus retain exact
-  selections. Remote browser reachability is not claimed.
+- Each no-form chat question ends its ACP request with `end_turn` while the Runtime command or tool and Session writer
+  lock stay live. The next prompt answers through the existing broker, not a new Agent turn. A lost process requires
+  retry.
+- Non-interview select and approval menus accept a number in range or a unique exact option label or value, trimmed and
+  matched case-insensitively. A reply of `cancel` cancels the menu only when no option matches it. An invalid or ambiguous
+  reply, including a slash command, leaves the menu waiting and repeats it with the reply rule. Approvals with no
+  supplied options show Yes and No for accept and decline; approval choices retain their defined accept/cancel meaning.
+- Non-interview text questions accept nonblank text. `cancel` is ordinary text, not menu cancellation. Blank input and
+  unsupported attachments do not answer chat questions.
+- `user_interview` rules stay distinct: a number or unique exact label selects an option; other meaningful text selects
+  Other with its full text. Bare Other gets one text follow-up. Blank required input and unsupported attachments do not
+  answer. `cancel` remains an ordinary interview answer, not a cancellation word.
 - Form cancellation, decline, and presentation failure settle the pending interaction so the same Session can accept
   another message without a manual cancel or reset. Multiple-choice forms preserve their labeled choices.
 - Choice interviews include an optional Other-answer text field in the same ACP form. Selecting Other uses that text and
   requires a nonempty answer; selecting a listed choice ignores the text field.
 - Unsupported interaction capabilities fail visibly and safely rather than selecting a default.
-- Plan review links remain useful as normal text even when a client ignores `_meta.runwield` enhancements.
+- Plan, Code, and Artifact Review keep browser review links. Artifact Review feedback, including empty acceptance,
+  keeps its browser question page even when forms are supported. These review decisions do not use the generic chat
+  fallback. Review links remain useful as normal text even when a client ignores `_meta.runwield` enhancements.
 - Agent notices follow [Core conversation behavior](runwield-core-prd.md#tui-conversation): announce a real Agent switch
   once, without repeating it for activation, commands, or same-Agent rebuilds.
 - Black-box compatibility coverage exercises the actual ACP wire behavior OpenAB depends on.
@@ -227,8 +244,21 @@ requirement.
 - Given a no-form ACP client, when `user_interview` asks three questions, each reaches chat before its ACP response.
   Later prompts answer them in order without another Agent turn. The same tool returns ordered typed answers, including
   full Other and text answers. Defaults do not answer for the user.
-- Given a required non-interview select, text, or approval interaction without native forms, a local browser question
-  can collect its answer; if that page cannot be reached, no default is chosen.
+- Given a no-form select, text, or approval question, it appears in chat without a loopback question URL. A later user
+  message answers that same live interaction. Plan, Code, and Artifact Review still use browser links, and Artifact
+  Review feedback still uses its browser question page.
+- Given a waiting Plan picker, replies `9` (out of range), `banana`, and `/agent` each produce one did-not-match message
+  that repeats the menu and reply rule. A later `1` still loads the first Plan. Case and surrounding whitespace do not
+  prevent an exact unique label or value match; ambiguous matches do not select an option.
+- Given a menu with no option matching `cancel`, replying `cancel` settles it as canceled without selecting a default.
+  A matching Cancel option instead keeps that option's meaning. Text and interview questions treat `cancel` as an
+  ordinary answer. With workflow metrics enabled, a canceled command records `canceled` when it settles.
+- Given a waiting command menu, `session/cancel` settles the command before another prompt can start. The next ordinary
+  prompt is accepted, and enabled workflow metrics record the command outcome as `canceled`.
+- Given a no-form approval with no supplied options, the menu shows Yes and No; replies `1` and `2` map to accept and
+  decline. Given a non-interview text question, a nonblank reply answers it; blank input and attachments leave it waiting.
+- Given a client advertising forms, `/load-plan` uses `elicitation/create` for its Plan picker without chat menu text.
+  Native interview forms retain their optional Other-answer field.
 - When the user cancels a live turn, final updates and cancellation settle before the turn is reported available for
   another request. A task result that arrives after cancellation does not produce a new ACP turn.
 - Given a result-driven ACP turn after the previous prompt returned, its updates and any required interaction use the
@@ -250,8 +280,6 @@ requirement.
 
 ### Chat workflow access
 
-<a id="telegram-workflow-access"></a>
-
 **Scope and maturity:** Working end-to-end personal workflows through OpenAB with Discord and its other supported chat
 platforms, confirmed by the owner on 2026-10-06. The Telegram journey below is a representative channel scenario, not a
 restriction on currently working channels.
@@ -262,13 +290,16 @@ The authorized operator can reach the same RunWield planning, review, execution,
 Telegram. Plan review remains in the browser; Telegram supplies useful links, progress, questions, and outcomes. Channel
 access and Shared Plan permissions remain independent.
 
+#### Telegram workflow access
+
 The representative chat workflow lets the operator:
 
 1. Submit a bounded FEATURE User Request in Telegram.
 2. Start a new RunWield Session or reload the durable Session associated with the chat.
 3. Receive streamed Agent messages, tool progress, relevant status, and actionable failure information.
-4. Answer `user_interview` questions in chat without forms. Answer other select, text, and approval interactions through
-   native forms or the local browser fallback; remote access to those pages is not proven.
+4. Answer select, text, and approval questions, including command menus, through native forms when supported or chat
+   otherwise, following the [interaction reply rules](#protocol-negotiation-and-interactions). Browser reviews and the
+   Artifact Review feedback question remain separate.
 5. Receive the public Shared Plan URL in Telegram.
 6. Submit Feedback or approve the Plan in Plannotator.
 7. Resume the same Session after approval and execute the Plan in a RunWield-owned worktree.

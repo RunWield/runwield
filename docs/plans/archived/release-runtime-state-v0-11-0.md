@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/workflow/publication-machine.failure-matrix.test.ts"
     - "src/cmd/plans/doctor.ts"
     - ".github/workflows/release.yml"
-    - "scripts/release-policy.test.js"
+    - "scripts/release-policy.test.ts"
     - "docs/adr/017-project-runtime-state-under-wld-internal.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/releasing.md"
@@ -161,7 +161,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   the layout-owner fix is insufficient.
 - `src/cmd/plans/doctor.ts` and tests — current secret warnings, correct upgrade-version guidance, and preserved
   report-only inspection behavior.
-- `.github/workflows/release.yml`, `scripts/release-policy.test.js`, and package checks as needed — preserve current
+- `.github/workflows/release.yml`, `scripts/release-policy.test.ts`, and package checks as needed — preserve current
   `main` qualification and publication rules during integration. Verify both native package gates. Reuse existing
   diagnostic workflows if needed; do not create a replacement pipeline.
 - `docs/adr/017-project-runtime-state-under-wld-internal.md`, relevant ADR-005 references, `docs/releasing.md`,
@@ -268,7 +268,7 @@ package runs, published assets, and installed Candidate behavior. These later ch
 pre-merge results. Record each result against its exact source commit.
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/collaboration/secrets.test.js src/cmd/plans/collaboration-commands.integration.test.ts src/cmd/plans/doctor.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-creation.test.js scripts/release-policy.test.js scripts/release.test.js
+deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/collaboration/secrets.test.js src/cmd/plans/collaboration-commands.integration.test.ts src/cmd/plans/doctor.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-creation.test.ts scripts/release-policy.test.ts scripts/release.test.js
 deno task pr:check
 deno task release:check --build-version v0.11.0-rc.1
 ```

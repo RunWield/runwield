@@ -1,3 +1,4 @@
+import { parsePlanQuestions, type PlanQuestionAnswer } from "../../../shared/plan-questions.ts";
 import type { PlanReviewPolicyFields } from "./plan-review-policy.ts";
 import type { Annotation, CodeAnnotation, ImageAttachment } from "@plannotator/ui/types.ts";
 
@@ -9,6 +10,7 @@ export interface PlanReviewDraft {
     annotations: Annotation[];
     codeAnnotations: CodeAnnotation[];
     globalAttachments: ImageAttachment[];
+    questionAnswers?: PlanQuestionAnswer[];
     executionPolicy?: PlanReviewPolicyFields;
     editedPlan: string | null;
     updatedAt: string;
@@ -19,6 +21,7 @@ export interface PlanReviewDraftInput {
     annotations: Annotation[];
     codeAnnotations: CodeAnnotation[];
     globalAttachments: ImageAttachment[];
+    questionAnswers?: PlanQuestionAnswer[];
     executionPolicy?: PlanReviewPolicyFields;
     editedPlan: string | null;
 }
@@ -44,6 +47,7 @@ export function createPlanReviewDraft(input: PlanReviewDraftInput): PlanReviewDr
         codeAnnotations: input.codeAnnotations,
         globalAttachments: input.globalAttachments,
         editedPlan: input.editedPlan,
+        questionAnswers: input.questionAnswers ?? [],
         ...(input.executionPolicy ? { executionPolicy: input.executionPolicy } : {}),
         updatedAt: new Date().toISOString(),
     };
@@ -60,6 +64,7 @@ export function parsePlanReviewDraft(raw: string, basePlan: string): PlanReviewD
             draft?.version !== PLAN_REVIEW_DRAFT_VERSION ||
             draft.basePlanFingerprint !== planReviewPlanFingerprint(basePlan) ||
             !Array.isArray(draft.annotations) ||
+            !(draft.questionAnswers === undefined || Array.isArray(draft.questionAnswers)) ||
             !(draft.codeAnnotations === undefined || Array.isArray(draft.codeAnnotations)) ||
             !Array.isArray(draft.globalAttachments) ||
             !(draft.editedPlan === null || typeof draft.editedPlan === "string") ||
@@ -67,11 +72,25 @@ export function parsePlanReviewDraft(raw: string, basePlan: string): PlanReviewD
             (draft.annotations.length === 0 &&
                 (draft.codeAnnotations?.length ?? 0) === 0 &&
                 draft.globalAttachments.length === 0 &&
-                draft.editedPlan === null && !draft.executionPolicy)
+                draft.editedPlan === null &&
+                !draft.executionPolicy &&
+                !draft.questionAnswers?.length)
         ) {
             return null;
         }
-        return { ...draft, codeAnnotations: draft.codeAnnotations ?? [] };
+        const validIds = new Set(
+            parsePlanQuestions(draft.editedPlan ?? basePlan)
+                .filter((block) => block.question && !block.error)
+                .map((block) => block.id),
+        );
+        const questionAnswers = (draft.questionAnswers ?? []).filter(
+            (answer) =>
+                answer &&
+                typeof answer.id === "string" &&
+                validIds.has(answer.id) &&
+                (typeof answer.value === "boolean" || typeof answer.value === "string"),
+        );
+        return { ...draft, codeAnnotations: draft.codeAnnotations ?? [], questionAnswers };
     } catch {
         return null;
     }
@@ -86,6 +105,9 @@ export function planReviewDraftDescription(draft: PlanReviewDraft): string {
     }
     if (attachmentCount > 0) {
         parts.push(`${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`);
+    }
+    if (draft.questionAnswers?.length) {
+        parts.push(`${draft.questionAnswers.length} question answer${draft.questionAnswers.length === 1 ? "" : "s"}`);
     }
     if (draft.editedPlan !== null) parts.push("direct Plan edits");
     return parts.join(", ");

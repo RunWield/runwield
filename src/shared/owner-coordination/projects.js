@@ -1,3 +1,4 @@
+import { inspectProjectDirectory, requireDirectoryConfirmation } from "../project-directory.ts";
 /**
  * @module shared/owner-coordination/projects
  * Registered Project lifecycle and health APIs for owner coordination.
@@ -67,18 +68,6 @@ function requireAbsoluteRoot(root, field) {
     const enteredRoot = root.trim();
     if (!isAbsolute(enteredRoot)) throw new Error(`${field} must be an absolute path`);
     return resolve(enteredRoot);
-}
-
-/** @param {string} path */
-function canonicalizeExistingDirectory(path) {
-    let stat;
-    try {
-        stat = statSync(path);
-    } catch (error) {
-        throw new Error(`Project root is not available: ${path}`, { cause: error });
-    }
-    if (!stat.isDirectory()) throw new Error(`Project root must be a directory: ${path}`);
-    return realpathSync.native(path);
 }
 
 /**
@@ -161,13 +150,15 @@ export function getProjectById(database, projectId) {
 
 /**
  * @param {import('./database.js').OwnerCoordinationDatabase} database
- * @param {{ root: string, displayName?: string, idFactory?: () => string, now?: () => string }} options
+ * @param {{ root: string, displayName?: string, directoryConfirmation?: string, idFactory?: () => string, now?: () => string }} options
  * @returns {RegisteredProject}
  */
 export function registerProject(database, options) {
     const ownerDb = requireDatabase(database);
     const enteredRoot = requireAbsoluteRoot(options?.root, "Project root");
-    const canonicalRoot = canonicalizeExistingDirectory(enteredRoot);
+    const directory = inspectProjectDirectory(enteredRoot);
+    requireDirectoryConfirmation(directory, options.directoryConfirmation);
+    const canonicalRoot = directory.canonicalRoot;
     const displayName = options.displayName || basename(canonicalRoot) || canonicalRoot;
     return ownerDb.transaction(() => {
         const db = ownerDb.handle;
@@ -250,13 +241,15 @@ export function removeProject(database, projectId) {
 
 /**
  * @param {import('./database.js').OwnerCoordinationDatabase} database
- * @param {{ projectId: string, newRoot: string, displayName?: string, idFactory?: () => string, now?: () => string }} options
+ * @param {{ projectId: string, newRoot: string, displayName?: string, directoryConfirmation?: string, idFactory?: () => string, now?: () => string }} options
  * @returns {RegisteredProject}
  */
 export function relinkProject(database, options) {
     const ownerDb = requireDatabase(database);
     const enteredRoot = requireAbsoluteRoot(options?.newRoot, "New Project root");
-    const canonicalRoot = canonicalizeExistingDirectory(enteredRoot);
+    const directory = inspectProjectDirectory(enteredRoot);
+    requireDirectoryConfirmation(directory, options.directoryConfirmation);
+    const canonicalRoot = directory.canonicalRoot;
     return ownerDb.transaction(() => {
         const db = ownerDb.handle;
         const project = getProjectById(ownerDb, options.projectId);

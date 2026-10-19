@@ -27,7 +27,7 @@ export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan
 import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./shared/lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone } from "./shared/process-liveness.ts";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     CLI_BIN,
@@ -3966,21 +3966,9 @@ export async function findPlanEvidenceById(cwd, planId) {
             );
         }
         if (matches.length === 0) throw new Error(`Plan not found for planId: ${normalized}`);
-        // Target-branch list entries can use a Git revision:path reference, not a
-        // filesystem path. Prefer the saved local child in the selected document
-        // worktree when it has the same identity.
-        const local =
-            !isAbsolute(matches[0].path) && resolvePrimaryCheckoutRoot(cwd) !== cwd
-                ? await loadPlanStrict(cwd, matches[0].name)
-                : null;
-        const loaded =
-            local?.kind === "loaded" && local.attrs.planId === matches[0].attrs.planId
-                ? local
-                : await loadPlanFileStrict(matches[0].path);
-        if (loaded.kind !== "loaded") {
-            if (loaded.kind === "malformed") throw loaded.error;
-            throw new Error(`Plan not found for planId: ${normalized}`);
-        }
+        // Catalog entries can be Git snapshots. Resolve their document authority without writing or fetching.
+        const { plan: loaded } = await resolveWorkflowPlanLocation(cwd, matches[0].name, { readOnly: true });
+        if (!loaded) throw new Error(`Plan not found for planId: ${normalized}`);
         const durableId = loaded.attrs.planId;
         if (!durableId) {
             throw new Error(
