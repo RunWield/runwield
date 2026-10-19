@@ -11,25 +11,12 @@ provenance:
         - "b587b9c5-cc2f-4cce-8564-93b6b86c2cd1"
 ---
 
-# Guide gained Markdown-only document tools
+# Guide Markdown document tools
 
 ## Summary
 
-Implemented and verified `write_docs` and `edit_docs` as Markdown-restricted Custom Tools for Guide, allowing explicit
-user-requested preservation or updates of ordinary `.md` documentation without granting general file mutation. Guide
-policy, Runtime presentation, metrics, delegated-agent exclusions, and user/Core documentation were updated; Router and
-Operator behavior remain unchanged.
-
-## Deviations from Plan
-
-Manual model-backed Guide conversation flows were not run; equivalent tool restrictions, policy behavior, Runtime
-handling, metrics, and delegated-agent exclusions were covered by automated tests.
-
-## Deferred Work
-
-The broader canonical Guide/domain-context reconciliation noted in the Plan remains outside this implementation.
+Guide can use `write_docs` and `edit_docs` for explicit user requests to preserve or update ordinary Markdown documentation without general file-mutation access. These tools do not extend to delegated Agents or change Router and Operator behavior.
 
 ## Future Planning Notes
 
-The `.md` guard is intentionally lexical and not a sandbox; future expansion to `.markdown` or `.mdx` should be a
-deliberate validator-policy change with regression coverage.
+The `.md` restriction is lexical, not a sandbox. Support for other document extensions requires a deliberate validator-policy change.

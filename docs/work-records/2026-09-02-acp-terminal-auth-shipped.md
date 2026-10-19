@@ -12,27 +12,16 @@ provenance:
         - "4977717f-6eee-4732-ac1b-c44bef919fa8"
 ---
 
-# ACP Terminal Auth shipped
+# ACP Terminal Auth
 
 ## Summary
 
-RunWield now advertises ACP Terminal Auth when the client supports it, blocks `session/new` with ACP `-32000` until
-login and a usable default model are ready, and supports `wld login` plus `wld acp login` as setup-only flows that do
-not create a Session. Verification passed through focused tests, the real NDJSON initialize probe, mutation proof, seams
-check, type check, full test suite, CI, and compile.
+RunWield advertises ACP Terminal Auth when the client supports it and blocks new Sessions until login and a usable default model are ready. Both CLI login entry points support setup-only flows without creating a Session.
 
-## Deviations from Plan
+## Out of Scope
 
-Manual external ACP Client UI testing was not exercised. Equivalent wire behavior and setup behavior were verified with
-the real NDJSON server and virtual terminal tests.
-
-## Deferred Work
-
-External ACP Registry publication remains separate: versioned agent metadata, icon creation, and upstream pull request.
-Agent Auth, ACP logout, `authenticate`, and active-session token refresh remain out of scope.
+This work does not include Agent Auth, ACP logout, authenticate, or active-Session token refresh.
 
 ## Future Planning Notes
 
-Treat ACP readiness as credentials or authenticated backend plus a usable default model, not credential storage alone.
-Keep Terminal Auth routed through existing login and model-selection owners so setup-only flows and live `/login`
-behavior do not diverge.
+Treat ACP readiness as credentials or an authenticated backend plus a usable default model, not credential storage alone. Keep Terminal Auth routed through the existing login and model-selection owners.

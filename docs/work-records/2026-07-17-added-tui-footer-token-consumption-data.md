@@ -11,15 +11,8 @@ provenance:
         - "89409afa-fe27-4adc-bc77-980ffc17cdd9"
 ---
 
-# Added TUI Footer Token Consumption Data
+# TUI footer token consumption data
 
 ## Summary
 
-Enhanced the TUI footer with cumulative input, output, cache-read, and cost metrics plus context-window utilization. The
-existing two-line layout, model/thinking display, OAuth subscription indicator, context warning colors, and Ctrl+C
-override behavior were preserved. The implementation was verified through the project quality gate.
-
-## Future Planning Notes
-
-If footer rendering becomes costly for very long sessions, consider caching cumulative usage rather than scanning all
-session entries on every render.
+The TUI footer shows cumulative input, output, cache-read, and cost metrics with context-window utilization. It preserves the two-line layout, model and thinking display, OAuth subscription indicator, warning colors, and Ctrl+C override behavior.

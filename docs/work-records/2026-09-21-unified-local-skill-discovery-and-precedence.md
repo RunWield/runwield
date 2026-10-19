@@ -16,18 +16,8 @@ provenance:
 
 ## Summary
 
-RunWield now uses one Core Skill catalog for listing, model advertising, and invocation. It adds project
-`.agents/skills`, applies consistent five-layer precedence and bundled-name protection, supports disabling both external
-Skill locations, and prevents Pi from loading a second Skill catalog. Focused tests and required static, seam,
-documentation-link, and Skill-sync checks passed.
-
-## Deviations from Plan
-
-The full test suite did not pass: 392 files passed, and one design-system test still failed because it expects
-declarations in the import-only `workspace.css`. The same failure occurs on an archived clean baseline, so it is not
-caused by this change. Three other initial failures recovered after Workspace was built.
+One Core Skill catalog owns listing, model advertising, and invocation. Project-local Agent Skills join consistent layered precedence and bundled-name protection, and both external Skill locations can be disabled. Pi does not load a second catalog.
 
 ## Future Planning Notes
 
-Keep Skill selection centralized in the Core catalog. Preserve fresh per-project discovery and explicitly disable Pi
-Skill loading, including reload, to prevent a second catalog from bypassing Core precedence and exclusions.
+Keep Skill selection centralized, with fresh per-Project discovery. Disable Pi Skill loading during startup and reload so it cannot bypass Core precedence and exclusions.

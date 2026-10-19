@@ -11,10 +11,8 @@ provenance:
         - "e80e2eee-d553-47a9-980e-0e45254ce371"
 ---
 
-# Message for Ignored Pi Package Skills
+# Pi package skill installation guidance
 
 ## Summary
 
-Updated package installation reporting to count ignored Pi skills separately and direct users to install them with
-`npx skills add <source>`. Added CLI help, settings documentation, and test coverage for packages with skills, without
-skills, and with mixed resources. Verification completed successfully.
+Package installation reports ignored Pi skills separately and directs users to the skills installer. Packages with skills, without skills, or with mixed resources receive distinct reporting.

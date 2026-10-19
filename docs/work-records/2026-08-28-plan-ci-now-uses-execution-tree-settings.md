@@ -12,16 +12,12 @@ provenance:
         - "d95497fb-0ec8-41ae-98e5-57f3fa7c0d51"
 ---
 
-# Plan CI now uses execution-tree settings
+# Execution-tree settings for Plan CI
 
 ## Summary
 
-RunWield Plan Mechanical Validation now reads `verification_command` from the execution worktree before each local CI
-run, while normal linked-worktree settings still resolve to the primary checkout. CI repair handoffs now direct repair
-agents to inspect and fix the execution checkout `.wld/settings.json` and complete only after the configured command
-passes. Regression, golden, full test, and CI suites passed.
+Plan Mechanical Validation reloads the verification command from execution-worktree settings before each local CI run. Ordinary linked-worktree settings still resolve through the primary checkout. CI repair instructions identify execution-checkout settings as the command authority and require the configured command to pass.
 
 ## Future Planning Notes
 
-Keep execution-tree settings behavior narrow to Plan CI. Do not weaken the ordinary primary-checkout settings policy for
-linked worktrees.
+Keep execution-tree settings resolution limited to Plan CI. Do not weaken the ordinary primary-checkout settings policy.

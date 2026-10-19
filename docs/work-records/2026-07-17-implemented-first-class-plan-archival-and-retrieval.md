@@ -11,15 +11,12 @@ provenance:
         - "cd648640-2ad9-464f-9108-1945d4630fcf"
 ---
 
-# Implemented first-class Plan archival and retrieval
+# Plan archival and retrieval
 
 ## Summary
 
-Added safe, reversible Plan archival under plans/archived/, including archive listing, active-or-archived reading,
-restoration, archive metadata, lifecycle and worktree safety guards, nested-path preservation, overwrite protection, CLI
-help, documentation, ADR coverage, and automated tests. Full verification passed.
+RunWield provides safe, reversible Plan archival with archive listing, active-or-archived reading, restoration, and archive metadata. Lifecycle and worktree guards protect archival, while nested organization and overwrite protection preserve stored Plans.
 
 ## Future Planning Notes
 
-Future archive surfaces should reuse the canonical plan-store APIs and preserve archival as a physical storage concern
-rather than introducing an archived lifecycle status.
+Archive interfaces must use canonical Plan-store operations. Archival is a physical storage concern, not a lifecycle status.

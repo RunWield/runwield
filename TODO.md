@@ -1,8 +1,3 @@
-1. reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status
-2. ssh
-3. other epics
-4. Recorder retro
-
 | Priority | User journey                    | Current coverage                                                               | Missing proof                                                                                                                       |
 | -------- | ------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | 3        | Authentication onboarding       | `/login` only tests cancellation; `/logout` only tests having no credentials.  | Successful login → provider/model selection → first message, persisted credentials, real logout, and failed-auth recovery.          |
@@ -62,11 +57,6 @@ the audit. Existing entries above are unchanged.
 **Quick win** means a narrow correction. **Needs Plan** means shared behavior, recovery, or compatibility needs
 coordinated verification. These are proposed work groups, not created or approved Plans. Planner must check existing
 Plans and current uncommitted work before creating new ones. Explicit future PRD scope is not included.
-
-1. [ ] **Quick win — Restore Work Record search in this checkout.** Correct the missing Summary sections in
-       [recovery repair](docs/work-records/2026-09-08-main-checkout-and-worktree-recovery-repair.md) and
-       [Session continuation](docs/work-records/2026-09-08-workspace-session-continuation-and-steering.md). Preserve
-       their evidence and confidence labels. This repairs the current documents, not the retrieval failure policy.
 
 2. [ ] **Needs Plan — Respect browser Pair decisions.** Stop and revision feedback must never become permission to
        continue autonomously. Check the real Workspace checkpoint experience against TUI behavior. Evidence:
@@ -137,120 +127,33 @@ changes.
 
 ---
 
-# Handoff: clean up existing Work Records to the permanent-memory rule - after delivering the fixes to recorder
+Check that these work records are accurate and summarize actual delivered work
 
-## Goal
-
-Rewrite the bodies of existing Work Records in `docs/work-records/` (238 files in this repo) so each
-record holds only what stays true after the next PR. A later retro covers how the Planner searches
-records; do not do that here.
-
-## Dependency
-
-Start only after the Recorder fix Plan has been delivered. That Plan:
-
-- moves all Recorder rules into `src/agent-definitions/recorder.md`;
-- removes the Recorder `deviationsFromPlan` field;
-- renames "Deferred Work" to "Out of Scope" (written as fact) in `src/shared/work-records/schema.ts`
-  (`WORK_RECORD_OPTIONAL_SECTION_TITLES`) and in generation;
-- removes the post-publication wrapper in `src/shared/publication-lifecycle.ts`.
-  Read the delivered `recorder.md` first and use it as the style authority. If "Out of Scope" is not
-  in the schema yet, stop: `markdown.js` drops unknown sections on read.
-
-## The rule
-
-A Work Record is permanent, authoritative memory of what is done, for any project. For each sentence ask:
-"Will this still be true and useful in a year?" If not, remove it.
-
-## What to fix (from the retrospective of all 238 records)
-
-1. Validation receipts in the Summary ("Verification passed with … `deno task ci`", "Full CI green").
-   Remove them. `completionMode` carries confidence.
-2. Events from one run filed as Deviations or Deferred Work: flakes, reruns, ports, permission
-   retries, "non-interactive session so manual TUI check skipped". Remove them.
-3. `verified` records whose body says CI failed or validation is pending (for example
-   `2026-07-24-fail-closed-plan-verification-delivered.md`, `2026-08-31-workflow-tool-events-became-authoritative.md`,
-   `2026-09-24-pi-0-87-compatibility-upgrade.md`). Remove the contradicting text. Do not change `completionMode`.
-   List these files for the user, because the gate may have let them through.
-4. Test counts, commit hashes, token counts, timings, Session IDs, local and absolute paths. Remove them.
-5. Pending-publication text ("Publication remains pending; not yet merged"). Remove it.
-6. Changelog voice. Titles become outcome noun phrases with no status suffix ("…shipped", "…delivered",
-   "…verified") and no past-tense verb ("Added…", "Implemented…"). Use sentence case. The Summary states
-   the resulting behavior in the present tense ("RunWield now…" or the capability as subject).
-   Note: changing the `# Title` does not rename the file. Keep the filenames, because links may use them.
-7. Lists of changed files ("tests, docs, ADR and help text were updated"). Replace them with behavior,
-   or remove them.
-8. Deferred Work becomes "Out of Scope", stated as fact ("This work did not include X"). Remove to-dos,
-   known shipped defects, repository housekeeping, and items a later record delivered. If nothing
-   remains, remove the section.
-9. User-verification text: state the attestation once, then the note once, cleaned. No box-drawing
-   characters, hashes, or stale paths.
-10. done_enough Epics must say that the Epic was closed as done enough
-    (for example `session-host-multi-session-refactor` says "Completed and verified all six child features").
-11. Plan-internal references ("feature 7", "OC3", "child 08", "tracked separately"). Name the actual thing,
-    or remove the sentence.
-12. Future Planning Notes keep durable rules only. Move backlog items ("…remains a potential follow-up") out,
-    and drop machine-local tips.
-13. Deviations from Plan: keep only entries that RunWield rendered from recorded `planDeviations`
-    (format: "Superseded requirement / Replacement requirement / Reason"). Remove Recorder-written deviation
-    prose and "Additional Recorder notes:". If nothing remains, remove the section.
-
-## Structural repairs
-
-- The 4 records from 2026-10-13 onward (`2026-10-13-standalone-code-review-with-wld-review.md`,
-  `2026-10-16-create-plan-worktrees-only-at-session-start.md`, `2026-10-16-edit-to-suggest-in-code-review.md`,
-  `2026-10-16-treat-unknown-check-results-as-inconclusive.md`) wrap the real draft in a blockquote under
-  "## Historical pre-publication notes". Unwrap the draft into normal sections, remove the delivery-metadata
-  Summary and commit hash, then apply the rules above. The delivered commit lives in the source Plan's
-  Delivery Evidence.
-- Remove non-standard sections: Objective Check Waivers, Verification, Verification Evidence, Implementation,
-  History Evidence, Checkout and Delivery, Scope. Fold any durable fact into the Summary first.
-  Keep "Required Record Notes" (deterministic, from the Plan's "Work Record Requirements"), but remove
-  exact duplicates of the Summary.
-- Remove orphan link footers (for example "[Mnemoteca]: https://…").
-
-## Constraints
-
-- Body edits only. Do not change front matter: `recordId`, `status`, `completionMode`, `provenance`,
-  `createdAt`, `supersedes` and `supersededBy` stay as they are. Fix formatting only where the YAML is
-  broken (4 records have no blank line after the front matter).
-- Leave `superseded` records unchanged
-  (`2026-08-07-objective-check-waivers-added.md` and any others). Ask the user what to do with the two
-  `draft` records: `2026-09-08-main-checkout-and-worktree-recovery-repair.md` and
-  `2026-09-10-workspace-session-input-and-workflow-display.md`.
-- Do not invent facts. When you remove noise and no durable outcome is left, keep a short, true Summary.
-- Supersession needs user confirmation. Do not write `supersededBy`. Instead, list candidates for the
-  user. Known candidates:
-    - Objective-Failing Check records that still read as current guidance (the mechanism is deprecated):
-      `objective-checks-now-run-in-mechanical-validation`, `baseline-objective-failing-checks-before-execution`,
-      `objective-check-repair-loops-prevented`, `escape-reliably-cancels-…`;
-    - overlapping pairs: `session-runtime-sibling-adapters` / `unified-tui-and-acp-behind-sessionruntime`,
-      `efficient-standalone-binary-packaging` / `optimized-standalone-deno-binary-compilation`,
-      `plan-review-ui` / `workspace-plan-review-parity`,
-      `core-owned-steering-message-queue` / `fixed-steering-message-visual-feedback…`.
-- Terminology: use `docs/domain-language.md` ("Code Review", not "human review"; no "Harns").
-  Deno-era commands are historical: remove them as receipts, and do not rewrite them as Bun claims.
-
-## Suggested process
-
-1. Rewrite 5 representative records (one wrapped October record, one user_verified, one done_enough Epic,
-   one diary-style record, one short July record) and show the user before/after diffs for approval.
-2. Process the rest in monthly batches. Read-only delegates can draft the proposed edits; one writer applies them.
-3. After each batch, confirm that every record still parses (`wld wr list --all`, and `wld wr read <id>` on a
-   sample), then run `wld wr index rebuild`.
-4. Run a residue check across `docs/work-records/` for these terms and review every hit:
-   `tests? passed`, `deno task`, `bun run`, `CI (passed|green|pending)`, `pending publication`,
-   `not yet merged`, `` `[0-9a-f]{7,40}` ``, `port [0-9]{4}`, `/Users/`, `/private/tmp`, `rerun`,
-   `non-interactive`, `Historical pre-publication`.
-5. Format only the changed files: `bun run fmt --write <files>`.
-
-## Optional second repository
-
-`/Users/gandazgul/Documents/web/brandchef.ai/docs/work-records/` (26 records) has the same patterns. It also has:
-
-- raw `## Execution Report` sections in 3 early records;
-- a duplicate pair (`2026-08-24-consolidated-mailchimp-source-and-canonical-service.md` /
-  `…-and-deployment-guidance.md`);
-- a hand-added behavior-change section in `2026-09-01-strict-typescript-checking-enabled.md`. Keep its
-  facts and fold them into the Summary.
-  Ask the user before touching that repository.
+2026-07-24-fail-closed-plan-verification-delivered.md
+2026-07-24-parallel-test-runs-enabled-with-shared-state-isolation.md
+2026-08-02-native-terminal-osc-notifications.md
+2026-08-03-migrated-direct-custom-tools-to-typescript.md
+2026-08-11-isolated-runwield-runtime-state-from-worktree-merges.md
+2026-08-16-archived-plan-retention-and-prune.md
+2026-08-16-lost-worktree-user-verification-recovery-added.md
+2026-08-18-split-quick-fix-engineer-from-plan-engineer.md
+2026-08-19-handled-unavailable-model-failures-in-agent-and-model-switches.md
+2026-08-24-init-reports-possible-test-seam-risks.md
+2026-08-29-simplified-validation-and-lifecycle-messages.md
+2026-08-31-workflow-tool-events-became-authoritative.md
+2026-09-02-engineer-prompt-handoff-simplified.md
+2026-09-02-mechanical-validation-repair-resume-is-durable.md
+2026-09-03-core-stdio-mcp-support.md
+2026-09-20-isolated-release-candidates-on-release-branches.md
+2026-09-20-publish-release-aligned-documentation-system.md
+2026-09-21-unified-local-skill-discovery-and-precedence.md
+2026-09-22-delivered-acp-reasoning-and-exact-context-reporting.md
+2026-09-22-delivered-skippable-onboarding-tutorial.md
+2026-09-24-pi-0-87-compatibility-upgrade.md
+2026-09-25-progressive-attention-dashboard-loading-delivered.md
+2026-09-25-restore-long-session-tui-rendering-and-safe-scrolling.md
+2026-09-27-readable-plans-and-shared-callouts.md
+2026-09-28-architect-chat-delivered-in-epic-review.md
+2026-10-02-reversible-session-archive-across-acp-and-workspace.md
+2026-10-04-mascot-visibility-control-and-stable-tui-blinking.md
+2026-10-09-default-off-plan-branch-delivery-implemented.md

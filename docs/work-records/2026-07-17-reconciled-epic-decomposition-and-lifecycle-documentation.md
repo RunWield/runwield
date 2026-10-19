@@ -11,15 +11,8 @@ provenance:
         - "9ff2d698-a056-4250-bdfd-c4b274737ba1"
 ---
 
-# Reconciled Epic decomposition and lifecycle documentation
+# Epic decomposition and lifecycle terminology
 
 ## Summary
 
-Updated domain, lifecycle, product, and user-facing documentation to consistently describe PROJECT work as an Epic
-decomposed into executable child FEATURE plans. Clarified Slicer, Ready For Work, and lifecycle terminology while
-avoiding claims about unimplemented statuses or legacy task-DAG execution.
-
-## Future Planning Notes
-
-Revisit lifecycle documentation when deferred capabilities such as general on-hold handling, stale-child detection, or
-visual Epic boards are implemented.
+Product and lifecycle documentation describe PROJECT work as a non-executable Epic with executable child Plans. Slicer, Ready For Work, and lifecycle terminology distinguish Epic decomposition from child execution.

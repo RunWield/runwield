@@ -12,11 +12,8 @@ provenance:
         - "aa89b924-c36c-45fa-8df6-b156586a1fc4"
 ---
 
-# Deliver steering to replacement Agents
+# Steering transfer across Agent handoffs
 
 ## Summary
 
-Fixed Agent-handoff steering so the outgoing turn settles before replacement work begins and queued text or images
-transfer once, in order, to the new Agent. Added handoff, identity, recall, cancellation, and failed-switch coverage;
-focused sandboxed tests, type checks, seam checks, and diff checks passed. Core requirements and domain language now
-define the behavior.
+Agent handoff settles the outgoing turn before replacement work begins. Queued steering text and images transfer once, in order, to the replacement Agent.

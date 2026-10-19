@@ -11,17 +11,12 @@ provenance:
         - "e2eb8053-c652-4697-8932-75bea9230ae5"
 ---
 
-# Plan Review execution selection shipped
+# Plan Review execution policy selection
 
 ## Summary
 
-FEATURE Plan Review now exposes structured execution Agent and collaboration-style controls, persists approved canonical
-policy through the review/lifecycle handoff, and preserves PROJECT approval behavior. The committed execution-selection
-prototype was removed after its accepted interaction pattern was absorbed, and the repository now has a single ignored
-prototype workflow with runner, skill guidance, CI guards, tests, and workflow documentation.
+Executable Plan Review provides structured execution Agent and collaboration-style controls. Approval persists canonical execution policy through lifecycle handoff while preserving PROJECT approval behavior; throwaway UI experiments remain separate from production source.
 
 ## Future Planning Notes
 
-Future Plan Review changes should treat approval as the durable policy commit boundary and must pass refreshed
-post-review Plan attributes to downstream consumers to avoid stale metadata rollback. Throwaway experiments should live
-only under ignored prototypes/<slug>/ with a local dev task, never beside production source.
+Approval is the durable execution-policy commit boundary. Downstream consumers require refreshed post-review Plan attributes to prevent stale metadata rollback.

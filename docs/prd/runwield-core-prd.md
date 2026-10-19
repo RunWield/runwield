@@ -743,8 +743,12 @@ approval pending and records no decision or revision. The UI states that review 
 resume; reopening presents a working review link. Completed checks and the implementation stay available. Explicitly
 submitted feedback starts repair and records the decision and revision, followed by checks and another Code Review.
 
-**Requirement: Reach the live review from the terminal.** While a decision is pending, the TUI shows a clickable live
-review URL, including for resumed and direct reviews and when the browser does not open automatically. The settled
+**Requirement: Reach the live review from the terminal.** From launch until a decision arrives, the TUI shows
+“Waiting for Code Review”. When the review surface is ready, the card also shows a clickable live review URL,
+including for resumed and direct reviews and when the browser does not open automatically. The normal message input
+is hidden during Plan review and Code Review. It returns with its draft text when review ends, including on approval,
+cancellation, or failure. During Code Review, the validation progress and results card is also hidden so the review
+message and live link stay visible. The card returns with its current results when review ends. The settled review
 card shows the outcome.
 
 **Requirement: Edit review policies in settings.** The `/settings` menu edits the Code Review and Guided Review policies

@@ -12,17 +12,12 @@ provenance:
         - "75527c5a-e7f1-4b84-add1-315f54114f00"
 ---
 
-# Workflow Validation Uses Lifecycle States
+# Lifecycle-driven Workflow Validation
 
 ## Summary
 
-Completed the Workflow Validation lifecycle-state refactor so durable Plan status now selects the single validation
-phase, with invalid or missing statuses blocked instead of falling back to an open legacy flow. Reachable legacy
-validation-machine entry points were removed while preserving QUICK_FIX mechanical repair behavior, validation-repair
-footer context, lifecycle documentation, and tests. RunWield Workflow Validation passed with `deno task ci` completing
-successfully.
+Durable Plan status selects a single Workflow Validation phase. Invalid or missing statuses block progression instead of entering legacy orchestration, while QUICK_FIX retains mechanical repair behavior.
 
 ## Future Planning Notes
 
-Future validation work should keep Plan Lifecycle state as the validation driver and retain legacy validation code only
-as helper-level utilities, not alternate phase orchestration.
+Plan Lifecycle state drives validation. Legacy validation utilities must not become alternate phase orchestrators.

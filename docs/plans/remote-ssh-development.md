@@ -503,6 +503,18 @@ proposed **Remote SSH connection** and the changed Core/Session/Project Runtime 
 ordinary Session, not a new Session type. Accept/update ADR-018 and align ADR-015's local-path/writer descriptions with
 the implemented extension without reintroducing leases. Actual decomposition is left to Slicer.
 
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
+**remote-ssh-development/07-carry-remote-context-through-delivery-workflows**
+
+- Check that connection cleanup removes transient background log directories after a forced TUI kill. The process exit handler cannot run after SIGKILL. (src/shared/remote/background-task-logs.ts; child08 connection supervisor shutdown)
+
+<!-- runwield:integration-notes:end child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
 ## Edge Cases & Considerations
 
 ### Reviewable assumptions and release gates

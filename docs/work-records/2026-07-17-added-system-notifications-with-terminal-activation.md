@@ -11,21 +11,16 @@ provenance:
         - "44a682b4-1ecf-43c0-a3f2-f8e65a3ecd26"
 ---
 
-# Added system notifications with terminal activation
+# System notifications with terminal activation
 
 ## Summary
 
-RunWield now sends configurable macOS notifications when an agent returns control, requests input through
-user_interview, or completes a plan through plan_written. Notifications include session context, use terminal-notifier
-for click activation when available, fall back gracefully to osascript, and preserve workflow behavior when notification
-delivery fails. Automated verification and human review passed.
+RunWield sends configurable macOS notifications when an Agent returns control, requests user input, or finishes writing a Plan. Notifications include Session context and use terminal-notifier for click activation when available, with an osascript fallback. Delivery failures do not change workflow behavior.
 
-## Deferred Work
+## Out of Scope
 
-Non-macOS notification support and exact activation for terminals without a reliable tab or pane API remain outside the
-v1 scope.
+This work does not include exact activation for terminals without a reliable tab or pane API.
 
 ## Future Planning Notes
 
-Keep notification dispatch best-effort and centralized. Any platform expansion should preserve dependency-injected
-command execution, per-event settings, session context, and graceful fallback behavior.
+Keep notification dispatch centralized and best-effort, with per-event settings, Session context, and graceful fallback behavior.

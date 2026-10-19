@@ -12,23 +12,12 @@ provenance:
         - "e7be100d-d6b0-4df0-bb7f-e20cfb9efc97"
 ---
 
-# Archived Plan Retention and Prune
+# Archived Plan retention and pruning
 
 ## Summary
 
-Implemented project-scoped archived Plan retention settings, prune selection, and the `wld plans prune` command.
-Archived units are now eligible for deletion only when covered by a Work Record and past retention, with a keep-last
-floor and Epic child grouping. Archive actions now print a prune nudge, and docs and tests cover the new policy and
-command.
-
-## Deviations from Plan
-
-Safe manual checks used `--dry-run` and a canceled prompt run; destructive `plans prune --yes` was not run in this
-repository. Full `deno task ci` still had unrelated golden TUI scenario failures, while the targeted objective checks
-and related tests passed.
+Archived Plan pruning uses project-scoped retention settings, a keep-last floor, and Epic child grouping. Deletion eligibility requires Work Record coverage and expired retention. Pruning is an explicit command rather than automatic archive deletion.
 
 ## Future Planning Notes
 
-Archived Plan pruning can remove a large first backlog because old archived Plans were retained before this policy
-existed. Future work that changes archive behavior should keep deletion manual, project-scoped, and covered by Work
-Record provenance.
+Keep pruning manual, project-scoped, and protected by Work Record provenance. Preserve Epic grouping and retention floors when changing selection rules.

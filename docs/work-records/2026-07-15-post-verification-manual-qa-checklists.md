@@ -18,13 +18,8 @@ provenance:
           note: Restores preserved checklist context when QUICK_FIX validation resumes after an interrupted repair.
 ---
 
-# Post-Verification Manual QA Checklists
+# Post-verification manual QA checklists
 
 ## Summary
 
-RunWield now follows successful QUICK_FIX Mechanical Validation and FEATURE Workflow Validation with a concise manual
-verification checklist for the user. FEATURE checklists are grounded in the Plan, while QUICK_FIX checklists use the
-original request and the Engineer's completion summary; interrupted QUICK_FIX repair flows retain that context when
-validation resumes. Failed or canceled validation does not produce a checklist, and checklist-generation failures are
-reported without retroactively invalidating successful automated verification. This gives users a clear final set of
-observable checks while keeping automated and manual verification responsibilities distinct.
+RunWield follows successful QUICK_FIX Mechanical Validation and FEATURE Workflow Validation with a concise manual verification checklist. FEATURE checklists use the Plan; QUICK_FIX checklists use the original request and Engineer completion summary, including after interrupted repair resumes. Failed or canceled validation produces no checklist. Checklist-generation failures do not invalidate successful automated verification.

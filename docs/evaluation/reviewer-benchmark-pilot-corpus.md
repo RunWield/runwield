@@ -94,7 +94,7 @@ RunWield rules and regressions, including:
 - worktree isolation in
   [Concurrent worktrees execution isolation](../plans/archived/concurrent-worktrees-execution-isolation.md);
 - cancellation settlement in
-  [Escape reliably cancels active process trees](../work-records/2026-08-04-escape-reliably-cancels-active-process-trees.md);
+  [Validation and process-tree cancellation](../work-records/2026-08-24-objective-failing-checks-removed.md);
 - destructive retention boundaries in
   [Archived Plan retention and prune](../work-records/2026-08-16-archived-plan-retention-and-prune.md);
 - injection-seam and fake-test prevention in [Engineering Quality Principles](../engineering-quality-principles.md).

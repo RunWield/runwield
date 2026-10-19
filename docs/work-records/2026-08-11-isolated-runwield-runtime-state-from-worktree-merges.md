@@ -12,30 +12,12 @@ provenance:
         - "ea4f8a95-7e76-435f-90d2-d811f8450885"
 ---
 
-# Isolated RunWield Runtime State from Worktree Merges
+# Runtime-state isolation from worktree publication
 
 ## Summary
 
-RunWield now redirects project settings from linked execution worktrees to the primary checkout, classifies
-RunWield-owned runtime paths, excludes that runtime state from git staging and merge-risk checks, restores missing
-worktree registry entries from Plan evidence, and documents the non-destructive recovery path. This prevents
-RunWield-owned `.wld` state from blocking publication or causing users to discard finished work.
-
-## Deviations from Plan
-
-`deno task ci` still failed in unrelated or remaining workflow and golden-scenario tests after the targeted
-implementation passed. Manual verification against the external `tow-mvp-epic/01-convert-source-and-tests-to-typescript`
-project state was not run because that state was required.
-
-## Deferred Work
-
-Investigate the remaining `deno task ci` failures in `src/shared/workflow/validation-publication-pause.test.js`,
-`src/ui/tui/golden-scenarios/project-workflow.test.ts`, and
-`src/ui/tui/golden-scenarios/repaired-merge-publication.test.ts`. Run the external manual recovery check when the
-required project state is available.
+Linked execution worktrees resolve ordinary project settings through the primary checkout. RunWield classifies its runtime state separately and excludes that state from staging and merge-risk checks. Missing worktree registry entries can be reconstructed from Plan evidence without discarding finished work.
 
 ## Future Planning Notes
 
-Keep RunWield-owned runtime paths enumerated, not treated as all of `.wld`, because project-owned agents, skills, prompt
-templates, and settings can be valid deliverables. Use real git fixtures for worktree and registry behavior instead of
-injection seams.
+Enumerate RunWield-owned runtime state narrowly; project-owned settings, Agents, Skills, and prompts can be valid deliverables. Use real Git fixtures for worktree and registry behavior.

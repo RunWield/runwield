@@ -11,15 +11,12 @@ provenance:
         - "0c02a8cb-829f-4809-a4df-7226b25dabbb"
 ---
 
-# Fast submodule CI split from release checks
+# Local submodule checks and release qualification
 
 ## Summary
 
-Per-change CI now uses a fast, local-only recursive submodule integrity and cleanliness check, while remote submodule
-SHA fetchability is preserved as a release-only gate before standalone binary compilation and smoke tests. This keeps
-ordinary verification offline-capable and reserves slower network and binary qualification work for release preflight.
+Per-change CI checks recursive submodule integrity and cleanliness locally. Release qualification separately checks remote revision availability before standalone compilation and smoke testing, keeping ordinary verification offline-capable.
 
 ## Future Planning Notes
 
-Keep CI and release qualification concerns separated: local checkout integrity belongs in fast per-change gates, while
-remote availability and compiled binary smoke tests belong in explicit release checks.
+Local checkout integrity belongs in per-change gates; remote availability and compiled-binary qualification belong in release checks.

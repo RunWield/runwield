@@ -11,17 +11,12 @@ provenance:
         - "3ad308ff-84a9-4526-b09d-9b0cbeb49f70"
 ---
 
-# Safe Engineer Sleep Mode
+# Memory-safe Engineer sleep mode
 
 ## Summary
 
-Updated sleep mode to create and validate a session-scoped Mnemoteca JSONL backup before memory maintenance, announce
-its absolute path, and fail closed if export fails. Sleep now runs through a persistent Engineer root session for both
-`/sleep` and standalone `wld sleep`, keeps generated artifacts outside the repository, preserves conservative cleanup
-safeguards, and includes updated help and automated coverage.
+Sleep creates and validates a Session-scoped Mnemoteca backup before memory maintenance and stops if export fails. Interactive and standalone sleep use a persistent Engineer root Session, keep generated artifacts outside the repository, and preserve conservative cleanup safeguards.
 
 ## Future Planning Notes
 
-Backups intentionally omit embeddings; restoration relies on Mnemoteca re-embedding imported memory documents.
-
-[Mnemoteca]: https://github.com/gandazgul/mnemoteca
+Backups omit embeddings; restoration requires Mnemoteca to re-embed imported memory documents.

@@ -12,26 +12,12 @@ provenance:
         - "737f3714-627e-4fd4-a69e-99d1e9b863dd"
 ---
 
-# Migrated direct Custom Tools to TypeScript
+# Native TypeScript Custom Tools
 
 ## Summary
 
-Migrated the eight direct RunWield Custom Tool implementations from JavaScript/JSDoc to native TypeScript modules while
-preserving their factories, schemas, workflow behavior, and focused test coverage. Live imports, type references, and
-the language-policy baseline were updated; the remaining `.js` references are historical fixture data.
-
-## Deviations from Plan
-
-The focused verification excluded the plan-listed missing `src/shared/workflow/agent-runners.integration.test.ts`, and
-full `deno task ci` could not pass because `deno task seams:check` fails on pre-existing injection-seam regressions
-outside this migration.
-
-## Deferred Work
-
-Resolve the existing seams baseline failures in `engineer-runner.ts`, `epic-continuation.ts`, `execution-start.ts`,
-`plan-executor.ts`, and `planning-agent.ts` so `deno task seams:check` and full CI can pass again.
+Direct RunWield Custom Tools use native TypeScript implementations while retaining their factories, schemas, and workflow behavior. Runtime imports and type references use the TypeScript modules. Existing behavior coverage remains part of the migration contract.
 
 ## Future Planning Notes
 
-For TypeScript migrations, keep behavior suites intact and update imports/baselines directly; do not use `seams:update`
-to loosen existing seam regressions.
+TypeScript migrations must preserve behavior coverage and update consumers directly. Do not loosen injection-seam enforcement to accommodate unrelated regressions.
