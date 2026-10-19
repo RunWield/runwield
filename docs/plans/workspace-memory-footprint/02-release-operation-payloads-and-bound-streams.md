@@ -199,7 +199,7 @@ No Work Record supersession is proposed.
 deno run -A scripts/run-tests.js src/ui/workspace/workspace-operation-memory.test.ts src/ui/workspace/session-continuation.integration.test.ts src/ui/workspace/background-create.integration.test.ts src/ui/workspace/background-continuation.integration.test.ts src/ui/workspace/background-stop.integration.test.ts src/ui/workspace/shutdown-continuation.integration.test.ts src/ui/workspace/plan-workflow-gates.integration.test.js src/ui/workspace/workspace-session-ux.test.tsx
 deno task workspace:check
 deno task workspace:build
-deno run -A scripts/build-workspace-runtime.js
+deno run -A scripts/build-workspace-runtime.ts
 deno run -A scripts/workspace-memory-check.ts --scenario operations
 deno run -A scripts/workspace-memory-check.ts --scenario combined
 deno task seams:check
