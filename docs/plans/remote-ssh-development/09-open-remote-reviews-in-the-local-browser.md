@@ -16,10 +16,11 @@ createdAt: "2026-09-21T02:05:51.971Z"
 status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
-order: 8
+order: 9
 dependencies:
     - "01-establish-the-remote-connection-and-matched-runtime"
     - "07-carry-remote-context-through-delivery-workflows"
+    - "08-stop-owned-remote-work-on-connection-loss"
 targetBranch: "epic/remote-ssh-development"
 planId: "8b3db8e1-34fd-4a8d-9c06-07611d132802"
 ---
@@ -92,7 +93,10 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - Feedback and final decisions reach the original pending remote interaction with existing token and live-operation
   checks; transport retry cannot repeat an uncertain review decision.
 - Browser close alone leaves the connected review wait active and reopenable. SSH connection loss stops the owned remote
-  review server and workflow job according to connection supervision.
+  review server and workflow job through the descendant sweep delivered by child08
+  (`08-stop-owned-remote-work-on-connection-loss`).
+- Plan review and Code Review in a remote Session already run their remote review server and record laptop Session
+  evidence after child07. This child changes only how the laptop browser reaches that server.
 - Guided Review starts with the same remote project/worktree, local model and personal resources, local Session
   authority, and connection-owned process supervision.
 - Ordinary local review URLs and browser behavior remain unchanged, and hosted Workspace registration is not introduced.

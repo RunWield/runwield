@@ -1326,14 +1326,16 @@ executable extensions. Public configuration is in the [theme reference](../user-
 
 **Scope and maturity:** Current baseline; compressed Project Brief and further code-intelligence improvements are target
 scope. Remote location and Session project identity support conversation and resume; the compiled macOS/Linux `sct`
-pilot passed with an authenticated synthetic provider. Remote workflow Project Runtime State remains target scope.
+pilot passed with an authenticated synthetic provider. Delivery workflows keep Project Runtime State on the remote
+project and use laptop-owned Session records; see [workflow qualification](remote-ssh-prd.md#workflow-journey-evidence).
 
 **Requirement: Resolve the requested remote location for conversation tools.**
 
 `wld remote <host>[:<directory>]` resolves the remote account's home by default or an existing requested directory on
 the server. The normal remote TUI shows the canonical directory. Relative paths and `~` refer to the remote account. Git
 is optional. Connection alone does not initialize a project or create a saved Session. Conversation turns can use core
-project tools there; full delivery workflows remain [target scope](remote-ssh-prd.md#remote-workflows-and-local-review).
+project tools there. [Delivery workflows](remote-ssh-prd.md#remote-workflows-and-local-review) also use the remote
+project and environment, without a laptop checkout.
 
 **Requirement: Keep a remote project locator separate from execution cwd.**
 
@@ -1881,10 +1883,14 @@ while queued never begin execution. Both external CLI bridges preserve structure
 unknown tools as protocol errors, and support human-paced review waits. The private HTTP bridge rejects foreign Origins.
 `/mcp` prints server status and `/mcp reconnect <server>` reconnects without a model request. MCP tools use direct
 calls; codemode is deferred as a separate capability. In remote Sessions, `/mcp` shows each effective server’s location.
-Personal definitions come from the laptop and are listed as `laptop — not started remotely`, without forwarding their
-command arguments or credentials. Project servers retain safety and override rules and start remotely. Personal MCP
-forwarding is target scope in
-[child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md).
+Personal servers run on the laptop with its home cwd, minimal inherited environment, and configured environment
+values. Project servers run remotely with the Session execution cwd after normal safety, replacement, and disable
+checks. One remote Session-owned Pi integration handles both origins through native transports. Configuration commands,
+arguments, and environment values stay laptop-side; server output is trusted content, not secret-filtered content.
+`/mcp` shows each server's real status and location; reconnect restarts its owning transport without a model request.
+Paths and remote MCP roots are not translated to a laptop checkout. A shared Memory collection does not map files or
+change personal MCP cwd. Connection loss closes owned processes and pending calls without replaying uncertain effects.
+Cancellation reaches the server through native MCP notifications; it cannot undo accepted external effects.
 
 **Remote conversation scope:** [Local personal environment](remote-ssh-prd.md#local-personal-environment) specifies
 direct access to laptop `~/.wld` at a fresh private remote mount path, with project `.wld` remaining remote. Personal
@@ -2358,9 +2364,10 @@ Open product questions:
 **Scope and maturity:** Current shared Session baseline; reliable end-to-end continuation remains required wherever gaps
 exist. Remote conversation, image paste, offline history, and connected resume passed the compiled macOS/Linux `sct`
 pilot with an authenticated synthetic provider. Offline remote history and connected remote resume are separate from
-local client continuation. Remote Memory uses the laptop service. Workflows, child Sessions, write delegation, Plan
-review, and transcript rollover remain target scope in the
-[Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions).
+local client continuation. Remote Memory uses the laptop service. Delivery workflows, in-memory child Sessions, write
+delegation, Plan review, transcript rollover, and workflow recovery are delivered in the
+[Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions). Automatic browser forwarding and full
+owned-process termination remain target scope.
 
 **Requirement: Continue the same saved work across clients.**
 
@@ -2458,7 +2465,11 @@ remote project.
 
 **Scope and maturity:** The registered-bundle save contract is integrated with remote conversation. The compiled
 macOS/Linux `sct` pilot passed conversation, image, offline-history, and same-Session recovery with an authenticated
-synthetic provider. Workflow authorization and rollover remain save-contract requirements for their target user paths.
+synthetic provider. Core delivery workflows also use the laptop save bridge for artifact registration, Plan Associations,
+last Plan review references, saved-record reads, and segment rollover. A successor starts under a fresh operation without
+releasing the laptop's native writer lock; stale predecessor requests are refused. The compiled Linux `sct` workflow
+journeys passed planning through publication, successor resume, and transport-loss recovery with synthetic laptop models;
+see [workflow qualification](remote-ssh-prd.md#workflow-journey-evidence).
 
 **Requirement: A remote append returns only after its exact bytes are saved on the laptop.**
 
@@ -2487,6 +2498,10 @@ Rollover retains laptop ownership while committing predecessor evidence and succ
   successor. A second OS process cannot acquire the held native lock.
 - Given a saved attachment and a fresh remote manager, vision reads use laptop bytes without a remote Session path;
   project-relative image reads still use the remote project.
+- Given a remote Plan review, its artifact, Plan Association, and last-review reference are saved on the laptop. A fresh
+  runtime reads those records, including records saved by another laptop operation.
+- Given an execution or semantic-repair rollover, the successor is saved in the remote project's laptop Session
+  directory with identity, continuation, and lineage. Resume selects that successor; history includes sealed segments.
 
 **Conversation journey qualification:** Matching-identity compiled macOS and Linux `sct` runtimes passed normal remote
 turns, remote-only reads and writes with laptop files unchanged, current laptop clipboard image submission with stable

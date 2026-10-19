@@ -631,11 +631,13 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             if (!project) throw new Error("Session project is unavailable");
             return await readCatalogSafeRootSessionLocator({
                 cwd: locator.transcriptCwd,
-                sessionDir: sessionDirForRoot(baseDir, locator.transcriptCwd),
+                sessionDir: project.remote
+                    ? sessionDirForProject(baseDir, project)
+                    : sessionDirForRoot(baseDir, locator.transcriptCwd),
                 sessionPath: locator.transcriptPath,
             });
         },
-        ...createFileSessionControl({ locks, manifests, now: options.now }),
+        ...createFileSessionControl({ baseDir, locks, manifests, now: options.now }),
     };
     return store;
 }

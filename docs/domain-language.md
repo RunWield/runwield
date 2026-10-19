@@ -118,13 +118,17 @@ requests. It is distinct from the terminal window or tab title. _Avoid_: Tab tit
 **Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
 remote Linux host. It prepares a matching runtime, mounts laptop personal files, and opens the normal remote TUI for
 conversation turns with Agents, core project tools, and laptop models. It can create and continue a saved Session whose
-history stays on the laptop; the first submitted message creates history, not connection alone. `wld remote sessions`
+history stays on the laptop; the first submitted message creates history, not connection alone. Personal MCP servers
+run on the laptop through native transport forwarding while project servers run remotely. MCP roots and paths are not
+rewritten, and connection cleanup stops owned processes without replaying uncertain effects. `wld remote sessions`
 reads that history offline in the normal renderer without a composer and with a reconnect footer. Connected `/resume`
 continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
 journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
 provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
-remain stable through history and reconnect. Remote Memory uses the laptop service; delivery workflows remain target
-scope; production-provider and platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended
+remain stable through history and reconnect. Remote Memory uses the laptop service. Delivery workflows run remotely
+with laptop-owned Session records and segment rollover; reconnect checks remote evidence without automatic replay.
+Automatic local browser forwarding and full owned-process termination remain target scope. Production-provider and
+platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended
 worker, remote Session type
 
 **Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
@@ -155,7 +159,8 @@ _Avoid_: Resource sync, copied profile, confined mount
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
 `.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
 Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
-state stays with the remote checkout, not with laptop personal history. Remote workflow support remains target scope.
+state stays with the remote checkout, not with laptop personal history. Delivery workflows use that remote state;
+artifacts, Plan Associations, review references, and Session segments are saved by the laptop owner.
 _Avoid_: project settings, project config, all of `.wld/`
 
 **Project Runtime Entry**: The shared migration-or-verification operation that runs before normal Project Runtime State
@@ -738,6 +743,9 @@ web search, local docs grep, package install lookup
 
 **MCP Server Configuration**: A trusted server declaration in `~/.wld/mcp.json`, project `.wld/mcp.json`, or an ACP
 Session request. RunWield starts stdio MCP servers from this configuration and exposes their tools to root Agents only.
+In a Remote SSH connection, personal servers run on the laptop with home cwd; project servers run remotely with the
+Session execution cwd. Project replacement/disable rules select entries before startup. One remote Pi integration
+handles both origins through native transports; Memory collection sharing does not map files or change cwd.
 _Avoid_: settings key, Custom Tool definition
 
 **MCP Tool**: A tool discovered from a trusted MCP server. Pi gives it a stable `mcp__<server>__<tool>` name and keeps

@@ -11,9 +11,14 @@ import process from "node:process";
 test("Worker startup death faults at the total deadline without a main-thread callback", async () => {
     const f = await makeControlFixture();
     await f.ready();
-    const directory = join(f.root, "damaged-runtime");
-    await fsMkdir(directory);
+    const runtimeRoot = join(f.root, "damaged-runtime");
+    const directory = join(runtimeRoot, "src/shared/remote");
+    await fsMkdir(directory, { recursive: true });
     try {
+        await fsWriteFile(
+            join(runtimeRoot, "runtime-root.js"),
+            await fsReadFile(new URL("../../../runtime-root.js", import.meta.url), "utf8"),
+        );
         for (const name of ["session-protocol.ts", "session-save-bridge.ts", "session-save-worker.ts"]) {
             const source = await fsReadFile(new URL(name, import.meta.url), "utf8");
             // Corrupt a disposable installed runtime, not the store, bridge, transport or test subject.

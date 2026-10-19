@@ -129,6 +129,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {number | null} [acknowledgedGeneration]
  * @property {string | null} [acknowledgedEventId]
  * @property {number | null} [acknowledgedEventOrdinal]
+ * @property {import("../remote/session-protocol.ts").RemoteSessionRecords} [remoteRecords]
  * @property {Object} [committedSummary]
  * @property {{ type: "managed_sync_state_changed", status: import('./session-runtime-events.js').RuntimeManagedSyncStatus, localGeneration: number | null, latestGeneration: number | null, owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown", message?: string } | null} [syncState]
  * @property {string | null} name
@@ -273,8 +274,8 @@ export class HostedSession {
             /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this.rootSessionManager),
         );
         /** @type {import('./tutorial-context-session.ts').TutorialContext | null} */
-        this.tutorialContext = readPersistedTutorialContext(this.rootSessionManager) ||
-            options.managed?.tutorialContext || null;
+        this.tutorialContext =
+            readPersistedTutorialContext(this.rootSessionManager) || options.managed?.tutorialContext || null;
         /** @type {ActiveExecutionWorkflow | null} */
         this.activeExecutionWorkflow = null;
         /** @type {PendingTaskCompletion | null} */
@@ -794,19 +795,20 @@ export class HostedSession {
             images: images.map((image) => ({ ...image })),
             ...(message
                 ? {
-                    message: {
-                        ...message,
-                        images: message.images.map((image) => ({ ...image })),
-                    },
-                }
+                      message: {
+                          ...message,
+                          images: message.images.map((image) => ({ ...image })),
+                      },
+                  }
                 : {}),
             ...(submissionOrder === undefined ? {} : { submissionOrder }),
         };
-        const laterEntryIndex = submissionOrder === undefined
-            ? -1
-            : this.agentTransitionSteering.findIndex((current) =>
-                current.submissionOrder !== undefined && current.submissionOrder > submissionOrder
-            );
+        const laterEntryIndex =
+            submissionOrder === undefined
+                ? -1
+                : this.agentTransitionSteering.findIndex(
+                      (current) => current.submissionOrder !== undefined && current.submissionOrder > submissionOrder,
+                  );
         if (laterEntryIndex < 0) this.agentTransitionSteering.push(entry);
         else this.agentTransitionSteering.splice(laterEntryIndex, 0, entry);
         return true;
@@ -849,11 +851,11 @@ export class HostedSession {
             images: entry.images.map((image) => ({ ...image })),
             ...(entry.message
                 ? {
-                    message: {
-                        ...entry.message,
-                        images: entry.message.images.map((image) => ({ ...image })),
-                    },
-                }
+                      message: {
+                          ...entry.message,
+                          images: entry.message.images.map((image) => ({ ...image })),
+                      },
+                  }
                 : {}),
         }));
     }
@@ -867,11 +869,11 @@ export class HostedSession {
             images: entry.images.map((image) => ({ ...image })),
             ...(entry.message
                 ? {
-                    message: {
-                        ...entry.message,
-                        images: entry.message.images.map((image) => ({ ...image })),
-                    },
-                }
+                      message: {
+                          ...entry.message,
+                          images: entry.message.images.map((image) => ({ ...image })),
+                      },
+                  }
                 : {}),
         }));
     }
@@ -891,13 +893,15 @@ export class HostedSession {
 
     /** @param {AgentTransitionSteering[]} entries */
     restoreAgentTransitionSteering(entries) {
-        const missingEntries = entries.filter((entry) =>
-            !this.agentTransitionSteering.some((current) =>
-                entry.message?.id
-                    ? current.message?.id === entry.message.id
-                    : !current.message && current.text === entry.text &&
-                        JSON.stringify(current.images) === JSON.stringify(entry.images)
-            )
+        const missingEntries = entries.filter(
+            (entry) =>
+                !this.agentTransitionSteering.some((current) =>
+                    entry.message?.id
+                        ? current.message?.id === entry.message.id
+                        : !current.message &&
+                          current.text === entry.text &&
+                          JSON.stringify(current.images) === JSON.stringify(entry.images),
+                ),
         );
         this.agentTransitionSteering = [
             ...missingEntries.map((entry) => ({
@@ -905,11 +909,11 @@ export class HostedSession {
                 images: entry.images.map((image) => ({ ...image })),
                 ...(entry.message
                     ? {
-                        message: {
-                            ...entry.message,
-                            images: entry.message.images.map((image) => ({ ...image })),
-                        },
-                    }
+                          message: {
+                              ...entry.message,
+                              images: entry.message.images.map((image) => ({ ...image })),
+                          },
+                      }
                     : {}),
             })),
             ...this.agentTransitionSteering,
@@ -1000,8 +1004,9 @@ export class HostedSession {
         const nextContext = applyTutorialContextUpdate(this.tutorialContext, update);
         if (!nextContext) throw new Error("tutorial_context_invalid");
         if (nextContext.planId && nextContext.planId !== this.tutorialContext?.planId) {
-            const hasCommittedAssociation = committedPlanAssociations.some((association) =>
-                association.planId === nextContext.planId && Number.isInteger(association.committedGeneration)
+            const hasCommittedAssociation = committedPlanAssociations.some(
+                (association) =>
+                    association.planId === nextContext.planId && Number.isInteger(association.committedGeneration),
             );
             if (!hasCommittedAssociation) throw new Error("tutorial_context_plan_association_required");
         }
@@ -1022,8 +1027,9 @@ export class HostedSession {
         try {
             if (options.persist) {
                 normalized = recordNormalizedWorkflowContext(
-                    /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this
-                        .rootSessionManager),
+                    /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
+                        this.rootSessionManager
+                    ),
                     nextContext,
                 );
             }
@@ -1045,13 +1051,15 @@ export class HostedSession {
         try {
             const hasWorkflowContextPersistence = typeof this.rootSessionManager?.appendCustomEntry === "function";
             const recordedContext = recordWorkflowTriageContext(
-                /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this
-                    .rootSessionManager),
+                /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
+                    this.rootSessionManager
+                ),
                 details,
             );
-            const nextContext = recordedContext && !hasWorkflowContextPersistence
-                ? { ...this.workflowContext, ...recordedContext }
-                : recordedContext || this.workflowContext;
+            const nextContext =
+                recordedContext && !hasWorkflowContextPersistence
+                    ? { ...this.workflowContext, ...recordedContext }
+                    : recordedContext || this.workflowContext;
             if (nextContext) delete nextContext.validationProgress;
             this.replaceWorkflowContext(nextContext, { persist: false });
         } catch (_e) {
@@ -1065,13 +1073,15 @@ export class HostedSession {
         try {
             const hasWorkflowContextPersistence = typeof this.rootSessionManager?.appendCustomEntry === "function";
             const recordedContext = recordWorkflowPlanName(
-                /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this
-                    .rootSessionManager),
+                /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
+                    this.rootSessionManager
+                ),
                 planName,
             );
-            const nextContext = recordedContext && !hasWorkflowContextPersistence
-                ? { ...this.workflowContext, ...recordedContext }
-                : recordedContext || this.workflowContext;
+            const nextContext =
+                recordedContext && !hasWorkflowContextPersistence
+                    ? { ...this.workflowContext, ...recordedContext }
+                    : recordedContext || this.workflowContext;
             if (nextContext && nextContext.planName !== this.workflowContext?.planName) {
                 delete nextContext.validationProgress;
             }
@@ -1134,18 +1144,18 @@ export class HostedSession {
                 );
             }
             if (
-                workflow.collaborationStyle !== undefined && workflow.collaborationStyle !== "autonomous" &&
+                workflow.collaborationStyle !== undefined &&
+                workflow.collaborationStyle !== "autonomous" &&
                 workflow.collaborationStyle !== "pair"
             ) {
                 throw new Error("setActiveExecutionWorkflow: collaborationStyle must be autonomous or pair");
             }
             if (
                 workflow.collaborationRecommendation !== undefined &&
-                workflow.collaborationRecommendation !== "autonomous" && workflow.collaborationRecommendation !== "pair"
+                workflow.collaborationRecommendation !== "autonomous" &&
+                workflow.collaborationRecommendation !== "pair"
             ) {
-                throw new Error(
-                    "setActiveExecutionWorkflow: collaborationRecommendation must be autonomous or pair",
-                );
+                throw new Error("setActiveExecutionWorkflow: collaborationRecommendation must be autonomous or pair");
             }
             if (
                 workflow.pairCheckpointCount !== undefined &&
@@ -1154,7 +1164,8 @@ export class HostedSession {
                 throw new Error("setActiveExecutionWorkflow: pairCheckpointCount must be a non-negative integer");
             }
             if (
-                workflow.pairPauseReason !== undefined && workflow.pairPauseReason !== "stop" &&
+                workflow.pairPauseReason !== undefined &&
+                workflow.pairPauseReason !== "stop" &&
                 workflow.pairPauseReason !== "canceled"
             ) {
                 throw new Error("setActiveExecutionWorkflow: pairPauseReason must be stop or canceled");

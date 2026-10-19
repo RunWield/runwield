@@ -2059,12 +2059,12 @@ export async function buildAgentSession({
     if (!sessionCwd) throw new Error("buildAgentSession: cwd or hostedSession cwd is required");
     if (
         remotePersonalResourcesActive() &&
-        (!targetHostedSession ||
-            subAgentDefinition ||
-            sessionManager !== targetHostedSession.getRootSessionManager() ||
-            !getRemoteSessionSaveBridge(sessionManager))
+        (sessionManager?.isPersisted() ||
+            (targetHostedSession &&
+                sessionManager === targetHostedSession.getRootSessionManager() &&
+                !getRemoteSessionSaveBridge(sessionManager)))
     ) {
-        throw new Error("Remote managed agent sessions are not approved; use bounded model integration only");
+        throw new Error("Remote managed agent sessions require an in-memory manager and a bridged hosted root");
     }
     if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
     await ensureCymbalBinary();
