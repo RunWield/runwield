@@ -961,8 +961,13 @@ live-session internals.
 ### ACP adapter
 
 The ACP server calls public `SessionRuntime` methods with Runtime IDs. `AcpSessionMap` maps protocol IDs to opaque
-Runtime IDs and never stores hosted or Pi objects. Runtime events become ACP `session/update` notifications, and ACP
-client elicitation implements the same semantic interaction contract.
+Runtime IDs and never stores hosted or Pi objects. Runtime events become ACP `session/update` notifications. The
+adapter uses native forms when advertised; otherwise, all select, text, and approval questions, including command menus,
+use chat. Built-in commands and Agent turns share one live operation: each chat question ends an ACP request while
+Runtime work stays live, and the next request answers through the broker. Menus require a number in range or a unique
+exact label/value match, trimmed and case-insensitive; only unmatched `cancel` cancels a menu. Text and `user_interview`
+keep their distinct answer rules. Plan, Code, and Artifact Review keep browser links, and Artifact Review feedback keeps
+its browser question page. These presentations implement the same semantic interaction contract.
 
 ACP currently supports the MVP session methods and rejects unsupported methods explicitly. It contains protocol
 validation and mapping only; it does not own agent, workflow, or persistence state.

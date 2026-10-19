@@ -5,30 +5,36 @@ import {
     isProhibitedImageFile,
     REQUIRED_IMAGE_DIRECTORIES,
     REQUIRED_IMAGE_FILES,
-} from "./assert-plan-server-image.js";
+} from "./assert-plan-server-image.ts";
 
 test("assertPlanServerImageFileList accepts minimal generated runtime image files and required directories", () => {
-    const result = assertPlanServerImageFileList([
-        ...REQUIRED_IMAGE_FILES,
-        "/app/dist/workspace-runtime/client/styles.css",
-        "/app/src/agent-definitions/engineer.md",
-    ], [...REQUIRED_IMAGE_DIRECTORIES]);
+    const result = assertPlanServerImageFileList(
+        [
+            ...REQUIRED_IMAGE_FILES,
+            "/app/dist/workspace-runtime/client/styles.css",
+            "/app/src/agent-definitions/engineer.md",
+        ],
+        [...REQUIRED_IMAGE_DIRECTORIES],
+    );
 
     assertEquals(result, { missingRequired: [], missingRequiredDirectories: [], prohibited: [] });
 });
 
 test("assertPlanServerImageFileList rejects repository source state and secret artifacts", () => {
-    const result = assertPlanServerImageFileList([
-        ...REQUIRED_IMAGE_FILES.filter((file) => file !== "/app/brand/logo.svg"),
-        "/app/src/ui/workspace/server.js",
-        "/app/src/ui/workspace/workspace.test.js",
-        "/app/docs/plans/example.md",
-        "/app/.wld/collaboration-secrets.json",
-        "/app/.git/config",
-        "/app/sessions/session.jsonl",
-        "/app/data/runwield.sqlite",
-        "/app/deno.json",
-    ], []);
+    const result = assertPlanServerImageFileList(
+        [
+            ...REQUIRED_IMAGE_FILES.filter((file) => file !== "/app/brand/logo.svg"),
+            "/app/src/ui/workspace/server.js",
+            "/app/src/ui/workspace/workspace.test.js",
+            "/app/docs/plans/example.md",
+            "/app/.wld/collaboration-secrets.json",
+            "/app/.git/config",
+            "/app/sessions/session.jsonl",
+            "/app/data/runwield.sqlite",
+            "/app/deno.json",
+        ],
+        [],
+    );
 
     assertEquals(result.missingRequired, ["/app/brand/logo.svg"]);
     assertEquals(result.missingRequiredDirectories, ["/data"]);
