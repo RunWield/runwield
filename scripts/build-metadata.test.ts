@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { computeBuildIdentity, sha256File, verifyBuildArtifact } from "./build-metadata.js";
 import type { ArtifactMetadata } from "./build-metadata.js";
 import { prepareDevelopmentArtifacts } from "./release-assets.js";
-import { writeBuildIdentityFile } from "./write-version.js";
+import { writeBuildIdentityFile } from "./write-version.ts";
 
 async function fixture() {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));

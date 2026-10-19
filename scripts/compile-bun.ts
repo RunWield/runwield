@@ -7,7 +7,7 @@ import { argv, versions } from "node:process";
 import { fileURLToPath } from "node:url";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
 import { BUILD_METADATA_SCHEMA, computeBuildIdentity, REMOTE_PROTOCOL_VERSION, sha256File } from "./build-metadata.js";
-import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.js";
+import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.ts";
 
 interface LoadedSource {
     contents: string;

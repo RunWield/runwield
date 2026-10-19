@@ -283,7 +283,7 @@ jobs:
             - name: Run Golden TUI release gate
               env:
                   WLD_TEST_CONCURRENCY: "3"
-              run: bun scripts/write-version.js && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
+              run: bun scripts/write-version.ts && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''

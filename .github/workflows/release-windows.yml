@@ -170,7 +170,7 @@ jobs:
               run: bun run install:locked
             - name: Prepare generated source version for focused checks
               if: matrix.phase == 'package'
-              run: bun scripts/write-version.js
+              run: bun scripts/write-version.ts
             - name: Check all source and test types
               if: matrix.phase == 'source'
               run: bun run check
