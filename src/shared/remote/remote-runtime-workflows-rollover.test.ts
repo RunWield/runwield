@@ -145,8 +145,10 @@ test("a lost rollover acknowledgement releases the transferred writer as uncerta
         assert(first.savedId);
         const id = first.savedId;
         const predecessor = f.store.getCurrentSessionSegment(id)!;
-        f.policy.handle = async (request, _path, response) =>
-            request.kind === "rollover" && response.ok ? new Response("lost receipt", { status: 503 }) : response;
+        f.policy.handle = (request, _path, response) =>
+            Promise.resolve(
+                request.kind === "rollover" && response.ok ? new Response("lost receipt", { status: 503 }) : response,
+            );
         await client.send({ kind: "rollover", segmentKind: "execution" });
         const failed = await client.read();
         assertEquals(failed.ok, false);

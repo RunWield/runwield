@@ -30,6 +30,12 @@ import { appendExecutionWorkflowSnapshot } from "../session/execution-workflow-s
 import { runResumeCommand } from "../../cmd/resume/index.ts";
 import { requestLocalReviewInteraction } from "../session/local-review-interactions.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+import { listEntries } from "../worktree-registry.js";
+import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
+import { loadPlan } from "../../plan-store.js";
+import { continueWorkflowValidation } from "../workflow/validation-supervisor.ts";
+import { createGitPort } from "../git-port.ts";
+import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 
 export interface RuntimeClientInput {
@@ -44,6 +50,8 @@ export interface RuntimeClientCommand {
         | "workflow-plan"
         | "workflow-execute"
         | "workflow-validate"
+        | "local-recovery"
+        | "local-validation-recovery"
         | "turn-tutorial"
         | "plan-written"
         | "plan-sessions"
@@ -118,8 +126,11 @@ export interface RuntimeClientReport {
     tutorialContext?: import("../session/tutorial-context-session.ts").TutorialContext | null;
     activeWorkflow?: import("../types.js").ActiveExecutionWorkflow | null;
     piSessionId?: string;
-    result?: import("../session/runtime/workflows.ts").RuntimeValidationResult | null;
+    result?: Awaited<ReturnType<SessionRuntime["runValidation"]>>;
     reviewUrl?: string;
+    publicationPhase?: string | null;
+    priorValidationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
+    validationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
 }
 const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
@@ -197,6 +208,44 @@ try {
                         ok: status.state === "completed",
                     }),
                 );
+            } else if (command.kind === "local-validation-recovery") {
+                const location = await resolveWorkflowPlanLocation(input.cwd, "remote-delivery");
+                if (!location.plan) throw new Error("Delivery Plan missing");
+                const local = new HostedSession({ id: crypto.randomUUID(), cwd: input.cwd });
+                try {
+                    const result = await continueWorkflowValidation({
+                        hostedSession: local,
+                        planName: "remote-delivery",
+                        planContent: location.plan.markdown,
+                        triageMeta: location.plan.attrs,
+                        trigger: "session_resume",
+                        git: createGitPort(),
+                        workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                        // Cancel at the external CI boundary, after real local checkpoint recovery.
+                        localCI: {
+                            run: () => Promise.resolve({ kind: "canceled", output: "Local recovery comparison" }),
+                        },
+                    });
+                    const recovered = await loadPlan(location.documentRoot, "remote-delivery");
+                    console.log(
+                        JSON.stringify({
+                            kind: command.kind,
+                            result,
+                            priorValidationCheckpoint: location.plan.attrs.validationCheckpoint,
+                            validationCheckpoint: recovered?.attrs.validationCheckpoint,
+                        }),
+                    );
+                } finally {
+                    local.dispose();
+                }
+            } else if (command.kind === "local-recovery") {
+                // The local delivery recovery API reads these same project and Git receipts, without a Session bridge.
+                const entries = await listEntries(input.cwd, { migrate: false });
+                const attempt = entries.find((entry) => entry.planId === "remote-delivery-plan")?.publication;
+                const recovered = attempt
+                    ? await reconcileStoredPublication(input.cwd, attempt, { apply: false })
+                    : null;
+                console.log(JSON.stringify({ kind: command.kind, publicationPhase: recovered?.phase || null }));
             } else if (command.kind === "workflow-plan") {
                 runtime.setInteractionAdapter(sessionId, {
                     supportsInteraction: (type) => type === "plan_review",
@@ -327,7 +376,10 @@ try {
                                     planName: command.text || "Report",
                                     planningAgentName: "remote-runtime",
                                 });
-                                return { content: [{ type: "text", text: JSON.stringify(artifact) }], details: null };
+                                return await Promise.resolve({
+                                    content: [{ type: "text", text: JSON.stringify(artifact) }],
+                                    details: null,
+                                });
                             },
                         },
                     ],
@@ -487,7 +539,9 @@ try {
                     command.text === "persisted"
                         ? SessionManager.create(input.cwd, join(input.cwd, "guard-sessions"))
                         : SessionManager.inMemory(input.cwd);
-                hosted.setRootSessionManager(missing);
+                hosted.setRootSessionManager(
+                    command.text === "unbridged root" ? missing : SessionManager.inMemory(input.cwd),
+                );
                 try {
                     await buildAgentSession({
                         hostedSession: hosted,

@@ -14,7 +14,7 @@ import process from "node:process";
 import { compileBun } from "../../../scripts/compile-bun.ts";
 import { getCwd } from "../../constants.js";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
-import { spawnNativeProcess, type NativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
 import { serveHttp } from "../http-server.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
@@ -83,7 +83,9 @@ async function main(): Promise<void> {
         } finally {
             try {
                 child.kill("SIGKILL");
-            } catch {}
+            } catch {
+                // The child can exit before cleanup sends its signal.
+            }
             await child.status;
         }
     }
@@ -123,7 +125,9 @@ async function main(): Promise<void> {
             async close() {
                 try {
                     child.kill("SIGTERM");
-                } catch {}
+                } catch {
+                    // The child can exit before cleanup sends its signal.
+                }
                 await within(output, 10000);
             },
         };
@@ -446,7 +450,9 @@ async function main(): Promise<void> {
                             );
                             try {
                                 child.kill("SIGKILL");
-                            } catch {}
+                            } catch {
+                                // The child can exit before cleanup sends its signal.
+                            }
                             await child.status;
                             await reader.cancel().catch(() => {});
                             await writer.abort().catch(() => {});

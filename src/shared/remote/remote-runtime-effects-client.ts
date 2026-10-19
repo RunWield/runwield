@@ -31,7 +31,15 @@ interface Input {
     resources: string;
     cwd: string;
     commandLog: string;
-    scenario: "handoff" | "validation" | "publication" | "repair" | "supervisor" | "publication-catch" | "logs";
+    scenario:
+        | "handoff"
+        | "validation"
+        | "publication"
+        | "repair"
+        | "supervisor"
+        | "publication-catch"
+        | "ci-repair-progress"
+        | "logs";
 }
 const lines = processLines(stdinStream());
 const input: Input = JSON.parse((await lines.read()).value || "{}");
@@ -128,9 +136,13 @@ try {
                                 triageMeta: plan.attrs,
                                 git: createGitPort(),
                                 localCI: {
-                                    run: async () => {
+                                    run: () => {
                                         ciStarted++;
-                                        return { kind: "completed" as const, exitCode: 0, output: "passed" };
+                                        return Promise.resolve({
+                                            kind: "completed" as const,
+                                            exitCode: input.scenario === "ci-repair-progress" ? 1 : 0,
+                                            output: "passed",
+                                        });
                                     },
                                 },
                                 workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
@@ -157,7 +169,7 @@ try {
                             const ciBeforeFault = ciStarted;
                             let saveError = "";
                             try {
-                                if (input.scenario !== "supervisor" && input.scenario !== "publication-catch")
+                                if (!["supervisor", "publication-catch", "ci-repair-progress"].includes(input.scenario))
                                     manager.appendCustomEntry("effect-gate-fault", { marker: "swallowed-save" });
                             } catch (error) {
                                 saveError = String(error);
@@ -174,7 +186,7 @@ try {
                                     });
                                 } else if (input.scenario === "supervisor") {
                                     await continueWorkflowValidation(args);
-                                } else if (input.scenario === "validation") {
+                                } else if (input.scenario === "validation" || input.scenario === "ci-repair-progress") {
                                     await runValidationPhase(args);
                                 } else if (input.scenario === "repair") {
                                     const port = createValidationSessionPort(session);

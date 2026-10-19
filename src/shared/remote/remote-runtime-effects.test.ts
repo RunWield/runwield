@@ -38,6 +38,7 @@ for (const scenario of [
     "publication",
     "supervisor",
     "publication-catch",
+    "ci-repair-progress",
     "logs",
 ] as const) {
     test(
@@ -76,9 +77,11 @@ for (const scenario of [
                         request.kind === "append" &&
                         (scenario === "supervisor"
                             ? request.contents.includes('"validationGeneration":"')
-                            : scenario === "publication-catch"
-                              ? request.contents.includes('"stage":"merge"')
-                              : request.contents.includes("effect-gate-fault"))
+                            : scenario === "ci-repair-progress"
+                              ? request.contents.includes('"stage":"engineer_repair"')
+                              : scenario === "publication-catch"
+                                ? request.contents.includes('"stage":"merge"')
+                                : request.contents.includes("effect-gate-fault"))
                     ) {
                         if (!faulted) {
                             atFault = [...(await snapshot(f.remoteProject)), ...(await snapshot(f.remoteHome))];
@@ -133,10 +136,10 @@ for (const scenario of [
                     assertEquals(report.contents, "remote-output");
                     await assertRejects(() => stat(report.directory!), Error, "ENOENT");
                 } else {
-                    assert(faulted, "The save bridge must fail before the effect boundary.");
-                    if (scenario !== "supervisor" && scenario !== "publication-catch")
+                    assert(faulted, `The save bridge must fail before the effect boundary: ${JSON.stringify(report)}`);
+                    if (!["supervisor", "publication-catch", "ci-repair-progress"].includes(scenario))
                         assertStringIncludes(report.saveError || "", "Laptop Session save refused (503)");
-                    if (scenario !== "supervisor" && scenario !== "publication-catch")
+                    if (!["supervisor", "publication-catch", "ci-repair-progress"].includes(scenario))
                         assertStringIncludes(report.boundaryError || "", "Laptop Session save refused (503)");
                     const afterFault = [...(await snapshot(f.remoteProject)), ...(await snapshot(f.remoteHome))];
                     assertEquals(afterFault, atFault, "No Plan or controller write can follow the refused save");
@@ -152,26 +155,26 @@ for (const scenario of [
                             ),
                             "The supervisor must have claimed the durable checkpoint before the save fault",
                         );
-                    if (scenario === "supervisor" || scenario === "publication-catch")
+                    if (["supervisor", "publication-catch", "ci-repair-progress"].includes(scenario))
                         assertEquals(
                             report.afterCommands,
                             commandsAtFault,
                             "No later Git command can follow the in-flight save fault",
                         );
-                    assertEquals(report.ciStarted, report.ciBeforeFault);
+                    assertEquals(report.ciStarted, scenario === "ci-repair-progress" ? 1 : report.ciBeforeFault);
                     const statusAtFault =
                         scenario === "publication" || scenario === "publication-catch"
                             ? "reviewed"
-                            : scenario === "repair" || scenario === "validation" || scenario === "supervisor"
+                            : ["repair", "validation", "supervisor", "ci-repair-progress"].includes(scenario)
                               ? "implemented"
                               : "ready_for_work";
                     assertEquals(report.planStatus, statusAtFault);
                     if (scenario === "repair") assertEquals(report.validationPhase, "semantic");
                     assertEquals(
                         report.ciBeforeFault,
-                        scenario === "repair" || scenario === "publication" || scenario === "publication-catch" ? 1 : 0,
+                        ["repair", "publication", "publication-catch"].includes(scenario) ? 1 : 0,
                     );
-                    if (scenario !== "supervisor" && scenario !== "publication-catch")
+                    if (!["supervisor", "publication-catch", "ci-repair-progress"].includes(scenario))
                         assertEquals(
                             report.afterCommands,
                             report.beforeCommands,
@@ -183,7 +186,7 @@ for (const scenario of [
                             report.executionCwd !== f.remoteProject,
                             "The fault must occur after isolated worktree preparation",
                         );
-                    if (scenario !== "supervisor" && scenario !== "publication-catch")
+                    if (!["supervisor", "publication-catch", "ci-repair-progress"].includes(scenario))
                         assertEquals(
                             await readFile(join(report.executionCwd, "docs/plans/effect-gate.md"), "utf8"),
                             report.beforePlan,
@@ -280,9 +283,13 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
                                         triageMeta: implemented.attrs,
                                         git: createGitPort(),
                                         localCI: {
-                                            run: async () => {
+                                            run: () => {
                                                 ci++;
-                                                return { kind: "completed" as const, exitCode: 0, output: "passed" };
+                                                return Promise.resolve({
+                                                    kind: "completed" as const,
+                                                    exitCode: 0,
+                                                    output: "passed",
+                                                });
                                             },
                                         },
                                     };

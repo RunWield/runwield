@@ -237,7 +237,8 @@ export class RemoteSessionPersistence {
             saved.entries,
             saved.summary.generation ?? managed.generation,
         );
-        const workflowContext = await reconcileRemoteWorkflow(session.cwd, metadata.workflowContext);
+        const projectRoot = session.getActiveExecutionWorkflow()?.projectRoot || session.cwd;
+        const workflowContext = await reconcileRemoteWorkflow(projectRoot, metadata.workflowContext);
         if (workflowContext?.validationProgress?.outcome === "verified")
             session.restoreActiveExecutionWorkflow(null, null);
         session.replaceWorkflowContext(workflowContext, { persist: false });

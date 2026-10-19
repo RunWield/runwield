@@ -32,10 +32,15 @@ export async function restoreExecutionWorkflow(
     if (snapshot) {
         const workflow = snapshot.workflow;
         if (workflow?.executionCwd) {
-            const executionCwd = await fsRealpath(workflow.executionCwd);
-            // Keep the current root spelling when it already names this checkout.
-            // A reloaded root has its canonical spelling; do not restore a stale alias.
-            if ((await fsRealpath(session.cwd)) === executionCwd) workflow.executionCwd = session.cwd;
+            try {
+                const executionCwd = await fsRealpath(workflow.executionCwd);
+                // Keep the current root spelling when it already names this checkout.
+                if ((await fsRealpath(session.cwd)) === executionCwd) workflow.executionCwd = session.cwd;
+            } catch (error) {
+                // Publication cleanup may remove the checkout before the Session saves its terminal state.
+                // Retain the snapshot so recovery can inspect publication evidence without replaying it.
+                if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+            }
         }
         session.restoreActiveExecutionWorkflow(workflow, null);
         return;

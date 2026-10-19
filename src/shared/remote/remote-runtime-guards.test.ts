@@ -26,3 +26,15 @@ for (const manager of ["unbridged root", "persisted"]) {
         });
     });
 }
+
+test("remote agent guard admits an in-memory non-root manager", async () => {
+    await withRemoteRuntimeFixture(async (f) => {
+        const child = await f.start();
+        await child.read();
+        await child.send({ kind: "guard", text: "child" });
+        const result = await child.read();
+        assertEquals(result.errors, [], JSON.stringify(result));
+        await child.close();
+        await assertRemoteStorageAbsent(f);
+    });
+});

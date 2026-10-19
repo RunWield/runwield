@@ -1,4 +1,6 @@
 import { test } from "node:test";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
@@ -92,12 +94,12 @@ for (const kind of recordKinds) {
                     : fauxAssistantMessage(fauxText("Do not replay.")),
             );
             let failed: RemoteSessionRequest | null = null;
-            const faultPolicy: NonNullable<RuntimeFixture["policy"]["handle"]> = async (input, path, response) => {
+            const faultPolicy: NonNullable<RuntimeFixture["policy"]["handle"]> = (input, path, response) => {
                 if (path === "/session/request" && input.kind === kind && response.ok && !failed) {
                     failed = input as RemoteSessionRequest;
-                    return new Response("lost-record-receipt", { status: 503 });
+                    return Promise.resolve(new Response("lost-record-receipt", { status: 503 }));
                 }
-                return response;
+                return Promise.resolve(response);
             };
             const client = await f.start();
             await client.read();
@@ -185,3 +187,58 @@ test("an invalid laptop record operation stays faulted and cannot be repaired by
         await assertRemoteStorageAbsent(f);
     });
 });
+
+for (const contextSave of [1, 2]) {
+    test(`Plan submission stops project writes after workflow-context save ${contextSave} fails`, async () => {
+        await withRemoteRuntimeFixture(async (f) => {
+            await savePlan(f.remoteProject, "context-fault", "# Context fault\n", {
+                planId: "context-fault-plan",
+                classification: "QUICK_FIX",
+                status: "draft",
+            });
+            const planPath = join(f.remoteProject, "docs/plans/context-fault.md");
+            const settingsPath = join(f.remoteProject, ".wld/settings.json");
+            await mkdir(join(f.remoteProject, ".wld"), { recursive: true });
+            await writeFile(settingsPath, "{}\n");
+            const beforePlan = await readFile(planPath, "utf8");
+            const beforeSettings = await readFile(settingsPath, "utf8");
+            let turns = 0;
+            f.setModelResponseFactory(() =>
+                ++turns === 1
+                    ? fauxAssistantMessage(
+                          fauxToolCall("plan_written", {
+                              planName: "context-fault",
+                              executionAgent: "frontend-engineer",
+                              collaborationRecommendation: "autonomous",
+                              verificationCommand: { command: "echo must-not-save", intent: "user_selected" },
+                          }),
+                      )
+                    : fauxAssistantMessage(fauxText("Must not continue.")),
+            );
+            let contexts = 0;
+            let failed = false;
+            f.policy.before = (input, path) => {
+                if (
+                    path === "/session/request" &&
+                    input.kind === "append" &&
+                    input.contents.includes('"customType":"runwield.workflow_context"') &&
+                    ++contexts === contextSave
+                ) {
+                    failed = true;
+                    return Promise.resolve(new Response("context-save-failed", { status: 503 }));
+                }
+                return Promise.resolve(undefined);
+            };
+            const client = await f.start();
+            await client.read();
+            await client.send({ kind: "plan-written" });
+            const result = await client.read();
+            assertEquals(failed, true, JSON.stringify({ result, contexts, saves: f.saves }));
+            assertEquals(result.ok, false);
+            assertEquals(await readFile(planPath, "utf8"), beforePlan);
+            assertEquals(await readFile(settingsPath, "utf8"), beforeSettings);
+            await client.close();
+            await assertRemoteStorageAbsent(f);
+        });
+    });
+}

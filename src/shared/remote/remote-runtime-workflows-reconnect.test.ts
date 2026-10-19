@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { ok as assert } from "node:assert/strict";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,18 +23,19 @@ for (const evidenceAvailable of [true, false]) {
             const client = await f.start();
             await client.read();
             const id = await planDelivery(f, client);
-            await executeDelivery(f, client);
+            const execution = await executeDelivery(f, client);
             scriptReviewAndRecord(f);
             let interrupted = false;
-            f.policy.before = async (request, path) => {
+            f.policy.before = (request, path) => {
                 if (
                     path === "/session/request" &&
                     request.kind === "append" &&
                     request.contents.includes('"outcome":"verified"')
                 ) {
                     interrupted = true;
-                    return new Response("unsaved-publication-result", { status: 503 });
+                    return Promise.resolve(new Response("unsaved-publication-result", { status: 503 }));
                 }
+                return Promise.resolve(undefined);
             };
             await client.send({ kind: "workflow-validate" });
             await readWorkflowResult(client);
@@ -53,24 +55,29 @@ for (const evidenceAvailable of [true, false]) {
             await f.dropConnection();
             await client.terminate();
             f.policy.before = undefined;
+            const hiddenEvidence: Array<{ from: string; to: string }> = [];
             if (!evidenceAvailable) {
                 // Simulate inaccessible canonical delivery evidence, not a saved negative outcome.
-                await rename(
-                    join(f.remoteProject, "docs/plans/remote-delivery.md"),
-                    join(f.remoteHome, "lost-plan.md"),
-                );
+                hiddenEvidence.push({
+                    from: join(f.remoteProject, "docs/plans/remote-delivery.md"),
+                    to: join(f.remoteHome, "lost-plan.md"),
+                });
                 const runtimeRoot = join(f.remoteHome, "project-runtime");
                 for (const entry of await snapshotProjectTree(runtimeRoot)) {
                     if (
                         entry.kind === "file" &&
                         (entry.path.endsWith("worktrees.json") || entry.path.includes("/controller/plans/"))
                     )
-                        await rename(
-                            join(runtimeRoot, entry.path),
-                            join(f.remoteHome, `unavailable-${encodeURIComponent(entry.path)}`),
-                        );
+                        hiddenEvidence.push({
+                            from: join(runtimeRoot, entry.path),
+                            to: join(f.remoteHome, `unavailable-${encodeURIComponent(entry.path)}`),
+                        });
                 }
             }
+            for (const item of hiddenEvidence) await rename(item.from, item.to);
+            // Cleanup can finish before the terminal Session save. Keep Git registration intact for this crash window.
+            if (execution.executionCwd !== f.remoteProject)
+                await rename(execution.executionCwd!, join(f.remoteHome, "cleaned-execution"));
             const refs = await git(upstream, ["show-ref"]);
             const ci = await ciRuns(f);
             const models = f.modelRequests.length;
@@ -81,6 +88,13 @@ for (const evidenceAvailable of [true, false]) {
             const loaded = await resumed.read();
             assertEquals(loaded.ok, true, loaded.error);
             assertEquals(loaded.savedId, id);
+            await resumed.send({ kind: "local-recovery" });
+            const local = await resumed.read();
+            assertEquals(
+                ["publication_verified", "cleanup_complete"].includes(local.publicationPhase || ""),
+                loaded.workflowContext?.validationProgress?.outcome === "verified",
+                "Remote reconnect must agree with local publication recovery for the same evidence",
+            );
             assertEquals(
                 loaded.workflowContext?.validationProgress?.outcome,
                 evidenceAvailable ? "verified" : "paused",
@@ -100,12 +114,28 @@ for (const evidenceAvailable of [true, false]) {
                 1,
                 "Reconnect cannot repeat push",
             );
-            await resumed.close();
             assertEquals(
                 await readOnlyEvidenceSnapshot(f.remoteProject, f.remoteHome),
                 evidenceBefore,
                 "Reconnect cannot rewrite remote Plan, transition, publication, or Git evidence",
             );
+            for (const item of hiddenEvidence) await rename(item.to, item.from);
+            await resumed.send({ kind: "reload" });
+            const checked = await resumed.read();
+            assertEquals(checked.ok, true, checked.error);
+            assertEquals(checked.workflowContext?.validationProgress?.outcome, "verified", JSON.stringify(checked));
+            f.setModelMessages([
+                fauxAssistantMessage(fauxText("Confirmed the recovered publication without repeating delivery.")),
+            ]);
+            await resumed.send({ kind: "turn", text: "Confirm the recovered publication. Do not repeat delivery." });
+            const continued = await resumed.read();
+            assertEquals(continued.ok, true, JSON.stringify(continued));
+            assertEquals(await ciRuns(f), ci, "Confirmed publication must not repeat CI");
+            assertEquals(f.modelRequests.length, models + 1, "Only the requested confirmation turn may run");
+            assertEquals(await git(upstream, ["show-ref"]), refs);
+            const continuedCommands = await readFile(f.remoteCommandLog, "utf8");
+            assertEquals(continuedCommands.split("\n").filter((line) => line.startsWith("push ")).length, 1);
+            await resumed.close();
             await assertRemoteStorageAbsent(f);
         });
     });
@@ -127,7 +157,7 @@ test("transport loss during active validation resumes with uncertainty, without 
         const client = await f.start();
         await client.read();
         const id = await planDelivery(f, client);
-        await executeDelivery(f, client);
+        const execution = await executeDelivery(f, client);
         scriptReviewAndRecord(f);
         await client.send({ kind: "workflow-validate" });
         async function waitForFile(path: string) {
@@ -170,8 +200,31 @@ test("transport loss during active validation resumes with uncertainty, without 
         assertEquals(await git(upstream, ["show-ref"]), refs);
         const commands = await readFile(f.remoteCommandLog, "utf8");
         assertEquals(commands.split("\n").filter((line) => line.startsWith("push ")).length, 0);
-        await resumed.close();
         assertEquals(await readOnlyEvidenceSnapshot(f.remoteProject, f.remoteHome), evidenceBefore);
+        await resumed.send({ kind: "local-validation-recovery" });
+        const local = await resumed.read();
+        assertEquals(local.result?.kind, loaded.workflowContext?.validationProgress?.outcome, JSON.stringify(local));
+        const checkpoint = local.priorValidationCheckpoint;
+        assert(checkpoint, JSON.stringify(local));
+        assertEquals(checkpoint.state, "running");
+        assertEquals(checkpoint.nextPhase, "mechanical");
+        assertEquals(local.validationCheckpoint?.state, "paused");
+        assertEquals(local.validationCheckpoint?.nextPhase, checkpoint.nextPhase);
+        assertEquals(local.validationCheckpoint?.generation, checkpoint.generation);
+        assertEquals(local.validationCheckpoint?.attemptId, checkpoint.attemptId);
+        assertEquals(await ciRuns(f), 1, "Local recovery cancels before external CI effects");
+        assertEquals(f.modelRequests.length, models);
+        await resumed.send({ kind: "workflow-validate" });
+        const continued = await readWorkflowResult(resumed);
+        assertEquals(continued.result?.kind, "verified", JSON.stringify(continued));
+        assertEquals(await ciRuns(f), 2, "Only the user-selected retry can rerun interrupted CI");
+        const published = await readFile(f.remoteCommandLog, "utf8");
+        assertEquals(published.split("\n").filter((line) => line.startsWith("push ")).length, 1);
+        assertEquals(
+            await git(upstream, ["show", `${execution.triageMeta?.deliveryBranch || "main"}:sentinel.txt`]),
+            "remote implemented",
+        );
+        await resumed.close();
         await assertRemoteStorageAbsent(f);
     });
 });

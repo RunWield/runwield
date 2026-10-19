@@ -478,10 +478,15 @@ export function createValidationSessionPort(
                     },
                 };
             }
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             emitRunWieldSystemStatus(hostedSession, message, level, progress as RuntimeValidationProgress | undefined);
+            // Footer persistence can catch a save error. Do not return control to phase writes after it.
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
         },
         emitAssistantMessage: (agentName, text, options) => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             emitAssistantMessage(hostedSession, agentName, text, options);
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
         },
         requestInteraction: (request) =>
             requestHostedSessionInteraction(
