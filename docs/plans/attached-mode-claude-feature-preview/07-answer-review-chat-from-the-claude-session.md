@@ -29,8 +29,8 @@ dependencies:
     - "06-publish-validated-work-and-record-the-outcome"
 targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "e44042fc82b895e70eb4d44861645fe9fa05ec92"
+status: "verified"
 ---
 
 # Answer review chat from the Claude session
