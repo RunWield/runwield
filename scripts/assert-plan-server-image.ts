@@ -39,19 +39,13 @@ const ALLOWED_APP_SRC_FILES = new Set([
     "/app/src/ui/theme/catppuccin-mocha.json",
 ]);
 
-/**
- * @typedef {Object} ImageFilesystemAssertion
- * @property {string[]} missingRequired
- * @property {string[]} missingRequiredDirectories
- * @property {string[]} prohibited
- */
+export interface ImageFilesystemAssertion {
+    missingRequired: string[];
+    missingRequiredDirectories: string[];
+    prohibited: string[];
+}
 
-/**
- * @param {string[]} files
- * @param {string[]} directories
- * @returns {ImageFilesystemAssertion}
- */
-export function assertPlanServerImageFileList(files, directories) {
+export function assertPlanServerImageFileList(files: string[], directories: string[]): ImageFilesystemAssertion {
     const fileSet = new Set(files);
     const directorySet = new Set(directories);
     const missingRequired = REQUIRED_IMAGE_FILES.filter((file) => !fileSet.has(file));
@@ -60,11 +54,7 @@ export function assertPlanServerImageFileList(files, directories) {
     return { missingRequired, missingRequiredDirectories, prohibited };
 }
 
-/**
- * @param {string} file
- * @returns {boolean}
- */
-export function isProhibitedImageFile(file) {
+export function isProhibitedImageFile(file: string): boolean {
     if (!file.startsWith("/app/")) return false;
     if (file === "/app/remote-server.js") return false;
     if (file.startsWith("/app/dist/workspace-runtime/")) return false;
@@ -88,20 +78,14 @@ export function isProhibitedImageFile(file) {
     );
 }
 
-/**
- * @typedef {Object} ImageFilesystemListing
- * @property {string[]} files
- * @property {string[]} directories
- */
+export interface ImageFilesystemListing {
+    files: string[];
+    directories: string[];
+}
 
 const IMAGE_DIRECTORY_DELIMITER = "__RUNWIELD_IMAGE_DIRECTORIES__";
 
-/**
- * @param {string} image
- * @param {string} [engine]
- * @returns {Promise<ImageFilesystemListing>}
- */
-export async function listImageFilesystem(image, engine = "podman") {
+export async function listImageFilesystem(image: string, engine = "podman"): Promise<ImageFilesystemListing> {
     if (!["podman", "docker"].includes(engine)) throw new Error(`Unsupported container engine: ${engine}`);
     const result = await captureScriptProcess(engine, {
         args: [
@@ -131,11 +115,7 @@ export async function listImageFilesystem(image, engine = "podman") {
     };
 }
 
-/**
- * @param {string} image
- * @returns {Promise<string[]>}
- */
-export async function listImageFiles(image) {
+export async function listImageFiles(image: string): Promise<string[]> {
     return (await listImageFilesystem(image)).files;
 }
 
