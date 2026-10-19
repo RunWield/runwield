@@ -87,12 +87,14 @@ function ensureDir(dir) {
  *
  * @param {RootSessionStartMode} mode
  * @param {string} cwd
+ * @param {string} [directory] Laptop-owned remote Project directory.
  * @returns {Promise<import('@earendil-works/pi-coding-agent').SessionManager>}
  */
-export async function createRootSessionManager(mode, cwd) {
+export async function createRootSessionManager(mode, cwd, directory) {
+    requireLocalSessionWriter();
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-    const canonicalCwd = canonicalizeCwd(cwd);
-    const sessionDir = getRunWieldSessionDir(canonicalCwd);
+    const canonicalCwd = directory ? cwd : canonicalizeCwd(cwd);
+    const sessionDir = directory || getRunWieldSessionDir(canonicalCwd);
     ensureDir(sessionDir);
 
     const manager =
@@ -262,15 +264,16 @@ async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath
     if (!stat.isFile()) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
 }
 
-/** @param {string} cwd @param {any} sessionManager */
-export async function resolveCreatedRootSessionPath(cwd, sessionManager) {
+/** @param {string} cwd @param {import("./hosted-session.js").MinimalSessionManagerLike} sessionManager @param {string} [directory] */
+export async function resolveCreatedRootSessionPath(cwd, sessionManager, directory) {
+    requireLocalSessionWriter();
     const piSessionId = sessionManager.getSessionId?.();
     if (!piSessionId) throw new Error("The Session could not be persisted");
-    const sessions = await listPersistedRootSessions(cwd);
+    const sessions = directory ? [] : await listPersistedRootSessions(cwd);
     const match = sessions.find((session) => session.id === piSessionId);
     if (match?.path) return match.path;
     const transcriptPath = sessionManager.getSessionFile?.();
-    const sessionDir = getRunWieldSessionDir(cwd);
+    const sessionDir = directory || getRunWieldSessionDir(cwd);
     if (
         !transcriptPath ||
         typeof transcriptPath !== "string" ||

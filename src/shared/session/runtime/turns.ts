@@ -678,6 +678,11 @@ export class RuntimeTurns {
     ) {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) throw new Error("SessionRuntime.rollManagedSessionSegment: session not found");
+        if (this.services.remotePersistence) {
+            if (this.managedOperations.hasOperation(sessionId))
+                throw new Error("Session rollover requires a settled operation");
+            return await this.services.remotePersistence.rollover(hostedSession, options);
+        }
         if (!this.services.sessionStore) throw new Error("Session storage is unavailable");
         return await rollSessionTranscriptSegment({
             hostedSession,

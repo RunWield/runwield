@@ -141,11 +141,16 @@ export async function runRemoteView(): Promise<void> {
         try {
             await lifecycle?.dispose();
         } finally {
-            await clearMcp();
-            clearClipboard();
-            clearMemory();
-            clearModels?.();
-            stopTUI?.();
+            try {
+                await clearMcp();
+                clearClipboard();
+                clearMemory();
+                clearModels?.();
+                stopTUI?.();
+            } finally {
+                const { disposeRemoteBackgroundTaskLogs } = await import("./background-task-logs.ts");
+                disposeRemoteBackgroundTaskLogs();
+            }
         }
     }
 }

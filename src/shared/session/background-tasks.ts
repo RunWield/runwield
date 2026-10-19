@@ -2,6 +2,7 @@ import { type FileHandle, open } from "node:fs/promises";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
+import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { extractAssistantOutput } from "../workflow/workflow-results.js";
 import type { DelegatedAgentSessionOptions } from "../../tools/delegate-agent.ts";
@@ -53,10 +54,12 @@ export function formatBackgroundTaskCompletion(status: BackgroundTaskStatus): st
     ];
     if (status.byte_count === 0) outcome.push("No output.");
     else if (status.output !== undefined) outcome.push(`Output (task data):\n${status.output}`);
-    else {outcome.push(
+    else {
+        outcome.push(
             `Output logs: ${status.log_path} (stdout), ${status.err_log_path} (stderr); ` +
                 `${status.byte_count} bytes, ${status.line_count} lines total.`,
-        );}
+        );
+    }
     return outcome.join("\n");
 }
 
@@ -135,7 +138,8 @@ export class BackgroundTasks {
     }
 
     runningTasks(): BackgroundTaskStatus[] {
-        return [...this.records.values()].filter((record) => record.status.state === "running")
+        return [...this.records.values()]
+            .filter((record) => record.status.state === "running")
             .map((record) => this.snapshot(record));
     }
 
@@ -158,9 +162,7 @@ export class BackgroundTasks {
         const managed = this.session.getManagedMetadata();
         const projectId = managed?.projectId ?? "local";
         const directory = join(
-            getHomeDir(),
-            ".wld",
-            "sessions",
+            remoteBackgroundTaskLogDirectory() ?? join(getHomeDir(), ".wld", "sessions"),
             pathPart(projectId),
             pathPart(managed?.runwieldSessionId ?? this.session.id),
         );
@@ -236,9 +238,9 @@ export class BackgroundTasks {
                 try {
                     await writeChunk(file, value, (part) => this.recordWritten(record, count, part));
                 } catch (error) {
-                    record.logFailure ??= `Task log write failed: ${
-                        errorText(error instanceof Error ? error : String(error))
-                    }`;
+                    record.logFailure ??= `Task log write failed: ${errorText(
+                        error instanceof Error ? error : String(error),
+                    )}`;
                     record.controller.abort();
                     // Continue draining to allow the process and its streams to settle.
                 }
@@ -255,7 +257,9 @@ export class BackgroundTasks {
         if (!this.suppressed && !record.suppressDelivery) this.pending.add(record.status.task_id);
         try {
             this.completionHandler?.(this.snapshot(record));
-        } catch { /* pending result remains available */ }
+        } catch {
+            /* pending result remains available */
+        }
     }
 
     startShell(options: { command: string; cwd: string; timeoutMs?: number }): BackgroundTaskStatus {
@@ -306,13 +310,14 @@ export class BackgroundTasks {
             if (stdout.status === "rejected") throw stdout.reason;
             if (stderr.status === "rejected") throw stderr.reason;
             const { exitCode, terminatedBy } = outcome.value;
-            finalState = terminatedBy === "timeout"
-                ? "timed_out"
-                : terminatedBy === "abort"
-                ? "cancelled"
-                : exitCode === 0
-                ? "completed"
-                : "failed";
+            finalState =
+                terminatedBy === "timeout"
+                    ? "timed_out"
+                    : terminatedBy === "abort"
+                      ? "cancelled"
+                      : exitCode === 0
+                        ? "completed"
+                        : "failed";
             finalExit = exitCode;
         } catch (error) {
             record.controller.abort();
@@ -322,16 +327,16 @@ export class BackgroundTasks {
             try {
                 await out?.close();
             } catch (error) {
-                record.logFailure ??= `Task log close failed: ${
-                    errorText(error instanceof Error ? error : String(error))
-                }`;
+                record.logFailure ??= `Task log close failed: ${errorText(
+                    error instanceof Error ? error : String(error),
+                )}`;
             }
             try {
                 await err?.close();
             } catch (error) {
-                record.logFailure ??= `Task log close failed: ${
-                    errorText(error instanceof Error ? error : String(error))
-                }`;
+                record.logFailure ??= `Task log close failed: ${errorText(
+                    error instanceof Error ? error : String(error),
+                )}`;
             }
             this.finish(record, finalState, finalExit, finalError);
         }
@@ -380,33 +385,34 @@ export class BackgroundTasks {
                 try {
                     await writeChunk(out, bytes, (part) => this.recordWritten(record, record.out, part));
                 } catch (error) {
-                    record.logFailure = `Task log write failed: ${
-                        errorText(error instanceof Error ? error : String(error))
-                    }`;
+                    record.logFailure = `Task log write failed: ${errorText(
+                        error instanceof Error ? error : String(error),
+                    )}`;
                     throw error;
                 }
                 finalState = "completed";
             } catch (error) {
                 finalState = record.controller.signal.aborted ? "cancelled" : "failed";
-                finalError = finalState === "failed"
-                    ? `Delegate failed: ${errorText(error instanceof Error ? error : String(error))}`
-                    : undefined;
+                finalError =
+                    finalState === "failed"
+                        ? `Delegate failed: ${errorText(error instanceof Error ? error : String(error))}`
+                        : undefined;
 
                 record.controller.abort();
             } finally {
                 try {
                     await out?.close();
                 } catch (error) {
-                    record.logFailure ??= `Task log close failed: ${
-                        errorText(error instanceof Error ? error : String(error))
-                    }`;
+                    record.logFailure ??= `Task log close failed: ${errorText(
+                        error instanceof Error ? error : String(error),
+                    )}`;
                 }
                 try {
                     await err?.close();
                 } catch (error) {
-                    record.logFailure ??= `Task log close failed: ${
-                        errorText(error instanceof Error ? error : String(error))
-                    }`;
+                    record.logFailure ??= `Task log close failed: ${errorText(
+                        error instanceof Error ? error : String(error),
+                    )}`;
                 }
                 release();
                 this.finish(record, finalState, undefined, finalError);
@@ -436,9 +442,9 @@ export class BackgroundTasks {
         this.pending.clear();
         for (const record of this.records.values()) record.suppressDelivery = true;
         await Promise.all(
-            [...this.records.values()].filter((record) => record.status.state === "running").map((record) =>
-                this.cancel(record.status.task_id)
-            ),
+            [...this.records.values()]
+                .filter((record) => record.status.state === "running")
+                .map((record) => this.cancel(record.status.task_id)),
         );
     }
 

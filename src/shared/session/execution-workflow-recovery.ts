@@ -19,7 +19,14 @@ interface LifecycleEntry {
 }
 
 /** Restore only while the caller holds the managed Session writer lock. */
-export async function restoreExecutionWorkflow(session: HostedSession): Promise<void> {
+interface RestoreExecutionWorkflowOptions {
+    persist?: boolean;
+}
+
+export async function restoreExecutionWorkflow(
+    session: HostedSession,
+    options: RestoreExecutionWorkflowOptions = {},
+): Promise<void> {
     const manager = session.getRootSessionManager();
     const snapshot = readExecutionWorkflowSnapshot(manager);
     if (snapshot) {
@@ -28,7 +35,7 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
             const executionCwd = await fsRealpath(workflow.executionCwd);
             // Keep the current root spelling when it already names this checkout.
             // A reloaded root has its canonical spelling; do not restore a stale alias.
-            if (await fsRealpath(session.cwd) === executionCwd) workflow.executionCwd = session.cwd;
+            if ((await fsRealpath(session.cwd)) === executionCwd) workflow.executionCwd = session.cwd;
         }
         session.restoreActiveExecutionWorkflow(workflow, null);
         return;
@@ -45,30 +52,36 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
     const entries = manager.getBranch?.() || [];
     const association = readPlanAssociations(entries).at(-1);
     if (
-        !association || association.purpose !== "execution" || !context?.planName ||
+        !association ||
+        association.purpose !== "execution" ||
+        !context?.planName ||
         context.planName !== association.planName ||
         (context.planId && context.planId !== association.planId)
-    ) return;
+    )
+        return;
     // A new typed execution association starts a new attempt. Older terminal
     // events do not release that attempt; later events must never be inferred away.
     const lifecycleEntries = entries as LifecycleEntry[];
-    const associationIndex = lifecycleEntries.findLastIndex((entry) =>
-        entry.type === "custom" && entry.customType === "runwield.plan_association" &&
-        entry.data?.planId === association.planId && entry.data.purpose === "execution"
+    const associationIndex = lifecycleEntries.findLastIndex(
+        (entry) =>
+            entry.type === "custom" &&
+            entry.customType === "runwield.plan_association" &&
+            entry.data?.planId === association.planId &&
+            entry.data.purpose === "execution",
     );
     for (const entry of lifecycleEntries.slice(associationIndex + 1)) {
         if (entry.type !== "custom") continue;
         if (entry.customType === "runwield.task_completion" && entry.data?.state === "accepted") return;
         if (
             entry.customType === "runwield.pair_checkpoint" &&
-            (entry.data?.decision === "stop" ||
-                (entry.data?.state === "cleared" && entry.data.reason !== "superseded"))
-        ) return;
+            (entry.data?.decision === "stop" || (entry.data?.state === "cleared" && entry.data.reason !== "superseded"))
+        )
+            return;
     }
     let recoveredWorkflow: ActiveExecutionWorkflow | null = null;
     try {
-        const candidates = (await listEntries(session.cwd, { migrate: false })).filter((entry) =>
-            entry.planId === association.planId && entry.status === "active"
+        const candidates = (await listEntries(session.cwd, { migrate: false })).filter(
+            (entry) => entry.planId === association.planId && entry.status === "active",
         );
         if (candidates.length !== 1) return;
         const entry = candidates[0];
@@ -84,16 +97,20 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
             const lines = block.split("\n");
             const path = lines.find((line) => line.startsWith("worktree "))?.slice(9);
             if (
-                path && lines.includes(`branch refs/heads/${entry.branch}`) &&
-                await fsRealpath(path) === expectedPath
-            ) attachedCount++;
+                path &&
+                lines.includes(`branch refs/heads/${entry.branch}`) &&
+                (await fsRealpath(path)) === expectedPath
+            )
+                attachedCount++;
         }
         if (attachedCount !== 1) return;
         const plan = await loadPlan(entry.path, association.planName);
         if (
-            !plan || plan.attrs.planId !== association.planId ||
+            !plan ||
+            plan.attrs.planId !== association.planId ||
             !["in_progress", "implemented"].includes(String(plan.attrs.status))
-        ) return;
+        )
+            return;
         const executionAgent = plan.attrs.executionAgent;
         if (executionAgent !== "engineer" && executionAgent !== "frontend-engineer") return;
         if (resolvePlanExecutionRuntimeAgent(executionAgent) !== owner) return;
@@ -120,5 +137,8 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
         return;
     }
     // Do not hide a failure to persist RunWield-owned state as missing evidence.
-    if (recoveredWorkflow) session.setActiveExecutionWorkflow(recoveredWorkflow);
+    if (recoveredWorkflow) {
+        if (options.persist === false) session.restoreActiveExecutionWorkflow(recoveredWorkflow, null);
+        else session.setActiveExecutionWorkflow(recoveredWorkflow);
+    }
 }

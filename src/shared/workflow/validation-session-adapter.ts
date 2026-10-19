@@ -181,11 +181,7 @@ function classifyIsolatedAgentExecutionFailure(
     return {
         kind: request.kind,
         outcome: "operational_failure",
-        failure: classifyProviderFailure(
-            operation,
-            "The model provider could not complete this operation.",
-            identity,
-        ),
+        failure: classifyProviderFailure(operation, "The model provider could not complete this operation.", identity),
     };
 }
 
@@ -194,11 +190,10 @@ function readReviewerProviderFailure(messages: AgentMessage[]): ValidationOperat
         const message = messages[index];
         if (message.role !== "assistant") continue;
         if (message.stopReason !== "error") return undefined;
-        return classifyProviderFailure(
-            "semantic_review",
-            "The model provider could not complete AI review.",
-            { kind: "service_unavailable", code: "provider/turn_failed" },
-        );
+        return classifyProviderFailure("semantic_review", "The model provider could not complete AI review.", {
+            kind: "service_unavailable",
+            code: "provider/turn_failed",
+        });
     }
     return undefined;
 }
@@ -253,26 +248,34 @@ async function runIsolatedRequest(
     request: IsolatedAgentSessionRequest,
 ): Promise<IsolatedAgentSessionOutcome> {
     if (request.kind === "reviewer") {
-        const result = await runValidationAgentUntilEvent(isolatedSessions, {
-            hostedSession,
-            agentName: request.agentName,
-            userRequest: request.userRequest,
-            cwd: request.cwd,
-            // The Epic integration gate runs its own reviewer, with its own prompt and tool ceiling.
-            subAgentDefinition: request.reviewerMode === "integration"
-                ? { id: SUBAGENTS.INTEGRATION_REVIEWER }
-                : { id: SUBAGENTS.REVIEWER, options: { reviewerMode: request.reviewerMode } },
-            toolNames: request.reviewerMode === "integration"
-                ? [...INTEGRATION_REVIEWER_SUBAGENT_TOOLS]
-                : [...REVIEWER_SUBAGENT_TOOLS],
-            customTools: bindReviewDiffTools(hostedSession, request.customTools),
-            includeEditFallback: false,
-            sessionManager: request.sessionManager as unknown as SessionManager || SessionManager.inMemory(request.cwd),
-        }, "review_complete");
+        const result = await runValidationAgentUntilEvent(
+            isolatedSessions,
+            {
+                hostedSession,
+                agentName: request.agentName,
+                userRequest: request.userRequest,
+                cwd: request.cwd,
+                // The Epic integration gate runs its own reviewer, with its own prompt and tool ceiling.
+                subAgentDefinition:
+                    request.reviewerMode === "integration"
+                        ? { id: SUBAGENTS.INTEGRATION_REVIEWER }
+                        : { id: SUBAGENTS.REVIEWER, options: { reviewerMode: request.reviewerMode } },
+                toolNames:
+                    request.reviewerMode === "integration"
+                        ? [...INTEGRATION_REVIEWER_SUBAGENT_TOOLS]
+                        : [...REVIEWER_SUBAGENT_TOOLS],
+                customTools: bindReviewDiffTools(hostedSession, request.customTools),
+                includeEditFallback: false,
+                sessionManager:
+                    (request.sessionManager as unknown as SessionManager) || SessionManager.inMemory(request.cwd),
+            },
+            "review_complete",
+        );
         const { event: reviewEvent, diffEvent, messages } = result;
-        const reviewOutcome = reviewEvent?.kind === "review_complete"
-            ? reviewEvent.payload as import("./workflow-tool-events.ts").ReviewCompleteEventPayload
-            : null;
+        const reviewOutcome =
+            reviewEvent?.kind === "review_complete"
+                ? (reviewEvent.payload as import("./workflow-tool-events.ts").ReviewCompleteEventPayload)
+                : null;
         const providerFailure = reviewOutcome ? undefined : readReviewerProviderFailure(messages);
         if (providerFailure) {
             if (diffEvent) settleWorkflowToolEvent(hostedSession, diffEvent);
@@ -290,25 +293,30 @@ async function runIsolatedRequest(
             reviewOutcome,
             usedDiffTool: Boolean(diffEvent),
             trustedOpaqueMcpReview: Boolean(
-                reviewEvent?.owningSession && "kind" in reviewEvent.owningSession &&
-                    (reviewEvent.owningSession.kind === "claude-cli" || reviewEvent.owningSession.kind === "agy-cli"),
+                reviewEvent?.owningSession &&
+                "kind" in reviewEvent.owningSession &&
+                (reviewEvent.owningSession.kind === "claude-cli" || reviewEvent.owningSession.kind === "agy-cli"),
             ),
         };
     }
     if (request.kind === "manual_qa") {
         const manualQaManager = request.sessionManager
-            ? request.sessionManager as unknown as SessionManager
+            ? (request.sessionManager as unknown as SessionManager)
             : SessionManager.inMemory(request.cwd);
-        const { event: qaEvent } = await runValidationAgentUntilEvent(isolatedSessions, {
-            hostedSession,
-            agentName: request.agentName,
-            userRequest: request.userRequest,
-            cwd: request.cwd,
-            subAgentDefinition: { id: SUBAGENTS.MANUAL_QA },
-            customTools: bindQaChecklistTools(hostedSession, request.customTools),
-            includeEditFallback: false,
-            sessionManager: manualQaManager,
-        }, "qa_checklist_generated");
+        const { event: qaEvent } = await runValidationAgentUntilEvent(
+            isolatedSessions,
+            {
+                hostedSession,
+                agentName: request.agentName,
+                userRequest: request.userRequest,
+                cwd: request.cwd,
+                subAgentDefinition: { id: SUBAGENTS.MANUAL_QA },
+                customTools: bindQaChecklistTools(hostedSession, request.customTools),
+                includeEditFallback: false,
+                sessionManager: manualQaManager,
+            },
+            "qa_checklist_generated",
+        );
         if (qaEvent?.kind !== "qa_checklist_generated") {
             return {
                 kind: "manual_qa",
@@ -325,22 +333,27 @@ async function runIsolatedRequest(
         };
     }
     const repairManager = request.sessionManager
-        ? request.sessionManager as unknown as SessionManager
+        ? (request.sessionManager as unknown as SessionManager)
         : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
     await prepareRepairInvocation(hostedSession, request.cwd);
     // An automatic repair is fresh non-generated work, not a continuation of the completed task.
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     hostedSession.backgroundTasks.resumeDelivery();
-    const { event } = await runValidationAgentUntilEvent(isolatedSessions, {
-        hostedSession,
-        agentName: request.agentName,
-        userRequest: request.userRequest,
-        dispatchKind: "validation_repair",
-        ...(request.images ? { images: request.images } : {}),
-        cwd: request.cwd,
-        subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
-        customTools: bindReviewDiffTools(hostedSession, request.customTools),
-        sessionManager: repairManager,
-    }, "task_completed");
+    const { event } = await runValidationAgentUntilEvent(
+        isolatedSessions,
+        {
+            hostedSession,
+            agentName: request.agentName,
+            userRequest: request.userRequest,
+            dispatchKind: "validation_repair",
+            ...(request.images ? { images: request.images } : {}),
+            cwd: request.cwd,
+            subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
+            customTools: bindReviewDiffTools(hostedSession, request.customTools),
+            sessionManager: repairManager,
+        },
+        "task_completed",
+    );
     const report = await acceptedRepairOutcome(hostedSession, event);
     lastRepairSessions.set(hostedSession, {
         manager: repairManager,
@@ -374,6 +387,7 @@ async function acceptedRepairOutcome(
     const payload = event.payload as import("./workflow-tool-events.ts").TaskCompletedEventPayload;
     const workflow = event.workflow;
     if (kind === "validation" && workflow?.validationRepairGeneration && workflow.executionCwd) {
+        hostedSession.getManagedOperationCapability?.()?.assertLive();
         await recordValidationRepairCompletion({
             projectRoot: workflow.executionCwd,
             planName: workflow.planName,
@@ -392,17 +406,20 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
     const plan = await loadPlan(cwd, workflow.planName);
     if (!plan) return;
     const prior = plan.attrs.validationCheckpoint;
-    const repairGeneration = prior?.state === "awaiting_repair" && !prior.repairCompletedOperationId
-        ? prior.repairGeneration || crypto.randomUUID()
-        : crypto.randomUUID();
-    const reviewState = prior?.reviewState || (workflow.reviewLedger && workflow.repairBaselineTree
-        ? {
-            semanticRound: workflow.semanticRound || 0,
-            reviewLedger: workflow.reviewLedger,
-            repairBaselineTree: workflow.repairBaselineTree,
-            lastRepairReport: workflow.lastRepairReport,
-        }
-        : undefined);
+    const repairGeneration =
+        prior?.state === "awaiting_repair" && !prior.repairCompletedOperationId
+            ? prior.repairGeneration || crypto.randomUUID()
+            : crypto.randomUUID();
+    const reviewState =
+        prior?.reviewState ||
+        (workflow.reviewLedger && workflow.repairBaselineTree
+            ? {
+                  semanticRound: workflow.semanticRound || 0,
+                  reviewLedger: workflow.reviewLedger,
+                  repairBaselineTree: workflow.repairBaselineTree,
+                  lastRepairReport: workflow.lastRepairReport,
+              }
+            : undefined);
     const checkpoint = makeValidationCheckpoint({
         attemptId: workflow.worktreeId || "in-place",
         generation: prior?.generation || workflow.validationGeneration || crypto.randomUUID(),
@@ -414,6 +431,7 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
         reviewState,
         lastSettledOperationId: prior?.lastSettledOperationId,
     });
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     await updatePlanFrontMatter(cwd, workflow.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
         expectedRevision: plan.revision,
         expectedControllerRevision: plan.controllerRevision,
@@ -431,6 +449,7 @@ export function createValidationSessionPort(
 ): ValidationSessionPort {
     const isolatedSessions = semanticReviewPort || SYSTEM_SEMANTIC_REVIEW_PORT;
     return {
+        assertLive: () => hostedSession.getManagedOperationCapability?.()?.assertLive(),
         cwd: hostedSession.cwd,
         getActiveWorkflow: () => hostedSession.getActiveExecutionWorkflow?.() || null,
         setActiveWorkflow: (workflow) => hostedSession.setActiveExecutionWorkflow?.(workflow),
@@ -446,9 +465,8 @@ export function createValidationSessionPort(
                     deliveryReport: {
                         ...progress.deliveryReport,
                         artifacts: progress.deliveryReport.artifacts.map((artifact) => {
-                            if (
-                                artifact.artifactId || artifact.path.startsWith("../") || artifact.path.startsWith("/")
-                            ) return artifact;
+                            if (artifact.artifactId || artifact.path.startsWith("../") || artifact.path.startsWith("/"))
+                                return artifact;
                             const reference = capability.registerArtifact({
                                 kind: artifact.kind,
                                 path: artifact.path,
@@ -460,12 +478,7 @@ export function createValidationSessionPort(
                     },
                 };
             }
-            emitRunWieldSystemStatus(
-                hostedSession,
-                message,
-                level,
-                progress as RuntimeValidationProgress | undefined,
-            );
+            emitRunWieldSystemStatus(hostedSession, message, level, progress as RuntimeValidationProgress | undefined);
         },
         emitAssistantMessage: (agentName, text, options) => {
             emitAssistantMessage(hostedSession, agentName, text, options);
@@ -480,6 +493,7 @@ export function createValidationSessionPort(
         registerActiveInteraction: (id, abortController) => hostedSession.addActiveInteraction(id, { abortController }),
         unregisterActiveInteraction: (id) => hostedSession.removeActiveInteraction(id),
         runIndependentRepairTurn: async ({ kind, userRequest, cwd }) => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             const agentName = SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER;
             const repairManager = getPendingRepairManager(hostedSession, cwd, userRequest);
             if (kind === "validation") {
@@ -492,16 +506,21 @@ export function createValidationSessionPort(
                     hostedSession.setActiveExecutionWorkflow({ ...workflow, validationRepairGeneration: undefined });
                 }
             }
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             hostedSession.backgroundTasks.resumeDelivery();
-            const { event } = await runValidationAgentUntilEvent(isolatedSessions, {
-                hostedSession,
-                agentName,
-                userRequest,
-                cwd,
-                dispatchKind: "validation_repair",
-                subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
-                sessionManager: repairManager,
-            }, "task_completed");
+            const { event } = await runValidationAgentUntilEvent(
+                isolatedSessions,
+                {
+                    hostedSession,
+                    agentName,
+                    userRequest,
+                    cwd,
+                    dispatchKind: "validation_repair",
+                    subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
+                    sessionManager: repairManager,
+                },
+                "task_completed",
+            );
             const completion = await acceptedRepairOutcome(hostedSession, event, kind);
             if (kind === "validation") {
                 lastRepairSessions.set(hostedSession, {
@@ -515,6 +534,7 @@ export function createValidationSessionPort(
             return completion;
         },
         continueLastRepairTurn: async (userRequest) => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             let repair = lastRepairSessions.get(hostedSession);
             const workflow = hostedSession.getActiveExecutionWorkflow();
             if (repair && repair.planName !== workflow?.planName) repair = undefined;
@@ -532,7 +552,9 @@ export function createValidationSessionPort(
                     "User follow-up:",
                     userRequest,
                     "After completing the repair, call task_completed. RunWield will rerun CI.",
-                ].filter(Boolean).join("\n\n");
+                ]
+                    .filter(Boolean)
+                    .join("\n\n");
                 repair = {
                     manager: SessionManager.inMemory(cwd),
                     cwd,
@@ -542,22 +564,28 @@ export function createValidationSessionPort(
                 lastRepairSessions.set(hostedSession, repair);
             }
             await prepareRepairInvocation(hostedSession, repair.cwd);
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             hostedSession.backgroundTasks.resumeDelivery();
-            const { event } = await runValidationAgentUntilEvent(isolatedSessions, {
-                hostedSession,
-                agentName: repair.agentName,
-                userRequest: prompt,
-                cwd: repair.cwd,
-                dispatchKind: "validation_repair",
-                subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
-                sessionManager: repair.manager,
-            }, "task_completed");
+            const { event } = await runValidationAgentUntilEvent(
+                isolatedSessions,
+                {
+                    hostedSession,
+                    agentName: repair.agentName,
+                    userRequest: prompt,
+                    cwd: repair.cwd,
+                    dispatchKind: "validation_repair",
+                    subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
+                    sessionManager: repair.manager,
+                },
+                "task_completed",
+            );
             return acceptedRepairOutcome(hostedSession, event);
         },
         createInMemorySessionManager: (cwd) => SessionManager.inMemory(cwd) as unknown as SessionManagerHandle,
         runIsolatedAgentSession: async <K extends IsolatedAgentSessionRequest["kind"]>(
             request: Extract<IsolatedAgentSessionRequest, { kind: K }>,
         ): Promise<Extract<IsolatedAgentSessionOutcome, { kind: K }>> => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             try {
                 const outcome = await runIsolatedRequest(hostedSession, isolatedSessions, request);
                 return outcome as Extract<IsolatedAgentSessionOutcome, { kind: K }>;
@@ -577,9 +605,13 @@ export function createValidationSessionPort(
                 forceRebuild: true,
             });
         },
-        runPostVerificationHandoffs: async (
-            { planName, planContent, projectRoot, mnemotecaPort, pendingPublication },
-        ) => {
+        runPostVerificationHandoffs: async ({
+            planName,
+            planContent,
+            projectRoot,
+            mnemotecaPort,
+            pendingPublication,
+        }) => {
             await runFeaturePostVerificationHandoffs({
                 hostedSession,
                 planName,

@@ -33,7 +33,7 @@ dependencies:
     - "06-forward-personal-mcp-tools-from-the-laptop"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Carry Remote Context Through Delivery Workflows

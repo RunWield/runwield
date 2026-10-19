@@ -14,7 +14,6 @@ import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { requireLocalSessionWriter } from "../../remote/personal-resources.ts";
 
 import {
     normalizeManagedActiveModelState,
@@ -523,8 +522,21 @@ export class RuntimeManagedOperations {
                     return capabilitySettled;
                 },
                 signal,
-                registerArtifact() {
-                    throw requireLocalSessionWriter();
+                registerArtifact(options) {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("artifact", JSON.stringify(options)).contents);
+                },
+                stagePlanAssociation(entry) {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("plan-association", JSON.stringify(entry)).contents);
+                },
+                recordLastPlanReview(review) {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("plan-review", JSON.stringify(review)).contents);
+                },
+                getCurrentSegmentKind() {
+                    this.assertLive();
+                    return JSON.parse(hydration!.bridge.request("segment").contents);
                 },
                 cancel() {
                     abort.abort();
@@ -547,7 +559,12 @@ export class RuntimeManagedOperations {
                 [hydration.manager.getHeader()!, ...hydration.manager.getEntries()],
                 managed.generation,
             );
-            session.setManagedMetadata(hydratedMetadata);
+            const records = persistence.records(session);
+            session.setManagedMetadata({ ...hydratedMetadata, remoteRecords: records });
+            if (options.initialTutorialContext !== undefined) {
+                session.updateTutorialContext(options.initialTutorialContext, records.planAssociations);
+            }
+            await restoreExecutionWorkflow(session);
             this.events.beginLiveCapture(sessionId);
             const pending = session.getPendingManagedTurnIntent();
             const manager = hydration.manager;
@@ -566,7 +583,9 @@ export class RuntimeManagedOperations {
             }
             if (descriptor.activateAgent !== false) {
                 const resumeAgent = await resolveResumeAgentName(manager);
-                const agentName = options.agentName || pending.agentName || resumeAgent;
+                const executionRootConfiguration = resolvePersistedExecutionRootConfiguration(session);
+                const agentName =
+                    executionRootConfiguration?.agentName || options.agentName || pending.agentName || resumeAgent;
                 const persistedManual = readPersistedManualModelState(manager, agentName);
                 const preparedModelOverride =
                     "preparedModelOverride" in options && typeof options.preparedModelOverride === "string"
@@ -589,7 +608,12 @@ export class RuntimeManagedOperations {
                     agentName,
                     model,
                     toolNames: options.toolNames,
-                    customTools: options.customTools || configuration.customTools,
+                    customTools:
+                        options.customTools || executionRootConfiguration?.customTools || configuration.customTools,
+                    ...(executionRootConfiguration?.cwd ? { cwd: executionRootConfiguration.cwd } : {}),
+                    ...(executionRootConfiguration?.projectStateContext
+                        ? { projectStateContext: executionRootConfiguration.projectStateContext }
+                        : {}),
                     includeEditFallback: options.includeEditFallback,
                     thinkingLevelOverride:
                         pending.thinkingLevel || hydratedMetadata.thinkingLevel
@@ -606,9 +630,11 @@ export class RuntimeManagedOperations {
                 body({ acceptedTurnId, hasPendingImages, capability: capability! }),
             );
             hydration.bridge.assertHealthy();
+            // Read laptop records while this operation still holds its owner. These are not cached writes.
+            const savedRecords = persistence.records(session);
             await persistence.control.checkpoint(hydration.operation);
             session.dehydrateManagedSession();
-            await persistence.synchronize(session);
+            await persistence.synchronize(session, savedRecords);
             return result;
         } catch (error) {
             session.dehydrateManagedSession();
