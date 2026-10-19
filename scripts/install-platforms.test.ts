@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import type { TestOs, TestArch } from "./install-test-helpers.js";
 import {
     mkdir as fsMkdir,
     readFile as fsReadFile,
@@ -20,9 +21,17 @@ import {
     writeExecutable,
 } from "./install-test-helpers.js";
 
+interface InstallerPlatform {
+    os: TestOs;
+    arch: TestArch;
+}
+
+interface PackageScripts {
+    scripts: Record<string, string>;
+}
+
 test("install.sh maps Darwin/Linux amd64/arm64 assets and preserves positional wld version", async (t) => {
-    /** @type {Array<{ os: import("./install-test-helpers.js").TestOs, arch: import("./install-test-helpers.js").TestArch }>} */
-    const platforms = [
+    const platforms: InstallerPlatform[] = [
         { os: "Darwin", arch: "x86_64" },
         { os: "Darwin", arch: "arm64" },
         { os: "Linux", arch: "x86_64" },
@@ -154,7 +163,7 @@ test("ux:new-user image provisions Node 24 for required agent-browser helper", a
 });
 
 test("ux:new-user tasks build latest and current targets from one containerfile", async () => {
-    const packageJson = JSON.parse(await fsReadFile(repoPath("package.json"), "utf8"));
+    const packageJson: PackageScripts = JSON.parse(await fsReadFile(repoPath("package.json"), "utf8"));
     assertStringIncludes(packageJson.scripts["ux:new-user"], "--target wld-ux-latest");
     assertStringIncludes(packageJson.scripts["ux:new-user"], "-f Containerfile.wld-ux");
 
