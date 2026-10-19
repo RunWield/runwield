@@ -23,7 +23,7 @@ test("the production decision route acknowledges only a committed Attached outco
             assertEquals(unauthorized.status, 404);
             await unauthorized.text();
             const conversation = await fetch(new URL(`/api/review/conversation${url.search}`, url));
-            assertEquals(conversation.status, 404);
+            assertEquals(conversation.status, 200);
             await conversation.text();
             const oldPlan = await loadPlan(root, "dark-mode-toggle");
             assert(oldPlan);

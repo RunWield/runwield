@@ -22,6 +22,7 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
+    type AttachedReviewChat,
     type AttachedExecution,
     type AttachedOperationName,
     type AttachedOperationResult,
@@ -264,8 +265,37 @@ async function removeAbandonedTemporaryFiles(path: string): Promise<void> {
     }
 }
 
+/** Receipts are durable workflow snapshots, never a second home for review text. */
+export function withoutAttachedChat(result: AttachedOperationResult): AttachedOperationResult {
+    const clean = structuredClone(result);
+    if (clean.ok) delete clean.reviewReply;
+    if (clean.workflow) {
+        if (clean.workflow.review) delete clean.workflow.review.chat;
+        const action = clean.workflow.nextAction;
+        if (action.kind === "review" || action.kind === "code_review") delete action.chat;
+    }
+    return clean;
+}
+
+/** Apply privacy on every write, including external Core reconciliation and recovery. */
+export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkflowRecord {
+    const clean = structuredClone(record);
+    if (clean.review && (clean.state !== "awaiting_review" || clean.review.status !== "pending"))
+        delete clean.review.chat;
+    if (
+        clean.validation &&
+        (clean.state !== "validating" ||
+            clean.validation.resume ||
+            clean.validation.request?.kind !== "decision" ||
+            clean.validation.request.interaction.type !== "code_review")
+    )
+        delete clean.validation.chat;
+    for (const receipt of Object.values(clean.acceptedOperations)) receipt.result = withoutAttachedChat(receipt.result);
+    return clean;
+}
+
 function atomicWrite(path: string, record: AttachedWorkflowRecord): void {
-    writeJsonAtomically(path, record);
+    writeJsonAtomically(path, scrubAttachedChat(record));
 }
 
 /**
@@ -321,6 +351,7 @@ export async function transactAttachedWorkflowRecord<Result>(
 
 /** Carrier checkpoint only. The shared validation checkpoint owns all gate policy. */
 export interface AttachedValidationCheckpoint {
+    chat?: AttachedReviewChat;
     actionId?: string;
     request?: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
     coverage: import("../workflow/review-inspection.ts").ReviewDiffSpan[];

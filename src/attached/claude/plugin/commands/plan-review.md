@@ -21,5 +21,20 @@ Reopen the RunWield Plan review in this project.
    `validation_recovery`, follow `/runwield:validate`. Publication remains pending after validation. An absent workflow
    does not create a new request.
 
+## Review chat
+
+When `review` or `code_review` has `chat`, answer its oldest pending `turnId` before polling again. Use the current
+workflow ID and revision, a new operation ID, and `review_reply` with `payload: { turnId, text }`. Read `message` and
+`selections` in this conversation. Answer questions directly; do not dispatch a worker or make a review decision.
+
+For a Plan change, add `change: { summary }`, then follow the returned Planner instructions, revise the Plan, and call
+`plan_written`. For a code change, add `change: { summary }`, then dispatch the fresh repair subagent that Core requests
+and submit its report. Core re-verifies the repair and opens the new diff. Write `summary` as a short description of the
+change, not a quote of the user's message. Never put raw chat in the Plan, a worker report, or recording evidence.
+
+Chat cannot approve or reject. The revised artifact needs a new browser decision. On a stale reply, read `status`; do
+not apply the reply again to a different turn. Turns stay queued in order. Continue polling the same review action
+between replies. A process restart restores pending turns, not a permanent transcript.
+
 Stay in Claude Code and the browser. Use no RunWield CLI or TUI commands. RunWield owns durable review decisions; Claude
 Code owns every model call.

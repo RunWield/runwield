@@ -30,6 +30,7 @@ export type AttachedOperationName =
     | "start_validation"
     | "review_diff"
     | "review_complete"
+    | "review_reply"
     | "validation_decision"
     | "work_record_completed";
 
@@ -160,14 +161,40 @@ export interface AttachedReviewOutcome {
     approvalAction?: string;
 }
 
+export interface AttachedChatTurn {
+    turnId: string;
+    message: string;
+    selections: AttachedJsonValue[];
+    reply?: string;
+}
+
+/** Temporary text, owned only by an open review round. */
+export interface AttachedReviewChat {
+    revision: number;
+    turns: AttachedChatTurn[];
+}
+
+export interface AttachedChatReply {
+    turnId: string;
+    text: string;
+}
+
+export interface ReviewReplyPayload {
+    turnId: string;
+    text: string;
+    change?: { summary: string };
+}
+export type ReviewReplyEnvelope = WorkflowOperationEnvelope<ReviewReplyPayload>;
+
 /** The durable identity and accepted outcome of the current browser review round. */
 export interface AttachedReviewRound {
+    chat?: AttachedReviewChat;
     round: number;
     actionId: string;
     planRevision: string;
     controllerRevision: number;
     waitingReason: "user_decision";
-    status: "pending" | "applied";
+    status: "pending" | "applied" | "revising";
     outcome?: AttachedReviewOutcome;
 }
 
@@ -187,7 +214,7 @@ export interface PendingHostAction {
 export type AttachedNextAction =
     | ({ kind: "triage" } & PendingHostAction)
     | ({ kind: "plan"; projectSetup: string[] } & PendingHostAction)
-    | { kind: "review"; round: number; planName: string }
+    | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
     | { kind: "plan_ready"; planName: string; guidance: string }
     | { kind: "consent"; actionId: string; consentKind: "non_git_in_place"; disclosure: string }
     | ({
@@ -213,6 +240,7 @@ export type AttachedNextAction =
       }
     | {
           kind: "code_review";
+          chat?: AttachedChatTurn;
           actionId: string;
           request: Extract<
               import("../workflow/validation-host-contract.ts").ValidationHostRequest,
@@ -281,6 +309,8 @@ export interface AttachedWorkflowView {
 export type AttachedOperationResult =
     | {
           ok: true;
+          /** Transient browser delivery only; never retained in an operation receipt. */
+          reviewReply?: AttachedChatReply;
           operation: AttachedOperationName;
           workflow: AttachedWorkflowView;
           instructions?: AttachedRoleInstructions;
@@ -494,6 +524,22 @@ export function parseTaskCompletedInput(projectRoot: string, input: AttachedJson
     );
 }
 
+export function parseReviewReplyInput(projectRoot: string, input: AttachedJsonValue | undefined) {
+    return parse(input, (): ReviewReplyEnvelope =>
+        readWorkflowEnvelope(projectRoot, input, ["turnId", "text", "change"], (payload) => {
+            const change =
+                payload.change === undefined ? undefined : readObject(payload.change, "payload.change", ["summary"]);
+            return {
+                turnId: readIdentifier(payload, "turnId", "payload.turnId"),
+                text: readText(payload, "text", "payload.text", MAX_REQUEST_TEXT_LENGTH),
+                ...(change && {
+                    change: { summary: readText(change, "summary", "payload.change.summary", MAX_SUMMARY_LENGTH) },
+                }),
+            };
+        }),
+    );
+}
+
 export function parseStatusInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): StatusEnvelope => {
         const object = readObject(input, "", ["workflowId"]);
@@ -596,6 +642,21 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
                     workKind: { type: "string", enum: WORK_KINDS },
                     sessionName: { type: "string", maxLength: MAX_SHORT_TEXT_LENGTH },
                 },
+            },
+        }),
+    },
+    {
+        name: "review_reply",
+        description:
+            "Answer the oldest pending review chat turn. Questions leave the round open. For a change, supply a short change summary, never a quote of the user's message. A Plan change hands back the Planner; a code change requests repair and re-verification.",
+        inputSchema: workflowOperationSchema(["turnId", "text"], {
+            turnId: IDENTIFIER_SCHEMA,
+            text: { type: "string", minLength: 1, maxLength: MAX_REQUEST_TEXT_LENGTH },
+            change: {
+                type: "object",
+                additionalProperties: false,
+                required: ["summary"],
+                properties: { summary: { type: "string", minLength: 1, maxLength: MAX_SUMMARY_LENGTH } },
             },
         }),
     },

@@ -127,6 +127,7 @@ test("the CLI and the MCP server return equal result objects for the same inputs
             [
                 "activate",
                 "triage_report",
+                "review_reply",
                 "status",
                 "plan_written",
                 "start_execution",

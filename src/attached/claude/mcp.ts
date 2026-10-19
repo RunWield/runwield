@@ -81,7 +81,14 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
         }
         const canHost = !closing;
         const review =
-            canHost && coordinated.workflow ? await ensureReviewHosted(projectRoot, coordinated.workflow) : null;
+            canHost && coordinated.workflow
+                ? await ensureReviewHosted(
+                      projectRoot,
+                      coordinated.workflow,
+                      undefined,
+                      coordinated.ok ? coordinated.reviewReply : undefined,
+                  )
+                : null;
         const refreshed =
             canHost && coordinated.workflow?.review?.status === "pending"
                 ? await runAttachedOperation(

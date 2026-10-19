@@ -51,6 +51,7 @@ interface PlanReviewPayload {
     executionPolicy?: PlanExecutionPolicy;
     agentLabel?: string;
     conversationStatusUrl?: string;
+    savedConversation?: boolean;
     reviewRevisionUrl?: string;
     reviewRevision?: number;
 }
@@ -67,7 +68,18 @@ export interface ReviewConversationEvent {
     agentName: string;
 }
 
+export interface ReviewConversationTurn {
+    turnId: string;
+    message: string;
+    reply?: string;
+}
+
 export interface ReviewConversation {
+    /** Present only for hosts that restore temporary turns from a saved active round. */
+    turns?: ReviewConversationTurn[];
+    pending?: boolean;
+    /** Refresh a host-owned conversation from its saved source before each GET. */
+    refresh?(): Promise<void>;
     onExit?(): void;
     completed?: boolean;
     resultMessage?: string;
@@ -368,7 +380,8 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
         ...(executionPolicy && { executionPolicy }),
         ...((agentLabel || reviewConversation) && { agentLabel: resolvedAgentLabel }),
         ...(reviewConversation && { conversationStatusUrl: "/api/review/conversation" }),
-        ...(surfaceId && !reviewConversation && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
+        ...(reviewConversation?.turns && { savedConversation: true }),
+        ...(surfaceId && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
     };
     const reuseId = reviewConversation?.id ?? surfaceId;
     const existing = reuseId ? activePlanReviewConversations.get(reuseId) : null;
@@ -485,13 +498,14 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
         planName,
         planTitle,
         reviewStatus,
-        ...(surfaceId && !reviewConversation && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
+        ...(surfaceId && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
         planContent,
         planAttrs,
         guidedReview,
         ...(reviewConversation && {
             agentLabel: resolvedAgentLabel,
             conversationStatusUrl: "/api/review/conversation",
+            ...(reviewConversation.turns && { savedConversation: true }),
         }),
     };
     const reuseId = reviewConversation?.id ?? surfaceId;
