@@ -530,7 +530,7 @@ jobs:
                   mkdir docs-artifact
                   tar -czf "docs-artifact/runwield-docs-$RELEASE_TAG.tar.gz" -C source/dist/docs .
                   bun -e '
-                    import { sha256File } from "./tooling/scripts/build-metadata.js";
+                    import { sha256File } from "./tooling/scripts/build-metadata.ts";
                     const name = `runwield-docs-${process.env.RELEASE_TAG}.tar.gz`;
                     const path = `docs-artifact/${name}`;
                     await Bun.write(`${path}.sha256`, `${await sha256File(path)}  ${name}\n`);

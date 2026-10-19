@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { defineGitFixture, git } from "../src/shared/git-test-fixture.ts";
 import { PUBLIC_DOCS } from "./public-docs.ts";
 import { releaseAssetNames } from "./release-assets.js";
-import { sha256File } from "./build-metadata.js";
+import { sha256File } from "./build-metadata.ts";
 
 interface ReleaseState {
     cancelled: boolean;

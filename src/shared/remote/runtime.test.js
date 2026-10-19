@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { sha256Bytes } from "../../../scripts/build-metadata.js";
+import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import { linuxTarget } from "./runtime.js";
 
 const BUILD_ID = "a".repeat(64);
@@ -55,7 +55,7 @@ async function fixture(fn) {
         ])
             await copyFile(source, destination);
         for (const relative of [
-            "scripts/build-metadata.js",
+            "scripts/build-metadata.ts",
             "runtime-root.js",
             "src/constants.js",
             "src/shared/foreground-process.ts",

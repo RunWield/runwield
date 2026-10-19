@@ -1,7 +1,7 @@
 import { getCwd } from "../../constants.js";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { verifyBuildArtifact } from "../../../scripts/build-metadata.js";
+import { verifyBuildArtifact } from "../../../scripts/build-metadata.ts";
 import { fixedPythonCommand } from "./target.ts";
 
 /** @param {{os: string, arch: string}} platform */
