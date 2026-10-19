@@ -144,3 +144,15 @@ Manual verification steps for remote-ssh-development/07-carry-remote-context-thr
 - [ ] Disconnect during validation and during publication. Reconnect and run `/resume`; confirm it reports proven and uncertain outcomes and does not repeat an external action until you choose.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/08-stop-owned-remote-work-on-connection-loss" -->
+
+## Stop Owned Remote Work on Connection Loss
+
+Manual verification steps for remote-ssh-development/08-stop-owned-remote-work-on-connection-loss
+
+- [ ] In a connected remote Session, start a long-running command and an Agent-started `nohup sleep 600 &`; disconnect the laptop SSH process and confirm both processes stop on the server.
+- [ ] Start a `sleep` process in a separate SSH login; disconnect the RunWield connection and confirm the separate process continues running.
+- [ ] Confirm the remote mount directory is removed after disconnect and no mount-cleanup error appears.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/08-stop-owned-remote-work-on-connection-loss" -->

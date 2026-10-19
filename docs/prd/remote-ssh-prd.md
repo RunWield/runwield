@@ -331,11 +331,11 @@ review server. Closing only the browser does not end the SSH Session.
 SSH transport during a turn retained saved entries, and reconnect/resume continued the same Session without replay.
 Workflow recovery is delivered: reconnect restores saved context, checks remote evidence, and reports proven or
 uncertain outcomes without automatic effect replay. A save fault blocks later workflow effects even if a caller caught
-the save error. Full descendant termination, including orphans after a forced TUI kill, remains target scope in
-[child08](../plans/remote-ssh-development/08-stop-owned-remote-work-on-connection-loss.md). The current supervisor stops
-the remote TUI on exit or detected loss independently of a blocked save thread. Session-save uncertainty follows the
-[Core remote-save recovery contract](runwield-core-prd.md#laptop-owned-remote-session-saves). This does not change
-Workspace browser-disconnect behavior.
+the save error. Full descendant termination is delivered: the Linux supervisor retains orphaned descendants and stops
+all live owned subprocesses on normal exit or detected loss, including after a forced TUI kill. It runs independently
+of a blocked save thread. Agent-started background servers (`nohup` or `&`) stop with the connection. Session-save
+uncertainty follows the [Core remote-save recovery contract](runwield-core-prd.md#laptop-owned-remote-session-saves).
+This does not change Workspace browser-disconnect behavior.
 
 **Requirement: Do not continue unattended.** Normal exit ends the remote TUI and stops active RunWield-owned work.
 Unexpected connection loss stops new work and cancels active owned processes when loss is detected, including when the
@@ -348,16 +348,21 @@ failed sends or uncertain MCP effects.
 abandonment. Remote edits and project artifacts remain. Local saved history remains. Unreceived output is not claimed as
 saved; uncertain remote effects are checked on reconnect before further work or retry.
 
-Instant network-loss detection, rollback of completed effects, and cancellation of an external action already accepted
-by another service are not promised. Detection and process-cleanup behavior must be demonstrated before release; a
-best-effort stop request alone does not meet connected-only operation.
+Instant network-loss detection and rollback of completed effects are not promised. Cleanup covers process descendants,
+not work handed to another service (`systemd-run`, a container daemon, `at`, an existing `tmux` server, or a remote API).
+Work run under another user is outside this guarantee. Cleanup requires the supervisor to run: force-killing the
+supervisor itself (for example with SIGKILL or the out-of-memory killer) can leave work running. A visible descendant
+that survives the cleanup deadline is reported as termination unconfirmed, not success. Exited adopted orphans can
+appear as `<defunct>` until the connection ends; the supervisor does not reap Bun-owned child statuses. Detection and
+process-cleanup behavior must be demonstrated before release; a best-effort stop request alone does not meet
+connected-only operation.
 
 **Acceptance scenarios:**
 
-- Given an active Agent and a long-running owned subprocess, when the user exits normally, both stop and saved work
-  remains. No background Agent continues after the TUI closes.
-- Given abrupt laptop or network loss, when the server detects loss, owned work stops without requiring a final client
-  message. Unrelated processes remain running.
+- **Delivered:** Given an active Agent and a long-running owned subprocess, when the user exits normally, both stop
+  and saved work remains. No background Agent or Agent-started server continues after the TUI closes.
+- **Delivered:** Given abrupt laptop or network loss, when the server detects loss, owned work stops without requiring
+  a final client message. Detached subprocesses and orphans of a force-killed TUI stop. Unrelated processes remain running.
 - Given a remote edit or publication attempt whose result was not saved locally before loss, when the user reconnects,
   RunWield checks available evidence and reports the actual or uncertain result without repeating the action blindly.
 - Given completed personal-data saves and remote edits, when the user reconnects, those saves and edits remain. No
