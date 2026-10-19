@@ -92,6 +92,7 @@
     "src/cmd/load-plan/missing-directory-recovery.integration.test.ts",
     "src/cmd/load-plan/plan-authority.integration.test.ts",
     "src/cmd/load-plan/plan-recovery-flow.test.ts",
+    "src/cmd/load-plan/plan-session-surface.test.ts",
     "src/cmd/load-plan/primary-plan-recovery.test.ts",
     "src/cmd/load-plan/publication-cleanup-picker.integration.test.ts",
     "src/cmd/load-plan/publication-cleanup.integration.test.ts",

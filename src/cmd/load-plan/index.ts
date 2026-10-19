@@ -408,7 +408,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             if (location.plan) Object.assign(plan, location.plan);
             await session.activateForPlan(plan.planName);
             if (session.cwd !== planDocumentRoot) {
-                await switchPlanAgent(session.getEffectiveAgentName() || AGENTS.ROUTER, {
+                await switchPlanAgent(agentName, {
                     cwd: planDocumentRoot,
                     forceRebuild: true,
                 });
