@@ -62,7 +62,7 @@ release.yml (tag push)
 operator             merges Release Branch into main, deletes branch
 ```
 
-**Owning PRD capability:** [Public documentation](../prd/runwield.md#public-documentation). Its requirements stay the
+**Owning PRD capability:** [Public documentation](../../prd/runwield.md#public-documentation). Its requirements stay the
 same: _Read documentation for the latest Stable release_ and _Correct documentation independently_. Its
 failed-deployment scenario also stays: the last valid manual stays live, and an older release cannot replace a newer
 one. This Plan adds one requirement: a Stable release publishes its manual as part of the release, with no operator

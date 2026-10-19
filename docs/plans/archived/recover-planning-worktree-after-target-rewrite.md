@@ -77,14 +77,14 @@ A scan of all `planning` registry entries found two entries whose base is not in
 
 ### PRD capability
 
-[Epic decomposition and hold](../prd/runwield-core-prd.md#epic-decomposition-and-hold) owns this behavior:
+[Epic decomposition and hold](../../prd/runwield-core-prd.md#epic-decomposition-and-hold) owns this behavior:
 
 - **Requirement: Each child starts with the preceding children's published code.** The planning worktree "starts
   from, or imports, that commit while keeping its saved scope and status." This Plan makes that true when the Epic
   branch was rewritten.
 - Existing scenario that must survive: "Given the next child already has a planning worktree with saved edits,
   continuation imports the published code and keeps those edits."
-- [Execution validation and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery): RunWield repairs
+- [Execution validation and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery): RunWield repairs
   its own metadata and synchronization without user operation. This is the reason recovery is automatic.
 
 ## Objective

@@ -27,6 +27,9 @@ workRecord:
     path: "docs/work-records/2026-10-17-inline-plan-questions-in-browser-review.md"
     lastAttemptAt: "2026-10-17T16:49:35.237Z"
 status: "verified"
+archivedAt: "2026-10-19T03:38:07.282Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/plan-question-blocks-in-browser-review.md"
 ---
 
 # Answer Planner questions inside the browser Plan review

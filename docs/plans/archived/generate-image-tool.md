@@ -44,8 +44,8 @@ credentials; it is not a prerequisite for the other routes. Historical Agy and C
 September 6. Fresh checks require ordinary writable host storage unavailable in this sandbox. OpenCode's live Responses
 probe returned HTTP 403 model-access denial, so its hosted image support remains unverified. The Plan remains open
 rather than treating fixtures as live acceptance. See
-[provider evidence](../research/image-generation-provider-proof.md) and the lasting
-[Core image-generation requirements](../prd/runwield-core-prd.md#image-generation).
+[provider evidence](../../research/image-generation-provider-proof.md) and the lasting
+[Core image-generation requirements](../../prd/runwield-core-prd.md#image-generation).
 
 ## Implementation decisions
 
@@ -68,7 +68,7 @@ rather than treating fixtures as live acceptance. See
 - The shared generation operation hides routing, references, validation, conversion and atomic no-overwrite save behind
   one tool factory. Photon converts actual raster bytes to PNG/JPEG/WebP when required by the filename.
 - Pi reasoning/temperature controls use its payload hook only for the documented Gemini mappings in
-  [settings](../user-documentation/settings.md#imagegeneration). Other models work without those optional controls.
+  [settings](../../user-documentation/settings.md#imagegeneration). Other models work without those optional controls.
   Unknown mappings fail clearly instead of sending speculative parameters.
 - Agy uses direct argv, the existing owned foreground process, cached host authentication and a five-minute timeout.
   Native `generate_image` step success and a structured absolute path are both required. The path must resolve inside
