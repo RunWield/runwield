@@ -1881,10 +1881,14 @@ while queued never begin execution. Both external CLI bridges preserve structure
 unknown tools as protocol errors, and support human-paced review waits. The private HTTP bridge rejects foreign Origins.
 `/mcp` prints server status and `/mcp reconnect <server>` reconnects without a model request. MCP tools use direct
 calls; codemode is deferred as a separate capability. In remote Sessions, `/mcp` shows each effective server’s location.
-Personal definitions come from the laptop and are listed as `laptop — not started remotely`, without forwarding their
-command arguments or credentials. Project servers retain safety and override rules and start remotely. Personal MCP
-forwarding is target scope in
-[child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md).
+Personal servers run on the laptop with its home cwd, minimal inherited environment, and configured environment
+values. Project servers run remotely with the Session execution cwd after normal safety, replacement, and disable
+checks. One remote Session-owned Pi integration handles both origins through native transports. Configuration commands,
+arguments, and environment values stay laptop-side; server output is trusted content, not secret-filtered content.
+`/mcp` shows each server's real status and location; reconnect restarts its owning transport without a model request.
+Paths and remote MCP roots are not translated to a laptop checkout. A shared Memory collection does not map files or
+change personal MCP cwd. Connection loss closes owned processes and pending calls without replaying uncertain effects.
+Cancellation reaches the server through native MCP notifications; it cannot undo accepted external effects.
 
 **Remote conversation scope:** [Local personal environment](remote-ssh-prd.md#local-personal-environment) specifies
 direct access to laptop `~/.wld` at a fresh private remote mount path, with project `.wld` remaining remote. Personal

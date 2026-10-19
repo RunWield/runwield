@@ -84,6 +84,11 @@ export interface RuntimeModelRequest {
     simple: boolean;
     options: RuntimeModelRequestOptions;
 }
+export interface CapturedMcpTraffic {
+    path: string;
+    body?: string;
+    response?: string;
+}
 export interface RuntimeFixture extends RuntimeCommandFixture {
     remoteProject: string;
     remoteHome: string;
@@ -96,6 +101,7 @@ export interface RuntimeFixture extends RuntimeCommandFixture {
     controls: CapturedControl[];
     saves: RemoteSessionRequest[];
     modelRequests: RuntimeModelRequest[];
+    mcpTraffic: CapturedMcpTraffic[];
     policy: RuntimeProxyPolicy;
     start(): Promise<RuntimeProcess>;
 }
@@ -121,6 +127,7 @@ async function startProcess(
         cwd: input.cwd,
         env: {
             HOME: remoteHome,
+            TMPDIR: join(remoteHome, "tmp"),
             WLD_TEST_SANDBOX_HOME: remoteHome,
             MNEMOTECA_DB_PATH: join(remoteHome, "memory.db"),
             PATH: remotePath,
@@ -173,6 +180,7 @@ export async function withRemoteRuntimeFixture(
         async (local) => {
             const remoteProject = await repositories.checkout();
             const remoteHome = await fsMkdtemp(join(tmpdir(), "remote-runtime-home-"));
+            await fsMkdir(join(remoteHome, "tmp"));
             const remoteBin = await writeWorkflowBinaryFixtures(remoteHome);
             await fsRm(join(remoteBin, "mnemoteca"));
             const remotePath = `${remoteBin}:/usr/bin:/bin`;
@@ -217,6 +225,7 @@ export async function withRemoteRuntimeFixture(
             const controls: CapturedControl[] = [];
             const saves: RemoteSessionRequest[] = [];
             const modelRequests: RuntimeModelRequest[] = [];
+            const mcpTraffic: RuntimeFixture["mcpTraffic"] = [];
             const memoryRequests: MemoryRequest[] = [];
             const policy: RuntimeProxyPolicy = {};
             const baseUrl = `http://127.0.0.1:${service.port}`;
@@ -235,6 +244,13 @@ export async function withRemoteRuntimeFixture(
                     headers: request.headers,
                     body,
                 });
+                if (path.startsWith("/mcp/")) {
+                    mcpTraffic.push({
+                        path,
+                        body,
+                        ...(path === "/mcp/config" ? { response: await response.clone().text() } : {}),
+                    });
+                }
                 if (path === "/memory" && body && policy.memoryAfter) {
                     return await policy.memoryAfter(JSON.parse(body), response);
                 }
@@ -279,6 +295,7 @@ export async function withRemoteRuntimeFixture(
                     controls,
                     saves,
                     modelRequests,
+                    mcpTraffic,
                     policy,
                     async start() {
                         const process = await startProcess(

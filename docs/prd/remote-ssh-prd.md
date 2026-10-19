@@ -4,8 +4,8 @@ Last updated: 2026-09-24 EDT
 
 **Status:** Remote conversation, laptop history, image paste, and connected resume are implemented and verified on the
 compiled macOS laptop/Linux `sct` pilot with matching build identity and an authenticated synthetic OpenAI-compatible
-streaming provider. See [journey evidence](#conversation-journey-evidence). Laptop-owned remote Memory and MCP placement
-are delivered. Delivery workflows, personal MCP forwarding, and the production-provider/platform matrix remain target
+streaming provider. See [journey evidence](#conversation-journey-evidence). Laptop-owned remote Memory and personal MCP transport forwarding
+are delivered. Delivery workflows and the production-provider/platform matrix remain target
 scope. **Document role:** Transient feature proposal. [RunWield Core](runwield-core-prd.md) owns shared installation,
 location, connection cleanup, and Session continuity requirements; this document keeps the remaining remote journey
 clear.
@@ -42,7 +42,7 @@ checkout, or automatic installation of every project dependency. Hostile-server 
 
 The conversation journey covers connection, normal Agent turns with core project tools and laptop Pi models, laptop
 clipboard images, offline history, and connected resume. It passed the qualified `sct` pilot below. Laptop-owned Memory
-extends this journey. Delivery workflows, personal MCP forwarding, and local browser review follow in their child Plans.
+and personal MCP forwarding extend this journey. Delivery workflows and local browser review follow in their child Plans.
 
 Command forms:
 
@@ -169,10 +169,18 @@ through the mount without making working copies; local paths must not accidental
 Machine-specific scripts are best effort, not a promise that every local executable works remotely.
 
 **Delivered requirement: Run MCP servers on their owning machine.** Personal definitions come from the laptop, not the
-server user’s home. `/mcp` lists them as `laptop — not started remotely`; command arguments and credentials stay on the
-laptop. Project definitions retain normal safety checks and override rules, run with the remote cwd, and appear as
-`remote`. Personal tool forwarding is target scope in
-[child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md).
+server user's home. Effective personal servers run on the laptop with home cwd, minimal inherited environment, and
+configured environment values. Commands, arguments, and configured secrets are not sent as remote configuration.
+Project definitions retain normal safety, whole-entry replacement, and disable rules and run with the remote Session
+execution cwd. Unsafe project files do not suppress valid personal entries. One remote Session-owned Pi integration
+handles discovery, naming, resources, live updates, progress, cancellation, results, and reconnect for both origins.
+`/mcp` shows real status and `laptop` or `remote`; `/mcp reconnect <server>` restarts the owning transport without a
+model request. Server output can contain secrets; forwarding does not filter arbitrary output.
+
+Personal home cwd is not a sandbox. Relative commands and file arguments resolve there. Remote MCP roots and tool paths
+are forwarded unchanged, not translated or copied to laptop files. Sharing a Memory collection does not select a laptop
+checkout or imply matching files, branches, or worktrees. Use project configuration for servers that need remote project
+files; use server-supported absolute arguments for deliberate access to a laptop checkout.
 
 **Current bounded proof scenarios (not ordinary remote user turns):**
 
@@ -196,6 +204,15 @@ laptop. Project definitions retain normal safety checks and override rules, run 
   can access laptop-account files through standard SFTP; the mount is not a credential sandbox.
 - Given an incompatible provider or path-dependent integration, when it is needed, RunWield reports the specific limit
   instead of silently substituting a model, omitting required tools, or operating on laptop files.
+- Given a personal tool and a project tool, a remote root turn calls their actual processes on the laptop and remote
+  host respectively, receives native results, and retains access after Agent handoff. Delegated and isolated Agents
+  receive no inherited MCP access. A shared local Memory collection does not change personal home cwd.
+- Given project replacement or disable of a personal name, the personal process never starts. Given a failed startup
+  or empty inventory, the root remains eligible for later discovery or reconnect without a model request.
+- Given cancellation during an admitted cooperative personal call, the laptop receives native cancellation. Before
+  dispatch, cancellation produces no call. A non-cooperative server may finish an accepted external effect.
+- Given disconnect or Session disposal, owned laptop processes stop and pending calls fail. Reconnect opens a new
+  transport without replaying uncertain calls; closing one Session leaves another Session's servers usable.
 
 **Shared requirements:** [Customization](runwield-core-prd.md#agent-and-skill-customization),
 [models and providers](runwield-core-prd.md#models-and-providers).
@@ -313,7 +330,9 @@ Workspace browser-disconnect behavior.
 **Requirement: Do not continue unattended.** Normal exit ends the remote TUI and stops active RunWield-owned work.
 Unexpected connection loss stops new work and cancels active owned processes when loss is detected, including when the
 laptop cannot send a final stop request. No detached Agent continues or restarts automatically. Unrelated server
-processes must not be stopped.
+processes must not be stopped. Laptop MCP transport streams, pending starts, and owned stdio processes close on control
+revocation or health loss; final shutdown awaits cleanup. New connections use fresh transport lifetimes and never replay
+failed sends or uncertain MCP effects.
 
 **Requirement: Preserve work and report uncertainty.** Disconnect is neither workflow completion nor deliberate
 abandonment. Remote edits and project artifacts remain. Local saved history remains. Unreceived output is not claimed as

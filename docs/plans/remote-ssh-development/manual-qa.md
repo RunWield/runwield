@@ -119,3 +119,16 @@ Manual verification steps for remote-ssh-development/05-keep-memory-and-integrat
       remotely, and that project servers show as remote.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop" -->
+
+## Forward Personal MCP Tools from the Laptop
+
+Manual verification steps for remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop
+
+- [ ] On the live pilot, call a personal MCP tool and a project MCP tool; confirm the personal server runs on the laptop with laptop home as its cwd, and the project server runs remotely with the Session cwd.
+- [ ] Check `/mcp` for each server's location and connection status. Run `/mcp reconnect <server>`, then call the personal tool again.
+- [ ] Cancel a cooperative slow personal tool call; confirm the server receives cancellation and does not record the delayed effect.
+- [ ] Drop the SSH connection during a tool call, reconnect, and confirm the call is not replayed and no owned laptop server process remains.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop" -->
