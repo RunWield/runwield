@@ -50,6 +50,38 @@ test("Plan Review restores the queued user message on a new page and displays th
     );
 });
 
+test("Plan Review stops waiting after 180 seconds and still displays a late saved revision", async () => {
+    let snapshot = savedConversation();
+    const now = Date.now;
+    let elapsed = 0;
+    Date.now = () => now() + elapsed;
+    try {
+        await withReview(
+            async ({ container, openChat }) => {
+                await openChat();
+                assertStringIncludes(container.textContent, "Claude is reviewing the Plan");
+                elapsed = 179_000;
+                await poll();
+                assertEquals(container.textContent.includes("Claude is still working"), false);
+                elapsed = 180_000;
+                await poll();
+                assertStringIncludes(container.textContent, "Claude is still working");
+                assertEquals(container.textContent.includes("Claude is reviewing the Plan"), false);
+                await poll();
+                assertEquals(container.textContent.includes("Claude is reviewing the Plan"), false);
+                snapshot = { ...snapshot, pending: false, plan: nextPlan, reviewRevision: 1, revision: 1, turns: [] };
+                await poll();
+                assertStringIncludes(container.textContent, "Plan round N+1.");
+                assertEquals(container.textContent.includes("Claude is still working"), false);
+            },
+            plan,
+            { payload, conversation: () => snapshot },
+        );
+    } finally {
+        Date.now = now;
+    }
+});
+
 test("Plan Review can chat and approve on the same page after the artifact advances to N+1", async () => {
     let snapshot = savedConversation();
     await withReview(
@@ -59,10 +91,11 @@ test("Plan Review can chat and approve on the same page after the artifact advan
             assertStringIncludes(container.textContent, "Plan round N+1.");
             await openChat();
             const composer = container.querySelector("textarea");
+            const browser = composer.ownerDocument.defaultView;
             await act(() => {
-                const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+                const setter = Object.getOwnPropertyDescriptor(browser.HTMLTextAreaElement.prototype, "value").set;
                 setter.call(composer, "Question about N+1");
-                composer.dispatchEvent(new window.Event("input", { bubbles: true }));
+                composer.dispatchEvent(new browser.Event("input", { bubbles: true }));
             });
             const send = container.querySelector(".rw-review-action-button");
             assertEquals(send.disabled, false);

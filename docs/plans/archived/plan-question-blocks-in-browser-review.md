@@ -65,10 +65,10 @@ What exists today:
 
 ### Owning PRD capabilities
 
-- [Workspace: Browser Plan review and workflow](../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow) —
+- [Workspace: Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow) —
   **proposed addition:** answer Plan Questions in place, send answers to Planner automatically, approve with open
   questions after a warning.
-- [Core: Plan review](../prd/runwield-core-prd.md#plan-review) — **proposed addition:** on approval, every question block
+- [Core: Plan review](../../prd/runwield-core-prd.md#plan-review) — **proposed addition:** on approval, every question block
   in the Plan becomes a recorded question and answer.
 - Behavior that must survive: annotation-only chat submissions, review draft recovery, stale-Plan rejection on approval,
   and single application of a repeated approval click.

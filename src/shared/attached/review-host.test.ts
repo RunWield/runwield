@@ -146,6 +146,15 @@ test("the production stale-review response preserves the pending durable round",
             assertEquals(page.status, 200);
             assertStringIncludes(await page.text(), "Delete the toggle.");
             assertEquals((await (await fetch(new URL(`/api/review/revision${url.search}`, url))).json()).revision, 1);
+            for (let poll = 0; poll < 3; poll++) {
+                const status = await runOperation("status", root, { workflowId: workflow.workflowId });
+                assert(status.ok);
+                await ensureReviewHosted(root, status.workflow, NO_OPEN_BROWSER_PORT);
+                assertEquals(
+                    (await (await fetch(new URL(`/api/review/revision${url.search}`, url))).json()).revision,
+                    1,
+                );
+            }
             const accepted = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({

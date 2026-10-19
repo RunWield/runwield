@@ -202,3 +202,35 @@ test("an external Core decision closes the saved code chat without retaining tex
         await fixture.close();
     }
 });
+
+test("Code Review recovery keeps the displayed revision stable through later status polls", async () => {
+    const fixture = await attachedValidationFixture();
+    try {
+        const started = await toDelivery(fixture);
+        const hosted = await ensureReviewHosted(fixture.root, started.workflow, NO_OPEN_BROWSER_PORT);
+        assert(hosted);
+        const rejected = await fetch(reviewApi(hosted.url, "deny"), {
+            method: "POST",
+            body: JSON.stringify({ conversationTurn: true, feedback: "", reviewRevision: 0 }),
+        });
+        assertEquals(rejected.status, 409);
+        await rejected.text();
+        const recovered = await ensureReviewHosted(fixture.root, await fixture.status(), NO_OPEN_BROWSER_PORT);
+        assertEquals(recovered?.url, hosted.url);
+        const displayed = await conversation(hosted.url);
+        assertEquals(displayed.reviewRevision, 1);
+        for (let poll = 0; poll < 3; poll++) {
+            await ensureReviewHosted(fixture.root, await fixture.status(), NO_OPEN_BROWSER_PORT);
+            assertEquals((await conversation(hosted.url)).reviewRevision, displayed.reviewRevision);
+        }
+        const approved = await fetch(reviewApi(hosted.url, "decision"), {
+            method: "POST",
+            body: JSON.stringify({ approved: true, reviewRevision: displayed.reviewRevision }),
+        });
+        assertEquals(approved.status, 200, await approved.text());
+        assertEquals((await fixture.status()).nextAction.kind, "recorder");
+    } finally {
+        await stopHostedAttachedReviews();
+        await fixture.close();
+    }
+});

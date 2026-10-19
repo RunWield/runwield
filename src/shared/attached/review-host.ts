@@ -214,6 +214,7 @@ export async function ensureReviewHosted(
         hosted.set(workflow.workflowId, {
             ...existing,
             type: "plan",
+            stale: false,
             actionId: basis.review.actionId,
             review,
             surface,
@@ -284,6 +285,7 @@ async function ensureCodeReviewHosted(
         hosted.set(workflow.workflowId, {
             ...existing,
             type: "code",
+            stale: false,
             actionId: action.actionId,
             review,
             surface,

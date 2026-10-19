@@ -229,6 +229,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [conversationComposer, setConversationComposer] = useState("");
     const [conversationContextAttached, setConversationContextAttached] = useState(false);
     const [plannerWorking, setPlannerWorking] = useState(false);
+    const savedPlannerWaitStarted = useRef(null);
     const [plannerError, setPlannerError] = useState("");
     const [plannerDiffBase, setPlannerDiffBase] = useState(null);
     const [plannerDiffRevision, setPlannerDiffRevision] = useState(0);
@@ -401,8 +402,16 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             if (submitted === "feedback") return;
             updateReviewRevision(snapshot.reviewRevision);
             setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
-            setPlannerWorking(snapshot.pending);
-            reviewGroup?.setBusy(snapshot.pending);
+            const waitStarted = savedPlannerWaitStarted.current;
+            savedPlannerWaitStarted.current = snapshot.pending ? (waitStarted ?? Date.now()) : null;
+            const timedOut = snapshot.pending && Date.now() - savedPlannerWaitStarted.current >= 180_000;
+            setPlannerWorking(snapshot.pending && !timedOut);
+            reviewGroup?.setBusy(snapshot.pending && !timedOut);
+            if (timedOut) {
+                setPlannerError(`${agentLabel} is still working. Check the terminal Session for progress.`);
+            } else if (!snapshot.pending && waitStarted !== null) {
+                setPlannerError("");
+            }
             if (advanced) {
                 const event = snapshot.events.at(-1);
                 applyPlannerRevision({

@@ -50,6 +50,7 @@ function RestoredReview() {
             />
             {["Approve", "Feedback", "Chat"].map((action) => (
                 <button
+                    type="button"
                     key={action}
                     disabled={working}
                     onClick={() =>
@@ -98,13 +99,13 @@ async function withSavedReview(verify: (browser: ReviewBrowser) => Promise<void>
         Object.defineProperty(globalThis, "window", { configurable: true, value: browser });
         Object.defineProperty(globalThis, "document", { configurable: true, value: browser.document });
         Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
-        globalThis.fetch = async (url, options) => {
+        globalThis.fetch = (url, options) => {
             if (String(url) === "/decision") {
                 decisions.push(JSON.parse(String(options?.body)));
-                return Response.json({ ok: true });
+                return Promise.resolve(Response.json({ ok: true }));
             }
             assertEquals(String(url), "/conversation");
-            return Response.json(current);
+            return Promise.resolve(Response.json(current));
         };
         const { createRoot } = await import("react-dom/client");
         let root = createRoot(container);
