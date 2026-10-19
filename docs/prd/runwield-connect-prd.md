@@ -207,8 +207,8 @@ continues into saved Code Review, Claude recording, and shared publication. Auto
 cover delivery and recovery. Headed MCP checks confirm feedback, a refreshed diff, approval, and pending-review restore.
 Live Claude Code 2.1.299 confirms fresh Recorder dispatch, section submission, proven publication, and indexed
 recording; a private conversation sentinel stays out of RunWield artifacts and the memory index. Complete Preview
-release and live integrated support remain **TARGET** until child 08. Review-page chat remains **TARGET** for child 07,
-not delivered. Core owns shared delivery and record requirements.
+release and live integrated support remain **TARGET** until child 08. Attached Plan and Code Review chat uses the
+coordinating Claude session. Core owns shared delivery and record requirements.
 
 **Requirement: Keep Core approval and verification authoritative.**
 
@@ -243,6 +243,23 @@ the external host. The host continues to own its conversation and model calls.
 - The External Agent Host may summarize review progress, but RunWield remains the authority for the resulting lifecycle
   transition.
 
+**Requirement: Answer review chat in the coordinating Claude session.**
+
+Both Attached review pages offer chat. The oldest queued message and its selections return on the existing review
+action. Claude answers with `review_reply`; a question changes no Plan status, validation gate, or review decision. A
+Plan change ends the round without recording Feedback and requests a revised Plan. The next submission opens a new
+round on the same page. Only structured browser decisions approve or reject.
+
+**Acceptance scenario: Ask this session on both review pages.**
+
+Given an Attached Plan or Code Review round, when the user sends two messages before Claude replies, Claude receives
+them in order. The page shows each answer without deciding the review. A queued message survives a fresh Core process
+and page restore: the new page shows the saved user message, resumes waiting, and displays the answer without another
+submission. Stale, answered, closed-round, and out-of-order replies cannot change the workflow. A Plan change opens
+the next Plan revision on the same page; a code change runs a fresh host repair and re-verification before the new diff
+opens. Approval, Feedback, and further chat use the displayed revision without reopening the page. Earlier diff approval
+does not carry over. Core starts no model turn for chat.
+
 **Requirement: Return saved Code Review decisions for the current diff.**
 
 - The project's `codeReview` setting keeps its Core meaning: `none` skips the page, `ask` offers it, and `always`
@@ -250,7 +267,9 @@ the external host. The host continues to own its conversation and model calls.
 - Approval is structured and bound to the current candidate diff hash. A changed candidate rejects stale approval.
 - Browser Feedback becomes a `human_feedback` action for a fresh Claude repair worker. Core reruns configured
   re-verification before opening a new Code Review round. Core starts no model turn for that repair.
-- Review-page chat is child 07 **TARGET** scope. Chat prose cannot approve code or replace saved Feedback.
+- Code Review chat is answered by the coordinating Claude session. A question leaves the review open. A code change
+  uses a Claude-written change summary in the shared `human_feedback` repair path, then re-verification and a new
+  diff-bound review. Chat prose cannot approve code or replace a structured decision.
 
 **Requirement: Close Attached delivery only on shared completion proof.**
 
@@ -399,6 +418,13 @@ safe-handoff fallback beyond non-Git consent remain targets.
 - RunWield does not copy or index the raw External Agent Host conversation transcript.
 - Raw host conversations remain private working space. Organizational knowledge continues to come from explicit durable
   artifacts and synthesis rather than chat-history ingestion.
+
+**Requirement: Keep review chat temporary.**
+
+Raw review messages, selections, and replies live only on the open Attached review round, including across restart.
+Closure removes them, including from operation receipts. They never enter the Plan validation checkpoint, Work Record,
+memory index, telemetry, or publication evidence. A code change stores only Claude's short change summary in repair and
+delivery evidence. A Plan change records no Feedback text; the revised Plan is the durable result.
 
 **Requirement: Use a fresh Claude Recorder with canonical artifacts only.**
 
@@ -574,8 +600,8 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 ## End-to-End Preview Acceptance Journey
 
 **Maturity: TARGET until child 08 confirms the integrated journey.** The delivery slice has automated recovery, headed
-MCP review, and live Claude Recorder evidence. Review-page chat remains child 07 target scope; child 08 owns the
-installed end-to-end journey and final Preview support claims.
+MCP review, and live Claude Recorder evidence. Attached review chat is implemented; child 08 owns the installed
+end-to-end journey and final Preview support claims.
 
 The Claude Code Preview is complete only when a user can perform this bounded end-to-end journey:
 
@@ -585,14 +611,16 @@ The Claude Code Preview is complete only when a user can perform this bounded en
 3. Invoke RunWield for a FEATURE-sized User Request in an existing Claude Code conversation.
 4. Have Claude perform RunWield Triage and plan under the RunWield Planner instructions.
 5. Have Claude produce a canonical RunWield Plan and submit it through Core-owned lifecycle operations.
-6. Receive Plannotator Feedback, revise the Plan in the same user-facing flow, and resubmit it.
+6. Ask Claude a question from Plan review, receive its answer on the page, then request a Plan change and review the
+   revised Plan on the same page. Structured Plannotator Feedback remains available.
 7. Approve the Plan through Plannotator and pass the normal Readiness Gate.
 8. Create or reuse a RunWield-owned execution worktree and capture the execution baseline.
 9. Have a Claude-hosted implementation worker complete the approved Plan in the worktree.
 10. Run the configured local validation command and independent Claude-hosted Semantic Code Review.
 11. Return blocking Review Issues to a Claude-hosted repair worker and independently re-verify repairs under the normal
     bounded convergence policy.
-12. Complete optional human review when configured.
+12. Complete optional human review when configured. Ask Claude from Code Review, then request a code change. Review the
+    re-verified diff and make a structured decision; chat itself never approves.
 13. Merge validated work back through RunWield's existing worktree safeguards and record the Plan as Verified only after
     merge-back succeeds.
 14. Generate the canonical Work Record and eligible memory outcome without importing the Claude transcript.

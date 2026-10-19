@@ -1,7 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
+import { writeFile, readFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { prepareIndexRuntime } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
@@ -10,11 +13,11 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-por
 import { crash } from "./delivery-recovery-test-fixture.ts";
 
 for (const timing of ["before", "after"] as const) {
-    Deno.test(`a fresh process reports in-place completion ${timing} Core verification without a Git claim`, async () => {
+    test(`a fresh process reports in-place completion ${timing} Core verification without a Git claim`, async () => {
         await prepareIndexRuntime();
         const fixture = await attachedValidationFixture({ nonGit: true, attrs: { humanReviewMode: "none" } });
         try {
-            await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+            await writeFile(join(fixture.cwd, "marker"), "pass");
             const started = await fixture.call("start_validation", await fixture.status());
             assert(started.ok && started.workflow.nextAction.kind === "recorder", JSON.stringify(started));
             await crash(
@@ -45,8 +48,9 @@ for (const timing of ["before", "after"] as const) {
             });
             assert(
                 resumed.result.ok && resumed.result.workflow.nextAction.kind === "delivered",
-                JSON.stringify(resumed.result) + "\n" +
-                    await Deno.readTextFile(join(getHomeDir(), ".wld/debug/validation-errors.jsonl")).catch(() => ""),
+                JSON.stringify(resumed.result) +
+                    "\n" +
+                    (await readFile(join(getHomeDir(), ".wld/debug/validation-errors.jsonl"), "utf8").catch(() => "")),
             );
             assertEquals(resumed.result.workflow.nextAction.completionMode, "in_place");
             assert(resumed.result.workflow.nextAction.guidance.includes("no Git publication is claimed"));
@@ -54,9 +58,11 @@ for (const timing of ["before", "after"] as const) {
             assertEquals(records.length, 1);
             assertEquals(records[0].attrs.status, "approved");
             assertEquals(
-                (await findIndexedDocumentIdsByRecordId(fixture.root, records[0].attrs.recordId, {
-                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                })).length,
+                (
+                    await findIndexedDocumentIdsByRecordId(fixture.root, records[0].attrs.recordId, {
+                        mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                    })
+                ).length,
                 1,
             );
         } finally {

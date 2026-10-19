@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
@@ -7,14 +9,14 @@ import { crash, recoverDelivery } from "./delivery-recovery-test-fixture.ts";
 
 for (const point of ["code_review_wait", "recorder_wait", "recorder_sections", "record_saved"]) {
     for (const timing of point === "record_saved" ? ["after"] : ["before", "after"]) {
-        Deno.test(`fresh Attached process recovers ${timing} ${point} without repeating accepted work`, async () => {
+        test(`fresh Attached process recovers ${timing} ${point} without repeating accepted work`, async () => {
             await recoverDelivery(point, timing);
         });
     }
 }
 
 for (const timing of ["before", "after"]) {
-    Deno.test(`an invalid Recorder submission gets exactly one retry after a crash ${timing} its receipt`, async () => {
+    test(`an invalid Recorder submission gets exactly one retry after a crash ${timing} its receipt`, async () => {
         await prepareIndexRuntime();
         const fixture = await attachedValidationFixture({ attrs: { humanReviewMode: "none" } });
         try {

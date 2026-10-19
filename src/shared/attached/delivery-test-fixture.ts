@@ -1,27 +1,27 @@
-import { assert } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { getCwd } from "../../constants.js";
+import { writeFile } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { parseDiffFiles } from "../workflow/review-diff.ts";
 import type { AttachedWorkflowView } from "./operations.ts";
 
 let indexRuntime: Promise<void> | undefined;
 export function prepareIndexRuntime(): Promise<void> {
-    return indexRuntime ||= (async () => {
-        const output = await new Deno.Command("mnemoteca", { args: ["setup"], stdout: "piped", stderr: "piped" })
-            .output();
+    return (indexRuntime ||= (async () => {
+        const output = await captureForegroundProcess("mnemoteca", { args: ["setup"], cwd: getCwd() });
         assert(output.success, new TextDecoder().decode(output.stderr));
-    })();
+    })());
 }
 
 type Fixture = Awaited<ReturnType<typeof attachedValidationFixture>>;
 export async function inspectSemantic(fixture: Fixture, workflow: AttachedWorkflowView) {
     const action = workflow.nextAction;
     assert(action.kind === "validation" && action.request.kind === "reviewer", JSON.stringify(workflow));
-    for (
-        const file of parseDiffFiles(
-            action.request.requiredScope === "full" ? action.request.fullDiff : action.request.repairDiff,
-        )
-    ) {
+    for (const file of parseDiffFiles(
+        action.request.requiredScope === "full" ? action.request.fullDiff : action.request.repairDiff,
+    )) {
         const read = await fixture.call("review_diff", workflow, {
             actionId: action.actionId,
             command: "show",
@@ -45,7 +45,7 @@ export async function approveSemantic(fixture: Fixture, workflow: AttachedWorkfl
 }
 export async function toDelivery(fixture: Fixture) {
     await prepareIndexRuntime();
-    await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+    await writeFile(join(fixture.cwd, "marker"), "pass");
     const result = await fixture.call("start_validation", await fixture.status());
     assert(result.ok, JSON.stringify(result));
     return await approveSemantic(fixture, result.workflow);

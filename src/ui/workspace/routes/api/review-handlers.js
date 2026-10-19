@@ -54,6 +54,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [reviewToken]
  * @property {ReviewPayload} [reviewPayload]
  * @property {ReviewDecisionSink} [onDecision]
+ * @property {boolean} [keepConversationTurns]
  *
  * @callback ReviewDecisionSink
  * @param {ReviewDecision} decision
@@ -274,7 +275,7 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
-    if (!resolveReviewDecision(token, decision)) {
+    if (!(decision.conversationTurn && ctx.state?.keepConversationTurns) && !resolveReviewDecision(token, decision)) {
         return jsonError("review_not_found", "Review expired or completed.", 404);
     }
     return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });

@@ -48,6 +48,21 @@ Start RunWield only for this request: $ARGUMENTS
   not Verified. Immediately follow `/runwield:validate` for Core validation with fresh Claude workers. Publication
   remains pending; the workflow stays open.
 
+## Review chat
+
+When `review` or `code_review` has `chat`, answer its oldest pending `turnId` before polling again. Use the current
+workflow ID and revision, a new operation ID, and `review_reply` with `payload: { turnId, text }`. Read `message` and
+`selections` in this conversation. Answer questions directly; do not dispatch a worker or make a review decision.
+
+For a Plan change, add `change: { summary }`, then follow the returned Planner instructions, revise the Plan, and call
+`plan_written`. For a code change, add `change: { summary }`, then dispatch the fresh repair subagent that Core requests
+and submit its report. Core re-verifies the repair and opens the new diff. Write `summary` as a short description of the
+change, not a quote of the user's message. Never put raw chat in the Plan, a worker report, or recording evidence.
+
+Chat cannot approve or reject. The revised artifact needs a new browser decision. On a stale reply, read `status`; do
+not apply the reply again to a different turn. Turns stay queued in order. Continue polling the same review action
+between replies. A process restart restores pending turns, not a permanent transcript.
+
 Use Claude Code's tools and other MCP servers normally. RunWield adds no hooks or tool restrictions. Stay in Claude Code
 and the browser; use no RunWield CLI or TUI commands. Claude Code owns all model calls. This plugin supports FEATURE
 planning, review, isolated implementation, validation, and durable handoff recovery. Installation and full preflight are
