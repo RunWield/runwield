@@ -22,6 +22,7 @@ dependencies:
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "9eceb74f31185c0377de6ff435a52932d3da25e7"
 ---
 
 # Stop Owned Remote Work on Connection Loss
