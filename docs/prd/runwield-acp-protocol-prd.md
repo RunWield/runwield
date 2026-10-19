@@ -138,8 +138,9 @@ another lifecycle.
   client while retaining RunWield planning, review, execution, and validation.
 - Given OpenAB connected to Discord or another supported chat platform, the user can complete the RunWield workflow end
   to end from that chat, following browser review links when needed.
-- Given a no-form ACP chat client and two saved Plans, `/load-plan` lists numbered Plan choices in chat without a
-  loopback question link or form request. Replying `2` loads the second Plan and shows its action menu. Replying
+- Given a no-form ACP chat client and two saved Plans, `/load-plan` (or its `/load-plans` alias) lists numbered Plan
+  choices in chat without a loopback question link or form request. Replying `2` loads the second Plan and shows its action menu.
+  This also works when OpenAB sends a separate `openab.sender.v1` sender-context block before the numeric reply. Replying
   `View plan details` shows the summary and menu again. Replying `Cancel` ends the command without changing the Plan
   file; a later ordinary prompt reaches the model.
 - Given `/load-plan` starts an Agent turn through Resume planning, its `user_interview` questions arrive in chat and
@@ -217,6 +218,8 @@ Stage 1 proves the reference journey through the shared Session experience. Prot
   matched case-insensitively. A reply of `cancel` cancels the menu only when no option matches it. An invalid or ambiguous
   reply, including a slash command, leaves the menu waiting and repeats it with the reply rule. Approvals with no
   supplied options show Yes and No for accept and decline; approval choices retain their defined accept/cancel meaning.
+- Chat replies exclude standalone `<sender_context>` text blocks that contain valid `openab.sender.v1` JSON metadata.
+  Metadata alone, malformed metadata, multiple conflicting answers, and unsupported attachments do not select a menu option.
 - Non-interview text questions accept nonblank text. `cancel` is ordinary text, not menu cancellation. Blank input and
   unsupported attachments do not answer chat questions.
 - `user_interview` rules stay distinct: a number or unique exact label selects an option; other meaningful text selects

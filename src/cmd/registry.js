@@ -363,6 +363,7 @@ export const commandRegistry = {
     },
     [COMMAND_NAMES.LOAD_PLAN]: {
         name: COMMAND_NAMES.LOAD_PLAN,
+        aliases: ["load-plans"],
         displayName: "Load Plan",
         description: "Load and continue a saved plan",
         summary: "Load a saved plan by name or file path and continue work on it.",

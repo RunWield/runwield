@@ -79,7 +79,7 @@ instances stopped. The installed `~/.local/bin/wld` (v0.12.2) contains the same 
 > delivery summary must not claim a root-cause fix.
 
 PRD ownership: clipboard image paste belongs to
-[Compaction and image context](../prd/runwield-core-prd.md#compaction-and-image-context) in the Core PRD. That
+[Compaction and image context](../../prd/runwield-core-prd.md#compaction-and-image-context) in the Core PRD. That
 capability has no clipboard-watching requirement today. This Plan **adds** one requirement (on-demand clipboard reads)
 and one acceptance scenario. The existing requirement **Images reach the model** must survive unchanged.
 `docs/user-facing-features.md` lists "Paste images into the TUI" and keeps that promise.
