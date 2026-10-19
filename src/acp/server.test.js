@@ -3448,6 +3448,72 @@ test("ACP no-form load-plan rejects invalid replies and continues through sequen
     });
 });
 
+test("ACP load-plans accepts numeric replies with OpenAB sender context", async () => {
+    await withRuntimeCommandFixture("acp-load-plan-openab-", async (fixture) => {
+        await saveChatMenuPlans(fixture.projectRoot);
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            const opened = await chatPrompt(handle, sessionId, "/load-plans");
+            const senderContext = '<sender_context>\n{"schema":"openab.sender.v1"}\n</sender_context>';
+            const rejected = [];
+            for (const prompt of [
+                [{ type: "text", text: senderContext }],
+                [
+                    { type: "text", text: "<sender_context>not JSON</sender_context>" },
+                    { type: "text", text: "2" },
+                ],
+                [
+                    { type: "text", text: '<sender_context>{"schema":"different"}</sender_context>' },
+                    { type: "text", text: "2" },
+                ],
+                [
+                    { type: "text", text: senderContext },
+                    { type: "text", text: "1" },
+                    { type: "text", text: senderContext },
+                    { type: "text", text: "2" },
+                ],
+                [
+                    { type: "text", text: senderContext },
+                    { type: "text", text: "2" },
+                    { type: "resource_link", uri: "file:///attachment", name: "attachment" },
+                ],
+            ]) {
+                const id = crypto.randomUUID();
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id,
+                    method: "session/prompt",
+                    params: { sessionId, prompt },
+                });
+                rejected.push(await readThroughResponse(handle, id));
+            }
+            const id = crypto.randomUUID();
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id,
+                method: "session/prompt",
+                params: {
+                    sessionId,
+                    prompt: [
+                        { type: "text", text: senderContext },
+                        { type: "text", text: "2" },
+                    ],
+                },
+            });
+            const result = await readThroughResponse(handle, id);
+            await chatPrompt(handle, sessionId, "Cancel");
+            assertStringIncludes(joinedAgentText(opened.messages), "Load plan:");
+            for (const invalid of rejected) {
+                assertStringIncludes(joinedAgentText(invalid.messages), "did not match");
+            }
+            assertStringIncludes(joinedAgentText(result.messages), "Plan loaded: beta");
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
 for (const cancellation of ["cancel", "session/cancel", "Cancel option"]) {
     test(`ACP load-plan ${cancellation} settles and records canceled metrics`, async () => {
         await withRuntimeCommandFixture("acp-load-plan-cancel-", async (fixture) => {

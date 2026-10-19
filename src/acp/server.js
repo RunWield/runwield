@@ -355,6 +355,17 @@ export function convertAcpPrompt(blocks) {
     return { text: parts.join("\n").trim(), images };
 }
 
+/** @param {string} text */
+function isOpenAbSenderContext(text) {
+    const match = /^<sender_context>\s*([\s\S]*)\s*<\/sender_context>$/.exec(text.trim());
+    if (!match) return false;
+    try {
+        return JSON.parse(match[1])?.schema === "openab.sender.v1";
+    } catch {
+        return false;
+    }
+}
+
 /**
  * @param {unknown} blocks
  * @returns {{ name: string, args: string[] } | null}
@@ -1528,7 +1539,13 @@ function createRunWieldAcpServer(context) {
                 const blocks = request.prompt;
                 const textOnly = Array.isArray(blocks) && blocks.every((block) => block?.type === "text");
                 const reply = textOnly
-                    ? parseChatReply(pending.interaction, blocks.map((block) => block.text || "").join("\n"))
+                    ? parseChatReply(
+                          pending.interaction,
+                          blocks
+                              .filter((block) => !isOpenAbSenderContext(block.text || ""))
+                              .map((block) => block.text || "")
+                              .join("\n"),
+                      )
                     : null;
                 return await operation.attach(
                     context,
