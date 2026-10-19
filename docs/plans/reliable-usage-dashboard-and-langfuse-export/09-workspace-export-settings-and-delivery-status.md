@@ -36,6 +36,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 status: "reviewed"
+validatedCommit: "f26093a3792e0e70814f2c57eea2a09cced9fe20"
 ---
 
 # Workspace Export Settings and Delivery Status
