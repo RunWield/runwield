@@ -42,7 +42,7 @@
     "scripts/router-eval-utils.test.js",
     "scripts/run-bun-tests.test.ts",
     "scripts/run-ci.test.ts",
-    "scripts/run-prototype.test.js",
+    "scripts/run-prototype.test.ts",
     "scripts/run-router-golden-set-context.test.js",
     "scripts/run-router-golden-set-settings.test.js",
     "scripts/run-router-golden-set.test.js",
