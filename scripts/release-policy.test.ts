@@ -3,6 +3,10 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 
+interface PackageScriptConfig {
+    scripts: Record<string, string>;
+}
+
 test("release prompt starts with the three release choices before policy discovery", async () => {
     const prompt = await fsReadFile(new URL("../src/prompt-templates/release.md", import.meta.url), "utf8");
     const choiceIndex = prompt.indexOf("What kind of release operation should I run?");
@@ -142,7 +146,7 @@ test("Stable releases validate on macOS before publishing the Homebrew tap", asy
 });
 
 test("release-tier Golden TUI alias does not run TODO goldens", async () => {
-    const config = JSON.parse(await fsReadFile("package.json", "utf8"));
+    const config: PackageScriptConfig = JSON.parse(await fsReadFile("package.json", "utf8"));
     const normalTest = String(config.scripts?.test || "");
     const extensiveGoldenTest = String(config.scripts?.["test:golden-tui:extensive"] || "");
 
