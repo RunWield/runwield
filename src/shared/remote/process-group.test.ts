@@ -148,8 +148,13 @@ const waitPid = async (name: string) => {
     throw new Error('missing fixture pid: ' + name);
 };
 if (mode === 'sessions') {
-    const own = spawn('sleep', ['60'], { stdio: 'ignore' });
+    // The own-session parent must stay alive throughout phase 1. Its child is
+    // outside that session and cannot be found by a direct-child-only sweep.
+    const own = spawn('python3', ['-c', "import os,time;\nif os.fork() == 0:\n os.setsid()\n open('nested', 'w').write(str(os.getpid()))\n os.execlp('sleep', 'sleep', '60')\ntime.sleep(60)"], { stdio: 'ignore' });
     await writeFile('own', String(own.pid));
+    const nested = await waitPid('nested');
+    const nestedStat = (await readFile('/proc/' + nested + '/stat', 'utf8')).split(') ')[1].split(' ');
+    if (Number(nestedStat[1]) !== own.pid || Number(nestedStat[3]) !== nested) throw new Error('nested ancestry not ready');
     spawn('sh', ['-c', 'trap "" TERM; echo $$ > detached; exec sleep 60'], { detached: true, stdio: 'ignore' });
     const daemon = spawn('python3', ['-c', "import os;\nif os.fork(): os._exit(0)\nos.setsid()\nif os.fork(): os._exit(0)\nopen('orphan', 'w').write(str(os.getpid()))\nos.execlp('nohup', 'nohup', 'sleep', '60')"], { stdio: 'ignore' });
     const detached = await waitPid('detached');
@@ -164,7 +169,7 @@ if (mode === 'sessions') {
     }
     if (!adopted) throw new Error('daemon was not adopted');
     const phase1 = await terminateOwnedLinuxDescendants(false);
-    const after1 = { own: await live(own.pid), detached: await live(detached), orphan: await live(orphan) };
+    const after1 = { own: await live(own.pid), nested: await live(nested), detached: await live(detached), orphan: await live(orphan) };
     const phase2 = await terminateOwnedLinuxDescendants(true);
     console.log(JSON.stringify({ phase1, phase2, after1, ownAfter2: await live(own.pid) }));
 } else {
@@ -202,7 +207,7 @@ for (const mode of ["sessions", "late-fork"]) {
                 assertEquals(result, {
                     phase1: true,
                     phase2: true,
-                    after1: { own: true, detached: false, orphan: false },
+                    after1: { own: true, nested: false, detached: false, orphan: false },
                     ownAfter2: false,
                 });
             } else {
@@ -210,7 +215,7 @@ for (const mode of ["sessions", "late-fork"]) {
             }
             assert(await running(unrelated.pid), "another process under the same user must survive");
         } finally {
-            for (const name of ["own", "detached", "orphan", "late"]) {
+            for (const name of ["own", "nested", "detached", "orphan", "late"]) {
                 const pid = Number(await readFile(join(directory, name), "utf8").catch(() => ""));
                 if (pid && (await running(pid))) {
                     // Only this fixture uses its private cwd. Do not signal a reused pid.
@@ -219,7 +224,7 @@ for (const mode of ["sessions", "late-fork"]) {
                         try {
                             kill(pid, "SIGKILL");
                         } catch (error) {
-                            if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+                            assert(error instanceof Error && "code" in error && error.code === "ESRCH", String(error));
                         }
                     }
                 }
@@ -227,6 +232,99 @@ for (const mode of ["sessions", "late-fork"]) {
             if (fixture.pid && (await running(fixture.pid))) fixture.kill("SIGKILL");
             unrelated.kill("SIGKILL");
             await unrelated.status;
+            await rm(directory, { recursive: true });
+        }
+    });
+}
+
+// Script only the OS boundary in a separate process. Each scan has a valid
+// /proc listing, but the first listing and its stat reads straddle a fork/exit.
+const changingTreeFixture = String.raw`
+import { mock } from 'bun:test';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:process';
+const mode = process.argv[2];
+let scan = 0;
+let signalled = false;
+let now = 0;
+Date.now = () => now;
+const parent = 900001;
+const child = 900002;
+const stat = (id: number, ppid: number, state = 'S') => {
+    const fields = Array(20).fill('0');
+    fields[0] = state;
+    fields[1] = String(ppid);
+    fields[3] = String(id);
+    fields[19] = String(id);
+    return id + ' (fixture) ' + fields.join(' ');
+};
+mock.module('node:process', () => ({ ...os, platform: 'linux', kill: (id: number) => {
+    if (id !== child) throw new Error('unexpected signal: ' + id);
+    signalled = true;
+} }));
+mock.module('node:fs/promises', () => ({ ...fs,
+    readdir: async () => {
+        scan++;
+        now += 1000;
+        if (mode.startsWith('denied-')) return [String(os.pid), String(child), '900003'];
+        if (mode === 'empty-tree') return [];
+        if (mode === 'changing-tree') return [String(os.pid), String(parent + scan)];
+        if (mode === 'unreadable-tree' || (scan === 1 && mode === 'missing-parent')) return [String(os.pid), String(parent), String(child)];
+        return [String(os.pid), ...(scan === 1 ? [String(parent)] : [String(child)])];
+    },
+    readFile: async (path: string) => {
+        const id = Number(path.split('/')[2]);
+        if (id === os.pid) return stat(os.pid, 1);
+        if (mode.startsWith('denied-')) {
+            if (id === 900003) throw Object.assign(new Error('permission denied'), { code: mode.split('-')[1] });
+            return stat(child, os.pid, signalled ? 'Z' : 'S');
+        }
+        if (mode === 'changing-tree') return stat(id, os.pid, 'Z');
+        if (id === parent) {
+            // A child can retain the old ppid in this scan even though its
+            // parent has already disappeared by the time we read that stat.
+            if (mode === 'missing-parent' || mode === 'unreadable-tree') throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+            return stat(parent, os.pid, 'Z');
+        }
+        return stat(child, mode === 'unreadable-tree' || scan === 1 ? parent : os.pid, signalled ? 'Z' : 'S');
+    },
+}));
+const { terminateOwnedLinuxDescendants } = await import('MODULE');
+const confirmed = await terminateOwnedLinuxDescendants(!mode.endsWith('-phase1'));
+console.log(JSON.stringify({ confirmed, signalled }));
+`;
+
+for (const mode of [
+    "zombie-parent",
+    "missing-parent",
+    "changing-tree",
+    "unreadable-tree",
+    "empty-tree",
+    "denied-EACCES-phase1",
+    "denied-EACCES-phase2",
+    "denied-EPERM-phase1",
+    "denied-EPERM-phase2",
+]) {
+    test(`remote descendant cleanup confirms only a stable complete tree: ${mode}`, async () => {
+        const directory = await mkdtemp(join(tmpdir(), "runwield-changing-tree-"));
+        const source = join(directory, "fixture.ts");
+        let fixture: ReturnType<typeof spawn> | undefined;
+        try {
+            await writeFile(
+                source,
+                changingTreeFixture.replace("MODULE", new URL("../linux-process-group.ts", import.meta.url).pathname),
+            );
+            const child = spawn(process.execPath, [source, mode], { stdio: ["ignore", "pipe", "pipe"] });
+            fixture = child;
+            const status = once(child, "exit", { signal: AbortSignal.timeout(10_000) });
+            const stdout = text(child.stdout);
+            const stderr = text(child.stderr);
+            const [code] = await status;
+            assertEquals(code, 0, await stderr);
+            const canConfirm = mode === "zombie-parent" || mode === "missing-parent" || mode.startsWith("denied-");
+            assertEquals(JSON.parse(await stdout), { confirmed: canConfirm, signalled: canConfirm });
+        } finally {
+            fixture?.kill("SIGKILL");
             await rm(directory, { recursive: true });
         }
     });

@@ -355,7 +355,7 @@ for (const scenario of [
                     try {
                         process.kill(pid, "SIGKILL");
                     } catch (error) {
-                        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+                        assert(error instanceof Error && "code" in error && error.code === "ESRCH", String(error));
                     }
                 }
                 try {

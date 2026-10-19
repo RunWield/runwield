@@ -533,6 +533,8 @@ export async function runRemoteSupervisor(): Promise<void> {
             process.off(signal, onEarlyClosure);
         }
         await stty(originalMode).catch(() => undefined);
-        if (!terminationConfirmed && !failed) throw new Error("Remote owned process termination is unconfirmed");
+        if (!terminationConfirmed && !failed) {
+            await Promise.reject(new Error("Remote owned process termination is unconfirmed"));
+        }
     }
 }

@@ -21,7 +21,7 @@ dependencies:
     - "07-carry-remote-context-through-delivery-workflows"
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Stop Owned Remote Work on Connection Loss

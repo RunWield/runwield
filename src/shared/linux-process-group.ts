@@ -44,7 +44,8 @@ interface LinuxProcess {
     state: string;
 }
 
-async function readLinuxProcess(processId: number): Promise<LinuxProcess | undefined> {
+// null excludes a permission-hidden process; undefined marks a vanished stat.
+async function readLinuxProcess(processId: number): Promise<LinuxProcess | null | undefined> {
     try {
         const stat = await readFile(`/proc/${processId}/stat`, "utf8");
         const fields = stat
@@ -64,7 +65,7 @@ async function readLinuxProcess(processId: number): Promise<LinuxProcess | undef
             ["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(String(error.code))
         ) {
             // Other-user processes hidden by /proc are outside the remote ownership contract.
-            return undefined;
+            return ["EACCES", "EPERM"].includes(String(error.code)) ? null : undefined;
         }
         throw error;
     }
@@ -96,6 +97,7 @@ export async function terminateOwnedLinuxDescendants(includeOwnSession: boolean)
         const gracefulUntil = Date.now() + 5_000;
         const forcedUntil = gracefulUntil + 2_000;
         const terminated = new Set<string>();
+        let emptyInventory: string | undefined;
         while (true) {
             const entries = await readdir("/proc");
             const records = await Promise.all(
@@ -112,7 +114,24 @@ export async function terminateOwnedLinuxDescendants(includeOwnSession: boolean)
                     (includeOwnSession || record.session !== owner.session) &&
                     descendantChain(record, processes) !== undefined,
             );
-            if (!descendants.length) return true;
+            // A listing and its stat reads are not atomic. A parent can fork
+            // and exit between them, hiding both the new child and its ancestry.
+            // Require two complete, matching inventories before confirming an
+            // empty tree. Permission-hidden processes are outside this inventory.
+            // Include visible zombies and non-descendants: either can be a
+            // missing link in a changing ancestry. Churn means uncertainty.
+            const inventory =
+                processes.get(pid)?.start === owner.start && records.every((record) => record !== undefined)
+                    ? [...processes.values()]
+                          .map(
+                              (record) =>
+                                  `${record.pid}:${record.start}:${record.parent}:${record.session}:${!["Z", "X", "x"].includes(record.state)}`,
+                          )
+                          .sort()
+                          .join("/")
+                    : undefined;
+            if (!descendants.length && inventory !== undefined && inventory === emptyInventory) return true;
+            emptyInventory = descendants.length ? undefined : inventory;
             if (Date.now() >= forcedUntil) return false;
             for (const child of descendants) {
                 const identity = `${child.pid}:${child.start}`;
@@ -121,7 +140,7 @@ export async function terminateOwnedLinuxDescendants(includeOwnSession: boolean)
                 // Re-read the whole ancestry immediately before signalling. A reused pid
                 // or a changed parent chain is reconsidered only on the next scan.
                 const fresh = new Map<number, LinuxProcess>();
-                let current: LinuxProcess | undefined = await readLinuxProcess(child.pid);
+                let current: LinuxProcess | null | undefined = await readLinuxProcess(child.pid);
                 while (current && !fresh.has(current.pid)) {
                     fresh.set(current.pid, current);
                     if (current.pid === pid) break;
