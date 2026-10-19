@@ -69,6 +69,8 @@ import {
     ownerProjectPlanProgressApi,
     ownerSidebarApi,
     ownerUsageApi,
+    ownerUsageSettingsApi,
+    ownerUsageSettingsMutationApi,
     ownerWorkspaceSearchApi,
     ownerWorkspaceSearchRefreshApi,
     pairingClaimApi,
@@ -316,6 +318,7 @@ export function createOwnerWorkspaceApp(options) {
     app.get("/pair", renderRequiredOwnerAstroPage);
     app.get("/devices", renderRequiredOwnerAstroPage);
     app.get("/usage", renderRequiredOwnerAstroPage);
+    app.get("/usage/settings", renderRequiredOwnerAstroPage);
     app.get("/search", renderRequiredOwnerAstroPage);
     app.get("/projects", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/plans", renderRequiredOwnerAstroPage);
@@ -339,6 +342,9 @@ export function createOwnerWorkspaceApp(options) {
     app.get("/api/owner/projects", projectsApi);
     app.get("/api/owner/dashboard", ownerDashboardApi);
     app.get("/api/owner/usage", ownerUsageApi);
+    app.get("/api/owner/usage/settings", ownerUsageSettingsApi);
+    app.post("/api/owner/usage/settings/:action", ownerUsageSettingsMutationApi);
+    app.post("/api/owner/usage/clear", ownerUsageSettingsMutationApi);
     app.get("/api/owner/dashboard/stream", ownerDashboardStreamApi);
     app.get("/api/owner/sidebar", ownerSidebarApi);
     app.get("/api/owner/search", ownerWorkspaceSearchApi);

@@ -347,3 +347,30 @@ test("shared history links resolve targets in a second authorized worktree", asy
         }
     });
 });
+
+test("owner usage explains a pending history clear and reads again after recovery", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+        const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
+        const project = store.registerProject({ root: projectRoot, displayName: "A" });
+        const root = store.requireEnabledProjectRoot(project.projectId);
+        await journal(root, [usage()]);
+        const marker = join(dirname(getWorkflowMetricsFilePath(root)), "clear.json");
+        await fsWriteFile(marker, "{}");
+        const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
+        try {
+            const headers = pairedHeaders(store);
+            const response = await app.handler()(new Request(reportUrl(), { headers }));
+            assertEquals(response.status, 400);
+            const error = await response.json();
+            assertStringIncludes(error.error, "Usage history is being cleared. Try loading the report again.");
+            assertEquals(JSON.stringify(error).includes("history_clear_pending"), false);
+            await fsRm(marker);
+            const recovered = await app.handler()(new Request(reportUrl(), { headers }));
+            assertEquals(recovered.status, 200);
+            assertEquals((await recovered.json()).totals.tokens.value, 19);
+        } finally {
+            await app.close();
+            store.close();
+        }
+    });
+});

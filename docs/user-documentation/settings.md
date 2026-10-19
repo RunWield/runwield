@@ -664,8 +664,41 @@ Recording failures do not stop your work. Measurements can be skipped if storage
 writing, or history recovery is in progress. Skipped measurements are not retried. RunWield repairs incomplete writes
 and marks damaged records as measurement gaps, so saved history can still be incomplete.
 
-Metrics are not uploaded. Dashboards, usage reports, and export to services such as Langfuse are not available in this
-release.
+Open **Usage → Report** in Workspace for local usage and outcome summaries. **Usage → Settings** shows effective
+recording state and has the global recording toggle. Project settings override that toggle; the browser never edits a
+Project's settings file. Turning recording off keeps older measurements visible.
+
+#### Export settings and history removal
+
+In **Usage → Settings**, install and approve a metrics exporter on the host with `wld install <source>`, then choose
+**Add destination**. Enter the endpoint and external project, and select the Projects to export. Recording and executable
+code approval alone do not authorize export. A new Project stays unselected until you approve it for that destination.
+HTTP is allowed only for loopback development endpoints with **Local development endpoint** selected.
+
+Each destination has **Approved Projects**, **Credentials**, **Delivery status**, and **Destination** tabs. Search in a
+long Project checklist filters rows without clearing approvals outside the results. Disabling or removing a Project in
+Workspace changes browser access only. Its export approval remains; unavailable approved Projects appear as a count.
+
+Enter all declared credential fields to replace credentials. Secret fields are masked. Saved values never return to the
+browser, and successful saves clear the inputs. Core stores credentials in `~/.wld/metrics-export/credentials.json`
+with mode `0600`, not in `settings.json`. An exporter with no declared fields needs no credentials.
+
+**Delivery status** shows Core's snapshot: pending, accepted, confirmed, delivery unconfirmed, rejected, latest codes,
+and last attempt. Use **Refresh** for a new snapshot. Delivery unconfirmed means the destination may or may not have the
+item; RunWield does not resend it. Correcting credentials can resume items rejected for credential correction. These
+export states do not create a workflow failure.
+
+**Destination** lets you change the endpoint or external project, or revoke export. Confirmation explains that a change
+starts a new export boundary: old pending items do not send. Revoke stops new sends; a request already sent cannot be
+recalled. Enabling export again starts a new boundary.
+
+**Clear history** removes measurement history and pending export payloads for the Projects you select. It does not remove
+Sessions, Plans, worktrees, settings, or data already exported. Confirm the action after reading its limits. The result
+reports each Project's outcome and whether a request was already in flight. Export configuration is unavailable when
+personal resources are remote-backed on this host.
+
+See [Workspace usage and export](workspace.md#usage-and-export) and the
+[Langfuse exporter setup](../../packages/langfuse-exporter/README.md#install-and-authorize).
 
 #### Reliability
 
@@ -1048,7 +1081,12 @@ next to `pi` if present:
     "name": "example-metrics-exporter",
     "version": "1.0.0",
     "wld": {
-        "metricsExporter": { "contract": 1, "id": "example", "entry": "./dist/exporter.js" }
+        "metricsExporter": {
+            "contract": 1,
+            "id": "example",
+            "entry": "./dist/exporter.js",
+            "credentials": [{ "key": "apiKey", "label": "API key", "secret": true }]
+        }
     }
 }
 ```
@@ -1057,10 +1095,16 @@ next to `pi` if present:
 package after symlinks are resolved. It cannot also be a Pi extension resource, including an auto-discovered file in
 `extensions/`. A package can declare both kinds with separate files.
 
+The optional `credentials` array declares the Workspace form fields. It has at most eight entries. Each entry needs a
+unique `key` matching `^[A-Za-z][A-Za-z0-9_]{0,63}$`, a non-empty `label` of at most 64 characters, and a boolean
+`secret`. Malformed fields invalidate the exporter declaration. Without fields, Workspace shows no credential form.
+The Langfuse package declares `publicKey` and secret `secretKey`. Field changes alone do not change code approval.
+Credential submissions accept only declared keys and string values up to 4096 characters, without CR or LF.
+
 `wld install <source>` asks a separate, default-no exporter approval question. Only `y` or `yes` grants approval.
 Approving extensions does not approve the exporter, and approving the exporter does not enable extensions. Exporter code
-is not loaded during Session startup. Core can list installed exporters and resolve approved entry files; export
-delivery remains target behavior.
+is not loaded during Session startup. Core resolves approved entries for delivery only after the owner configures a
+destination and Project consent in Workspace Usage settings.
 
 Approvals are host-global. `metricsExporterApprovals` is saved only in global settings and binds approval to the
 exporter ID, configured user-scope source, real installed path, and package version. Each record also contains an ISO

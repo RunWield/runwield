@@ -1285,6 +1285,11 @@ ID, and a relative entry that stays inside the real installed package path. The 
 resource. Core lists only user-scope installed exporters and their approval state; it resolves approved entries without
 importing code. Session startup never loads an exporter entry through the Pi extension path.
 
+The declaration can include up to eight credential fields. Each has a unique key matching
+`^[A-Za-z][A-Za-z0-9_]{0,63}$`, a non-empty label of at most 64 characters, and a boolean `secret` value. Malformed fields
+invalidate the declaration. Core exposes the field shape for Workspace forms without executing exporter code. Field
+changes do not change approval identity.
+
 `wld install` asks a separate default-no exporter approval question for any new or existing unapproved exporter. Only
 `y` or `yes` saves approval. Core confirms the saved record before reporting approval. Host-global approval binds the
 exporter ID, configured user source, real installed path, and package version; Project settings cannot grant it or
@@ -1303,6 +1308,8 @@ control npm lifecycle scripts. Core delivery requires a separate [Export grant](
 - Given a change to ID, source, real installed path, or version, Core reports the exporter unapproved without a settings
   write. Reinstalling asks again. Local file edits without a version change keep approval.
 - Given removal, the source's approvals are deleted, other approvals remain, and a later reinstall asks again.
+- Given valid credential fields, discovery exposes them. Malformed, duplicate, or oversized fields invalidate the
+  declaration. Changing only valid credential fields preserves saved code approval.
 
 Package update trust policy and reconciliation of historical code-extension consent remain deferred. Existing
 unrestricted or filtered code-extension registrations are preserved, not relabeled as historical consent.
@@ -1755,11 +1762,12 @@ hold delivery evidence. Scenarios guide verification; test coverage is establish
 linked execution, usage, command, and workflow-outcome records. The journal writer implements bounded cross-process
 locking, sync, epoch control, and repair. Core reporting, history deletion, exporter approval, and export coordination
 are current. A first-party [Langfuse exporter package](../../packages/langfuse-exporter/README.md) implements the
-Langfuse Cloud v4 protocol. The personal Workspace usage report is current; browser export controls remain target
-behavior.
+Langfuse Cloud v4 protocol. The personal Workspace usage report and
+[usage settings](runwield-workspace-prd.md#personal-usage-and-outcomes) are current.
 
 Installed exporter discovery and [saved host approval](#metrics-exporter-approval) are separate from destination
-consent. Core functions manage Export grants; this capability has no command-line setup flow.
+consent. Workspace usage settings manage Export grants and write-only credentials through Core functions. Executable
+code approval remains host-only through `wld install`; there is no command-line destination setup flow.
 
 **Requirement: Record structured workflow observations locally, with opt-in and no sensitive content.** With
 `workflowMetrics` enabled, RunWield records ordered tool usage, token usage, cost, context snapshots, compaction,
@@ -1904,7 +1912,8 @@ Clear shares the writer lock, commits a fresh History epoch, and resets journal 
 durable clear intent prevents crash recovery from exposing old rows. Delayed observations captured in an older epoch are
 rejected across processes. Restart, cache rebuild, and legacy readers cannot restore deleted history. New activity
 records normally after clear. Export reads pending payloads only from the journal. Clear preserves content-free delivery
-fences and reports an already authorized delivery that cannot be recalled.
+fences and reports an already authorized delivery that cannot be recalled. Reporting marks a pending clear explicitly
+in Project coverage while hiding old rows, so Workspace can offer a readable retry rather than treat it as settled data.
 
 **Acceptance scenarios:**
 
