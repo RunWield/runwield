@@ -1,5 +1,5 @@
 [
-    "scripts/assert-plan-server-image.test.js",
+    "scripts/assert-plan-server-image.test.ts",
     "scripts/assert-workspace-review-runtime.test.js",
     "scripts/build-metadata.test.js",
     "scripts/build-plan-server-runtime.test.js",
