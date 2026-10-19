@@ -68,6 +68,56 @@ test("TUI artifact shortcut opens the shared-reader picker without changing the 
     });
 });
 
+for (const kind of ["select", "text"] as const) {
+    test(`chat view restores cancellation focus after an overlapping ${kind} prompt`, async () => {
+        await withSessionViewFixture(async ({ runtime, sessionId }) => {
+            const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+            const tui = new TuiAltScreen(terminal);
+            const view = await createChatView({
+                documentLinks: null,
+                tui,
+                suppressStartupHeader: true,
+                getSessionId: () => sessionId,
+                sessionRuntime: runtime,
+                setActiveModel: () => Promise.resolve({ status: "active" }),
+            });
+            let finishReview = () => {};
+            const review = view.uiAPI.withHiddenInput!(
+                () =>
+                    new Promise<void>((resolve) => {
+                        finishReview = resolve;
+                    }),
+            );
+            try {
+                tui.start();
+                view.editor.setText("Keep this draft");
+                const cancellationFocus = tui.getFocusedComponent();
+                assert(cancellationFocus);
+                const prompt =
+                    kind === "select"
+                        ? view.uiAPI.promptSelect("Retry review?", [{ value: "retry", label: "Retry" }])
+                        : view.uiAPI.promptText("Review feedback");
+                terminal.typeText(kind === "select" ? "Retry" : "Feedback");
+                terminal.pressEnter();
+                assertEquals(await prompt, kind === "select" ? "retry" : "Feedback");
+                assertEquals(tui.getFocusedComponent() === cancellationFocus, true);
+                terminal.typeText("hidden typing");
+                await terminal.flush();
+                assertEquals(view.editor.getText(), "Keep this draft");
+                finishReview();
+                await review;
+                assertEquals(tui.getFocusedComponent() === view.editor, true);
+            } finally {
+                view.uiAPI.abortActivePrompt();
+                finishReview();
+                await review;
+                view.dispose();
+                tui.stop();
+            }
+        });
+    });
+}
+
 test("chat view reconstructs delayed mouse-wheel input without changing a draft or cancelling work", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });

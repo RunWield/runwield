@@ -11,10 +11,16 @@ import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
+import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
+import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
+import { getStoredPlanPath, savePlan } from "../../plan-store.js";
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
+
 interface OverridesHarness {
     container: Container;
     editor: Editor;
     messageList: Container;
+    validationPanel: Container;
     terminal: VirtualTerminal;
     tui: TUI;
     uiAPI: import("./types.js").UiAPI;
@@ -43,12 +49,21 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
     const container = new Container();
     const messageList = new Container();
     const activeInteraction = new Container();
+    const validationPanel = new Container();
     const editor = new Editor(tui, getEditorTheme());
     container.addChild(messageList);
     container.addChild(activeInteraction);
     container.addChild(editor);
     tui.addChild(container);
-    const uiAPI = createUiApi(null, tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteraction);
+    const uiAPI = createUiApi(
+        null,
+        tui,
+        messageList,
+        new SpinnerBlock(),
+        undefined,
+        validationPanel,
+        activeInteraction,
+    );
     installUiApiOverrides({
         uiAPI,
         tui,
@@ -57,7 +72,7 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
         getProjectRoot: () => projectRoot,
         setActiveModel: () => {},
     });
-    return { container, editor, messageList, terminal, tui, uiAPI };
+    return { container, editor, messageList, validationPanel, terminal, tui, uiAPI };
 }
 
 test("installUiApiOverrides disables and enables real editor submission", () => {
@@ -95,6 +110,127 @@ test("installUiApiOverrides blocks the editor for real prompts and restores its 
         harness.tui.stop();
     }
 });
+
+test("hidden input ignores typing and restores editor focus after the operation", async () => {
+    const harness = makeHarness();
+    try {
+        harness.editor.setText("Keep this draft");
+        harness.tui.start();
+        await harness.uiAPI.withHiddenInput!(async () => {
+            assertEquals(harness.container.children.includes(harness.editor), false);
+            harness.terminal.typeText("hidden typing");
+            harness.terminal.pressEnter();
+            await harness.terminal.flush();
+            assertEquals(harness.editor.getText(), "Keep this draft");
+        });
+        harness.terminal.typeText(" restored");
+        await harness.terminal.flush();
+        assertEquals(harness.editor.getText(), "Keep this draft restored");
+    } finally {
+        harness.tui.stop();
+    }
+});
+
+test("a closing review keeps input hidden while a follow-up prompt is active", async () => {
+    const harness = makeHarness();
+    let finishReview = () => {};
+    try {
+        harness.editor.setText("Keep this draft");
+        harness.tui.start();
+        const review = harness.uiAPI.withHiddenInput!(
+            () =>
+                new Promise<void>((resolve) => {
+                    finishReview = resolve;
+                }),
+        );
+        const prompt = harness.uiAPI.promptSelect("Retry review?", [{ value: "retry", label: "Retry" }]);
+        finishReview();
+        await review;
+        assertEquals(harness.container.children.includes(harness.editor), false);
+        harness.terminal.typeText("Retry");
+        harness.terminal.pressEnter();
+        assertEquals(await prompt, "retry");
+        assertEquals(harness.container.children.includes(harness.editor), true);
+        assertEquals(harness.editor.getText(), "Keep this draft");
+    } finally {
+        finishReview();
+        harness.uiAPI.abortActivePrompt();
+        harness.tui.stop();
+    }
+});
+
+for (const type of ["plan_review", "code_review"] as const) {
+    for (const approved of [true, false]) {
+        test(`${type} hides the input and restores the draft after ${approved ? "approval" : "cancellation"}`, async () => {
+            await withRuntimeCommandFixture("hidden-review-input-", async ({ projectRoot }) => {
+                const harness = makeHarness(projectRoot);
+                const controller = new AbortController();
+                const scripted = createScriptedReviewBrowser("decision", { approved: true, approvalAction: "later" });
+                const adapter = createTuiInteractionAdapter(harness.uiAPI, {
+                    browser: approved ? scripted.browser : NO_OPEN_BROWSER_PORT,
+                });
+                const originalChildren = [...harness.container.children];
+                let surfaceReady = false;
+                try {
+                    await savePlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
+                        classification: "PLANNED_CHANGE",
+                        status: "draft",
+                    });
+                    harness.editor.setText("Keep this draft");
+                    harness.uiAPI.updateValidationProgress?.({
+                        kind: "workflow",
+                        outcome: "running",
+                        stage: "human_review",
+                        checks: { ci: "passed", semanticReview: "passed", humanReview: "pending", merge: "pending" },
+                    });
+                    harness.uiAPI.updateValidationReport?.("engineer", {
+                        agentName: "Engineer",
+                        markdown: "Completed implementation",
+                    });
+                    assertStringIncludes(harness.validationPanel.render(120).join("\n"), "Completed implementation");
+                    const response = await adapter.requestInteraction(
+                        {
+                            type,
+                            prompt: "Review",
+                            _meta: {
+                                cwd: projectRoot,
+                                executionCwd: projectRoot,
+                                planName: "feature",
+                                planPath: getStoredPlanPath(projectRoot, "feature"),
+                                diffText: "diff --git a/a b/a\n",
+                                onSurfaceReady: () => {
+                                    surfaceReady = true;
+                                    assertEquals(harness.container.children.includes(harness.editor), false);
+                                    assertEquals(harness.editor.disableSubmit, true);
+                                    assertEquals(harness.validationPanel.children.length === 0, type === "code_review");
+                                    harness.uiAPI.updateValidationReport?.("reviewer", {
+                                        agentName: "Reviewer",
+                                        markdown: "Review results retained",
+                                        approved: true,
+                                    });
+                                    assertEquals(harness.validationPanel.children.length === 0, type === "code_review");
+                                    if (!approved) controller.abort();
+                                },
+                            },
+                        },
+                        controller.signal,
+                    );
+                    assertEquals(surfaceReady, true);
+                    assertEquals(response.outcome, approved ? "accepted" : "canceled");
+                    assertEquals(harness.container.children, originalChildren);
+                    assertEquals(harness.editor.disableSubmit, false);
+                    assertEquals(harness.editor.getText(), "Keep this draft");
+                    const restoredPanel = harness.validationPanel.render(120).join("\n");
+                    assertStringIncludes(restoredPanel, "Completed implementation");
+                    assertStringIncludes(restoredPanel, "Review results retained");
+                } finally {
+                    controller.abort();
+                    harness.tui.stop();
+                }
+            });
+        });
+    }
+}
 
 test("feedback prompt edits one row below a transcript taller than the terminal", async () => {
     const harness = makeHarness();
@@ -155,7 +291,10 @@ test("installUiApiOverrides closes a visible tool group before appending an imag
         const groups = harness.messageList.children.filter((child) => child instanceof ToolExecutionGroupBlock);
         assertEquals(groups.length, 2);
         assertInstanceOf(harness.messageList.children[2], Image);
-        assertEquals(groups.map((group) => group.children.length), [1, 1]);
+        assertEquals(
+            groups.map((group) => group.children.length),
+            [1, 1],
+        );
     } finally {
         harness.tui.stop();
     }
@@ -189,10 +328,12 @@ test("installUiApiOverrides selects a configured fixture model through the real 
             selector.handleInput("\r");
             await selectionPromise;
 
-            assertEquals(selectedModels, [{
-                model: "fixture-model",
-                provider: "runtime-command-fixture",
-            }]);
+            assertEquals(selectedModels, [
+                {
+                    model: "fixture-model",
+                    provider: "runtime-command-fixture",
+                },
+            ]);
             assertEquals(getSettingsManager(projectRoot).getDefaultModel(), "fixture-model");
             assertEquals(getSettingsManager(projectRoot).getDefaultProvider(), "runtime-command-fixture");
             assertEquals(harness.container.children.includes(harness.editor), true);
