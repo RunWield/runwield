@@ -11,15 +11,22 @@ import {
 } from "./router-eval-utils.js";
 
 test("CSV utilities round-trip quoted cells", () => {
-    const csv = toCsv(["decisionId", "requestText"], [{
-        decisionId: "d1",
-        requestText: 'hello, "Router"\nplease',
-    }]);
+    const csv = toCsv(
+        ["decisionId", "requestText"],
+        [
+            {
+                decisionId: "d1",
+                requestText: 'hello, "Router"\nplease',
+            },
+        ],
+    );
 
-    assertEquals(parseCsv(csv), [{
-        decisionId: "d1",
-        requestText: 'hello, "Router" please',
-    }]);
+    assertEquals(parseCsv(csv), [
+        {
+            decisionId: "d1",
+            requestText: 'hello, "Router" please',
+        },
+    ]);
 });
 
 test("routingIntentDistance follows routing-intent workflow order", () => {
@@ -48,12 +55,15 @@ test("classifyRoutingIntentDisagreement names common router-eval cases", () => {
 });
 
 test("scoreAgainstHuman reports agreement and correction counts", () => {
-    const score = scoreAgainstHuman([
-        { humanJudgement: "PLANNED_CHANGE", routerDecision: "QUICK_FIX" },
-        { humanJudgement: "INQUIRY", routerDecision: "INQUIRY" },
-        { humanJudgement: "", routerDecision: "PROJECT" },
-        { humanJudgement: "IDEATION", routerDecision: "" },
-    ], "routerDecision");
+    const score = scoreAgainstHuman(
+        [
+            { humanJudgement: "PLANNED_CHANGE", routerDecision: "QUICK_FIX" },
+            { humanJudgement: "INQUIRY", routerDecision: "INQUIRY" },
+            { humanJudgement: "", routerDecision: "PROJECT" },
+            { humanJudgement: "IDEATION", routerDecision: "" },
+        ],
+        "routerDecision",
+    );
 
     assertEquals(score, {
         total: 2,
