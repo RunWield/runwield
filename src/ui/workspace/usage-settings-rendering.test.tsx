@@ -8,12 +8,7 @@ import { build, stop } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import {
-    UsageSettings,
-    CLEAR_HISTORY_STATEMENT,
-    REVOKE_STATEMENT,
-    CHANGE_DESTINATION_STATEMENT,
-} from "./react/UsageSettings.tsx";
+import { UsageSettings } from "./react/UsageSettings.tsx";
 import type { UsageSettingsView } from "./server/owner-usage-settings.ts";
 
 function view(): UsageSettingsView {
@@ -110,6 +105,8 @@ async function withSettings(fixture: UsageSettingsView, check: (container: HTMLD
         "NodeFilter",
         "CustomEvent",
         "Event",
+        "MouseEvent",
+        "KeyboardEvent",
         "getComputedStyle",
         "requestAnimationFrame",
         "cancelAnimationFrame",
@@ -132,11 +129,13 @@ async function withSettings(fixture: UsageSettingsView, check: (container: HTMLD
             NodeFilter: browser.NodeFilter,
             CustomEvent: browser.CustomEvent,
             Event: browser.Event,
+            MouseEvent: browser.MouseEvent,
+            KeyboardEvent: browser.KeyboardEvent,
             getComputedStyle: browser.getComputedStyle.bind(browser),
             requestAnimationFrame: browser.requestAnimationFrame.bind(browser),
             cancelAnimationFrame: browser.cancelAnimationFrame.bind(browser),
             FormData: browser.FormData,
-            fetch: async () => Response.json(fixture),
+            fetch: () => Promise.resolve(Response.json(fixture)),
             IS_REACT_ACT_ENVIRONMENT: true,
         };
         for (const [name, value] of Object.entries(globals))
@@ -168,7 +167,7 @@ async function withSettings(fixture: UsageSettingsView, check: (container: HTMLD
             bundle.outputFiles[0].text,
         );
         root = createRoot(container);
-        await act(async () => {
+        await act(() => {
             root!.render(createElement(component.UsageSettings));
         });
         await check(container);
@@ -191,7 +190,7 @@ async function selectTab(container: ParentNode, label: string) {
         (element) => element.textContent === label,
     );
     assert(control, `Missing tab: ${label}`);
-    await act(() => control.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+    await act(() => control.dispatchEvent(new globalThis.MouseEvent("mousedown", { bubbles: true, button: 0 })));
 }
 
 test("settings credentials clear after save and each destructive dialog states its consequences", async () => {
@@ -207,15 +206,21 @@ test("settings credentials clear after save and each destructive dialog states i
         secret.value = "sk-SECRET-rendering";
         const form = secret.closest("form");
         assert(form);
-        await act(async () => {
+        await act(() => {
             form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
         });
         assertEquals(secret.value, "");
         assertEquals(document.documentElement.outerHTML.includes("sk-SECRET-rendering"), false);
         await selectTab(container, "Destination");
         for (const [trigger, statement] of [
-            ["Clear history", CLEAR_HISTORY_STATEMENT],
-            ["Revoke destination", REVOKE_STATEMENT],
+            [
+                "Clear history",
+                "Removes measurement history and pending export payloads for the chosen Projects. Sessions, Plans, worktrees, and settings stay. Data already exported to the destination is not erased. A request already sent cannot be recalled.",
+            ],
+            [
+                "Revoke destination",
+                "Stops new sends now. A request already sent cannot be recalled. Enabling export again starts a new boundary; pending items are not sent.",
+            ],
         ]) {
             await act(() => button(trigger).click());
             assertStringIncludes(document.querySelector('[role="dialog"]')?.textContent || "", statement);
@@ -226,9 +231,34 @@ test("settings credentials clear after save and each destructive dialog states i
         await act(() => button("Review destination change").click());
         assertStringIncludes(
             document.querySelector('[role="dialog"]')?.textContent || "",
-            CHANGE_DESTINATION_STATEMENT,
+            "Starts a new export boundary. Items still pending under the old settings are not sent.",
         );
         await act(() => button("Cancel").click());
+    });
+});
+
+test("saving a destination change returns focus to its review trigger", async () => {
+    await withSettings(view(), async (container) => {
+        function button(label: string) {
+            const control = [...document.querySelectorAll("button")].find((element) => element.textContent === label);
+            assert(control, `Missing button: ${label}`);
+            return control;
+        }
+        await selectTab(container, "Destination");
+        await act(() => button("Edit endpoint or external project").click());
+        const trigger = button("Review destination change");
+        await act(() => {
+            trigger.focus();
+            trigger.click();
+        });
+        assert(document.querySelector('[role="dialog"]'));
+        await act(() => button("Change destination").click());
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        });
+        assertEquals(document.querySelector('[role="dialog"]'), null);
+        assert(trigger.isConnected, "The focus-return trigger must stay mounted after saving");
+        assertEquals(document.activeElement, trigger);
     });
 });
 
@@ -287,11 +317,11 @@ test("Project search keeps approvals outside the visible results and saves the f
         assert(search);
         await act(() => search.focus());
         await act(() => {
-            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+            const setter = Object.getOwnPropertyDescriptor(globalThis.HTMLInputElement.prototype, "value")?.set;
             assert(setter);
             setter.call(search, "Service 79");
             search.dispatchEvent(new Event("input", { bubbles: true }));
-            search.dispatchEvent(new window.KeyboardEvent("keyup", { bubbles: true, key: "9" }));
+            search.dispatchEvent(new globalThis.KeyboardEvent("keyup", { bubbles: true, key: "9" }));
         });
         const options = card.querySelector(".rw-usage-project-options");
         assertEquals(options?.querySelectorAll('input[type="checkbox"]').length, 1);
@@ -299,11 +329,11 @@ test("Project search keeps approvals outside the visible results and saves the f
         assert(checkbox);
         await act(() => checkbox.click());
         let savedIds: string[] = [];
-        globalThis.fetch = async (_input, init) => {
+        globalThis.fetch = (_input, init) => {
             assert(typeof init?.body === "string");
             const request: { projectIds: string[] } = JSON.parse(init.body);
             savedIds = request.projectIds;
-            return Response.json(fixture);
+            return Promise.resolve(Response.json(fixture));
         };
         const form = search.closest("form");
         assert(form);

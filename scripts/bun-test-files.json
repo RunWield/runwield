@@ -179,6 +179,7 @@
     "src/shared/front-matter.test.ts",
     "src/shared/git-evidence-cache.test.ts",
     "src/shared/git-port.test.ts",
+    "src/shared/git-test-fixture.test.ts",
     "src/shared/git.test.js",
     "src/shared/http-server.test.ts",
     "src/shared/image-generation/codex-executable.test.ts",

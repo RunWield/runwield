@@ -94,25 +94,21 @@ interface CredentialInputsProps {
     prefix: string;
 }
 function CredentialInputs({ fields, prefix }: CredentialInputsProps) {
-    return (
-        <>
-            {!fields.length ? (
-                <p>This exporter needs no credentials</p>
-            ) : (
-                fields.map((field) => (
-                    <label key={field.key}>
-                        {field.label}
-                        <input
-                            name={`credential:${field.key}`}
-                            type={field.secret ? "password" : "text"}
-                            autoComplete="new-password"
-                            maxLength={4096}
-                            id={`${prefix}-${field.key}`}
-                        />
-                    </label>
-                ))
-            )}
-        </>
+    return !fields.length ? (
+        <p>This exporter needs no credentials</p>
+    ) : (
+        fields.map((field) => (
+            <label key={field.key}>
+                {field.label}
+                <input
+                    name={`credential:${field.key}`}
+                    type={field.secret ? "password" : "text"}
+                    autoComplete="new-password"
+                    maxLength={4096}
+                    id={`${prefix}-${field.key}`}
+                />
+            </label>
+        ))
     );
 }
 function credentialsFromForm(form: HTMLFormElement, fields: MetricsExporterCredentialField[]) {
@@ -243,155 +239,147 @@ function DestinationPanel({ destination, projects, mutate, busy, error }: Destin
                         value: "projects",
                         label: "Approved Projects",
                         children: (
-                            <>
-                                <form
-                                    onSubmit={async (event) => {
-                                        event.preventDefault();
-                                        await mutate("projects", {
-                                            destinationId: destination.destinationId,
-                                            projectIds,
-                                        });
-                                    }}
-                                >
-                                    <fieldset disabled={busy}>
-                                        <ProjectChecklist
-                                            projects={projects}
-                                            selected={projectIds}
-                                            onChange={setProjectIds}
-                                            exportLabels
-                                        />
-                                        {destination.unavailableProjectCount > 0 && (
-                                            <p>
-                                                {destination.unavailableProjectCount} approved Projects are not
-                                                available in Workspace.
-                                            </p>
-                                        )}
+                            <form
+                                onSubmit={async (event) => {
+                                    event.preventDefault();
+                                    await mutate("projects", {
+                                        destinationId: destination.destinationId,
+                                        projectIds,
+                                    });
+                                }}
+                            >
+                                <fieldset disabled={busy}>
+                                    <ProjectChecklist
+                                        projects={projects}
+                                        selected={projectIds}
+                                        onChange={setProjectIds}
+                                        exportLabels
+                                    />
+                                    {destination.unavailableProjectCount > 0 && (
                                         <p>
-                                            {PROJECT_REMOVAL_EXPLANATION}. Unchecking a Project here stops its export.
+                                            {destination.unavailableProjectCount} approved Projects are not available in
+                                            Workspace.
                                         </p>
-                                        <RunWieldButton type="submit">Save approved Projects</RunWieldButton>
-                                    </fieldset>
-                                </form>
-                            </>
+                                    )}
+                                    <p>{PROJECT_REMOVAL_EXPLANATION}. Unchecking a Project here stops its export.</p>
+                                    <RunWieldButton type="submit">Save approved Projects</RunWieldButton>
+                                </fieldset>
+                            </form>
                         ),
                     },
                     {
                         value: "credentials",
                         label: "Credentials",
                         children: (
-                            <>
-                                <section aria-label="Credentials">
-                                    <h4>Credentials</h4>
-                                    <p>{destination.credentials.configured ? "Configured" : "Not configured"}</p>
-                                    {!destination.credentialFields.length ? (
-                                        <p>This exporter needs no credentials</p>
-                                    ) : (
-                                        <form
-                                            className="owner-form"
-                                            onSubmit={async (event) => {
-                                                event.preventDefault();
-                                                const form = event.currentTarget;
-                                                if (
-                                                    await mutate("credentials", {
-                                                        destinationId: destination.destinationId,
-                                                        credentials: credentialsFromForm(
-                                                            form,
-                                                            destination.credentialFields,
-                                                        ),
-                                                    })
-                                                )
-                                                    form.reset();
-                                            }}
-                                        >
-                                            <fieldset disabled={busy}>
-                                                <CredentialInputs
-                                                    fields={destination.credentialFields}
-                                                    prefix={destination.destinationId}
-                                                />
-                                                <p>
-                                                    Saved credentials are never shown. Enter all credential fields to
-                                                    replace them.
-                                                </p>
-                                                <div className="workspace-settings-actions">
-                                                    <RunWieldButton type="submit">Save credentials</RunWieldButton>
-                                                    {destination.credentials.configured && (
-                                                        <RunWieldButton
-                                                            onClick={() =>
-                                                                void mutate("credentials", {
-                                                                    destinationId: destination.destinationId,
-                                                                    clearCredentials: true,
-                                                                })
-                                                            }
-                                                        >
-                                                            Remove credentials
-                                                        </RunWieldButton>
-                                                    )}
-                                                </div>
-                                            </fieldset>
-                                        </form>
-                                    )}
-                                </section>
-                            </>
+                            <section aria-label="Credentials">
+                                <h4>Credentials</h4>
+                                <p>{destination.credentials.configured ? "Configured" : "Not configured"}</p>
+                                {!destination.credentialFields.length ? (
+                                    <p>This exporter needs no credentials</p>
+                                ) : (
+                                    <form
+                                        className="owner-form"
+                                        onSubmit={async (event) => {
+                                            event.preventDefault();
+                                            const form = event.currentTarget;
+                                            if (
+                                                await mutate("credentials", {
+                                                    destinationId: destination.destinationId,
+                                                    credentials: credentialsFromForm(
+                                                        form,
+                                                        destination.credentialFields,
+                                                    ),
+                                                })
+                                            )
+                                                form.reset();
+                                        }}
+                                    >
+                                        <fieldset disabled={busy}>
+                                            <CredentialInputs
+                                                fields={destination.credentialFields}
+                                                prefix={destination.destinationId}
+                                            />
+                                            <p>
+                                                Saved credentials are never shown. Enter all credential fields to
+                                                replace them.
+                                            </p>
+                                            <div className="workspace-settings-actions">
+                                                <RunWieldButton type="submit">Save credentials</RunWieldButton>
+                                                {destination.credentials.configured && (
+                                                    <RunWieldButton
+                                                        onClick={() =>
+                                                            void mutate("credentials", {
+                                                                destinationId: destination.destinationId,
+                                                                clearCredentials: true,
+                                                            })
+                                                        }
+                                                    >
+                                                        Remove credentials
+                                                    </RunWieldButton>
+                                                )}
+                                            </div>
+                                        </fieldset>
+                                    </form>
+                                )}
+                            </section>
                         ),
                     },
                     {
                         value: "delivery",
                         label: "Delivery status",
                         children: (
-                            <>
-                                <section aria-label="Delivery status">
-                                    <h4>Delivery status</h4>
-                                    <dl className="rw-usage-delivery-counts">
-                                        <div>
-                                            <dt>Pending</dt>
-                                            <dd>{destination.counts.pending}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Accepted</dt>
-                                            <dd>{destination.counts.accepted}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Confirmed</dt>
-                                            <dd>{destination.counts.confirmed}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Delivery unconfirmed</dt>
-                                            <dd>{destination.counts.unconfirmed}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Rejected</dt>
-                                            <dd>{destination.counts.rejected}</dd>
-                                        </div>
-                                    </dl>
-                                    <p>
-                                        <strong>Delivery unconfirmed</strong> — {UNCONFIRMED_EXPLANATION}
-                                    </p>
-                                    <p>
-                                        <strong>Rejected</strong> — when credentials were the cause, updating the
-                                        credentials lets those items send again.
-                                    </p>
-                                    <p>
-                                        Latest codes:{" "}
-                                        {destination.latestCodes.length
-                                            ? destination.latestCodes
-                                                  .map((code) =>
-                                                      code === "process_lost"
-                                                          ? "process_lost (export process ended)"
-                                                          : code?.includes("deadline")
-                                                            ? `${code} (delivery time limit reached)`
-                                                            : code,
-                                                  )
-                                                  .join(", ")
-                                            : "None"}
-                                    </p>
-                                    <p>
-                                        Last attempt:{" "}
-                                        {destination.lastAttemptAt
-                                            ? new Date(destination.lastAttemptAt).toLocaleString()
-                                            : "No attempts"}
-                                    </p>
-                                </section>
-                            </>
+                            <section aria-label="Delivery status">
+                                <h4>Delivery status</h4>
+                                <dl className="rw-usage-delivery-counts">
+                                    <div>
+                                        <dt>Pending</dt>
+                                        <dd>{destination.counts.pending}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Accepted</dt>
+                                        <dd>{destination.counts.accepted}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Confirmed</dt>
+                                        <dd>{destination.counts.confirmed}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Delivery unconfirmed</dt>
+                                        <dd>{destination.counts.unconfirmed}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Rejected</dt>
+                                        <dd>{destination.counts.rejected}</dd>
+                                    </div>
+                                </dl>
+                                <p>
+                                    <strong>Delivery unconfirmed</strong> — {UNCONFIRMED_EXPLANATION}
+                                </p>
+                                <p>
+                                    <strong>Rejected</strong> — when credentials were the cause, updating the
+                                    credentials lets those items send again.
+                                </p>
+                                <p>
+                                    Latest codes:{" "}
+                                    {destination.latestCodes.length
+                                        ? destination.latestCodes
+                                              .map((code) =>
+                                                  code === "process_lost"
+                                                      ? "process_lost (export process ended)"
+                                                      : code?.includes("deadline")
+                                                        ? `${code} (delivery time limit reached)`
+                                                        : code,
+                                              )
+                                              .join(", ")
+                                        : "None"}
+                                </p>
+                                <p>
+                                    Last attempt:{" "}
+                                    {destination.lastAttemptAt
+                                        ? new Date(destination.lastAttemptAt).toLocaleString()
+                                        : "No attempts"}
+                                </p>
+                            </section>
                         ),
                     },
                     {
@@ -473,7 +461,6 @@ function DestinationPanel({ destination, projects, mutate, busy, error }: Destin
                                                                     })
                                                                 ) {
                                                                     setChangeOpen(false);
-                                                                    setEditing(false);
                                                                 }
                                                             }}
                                                         >

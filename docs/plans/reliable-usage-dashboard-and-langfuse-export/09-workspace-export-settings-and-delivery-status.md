@@ -35,7 +35,7 @@ dependencies:
     - "08-langfuse-exporter-package"
 userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Workspace Export Settings and Delivery Status

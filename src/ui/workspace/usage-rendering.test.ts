@@ -1,3 +1,8 @@
+import { join } from "node:path";
+import { Window } from "happy-dom";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
+import { createOwnerWorkspaceApp } from "./server.js";
 import { test } from "node:test";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -79,13 +84,41 @@ test("usage strip shows recording states and all Core delivery counts with a Set
     assertStringIncludes(mixed, "Recording on for 1 of 2 Projects");
 });
 
-test("Usage views share one header tab layout with active-page semantics", async () => {
-    const layout = await fsReadFile(new URL("./layouts/UsageLayout.astro", import.meta.url), "utf8");
-    assertStringIncludes(layout, 'slot="header-tabs"');
-    assertStringIncludes(layout, "rw-underline-tabs");
-    assertStringIncludes(layout, 'href="/usage"');
-    assertStringIncludes(layout, 'href="/usage/settings"');
-    for (const active of ["report", "settings"]) {
-        assertStringIncludes(layout, `aria-current={active === "${active}" ? "page" : undefined}`);
-    }
+test("Usage routes mark only their own header tab as current", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir }) => {
+        const origin = "http://127.0.0.1:8787";
+        const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
+        const pairing = store.createPairingRequest();
+        store.approvePairingRequest(pairing.code);
+        const device = store.claimPairingRequest(pairing.proof);
+        const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
+        const browser = new Window();
+        try {
+            for (const route of ["/usage", "/usage/settings"]) {
+                const response = await app.handler()(
+                    new Request(`${origin}${route}`, {
+                        headers: { cookie: `rw_owner_device=${encodeURIComponent(device.credential)}` },
+                    }),
+                );
+                assertEquals(response.status, 200);
+                browser.document.body.innerHTML = await response.text();
+                const links = [...browser.document.querySelectorAll('nav[aria-label="Usage views"] a')];
+                assertEquals(
+                    links.map((link) => [link.textContent, link.getAttribute("href")]),
+                    [
+                        ["Report", "/usage"],
+                        ["Settings", "/usage/settings"],
+                    ],
+                );
+                assertEquals(
+                    links.map((link) => link.getAttribute("aria-current")),
+                    route === "/usage" ? ["page", null] : [null, "page"],
+                );
+            }
+        } finally {
+            await browser.happyDOM.close();
+            await app.close();
+            store.close();
+        }
+    });
 });
