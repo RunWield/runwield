@@ -31,6 +31,9 @@ workRecord:
     path: "docs/work-records/2026-10-17-removed-idle-tui-clipboard-polling.md"
     lastAttemptAt: "2026-10-17T20:07:17.860Z"
 status: "verified"
+archivedAt: "2026-10-18T04:45:15.138Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remove-idle-clipboard-polling.md"
 ---
 
 # Remove Idle Clipboard Polling From the TUI

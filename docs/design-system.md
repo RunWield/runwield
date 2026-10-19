@@ -122,6 +122,9 @@ negative margins or extra top padding to simulate a shared row. The navigation b
 scrolls. Embedded workflow content uses its host's tab header and scroll area, with compact square rows and separators,
 not a second heading or nested card stack.
 
+Render the Workspace sidebar opener in the initial header markup, and retain that same button during navigation data
+updates. The collapsed mobile drawer must remain reachable before Project and Session lists finish loading.
+
 ## Component architecture
 
 ### Connection feedback

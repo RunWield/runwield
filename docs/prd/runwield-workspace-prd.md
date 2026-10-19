@@ -384,6 +384,9 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   it was.
 - From a Session or its review, the logo returns to the last Session with the sidebar intact.
 - With many saved Sessions, the sidebar shows its recent names promptly and Show more stays available.
+- In the installed mobile app, Dashboard and Session headers expose the navigation opener on initial render; opening
+  it shows the Workspace menu, logo, and navigation while Project data is still loading. Packaged browser dependencies
+  must work without access to the source checkout.
 - Documentation in the hamburger menu opens `docs.runwield.dev` and leaves the active Session as it is.
 
 ### Installable app and alerts

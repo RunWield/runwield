@@ -26,6 +26,9 @@ workRecord:
     recordId: "0b0ff924-dff9-40d5-a9b4-10a3d258f090"
     path: "docs/work-records/2026-10-11-configurable-image-generation-and-editing-tool.md"
     lastAttemptAt: "2026-10-11T03:18:43.358Z"
+archivedAt: "2026-10-18T04:33:49.034Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/generate-image-tool.md"
 ---
 
 # Create Image Tool

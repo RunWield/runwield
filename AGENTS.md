@@ -1,3 +1,9 @@
+“Vigorous writing is concise. A sentence should contain no unnecessary words, a paragraph no unnecessary sentences, for
+the same reason that a drawing should have no unnecessary lines and a machine no unnecessary parts. This requires not
+that the writer make all his sentences short, or that he avoid all detail and treat his subjects only in outline, but
+that every word tell.” — Strunk, The Elements of Style (1918). The ceilings below exist so that every word tells, not to
+make posts short.
+
 ## Local Type Style
 
 JSDoc: prefer `@typedef` for object shapes over inline annotations or `@type` casts. Define the type once and reference
@@ -8,15 +14,15 @@ type. Do not define complex inline types.
 
 ## Running Tests
 
-Use `bun run test` or `bun scripts/run-tests.js <test paths or runner options>`. Never run `bun test` directly.
-The isolated runner and preload guard give every test file its own process, disposable HOME, temporary directory,
-and `MNEMOTECA_DB_PATH`. `bun run ci` includes the full source and Golden portfolio; `bun run test:bun` runs the
-explicit inventory in `scripts/bun-test-files.json`.
+Use `bun run test` or `bun scripts/run-tests.js <test paths or runner options>`. Never run `bun test` directly. The
+isolated runner and preload guard give every test file its own process, disposable HOME, temporary directory, and
+`MNEMOTECA_DB_PATH`. `bun run ci` includes the full source and Golden portfolio; `bun run test:bun` runs the explicit
+inventory in `scripts/bun-test-files.json`.
 
 Use Bun 1.4.3 and run `bun run install:locked` before checks. It installs the root and docs graphs with separate frozen
 locks and disabled lifecycle scripts. Do not install Deno's dependency graph in this checkout. Legacy release lock
-interoperability belongs to its separate qualification lane.
-The Bun formatting entrypoint is `bun run fmt --write <files>` (pinned Prettier, four-space indentation, 120 columns);
+interoperability belongs to its separate qualification lane. The Bun formatting entrypoint is
+`bun run fmt --write <files>` (pinned Prettier, four-space indentation, 120 columns);
 `bun run fmt:check <files>` checks those files. Pass explicit paths to avoid an unrelated repository-wide style rewrite.
 
 Two rules keep tests safe:

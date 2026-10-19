@@ -23,6 +23,9 @@ workRecord:
     path: "docs/work-records/2026-10-17-recover-planning-worktrees-after-epic-history-rewrites.md"
     lastAttemptAt: "2026-10-17T17:51:39.009Z"
 status: "verified"
+archivedAt: "2026-10-19T02:52:33.109Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/recover-planning-worktree-after-target-rewrite.md"
 ---
 
 # Recover a planning worktree after its Epic branch is rewritten

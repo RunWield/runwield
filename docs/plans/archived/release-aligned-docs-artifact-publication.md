@@ -30,6 +30,9 @@ workRecord:
     path: "docs/work-records/2026-10-16-stable-docs-artifacts-and-safe-release-integration.md"
     lastAttemptAt: "2026-10-16T23:48:52.572Z"
 status: "verified"
+archivedAt: "2026-10-18T04:46:06.961Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/release-aligned-docs-artifact-publication.md"
 ---
 
 # Release Stable Docs as a Release Artifact

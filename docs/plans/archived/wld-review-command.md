@@ -36,6 +36,9 @@ workRecord:
     path: "docs/work-records/2026-10-13-standalone-code-review-with-wld-review.md"
     lastAttemptAt: "2026-10-13T13:21:13.659Z"
 status: "verified"
+archivedAt: "2026-10-18T04:42:19.966Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/wld-review-command.md"
 ---
 
 # Add the `wld review` Command

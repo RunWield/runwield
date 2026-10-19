@@ -473,6 +473,8 @@ siblings active. Listings show held work separately from active and finished wor
 - Given an existing default Epic branch and completed children, but no recorded Epic target, `/load-plan` lists that
   branch's current children and opens its next child, not a stale primary-checkout name.
 - Given an unstarted child, loading, selecting, viewing, or canceling creates no worktree and changes no Git refs.
+- Given completed Slicer decomposition, resuming a draft child in the same Session opens its planning worktree with
+  Planner active. The handoff does not reload or restore the Epic-scoped Slicer as a selectable Agent.
 - Given a target-branch child without a Plan ID, starting its session creates a durable identity and planning worktree.
   Repeated or concurrent session preparation reuses both without changing the primary checkout or publishing to the Epic
   branch.
