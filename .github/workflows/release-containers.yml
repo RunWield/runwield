@@ -166,7 +166,7 @@ jobs:
               run: |
                   docker compose -f compose.yml config --quiet
                   podman build -f Containerfile -t runwield-remote:recovery .
-                  bun scripts/assert-plan-server-image.js runwield-remote:recovery
+                  bun scripts/assert-plan-server-image.ts runwield-remote:recovery
             - name: Check historical startup, assets, persistence and protections
               run: |
                   trap 'podman rm --force runwield-recovery; podman volume rm runwield-recovery-data' EXIT

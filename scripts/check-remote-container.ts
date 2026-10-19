@@ -5,7 +5,7 @@ import { generateBearerCapability, hashCapability } from "../src/shared/collabor
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { captureScriptProcess } from "./script-process.ts";
-import { assertPlanServerImageFileList, listImageFilesystem } from "./assert-plan-server-image.js";
+import { assertPlanServerImageFileList, listImageFilesystem } from "./assert-plan-server-image.ts";
 
 const engine = process.argv[2] || "docker";
 const image = process.argv[3] || "runwield-plan-server:local";

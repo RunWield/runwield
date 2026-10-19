@@ -10,24 +10,22 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { retainTestEvidence } from "./retain-test-evidence.js";
+import { retainTestEvidence } from "./retain-test-evidence.ts";
 
 test("test cleanup retains Golden failure diagnostics but not sandbox HOME or caches", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const sandbox = join(root, "sandbox");
         const destination = join(root, "evidence");
-        for (
-            const path of [
-                "home-slot",
-                "deno-dir",
-                "slot/tmp/unrelated",
-                "slot/tmp/runwield-golden-tui-timeout-123",
-                "slot/tmp/runwield-golden-tui-child-failure-456",
-                "tmp-legacy/runwield-golden-tui-timeout-789",
-                "slot/.cache/runwield-golden-tui-timeout-private",
-            ]
-        ) {
+        for (const path of [
+            "home-slot",
+            "deno-dir",
+            "slot/tmp/unrelated",
+            "slot/tmp/runwield-golden-tui-timeout-123",
+            "slot/tmp/runwield-golden-tui-child-failure-456",
+            "tmp-legacy/runwield-golden-tui-timeout-789",
+            "slot/.cache/runwield-golden-tui-timeout-private",
+        ]) {
             await fsMkdir(join(sandbox, path), { recursive: true });
             await fsWriteFile(join(sandbox, path, "data.json"), path);
         }
@@ -46,8 +44,9 @@ test("test cleanup retains Golden failure diagnostics but not sandbox HOME or ca
             "tmp-legacy/runwield-golden-tui-timeout-789",
         );
         assertEquals(
-            (await Array.fromAsync(await fsReaddir(destination, { withFileTypes: true }), (entry) => entry.name))
-                .sort(),
+            (
+                await Array.fromAsync(await fsReaddir(destination, { withFileTypes: true }), (entry) => entry.name)
+            ).sort(),
             [
                 "runwield-golden-tui-child-failure-456",
                 "runwield-golden-tui-timeout-123",

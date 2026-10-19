@@ -7,7 +7,8 @@ import process from "node:process";
 import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
-import { getLockHostname, isPidAlive } from "../process-liveness.ts";
+import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
+import { getLockHostname } from "../process-liveness.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
 import { createEngineValidationArgs, runValidationLoop, type ValidationLoopArgs } from "./validation.ts";
 import {
@@ -47,19 +48,19 @@ export type ContinueWorkflowValidationArgs = ValidationLoopArgs & {
 
 type ClaimResult =
     | {
-        kind: "claimed";
-        checkpoint: ValidationCheckpoint;
-        planCwd: string;
-        claimedFromState?: ValidationCheckpoint["state"];
-        planContent: string;
-        triageMeta: ValidationLoopArgs["triageMeta"];
-    }
+          kind: "claimed";
+          checkpoint: ValidationCheckpoint;
+          planCwd: string;
+          claimedFromState?: ValidationCheckpoint["state"];
+          planContent: string;
+          triageMeta: ValidationLoopArgs["triageMeta"];
+      }
     | { kind: "active"; projectRoot: string }
     | { kind: "settled_completion"; projectRoot: string };
 
-function checkpointRecord(value: import("../../plan-store.js").PlanFrontMatter["validationCheckpoint"]):
-    | ValidationCheckpoint
-    | undefined {
+function checkpointRecord(
+    value: import("../../plan-store.js").PlanFrontMatter["validationCheckpoint"],
+): ValidationCheckpoint | undefined {
     if (!value || !isValidationCheckpoint(value)) return undefined;
     return value;
 }
@@ -67,7 +68,7 @@ function checkpointRecord(value: import("../../plan-store.js").PlanFrontMatter["
 async function ownerIsAlive(checkpoint: ValidationCheckpoint): Promise<boolean> {
     if (checkpoint.state !== "running") return false;
     if (!checkpoint.ownerPid || checkpoint.ownerHostname !== getLockHostname()) return false;
-    return await isPidAlive(checkpoint.ownerPid);
+    return await isRecordedProcessAlive(checkpoint.ownerPid, checkpoint.updatedAt, checkpoint.ownerIdentity);
 }
 
 function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
@@ -112,7 +113,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
         if (compatible && args.taskCompletionId && prior.lastSettledOperationId === args.taskCompletionId) {
             return { kind: "settled_completion", projectRoot };
         }
-        if (compatible && await ownerIsAlive(prior)) {
+        if (compatible && (await ownerIsAlive(prior))) {
             return { kind: "active", projectRoot };
         }
         const checkpoint = makeValidationCheckpoint({
@@ -123,6 +124,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
             state: "running",
             ownerPid: process.pid,
             ownerHostname: getLockHostname(),
+            ownerIdentity: await readProcessIdentity(process.pid),
             repairGeneration: compatible ? prior.repairGeneration : undefined,
             repairKind: compatible ? prior.repairKind : undefined,
             repairCompletedOperationId: compatible ? prior.repairCompletedOperationId : undefined,
@@ -130,13 +132,10 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
             reviewState: compatible ? prior.reviewState : undefined,
         });
         try {
-            await updatePlanFrontMatter(
-                planCwd,
-                args.planName,
-                { validationCheckpoint: checkpoint },
-                plan.attrs,
-                { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
-            );
+            await updatePlanFrontMatter(planCwd, args.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
+                expectedRevision: plan.revision,
+                expectedControllerRevision: plan.controllerRevision,
+            });
             return {
                 kind: "claimed",
                 checkpoint,
@@ -146,9 +145,8 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
                 triageMeta: plan.attrs as ValidationLoopArgs["triageMeta"],
             };
         } catch (error) {
-            if (
-                !(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2
-            ) throw error;
+            if (!(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2)
+                throw error;
         }
     }
     throw new Error("Could not claim validation.");
@@ -166,46 +164,49 @@ async function settleValidation(
         const current = checkpointRecord(plan.attrs.validationCheckpoint);
         if (current?.generation !== checkpoint.generation) return;
         const phase = validationPhaseForStatus(plan.attrs.status, plan.attrs.validationPhase);
-        const validationCheckpoint = result.kind === "verified" || !phase ? null : makeValidationCheckpoint({
-            attemptId: plan.attrs.worktreeId || current.attemptId,
-            generation: current.generation,
-            status: plan.attrs.status,
-            phase,
-            state: result.kind === "semantic_repair_handoff" ? "awaiting_repair" : "paused",
-            repairKind: result.kind === "semantic_repair_handoff" ? "semantic" : current.repairKind,
-            repairGeneration: result.kind === "semantic_repair_handoff"
-                ? current.repairGeneration || crypto.randomUUID()
-                : current.repairGeneration,
-            repairCompletedOperationId: current.repairCompletedOperationId,
-            lastSettledOperationId: result.retainTaskCompletionClaim
-                ? current.lastSettledOperationId
-                : args.taskCompletionId || current.lastSettledOperationId,
-            reviewState: current.reviewState,
-        });
+        const validationCheckpoint =
+            result.kind === "verified" || !phase
+                ? null
+                : makeValidationCheckpoint({
+                      attemptId: plan.attrs.worktreeId || current.attemptId,
+                      generation: current.generation,
+                      status: plan.attrs.status,
+                      phase,
+                      state: result.kind === "semantic_repair_handoff" ? "awaiting_repair" : "paused",
+                      repairKind: result.kind === "semantic_repair_handoff" ? "semantic" : current.repairKind,
+                      repairGeneration:
+                          result.kind === "semantic_repair_handoff"
+                              ? current.repairGeneration || crypto.randomUUID()
+                              : current.repairGeneration,
+                      repairCompletedOperationId: current.repairCompletedOperationId,
+                      lastSettledOperationId: result.retainTaskCompletionClaim
+                          ? current.lastSettledOperationId
+                          : args.taskCompletionId || current.lastSettledOperationId,
+                      reviewState: current.reviewState,
+                  });
         try {
-            await updatePlanFrontMatter(
-                planCwd,
-                args.planName,
-                { validationCheckpoint },
-                plan.attrs,
-                { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
-            );
+            await updatePlanFrontMatter(planCwd, args.planName, { validationCheckpoint }, plan.attrs, {
+                expectedRevision: plan.revision,
+                expectedControllerRevision: plan.controllerRevision,
+            });
             const progress = getCurrentValidationProgress(args.hostedSession);
             const active = args.hostedSession.getActiveExecutionWorkflow();
             const triageMeta = { ...plan.attrs, validationCheckpoint };
             if (active) args.hostedSession.setActiveExecutionWorkflow({ ...active, triageMeta });
             args.hostedSession.setWorkflowExecutionContext?.({ planName: args.planName, triageMeta });
             if (progress) {
-                args.hostedSession.replaceWorkflowContext?.({
-                    ...args.hostedSession.getWorkflowContext(),
-                    validationProgress: progress,
-                }, { persist: true });
+                args.hostedSession.replaceWorkflowContext?.(
+                    {
+                        ...args.hostedSession.getWorkflowContext(),
+                        validationProgress: progress,
+                    },
+                    { persist: true },
+                );
             }
             return;
         } catch (error) {
-            if (
-                !(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2
-            ) throw error;
+            if (!(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2)
+                throw error;
         }
     }
 }
@@ -244,10 +245,10 @@ export async function recordValidationRepairCompletion(args: {
             lastSettledOperationId: checkpoint.lastSettledOperationId,
             reviewState: reviewState
                 ? {
-                    ...reviewState,
-                    reviewLedger: claimReviewFixes(reviewState.reviewLedger),
-                    lastRepairReport: args.report,
-                }
+                      ...reviewState,
+                      reviewLedger: claimReviewFixes(reviewState.reviewLedger),
+                      lastRepairReport: args.report,
+                  }
                 : undefined,
         });
         try {
@@ -260,9 +261,8 @@ export async function recordValidationRepairCompletion(args: {
             );
             return;
         } catch (error) {
-            if (
-                !(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2
-            ) throw error;
+            if (!(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2)
+                throw error;
         }
     }
 }
@@ -316,12 +316,13 @@ function operationalFailureResult(
     const message = canceled
         ? "Validation stopped at your request. Load this Plan to continue."
         : error instanceof ValidationStateError && error.code === "plan_missing"
-        ? "The Plan file could not be found. Restore it, then load the Plan to continue."
-        : error instanceof ValidationStateError && error.code === "unknown_plan_status"
-        ? "The saved Plan needs attention before validation can continue. Open the Plan and check its status."
-        : error.name === "PermissionDenied" || ("code" in error && (error.code === "EACCES" || error.code === "EPERM"))
-        ? "Validation could not access the project files. Check folder permissions, then retry."
-        : "Validation paused before it could finish. Your changes are safe. Load this Plan to retry from the saved step.";
+          ? "The Plan file could not be found. Restore it, then load the Plan to continue."
+          : error instanceof ValidationStateError && error.code === "unknown_plan_status"
+            ? "The saved Plan needs attention before validation can continue. Open the Plan and check its status."
+            : error.name === "PermissionDenied" ||
+                ("code" in error && (error.code === "EACCES" || error.code === "EPERM"))
+              ? "Validation could not access the project files. Check folder permissions, then retry."
+              : "Validation paused before it could finish. Your changes are safe. Load this Plan to retry from the saved step.";
     return {
         kind: "paused",
         planName: args.planName,
@@ -418,10 +419,10 @@ async function continueValidationAttempt(
         }
         claim = claimed;
         const cachedWorkflow = args.hostedSession.getActiveExecutionWorkflow();
-        const activeWorkflow = cachedWorkflow?.planName === args.planName &&
-                cachedWorkflow.worktreeId === claim.triageMeta.worktreeId
-            ? cachedWorkflow
-            : null;
+        const activeWorkflow =
+            cachedWorkflow?.planName === args.planName && cachedWorkflow.worktreeId === claim.triageMeta.worktreeId
+                ? cachedWorkflow
+                : null;
         const durableReview = readValidationReviewState(claim.checkpoint);
         const registryEntry = await findWorktreeByPlanName(projectRoot, args.planName);
         const policy = resolvePlanExecutionPolicy(claim.triageMeta);
@@ -438,26 +439,32 @@ async function continueValidationAttempt(
             executionAgent: policy.ok ? policy.policy.executionAgent : "engineer",
             ...(registryEntry
                 ? {
-                    projectRoot,
-                    executionMode: "worktree",
-                    executionCwd: claim.planCwd,
-                    baselineTree: registryEntry?.baseTree || claim.triageMeta.executionBaselineTree ||
-                        args.executionContext?.baselineTree,
-                    worktreeId: registryEntry?.id || claim.triageMeta.worktreeId || args.executionContext?.worktreeId,
-                    worktreeBranch: registryEntry?.branch || claim.triageMeta.worktreeBranch ||
-                        args.executionContext?.worktreeBranch,
-                    worktreeBaseBranch: registryEntry?.baseBranch || claim.triageMeta.worktreeBaseBranch ||
-                        args.executionContext?.worktreeBaseBranch,
-                }
+                      projectRoot,
+                      executionMode: "worktree",
+                      executionCwd: claim.planCwd,
+                      baselineTree:
+                          registryEntry?.baseTree ||
+                          claim.triageMeta.executionBaselineTree ||
+                          args.executionContext?.baselineTree,
+                      worktreeId: registryEntry?.id || claim.triageMeta.worktreeId || args.executionContext?.worktreeId,
+                      worktreeBranch:
+                          registryEntry?.branch ||
+                          claim.triageMeta.worktreeBranch ||
+                          args.executionContext?.worktreeBranch,
+                      worktreeBaseBranch:
+                          registryEntry?.baseBranch ||
+                          claim.triageMeta.worktreeBaseBranch ||
+                          args.executionContext?.worktreeBaseBranch,
+                  }
                 : { executionMode: "non_git_in_place", executionCwd: claim.planCwd }),
             validationGeneration: claim.checkpoint.generation,
             ...(durableReview
                 ? {
-                    semanticRound: durableReview.semanticRound,
-                    reviewLedger: durableReview.reviewLedger,
-                    repairBaselineTree: durableReview.repairBaselineTree,
-                    lastRepairReport: durableReview.lastRepairReport,
-                }
+                      semanticRound: durableReview.semanticRound,
+                      reviewLedger: durableReview.reviewLedger,
+                      repairBaselineTree: durableReview.repairBaselineTree,
+                      lastRepairReport: durableReview.lastRepairReport,
+                  }
                 : {}),
             ...(claim.checkpoint.repairGeneration
                 ? { validationRepairGeneration: claim.checkpoint.repairGeneration }
@@ -501,7 +508,8 @@ async function continueValidationAttempt(
         // Only revision contention is safe to retry automatically. Reload the
         // canonical phase, never replay an Agent turn from its transcript.
         if (
-            released && retry < 2 &&
+            released &&
+            retry < 2 &&
             (error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError)
         ) {
             return await continueValidationAttempt(args, retry + 1);
@@ -533,9 +541,11 @@ export async function runWorkflowValidationToStableBoundary(
         const status = String(plan?.attrs.status || "");
         if (!plan) break;
         if (
-            status !== "validated_ci" && status !== "reviewed" &&
+            status !== "validated_ci" &&
+            status !== "reviewed" &&
             !(status === "implemented" && plan.attrs.validationPhase === "semantic")
-        ) break;
+        )
+            break;
         args = {
             ...args,
             planContent: plan.markdown,
