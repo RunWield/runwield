@@ -45,7 +45,7 @@ test("waitForStableWorkspaceClientAssets waits for delayed generated files", asy
     const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-client-assets-"));
     try {
         await fsWriteFile(join(root, "first.css"), "a{}");
-        const delayedWrite = new Promise((resolve, reject) => {
+        const delayedWrite = new Promise<void>((resolve, reject) => {
             setTimeout(() => fsWriteFile(join(root, "second.css"), "b{}").then(resolve, reject), 120);
         });
         await waitForStableWorkspaceClientAssets(root, { intervalMs: 50, timeoutMs: 1000 });
@@ -61,7 +61,7 @@ test("waitForStableWorkspaceClientAssets waits for delayed client directory crea
     const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-client-parent-"));
     const clientDir = join(root, "client");
     try {
-        const delayedCreate = new Promise((resolve, reject) => {
+        const delayedCreate = new Promise<void>((resolve, reject) => {
             setTimeout(async () => {
                 try {
                     await fsMkdir(clientDir);
@@ -121,11 +121,11 @@ test("standalone Workspace bundle waits for Astro to replace its manifest placeh
     const clientDir = join(root, "client");
     const runtimeDir = join(root, "runtime");
     const finalized = 'export const manifest = { key: "ready" };\n';
-    let delayedWrite;
+    let delayedWrite: Promise<void> | undefined;
     try {
         await fsWriteFile(serverEntry, 'export const manifest = "@@ASTRO_MANIFEST_REPLACE@@";\n');
         await fsMkdir(clientDir);
-        delayedWrite = new Promise((resolve, reject) => {
+        delayedWrite = new Promise<void>((resolve, reject) => {
             setTimeout(() => fsWriteFile(serverEntry, finalized).then(resolve, reject), 120);
         });
         await buildWorkspaceRuntime(
