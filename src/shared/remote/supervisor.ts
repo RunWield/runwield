@@ -14,6 +14,7 @@ import { realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
 
 import type { RemoteConnectionViewConfig } from "../../ui/tui/remote-connection-view.ts";
 import { terminateOwnedLinuxGroup } from "../foreground-process.ts";
+import { setChildSubreaper, terminateOwnedLinuxDescendants } from "../linux-process-group.ts";
 import { type MountHeader, mountLaptopHome, type RemoteMount, validateMountHeader } from "./sftp-mount.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "./model-proof-config.ts";
 
@@ -197,6 +198,7 @@ export async function runRemoteSupervisor(): Promise<void> {
         throw new Error("Invalid remote supervisor control port");
     }
     if (process.platform !== "linux") throw new Error("Remote supervisor requires Linux");
+    setChildSubreaper();
     const originalMode = await stty("-g");
     await stty("-echo");
     const socketDirectory = await mkdtemp(join(tmpdir(), "wld-remote-"));
@@ -223,6 +225,7 @@ export async function runRemoteSupervisor(): Promise<void> {
     const proofAbort = new AbortController();
     let setupHealthTimer: ReturnType<typeof setInterval> | undefined;
     let interrupted = false;
+    let failed = false;
     const onEarlyClosure = () => {
         interrupted = true;
         proofAbort.abort();
@@ -504,15 +507,16 @@ export async function runRemoteSupervisor(): Promise<void> {
             await control(header, "shutdown").catch(() => undefined);
         }
         if (mountLost) throw new Error("Laptop personal mount lost; remote work stopped");
+    } catch (error) {
+        failed = true;
+        throw error;
     } finally {
         proofAbort.abort();
         setupHealthAbort.abort();
         if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
         if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
         if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
-        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-            process.off(signal, onEarlyClosure);
-        }
+        const workStopped = await terminateOwnedLinuxDescendants(false);
         try {
             listener.close();
         } catch {
@@ -522,6 +526,13 @@ export async function runRemoteSupervisor(): Promise<void> {
         if (personalMount) {
             await personalMount.close().catch((error) => console.error("Remote mount cleanup failed:", error));
         }
+        const helpersStopped = await terminateOwnedLinuxDescendants(true);
+        const terminationConfirmed = workStopped && helpersStopped;
+        if (!terminationConfirmed) console.error("Remote owned process termination is unconfirmed");
+        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
+            process.off(signal, onEarlyClosure);
+        }
         await stty(originalMode).catch(() => undefined);
+        if (!terminationConfirmed && !failed) throw new Error("Remote owned process termination is unconfirmed");
     }
 }

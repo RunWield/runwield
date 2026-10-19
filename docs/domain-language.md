@@ -120,16 +120,16 @@ remote Linux host. It prepares a matching runtime, mounts laptop personal files,
 conversation turns with Agents, core project tools, and laptop models. It can create and continue a saved Session whose
 history stays on the laptop; the first submitted message creates history, not connection alone. Personal MCP servers
 run on the laptop through native transport forwarding while project servers run remotely. MCP roots and paths are not
-rewritten, and connection cleanup stops owned processes without replaying uncertain effects. `wld remote sessions`
-reads that history offline in the normal renderer without a composer and with a reconnect footer. Connected `/resume`
+rewritten, and connection cleanup stops every live descendant process, including detached work and adopted orphans,
+without replaying uncertain effects. `wld remote sessions` reads that history offline in the normal renderer without a
+composer and with a reconnect footer. Connected `/resume`
 continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
 journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
 provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
 remain stable through history and reconnect. Remote Memory uses the laptop service. Delivery workflows run remotely
 with laptop-owned Session records and segment rollover; reconnect checks remote evidence without automatic replay.
-Automatic local browser forwarding and full owned-process termination remain target scope. Production-provider and
-platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended
-worker, remote Session type
+Automatic local browser forwarding remains target scope. Production-provider and platform matrices retain separate
+qualification. _Avoid_: Personal Workspace, unattended worker, remote Session type
 
 **Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
 canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
