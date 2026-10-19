@@ -34,6 +34,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 status: "reviewed"
+validatedCommit: "05e86dbdd10af926cccb70d2f7970b5c67ffeb3b"
 ---
 
 # Carry Remote Context Through Delivery Workflows
