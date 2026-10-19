@@ -1,7 +1,7 @@
 [
     "scripts/assert-plan-server-image.test.ts",
     "scripts/assert-workspace-review-runtime.test.ts",
-    "scripts/build-metadata.test.js",
+    "scripts/build-metadata.test.ts",
     "scripts/build-plan-server-runtime.test.ts",
     "scripts/build-stable-docs.test.ts",
     "scripts/build-workspace-runtime.test.ts",
