@@ -71,19 +71,30 @@ test("review working-file read never returns outside content during ancestor rep
         [
             "--eval",
             `
-        const { renameSync, symlinkSync, unlinkSync } = require("node:fs");
+        const { renameSync, symlinkSync, unlinkSync, rmdirSync } = require("node:fs");
         const { join } = require("node:path");
         const dir = process.argv[1];
         const slot = join(dir, "project", "slot");
         const parked = join(dir, "project", "parked");
         console.log("ready");
         const pause = new Int32Array(new SharedArrayBuffer(4));
+        // Windows can deny replacement while a review read holds a file handle.
+        function replace(operation) {
+            for (let attempt = 0; ; attempt++) {
+                try { operation(); return; }
+                catch (error) {
+                    if (process.platform !== "win32" || attempt >= 1000 ||
+                        !["EACCES", "EBUSY", "EPERM"].includes(error.code)) throw error;
+                    Atomics.wait(pause, 0, 0, 1);
+                }
+            }
+        }
         for (;;) {
-            renameSync(slot, parked);
-            symlinkSync(join(dir, "outside"), slot, "junction");
+            replace(() => renameSync(slot, parked));
+            replace(() => symlinkSync(join(dir, "outside"), slot, "junction"));
             Atomics.wait(pause, 0, 0, 1);
-            unlinkSync(slot);
-            renameSync(parked, slot);
+            replace(() => process.platform === "win32" ? rmdirSync(slot) : unlinkSync(slot));
+            replace(() => renameSync(parked, slot));
             Atomics.wait(pause, 0, 0, 1);
         }
     `,

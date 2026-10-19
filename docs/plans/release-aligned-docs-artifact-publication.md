@@ -13,7 +13,7 @@ affectedPaths:
     - "scripts/docs-branch-integration.test.ts"
     - "scripts/docs-workflow.test.ts"
     - "scripts/release-assets.test.js"
-    - "scripts/release-policy.test.js"
+    - "scripts/release-policy.test.ts"
     - "docs/releasing.md"
     - "docs/prd/runwield.md"
 executionAgent: "engineer"
@@ -158,7 +158,7 @@ compatibility risk grows, or the Verification Plan no longer proves the objectiv
   a Stable tag released before this change does not require them.
 - `scripts/verify-docs-source.ts` — accepts the single-commit form. Its product-path check is unchanged.
 - `scripts/docs-branch-integration.test.ts`, `scripts/docs-workflow.test.ts`, `scripts/release-assets.test.js`,
-  `scripts/release-policy.test.js` — regression coverage, listed below.
+  `scripts/release-policy.test.ts` — regression coverage, listed below.
 - `docs/releasing.md` — Candidate promotion steps 7–9, _Stable documentation publication_, and _Recovery_.
 - `docs/prd/runwield.md` — the Public documentation capability.
 
@@ -226,7 +226,7 @@ compatibility risk grows, or the Verification Plan no longer proves the objectiv
   operator still edits the release notes. CI merges the Release Branch into `main`, checks ancestry, and deletes the
   branch. Candidates never touch docs. _Recovery_ names `gh workflow run docs.yml --ref docs/stable -f tag=<stable-tag>`
   and the manual merge steps for an integration conflict. It no longer names the `--ref main` docs retry.
-- `scripts/release-policy.test.js` asserts the revised policy phrases. Assertions on phrases that this change retires on
+- `scripts/release-policy.test.ts` asserts the revised policy phrases. Assertions on phrases that this change retires on
   purpose (the operator-run merge and branch deletion, and the `--ref main` docs retry) are replaced, not just deleted.
 - In `docs/prd/runwield.md` _Public documentation_, the maturity line states that the capability is current. The
   capability adds the requirement **Release the manual with Stable**: a Stable release publishes its manual and archive
@@ -240,7 +240,7 @@ compatibility risk grows, or the Verification Plan no longer proves the objectiv
 
 ```bash
 bun scripts/run-tests.js scripts/docs-branch-integration.test.ts scripts/docs-workflow.test.ts \
-  scripts/release-assets.test.js scripts/release-policy.test.js scripts/build-stable-docs.test.ts
+  scripts/release-assets.test.js scripts/release-policy.test.ts scripts/build-stable-docs.test.ts
 ```
 
 **New behavioral tests (real Git fixtures and real workflow steps, with fake `gh` only):**

@@ -99,6 +99,24 @@ test(
     },
 );
 
+test("relinking a Project keeps its new directory available", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-relink-health-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, "owner.sqlite3") });
+    try {
+        const originalRoot = join(dir, "Original Project");
+        const newRoot = join(dir, "Relinked Project");
+        await fsMkdir(originalRoot);
+        await fsMkdir(newRoot);
+        const project = registerProject(database, { root: originalRoot });
+        relinkProject(database, { projectId: project.projectId, newRoot });
+        assertEquals(requireEnabledProjectRoot(database, project.projectId), await fsRealpath(newRoot));
+        assertEquals(getProjectHealth(database, project.projectId).status, "available");
+    } finally {
+        database.close();
+        await fsRm(dir, { recursive: true });
+    }
+});
+
 test("disabled Projects stay disabled on duplicate registration", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-disabled-"));
     const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });

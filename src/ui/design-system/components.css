@@ -66,6 +66,32 @@
     opacity: 0.58;
 }
 
+/* Framed review controls, including document metadata and referenced files. */
+.rw-review-toolbar-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+    padding: 0.35rem 0.55rem;
+    background: color-mix(in oklab, var(--rw-surface-muted) 78%, transparent);
+    color: var(--rw-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition:
+        border-color 150ms ease,
+        background-color 150ms ease,
+        color 150ms ease;
+}
+
+.rw-review-toolbar-trigger:hover,
+.rw-review-toolbar-trigger:focus-visible,
+.rw-review-toolbar-trigger.active {
+    border-color: color-mix(in oklab, var(--rw-accent) 55%, var(--rw-border));
+    background: color-mix(in oklab, var(--rw-accent) 12%, var(--rw-surface));
+    color: var(--rw-text);
+}
+
 /* Compact, borderless controls keep their size across every sidebar breakpoint. */
 .rw-icon-button {
     display: inline-flex;
@@ -2428,6 +2454,6 @@ button.danger-action:disabled {
 }
 .rw-confirmation-actions {
     display: flex;
-    gap: .5rem;
+    gap: 0.5rem;
     justify-content: flex-end;
 }

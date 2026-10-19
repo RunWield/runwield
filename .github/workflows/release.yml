@@ -529,7 +529,12 @@ jobs:
                   cp source/docs-site/release.json source/dist/docs/release.json
                   mkdir docs-artifact
                   tar -czf "docs-artifact/runwield-docs-$RELEASE_TAG.tar.gz" -C source/dist/docs .
-                  (cd docs-artifact && shasum -a 256 "runwield-docs-$RELEASE_TAG.tar.gz" > "runwield-docs-$RELEASE_TAG.tar.gz.sha256")
+                  bun -e '
+                    import { sha256File } from "./tooling/scripts/build-metadata.js";
+                    const name = `runwield-docs-${process.env.RELEASE_TAG}.tar.gz`;
+                    const path = `docs-artifact/${name}`;
+                    await Bun.write(`${path}.sha256`, `${await sha256File(path)}  ${name}\n`);
+                  '
             - uses: actions/upload-artifact@v5
               if: needs.metadata.outputs.published != 'true'
               with:

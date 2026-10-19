@@ -605,7 +605,11 @@ function startupFiles(root: string): Record<string, number[]> {
             if (entry.isDirectory()) {
                 files[`${child}/`] = [];
                 visit(child);
-            } else if (entry.isFile()) files[child] = [...readFileSync(child)];
+            } else if (entry.isFile()) {
+                // Earlier Session setup can still update derived search marker timestamps.
+                // Keep their paths in the snapshot; compare Session and settings bytes exactly.
+                files[child] = path === `${root}/.runwield-workspace-search-refresh` ? [] : [...readFileSync(child)];
+            }
         }
     }
     visit(root);

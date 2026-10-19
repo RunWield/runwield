@@ -30,7 +30,7 @@ import process from "node:process";
  * Bun refuses legacy runtime permission flags instead of silently dropping
  * their restrictions. Only the frozen, installed dependency graph is used.
  */
-import { retainTestEvidence } from "./retain-test-evidence.js";
+import { retainTestEvidence } from "./retain-test-evidence.ts";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
@@ -204,6 +204,20 @@ export function selectTestShard(files, shard) {
 }
 
 /**
+ * Prepare shared immutable repositories when the selected suite has Golden scenarios.
+ * @param {string[]} files
+ * @param {string} sandboxRoot
+ * @returns {Promise<string>}
+ */
+export async function prepareGoldenFixtures(files, sandboxRoot) {
+    if (!files.some((file) => file.replaceAll("\\", "/").includes("/src/ui/tui/golden-scenarios/"))) return "";
+    const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.js");
+    const root = join(sandboxRoot, "golden-fixtures");
+    await prepareGoldenRepositoryTemplates(root);
+    return root;
+}
+
+/**
  * @param {string} root
  * @param {string} file
  * @returns {boolean}
@@ -310,12 +324,7 @@ async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
     const previousTimings = options.timingsFile ? await readTestTimings(options.timingsFile) : {};
     const files = orderTestsByTiming(selectTestShard(discoveredFiles, options.shard), REPO_ROOT, previousTimings);
 
-    let goldenFixtureRoot = "";
-    if (files.some((file) => file.includes("/src/ui/tui/golden-scenarios/"))) {
-        const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.js");
-        goldenFixtureRoot = join(sandboxRoot, "golden-fixtures");
-        await prepareGoldenRepositoryTemplates(goldenFixtureRoot);
-    }
+    const goldenFixtureRoot = await prepareGoldenFixtures(files, sandboxRoot);
 
     // Most integration work waits on Git and other subprocesses. Keep enough
     // independent files in flight to use the machine, with an explicit override

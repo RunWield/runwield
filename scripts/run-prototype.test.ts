@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { captureScriptProcess } from "./script-process.ts";
+import type { ScriptProcessOptions } from "./script-process.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
 import { getCwd } from "../src/constants.js";
 import { test } from "node:test";
@@ -21,15 +22,19 @@ import {
     validatePrototypeSetup,
 } from "./run-prototype.js";
 
-async function makeGitFixture() {
+interface PrototypeSpawnCall {
+    command: string;
+    options: ScriptProcessOptions;
+}
+
+async function makeGitFixture(): Promise<string> {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     await captureScriptProcess("git", { args: ["init"], cwd: dir, stdout: "null", stderr: "null" });
     await fsWriteFile(join(dir, ".gitignore"), "prototypes/\n");
     return dir;
 }
 
-/** @param {string} dir @param {string} slug @param {string} [task] */
-async function makePrototype(dir, slug, task = "bun -e 'console.log(1)'") {
+async function makePrototype(dir: string, slug: string, task = "bun -e 'console.log(1)'"): Promise<string> {
     const root = join(dir, "prototypes", slug);
     await fsMkdir(root, { recursive: true });
     await fsWriteFile(join(root, "README.md"), `# ${slug}\n`);
@@ -80,8 +85,7 @@ test("prototype runner constructs a local Bun dev task command with inherited I/
     const dir = await makeGitFixture();
     try {
         await makePrototype(dir, "command-check");
-        /** @type {Array<{ command: string, options: import("./script-process.ts").ScriptProcessOptions }>} */
-        const calls = [];
+        const calls: PrototypeSpawnCall[] = [];
         const code = await runPrototype(
             {
                 cwd: dir,
