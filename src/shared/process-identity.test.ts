@@ -1,9 +1,27 @@
 import { equal, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { readFile, readlink } from "node:fs/promises";
 import process from "node:process";
 import { test } from "node:test";
 import { isRecordedProcessAlive, readProcessIdentity } from "./process-identity.ts";
+
+test(
+    "Linux process identity contains the kernel birth ticks, boot ID, and PID namespace",
+    { skip: process.platform !== "linux" },
+    async () => {
+        const stat = await readFile(`/proc/${process.pid}/stat`, "utf8");
+        // The kernel ABI places starttime at field 22: skip fields 3 through 21 after comm.
+        // Use a separate full-record oracle rather than the production parser's array offset.
+        const startTicks = stat.match(/^\d+ \(.*\)(?: \S+){19} (\d+) /)?.[1];
+        ok(startTicks && BigInt(startTicks) > 0n, "kernel birth ticks must not be the obsolete zero itrealvalue field");
+        const bootId = (await readFile("/proc/sys/kernel/random/boot_id", "utf8")).trim();
+        const namespace = await readlink(`/proc/${process.pid}/ns/pid`);
+        const identity = await readProcessIdentity(process.pid);
+        ok(identity);
+        equal(identity.key, `linux:${bootId}:${namespace}:${startTicks}`);
+    },
+);
 
 test("process birth identity is stable and a different saved birth cannot own a live PID", async () => {
     const child = spawn(process.execPath, ["-e", 'console.log("ready"); setInterval(() => {}, 1000);'], {
