@@ -64,7 +64,8 @@ async function withOpenReview(run) {
                 assertEquals(opened.status, 202, await opened.clone().text());
                 const { operationId } = await opened.json();
                 let review;
-                for (let index = 0; index < 300; index++) {
+                const openingDeadline = performance.now() + 15_000;
+                while (performance.now() < openingDeadline) {
                     const live = await (
                         await app.handler()(new Request(`${sessionBase}/live`, { headers: { cookie } }))
                     ).json();
@@ -96,7 +97,8 @@ async function withOpenReview(run) {
                     failure = error;
                 }
                 let answeredRetry = false;
-                for (let index = 0; index < 300; index++) {
+                const settlementDeadline = performance.now() + 15_000;
+                while (performance.now() < settlementDeadline) {
                     const operation = app.sessionContinuation.getOperation(operationId);
                     if (operation.status !== "running") break;
                     const retry = operation.liveInteraction?.request;

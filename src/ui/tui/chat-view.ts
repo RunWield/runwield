@@ -37,7 +37,7 @@ import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blo
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { type FooterTheme, renderUpdateNoticeLine } from "./chat-footer.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
-import { hasClipboardImage } from "./clipboard.ts";
+import { disposeKeybindings } from "./keybindings.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { ImageAttachment } from "../../shared/session/types.js";
@@ -153,9 +153,8 @@ class MeasuredContainer extends Container {
     }
 
     override render(width: number): string[] {
-        const cachedContent = this.cacheAllChildren && this.renderedContent?.width === width
-            ? this.renderedContent
-            : undefined;
+        const cachedContent =
+            this.cacheAllChildren && this.renderedContent?.width === width ? this.renderedContent : undefined;
         if (cachedContent) {
             this.renderedChildren = cachedContent.children;
             Reflect.set(this, "mouseLayout", { width, children: this.renderedChildren });
@@ -206,10 +205,12 @@ export interface ChatView {
     resetForSessionReplacement(): void;
     focusEditor(): void;
     requestRender(): void;
+    showClipboardImageMissing(): void;
+    clearClipboardImageNotice(): void;
     dispose(): void;
 }
 
-const CLIPBOARD_IMAGE_HINT_TEXT = "Image in clipboard · ctrl+v to paste";
+const CLIPBOARD_IMAGE_MISSING_TEXT = "No image in clipboard";
 
 export function findVisibleToolBlocks(
     containerLayout: RenderedChildLayout[],
@@ -237,7 +238,8 @@ export function findVisibleToolBlocks(
     for (const child of messageLayout) {
         const childBottom = childTop + child.height;
         if (
-            childBottom > scrollTop && childTop < viewportBottom &&
+            childBottom > scrollTop &&
+            childTop < viewportBottom &&
             (child.component instanceof ToolExecutionGroupBlock || child.component instanceof ToolExecutionBlock)
         ) {
             visibleBlocks.push(child.component);
@@ -247,14 +249,13 @@ export function findVisibleToolBlocks(
     return visibleBlocks;
 }
 
-export function renderClipboardImageHintLines(
-    clipboardImageAvailable: boolean,
-    pastedImageCount: number,
+export function renderClipboardImageNoticeLines(
+    showNotice: boolean,
     width: number,
     themeImpl: FooterTheme = theme,
 ): string[] {
-    if (!clipboardImageAvailable || pastedImageCount > 0 || width <= 0) return [];
-    const text = truncateToWidth(CLIPBOARD_IMAGE_HINT_TEXT, width);
+    if (!showNotice || width <= 0) return [];
+    const text = truncateToWidth(CLIPBOARD_IMAGE_MISSING_TEXT, width);
     const padding = " ".repeat(Math.max(0, width - visibleWidth(text)));
     return [padding + themeImpl.fg("dim" as ThemeColor, text)];
 }
@@ -277,9 +278,10 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const tui = options.tui;
     const container = new MeasuredContainer(undefined, false);
     if (!options.suppressStartupHeader) {
-        const titleLine = `${theme.fg("accent", theme.bold("RunWield ─ Plan-by-Default Harness"))} ${
-            theme.fg("dim", `${VERSION}`)
-        }`;
+        const titleLine = `${theme.fg("accent", theme.bold("RunWield ─ Plan-by-Default Harness"))} ${theme.fg(
+            "dim",
+            `${VERSION}`,
+        )}`;
         const compactHelp = theme.fg(
             "muted",
             ["? help", "esc interrupt", "ctrl+c clear/exit", "/ commands", "! bash", "ctrl+o tool groups"].join(" · "),
@@ -294,14 +296,14 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
                 updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
             }
         } else {
-            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS).then(
-                (availability) => {
+            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
+                .then((availability) => {
                     updateNoticeText.setText(
                         availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
                     );
                     tui.requestRender();
-                },
-            ).catch(() => {});
+                })
+                .catch(() => {});
         }
         renderBootLogo(container);
         container.addChild(new Text(titleLine, 0, 0));
@@ -326,14 +328,14 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const queuedInputContainer = new Container();
     composerContainer.addChild(queuedInputContainer);
     const pastedImages: ImageAttachment[] = [];
-    let clipboardImageAvailable = false;
+    let clipboardImageMissing = false;
     const previewImages = new Container();
     composerContainer.addChild(previewImages);
-    const clipboardImageHint: Component = {
+    const clipboardImageNotice: Component = {
         invalidate: () => {},
-        render: (w: number) => renderClipboardImageHintLines(clipboardImageAvailable, pastedImages.length, w),
+        render: (w: number) => renderClipboardImageNoticeLines(clipboardImageMissing, w),
     };
-    composerContainer.addChild(clipboardImageHint);
+    composerContainer.addChild(clipboardImageNotice);
     const editor = new Editor(tui, getEditorTheme());
     composerContainer.addChild(editor);
     const footerContainer = new Container();
@@ -436,27 +438,30 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             { component: new ScrollView(sidebarArea, { scrollbar: "auto" }), basis: 0, grow: 1, minSize: 0 },
             { component: mascotArea, basis: "auto", shrink: 0 },
         ]);
-        const transcriptLayout = new HStack([
-            {
-                component: transcriptScrollView,
-                basis: 0,
-                grow: 1,
-                minSize: 48,
-            },
-            {
-                component: rail,
-                basis: 22,
-                shrink: 0,
-                visible: (viewport) =>
-                    viewport.width >= MASCOT_RAIL_MIN_WIDTH && viewport.width < SESSION_SIDEBAR_MIN_WIDTH,
-            },
-            {
-                component: rail,
-                basis: 34,
-                shrink: 0,
-                visible: (viewport) => viewport.width >= SESSION_SIDEBAR_MIN_WIDTH,
-            },
-        ], { gap: 1 });
+        const transcriptLayout = new HStack(
+            [
+                {
+                    component: transcriptScrollView,
+                    basis: 0,
+                    grow: 1,
+                    minSize: 48,
+                },
+                {
+                    component: rail,
+                    basis: 22,
+                    shrink: 0,
+                    visible: (viewport) =>
+                        viewport.width >= MASCOT_RAIL_MIN_WIDTH && viewport.width < SESSION_SIDEBAR_MIN_WIDTH,
+                },
+                {
+                    component: rail,
+                    basis: 34,
+                    shrink: 0,
+                    visible: (viewport) => viewport.width >= SESSION_SIDEBAR_MIN_WIDTH,
+                },
+            ],
+            { gap: 1 },
+        );
         tui.setLayoutRoot(
             new VStack([
                 {
@@ -485,15 +490,20 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         if (!snapshot?.artifacts?.length) return;
         selectingArtifact = true;
         try {
-            const artifactId = selectedId || await uiAPI.promptSelect(
-                "Open artifact",
-                snapshot.artifacts.slice().reverse().map((artifact) => ({
-                    value: artifact.artifactId,
-                    label: artifact.title,
-                    description: artifact.path,
-                })),
-                { persistResult: false },
-            );
+            const artifactId =
+                selectedId ||
+                (await uiAPI.promptSelect(
+                    "Open artifact",
+                    snapshot.artifacts
+                        .slice()
+                        .reverse()
+                        .map((artifact) => ({
+                            value: artifact.artifactId,
+                            label: artifact.title,
+                            description: artifact.path,
+                        })),
+                    { persistResult: false },
+                ));
             const artifact = snapshot.artifacts.find((item) => item.artifactId === artifactId);
             if (!artifact || disposed) return;
             const document = await readSessionArtifact(snapshot.cwd, artifact);
@@ -512,10 +522,13 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             }
             artifactReaders.add(surface);
             if (!surface.opened) uiAPI.appendSystemMessage(`Open artifact: ${surface.url}`);
-            void surface.waitForDecision().finally(async () => {
-                artifactReaders.delete(surface);
-                await surface.stop();
-            }).catch(() => {});
+            void surface
+                .waitForDecision()
+                .finally(async () => {
+                    artifactReaders.delete(surface);
+                    await surface.stop();
+                })
+                .catch(() => {});
         } catch (error) {
             uiAPI.appendSystemMessage(error instanceof Error ? error.message : String(error), true);
         } finally {
@@ -544,13 +557,13 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         queuedInputContainer,
         transcriptScrollView
             ? () =>
-                findVisibleToolBlocks(
-                    container.renderedChildren,
-                    messageList,
-                    messageList.renderedChildren,
-                    transcriptScrollView.scrollTop,
-                    transcriptScrollView.viewportHeight,
-                )
+                  findVisibleToolBlocks(
+                      container.renderedChildren,
+                      messageList,
+                      messageList.renderedChildren,
+                      transcriptScrollView.scrollTop,
+                      transcriptScrollView.viewportHeight,
+                  )
             : undefined,
         (progress) => {
             liveValidationProgress = progress;
@@ -644,42 +657,27 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         tui.invalidate();
         tui.requestRender();
     });
-    let clipboardCheckInFlight = false;
-    async function refreshClipboardImageHint(): Promise<void> {
-        if (clipboardCheckInFlight) return;
-        clipboardCheckInFlight = true;
-        try {
-            const nextClipboardImageAvailable = await hasClipboardImage();
-            if (nextClipboardImageAvailable !== clipboardImageAvailable) {
-                clipboardImageAvailable = nextClipboardImageAvailable;
-                tui.requestRender();
-            }
-        } catch {
-            if (clipboardImageAvailable) {
-                clipboardImageAvailable = false;
-                tui.requestRender();
-            }
-        } finally {
-            clipboardCheckInFlight = false;
-        }
-    }
-    void refreshClipboardImageHint();
-    const clipboardPollingInterval = setInterval(() => void refreshClipboardImageHint(), 1500);
     Object.assign(editor, {
         onFocus: () => {
             try {
                 tui.requestRender();
-            } catch { /* no action */ }
+            } catch {
+                /* no action */
+            }
         },
         onBlur: () => {
             try {
                 tui.requestRender();
-            } catch { /* no action */ }
+            } catch {
+                /* no action */
+            }
         },
         onChange: () => {
             try {
                 tui.requestRender();
-            } catch { /* no action */ }
+            } catch {
+                /* no action */
+            }
         },
     });
     return {
@@ -699,6 +697,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             editor.setAutocompleteProvider(provider);
         },
         addPastedImagePreview(image) {
+            clipboardImageMissing = false;
             pastedImages.push(image);
             previewImages.addChild(createPastedImagePreview(image));
         },
@@ -707,6 +706,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             previewImages.clear();
         },
         resetForSessionReplacement() {
+            clipboardImageMissing = false;
             mascotAnswering = false;
             pastedImages.length = 0;
             previewImages.clear();
@@ -725,8 +725,19 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         requestRender() {
             tui.requestRender();
         },
+        showClipboardImageMissing() {
+            if (disposed) return;
+            clipboardImageMissing = true;
+            tui.requestRender();
+        },
+        clearClipboardImageNotice() {
+            if (!clipboardImageMissing || disposed) return;
+            clipboardImageMissing = false;
+            tui.requestRender();
+        },
         dispose() {
             disposed = true;
+            disposeKeybindings(editor);
             mascot.dispose();
             for (const surface of artifactReaders) void Promise.resolve(surface.stop()).catch(() => {});
             artifactReaders.clear();
@@ -734,7 +745,6 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             snapshotWindow?.dispose();
             removeSidebarKeyListener();
             removeSidebarActionListener();
-            clearInterval(clipboardPollingInterval);
             unsubscribeThemeChange();
             if (isViewportTUI(tui)) tui.setLayoutRoot(undefined);
             endBlink();

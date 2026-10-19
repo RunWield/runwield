@@ -268,6 +268,7 @@ test("test --filter preserves literal and regex selection through the real isola
 });
 
 interface WorkflowStep {
+    if?: string;
     uses?: string;
     run?: string;
     with?: Record<string, string>;
@@ -374,7 +375,7 @@ test("release matrix preserves native source and package coverage without duplic
     assertEquals(unix.jobs.source.strategy?.matrix.shard, [1, 2, 3, 4]);
     assertEquals(unix.jobs.package.strategy?.matrix.runner, ["ubuntu-latest", "macos-latest"]);
     const windows = (await readGate("release-windows")).jobs.native;
-    assertEquals(windows.strategy?.["max-parallel"], 2);
+    assertEquals(windows.strategy?.["max-parallel"], 5);
     assertEquals(windows.strategy?.["fail-fast"], false);
     const entries = windows.strategy?.matrix.include || [];
     assertEquals(entries.length, 10);
@@ -393,6 +394,39 @@ test("release matrix preserves native source and package coverage without duplic
         release.jobs["native-package-check"].strategy?.matrix.include?.map((entry) => entry.asset),
         ["linux-x64", "linux-arm64", "darwin-arm64", "darwin-x64"],
     );
+});
+
+test("Windows source jobs reuse architecture-specific Snip binaries without installing Go on cache hits", async () => {
+    const steps = (await readGate("release-windows")).jobs.native.steps || [];
+    const cache = steps.find((step) => step.with?.key?.startsWith("snip-"));
+    assertEquals(cache?.uses, "actions/cache@v4");
+    assertEquals(cache?.if, "matrix.phase == 'source'");
+    assertEquals(cache?.with?.key, "snip-${{ runner.os }}-${{ matrix.arch }}-v0.24.1");
+    assertEquals(cache?.with?.path, "${{ runner.temp }}/runwield-ci-bin/snip.exe");
+    const go = steps.find((step) => step.uses?.startsWith("actions/setup-go@"));
+    assertEquals(go?.if, "matrix.phase == 'source' && steps.snip-cache.outputs.cache-hit != 'true'");
+    const install = steps.find((step) => step.run?.includes("go install"))?.run || "";
+    assertStringIncludes(install, "if (!(Test-Path -LiteralPath (Join-Path $env:GOBIN 'snip.exe'))) {");
+    assertStringIncludes(install, "go install github.com/edouard-claude/snip/cmd/snip@v0.24.1");
+    assertStringIncludes(install, "$env:GOBIN >> $env:GITHUB_PATH");
+});
+
+test("Windows source jobs verify cached OpenSSH archives before extraction", async () => {
+    const steps = (await readGate("release-windows")).jobs.native.steps || [];
+    const cache = steps.find((step) => step.with?.key?.startsWith("openssh-"));
+    assertEquals(cache?.uses, "actions/cache@v4");
+    assertEquals(cache?.if, "matrix.phase == 'source'");
+    assertEquals(cache?.with?.key, "openssh-${{ runner.os }}-${{ matrix.arch }}-10.0.0.0p2-Preview");
+    assertEquals(cache?.with?.path, "${{ runner.temp }}/openssh-cache");
+    const prepare = steps.find((step) => step.run?.includes("OpenSSH archive checksum mismatch"));
+    assertEquals(prepare?.if, "matrix.phase == 'source'");
+    const script = prepare?.run || "";
+    assertStringIncludes(script, "if (!(Test-Path -LiteralPath $zip)) {\n");
+    assertStringIncludes(
+        script,
+        "}\nif ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $hash) { throw 'OpenSSH archive checksum mismatch' }\n",
+    );
+    assertStringIncludes(script, "Expand-Archive $zip -DestinationPath $destination");
 });
 
 test("publication requires every product and source gate including actual package bytes", async () => {

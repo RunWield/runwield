@@ -63,7 +63,10 @@ export async function checkBunPackage(
             // while this verifier can still read expected bytes for comparison.
             const sandbox = `(version 1)(allow default)(deny file-read* (subpath ${JSON.stringify(ROOT)}))`;
             const command = platform === "darwin" ? "/usr/bin/sandbox-exec" : relocated;
-            const commandArgs = platform === "darwin" ? ["-p", sandbox, relocated, ...args] : args;
+            // Qualification deliberately runs from its disposable home, not a user project.
+            const acknowledgedArgs = ["--allow-system-directory", ...args];
+            const commandArgs =
+                platform === "darwin" ? ["-p", sandbox, relocated, ...acknowledgedArgs] : acknowledgedArgs;
             const child = spawn(command, commandArgs, { cwd: home, env: childEnv, stdio: ["pipe", "pipe", "pipe"] });
             let output = "";
             child.stdout.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));

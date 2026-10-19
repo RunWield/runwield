@@ -19,21 +19,20 @@ import {
     REQUIRED_WORKSPACE_RUNTIME_FILES,
 } from "./build-plan-server-runtime.js";
 
-/** @returns {Promise<string>} */
-async function makeTempRoot() {
+interface RuntimeBuildCommand {
+    command: string;
+    args: string[];
+}
+
+async function makeTempRoot(): Promise<string> {
     return await fsMkdtemp(join(tmpdir(), "runwield-plan-server-runtime-"));
 }
 
-/**
- * @param {string} path
- * @param {string} content
- */
-async function writeFile(path, content = "fixture") {
+async function writeFile(path: string, content = "fixture"): Promise<void> {
     await fsMkdir(join(path, ".."), { recursive: true }).catch(() => {});
     await fsWriteFile(path, content);
 }
 
-/** @param {string} root */
 const AGENT_DEFINITION_ASSETS = [
     "src/agent-definitions/architect.md",
     "src/agent-definitions/engineer.md",
@@ -46,8 +45,7 @@ const AGENT_DEFINITION_ASSETS = [
     "src/agent-definitions/tester.md",
 ];
 
-/** @param {string} root */
-async function writeRuntimeInputs(root) {
+async function writeRuntimeInputs(root: string): Promise<void> {
     await writeFile(join(root, "src/ui/workspace/remote-server.ts"), "console.log('remote');\n");
     await writeFile(join(root, "dist/workspace-runtime/server.mjs"), "export default {};\n");
     await writeFile(join(root, "dist/workspace-runtime/client/_astro/app.js.asset"), "browser");
@@ -76,8 +74,7 @@ test("buildPlanServerRuntime creates a minimal runtime root", async () => {
     const root = await makeTempRoot();
     try {
         await writeRuntimeInputs(root);
-        /** @type {Array<{ command: string, args: string[] }>} */
-        const commands = [];
+        const commands: RuntimeBuildCommand[] = [];
         await buildPlanServerRuntime(
             {
                 remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),

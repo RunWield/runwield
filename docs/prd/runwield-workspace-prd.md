@@ -334,6 +334,8 @@ Records, Session history, branches, and RunWield worktrees stay as they are.
 can relink, disable, or remove a Project whose root is missing or disabled. Disabling is reversible. Remove deletes the
 registration completely and returns to Projects; adding the directory again creates a new registration and rediscovers
 its Sessions and artifacts. Repository content becomes available when the Project is enabled and its root exists.
+Project settings requests preserve caller-supplied HTTP headers in every standard browser header format, together with the
+default JSON content type and owner CSRF token unless explicitly overridden by the caller.
 
 **Requirement: Recover from failed Project requests.** Linking, relinking, and maintenance actions show pending and
 failure feedback beside their controls. A rejected network request clears pending feedback, preserves entered paths,
@@ -371,6 +373,8 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   worktrees remain. A removed Project leaves Projects, the sidebar, and the Dashboard, and its old settings URL stops
   resolving; adding its directory again rediscovers its Sessions.
 - Given a missing Project root, its settings page opens and offers relink, disable, and remove.
+- Given custom request headers as a `Headers` instance, tuple list, or record, Project settings requests
+  retain those headers and the default owner CSRF token without changing the caller's request options.
 - When a link, relink, enable, disable, remove, or rescan request loses its connection, the page shows a visible
   failure, retains entered values, and permits retry without automatic resubmission or navigation. HTTP errors retain
   the server explanation; successful retries navigate or show rescan diagnostics as usual.
@@ -671,6 +675,12 @@ workbench below the header, and opening one closes the other. The compact Plan R
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
 
+**Requirement: Plan content comes before front matter.** Plan Review uses Wide when no valid width preference is saved.
+Saved width choices remain available in standalone review; Workspace review uses the full document width. View mode
+starts with the front matter card hidden. Show front matter reveals it, and Hide front matter hides it again. Edit mode
+keeps the full Markdown, including editable front matter, regardless of the card's visibility. On phones, document
+actions sit above the title, not beside its first lines.
+
 **Requirement: Contained working-file reads.** Code Review validates the OS-resolved path of the opened file before
 reading response bytes from that same file object. A concurrent directory replacement cannot redirect the read outside
 the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
@@ -748,6 +758,12 @@ every action stays available.
 
 **Acceptance scenarios:**
 
+- Given a Plan Review with no saved width choice, it opens Wide and its front matter card is hidden. Show front matter
+  reveals the card; Hide front matter removes it without changing the Plan.
+- Given hidden front matter, Edit still shows its YAML. After the owner changes a field and saves, Show front matter
+  shows the changed value.
+- Given a saved Compact or Default width, standalone Plan Review keeps that choice.
+- Given a Plan with no front matter, View has no front matter toggle.
 - Given a Plan with a Plan Question in a section, the owner answers it there and reloads; the same answer is restored.
 - Given answered questions and attached review notes, chat shows their combined context count and Send carries both.
   Removing the chip excludes both from that chat message. Annotation-only Send remains available.

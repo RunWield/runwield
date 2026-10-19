@@ -38,7 +38,7 @@ if (!project) Astro.response.status = 404;
             </>}
             <script is:inline data-astro-rerun>
                 function rwSettingsOwnerCookie(name){return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.split('=').slice(1).join('=')||'';}
-                async function rwSettingsOwnerFetch(url,options={}){options.headers=Object.assign({'content-type':'application/json','x-runwield-csrf':decodeURIComponent(rwSettingsOwnerCookie('rw_owner_csrf'))},options.headers||{});return await fetch(url,options);}
+                async function rwSettingsOwnerFetch(url,options={}){const headers=new Headers({'content-type':'application/json','x-runwield-csrf':decodeURIComponent(rwSettingsOwnerCookie('rw_owner_csrf'))});new Headers(options.headers).forEach((value,name)=>headers.set(name,value));return await fetch(url,{...options,headers});}
                 function rwSettingsNavigate(href){const event=new CustomEvent('runwield:workspace-navigate',{cancelable:true,detail:{href,history:'replace'}});if(document.dispatchEvent(event))location.replace(href);}
                 document.querySelectorAll('[data-project-action]').forEach((button) => {
                     if (button.dataset.workspaceBound === 'true') return;

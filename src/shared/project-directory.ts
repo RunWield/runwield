@@ -59,7 +59,7 @@ export function inspectProjectDirectory(path: string): DirectoryInspection {
     const enteredRoot = resolve(path);
     const stat = statSync(enteredRoot);
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
-    const canonicalRoot = realpathSync(enteredRoot);
+    const canonicalRoot = realpathSync.native(enteredRoot);
     return classifyProjectDirectory(enteredRoot, canonicalRoot);
 }
 
@@ -75,7 +75,7 @@ function canonicalMissingDirectory(path: string): string {
     while (true) {
         try {
             if (!statSync(ancestor).isDirectory()) throw new Error("Project root must be a directory");
-            return resolve(realpathSync(ancestor), ...suffix);
+            return resolve(realpathSync.native(ancestor), ...suffix);
         } catch (error) {
             if (!(error instanceof Error && isFileError(error, "ENOENT"))) throw error;
             // An existing dangling link is not a missing directory we own.

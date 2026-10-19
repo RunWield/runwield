@@ -6,7 +6,7 @@ complexity: "MEDIUM"
 affectedPaths:
     - "scripts/release.js"
     - "scripts/release.test.js"
-    - "scripts/release-policy.test.js"
+    - "scripts/release-policy.test.ts"
     - "docs/releasing.md"
     - "src/prompt-templates/release.md"
     - "docs/prd/runwield-core-prd.md"
@@ -126,7 +126,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - `scripts/release.js` — Candidate source selection, branch creation, ancestry checks, and source reporting.
 - `scripts/release.test.js` — real Git coverage for branch publication, source isolation, retry, and compatibility.
-- `scripts/release-policy.test.js` — preserve generic prompt and workflow ownership; replace obsolete assertions that
+- `scripts/release-policy.test.ts` — preserve generic prompt and workflow ownership; replace obsolete assertions that
   prohibit Candidate branch checks. Text checks supplement, not replace, behavior tests.
 - `docs/releasing.md` — branch workflow, confirmation, notes ranges, fixes-first flow, legacy list, and recovery.
 - `src/prompt-templates/release.md` — generic source-branch confirmation and release-source notes guidance only.
@@ -170,7 +170,7 @@ publication gate is included.
 Run tests through the sandboxed runner only:
 
 ```sh
-deno run -A scripts/run-tests.js scripts/release.test.js scripts/release-policy.test.js scripts/release-check.test.js
+deno run -A scripts/run-tests.js scripts/release.test.js scripts/release-policy.test.ts scripts/release-check.test.js
 deno task ci
 ```
 

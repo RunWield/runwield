@@ -1,15 +1,9 @@
-import { delimiter } from "node:path";
 import { test } from "node:test";
-import {
-    chmod as fsChmod,
-    mkdir as fsMkdir,
-    readdir as fsReaddir,
-    readFile as fsReadFile,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
+import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { statSync as fsStatSync } from "node:fs";
 import process from "node:process";
-import { ok as assert } from "node:assert/strict";
+import { ok as assert, throws as assertThrows } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -35,11 +29,6 @@ interface DeferredSignal {
 interface ResumeManagedFixture {
     runwieldSessionId: string;
     projectId: string;
-}
-
-interface ClipboardFixtureCommands {
-    previousPath: string;
-    imageReadMarkerPath: string;
 }
 
 function deferredSignal(): DeferredSignal {
@@ -166,46 +155,6 @@ async function seedActiveElsewhereManagedSession(
         store.close();
         throw error;
     }
-}
-
-async function installFakeClipboardCommands(projectRoot: string): Promise<ClipboardFixtureCommands> {
-    const previousPath = process.env["PATH"] || "";
-    const binDir = `${projectRoot}/clipboard-bin`;
-    const imageReadMarkerPath = `${projectRoot}/clipboard-image-read`;
-    await fsMkdir(binDir, { recursive: true });
-    const osascriptPath = `${binDir}/osascript`;
-    await fsWriteFile(
-        osascriptPath,
-        [
-            "#!/bin/sh",
-            'script="$2"',
-            "if printf '%s' \"$script\" | grep -q 'return \"image\"'; then",
-            "  echo image",
-            "  exit 0",
-            "fi",
-            "temp_file=$(printf '%s' \"$script\" | sed -n 's/^[[:space:]]*set tempFile to \"\\(.*\\)\"$/\\1/p')",
-            'printf fixture-png > "$temp_file"',
-            "exit 0",
-            "",
-        ].join("\n"),
-    );
-    await fsChmod(osascriptPath, 0o755);
-    const base64Path = `${binDir}/base64`;
-    await fsWriteFile(
-        base64Path,
-        [
-            "#!/bin/sh",
-            "echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-            `touch "${imageReadMarkerPath}"`,
-            // Reading bytes is not paste completion: the process must exit and
-            // RunWield must attach/render the image before the user can submit it.
-            "sleep 0.2",
-            "",
-        ].join("\n"),
-    );
-    await fsChmod(base64Path, 0o755);
-    process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
-    return { previousPath, imageReadMarkerPath };
 }
 
 test("chat input controller sends accepted editor input through the real composed Runtime", async () => {
@@ -488,7 +437,7 @@ test("chat input controller recalls queued steering into the editor oldest to ne
     });
 });
 
-test("chat input controller preflights pasted image attachments through the composed TUI", async () => {
+test("composed TUI reads clipboard only for explicit paste, preserving text and image submission ordering", async () => {
     await withRuntimeCommandFixture(
         "chat-input-real-image-preflight-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -501,6 +450,16 @@ test("chat input controller preflights pasted image attachments through the comp
             });
             const { composition, terminal } = await startComposition();
             try {
+                await new Promise((resolve) => setTimeout(resolve, 3300));
+                terminal.input("\x1b[200~pasted text\x1b[201~");
+                await terminal.flush();
+                await waitFor(() => terminal.getScreenText().includes("pasted text"), "bracketed text paste");
+                terminal.input("\x03");
+                const oldSessionId = composition.sessionId;
+                await submitText(terminal, "/new");
+                await waitFor(() => composition.sessionId !== oldSessionId, "Session replacement");
+                await composition.waitForIdle();
+                assertEquals(await clipboard.invocations(), []);
                 terminal.input("\x16");
                 await waitForPath(clipboard.imageReadMarkerPath, "clipboard image read");
                 // Submit while the clipboard process is still running. The input handler must
@@ -522,8 +481,18 @@ test("chat input controller preflights pasted image attachments through the comp
                             (request.includes("image/png") || request.includes("attachment:")),
                     ),
                 );
+                const calls = await clipboard.invocations();
+                assertEquals(
+                    calls.map(({ operation }) => operation),
+                    ["probe", "extract", "encode"],
+                );
+                const tempPath = calls[1]!.tempPath;
+                assert(tempPath.includes("runwield-clipboard-") && tempPath.endsWith(".png"));
+                assertThrows(() => fsStatSync(tempPath), { code: "ENOENT" });
+                await new Promise((resolve) => setTimeout(resolve, 1600));
+                assertEquals(await clipboard.invocations(), calls);
             } finally {
-                process.env["PATH"] = clipboard.previousPath;
+                clipboard.restore();
                 await composition.dispose();
             }
         },
@@ -1034,4 +1003,31 @@ test("chat input controller does not queue image steering that runtime rejects",
     assertEquals(editor.getText(), "steer with image");
     assertEquals(pastedImages.length, 1);
     assert(messages.some((message) => message.includes("RunWield could not send that message")));
+});
+
+test("composed TUI reports an explicit paste with no image until the next input", async () => {
+    if (process.platform !== "darwin") return;
+    await withRuntimeCommandFixture("chat-input-empty-clipboard-", async ({ projectRoot }) => {
+        const clipboard = await installFakeClipboardCommands(projectRoot);
+        await clipboard.setHasImage(false);
+        const { composition, terminal } = await startComposition();
+        try {
+            terminal.input("\x16");
+            await waitFor(() => terminal.getScreenText().includes("No image in clipboard"), "missing image notice");
+            assertEquals(
+                (await clipboard.invocations()).map(({ operation }) => operation),
+                ["probe"],
+            );
+            terminal.typeText("keep typing");
+            await waitFor(() => terminal.getScreenText().includes("keep typing"), "responsive editor");
+            assertEquals(terminal.getScreenText().includes("No image in clipboard"), false);
+            assertEquals(
+                (await clipboard.invocations()).map(({ operation }) => operation),
+                ["probe"],
+            );
+        } finally {
+            await composition.dispose();
+            clipboard.restore();
+        }
+    });
 });

@@ -17,7 +17,8 @@ import {
     saveQuickLabels,
 } from "@plannotator/ui/utils/quickLabels.ts";
 import { AUTO_CLOSE_OPTIONS, getAutoCloseDelay, setAutoCloseDelay } from "@plannotator/ui/utils/storage.ts";
-import { getUIPreferences, PLAN_WIDTH_OPTIONS, saveUIPreferences } from "@plannotator/ui/utils/uiPreferences.ts";
+import { PLAN_WIDTH_OPTIONS, saveUIPreferences } from "@plannotator/ui/utils/uiPreferences.ts";
+import { getPlanReviewPreferences } from "./plan-review-preferences.ts";
 
 const SETTINGS_TABS = [
     { id: "general", label: "General" },
@@ -64,7 +65,7 @@ export function PlanReviewSettings({
     const [activeTab, setActiveTab] = useState("general");
     const [identity, setIdentity] = useState("");
     const [autoCloseDelay, setAutoCloseDelayState] = useState("off");
-    const [uiPreferences, setUiPreferences] = useState(() => getUIPreferences());
+    const [uiPreferences, setUiPreferences] = useState(() => getPlanReviewPreferences());
     const [quickLabels, setQuickLabels] = useState(() => getQuickLabels());
     const [editingTipIndex, setEditingTipIndex] = useState(null);
     const [editingTipValue, setEditingTipValue] = useState("");
@@ -86,7 +87,7 @@ export function PlanReviewSettings({
         setActiveTab("general");
         setIdentity(getIdentity());
         setAutoCloseDelayState(getAutoCloseDelay());
-        setUiPreferences(getUIPreferences());
+        setUiPreferences(getPlanReviewPreferences());
         setQuickLabels(getQuickLabels());
         setCodeLabels(readCodeLabels(conventionalLabelsJson));
         setEditingTipIndex(null);

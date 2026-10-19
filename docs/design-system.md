@@ -215,12 +215,22 @@ Do not wrap a whole section, a step list, or a verification list in a callout, a
 box. A marker with text on the same line is an ordinary quote. The Changes view shows callouts as plain quotes with
 their text intact; matching callout styling there is deferred.
 
+### Plan Review document defaults
+
+Plan Review starts Wide unless a valid standalone width choice is saved. Workspace review uses the full document width.
+The front matter card starts hidden; a framed `.rw-review-toolbar-trigger` in the View toolbar switches between Show
+front matter and Hide front matter and exposes `aria-expanded`. It shares its border, fill, spacing, and active state
+with Files. Use the document-field icon, a tooltip, and an accessible label; keep the icon visible when toolbar text is
+hidden on phones. Omit the toggle for documents without front matter.
+Edit keeps the full Markdown and editable YAML, independent of the card's visibility.
+
 ### Phone review layout
 
 Embedded reviews constrain the Workspace grid column to the viewport. At phone widths, header actions and document
 controls wrap; every sidebar-state combination uses one document column, with open sidebars shown as overlays. The
 document scroll area takes the remaining height below the header and controls. Only standalone reviews reserve space for
-a fixed bottom action bar. Long prose and metadata wrap inside the document instead of widening the page.
+a fixed bottom action bar. Long prose and metadata wrap inside the document instead of widening the page. Plan document
+actions occupy their own row above the title so hidden front matter cannot leave the title beside a floating toolbar.
 
 ### Shared loaders
 

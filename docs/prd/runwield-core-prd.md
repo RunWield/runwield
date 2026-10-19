@@ -558,6 +558,9 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 - Given stale locks, inconsistent settings or storage, or mismatched Plan bookkeeping, RunWield restores its own state
   and continues.
+- Given a restarted process or a reused PID, validation compares process birth evidence with its saved owner and
+  resumes the preserved checkpoint when the original owner is provably gone. A live matching owner still excludes
+  another validation run; unavailable process identity evidence never authorizes takeover.
 - Given a lock whose run status query returns an empty or unreadable result, recovery keeps the lock and the work
   continues.
 - Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current
@@ -1196,6 +1199,12 @@ the image. Missing fallback setup explains the fix and keeps typed text and imag
 change before Send. Standalone releases resize images cleanly. See [vision fallback
 settings](../user-documentation/settings.md#visionfallback).
 
+**Requirement: Paste clipboard images on demand.** In the TUI, Ctrl-V reads a clipboard image only when the user presses
+it. RunWield does not read or watch the clipboard while idle, including across focus changes, Session replacement,
+and concurrent Sessions. If an explicit paste finds no image, the composer shows "No image in clipboard" until the next
+input or a successful image paste. A clipboard read that finishes after view disposal adds no preview or attachment and
+requests no render. Keyboard help lists Ctrl-V for image paste.
+
 **Requirement: Agents can inspect images.** The Agent can ask `see_image` about a saved Session attachment or a
 referenced project image. Descriptions include readable text, visual state, and uncertainty. Resumed Sessions keep
 access to their own attachments. **Target:** deleting a Session also removes its images.
@@ -1209,6 +1218,9 @@ access to their own attachments. **Target:** deleting a Session also removes its
 - Given a text-only model and no fallback, sending an image shows setup guidance and keeps the message and preview.
 - Given a resumed Session with saved images, its own attachments stay available.
 - Given a standalone release, resizing an image produces a valid image at the requested size.
+- Given several idle TUI Sessions on macOS, no clipboard process starts until the user presses Ctrl-V.
+- Given Ctrl-V with no image available, the composer shows "No image in clipboard"; the next input clears it.
+- Given a clipboard image read that finishes after view disposal, no preview, attachment, or render is added.
 
 ### Image generation
 

@@ -124,6 +124,7 @@ async function makeRealRecoveryProject(
 ): Promise<RealRecoveryProject> {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-recovery-real-"));
     await runGit(projectRoot, ["init", "-b", "main"]);
+    await runGit(projectRoot, ["config", "core.autocrlf", "false"]);
     await runGit(projectRoot, ["config", "user.email", "runwield@example.test"]);
     await runGit(projectRoot, ["config", "user.name", "RunWield Test"]);
     await savePlan(projectRoot, "recovery-contract", "# Plan\n\nrecovery fixture\n", {

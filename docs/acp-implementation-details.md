@@ -74,7 +74,8 @@ The implementation evidence comes from these source files:
 7. exposes model and reasoning selection through `configOptions`, with complete selection updates;
 8. reports exact Runtime context usage and capacity without presenting estimates as exact;
 9. accepts ACP image prompt blocks through the shared Runtime image path; and
-10. advertises shared commands and uses native form questions or a local browser fallback.
+10. advertises shared commands and uses native forms first, or chat for all select, text, and approval questions,
+    including command menus, when forms are not supported.
 
 Evidence: `src/acp/server.js` (`createInitializeResponse`, `createRunWieldAcpServer`), `event-mapper.js`,
 `interaction-mapper.js`, and `server.test.js` under `src/acp/`.
@@ -83,8 +84,8 @@ Evidence: `src/acp/server.js` (`createInitializeResponse`, `createRunWieldAcpSer
 HTTP/SSE MCP, client filesystem/terminal use, standard Plan and Session-info updates, and rich tool diffs/locations.
 Agent switching itself works through `/agent`; only its native selector is missing.
 
-**Fix before adding breadth:** truthful queued-turn completion, browser Other-answer support, and stop-reason detail.
-Active-turn model changes also differ from current upstream guidance. See
+**Fix before adding breadth:** truthful queued-turn completion and stop-reason detail. Active-turn model changes also
+differ from current upstream guidance. See
 [Required and high-priority gaps](#required-and-high-priority-gaps) and [Suggested next work](#suggested-next-work).
 
 ACP makes many features optional. Missing an unadvertised optional feature is not, by itself, a compliance failure.
@@ -284,6 +285,12 @@ registry. Reasoning control is exposed through the standard ACP `thought_level` 
 ACP excludes `/copy`, `/theme`, `/quit`, `/exit`, `/new`, `/resume`, and `/login`. The shared `/logout` command is
 available; the distinct ACP `logout` method is not.
 
+Built-in commands and ordinary Agent turns share a live operation. Without forms, `/load-plan`, `/agent`, `/model`, and
+all other command menus appear in chat. A question ends the current ACP request with `end_turn` while the command waits;
+the next request answers it. An Agent turn started by a command uses that same question path. Command output and catalog
+updates stay ordered across requests, and Runtime Session replacement moves the operation's adapter and subscription to
+the adopted Session. Command metrics finish when the command settles, not when its first ACP response ends.
+
 Evidence: `src/acp/server.js` (`buildAcpAvailableCommands`, `dispatchAcpBuiltinCommand`), `src/cmd/registry.js`, and
 `src/acp/server.test.js` command/catalog tests.
 
@@ -394,9 +401,9 @@ RunWield's ACP interaction adapter maps Runtime interaction requests into client
 
 | Runtime interaction           | Current behavior                                                                                                         |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `select`                      | Native `elicitation/create` form with labeled choices and an optional Other-answer field.                                |
-| `text`                        | Native form with an answer field, optional default, and placeholder description.                                         |
-| `approval`                    | Native choice form; accepted approval values approve, other choices cancel. This is not ACP tool permission.             |
+| `select`                      | Native `elicitation/create` form with labeled choices and an optional Other-answer field; chat menu without forms.       |
+| `text`                        | Native form with an answer field, optional default, and placeholder description; chat question without forms.            |
+| `approval`                    | Native choice form or chat menu without forms; accepted values approve, others cancel. This is not ACP tool permission.  |
 | `plan_review` / `code_review` | Sends a normal text link and waits for the RunWield browser review decision.                                             |
 | `artifact_review`             | Sends the artifact link; feedback or empty acceptance uses the browser question path even if native forms are supported. |
 | Pair Execution checkpoint     | Uses ordinary ACP messages across prompt turns; no form elicitation is advertised or requested.                          |
@@ -406,22 +413,34 @@ Native forms are part of the current
 [v1 elicitation documentation](https://agentclientprotocol.com/protocol/v1/elicitation). RunWield does not use URL-mode
 elicitation or `elicitation/complete`; its browser links are normal text plus metadata.
 
-The adapter sends form elicitations when the client advertises `clientCapabilities.elicitation.form`. Without forms,
-only `user_interview` select/text questions use ordinary ACP chat messages and later prompt replies. The question update
-precedes an `end_turn` response, but the Runtime operation and Session lock remain live. The next request attaches
-before the broker gets its answer. Each new question gets another ACP response. A number or unique exact label selects a
-choice; other meaningful text selects Other with its complete text. Bare Other gets one text follow-up. Blank required
-input and attachments do not consume the question. Cancellation, close, and process exit settle or discard this
-process-local wait, not a durable suspended tool. Undelivered updates from remote answers stay on the connection for the
-next request. Pair checkpoints instead end their Runtime operation.
+The adapter sends form elicitations first when the client advertises `clientCapabilities.elicitation.form`. Native
+interview forms keep their optional Other-answer field. Without forms, every select, text, and approval interaction,
+including command menus and workflow questions, uses ordinary ACP chat messages and later prompt replies. The question
+update precedes an `end_turn` response, but the Runtime operation and Session lock remain live. The next request attaches
+before the broker gets its answer. Each new question gets another ACP response.
 
-Other no-form select/text/approval interactions use a loopback browser question page. The page needs its token and
-rejects answers that do not carry the same local Origin. If the page is not available, ACP gets an actionable
-unsupported response.
+Chat answer rules stay distinct:
 
-The non-interview browser fallback is not equivalent to native forms for Other answers. Its question payload omits
-`otherOptionValue`, and its answer handler does not return `otherText`. That is a RunWield browser interaction gap, not
-a missing ACP feature. Native form decline/cancel responses settle as cancellation; invalid answers return unsupported.
+- Non-interview select and approval menus list numbered labels and any option descriptions. A number in range or a
+  unique exact option label or value selects the option, ignoring case and surrounding whitespace. Only `cancel` that
+  matches no option cancels the menu. Invalid or ambiguous replies, including slash commands, produce one did-not-match
+  message with the menu and reply rule, without answering. Approval choices keep their defined accept/cancel meaning;
+  an approval with no supplied options shows Yes and No for accept and decline.
+- Non-interview text questions accept nonblank text. Blank input does not answer; `cancel` is ordinary text. Optional
+  text questions also need nonblank text in chat.
+- `user_interview` keeps its existing rules: a number or unique exact label selects a choice; other meaningful text
+  selects Other with its complete text. Bare Other gets one text follow-up. Blank required input and attachments do not
+  consume the question. `cancel` is an ordinary interview answer.
+
+Unsupported attachments do not answer chat questions. Cancellation, close, and process exit settle or discard this
+process-local wait, not a durable suspended tool or command. Undelivered updates from remote answers stay on the
+connection for the next request. Pair checkpoints instead end their Runtime operation and use ordinary prompt turns.
+
+Plan, Code, and Artifact Review keep browser review links. Only the Artifact Review feedback decision, including empty
+acceptance, uses the browser question page, even when forms are supported. That page needs its token and rejects answers
+that do not carry the same local Origin. If the page is unavailable, ACP gets an actionable unsupported response; remote
+reachability of that loopback page is not claimed. Native form decline/cancel responses settle as cancellation; invalid
+answers return unsupported.
 
 RunWield emits no `session/request_permission` calls. Workflow approval forms and Plan review are not substitutes for
 client-controlled tool authorization. Pair checkpoints use ordinary ACP prompt turns and do not use permission requests.
@@ -430,7 +449,8 @@ RunWield does not provide an ACP-native Plan editor. Review stays in RunWield br
 [ACP PRD](prd/runwield-acp-protocol-prd.md#product-decisions) intends. Standard ACP `plan` updates are progress lists,
 not a replacement for RunWield Plan Feedback and approval.
 
-Evidence: `src/acp/interaction-mapper.js` (`createAcpInteractionAdapter`, `requestBrowserQuestion`, `buildSchema`) and
+Evidence: `src/acp/interaction-mapper.js` (`createAcpInteractionAdapter`, `requestBrowserQuestion`, `buildSchema`),
+`src/acp/chat-interaction.ts` (`formatChatQuestion`, `parseChatReply`), `src/acp/server.js` (`createLiveOperation`), and
 `src/shared/session/browser-question.ts` (`startBrowserQuestionServer`).
 
 ## Error behavior
@@ -453,13 +473,12 @@ Unexpected runtime failures propagate through the ACP SDK as internal errors.
 These are accuracy, compatibility, or RunWield journey gaps, not a list of mandatory missing methods. Priority is this
 audit's recommendation.
 
-| Priority | Remaining gap                                                                                                   | Why it matters                                                                                                                                                                             | Evidence                                                                                                                                                                                    |
-| -------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| High     | Queued prompts return `end_turn` before execution; no normal ACP stream/question setup on the early queue path. | Clients can see a completed turn while work is still waiting. This differs from the standard prompt lifecycle.                                                                             | `src/acp/server.js`, prompt queue branches; `managed-session.integration.test.ts`.                                                                                                          |
-| High     | Non-interview browser questions lose Other-answer text.                                                         | The chat fallback fixes `user_interview`, not the browser question page used by other interactions. Remote browser access remains unproven.                                                | `src/acp/interaction-mapper.js`; `src/shared/session/browser-question.ts`; [Protocol negotiation and interactions](prd/runwield-acp-protocol-prd.md#protocol-negotiation-and-interactions). |
-| Medium   | Model config changes reject active turns.                                                                       | Current upstream config docs allow changes while generating. RunWield deliberately requires idle state; resolve or document this compatibility difference before a full-conformance claim. | `src/acp/server.js`, `session/set_config_option`; [ACP config options](https://agentclientprotocol.com/protocol/v1/session-config-options#setting-a-config-option).                         |
-| Medium   | No explicit token-limit, request-limit, or refusal stop mapping.                                                | Clients cannot reliably explain all reasons a turn stopped.                                                                                                                                | `src/acp/server.js`, prompt response mapping.                                                                                                                                               |
-| Verify   | Multi-client and cross-surface journeys remain unproven by this review.                                         | Source and fixture tests do not establish successful IDE/remote workflow use.                                                                                                              | [ACP PRD: Advertised ACP conformance](prd/runwield-acp-protocol-prd.md#advertised-acp-conformance).                                                                                         |
+| Priority | Remaining gap                                                                                                   | Why it matters                                                                                                                                                                             | Evidence                                                                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| High     | Queued prompts return `end_turn` before execution; no normal ACP stream/question setup on the early queue path. | Clients can see a completed turn while work is still waiting. This differs from the standard prompt lifecycle.                                                                             | `src/acp/server.js`, prompt queue branches; `managed-session.integration.test.ts`.                                                                                  |
+| Medium   | Model config changes reject active turns.                                                                       | Current upstream config docs allow changes while generating. RunWield deliberately requires idle state; resolve or document this compatibility difference before a full-conformance claim. | `src/acp/server.js`, `session/set_config_option`; [ACP config options](https://agentclientprotocol.com/protocol/v1/session-config-options#setting-a-config-option). |
+| Medium   | No explicit token-limit, request-limit, or refusal stop mapping.                                                | Clients cannot reliably explain all reasons a turn stopped.                                                                                                                                | `src/acp/server.js`, prompt response mapping.                                                                                                                       |
+| Verify   | Multi-client and cross-surface journeys remain unproven by this review.                                         | Source and fixture tests do not establish successful IDE/remote workflow use.                                                                                                              | [ACP PRD: Advertised ACP conformance](prd/runwield-acp-protocol-prd.md#advertised-acp-conformance).                                                                 |
 
 The old negotiation, generated-version, reload, stdio MCP, cancellation-order, cost-object, reasoning-control, and
 context-accuracy issues are addressed in current source and covered by `src/acp/server.test.js`. That does not close the
@@ -508,8 +527,9 @@ management, Session fork, and NES are not counted as missing stable v1 requireme
   client supports forms or every RunWield interaction.
 - `_meta.runwield` carries Session mapping, queued state, replay, tool, validation, and review details. Clients may
   ignore it. Ordinary messages and outcomes must remain useful without it.
-- Browser question and review links are RunWield behavior. Local question URLs require their per-question token and
-  same-origin submission. A loopback URL does not prove remote browser reachability.
+- Browser review links and the Artifact Review feedback question page are RunWield behavior. The local feedback URL
+  requires its per-question token and same-origin submission. A loopback URL does not prove remote browser reachability;
+  ordinary no-form select, text, and approval questions use chat instead.
 - Browser Plan review remains separate from standard ACP Plan progress and tool permissions. Adding either standard
   feature would not replace the browser approval workflow.
 
@@ -527,8 +547,10 @@ The repository contains these checks. They were read, not rerun for this update.
 - `src/acp/server.test.js`: real Runtime wire tests for initialization, stdout purity, generated version, stdio MCP,
   new/load/replay, model and reasoning selection, provider-failure recovery, exact context usage, commands/catalog
   reload, forms, cancellation ordering including request ID `0`, close, event metadata, and serialized schemas.
-- `src/acp/interaction-mapper.test.js`: form selection/approval, unsupported Pair checkpoints, browser cancellation, and
-  origin checks.
+- `src/acp/interaction-mapper.test.js`: native forms, generic no-form chat presentation, unsupported Pair checkpoints,
+  Artifact Review feedback browser cancellation, and origin checks.
+- `src/acp/chat-interaction.test.ts`: menu number and exact unique label/value matching, approval defaults, menu
+  cancellation, nonblank text answers, and unchanged interview answer rules.
 - `src/acp/managed-session.integration.test.ts`: load across segments and queued execution after another writer releases
   the Session.
 - `src/acp/segment-stable-identity.test.ts`: an explicitly supplied stable ACP ID is stored separately from Pi IDs.
@@ -539,8 +561,8 @@ Important limits:
   complete cross-surface cost accounting.
 - Queue tests do not establish ACP delivery of later output or questions.
 - The stable-ID unit test supplies its own ID; the real new/load test is the evidence for client-returned IDs.
-- Browser fallback tests can take an unavailable-page path. They do not prove remote access to non-interview browser
-  questions. The chat interview wire tests exercise the real tool and ACP requests, not an OpenAB deployment.
+- Artifact Review feedback browser tests can take an unavailable-page path and do not prove remote access to that page.
+  Chat question wire tests exercise the real Runtime and ACP requests, not an OpenAB deployment.
 - The ACP import check tests direct imports, not every transitive dependency.
 - This audit did not perform live tests with multiple clients, packaged installations, or remote review links. The
   [ACP PRD](prd/runwield-acp-protocol-prd.md#advertised-acp-conformance) requires multi-client evidence before claiming
@@ -558,8 +580,7 @@ client controls. Do not implement every optional method just to lengthen the fea
 ### Fix existing behavior first
 
 1. Keep queued work visibly pending until its real outcome, and deliver its output and questions to the client.
-2. Preserve Other answers in browser fallback and verify a complete browser question journey.
-3. Improve stop reasons, resolve the active-turn config difference, and test the ordinary workflow with more than one
+2. Improve stop reasons, resolve the active-turn config difference, and test the ordinary workflow with more than one
    real client.
 
 These are correctness and compatibility work, not optional feature expansion. See the evidence in

@@ -365,8 +365,20 @@ test("installKeybindings reports pasted image handler failures instead of throwi
     await Promise.resolve();
     assertEquals(ctx.pastedImages, []);
     assertEquals(ctx.previewImages.children, []);
-    assertEquals(ctx.stats.systemMessages, [
-        "Cannot attach pasted image: managed_unsupported",
-    ]);
+    assertEquals(ctx.stats.systemMessages, ["Cannot attach pasted image: managed_unsupported"]);
     assertEquals(ctx.stats.renderCount, 2);
+});
+
+test("Ctrl-V reports a missing image only when the explicit read returns no image", async () => {
+    for (const image of [null, { base64: "YQ==", mimeType: "image/png" }]) {
+        let missing = 0;
+        const ctx = makeContext({
+            readClipboardImage: () => Promise.resolve(image),
+            onClipboardImageMissing: () => missing++,
+        });
+        installKeybindings(ctx);
+        await ctx.editor.handleInput(RAW_KEY.ctrlV);
+        assertEquals(missing, image ? 0 : 1);
+        assertEquals(ctx.previewImages.children.length, image ? 1 : 0);
+    }
 });

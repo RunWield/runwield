@@ -8,28 +8,20 @@ import { test } from "node:test";
 import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
 import { getExplicitBuildVersion, getGitHubTagName, resolveBuildVersion, writeVersionFile } from "./write-version.js";
 
-/**
- * @param {Record<string, string | undefined>} values
- * @returns {(name: string) => string | undefined}
- */
-function env(values) {
+import type { EnvReader, GitRunner } from "./write-version.js";
+
+type AsyncAction = () => Promise<void>;
+
+function env(values: Record<string, string | undefined>): EnvReader {
     return (name) => values[name];
 }
 
-/**
- * @param {Record<string, string | undefined>} values
- * @returns {(args: string[]) => string | undefined}
- */
-function git(values) {
+function git(values: Record<string, string | undefined>): GitRunner {
     return (args) => values[args.join(" ")];
 }
 
-/**
- * @param {() => Promise<void>} action
- * @returns {Promise<string[]>}
- */
-async function captureConsoleLogs(action) {
-    const logs = /** @type {string[]} */ ([]);
+async function captureConsoleLogs(action: AsyncAction): Promise<string[]> {
+    const logs: string[] = [];
     const originalLog = console.log;
     console.log = (...args) => logs.push(args.join(" "));
     try {

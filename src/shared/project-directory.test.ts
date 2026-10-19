@@ -119,7 +119,7 @@ test("missing managed target uses its canonical ancestor without weakening selec
         symlinkSync(dir, alias);
         const target = join(alias, "missing", "execution");
         const inspection = inspectMissingManagedProjectDirectory(target);
-        assertEquals(inspection.canonicalRoot, join(realpathSync(dir), "missing", "execution"));
+        assertEquals(inspection.canonicalRoot, join(realpathSync.native(dir), "missing", "execution"));
         assertEquals(inspection.classified, false);
         assertThrows(() => inspectProjectDirectory(target), Error, "ENOENT");
         assertEquals(

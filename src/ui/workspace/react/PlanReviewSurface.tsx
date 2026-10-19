@@ -36,7 +36,8 @@ import { useConfigValue } from "@plannotator/ui/config/index.ts";
 import { getPlanSaveSettings } from "@plannotator/ui/utils/planSave.ts";
 import { extractFrontmatter, parseMarkdownToBlocks } from "@plannotator/ui/utils/parser.ts";
 import { copyTextToClipboard } from "@plannotator/ui/utils/clipboard.ts";
-import { getUIPreferences, PLAN_WIDTH_OPTIONS } from "@plannotator/ui/utils/uiPreferences.ts";
+import { PLAN_WIDTH_OPTIONS } from "@plannotator/ui/utils/uiPreferences.ts";
+import { getPlanReviewPreferences } from "./plan-review-preferences.ts";
 import { PlanReviewSettings } from "./PlanReviewSettings.tsx";
 import {
     buildPlanReviewExecutionPolicyPayload,
@@ -155,18 +156,19 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [editorMode, setEditorMode] = useState("view");
     const [isPlanDiffActive, setIsPlanDiffActive] = useState(false);
     const [planDiffMode, setPlanDiffMode] = useState("clean");
-    const [uiPreferences, setUiPreferences] = useState(() => getUIPreferences());
+    const [uiPreferences, setUiPreferences] = useState(() => getPlanReviewPreferences());
+    const [frontmatterVisible, setFrontmatterVisible] = useState(false);
     const [compactLayout, setCompactLayout] = useState(
         () => globalThis.matchMedia?.("(max-width: 980px)").matches ?? false,
     );
-    const [sidebarOpen, setSidebarOpen] = useState(() => !compactLayout && getUIPreferences().tocEnabled);
+    const [sidebarOpen, setSidebarOpen] = useState(() => !compactLayout && uiPreferences.tocEnabled);
     const [sidebarTab, setSidebarTab] = useState("toc");
 
     useEffect(() => {
         const media = globalThis.matchMedia("(max-width: 980px)");
         const syncLayout = () => {
             setCompactLayout(media.matches);
-            setSidebarOpen(!media.matches && getUIPreferences().tocEnabled);
+            setSidebarOpen(!media.matches && getPlanReviewPreferences().tocEnabled);
             if (media.matches) setAnnotationsOpen(false);
         };
         syncLayout();
@@ -1317,6 +1319,23 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                 </button>
                                             )}
                                         </RunWieldSegmentedControl>
+                                        {editorMode === "view" && !isPlanDiffActive && parsed.frontmatter && (
+                                            <button
+                                                type="button"
+                                                className={`rw-review-toolbar-trigger ${frontmatterVisible ? "active" : ""}`}
+                                                aria-label={
+                                                    frontmatterVisible ? "Hide front matter" : "Show front matter"
+                                                }
+                                                title={frontmatterVisible ? "Hide front matter" : "Show front matter"}
+                                                aria-expanded={frontmatterVisible}
+                                                onClick={() => setFrontmatterVisible((visible) => !visible)}
+                                            >
+                                                <ToggleIcon name="frontmatter" />
+                                                <span>
+                                                    {frontmatterVisible ? "Hide front matter" : "Show front matter"}
+                                                </span>
+                                            </button>
+                                        )}
                                         {compactLayout
                                             ? editorMode !== "edit" && (
                                                   <RunWieldMenu label="Review tools" align="end">
@@ -1363,7 +1382,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             <Viewer
                                                 blocks={printablePlan.blocks}
                                                 markdown={printPlan}
-                                                frontmatter={printablePlan.frontmatter}
+                                                frontmatter={frontmatterVisible ? printablePlan.frontmatter : null}
                                                 annotations={[]}
                                                 onAddAnnotation={() => {}}
                                                 onSelectAnnotation={() => {}}
@@ -1409,7 +1428,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     ref={viewerHandleRef}
                                                     blocks={parsed.blocks}
                                                     markdown={plan}
-                                                    frontmatter={parsed.frontmatter}
+                                                    frontmatter={frontmatterVisible ? parsed.frontmatter : null}
                                                     annotations={annotations}
                                                     globalAttachments={globalAttachments}
                                                     onAddGlobalAttachment={(image) =>
@@ -1933,7 +1952,7 @@ function AffectedFilesMenu({ paths, onOpen }) {
                 <button
                     type="button"
                     onClick={toggleMenu}
-                    className={`rw-affected-files-trigger ${isOpen ? "active" : ""}`}
+                    className={`rw-review-toolbar-trigger ${isOpen ? "active" : ""}`}
                     aria-expanded={isOpen}
                     title="Inspect files referenced by this Plan"
                 >
@@ -2011,6 +2030,7 @@ function ToggleIcon({ name }) {
     const paths = {
         contents: "M4 6h16M4 10h16M4 14h10M4 18h10",
         versions: "M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
+        frontmatter: "M5 3h14v18H5z M8 7h2 M13 7h3 M8 11h2 M13 11h3 M8 15h8",
         view: "M2.25 12s3.75-6 9.75-6 9.75 6 9.75 6-3.75 6-9.75 6-9.75-6-9.75-6z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
         edit: "M16.862 4.487 19.5 7.125 8.25 18.375 5 19l.625-3.25L16.862 4.487z",
         changes: "M7 7h10M7 12h6M7 17h10",
