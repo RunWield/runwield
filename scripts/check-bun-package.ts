@@ -143,6 +143,27 @@ export async function checkBunPackage(
             equal(page.status, 200, running.output());
             const html = await page.text();
             match(html, /Pair RunWield Workspace/);
+            match(html, /data-workspace-sidebar-restore/);
+            // The unbundled shell imports shared browser modules outside /_astro.
+            // Qualify them from the relocated executable as well as hashed assets.
+            const shellResponse = await fetch(`${base}/workspace-shell.js`);
+            equal(shellResponse.status, 200);
+            const shellSource = await shellResponse.text();
+            match(shellSource, /installWorkspaceShellBrowser/);
+            const imports = [...shellSource.matchAll(/from\s+["']([^"']+)["']/g)];
+            ok(imports.length > 0);
+            for (const [, specifier] of imports) {
+                const assetUrl = new URL(specifier, `${base}/workspace-shell.js`);
+                equal(assetUrl.origin, base);
+                const response = await fetch(assetUrl);
+                equal(response.status, 200, assetUrl.pathname);
+                match(response.headers.get("content-type") || "", /(?:text|application)\/javascript/i);
+                deepEqual(
+                    new Uint8Array(await response.arrayBuffer()),
+                    new Uint8Array(await readFile(join(ROOT, "src/ui", assetUrl.pathname))),
+                    assetUrl.pathname,
+                );
+            }
             equal(page.headers.get("x-frame-options"), "DENY");
             const assets = [...html.matchAll(/(?:src|href)="(\/_astro\/[^"?]+\.(?:js|css))"/g)].map((item) => item[1]);
             ok(assets.length > 0);
