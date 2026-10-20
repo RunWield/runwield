@@ -61,7 +61,7 @@
         "package:homebrew": "bun scripts/package-homebrew.js",
         "package:homebrew:check": "bun scripts/package-homebrew-check.js",
         "package:windows": "bun scripts/package-windows.js",
-        "package:windows:check": "bun scripts/package-windows-check.js",
+        "package:windows:check": "bun scripts/package-windows-check.ts",
         "package:winget": "bun scripts/package-winget.js",
         "prototype": "bun scripts/run-prototype.js",
         "test:golden-tui": "bun scripts/write-version.js && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios",
