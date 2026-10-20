@@ -1098,7 +1098,9 @@ detector.
   project context, store memories, and record initialization.
 - **Sleep:** `wld sleep` and `/sleep` clean up memory and context.
 - **Cymbal:** semantic and structural code intelligence for search, symbol lookup, impact analysis, and tracing.
-- **Snip:** optional filtering of command output into compact diagnostics.
+- **Snip:** optional, fail-open filtering of command output into compact diagnostics. RunWield wraps only an eligible
+  leading plain command, preserving shell syntax, exit status, and output destinations under the Snip filtering contract.
+  Unsupported constructs, live expansions, and stderr redirections pass through unchanged.
 - **Project context:** `docs/domain-language.md`, memories, settings, and Plan files hold durable project knowledge.
 
 **Requirement: Discover and retain both project commands during Init.** Init discovers repository-supported verification
@@ -1149,6 +1151,9 @@ for truncated content. Failed code queries report failure; a successful empty qu
 - Given a superseded or mixed Memory, Sleep keeps a verified current lesson and the backup keeps the old record.
 - Given a glossary map, Agents follow its links regardless of code layout.
 - Given batched reads where one target is missing, the successful results stay visible in request order.
+- Given a shell loop, conditional, function, group, heredoc, or stderr redirection, Snip leaves the command unchanged.
+- Given an eligible leading command followed by a pipeline or `&&`/`||` chain, Snip wraps only that command, runs it
+  once, preserves its exit status and output destinations, and leaves the rest of the shell program unchanged.
 
 **Target: concise project briefing.** Compressed project context where it is useful, without filling every prompt.
 Future code-intelligence work addresses demonstrated gaps in finding code, understanding dependencies, and assessing
