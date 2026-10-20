@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "abf7b3ec-fcb3-4f22-bba6-c47b7cf089c8"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "8fb4ad2b-4dc7-41c2-9e8b-d384485eaa58"
 ---
-
 # Complete Session export and Gist sharing
 
 ## Summary
