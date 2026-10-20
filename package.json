@@ -96,6 +96,7 @@
         "@modelcontextprotocol/sdk": "1.30.0",
         "@pierre/diffs": "1.4.2",
         "@plannotator/atomic-editor": "0.9.0",
+        "@plannotator/core": "file:third_party/plannotator/packages/core",
         "@plannotator/markdown-editor": "0.4.0",
         "@plannotator/web-highlighter": "0.8.1",
         "@preact/signals": "2.11.3",

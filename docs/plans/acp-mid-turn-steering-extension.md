@@ -41,7 +41,7 @@ The user reported the symptom through OpenAB in Discord: a correction sent durin
 the next message until the current turn ends. A feature request has been sent to the OpenAB team. This Plan delivers the
 RunWield side so OpenAB, or any client using the same extension, can steer RunWield.
 
-**Owning PRD:** [ACP Protocol PRD — Protocol negotiation and interactions](../prd/runwield-acp-protocol-prd.md#63-acp-compatibility-requirements).
+**Owning PRD:** [ACP Protocol PRD — Protocol negotiation and interactions](../prd/runwield-acp-protocol-prd.md#protocol-negotiation-and-interactions).
 
 - **Proposed addition:** a requirement and acceptance scenarios for the `_session/steering` extension.
 - **Must survive:** "If work is currently running, the client reports that state without losing the user's input."
