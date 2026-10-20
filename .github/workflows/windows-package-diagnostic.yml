@@ -1,54 +1,85 @@
-name: Windows release repair diagnostic
+name: Windows package diagnostic
 
 on:
     workflow_dispatch:
         inputs:
             ref:
-                description: Release ref to test
+                description: Git ref to build and test
                 required: true
+                default: fix/windows-package-check
 
 permissions:
     contents: read
 
 jobs:
-    source:
-        strategy:
-            fail-fast: false
-            matrix:
-                runner: [windows-2025, windows-11-arm]
-        runs-on: ${{ matrix.runner }}
-        timeout-minutes: 20
+    build-windows:
+        runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v5
+            - name: Checkout
+              uses: actions/checkout@v5
               with:
                   ref: ${{ inputs.ref }}
                   submodules: recursive
-            - uses: oven-sh/setup-bun@v2
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
-            - run: |
-                  bun -e 'console.log(JSON.stringify({arch: process.arch, bun: process.versions.bun}))'
-            - run: bun run install:locked
-            - run: bun run workspace:build
-            - name: Run the failing native tests concurrently
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
+
+            - name: Generate version file
               env:
-                  WLD_TEST_CONCURRENCY: "4"
-              run: bun scripts/run-tests.js scripts/docs-dependencies.test.ts scripts/docs-workflow.test.ts src/shared/process-identity.test.ts src/shared/workflow/validation-repair-resume.integration.test.ts src/ui/tui/model-welcome.test.ts
-            - name: Retain subprocess failure logs
-              if: always()
+                  WLD_BUILD_VERSION: v0.10.1-rc.9
+              run: bun scripts/write-version.js
+
+            - name: Cache dependencies
+              run: bun run install:locked
+
+            - name: Compile Windows binary
+              env:
+                  WLD_BUILD_VERSION: v0.10.1-rc.9
+              run: bun run compile --output wld.exe --target bun-windows-x64
+
+            - name: Package Windows artifact
+              run: bun run package:windows --tag v0.10.1-rc.9 --binary wld.exe --output .
+
+            - name: Upload Windows artifact
+              uses: actions/upload-artifact@v5
+              with:
+                  name: diagnostic-windows-package
+                  path: |
+                      *.zip
+                      *.json
+                      *.sha256
+
+    check-windows:
+        runs-on: windows-latest
+        needs: build-windows
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.ref }}
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
+
+            - name: Download Windows artifact
+              uses: actions/download-artifact@v5
+              with:
+                  name: diagnostic-windows-package
+                  path: windows-package
+
+            - name: Run native Windows package checks
               shell: pwsh
               run: |
-                  $destination = '.ci-cache/failure-logs'
-                  New-Item -ItemType Directory -Force $destination | Out-Null
-                  Get-ChildItem $env:RUNNER_TEMP -File -Filter 'tests-*.log' | Select-Object -First 30 | ForEach-Object {
-                    if ($_.Length -le 5MB) {
-                      Copy-Item $_.FullName $destination
-                      Get-Content $_.FullName -Tail 100
-                    }
-                  }
-            - uses: actions/upload-artifact@v5
-              if: always()
-              with:
-                  name: windows-repair-${{ matrix.runner }}-${{ github.run_attempt }}
-                  path: .ci-cache/
-                  include-hidden-files: true
+                  $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
+                  if (-not $zip) { throw "Windows package ZIP not found" }
+                  bun run package:windows:check --package $zip.FullName
