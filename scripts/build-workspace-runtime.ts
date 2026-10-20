@@ -1,4 +1,5 @@
 import process from "node:process";
+import type { Stats } from "node:fs";
 import { captureScriptProcess } from "./script-process.ts";
 import {
     copyFile as fsCopyFile,
@@ -26,39 +27,28 @@ const DEFAULT_CLIENT_ASSET_STABILITY_INTERVAL_MS = 100;
 const DEFAULT_CLIENT_ASSET_STABILITY_TIMEOUT_MS = 5000;
 const REQUIRED_CLIENT_ASSET_STABILITY_PASSES = 5;
 
-/**
- * @typedef {Object} WorkspaceRuntimeBuildOptions
- * @property {string} [serverEntry]
- * @property {string} [clientDir]
- * @property {string} [runtimeDir]
- */
+export interface WorkspaceRuntimeBuildOptions {
+    serverEntry?: string;
+    clientDir?: string;
+    runtimeDir?: string;
+}
 
-/**
- * @typedef {Object} WorkspaceRuntimeBuildPort
- * @property {(command: string, args: string[]) => Promise<void>} run
- */
+export interface WorkspaceRuntimeBuildPort {
+    run(command: string, args: string[]): Promise<void>;
+}
 
-/** @type {WorkspaceRuntimeBuildPort} */
-const SYSTEM_WORKSPACE_RUNTIME_BUILD_PORT = Object.freeze({ run: runCommand });
+const SYSTEM_WORKSPACE_RUNTIME_BUILD_PORT: WorkspaceRuntimeBuildPort = Object.freeze({ run: runCommand });
 
 /**
  * Return the stored filename for a passive browser asset.
- *
- * @param {string} name
- * @returns {string}
  */
-export function getOpaqueWorkspaceAssetName(name) {
+export function getOpaqueWorkspaceAssetName(name: string): string {
     return [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"].includes(extname(name).toLowerCase())
         ? `${name}.asset`
         : name;
 }
 
-/**
- * @param {string} command
- * @param {string[]} args
- * @returns {Promise<void>}
- */
-async function runCommand(command, args) {
+async function runCommand(command: string, args: string[]): Promise<void> {
     const result = await captureScriptProcess(command, {
         args,
         stdout: "piped",
@@ -71,26 +61,16 @@ async function runCommand(command, args) {
     throw new Error(output || `${command} failed with exit code ${result.code}`);
 }
 
-/**
- * @typedef {Object} WorkspaceClientAssetStabilityOptions
- * @property {number} [intervalMs]
- * @property {number} [timeoutMs]
- */
+export interface WorkspaceClientAssetStabilityOptions {
+    intervalMs?: number;
+    timeoutMs?: number;
+}
 
-/**
- * @param {number} ms
- * @returns {Promise<void>}
- */
-function delay(ms) {
+function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * @param {string} sourceDir
- * @param {string} destinationDir
- * @returns {Promise<void>}
- */
-async function copyOpaqueAssets(sourceDir, destinationDir) {
+async function copyOpaqueAssets(sourceDir: string, destinationDir: string): Promise<void> {
     await fsMkdir(destinationDir, { recursive: true });
     for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
         const sourcePath = join(sourceDir, entry.name);
@@ -106,13 +86,8 @@ async function copyOpaqueAssets(sourceDir, destinationDir) {
     }
 }
 
-/**
- * @param {string} sourceDir
- * @param {string} [prefix]
- * @returns {Promise<string[]>}
- */
-async function snapshotWorkspaceAssetDirectory(sourceDir, prefix = "") {
-    const snapshot = [];
+async function snapshotWorkspaceAssetDirectory(sourceDir: string, prefix = ""): Promise<string[]> {
+    const snapshot: string[] = [];
     for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
         const sourcePath = join(sourceDir, entry.name);
         const relativePath = prefix ? join(prefix, entry.name) : entry.name;
@@ -134,16 +109,15 @@ async function snapshotWorkspaceAssetDirectory(sourceDir, prefix = "") {
  * Recent builds can return before all hashed CSS assets are visible to the next
  * subprocess on every filesystem; copying during that window creates standalone
  * binaries whose HTML references missing /_astro/*.css files.
- *
- * @param {string} clientDir
- * @param {WorkspaceClientAssetStabilityOptions} [options]
- * @returns {Promise<void>}
  */
-export async function waitForStableWorkspaceClientAssets(clientDir, options = {}) {
+export async function waitForStableWorkspaceClientAssets(
+    clientDir: string,
+    options: WorkspaceClientAssetStabilityOptions = {},
+): Promise<void> {
     const intervalMs = options.intervalMs ?? DEFAULT_CLIENT_ASSET_STABILITY_INTERVAL_MS;
     const timeoutMs = options.timeoutMs ?? DEFAULT_CLIENT_ASSET_STABILITY_TIMEOUT_MS;
     const startedAt = performance.now();
-    let previous = null;
+    let previous: string | null = null;
     let stablePasses = 0;
 
     while (true) {
@@ -170,13 +144,9 @@ export async function waitForStableWorkspaceClientAssets(clientDir, options = {}
 /**
  * Return static relative imports from an Astro server entrypoint. JSDoc type
  * imports are intentionally ignored because they are erased at runtime.
- *
- * @param {string} source
- * @param {string} entryDir
- * @returns {string[]}
  */
-export function getServerEntryImportPaths(source, entryDir) {
-    const importPaths = [];
+export function getServerEntryImportPaths(source: string, entryDir: string): string[] {
+    const importPaths: string[] = [];
     for (const line of source.split("\n")) {
         const trimmed = line.trimStart();
         if (trimmed.startsWith("/*") || trimmed.startsWith("*") || trimmed.startsWith("//")) continue;
@@ -200,11 +170,8 @@ export function getServerEntryImportPaths(source, entryDir) {
  * `deno compile` executable cannot satisfy dynamic require at runtime. Reuse
  * the emitted static imports so the standalone Workspace runtime can be loaded
  * by the release binary.
- *
- * @param {string} source
- * @returns {string}
  */
-export function normalizeCompiledNodeChildProcessImports(source) {
+export function normalizeCompiledNodeChildProcessImports(source: string): string {
     const importPattern =
         /import\{spawn as ([A-Za-z_$][\w$]*),spawnSync as ([A-Za-z_$][\w$]*)\}from"node:child_process";/;
     const match = source.match(importPattern);
@@ -225,11 +192,8 @@ export function normalizeCompiledNodeChildProcessImports(source) {
  * Deno's MessagePorts are referenced by default, so an executable that renders
  * one Workspace page stays alive after its HTTP server closes. Replace bundled
  * channels with a subclass whose ports do not keep the process alive.
- *
- * @param {string} source
- * @returns {string}
  */
-export function unrefBundledMessageChannels(source) {
+export function unrefBundledMessageChannels(source: string): string {
     const channelNames = [...source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new MessageChannel/g)].map(
         (match) => match[1],
     );
@@ -244,10 +208,8 @@ export function unrefBundledMessageChannels(source) {
  * snapshot of the build runner's environment. Keep Vite's production flags,
  * but do not embed runner-specific values or secrets in release binaries.
  * Fail closed if the generated shape changes instead of publishing those values.
- * @param {string} source
- * @returns {string}
  */
-function removeBundledBuildEnvironment(source) {
+function removeBundledBuildEnvironment(source: string): string {
     const snapshot = /Object\.assign\(\{ASSETS_PREFIX:[^{}]*SSR:!0\},\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\}\)/g;
     const result = source.replace(snapshot, (match) => match.slice(0, match.indexOf("},{") + 3) + "})");
     if (
@@ -263,15 +225,12 @@ function removeBundledBuildEnvironment(source) {
 /**
  * Astro discovers static assets in filesystem order. Its manifest treats them as
  * a set, but their serialized order must match across release build jobs.
- * @param {string} source
- * @returns {string}
  */
-function sortBundledManifestAssets(source) {
+function sortBundledManifestAssets(source: string): string {
     return source.replace(
         /assets:(\[(?:"(?:\\.|[^"\\])*"(?:,"(?:\\.|[^"\\])*")*)?\])(?=,buildFormat:)/g,
-        (_match, serialized) => {
-            /** @type {string[]} */
-            const assets = JSON.parse(serialized);
+        (_match: string, serialized: string) => {
+            const assets: string[] = JSON.parse(serialized);
             return `assets:${JSON.stringify(assets.sort())}`;
         },
     );
@@ -281,16 +240,13 @@ function sortBundledManifestAssets(source) {
  * Astro can expose the entry before its chunks and final manifest are ready.
  * Wait for both before invoking `bun build`, so the runtime does not retain
  * Astro's temporary manifest placeholder.
- *
- * @param {string} serverEntry
- * @returns {Promise<void>}
  */
-async function waitForFinalServerEntry(serverEntry) {
+async function waitForFinalServerEntry(serverEntry: string): Promise<void> {
     const entryDir = dirname(serverEntry);
     const deadline = Date.now() + 5000;
     while (true) {
         const source = await fsReadFile(serverEntry, "utf8");
-        const missing = [];
+        const missing: string[] = [];
         for (const path of getServerEntryImportPaths(source, entryDir)) {
             const stat = await fsStat(path).catch((error) => {
                 if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
@@ -311,11 +267,7 @@ async function waitForFinalServerEntry(serverEntry) {
     }
 }
 
-/**
- * @param {string} path
- * @returns {Promise<import("node:fs").Stats>}
- */
-async function waitForFile(path) {
+async function waitForFile(path: string): Promise<Stats> {
     const deadline = Date.now() + 5000;
     while (true) {
         const stat = await fsStat(path).catch((error) => {
@@ -328,12 +280,10 @@ async function waitForFile(path) {
     }
 }
 
-/**
- * @param {WorkspaceRuntimeBuildOptions} options
- * @param {WorkspaceRuntimeBuildPort} port
- * @returns {Promise<void>}
- */
-export async function buildWorkspaceRuntime(options, port) {
+export async function buildWorkspaceRuntime(
+    options: WorkspaceRuntimeBuildOptions,
+    port: WorkspaceRuntimeBuildPort,
+): Promise<void> {
     const serverEntry = options.serverEntry || DEFAULT_SERVER_ENTRY;
     const clientDir = options.clientDir || DEFAULT_CLIENT_DIR;
     const runtimeDir = options.runtimeDir || DEFAULT_RUNTIME_DIR;
