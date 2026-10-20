@@ -17,13 +17,13 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "ae68300ade37329d723b7aa234ec8298577a1589"
 workRecord:
     status: "generated"
     recordId: "7045085b-cab7-4986-b3e1-53cbee2d839c"
     path: "docs/work-records/2026-10-20-conservative-snip-shell-command-wrapping.md"
     lastAttemptAt: "2026-10-20T19:32:48.990Z"
+status: "verified"
 ---
 
 # Fix Snip Shell-Command Wrapping

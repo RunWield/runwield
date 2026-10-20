@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "7045085b-cab7-4986-b3e1-53cbee2d839c"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "7c9a59b8-8747-454e-9d4d-cef8874374bb"
 ---
-
 # Conservative Snip shell-command wrapping
 
 ## Summary
