@@ -1807,6 +1807,11 @@ reduced to coarse command labels; memory calls record their action and scope. Us
 and cost values. Each execution records its available tools. Background tasks and delegates keep links to their
 parent. Missing measurements are marked unavailable or partial.
 
+Each Code Review decision records a `code_review_decision` event with the decision, prior AI review round count,
+AI approval or human takeover outcome, and Code Review round within the delivery attempt. Feedback presence and
+annotation count are metadata only; feedback text, annotation content, and images stay out of metrics. Missing AI
+review evidence is marked unavailable, not approved.
+
 **Acceptance scenarios:**
 
 - Given `workflowMetrics` off or unset, no metrics records are written.
@@ -1817,6 +1822,10 @@ parent. Missing measurements are marked unavailable or partial.
 - Given a template or Skill command that starts Agent work, one invocation ID links it to the execution; a picker
   closed without a choice records cancellation.
 - Given manual `/compact` outside an Agent turn, the compaction is recorded under the Session and command.
+- Given AI approval followed by Code Review changes requested, one decision event identifies both outcomes and the
+  prior AI review round count without feedback or annotation content.
+- Given human takeover at the AI round limit and a second Code Review request for changes, the event identifies
+  human takeover and Code Review round two. Closing or skipping review records no decision event.
 
 ## Browser and shared-review requirements
 
