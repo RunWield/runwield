@@ -33,7 +33,7 @@ jobs:
             - name: Run the failing native tests concurrently
               env:
                   WLD_TEST_CONCURRENCY: "4"
-              run: bun scripts/run-tests.js scripts/docs-workflow.test.ts src/shared/process-identity.test.ts src/shared/workflow/validation-repair-resume.integration.test.ts src/ui/tui/model-welcome.test.ts
+              run: bun scripts/run-tests.js scripts/docs-dependencies.test.ts scripts/docs-workflow.test.ts src/shared/process-identity.test.ts src/shared/workflow/validation-repair-resume.integration.test.ts src/ui/tui/model-welcome.test.ts
             - name: Retain subprocess failure logs
               if: always()
               shell: pwsh
