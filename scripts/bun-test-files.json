@@ -19,6 +19,7 @@
     "scripts/compile-entrypoint.test.ts",
     "scripts/curate-router-judgement-csv.test.ts",
     "scripts/docs-branch-integration.test.ts",
+    "scripts/docs-build-workflow.test.ts",
     "scripts/docs-dependencies.test.ts",
     "scripts/docs-workflow.test.ts",
     "scripts/evaluate-router-judgements.test.js",
