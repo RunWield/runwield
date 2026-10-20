@@ -1,85 +1,61 @@
-name: Windows package diagnostic
+name: Windows release repair diagnostic
 
 on:
     workflow_dispatch:
         inputs:
             ref:
-                description: Git ref to build and test
+                description: Release ref to test
                 required: true
-                default: fix/windows-package-check
 
 permissions:
     contents: read
 
 jobs:
-    build-windows:
-        runs-on: ubuntu-latest
+    source:
+        strategy:
+            fail-fast: false
+            matrix:
+                runner: [windows-2025, windows-11-arm]
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 20
         steps:
-            - name: Checkout
-              uses: actions/checkout@v5
+            - uses: actions/checkout@v5
               with:
                   ref: ${{ inputs.ref }}
                   submodules: recursive
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
+            - uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
-              run: bun run install:locked
-
-            - name: Generate version file
+            - run: bun run install:locked
+            - run: bun run workspace:build
+            - name: Check timeout evidence
+              run: bun scripts/run-tests.js scripts/run-with-snip.test.ts --filter 'a timed-out test'
+            - name: Repeat consent and Stop checks
               env:
-                  WLD_BUILD_VERSION: v0.10.1-rc.9
-              run: bun scripts/write-version.js
-
-            - name: Cache dependencies
-              run: bun run install:locked
-
-            - name: Compile Windows binary
-              env:
-                  WLD_BUILD_VERSION: v0.10.1-rc.9
-              run: bun run compile --output wld.exe --target bun-windows-x64
-
-            - name: Package Windows artifact
-              run: bun run package:windows --tag v0.10.1-rc.9 --binary wld.exe --output .
-
-            - name: Upload Windows artifact
-              uses: actions/upload-artifact@v5
-              with:
-                  name: diagnostic-windows-package
-                  path: |
-                      *.zip
-                      *.json
-                      *.sha256
-
-    check-windows:
-        runs-on: windows-latest
-        needs: build-windows
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v5
-              with:
-                  ref: ${{ inputs.ref }}
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
-              with:
-                  bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
-              run: bun run install:locked
-
-            - name: Download Windows artifact
-              uses: actions/download-artifact@v5
-              with:
-                  name: diagnostic-windows-package
-                  path: windows-package
-
-            - name: Run native Windows package checks
+                  WLD_TEST_CONCURRENCY: "2"
+                  WLD_TEST_FILE_TIMEOUT_MS: "120000"
               shell: pwsh
               run: |
-                  $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
-                  if (-not $zip) { throw "Windows package ZIP not found" }
-                  bun run package:windows:check --package $zip.FullName
+                  1..5 | ForEach-Object {
+                    Write-Host "Native repetition $_"
+                    bun scripts/run-tests.js src/ui/tui/chat-session.test.ts src/ui/workspace/background-stop.integration.test.ts
+                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  }
+            - name: Retain subprocess failure logs
+              if: always()
+              shell: pwsh
+              run: |
+                  $destination = '.ci-cache/failure-logs'
+                  New-Item -ItemType Directory -Force $destination | Out-Null
+                  Get-ChildItem $env:RUNNER_TEMP -File -Filter 'tests-*.log' | Select-Object -First 30 | ForEach-Object {
+                    if ($_.Length -le 5MB) {
+                      Copy-Item $_.FullName $destination
+                      Get-Content $_.FullName -Tail 100
+                    }
+                  }
+            - uses: actions/upload-artifact@v5
+              if: always()
+              with:
+                  name: windows-repair-${{ matrix.runner }}-${{ github.run_attempt }}
+                  path: .ci-cache/
+                  include-hidden-files: true
