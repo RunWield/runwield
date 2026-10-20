@@ -1,4 +1,4 @@
-import { captureScriptProcess } from "./script-process.ts";
+import { type ScriptProcessOptions, captureScriptProcess } from "./script-process.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
@@ -7,36 +7,19 @@ import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promis
  * from the submodule's configured remote.
  */
 
-/**
- * @typedef {Object} CommandResult
- * @property {boolean} success
- * @property {number} code
- * @property {string} stdout
- * @property {string} stderr
- */
+interface SubmoduleConfig {
+    name: string;
+    path: string;
+    url: string;
+}
 
-/**
- * @typedef {Object} SubmoduleConfig
- * @property {string} name
- * @property {string} path
- * @property {string} url
- */
+interface SubmodulePin extends SubmoduleConfig {
+    sha: string;
+}
 
-/**
- * @typedef {Object} SubmodulePin
- * @property {string} name
- * @property {string} path
- * @property {string} url
- * @property {string} sha
- */
+type CommandOptions = Pick<ScriptProcessOptions, "cwd">;
 
-/**
- * @param {string} command
- * @param {string[]} args
- * @param {{ cwd?: string }} [options]
- * @returns {Promise<CommandResult>}
- */
-async function run(command, args, options = {}) {
+async function run(command: string, args: string[], options: CommandOptions = {}) {
     const output = await captureScriptProcess(command, {
         args,
         cwd: options.cwd,
@@ -52,23 +35,17 @@ async function run(command, args, options = {}) {
     };
 }
 
-/**
- * @returns {Promise<boolean>}
- */
-async function hasGitmodules() {
+async function hasGitmodules(): Promise<boolean> {
     try {
         const stat = await fsStat(".gitmodules");
         return stat.isFile();
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
 
-/**
- * @returns {Promise<SubmoduleConfig[]>}
- */
-async function readSubmoduleConfigs() {
+async function readSubmoduleConfigs(): Promise<SubmoduleConfig[]> {
     const result = await run("git", [
         "config",
         "--file",
@@ -80,8 +57,7 @@ async function readSubmoduleConfigs() {
         throw new Error(`Failed to read .gitmodules:\n${result.stderr || result.stdout}`);
     }
 
-    /** @type {Map<string, Partial<SubmoduleConfig>>} */
-    const submodulesByName = new Map();
+    const submodulesByName = new Map<string, Partial<SubmoduleConfig>>();
     for (const line of result.stdout.split("\n")) {
         if (!line.trim()) continue;
         const match = line.match(/^submodule\.(.+)\.(path|url)\s+(.+)$/);
@@ -106,11 +82,7 @@ async function readSubmoduleConfigs() {
     });
 }
 
-/**
- * @param {SubmoduleConfig} submodule
- * @returns {Promise<SubmodulePin>}
- */
-async function readPinnedSubmoduleCommit(submodule) {
+async function readPinnedSubmoduleCommit(submodule: SubmoduleConfig): Promise<SubmodulePin> {
     const result = await run("git", ["ls-tree", "HEAD", "--", submodule.path]);
     if (!result.success) {
         throw new Error(`Failed to read pinned commit for ${submodule.path}:\n${result.stderr || result.stdout}`);
@@ -127,12 +99,7 @@ async function readPinnedSubmoduleCommit(submodule) {
     };
 }
 
-/**
- * @param {SubmodulePin} submodule
- * @param {string} workDir
- * @returns {Promise<CommandResult>}
- */
-async function fetchPinnedCommit(submodule, workDir) {
+async function fetchPinnedCommit(submodule: SubmodulePin, workDir: string) {
     const repoDir = await fsMkdtemp(join(workDir ?? tmpdir(), "submodule-fetch-"));
     const initResult = await run("git", ["init", "--bare", repoDir]);
     if (!initResult.success) return initResult;
@@ -140,10 +107,7 @@ async function fetchPinnedCommit(submodule, workDir) {
     return await run("git", ["-C", repoDir, "fetch", "--depth=1", submodule.url, submodule.sha]);
 }
 
-/**
- * @returns {Promise<void>}
- */
-async function main() {
+async function main(): Promise<void> {
     if (!(await hasGitmodules())) {
         console.log("No .gitmodules file found; skipping submodule fetchability check.");
         return;
