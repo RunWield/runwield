@@ -502,8 +502,10 @@ export async function runReviewerRound(
 > {
     // One in-memory session manager per round, shared across every nudge attempt:
     // the reviewer's accumulated context is what makes a nudge "continue this
-    // review" instead of "start over".
+    // review" instead of "start over". The request ID matches that lifetime, so a
+    // controller retry or a changed corrective prompt accumulates one model budget.
     const reviewerSessionManager = args.session.createInMemorySessionManager(context.executionCwd);
+    const controllerRequestId = `request:${crypto.randomUUID()}`;
     let nudgeReason: string | undefined;
     let inspectedDiff = false;
     let latestOutcome: ValidationReviewOutcome | null = null;
@@ -569,6 +571,7 @@ export async function runReviewerRound(
                 reviewerMode: reviewMode,
                 customTools: config.customTools,
                 sessionManager: reviewerSessionManager,
+                controllerRequestId,
             });
             if (sessionOutcome.outcome === "operational_failure") {
                 const decision = decideValidationRecovery({

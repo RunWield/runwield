@@ -1721,13 +1721,14 @@ settings. ACP reports turn completion through its protocol, and only the destina
 **Requirement: Stop runaway model and tool loops.** Each Pi-backed request has a durable budget of 100 model
 requests, counting each Pi turn start, including automatic tool continuations. A provider retry counts when its next
 turn starts; the retry notification is not another request. The count is recorded before each request and remains
-attached to the same request when its controller-owned task resumes after failure or process restart. A new user
-instruction starts a new request budget. Stop before starting another model request once the budget is exhausted,
-preserve the Session, and show the reason and a clear action to send a new instruction. Also stop the current request
-when an exact tool call and result repeats three times consecutively, or an exact cycle of up to three tool call/result
-pairs repeats three times. Persist only hashes of tool names, arguments, and results for this check; never duplicate raw
-tool inputs or outputs into guard records. A saved stop blocks that request after Session reopen and does not mark the
-Session or its enclosing workflow complete.
+attached to the same request when its controller-owned task resumes after failure or process restart. Automatic retries
+and corrective nudges of one unfinished review also share that review's request budget; a later review round starts a
+new budget. A new user instruction starts a new request budget. Stop before starting another model request once the
+budget is exhausted, preserve the Session, and show the reason and a clear action to send a new instruction. Also stop
+the current request when an exact tool call and result repeats three times consecutively, or an exact cycle of up to
+three tool call/result pairs repeats three times. Persist only hashes of tool names, arguments, and results for this
+check; never duplicate raw tool inputs or outputs into guard records. A saved stop blocks that request after Session
+reopen and does not mark the Session or its enclosing workflow complete.
 
 **Acceptance scenarios:**
 
@@ -1737,6 +1738,9 @@ Session or its enclosing workflow complete.
   RunWield stops before another model request and records a visible, recoverable stop reason.
 - Given one request reaches 100 model requests, when a retry or process restart continues it, RunWield stops before
   request 101. A provider retry contributes one count when its next turn starts.
+- Given one unfinished automatic review, when a controller retry or a regenerated corrective nudge starts another
+  backend attempt, RunWield keeps the same request budget and stops before model request 101; the corrective text still
+  reaches the model. A new review round or a new user instruction starts a new request.
 - Given an interrupted controller-owned task is explicitly resumed after process restart, RunWield keeps its request
   ID and count even if recovery regenerates the prompt; matching text from fresh user input starts a new request.
 - Given a loop guard stops a request, when the Session is reopened, the stop remains in its transcript and the user can

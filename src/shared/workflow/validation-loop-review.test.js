@@ -506,6 +506,11 @@ test("runValidationPhase nudges the same reviewer session when review_complete i
     assertStringIncludes(reviewOpts[1].userRequest, "No review_complete was accepted");
     assertEquals(reviewOpts[1].userRequest.includes("Approved Plan"), false);
     assertEquals(reviewOpts[0].sessionManager, reviewOpts[1].sessionManager);
+    // One unfinished review: the nudge keeps the controller request identity, so the
+    // model-turn budget accumulates instead of restarting.
+    assertEquals(typeof reviewOpts[0].controllerRequestId, "string");
+    assertEquals(reviewOpts[0].controllerRequestId.length > 0, true);
+    assertEquals(reviewOpts[1].controllerRequestId, reviewOpts[0].controllerRequestId);
     assertStringIncludes(uiAPI.messages.join(" "), "AI review needs more time");
 });
 
@@ -1132,6 +1137,8 @@ test("inline round-limit repair records passing CI before another Reviewer round
     });
     let reviewerRuns = 0;
     let ciRuns = 0;
+    /** @type {Array<string | undefined>} */
+    const controllerRequestIds = [];
 
     hostedSession.setInteractionAdapter({
         requestInteraction: (request) =>
@@ -1152,6 +1159,7 @@ test("inline round-limit repair records passing CI before another Reviewer round
             runIsolatedAgentSession: (/** @type {any} */ options) => {
                 if (options.agentName === "reviewer-feedback-engineer") return Promise.resolve(repairMessages());
                 reviewerRuns += 1;
+                controllerRequestIds.push(options.controllerRequestId);
                 return Promise.resolve(
                     reviewerRuns === 1
                         ? reviewerMessages({
@@ -1175,6 +1183,10 @@ test("inline round-limit repair records passing CI before another Reviewer round
 
     assertEquals(reviewerRuns, 2);
     assertEquals(ciRuns, 1);
+    // A later round is a new unfinished review, so it gets its own budget.
+    assertEquals(controllerRequestIds.length, 2);
+    assertEquals(typeof controllerRequestIds[0], "string");
+    assertNotEquals(controllerRequestIds[1], controllerRequestIds[0]);
     assertEquals(result.kind, "paused");
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });

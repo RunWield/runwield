@@ -41,6 +41,12 @@ export interface PrepareRequestDispatchOptions {
     taskId?: string;
     /** True only when the caller explicitly continues the preceding unfinished request. */
     resumePreviousRequest?: boolean;
+    /**
+     * A request identity owned by a controller that runs several backend attempts as one
+     * unfinished unit of work. Each attempt gets a new attempt ID and the supplied prompt,
+     * while counters and stop records accumulate under this request ID.
+     */
+    controllerRequestId?: string;
 }
 
 interface LocatedRequestAttempt {
@@ -58,13 +64,16 @@ interface TranscriptCustomEntry {
  * Start one backend attempt. A failed request keeps its request ID. The next
  * attempt gets a new attempt ID and sends a small continuation prompt when the
  * original user message is already in the transcript.
+ *
+ * A controller-owned request supplies its own ID: every attempt keeps that ID,
+ * gets a new attempt ID, and sends the prompt the controller supplied for it.
  */
 export function prepareRequestDispatch(
     sessionManager: SessionManager,
     options: PrepareRequestDispatchOptions,
 ): PreparedRequestDispatch {
     const userRequestHash = hashRequest(options.userRequest);
-    const previous = readLatestUnfinishedAttempt(sessionManager);
+    const previous = options.controllerRequestId ? null : readLatestUnfinishedAttempt(sessionManager);
     const matchesPreviousScope =
         previous?.attempt.dispatchKind === options.dispatchKind &&
         (options.taskId
@@ -78,7 +87,9 @@ export function prepareRequestDispatch(
             ? continuedAttempt.requestRecorded || hasUserMessageAfter(sessionManager, previous.entryIndex)
             : false;
     const requestHash = continuedAttempt?.requestHash || userRequestHash;
-    const requestId = continuedAttempt ? continuedAttempt.requestId : `request:${crypto.randomUUID()}`;
+    const requestId =
+        options.controllerRequestId ||
+        (continuedAttempt ? continuedAttempt.requestId : `request:${crypto.randomUUID()}`);
     const promptMode: RequestPromptMode = continuedAttempt && requestRecorded ? "continuation" : "original";
     const continuationRequest =
         continuedAttempt?.phase === "started" ? INTERRUPTED_CONTINUATION_REQUEST : BACKEND_CONTINUATION_REQUEST;

@@ -84,6 +84,8 @@ export type IsolatedAgentSessionOptions = {
     includeEditFallback?: boolean;
     sessionManager?: SessionManager;
     dispatchKind?: import("../session/request-dispatch.ts").RequestDispatchKind;
+    /** Request identity owned by a controller that runs several attempts as one unfinished unit of work. */
+    controllerRequestId?: string;
 };
 
 export type SemanticReviewPort = {
@@ -277,6 +279,7 @@ async function runIsolatedRequest(
                         : [...REVIEWER_SUBAGENT_TOOLS],
                 customTools: bindReviewDiffTools(hostedSession, request.customTools),
                 includeEditFallback: false,
+                ...(request.controllerRequestId ? { controllerRequestId: request.controllerRequestId } : {}),
                 sessionManager:
                     (request.sessionManager as unknown as SessionManager) || SessionManager.inMemory(request.cwd),
             },

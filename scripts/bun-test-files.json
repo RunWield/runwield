@@ -451,6 +451,7 @@
     "src/shared/workflow/validation-publication.test.ts",
     "src/shared/workflow/validation-repair-prompt.test.ts",
     "src/shared/workflow/validation-repair-resume.integration.test.ts",
+    "src/shared/workflow/validation-review-budget.integration.test.ts",
     "src/shared/workflow/validation-review-cancellation.test.ts",
     "src/shared/workflow/validation-scope.test.ts",
     "src/shared/workflow/validation-self-healing.integration.test.ts",

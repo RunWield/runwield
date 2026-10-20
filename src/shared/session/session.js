@@ -4867,6 +4867,7 @@ export async function runNonInteractiveAgentPrompt({
  * @param {boolean} [opts.background] - Independent read-only child without foreground ownership.
  * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
  * @param {boolean} [opts.resumePreviousRequest] Explicitly continue this isolated request's prior failed attempt.
+ * @param {string} [opts.controllerRequestId] Request identity owned by a controller that runs several attempts as one unfinished unit of work.
  * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
  * @param {ExecutionSessionBuiltCallback} [opts.onExecutionSessionBuilt]
  * @param {string} [opts.parentExecutionId]
@@ -4957,6 +4958,7 @@ export async function runIsolatedAgentSession(opts) {
             userRequest: opts.userRequest,
             dispatchKind: opts.dispatchKind || "interactive",
             resumePreviousRequest: opts.resumePreviousRequest === true,
+            ...(opts.controllerRequestId ? { controllerRequestId: opts.controllerRequestId } : {}),
             ...(opts.taskId ? { taskId: opts.taskId } : {}),
             backend: executionSession?.kind || "pi",
         });

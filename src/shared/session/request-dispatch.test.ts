@@ -279,7 +279,7 @@ test("validation repair retries opt into continuation only through the reused re
     const observed: Array<{ resume: boolean; requestId: string }> = [];
     const port = createValidationSessionPort(hostedSession, {
         semanticReviewPort: {
-            runIsolatedAgentSession: async (options) => {
+            runIsolatedAgentSession: (options) => {
                 const manager = options.sessionManager as SessionManager;
                 const prepared = prepareRequestDispatch(manager, {
                     userRequest: options.userRequest,
@@ -290,7 +290,7 @@ test("validation repair retries opt into continuation only through the reused re
                 observed.push({ resume: options.resumePreviousRequest === true, requestId: prepared.requestId });
                 if (!options.resumePreviousRequest) appendUserMessage(manager, prepared.userRequest);
                 failRequestDispatch(manager, prepared, true);
-                return [];
+                return Promise.resolve([]);
             },
         },
     });
@@ -311,6 +311,58 @@ test("validation repair retries opt into continuation only through the reused re
     } finally {
         hostedSession.dispose();
     }
+});
+
+test("a controller-owned request keeps its identity across changed prompts without becoming a continuation", () => {
+    const manager = SessionManager.inMemory(getCwd());
+    const controllerRequestId = "request:controller-review";
+    const first = prepareRequestDispatch(manager, {
+        userRequest: "Review round one.",
+        dispatchKind: "interactive",
+        backend: "pi",
+        controllerRequestId,
+    });
+    appendUserMessage(manager, first.userRequest);
+
+    // A normal return settles the attempt as completed. The review may still be unfinished.
+    completeRequestDispatch(manager, first);
+    const nudged = prepareRequestDispatch(manager, {
+        userRequest: "You have not called review_complete yet. Finish this review now.",
+        dispatchKind: "interactive",
+        backend: "pi",
+        controllerRequestId,
+    });
+    assertEquals(nudged.requestId, controllerRequestId);
+    assertNotEquals(nudged.attemptId, first.attemptId);
+    assertEquals(nudged.promptMode, "original");
+    assertEquals(nudged.userRequest, "You have not called review_complete yet. Finish this review now.");
+    appendUserMessage(manager, nudged.userRequest);
+    failRequestDispatch(manager, nudged, true);
+
+    const retried = prepareRequestDispatch(manager, {
+        userRequest: "The provider failed. Continue the same review.",
+        dispatchKind: "interactive",
+        backend: "pi",
+        controllerRequestId,
+    });
+    assertEquals(retried.requestId, controllerRequestId);
+    assertNotEquals(retried.attemptId, nudged.attemptId);
+    assertEquals(retried.promptMode, "original");
+    assertEquals(retried.userRequest, "The provider failed. Continue the same review.");
+
+    const separateReview = prepareRequestDispatch(manager, {
+        userRequest: "Review round one.",
+        dispatchKind: "interactive",
+        backend: "pi",
+        controllerRequestId: "request:second-review",
+    });
+    assertNotEquals(separateReview.requestId, controllerRequestId);
+    assertEquals(
+        readRequestAttemptEntries(manager)
+            .filter((attempt) => attempt.requestId === controllerRequestId)
+            .map((attempt) => attempt.phase),
+        ["started", "completed", "started", "failed", "started"],
+    );
 });
 
 test("explicitly resumed started request resends original when no user message was recorded", () => {
@@ -461,6 +513,7 @@ test("runRootTurn blocks resumed count-100 and saved-stop requests after disk re
             }
 
             const stopped = createInterruptedTranscript("saved-stop-recovery", true);
+            const modelCallsBeforeStoppedReplay = modelCalls;
             const stoppedResume = await resumeRoot("saved-stop-recovery-resumed", stopped.transcriptPath);
             try {
                 await assertRejects(
@@ -476,13 +529,47 @@ test("runRootTurn blocks resumed count-100 and saved-stop requests after disk re
                     RunawayLoopGuardStoppedError,
                     "repeated_tool_result",
                 );
-                assertEquals(modelCalls, 1);
+                assertEquals(modelCalls, modelCallsBeforeStoppedReplay);
                 const attempts = readRequestAttemptEntries(stoppedResume.manager);
                 assertEquals(attempts.at(-1)?.requestId, stopped.requestId);
                 assertEquals(attempts.at(-1)?.phase, "failed");
                 assertEquals(attempts.filter((attempt) => attempt.phase === "completed").length, 0);
             } finally {
                 stoppedResume.hostedSession.dispose();
+            }
+
+            // The failed settlement of the first reopen must not clear the saved stop.
+            const stoppedTwice = await resumeRoot("saved-stop-recovery-twice", stopped.transcriptPath);
+            try {
+                await assertRejects(
+                    () =>
+                        runRootTurn({
+                            hostedSession: stoppedTwice.hostedSession,
+                            agentName: "guide",
+                            userRequest: "Continue the saved execution after restart.",
+                            dispatchKind: "plan_execution",
+                            taskId: "saved-plan",
+                            resumePreviousRequest: true,
+                        }),
+                    RunawayLoopGuardStoppedError,
+                    "repeated_tool_result",
+                );
+                assertEquals(modelCalls, modelCallsBeforeStoppedReplay);
+                const attempts = readRequestAttemptEntries(stoppedTwice.manager);
+                assertEquals(attempts.at(-1)?.requestId, stopped.requestId);
+                assertEquals(attempts.at(-1)?.phase, "failed");
+                assertEquals(
+                    attempts.filter((attempt) => attempt.requestId === stopped.requestId).at(-1)?.phase,
+                    "failed",
+                );
+                assertEquals(
+                    attempts.filter(
+                        (attempt) => attempt.requestId === stopped.requestId && attempt.phase === "completed",
+                    ).length,
+                    0,
+                );
+            } finally {
+                stoppedTwice.hostedSession.dispose();
             }
 
             const legacyStopped = createInterruptedTranscript("legacy-stop-recovery", true, 100, false);
