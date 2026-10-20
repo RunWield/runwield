@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
-import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 import { git } from "../src/shared/git-test-fixture.ts";
