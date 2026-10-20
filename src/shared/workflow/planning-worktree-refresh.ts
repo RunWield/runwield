@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess, type CapturedProcessOptions } from "../captured-process.ts";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
 import { join } from "node:path";
@@ -14,9 +14,11 @@ import {
 } from "../worktree.js";
 import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.js";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
+import { healSettledTransitionRecords } from "./transition-recovery.ts";
+import { isTransferredProjectContext, recordedProjectContextPaths } from "../worktree-project-context.ts";
 
-async function git(cwd: string, args: string[]) {
-    const result = await captureForegroundProcess("git", { cwd, args });
+async function git(cwd: string, args: string[], options: Pick<CapturedProcessOptions, "env" | "stdinText"> = {}) {
+    const result = await captureForegroundProcess("git", { cwd, args, ...options });
     const stdout = new TextDecoder().decode(result.stdout);
     if (!result.success) throw new Error(`git ${args.join(" ")} failed: ${new TextDecoder().decode(result.stderr)}`);
     return stdout;
@@ -66,7 +68,103 @@ async function mergePlanningDocument(
     }
 }
 
+async function isAncestor(cwd: string, ancestor: string, descendant: string) {
+    const result = await captureForegroundProcess("git", {
+        cwd,
+        args: ["merge-base", "--is-ancestor", ancestor, descendant],
+    });
+    if (result.code === 0) return true;
+    if (result.code === 1) return false;
+    throw new Error(`Could not check planning branch history: ${new TextDecoder().decode(result.stderr)}`);
+}
+
+/** Build the complete replacement before touching HEAD, the real index, or saved files. */
+async function buildReplantedCommit(entry: WorktreeRegistryEntry, target: string, dirty: string[]) {
+    const scratch = await mkdtemp(join(tmpdir(), "runwield-planning-replant-"));
+    const options = { env: { GIT_INDEX_FILE: join(scratch, "index") } };
+    try {
+        await git(entry.path, ["read-tree", "HEAD"], options);
+        for (const path of dirty) await git(entry.path, ["add", "-A", "--", path], options);
+        // Preparation also owns transferred context even when Git ignores those files.
+        for (const path of await recordedProjectContextPaths(entry.path)) {
+            if (await isTransferredProjectContext(entry.path, path)) {
+                await git(entry.path, ["add", "-f", "--", path], options);
+            }
+        }
+        const currentTree = (await git(entry.path, ["write-tree"], options)).trim();
+        const paths = (
+            await git(entry.path, ["diff", "--no-renames", "--name-only", "-z", entry.baseCommit, currentTree])
+        )
+            .split("\0")
+            .filter((path) => path && !isRunWieldOwnedRuntimePath(path));
+        await git(entry.path, ["read-tree", target], options);
+        for (const path of paths) {
+            // Compare Git entries rather than decoded files, preserving bytes, modes, and deletions.
+            const entries = await Promise.all(
+                [entry.baseCommit, currentTree, target].map(async (ref) => {
+                    const listing = await git(entry.path, ["ls-tree", "-z", ref, "--", path]);
+                    return (
+                        listing
+                            .split("\0")
+                            .find((line) => line.slice(line.indexOf("\t") + 1) === path)
+                            ?.split("\t")[0] || ""
+                    );
+                }),
+            );
+            const [original, current, incoming] = entries;
+            if (current === original || current === incoming) continue;
+            let carried = current;
+            if (incoming !== original) {
+                if (
+                    !entries.every((value) => /^100(644|755) blob [a-f0-9]+$/.test(value)) ||
+                    !path.startsWith("docs/plans/") ||
+                    !path.endsWith(".md")
+                ) {
+                    throw new Error(
+                        `Cannot refresh ${path}: saved planning edits conflict with the rewritten branch. Your files are preserved.`,
+                    );
+                }
+                const contents = await Promise.all(
+                    entries.map((value) => git(entry.path, ["cat-file", "blob", value.split(" ")[2]])),
+                );
+                const merged = await mergePlanningDocument(
+                    entry.path,
+                    path,
+                    contents[0],
+                    contents[1],
+                    contents[2],
+                    path === `docs/plans/${entry.planName}.md`,
+                );
+                const oid = (await git(entry.path, ["hash-object", "-w", "--stdin"], { stdinText: merged })).trim();
+                carried = `${current.split(" ")[0]} blob ${oid}`;
+            }
+            if (carried) {
+                const [mode, , oid] = carried.split(" ");
+                await git(entry.path, ["update-index", "--add", "--cacheinfo", mode, oid, path], options);
+            } else {
+                await git(entry.path, ["update-index", "--force-remove", "--", path], options);
+            }
+        }
+        const tree = (await git(entry.path, ["write-tree"], options)).trim();
+        const commit = (
+            await git(entry.path, [
+                ...PLANNING_CHECKPOINT_GIT_OPTIONS,
+                "commit-tree",
+                tree,
+                "-p",
+                target,
+                "-m",
+                `Refresh ${entry.planName} onto rewritten ${entry.baseBranch}`,
+            ])
+        ).trim();
+        return { commit, currentTree };
+    } finally {
+        await fsRm(scratch, { recursive: true });
+    }
+}
+
 export async function refreshPlanningWorktree(projectRoot: string, entry: WorktreeRegistryEntry, targetCommit: string) {
+    await healSettledTransitionRecords(entry.path, { planName: entry.planName });
     if (entry.baseCommit === targetCommit) return entry;
     const transition = await runExecutionPreparationTransition({
         projectRoot: entry.path,
@@ -87,14 +185,17 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                 args: ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
             });
             if (pendingMerge.success) throw new Error(`Planning worktree has an unfinished merge: ${entry.path}`);
-            const newerBase = await captureForegroundProcess("git", {
-                cwd: entry.path,
-                args: ["merge-base", "--is-ancestor", targetCommit, entry.baseCommit],
-            });
-            if (newerBase.success) return entry;
-            // On retry the merge may already be durable while registry settlement
-            // is pending. Published code is never mistaken for child implementation.
-            const importedBase = (await git(entry.path, ["merge-base", "HEAD", targetCommit])).trim();
+            if (await isAncestor(entry.path, targetCommit, entry.baseCommit)) return entry;
+            // A completed refresh may have moved HEAD before registry settlement.
+            // Replanted history intentionally no longer contains the old base.
+            const imported = await isAncestor(entry.path, targetCommit, "HEAD");
+            if (!imported && !(await isAncestor(entry.path, entry.baseCommit, "HEAD"))) {
+                throw new Error(
+                    `Cannot refresh planning for ${entry.planName}: the planning branch history no longer contains its recorded base. Your files are preserved.`,
+                );
+            }
+            const rewritten = !imported && !(await isAncestor(entry.path, entry.baseCommit, targetCommit));
+            const importedBase = imported ? targetCommit : entry.baseCommit;
             if (
                 await hasExecutionChangesSince({
                     worktreePath: entry.path,
@@ -103,12 +204,16 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                 })
             ) {
                 throw new Error(
-                    `Cannot refresh planning for ${entry.planName}: this worktree already contains implementation changes.`,
+                    rewritten
+                        ? `Cannot refresh planning for ${entry.planName}: the Epic branch was rewritten after planning started, and this worktree contains implementation changes. Your files are preserved.`
+                        : `Cannot refresh planning for ${entry.planName}: this worktree already contains implementation changes.`,
                 );
             }
             // Status normalization and saved planning edits are preparation, not
             // user implementation. Checkpoint them before importing publication.
             const dirty = (await gitStatusPaths(entry.path)).filter((path) => !isRunWieldOwnedRuntimePath(path));
+            // Resolve every conflict before checkpointing, so refusal changes no saved state.
+            const replanted = rewritten ? await buildReplantedCommit(entry, targetCommit, dirty) : null;
             if (dirty.length) {
                 await checkpointExecutionPreparation({
                     phase: "planning",
@@ -118,6 +223,30 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                     planName: entry.planName,
                     planRelativePath: `docs/plans/${entry.planName}.md`,
                 });
+            }
+            if (replanted) {
+                const replacedHead = (await git(entry.path, ["rev-parse", "HEAD"])).trim();
+                if ((await git(entry.path, ["rev-parse", `${replacedHead}^{tree}`])).trim() !== replanted.currentTree) {
+                    throw new Error(
+                        `Cannot refresh planning for ${entry.planName}: saved files changed during refresh. Your latest edits are preserved. Retry to use them.`,
+                    );
+                }
+                await markEffect("planning_refresh_prepared", {
+                    worktreeId: entry.id,
+                    beforeHead: replacedHead,
+                    afterHead: replanted.commit,
+                });
+                await git(entry.path, ["update-ref", `refs/runwield/planning-replaced/${entry.id}`, replacedHead]);
+                // Checkout -B moves this same branch only after the complete tree is
+                // installed, and unlike reset --keep it protects ignored local files.
+                await git(entry.path, [
+                    ...PLANNING_CHECKPOINT_GIT_OPTIONS,
+                    "checkout",
+                    "--no-overwrite-ignore",
+                    "-B",
+                    entry.branch,
+                    replanted.commit,
+                ]);
             }
             const head = (await git(entry.path, ["rev-parse", "HEAD"])).trim();
             const base = (await git(entry.path, ["merge-base", head, targetCommit])).trim();

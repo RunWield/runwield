@@ -55,7 +55,7 @@ jobs:
             - name: Check compiled release surfaces
               run: bun scripts/release-check.js --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"
             - name: Build remote runtime bundles
-              run: bun scripts/build-workspace-runtime.js && bun scripts/build-plan-server-runtime.js
+              run: bun scripts/build-workspace-runtime.ts && bun scripts/build-plan-server-runtime.js
             - name: Verify relocated remote runtime and diagnostic compilation
               run: bun scripts/run-tests.js scripts/bun-remote-runtime.test.ts scripts/compile-entrypoint.test.ts
             - name: Qualify migrated tooling and Astro development without Deno
@@ -166,7 +166,7 @@ jobs:
               run: |
                   docker compose -f compose.yml config --quiet
                   podman build -f Containerfile -t runwield-remote:recovery .
-                  bun scripts/assert-plan-server-image.js runwield-remote:recovery
+                  bun scripts/assert-plan-server-image.ts runwield-remote:recovery
             - name: Check historical startup, assets, persistence and protections
               run: |
                   trap 'podman rm --force runwield-recovery; podman volume rm runwield-recovery-data' EXIT

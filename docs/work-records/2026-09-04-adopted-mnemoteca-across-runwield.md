@@ -12,23 +12,12 @@ provenance:
         - "5a315cc8-5abc-4fb2-a7ad-31b32795d36a"
 ---
 
-# Adopted Mnemoteca Across RunWield
+# Unified Mnemoteca integration
 
 ## Summary
 
-RunWield now uses Mnemoteca as its only current memory integration identity across installer, runtime preflight,
-extensions, Claude bridge, Core Memory loading, Sleep backup, Work Record indexing, workflow composition, CI,
-sandboxing, docs, and stored project Memories. Verification passed with focused tests, formatting, `deno task pr:check`,
-Work Record index rebuild, tracked old-name absence checks, and project/global Memory searches returning zero old-name
-matches.
-
-## Deviations from Plan
-
-Direct archive checksum/download installer tests were replaced because RunWield now delegates install and migration
-behavior to the official Mnemoteca installer; checksum verification remains covered upstream and archive helper behavior
-moved out of RunWield's install path.
+RunWield uses Mnemoteca as its memory integration across installation, runtime preflight, extensions, Claude bridge, Core Memory, Sleep backup, Work Record indexing, and workflow composition. Installation and migration use the official Mnemoteca installer.
 
 ## Future Planning Notes
 
-Future Mnemoteca-related changes should keep RunWield delegated to the official installer for migration and archive
-integrity, while preserving sandboxed `MNEMOTECA_DB_PATH` handling so tests never touch the developer's real database.
+Delegate migration and archive integrity to the official Mnemoteca installer. Preserve isolated database configuration so tests never touch the developer’s real database.

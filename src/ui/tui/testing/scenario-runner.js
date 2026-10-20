@@ -1152,7 +1152,6 @@ async function runComposedTuiScenario(scenario, options) {
                                             title: "Golden Work Record",
                                             summary:
                                                 "Recorded the completed Golden Planned Change for planning memory.",
-                                            deviationsFromPlan: "None.",
                                         },
                                     },
                                 ],

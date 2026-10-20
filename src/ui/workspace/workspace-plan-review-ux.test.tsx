@@ -94,7 +94,7 @@ test("Plan Review fixtures show every callout kind next to a dense comparison wi
         assertMatch(reader, authoredCallout);
     }
     assertEquals(dense.includes("[!"), false);
-    assertStringIncludes(devSurface, 'planVariant === "dense" ? DENSE_PLAN_FIXTURE : PLAN_FIXTURE');
+    assertMatch(devSurface, /planVariant === "dense"\s*\? DENSE_PLAN_FIXTURE\s*: PLAN_FIXTURE/);
     assertStringIncludes(catalog, 'id: "dense"');
 });
 
@@ -296,7 +296,10 @@ test("Plan and Code review use shared toolbar structure with edge-aligned restor
     assertStringIncludes(surface, '{ value: "frontend-engineer", label: "Frontend Engineer", icon: "frontend" }');
     assertStringIncludes(surface, '{ value: "pair", label: "Pair Execution", icon: "pair" }');
     assertStringIncludes(surface, '{ value: "autonomous", label: "Autonomous", icon: "autonomous" }');
-    assertStringIncludes(styles, ".rw-plan-review .rw-plannotator-plan-layout:has(> .rw-plan-sidebar-tab-toggle)");
+    assertStringIncludes(
+        styles.replace(/\s+/g, " "),
+        ".rw-plan-review .rw-plannotator-plan-layout:has(> .rw-plan-sidebar-tab-toggle)",
+    );
     assertStringIncludes(styles, ".rw-plan-sidebar-tab-toggle {\n    position: absolute;\n    top: 0;");
     assertStringIncludes(surface.replace(/\s+/g, " "), "compact showHelpLink={false}");
     assertStringIncludes(codeSurface, 'className="rw-review-toolbar rw-code-diff-toolbar"');
@@ -378,15 +381,21 @@ test("Plan and Code review use shared toolbar structure with edge-aligned restor
         throw new Error("Code Review must not opt out of the shared review toolbar height and padding");
     }
     if (
-        surface.includes("rw-annotation-reopen") || surface.includes("<SidebarTabs") ||
+        surface.includes("rw-annotation-reopen") ||
+        surface.includes("<SidebarTabs") ||
         surface.includes("<ResizeHandle")
     ) {
         throw new Error("Plan Review must use one Code Review-style collapse and toolbar restore pattern");
     }
     if (
-        leftRestoreIndex < 0 || contentsIndex < leftRestoreIndex || modeActionsIndex < contentsIndex ||
-        rightRestoreIndex < modeActionsIndex || saveControlsIndex < rightRestoreIndex ||
-        annotationsIndex < rightRestoreIndex || sidebarIndex < 0 || collapseIndex < sidebarIndex
+        leftRestoreIndex < 0 ||
+        contentsIndex < leftRestoreIndex ||
+        modeActionsIndex < contentsIndex ||
+        rightRestoreIndex < modeActionsIndex ||
+        saveControlsIndex < rightRestoreIndex ||
+        annotationsIndex < rightRestoreIndex ||
+        sidebarIndex < 0 ||
+        collapseIndex < sidebarIndex
     ) {
         throw new Error(
             "Plan Review must align Contents left, edit Save controls right, and Annotations right in the toolbar",
@@ -469,18 +478,16 @@ test("Plan reviews recover unfinished work and send direct edits as feedback", a
     assertStringIncludes(surface, "Restore draft");
     assertStringIncludes(surface, "persistReviewDraftLocally");
     assertStringIncludes(surface, "directEdits={directEditPanel}");
-    assertStringIncludes(surface, "disabled={!hasGroupFeedback || submitting !== null ||");
+    assertMatch(surface, /disabled=\{\s*!hasGroupFeedback \|\| submitting !== null \|\| plannerWorking\s*\}/);
     assertStringIncludes(surface, "plannerWorking || reviewGroup?.busy}");
     assertStringIncludes(surface, "buildPlanReviewFeedback");
 });
 
 test("Plan and Code annotation tabs occupy the shared header in every presentation", async () => {
-    for (
-        const [path, headingClass] of [
-            [SURFACE_PATH, "rw-plan-review-annotation-heading"],
-            [CODE_SURFACE_PATH, "rw-review-annotation-heading"],
-        ]
-    ) {
+    for (const [path, headingClass] of [
+        [SURFACE_PATH, "rw-plan-review-annotation-heading"],
+        [CODE_SURFACE_PATH, "rw-review-annotation-heading"],
+    ]) {
         const source = await fsReadFile(path, "utf8");
         const heading = source.indexOf(`className="${headingClass}`);
         const tabs = source.indexOf('role="tablist"', heading);
@@ -495,7 +502,7 @@ test("Compact Plan Review starts collapsed and keeps panel controls outside docu
     const surface = await fsReadFile(SURFACE_PATH, "utf8");
     const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
     assertStringIncludes(surface, 'globalThis.matchMedia?.("(max-width: 980px)")');
-    assertStringIncludes(surface, "!compactLayout && getUIPreferences().tocEnabled");
+    assertStringIncludes(surface, "!compactLayout && uiPreferences.tocEnabled");
     assertStringIncludes(surface, "useReviewAnnotations(annotations.length + codeAnnotations.length)");
     assertStringIncludes(surface, 'media.addEventListener("change", syncLayout)');
     assertStringIncludes(surface, 'media.removeEventListener("change", syncLayout)');

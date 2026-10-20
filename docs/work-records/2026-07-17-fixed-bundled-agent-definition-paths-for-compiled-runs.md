@@ -11,10 +11,8 @@ provenance:
         - "444b5669-d2a7-41bd-a985-bcd1146bd730"
 ---
 
-# Fixed bundled agent-definition paths for compiled runs
+# Bundled Agent format access in compiled runs
 
 ## Summary
 
-Extracted bundled agent-definition assets to a runtime-readable cache and updated prompt assembly to resolve format
-references to absolute paths. Planner, Architect, and Slicer flows now access their format files outside the source tree
-without ENOENT failures, while preserving source-mode fallback behavior.
+The Deno-era compiled executable makes bundled Agent-definition assets available through a runtime-readable cache and resolves prompt format references to absolute locations. Planner, Architect, and Slicer can read their format resources outside the source tree, while source-mode fallback remains available.

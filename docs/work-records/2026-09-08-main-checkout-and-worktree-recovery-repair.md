@@ -14,7 +14,7 @@ provenance:
 
 # Main Checkout and Worktree Recovery Repair
 
-## Result
+## Summary
 
 Recovered the pending Workspace Session continuation and steering work, removed the rejected persistent notification
 implementation, and retained the simpler shared Core notification content and browser delivery. Live notifications

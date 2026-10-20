@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/project-runtime-layout.ts"
     - "docs/prd/runwield-core-prd.md"
     - ".gitignore"
-    - "src/shared/worktree-runtime-state-isolation.test.js"
+    - "src/shared/worktree-runtime-state-isolation.test.ts"
     - "src/shared/runwield-owned-paths.test.ts"
     - "src/shared/worktree-merge.test.js"
     - "src/shared/workflow/publication-machine.e2e.test.ts"
@@ -188,7 +188,7 @@ children 01–06. Broader Doctor reports, release documentation, and final Epic-
 Use the sandboxed runner only:
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/runwield-owned-paths.test.ts src/shared/project-runtime-layout.test.ts src/shared/worktree-runtime-state-isolation.test.js src/shared/worktree-merge.test.js src/shared/workflow/execution-progress.test.ts src/shared/workflow/validation-publication.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/publication-machine.e2e.test.ts
+deno run -A scripts/run-tests.js src/shared/runwield-owned-paths.test.ts src/shared/project-runtime-layout.test.ts src/shared/worktree-runtime-state-isolation.test.ts src/shared/worktree-merge.test.js src/shared/workflow/execution-progress.test.ts src/shared/workflow/validation-publication.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/publication-machine.e2e.test.ts
 deno task seams:check
 deno task ci
 ```

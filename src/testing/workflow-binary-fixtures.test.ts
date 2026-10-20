@@ -50,7 +50,6 @@ test("workflow binary fixtures execute supported external commands and preserve 
             makeTempFile: (options) => makeTempFile(options),
             remove: (path) => fsRm(path),
         });
-        assertEquals(await clipboard.hasClipboardImage(), false);
         assertEquals(await clipboard.readClipboardImage(), null);
         await assertWorkflowBinaryCallsSupported(root);
         await assertRejects(() => fsStat(join(bin, "git")), Error, "ENOENT");

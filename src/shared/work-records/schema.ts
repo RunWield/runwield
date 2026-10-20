@@ -7,12 +7,7 @@ import type { TicketReference } from "../ticket-references.js";
 
 export const WORK_RECORD_KIND = "work_record";
 
-export const WORK_RECORD_STATUSES = Object.freeze([
-    "pending_verification",
-    "draft",
-    "approved",
-    "superseded",
-]);
+export const WORK_RECORD_STATUSES = Object.freeze(["pending_verification", "draft", "approved", "superseded"]);
 
 export const WORK_RECORD_SCOPES = Object.freeze(["planned_change", "feature", "epic", "quick_fix"]);
 export const WORK_RECORD_ORIGINS = Object.freeze(["internal", "external"]);
@@ -25,6 +20,7 @@ export const WORK_RECORD_COMPLETION_MODES = Object.freeze([
 
 export const WORK_RECORD_OPTIONAL_SECTION_TITLES = Object.freeze([
     "Deviations from Plan",
+    "Out of Scope",
     "Deferred Work",
     "Future Planning Notes",
     "Required Record Notes",
@@ -52,11 +48,7 @@ export const WORK_RECORD_FRONT_MATTER_KEY_ORDER = Object.freeze(Object.values(WO
 export type WorkRecordStatus = "pending_verification" | "draft" | "approved" | "superseded";
 export type WorkRecordScope = "planned_change" | "feature" | "epic" | "quick_fix";
 export type WorkRecordOrigin = "internal" | "external";
-export type WorkRecordCompletionMode =
-    | "verified"
-    | "closed_without_verification"
-    | "user_verified"
-    | "done_enough";
+export type WorkRecordCompletionMode = "verified" | "closed_without_verification" | "user_verified" | "done_enough";
 export type WorkRecordWorkKind = "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
 
 export interface WorkRecordEvidence {

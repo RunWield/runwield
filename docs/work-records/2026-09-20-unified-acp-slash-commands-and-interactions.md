@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "ffc792b8-5c03-4c7f-80d7-4b8bc215c410"
-status: "approved"
+status: "superseded"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -10,8 +10,8 @@ createdAt: "2026-09-20T03:13:52.745Z"
 provenance:
     sourcePlans:
         - "2d8c7972-ac2c-4cb6-b073-b326c9cbae7e"
+supersededBy: "4539f59e-2074-4614-9e77-548b593621df"
 ---
-
 # Unified ACP Slash Commands and Interactions
 
 ## Summary

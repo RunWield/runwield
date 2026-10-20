@@ -664,7 +664,21 @@ async function commitDirtyWorktreeState(
                 }
             }
             const ordinaryPaths = allowedDirtyPaths.filter((path) => !forcedPaths.has(path));
-            if (ordinaryPaths.length > 0) await runGit(worktreePath, ["add", "-A", "--", ...ordinaryPaths]);
+            if (ordinaryPaths.length > 0) {
+                // Staged deletions and rename sources no longer match an add pathspec.
+                const stageablePaths = parseNulPaths(
+                    await runGit(worktreePath, [
+                        "ls-files",
+                        "--cached",
+                        "--others",
+                        "--exclude-standard",
+                        "-z",
+                        "--",
+                        ...ordinaryPaths,
+                    ]),
+                );
+                if (stageablePaths.length > 0) await runGit(worktreePath, ["add", "-A", "--", ...stageablePaths]);
+            }
         }
     } else {
         await stageDirtyPathsExceptOwnedRuntime(worktreePath);

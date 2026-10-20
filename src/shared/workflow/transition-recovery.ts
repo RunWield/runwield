@@ -127,6 +127,40 @@ export function buildEffectProver(
                 reason: "the complete decision was accepted; document proof is checked separately, and dispatch requires transition commit",
             };
         }
+        if (effect.effect === "planning_refresh_prepared") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const before = typeof proof.beforeHead === "string" ? proof.beforeHead : undefined;
+            const after = typeof proof.afterHead === "string" ? proof.afterHead : undefined;
+            if (!entry || entry.status !== "planning" || !before || !after) {
+                return { settled: false, reason: "planning refresh has no tracked planning attempt or commit pair" };
+            }
+            const branch = await runGitLines(entry.path, ["branch", "--show-current"]);
+            const head = await runGitLines(entry.path, ["rev-parse", "HEAD"]);
+            const settled = branch[0] === entry.branch && (head[0] === before || head[0] === after);
+            return {
+                settled,
+                reason: settled
+                    ? "planning branch retains the complete before or after snapshot"
+                    : "planning branch moved beyond the recorded refresh",
+            };
+        }
+        if (effect.effect === "planning_target_refreshed") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const base = typeof proof.baseCommit === "string" ? proof.baseCommit : undefined;
+            const settled = Boolean(
+                entry &&
+                entry.status === "planning" &&
+                base &&
+                entry.baseCommit === base &&
+                (await isGitAncestor(entry.path, base, "HEAD")),
+            );
+            return {
+                settled,
+                reason: settled
+                    ? "planning baseline and Git history include the refreshed target"
+                    : "planning target refresh cannot be confirmed",
+            };
+        }
         if (effect.effect === "execution_preparation_checkpoint_settled") {
             const entry = worktreeId ? entryById.get(worktreeId) : undefined;
             const commit = typeof proof.preparationCommit === "string" ? proof.preparationCommit : undefined;

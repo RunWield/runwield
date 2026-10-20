@@ -322,9 +322,9 @@ Configuration, scripts, and documentation:
   `src/ui/workspace/…`, `src/ui/tui/…`, or `src/shared/version.js`.
 - `scripts/compile.js` — entry path and `--include` resource arguments.
 - `scripts/language-policy-baseline.json` — 210 literal `src/**` paths, every one of which changes.
-- `scripts/write-version.js`, `scripts/check-doc-links.js`, `scripts/build-workspace-runtime.js`,
+- `scripts/write-version.js`, `scripts/check-doc-links.js`, `scripts/build-workspace-runtime.ts`,
   `scripts/build-plan-server-runtime.js`, `scripts/assert-workspace-review-runtime.js`,
-  `scripts/assert-plan-server-image.js`, `scripts/run-prototype.js`, and `scripts/lint-rules/` — all reference source
+  `scripts/assert-plan-server-image.ts`, `scripts/run-prototype.js`, and `scripts/lint-rules/` — all reference source
   paths.
 - `.vscode/launch.json` and `.githooks/` if they name `src/cli.ts`.
 - `docs/architecture.md` (76KB) — rewrite the source guide and dependency diagrams to match the final tree.

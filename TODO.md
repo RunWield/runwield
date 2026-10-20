@@ -18,7 +18,7 @@ I would order the overlapping group like this:
 1. Finish remove-return-to-router-user-owned-transitions.md It is already in_progress, and the Engineer split explicitly
    depends on it. - done
 
-   1. finish-agent-prompt-architecture-cleanup - done
+    1. finish-agent-prompt-architecture-cleanup - done
 
 2. resume-validation-after-repair-completion.md Small ready bug fix. Stabilizes validation repair. - done
 
@@ -27,8 +27,8 @@ I would order the overlapping group like this:
 
 4. Reassess/archive mode-specific-engineer-context.md and generalize-pair-execution-to-engineer.md (this one is done).
 
-   1. docs/plans/execution-agent-context-boundaries.md - done
-   2. parallelize-independent-ci-stages.md - done
+    1. docs/plans/execution-agent-context-boundaries.md - done
+    2. parallelize-independent-ci-stages.md - done
 
 5. classify-validation-operational-errors.md - done
 
@@ -57,11 +57,6 @@ the audit. Existing entries above are unchanged.
 **Quick win** means a narrow correction. **Needs Plan** means shared behavior, recovery, or compatibility needs
 coordinated verification. These are proposed work groups, not created or approved Plans. Planner must check existing
 Plans and current uncommitted work before creating new ones. Explicit future PRD scope is not included.
-
-1. [ ] **Quick win — Restore Work Record search in this checkout.** Correct the missing Summary sections in
-       [recovery repair](docs/work-records/2026-09-08-main-checkout-and-worktree-recovery-repair.md) and
-       [Session continuation](docs/work-records/2026-09-08-workspace-session-continuation-and-steering.md). Preserve
-       their evidence and confidence labels. This repairs the current documents, not the retrieval failure policy.
 
 2. [ ] **Needs Plan — Respect browser Pair decisions.** Stop and revision feedback must never become permission to
        continue autonomously. Check the real Workspace checkpoint experience against TUI behavior. Evidence:
@@ -129,3 +124,36 @@ Order favors restoring today's broken retrieval, honoring user control, and prot
 context and polish. Quick wins can ship independently; the order is a priority recommendation, not a dependency chain.
 Code fixes need focused regression coverage. Expand a Quick Fix into a Plan if investigation reveals broader behavior
 changes.
+
+---
+
+Check that these work records are accurate and summarize actual delivered work
+
+2026-07-24-fail-closed-plan-verification-delivered.md
+2026-07-24-parallel-test-runs-enabled-with-shared-state-isolation.md
+2026-08-02-native-terminal-osc-notifications.md
+2026-08-03-migrated-direct-custom-tools-to-typescript.md
+2026-08-11-isolated-runwield-runtime-state-from-worktree-merges.md
+2026-08-16-archived-plan-retention-and-prune.md
+2026-08-16-lost-worktree-user-verification-recovery-added.md
+2026-08-18-split-quick-fix-engineer-from-plan-engineer.md
+2026-08-19-handled-unavailable-model-failures-in-agent-and-model-switches.md
+2026-08-24-init-reports-possible-test-seam-risks.md
+2026-08-29-simplified-validation-and-lifecycle-messages.md
+2026-08-31-workflow-tool-events-became-authoritative.md
+2026-09-02-engineer-prompt-handoff-simplified.md
+2026-09-02-mechanical-validation-repair-resume-is-durable.md
+2026-09-03-core-stdio-mcp-support.md
+2026-09-20-isolated-release-candidates-on-release-branches.md
+2026-09-20-publish-release-aligned-documentation-system.md
+2026-09-21-unified-local-skill-discovery-and-precedence.md
+2026-09-22-delivered-acp-reasoning-and-exact-context-reporting.md
+2026-09-22-delivered-skippable-onboarding-tutorial.md
+2026-09-24-pi-0-87-compatibility-upgrade.md
+2026-09-25-progressive-attention-dashboard-loading-delivered.md
+2026-09-25-restore-long-session-tui-rendering-and-safe-scrolling.md
+2026-09-27-readable-plans-and-shared-callouts.md
+2026-09-28-architect-chat-delivered-in-epic-review.md
+2026-10-02-reversible-session-archive-across-acp-and-workspace.md
+2026-10-04-mascot-visibility-control-and-stable-tui-blinking.md
+2026-10-09-default-off-plan-branch-delivery-implemented.md

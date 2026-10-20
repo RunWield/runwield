@@ -9,16 +9,18 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
+import { execPath } from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
-import { listEntries, updateEntry } from "../worktree-registry.js";
+import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.js";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { loadControllerView, writeControllerState } from "./controller-registry.ts";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
+import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 
 type PlanFixtureAttribute = string | number | boolean | string[];
 type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
@@ -455,6 +457,362 @@ test("planning refresh does not overwrite implementation already in the checkout
     );
     assertEquals(await fsReadFile(path, "utf8"), "saved implementation\n");
     assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+async function rewritePublishedTarget(publisher: string) {
+    await fsWriteFile(join(publisher, "src-target-only.js"), "export const rewrittenTarget = true;\n");
+    await git(publisher, ["add", "."]);
+    await git(publisher, ["commit", "--amend", "-m", "rewritten target context"]);
+    await git(publisher, ["push", "--force", "origin", "epic-target"]);
+    return await git(publisher, ["rev-parse", "HEAD"]);
+}
+
+test("planning refresh replants saved edits after the target branch is rewritten", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const relativePath = "docs/plans/epic/01-child.md";
+    const saved = (await fsReadFile(join(first.entry.path, relativePath), "utf8"))
+        .replace("TARGET PLAN BODY", "SAVED PLANNER EDIT")
+        .replace('status: "draft"', 'status: "approved"');
+    await fsWriteFile(join(first.entry.path, relativePath), saved);
+    // The published target already has the owned ignore rules in the reported incident.
+    await fsWriteFile(join(publisher, ".gitignore"), await fsReadFile(join(first.entry.path, ".gitignore")));
+    const published = await rewritePublishedTarget(publisher);
+
+    const second = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+
+    assertEquals(second.entry.id, first.entry.id);
+    assertEquals(second.entry.baseCommit, published);
+    assertEquals(second.entry.baseRef, published);
+    assertEquals(second.entry.baseTree, await git(repo, ["rev-parse", `${published}^{tree}`]));
+    assertEquals(second.plan.attrs.status, "approved");
+    assertStringIncludes(second.plan.markdown, "SAVED PLANNER EDIT");
+    assertEquals(await git(second.entry.path, ["log", "-1", "--format=%P"]), published);
+    assertEquals(await git(second.entry.path, ["diff", "--name-only", published, "HEAD"]), relativePath);
+    const backup = `refs/runwield/planning-replaced/${first.entry.id}`;
+    assertStringIncludes(await git(repo, ["show", `${backup}:${relativePath}`]), "SAVED PLANNER EDIT");
+    await git(repo, ["merge-base", "--is-ancestor", first.entry.baseCommit, backup]);
+    assertEquals(await git(second.entry.path, ["status", "--porcelain"]), "");
+});
+
+test("rewritten target with a conflicting Plan edit refuses without changes", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const relativePath = "docs/plans/epic/01-child.md";
+    const path = join(first.entry.path, relativePath);
+    const saved = (await fsReadFile(path, "utf8")).replace("TARGET PLAN BODY", "LOCAL SCOPE");
+    await fsWriteFile(path, saved);
+    await fsWriteFile(
+        join(publisher, relativePath),
+        (await fsReadFile(join(publisher, relativePath), "utf8")).replace("TARGET PLAN BODY", "PUBLISHED SCOPE"),
+    );
+    await rewritePublishedTarget(publisher);
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+    const status = await git(first.entry.path, ["status", "--porcelain"]);
+    const index = await git(first.entry.path, ["write-tree"]);
+    const refs = await git(repo, ["for-each-ref", `refs/runwield/planning-replaced/${first.entry.id}`]);
+
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        `Cannot refresh ${relativePath}: planning scope conflicts`,
+    );
+
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals(await git(first.entry.path, ["status", "--porcelain"]), status);
+    assertEquals(await git(first.entry.path, ["write-tree"]), index);
+    assertEquals(await fsReadFile(path, "utf8"), saved);
+    assertEquals(await git(repo, ["for-each-ref", `refs/runwield/planning-replaced/${first.entry.id}`]), refs);
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+test("rewritten target keeps implementation and explains the rewrite", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const path = join(first.entry.path, "saved-implementation.js");
+    await fsWriteFile(path, "saved implementation\n");
+    await rewritePublishedTarget(publisher);
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "branch was rewritten after planning started",
+    );
+    assertEquals(await fsReadFile(path, "utf8"), "saved implementation\n");
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+test("preparing twice after a target rewrite reuses the same planning commit", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await rewritePublishedTarget(publisher);
+    const second = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+    const head = await git(second.entry.path, ["rev-parse", "HEAD"]);
+
+    const again = await preparePlanningWorktreeForPlan(repo, "epic/01-child", second.plan.attrs);
+
+    assertEquals(again.entry, second.entry);
+    assertEquals(await git(again.entry.path, ["rev-parse", "HEAD"]), head);
+});
+
+test("replanted planning history settles an interrupted registry update without another commit", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const path = join(first.entry.path, "docs/plans/epic/01-child.md");
+    await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"));
+    const published = await rewritePublishedTarget(publisher);
+    const refreshed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+    const head = await git(refreshed.entry.path, ["rev-parse", "HEAD"]);
+    // Recreate the durable boundary: the new Git commit exists, but the registry still has the old base.
+    await refreshPlanningWorktreeBase(repo, first.entry.id, published, {
+        baseRef: first.entry.baseRef,
+        baseCommit: first.entry.baseCommit,
+        baseTree: await git(repo, ["rev-parse", `${first.entry.baseCommit}^{tree}`]),
+    });
+
+    const resumed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", refreshed.plan.attrs);
+
+    assertEquals(resumed.entry.baseCommit, published);
+    assertEquals(await git(resumed.entry.path, ["rev-parse", "HEAD"]), head);
+    assertStringIncludes(resumed.plan.markdown, "SAVED PLANNER EDIT");
+});
+
+test("rewritten planning branch refuses without touching saved state", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await publishPreviousChild(publisher);
+    // Rewrite only this disposable planning branch, not the target.
+    await fsWriteFile(join(first.entry.path, "docs/plans/epic/01-child.md"), first.plan.markdown + "\nSAVED SCOPE\n");
+    await git(first.entry.path, ["reset", "--soft", first.entry.baseCommit]);
+    await git(first.entry.path, ["add", "."]);
+    await git(first.entry.path, ["commit", "--amend", "-m", "rewrite planning history"]);
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+    const saved = await fsReadFile(join(first.entry.path, "docs/plans/epic/01-child.md"), "utf8");
+
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "planning branch history no longer contains its recorded base",
+    );
+
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals(await fsReadFile(join(first.entry.path, "docs/plans/epic/01-child.md"), "utf8"), saved);
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+test("replant carries new drafts, deleted Plans, and binary planning assets without replaying old target code", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const draft = "docs/plans/epic/new-draft.md";
+    await fsWriteFile(join(first.entry.path, draft), "# New draft\n");
+    const binary = "docs/plans/diagram.bin";
+    const bytes = new Uint8Array([0, 255, 128, 10]);
+    await fsWriteFile(join(first.entry.path, binary), bytes);
+    await fsRm(join(first.entry.path, "docs/plans/epic.md"));
+    const published = await rewritePublishedTarget(publisher);
+
+    const refreshed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+
+    assertEquals(await fsReadFile(join(refreshed.entry.path, draft), "utf8"), "# New draft\n");
+    assertEquals(new Uint8Array(await fsReadFile(join(refreshed.entry.path, binary))), bytes);
+    assertEquals(await git(refreshed.entry.path, ["ls-tree", "HEAD", "--", "docs/plans/epic.md"]), "");
+    assertEquals(
+        await fsReadFile(join(refreshed.entry.path, "src-target-only.js"), "utf8"),
+        "export const rewrittenTarget = true;\n",
+    );
+    assertEquals(await git(refreshed.entry.path, ["log", "-1", "--format=%P"]), published);
+});
+
+test("replant does not overwrite ignored local files with rewritten target files", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    await fsWriteFile(join(publisher, ".gitignore"), "local-cache.txt\n");
+    await publishPreviousChild(publisher);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await fsWriteFile(join(first.entry.path, "local-cache.txt"), "valuable ignored content\n");
+    await fsWriteFile(join(publisher, "local-cache.txt"), "new published content\n");
+    await git(publisher, ["add", "-f", "local-cache.txt"]);
+    await rewritePublishedTarget(publisher);
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+
+    await assertRejects(() => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs));
+
+    assertEquals(await fsReadFile(join(first.entry.path, "local-cache.txt"), "utf8"), "valuable ignored content\n");
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+for (const afterRegistryUpdate of [false, true]) {
+    test(`replant resumes through a real interrupted transition journal ${afterRegistryUpdate ? "after" : "before"} registry settlement`, async () => {
+        const repo = await fixture.checkout();
+        const publisher = await remotePublication(repo);
+        const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+            planId: "plan-child-01",
+            targetBranch: "epic-target",
+        });
+        const relativePath = "docs/plans/epic/01-child.md";
+        await fsWriteFile(
+            join(publisher, relativePath),
+            (await fsReadFile(join(publisher, relativePath), "utf8")).replace(
+                'complexity: "MEDIUM"',
+                'complexity: "HIGH"',
+            ),
+        );
+        const target = await rewritePublishedTarget(publisher);
+        await fsWriteFile(
+            join(first.entry.path, relativePath),
+            (await fsReadFile(join(first.entry.path, relativePath), "utf8")).replace(
+                "TARGET PLAN BODY",
+                "SAVED LOCAL SCOPE",
+            ),
+        );
+        const refreshed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+        const beforeHead = await git(repo, ["rev-parse", `refs/runwield/planning-replaced/${first.entry.id}`]);
+        const afterHead = await git(first.entry.path, ["rev-parse", "HEAD"]);
+        await git(first.entry.path, ["reset", "--keep", beforeHead]);
+        await refreshPlanningWorktreeBase(repo, first.entry.id, target, {
+            baseRef: first.entry.baseRef,
+            baseCommit: first.entry.baseCommit,
+            baseTree: await git(repo, ["rev-parse", `${first.entry.baseCommit}^{tree}`]),
+        });
+        // Use the real transition writer and Git move to retain the journal from a failed refresh.
+        const interrupted = await runExecutionPreparationTransition({
+            projectRoot: first.entry.path,
+            planName: first.entry.planName,
+            worktreeId: first.entry.id,
+            targetRef: first.entry.baseBranch,
+            expectedPlanEvent: false,
+            prepare: async ({ markEffect }) => {
+                await markEffect("planning_refresh_prepared", { worktreeId: first.entry.id, beforeHead, afterHead });
+                await git(first.entry.path, ["reset", "--keep", afterHead]);
+                if (afterRegistryUpdate) {
+                    await refreshPlanningWorktreeBase(repo, first.entry.id, first.entry.baseCommit, {
+                        baseRef: target,
+                        baseCommit: target,
+                        baseTree: await git(repo, ["rev-parse", `${target}^{tree}`]),
+                    });
+                    await markEffect("planning_target_refreshed", { worktreeId: first.entry.id, baseCommit: target });
+                }
+                throw new Error("Interrupted refresh");
+            },
+        });
+        assertEquals(interrupted.status, "needs_recovery");
+        assertEquals((await listTransitionRecoveryRecords(first.entry.path)).length, 1);
+
+        const resumed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", refreshed.plan.attrs);
+
+        assertEquals(resumed.entry.baseCommit, target);
+        assertEquals(resumed.plan.attrs.complexity, "HIGH");
+        assertStringIncludes(resumed.plan.markdown, "SAVED LOCAL SCOPE");
+        assertEquals(await git(resumed.entry.path, ["rev-parse", "HEAD"]), afterHead);
+        assertEquals(await listTransitionRecoveryRecords(first.entry.path), []);
+    });
+}
+
+test("an editor save during replant is kept and used on retry", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const relativePath = "docs/plans/epic/01-child.md";
+    await fsWriteFile(join(publisher, ".gitattributes"), `${relativePath} filter=editor\n`);
+    await publishPreviousChild(publisher);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await rewritePublishedTarget(publisher);
+    const path = join(first.entry.path, relativePath);
+    await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"));
+    const scratch = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const filter = join(scratch, "editor.mjs");
+    await fsWriteFile(
+        filter,
+        `
+        import { readFile, writeFile } from "node:fs/promises";
+        let content = "";
+        for await (const chunk of process.stdin) content += chunk;
+        const path = process.argv[2];
+        const saved = await readFile(path, "utf8");
+        if (saved.includes("SAVED PLANNER EDIT")) {
+            await writeFile(path, saved.replace("SAVED PLANNER EDIT", "EDITOR SAVE DURING REFRESH"));
+        }
+        process.stdout.write(content);
+    `,
+    );
+    await git(repo, ["config", "filter.editor.clean", `"${execPath}" "${filter}" "${path}"`]);
+    await git(repo, ["config", "filter.editor.required", "true"]);
+
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "saved files changed during refresh",
+    );
+
+    assertStringIncludes(await fsReadFile(path, "utf8"), "EDITOR SAVE DURING REFRESH");
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+    const resumed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+    assertStringIncludes(resumed.plan.markdown, "EDITOR SAVE DURING REFRESH");
+});
+
+test("unreadable recorded ancestry preserves the planning worktree instead of treating it as a rewrite", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await rewritePublishedTarget(publisher);
+    const missingCommit = "0000000000000000000000000000000000000000";
+    await refreshPlanningWorktreeBase(repo, first.entry.id, first.entry.baseCommit, {
+        baseRef: missingCommit,
+        baseCommit: missingCommit,
+        baseTree: await git(repo, ["rev-parse", `${first.entry.baseCommit}^{tree}`]),
+    });
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+    const saved = await fsReadFile(join(first.entry.path, "docs/plans/epic/01-child.md"), "utf8");
+
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "Could not check planning branch history",
+    );
+
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals(await fsReadFile(join(first.entry.path, "docs/plans/epic/01-child.md"), "utf8"), saved);
+    assertEquals((await listEntries(repo))[0].baseCommit, missingCommit);
+    assertEquals(await git(repo, ["for-each-ref", `refs/runwield/planning-replaced/${first.entry.id}`]), "");
 });
 
 test("first Epic child planning starts from a new target branch", async () => {

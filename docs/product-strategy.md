@@ -249,7 +249,7 @@ Commit messages are diff-anchored and there are many per Plan. A PR is roughly o
 PR body and a Work Record Summary overlap a lot.
 
 The overlap stops there. Look at any work record produced by RunWield: only the first paragraph is "what changed". The
-rest is Deviations from Plan, Deferred Work, and Future Planning Notes — things that did not happen, and rules the next
+rest is Deviations from Plan, Out of Scope, and Future Planning Notes — things that did not happen, and rules the next
 planner must keep. A PR body cannot hold that well for four structural reasons:
 
 - Direction of time. A commit and a PR describe a change that happened. A Work Record describes what future planning

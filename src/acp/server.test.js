@@ -98,7 +98,9 @@ function requireSelectConfigOption(options, id) {
 
 /** @param {AcpSelectConfigOption} option */
 function configSelectValues(option) {
-    return option.options.flatMap((entry) => "options" in entry ? entry.options : [entry]).map((entry) => entry.value);
+    return option.options
+        .flatMap((entry) => ("options" in entry ? entry.options : [entry]))
+        .map((entry) => entry.value);
 }
 
 /**
@@ -112,12 +114,14 @@ function parseRuntimeFixtureModelConfiguration(text) {
 /** @param {import('@earendil-works/pi-ai').Message['content']} content */
 function fauxContentToText(content) {
     if (typeof content === "string") return content;
-    return content.map((block) => {
-        if (block.type === "text") return block.text;
-        if (block.type === "thinking") return block.thinking;
-        if ("arguments" in block) return `${block.name}:${JSON.stringify(block.arguments)}`;
-        return `[image:${block.mimeType}:${block.data.length}]`;
-    }).join("\n");
+    return content
+        .map((block) => {
+            if (block.type === "text") return block.text;
+            if (block.type === "thinking") return block.thinking;
+            if ("arguments" in block) return `${block.name}:${JSON.stringify(block.arguments)}`;
+            return `[image:${block.mimeType}:${block.data.length}]`;
+        })
+        .join("\n");
 }
 
 /** @param {import('@earendil-works/pi-ai').Message} message */
@@ -127,7 +131,9 @@ function fauxMessageToText(message) {
             getSystemMessageText(message),
             ...(message.toolsRemoved?.map((tool) => `tool-:${JSON.stringify(tool)}`) ?? []),
             ...(message.toolsAdded?.map((tool) => `tool+:${JSON.stringify(tool)}`) ?? []),
-        ].filter((part) => part.length > 0).join("\n");
+        ]
+            .filter((part) => part.length > 0)
+            .join("\n");
     }
     if (message.role === "toolResult") {
         return [message.toolName, ...message.content.map((block) => fauxContentToText([block]))].join("\n");
@@ -168,11 +174,14 @@ const ACP_REGISTRY_INITIALIZE_REQUEST = {
  * @param {string | number} responseId
  */
 function chunkIncludesResponseId(chunk, responseId) {
-    return decoder.decode(chunk).split("\n").some((line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return false;
-        return JSON.parse(trimmed).id === responseId;
-    });
+    return decoder
+        .decode(chunk)
+        .split("\n")
+        .some((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            return JSON.parse(trimmed).id === responseId;
+        });
 }
 
 /**
@@ -233,7 +242,7 @@ function startTestServer(options = {}) {
         const output = createHeldOutput((chunk) =>
             options.holdResponseId !== undefined
                 ? chunkIncludesResponseId(chunk, options.holdResponseId)
-                : decoder.decode(chunk).includes(options.holdOutputText || "")
+                : decoder.decode(chunk).includes(options.holdOutputText || ""),
         );
         outputReadable = output.readable;
         outputWritable = output.writable;
@@ -431,7 +440,7 @@ async function createIdleUngeneratedPersistedSession(cwd) {
         await forceActivationToRequireHydration(store, acquired.session.runwieldSessionId);
         return { piSessionId, transcriptPath };
     } finally {
-        await Promise.resolve((/** @type {{ dispose?: () => void | Promise<void> }} */ (manager)).dispose?.());
+        await Promise.resolve(/** @type {{ dispose?: () => void | Promise<void> }} */ (manager).dispose?.());
         store.close();
     }
 }
@@ -610,21 +619,25 @@ test("CLI --mode acp routes to ACP stdio without stdout diagnostics", async () =
 });
 
 test("ACP session/new requires login and a usable default model", async () => {
-    await withRuntimeCommandFixture("runwield-acp-auth-required-", async (fixture) => {
-        const handle = startTestServer();
-        try {
-            const response = await request(handle, {
-                jsonrpc: "2.0",
-                id: "new-without-model",
-                method: "session/new",
-                params: { cwd: fixture.projectRoot, mcpServers: [] },
-            });
-            assertEquals(response.error.code, -32000);
-            assertStringIncludes(response.error.message, "login and default model setup");
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { providerState: "none" });
+    await withRuntimeCommandFixture(
+        "runwield-acp-auth-required-",
+        async (fixture) => {
+            const handle = startTestServer();
+            try {
+                const response = await request(handle, {
+                    jsonrpc: "2.0",
+                    id: "new-without-model",
+                    method: "session/new",
+                    params: { cwd: fixture.projectRoot, mcpServers: [] },
+                });
+                assertEquals(response.error.code, -32000);
+                assertStringIncludes(response.error.message, "login and default model setup");
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        { providerState: "none" },
+    );
 });
 
 test("ACP session/new sends setup MCP warnings to the client", async () => {
@@ -637,12 +650,14 @@ test("ACP session/new sends setup MCP warnings to the client", async () => {
                 method: "session/new",
                 params: {
                     cwd: fixture.projectRoot,
-                    mcpServers: [{
-                        name: "dead",
-                        command: "/definitely/not/runwield-mcp",
-                        args: [],
-                        env: [],
-                    }],
+                    mcpServers: [
+                        {
+                            name: "dead",
+                            command: "/definitely/not/runwield-mcp",
+                            args: [],
+                            env: [],
+                        },
+                    ],
                 },
             });
             const { response, messages } = await readThroughResponse(handle, "new-warning");
@@ -776,279 +791,301 @@ test("ACP image prompts expose see_image to text-only models with a vision fallb
 });
 
 test("ACP model config switches the next turn and survives session/load", async () => {
-    await withRuntimeCommandFixture("runwield-acp-model-config-", async (fixture) => {
-        /** @type {string[]} */
-        const models = [];
-        fixture.setModelResponseFactory((_context, _options, _state, model) => {
-            models.push(model.id);
-            return fauxAssistantMessage(fauxText("Model selected."));
-        });
-        let handle = startTestServer();
-        try {
-            const created = await createSession(handle, fixture.projectRoot);
-            const newResponse = JSON.parse(framesMatching(handle, (message) => message.id === "new")[0]);
-            /** @type {import('@agentclientprotocol/sdk').SessionConfigOption[]} */
-            const configOptions = newResponse.result.configOptions || [];
-            const option = configOptions.find((option) => option.category === "model");
-            assert(option, "session/new must expose model options for OpenAB /models");
-            assert(option.type === "select");
-            assertEquals(option.currentValue, "runtime-command-fixture/fixture-model");
-            assert(
-                option.options.some((option) =>
-                    "value" in option && option.value === "runtime-command-fixture/alternate-model"
-                ),
-            );
-
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "select-model",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: option.id,
-                    value: "runtime-command-fixture/alternate-model",
-                },
+    await withRuntimeCommandFixture(
+        "runwield-acp-model-config-",
+        async (fixture) => {
+            /** @type {string[]} */
+            const models = [];
+            fixture.setModelResponseFactory((_context, _options, _state, model) => {
+                models.push(model.id);
+                return fauxAssistantMessage(fauxText("Model selected."));
             });
-            const switched = await readThroughResponse(handle, "select-model");
-            assert(switched.response.result, JSON.stringify(switched.response));
-            assertAcpSchema("SetSessionConfigOptionResponse", switched.response.result);
-            assertEquals(
-                switched.response.result.configOptions[0].currentValue,
-                "runtime-command-fixture/alternate-model",
-            );
-            assertEquals(models, [], "switching models must not invoke a model");
-            const updates = sessionUpdateFrames(handle, "config_option_update");
-            assert(updates.length > 0);
-            for (const frame of updates) {
-                assertAcpFrameSchema("SessionNotification", frame, (message) => message.params);
+            let handle = startTestServer();
+            try {
+                const created = await createSession(handle, fixture.projectRoot);
+                const newResponse = JSON.parse(framesMatching(handle, (message) => message.id === "new")[0]);
+                /** @type {import('@agentclientprotocol/sdk').SessionConfigOption[]} */
+                const configOptions = newResponse.result.configOptions || [];
+                const option = configOptions.find((option) => option.category === "model");
+                assert(option, "session/new must expose model options for OpenAB /models");
+                assert(option.type === "select");
+                assertEquals(option.currentValue, "runtime-command-fixture/fixture-model");
+                assert(
+                    option.options.some(
+                        (option) => "value" in option && option.value === "runtime-command-fixture/alternate-model",
+                    ),
+                );
+
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "select-model",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: option.id,
+                        value: "runtime-command-fixture/alternate-model",
+                    },
+                });
+                const switched = await readThroughResponse(handle, "select-model");
+                assert(switched.response.result, JSON.stringify(switched.response));
+                assertAcpSchema("SetSessionConfigOptionResponse", switched.response.result);
+                assertEquals(
+                    switched.response.result.configOptions[0].currentValue,
+                    "runtime-command-fixture/alternate-model",
+                );
+                assertEquals(models, [], "switching models must not invoke a model");
+                const updates = sessionUpdateFrames(handle, "config_option_update");
+                assert(updates.length > 0);
+                for (const frame of updates) {
+                    assertAcpFrameSchema("SessionNotification", frame, (message) => message.params);
+                }
+
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "selected-prompt",
+                    method: "session/prompt",
+                    params: {
+                        sessionId: created.sessionId,
+                        prompt: [{ type: "text", text: "Use the selected model." }],
+                    },
+                });
+                assertEquals((await readThroughResponse(handle, "selected-prompt")).response.result, {
+                    stopReason: "end_turn",
+                });
+                assertEquals(models, ["alternate-model"]);
+
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "restore-model-with-context",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: option.id,
+                        value: "runtime-command-fixture/fixture-model",
+                    },
+                });
+                const restoredContext = await readThroughResponse(handle, "restore-model-with-context");
+                assertEquals(
+                    restoredContext.messages.some(
+                        (message) => message.params?.update?.sessionUpdate === "usage_update",
+                    ),
+                    false,
+                    "a model change must not combine new capacity with stale context tokens",
+                );
+
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "reselect-model",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: option.id,
+                        value: "runtime-command-fixture/alternate-model",
+                    },
+                });
+                const reselected = await readThroughResponse(handle, "reselect-model");
+                assertEquals(
+                    reselected.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
+                    false,
+                    "a later model change must keep unknown context usage off the wire",
+                );
+
+                await closeTestServer(handle);
+                handle = startTestServer();
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "load-selected",
+                    method: "session/load",
+                    params: { sessionId: created.sessionId, cwd: fixture.projectRoot, mcpServers: [] },
+                });
+                const loaded = await readThroughResponse(handle, "load-selected");
+                assert(loaded.response.result, JSON.stringify(loaded.response));
+                assertAcpSchema("LoadSessionResponse", loaded.response.result);
+                assertEquals(
+                    loaded.response.result.configOptions[0].currentValue,
+                    "runtime-command-fixture/alternate-model",
+                );
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "slash-model",
+                    method: "session/prompt",
+                    params: {
+                        sessionId: created.sessionId,
+                        prompt: [{ type: "text", text: "/model runtime-command-fixture/fixture-model" }],
+                    },
+                });
+                const slash = await readThroughResponse(handle, "slash-model");
+                assertEquals(slash.response.result, { stopReason: "end_turn" });
+                assert(
+                    slash.messages.some(
+                        (message) =>
+                            message.params?.update?.sessionUpdate === "config_option_update" &&
+                            message.params.update.configOptions[0].currentValue ===
+                                "runtime-command-fixture/fixture-model",
+                    ),
+                );
+                assertEquals(models, ["alternate-model"], "the model command must not invoke a model");
+            } finally {
+                await closeTestServer(handle);
             }
-
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "selected-prompt",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Use the selected model." }] },
-            });
-            assertEquals((await readThroughResponse(handle, "selected-prompt")).response.result, {
-                stopReason: "end_turn",
-            });
-            assertEquals(models, ["alternate-model"]);
-
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "restore-model-with-context",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: option.id,
-                    value: "runtime-command-fixture/fixture-model",
-                },
-            });
-            const restoredContext = await readThroughResponse(handle, "restore-model-with-context");
-            assertEquals(
-                restoredContext.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
-                false,
-                "a model change must not combine new capacity with stale context tokens",
-            );
-
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "reselect-model",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: option.id,
-                    value: "runtime-command-fixture/alternate-model",
-                },
-            });
-            const reselected = await readThroughResponse(handle, "reselect-model");
-            assertEquals(
-                reselected.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
-                false,
-                "a later model change must keep unknown context usage off the wire",
-            );
-
-            await closeTestServer(handle);
-            handle = startTestServer();
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "load-selected",
-                method: "session/load",
-                params: { sessionId: created.sessionId, cwd: fixture.projectRoot, mcpServers: [] },
-            });
-            const loaded = await readThroughResponse(handle, "load-selected");
-            assert(loaded.response.result, JSON.stringify(loaded.response));
-            assertAcpSchema("LoadSessionResponse", loaded.response.result);
-            assertEquals(
-                loaded.response.result.configOptions[0].currentValue,
-                "runtime-command-fixture/alternate-model",
-            );
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "slash-model",
-                method: "session/prompt",
-                params: {
-                    sessionId: created.sessionId,
-                    prompt: [{ type: "text", text: "/model runtime-command-fixture/fixture-model" }],
-                },
-            });
-            const slash = await readThroughResponse(handle, "slash-model");
-            assertEquals(slash.response.result, { stopReason: "end_turn" });
-            assert(slash.messages.some((message) =>
-                message.params?.update?.sessionUpdate === "config_option_update" &&
-                message.params.update.configOptions[0].currentValue === "runtime-command-fixture/fixture-model"
-            ));
-            assertEquals(models, ["alternate-model"], "the model command must not invoke a model");
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { additionalModels: [{ id: "alternate-model", name: "Alternate Model", contextWindow: 64_000 }] });
+        },
+        { additionalModels: [{ id: "alternate-model", name: "Alternate Model", contextWindow: 64_000 }] },
+    );
 });
 
 test("ACP reasoning config controls the next turn, rejects unsupported values, and survives reload", async () => {
-    await withRuntimeCommandFixture("runwield-acp-reasoning-config-", async (fixture) => {
-        /** @type {string[]} */
-        const reasoningLevels = [];
-        fixture.setModelResponseFactory((_context, options) => {
-            reasoningLevels.push(String(options?.reasoning || ""));
-            return fauxAssistantMessage(fauxText("Reasoning selected."));
-        });
-        let handle = startTestServer();
-        try {
-            const created = await createSession(handle, fixture.projectRoot);
-            const newResponse = JSON.parse(framesMatching(handle, (message) => message.id === "new")[0]);
-            const configOptions = newResponse.result.configOptions || [];
-            assertEquals(configOptionIds(configOptions), ["model", "thought_level"]);
-            const reasoning = requireSelectConfigOption(configOptions, "thought_level");
-            assertEquals(reasoning.category, "thought_level");
-            assertEquals(reasoning.currentValue, "medium");
-            assertEquals(configSelectValues(reasoning), [
-                "off",
-                "minimal",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max",
-            ]);
+    await withRuntimeCommandFixture(
+        "runwield-acp-reasoning-config-",
+        async (fixture) => {
+            /** @type {string[]} */
+            const reasoningLevels = [];
+            fixture.setModelResponseFactory((_context, options) => {
+                reasoningLevels.push(String(options?.reasoning || ""));
+                return fauxAssistantMessage(fauxText("Reasoning selected."));
+            });
+            let handle = startTestServer();
+            try {
+                const created = await createSession(handle, fixture.projectRoot);
+                const newResponse = JSON.parse(framesMatching(handle, (message) => message.id === "new")[0]);
+                const configOptions = newResponse.result.configOptions || [];
+                assertEquals(configOptionIds(configOptions), ["model", "thought_level"]);
+                const reasoning = requireSelectConfigOption(configOptions, "thought_level");
+                assertEquals(reasoning.category, "thought_level");
+                assertEquals(reasoning.currentValue, "medium");
+                assertEquals(configSelectValues(reasoning), [
+                    "off",
+                    "minimal",
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max",
+                ]);
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "select-reasoning",
-                method: "session/set_config_option",
-                params: { sessionId: created.sessionId, configId: "thought_level", value: "high" },
-            });
-            const selected = await readThroughResponse(handle, "select-reasoning");
-            assertEquals(configOptionCurrentValues(selected.response.result?.configOptions || []), [
-                "runtime-command-fixture/fixture-model",
-                "high",
-            ]);
-            assertEquals(reasoningLevels, [], "changing reasoning must not invoke a model");
-            assert(
-                selected.messages.some((message) =>
-                    message.params?.update?.sessionUpdate === "config_option_update" &&
-                    message.params.update.configOptions[1]?.currentValue === "high"
-                ),
-            );
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "select-reasoning",
+                    method: "session/set_config_option",
+                    params: { sessionId: created.sessionId, configId: "thought_level", value: "high" },
+                });
+                const selected = await readThroughResponse(handle, "select-reasoning");
+                assertEquals(configOptionCurrentValues(selected.response.result?.configOptions || []), [
+                    "runtime-command-fixture/fixture-model",
+                    "high",
+                ]);
+                assertEquals(reasoningLevels, [], "changing reasoning must not invoke a model");
+                assert(
+                    selected.messages.some(
+                        (message) =>
+                            message.params?.update?.sessionUpdate === "config_option_update" &&
+                            message.params.update.configOptions[1]?.currentValue === "high",
+                    ),
+                );
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "invalid-reasoning",
-                method: "session/set_config_option",
-                params: { sessionId: created.sessionId, configId: "thought_level", value: "extreme" },
-            });
-            assertEquals((await readThroughResponse(handle, "invalid-reasoning")).response.error?.code, -32602);
-            assertEquals(reasoningLevels, []);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "invalid-reasoning",
+                    method: "session/set_config_option",
+                    params: { sessionId: created.sessionId, configId: "thought_level", value: "extreme" },
+                });
+                assertEquals((await readThroughResponse(handle, "invalid-reasoning")).response.error?.code, -32602);
+                assertEquals(reasoningLevels, []);
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "reasoning-prompt",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Use high reasoning." }] },
-            });
-            assertEquals((await readThroughResponse(handle, "reasoning-prompt")).response.result, {
-                stopReason: "end_turn",
-            });
-            assertEquals(reasoningLevels, ["high"]);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "reasoning-prompt",
+                    method: "session/prompt",
+                    params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Use high reasoning." }] },
+                });
+                assertEquals((await readThroughResponse(handle, "reasoning-prompt")).response.result, {
+                    stopReason: "end_turn",
+                });
+                assertEquals(reasoningLevels, ["high"]);
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "select-nonreasoning-model",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: "model",
-                    value: "runtime-command-fixture/plain-model",
-                },
-            });
-            const plainModel = await readThroughResponse(handle, "select-nonreasoning-model");
-            assertEquals(configOptionIds(plainModel.response.result?.configOptions || []), ["model"]);
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "unsupported-reasoning",
-                method: "session/set_config_option",
-                params: { sessionId: created.sessionId, configId: "thought_level", value: "low" },
-            });
-            assertEquals((await readThroughResponse(handle, "unsupported-reasoning")).response.error?.code, -32602);
-            assertEquals(reasoningLevels, ["high"]);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "select-nonreasoning-model",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: "model",
+                        value: "runtime-command-fixture/plain-model",
+                    },
+                });
+                const plainModel = await readThroughResponse(handle, "select-nonreasoning-model");
+                assertEquals(configOptionIds(plainModel.response.result?.configOptions || []), ["model"]);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "unsupported-reasoning",
+                    method: "session/set_config_option",
+                    params: { sessionId: created.sessionId, configId: "thought_level", value: "low" },
+                });
+                assertEquals((await readThroughResponse(handle, "unsupported-reasoning")).response.error?.code, -32602);
+                assertEquals(reasoningLevels, ["high"]);
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "restore-reasoning-model",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: "model",
-                    value: "runtime-command-fixture/fixture-model",
-                },
-            });
-            const restored = await readThroughResponse(handle, "restore-reasoning-model");
-            assertEquals(restored.response.result?.configOptions[1]?.currentValue, "high");
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "restore-reasoning-model",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: "model",
+                        value: "runtime-command-fixture/fixture-model",
+                    },
+                });
+                const restored = await readThroughResponse(handle, "restore-reasoning-model");
+                assertEquals(restored.response.result?.configOptions[1]?.currentValue, "high");
 
-            await closeTestServer(handle);
-            handle = startTestServer();
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "load-reasoning",
-                method: "session/load",
-                params: { sessionId: created.sessionId, cwd: fixture.projectRoot, mcpServers: [] },
-            });
-            const loaded = await readThroughResponse(handle, "load-reasoning");
-            assertEquals(configOptionCurrentValues(loaded.response.result?.configOptions || []), [
-                "runtime-command-fixture/fixture-model",
-                "high",
-            ]);
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, {
-        reasoning: true,
-        additionalModels: [{ id: "plain-model", name: "Plain Model", reasoning: false }],
-    });
+                await closeTestServer(handle);
+                handle = startTestServer();
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "load-reasoning",
+                    method: "session/load",
+                    params: { sessionId: created.sessionId, cwd: fixture.projectRoot, mcpServers: [] },
+                });
+                const loaded = await readThroughResponse(handle, "load-reasoning");
+                assertEquals(configOptionCurrentValues(loaded.response.result?.configOptions || []), [
+                    "runtime-command-fixture/fixture-model",
+                    "high",
+                ]);
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        {
+            reasoning: true,
+            additionalModels: [{ id: "plain-model", name: "Plain Model", reasoning: false }],
+        },
+    );
 });
 
 test("ACP model config can recover after a failed turn and rejects invalid selections", async () => {
-    await withRuntimeCommandFixture("runwield-acp-model-recovery-", async (fixture) => {
-        fixture.setModelResponseFactory(() => {
-            throw new Error("You have hit your session limit");
-        });
-        const handle = startTestServer();
-        try {
-            const created = await createSession(handle, fixture.projectRoot);
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "failed-turn",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Try the exhausted model." }] },
+    await withRuntimeCommandFixture(
+        "runwield-acp-model-recovery-",
+        async (fixture) => {
+            fixture.setModelResponseFactory(() => {
+                throw new Error("You have hit your session limit");
             });
-            const failed = await readThroughResponse(handle, "failed-turn");
-            assertStringIncludes(
-                JSON.stringify(failed),
-                "The model service reports a usage or billing limit. Check your account.",
-            );
-            assertEquals(JSON.stringify(failed).includes("You have hit your session limit"), false);
-            for (
-                const { id, params, code } of [
+            const handle = startTestServer();
+            try {
+                const created = await createSession(handle, fixture.projectRoot);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "failed-turn",
+                    method: "session/prompt",
+                    params: {
+                        sessionId: created.sessionId,
+                        prompt: [{ type: "text", text: "Try the exhausted model." }],
+                    },
+                });
+                const failed = await readThroughResponse(handle, "failed-turn");
+                assertStringIncludes(
+                    JSON.stringify(failed),
+                    "The model service reports a usage or billing limit. Check your account.",
+                );
+                assertEquals(JSON.stringify(failed).includes("You have hit your session limit"), false);
+                for (const { id, params, code } of [
                     {
                         id: "unknown-session",
                         params: {
@@ -1081,46 +1118,47 @@ test("ACP model config can recover after a failed turn and rejects invalid selec
                         params: { sessionId: created.sessionId, configId: "model", type: "boolean", value: true },
                         code: -32602,
                     },
-                ]
-            ) {
-                await sendMessage(handle, { jsonrpc: "2.0", id, method: "session/set_config_option", params });
-                assertEquals((await readThroughResponse(handle, id)).response.error?.code, code);
+                ]) {
+                    await sendMessage(handle, { jsonrpc: "2.0", id, method: "session/set_config_option", params });
+                    assertEquals((await readThroughResponse(handle, id)).response.error?.code, code);
+                }
+                /** @type {string[]} */
+                const models = [];
+                fixture.setModelResponseFactory((_context, _options, _state, model) => {
+                    models.push(model.id);
+                    return fauxAssistantMessage(fauxText("Recovered in the same conversation."));
+                });
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "recover-model",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: "model",
+                        value: "runtime-command-fixture/alternate-model",
+                    },
+                });
+                const recovered = await readThroughResponse(handle, "recover-model");
+                assertEquals(
+                    recovered.response.result?.configOptions[0].currentValue,
+                    "runtime-command-fixture/alternate-model",
+                );
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "recovered-turn",
+                    method: "session/prompt",
+                    params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Continue." }] },
+                });
+                assertEquals((await readThroughResponse(handle, "recovered-turn")).response.result, {
+                    stopReason: "end_turn",
+                });
+                assertEquals(models, ["alternate-model"]);
+            } finally {
+                await closeTestServer(handle);
             }
-            /** @type {string[]} */
-            const models = [];
-            fixture.setModelResponseFactory((_context, _options, _state, model) => {
-                models.push(model.id);
-                return fauxAssistantMessage(fauxText("Recovered in the same conversation."));
-            });
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "recover-model",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: "model",
-                    value: "runtime-command-fixture/alternate-model",
-                },
-            });
-            const recovered = await readThroughResponse(handle, "recover-model");
-            assertEquals(
-                recovered.response.result?.configOptions[0].currentValue,
-                "runtime-command-fixture/alternate-model",
-            );
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "recovered-turn",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Continue." }] },
-            });
-            assertEquals((await readThroughResponse(handle, "recovered-turn")).response.result, {
-                stopReason: "end_turn",
-            });
-            assertEquals(models, ["alternate-model"]);
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { additionalModels: [{ id: "alternate-model", name: "Alternate Model" }] });
+        },
+        { additionalModels: [{ id: "alternate-model", name: "Alternate Model" }] },
+    );
 });
 
 test("ACP session/new and session/prompt can invoke a real MCP fixture tool", async () => {
@@ -1138,12 +1176,14 @@ test("ACP session/new and session/prompt can invoke a real MCP fixture tool", as
                 method: "session/new",
                 params: {
                     cwd: fixture.projectRoot,
-                    mcpServers: [{
-                        name: "fixture",
-                        command: process.execPath,
-                        args: runtimeSourceArgs(["run", "-A", MCP_FIXTURE_SERVER]),
-                        env: [{ name: "RUNWIELD_MCP_FIXTURE_LOG", value: logPath }],
-                    }],
+                    mcpServers: [
+                        {
+                            name: "fixture",
+                            command: process.execPath,
+                            args: runtimeSourceArgs(["run", "-A", MCP_FIXTURE_SERVER]),
+                            env: [{ name: "RUNWIELD_MCP_FIXTURE_LOG", value: logPath }],
+                        },
+                    ],
                 },
             });
             const created = await readThroughResponse(handle, "new-mcp");
@@ -1168,81 +1208,89 @@ test("ACP session/new and session/prompt can invoke a real MCP fixture tool", as
 });
 
 test("ACP /agent opens selection without a model turn and affects the next request", async () => {
-    await withRuntimeCommandFixture("runwield-acp-agent-command-", async (fixture) => {
-        fixture.setModelResponseFactory(() => {
-            throw new Error("/agent must not call the model");
-        });
-        const handle = startTestServer();
-        try {
-            await request(handle, {
-                jsonrpc: "2.0",
-                id: "init-form",
-                method: "initialize",
-                params: { protocolVersion: 1, clientCapabilities: { elicitation: { form: {} } } },
+    await withRuntimeCommandFixture(
+        "runwield-acp-agent-command-",
+        async (fixture) => {
+            fixture.setModelResponseFactory(() => {
+                throw new Error("/agent must not call the model");
             });
-            const { sessionId } = await createSession(handle, fixture.projectRoot);
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "agent-command",
-                method: "session/prompt",
-                params: { sessionId, prompt: [{ type: "text", text: "/agent" }] },
-            });
-            let elicitation = null;
-            for (let index = 0; index < 40; index++) {
-                const message = await readMessage(handle);
-                if (message.method === "elicitation/create") {
-                    elicitation = message;
-                    break;
-                }
-            }
-            assert(elicitation, "ACP /agent should ask the client to choose an Agent");
-            assertEquals(elicitation.params.sessionId, sessionId);
-            assertEquals(elicitation.params._meta.runwield.interactionType, "select");
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: elicitation.id,
-                result: { action: "accept", content: { answer: "guide" } },
-            });
-            const result = await readThroughResponse(handle, "agent-command");
-            assertEquals(result.response.result.stopReason, "end_turn");
-            assertStringIncludes(JSON.stringify(result.messages), "Active agent: guide");
-
-            assertEquals(
-                result.messages.filter((message) => message.params?.update?._meta?.runwield?.type === "agent_changed")
-                    .length,
-                1,
-            );
-            assert(result.messages.some((message) =>
-                message.params?.update?.sessionUpdate === "config_option_update" &&
-                configOptionIds(message.params.update.configOptions).join(",") === "model,thought_level"
-            ));
-            for (const command of ["/version", "/session", "/agent guide"]) {
+            const handle = startTestServer();
+            try {
+                await request(handle, {
+                    jsonrpc: "2.0",
+                    id: "init-form",
+                    method: "initialize",
+                    params: { protocolVersion: 1, clientCapabilities: { elicitation: { form: {} } } },
+                });
+                const { sessionId } = await createSession(handle, fixture.projectRoot);
                 await sendMessage(handle, {
                     jsonrpc: "2.0",
-                    id: "same-agent-command",
+                    id: "agent-command",
                     method: "session/prompt",
-                    params: { sessionId, prompt: [{ type: "text", text: command }] },
+                    params: { sessionId, prompt: [{ type: "text", text: "/agent" }] },
                 });
-                const commandResult = await readThroughResponse(handle, "same-agent-command");
-                assertEquals(commandResult.response.result.stopReason, "end_turn");
-                assert(!joinedAgentText(commandResult.messages).includes("Active agent:"), command);
-            }
+                let elicitation = null;
+                for (let index = 0; index < 40; index++) {
+                    const message = await readMessage(handle);
+                    if (message.method === "elicitation/create") {
+                        elicitation = message;
+                        break;
+                    }
+                }
+                assert(elicitation, "ACP /agent should ask the client to choose an Agent");
+                assertEquals(elicitation.params.sessionId, sessionId);
+                assertEquals(elicitation.params._meta.runwield.interactionType, "select");
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: elicitation.id,
+                    result: { action: "accept", content: { answer: "guide" } },
+                });
+                const result = await readThroughResponse(handle, "agent-command");
+                assertEquals(result.response.result.stopReason, "end_turn");
+                assertStringIncludes(JSON.stringify(result.messages), "Active agent: guide");
 
-            fixture.setModelResponse("Guide handled this follow-up.");
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "follow-up",
-                method: "session/prompt",
-                params: { sessionId, prompt: [{ type: "text", text: "Now answer normally" }] },
-            });
-            const followUp = await readThroughResponse(handle, "follow-up");
-            assertStringIncludes(joinedAgentText(followUp.messages), "Guide handled this follow-up.");
-            assert(!joinedAgentText(followUp.messages).includes("Active agent:"));
-            assertStringIncludes(JSON.stringify(followUp.messages), '"agentName":"Guide"');
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { reasoning: true });
+                assertEquals(
+                    result.messages.filter(
+                        (message) => message.params?.update?._meta?.runwield?.type === "agent_changed",
+                    ).length,
+                    1,
+                );
+                assert(
+                    result.messages.some(
+                        (message) =>
+                            message.params?.update?.sessionUpdate === "config_option_update" &&
+                            configOptionIds(message.params.update.configOptions).join(",") === "model,thought_level",
+                    ),
+                );
+                for (const command of ["/version", "/session", "/agent guide"]) {
+                    await sendMessage(handle, {
+                        jsonrpc: "2.0",
+                        id: "same-agent-command",
+                        method: "session/prompt",
+                        params: { sessionId, prompt: [{ type: "text", text: command }] },
+                    });
+                    const commandResult = await readThroughResponse(handle, "same-agent-command");
+                    assertEquals(commandResult.response.result.stopReason, "end_turn");
+                    assert(!joinedAgentText(commandResult.messages).includes("Active agent:"), command);
+                }
+
+                fixture.setModelResponse("Guide handled this follow-up.");
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "follow-up",
+                    method: "session/prompt",
+                    params: { sessionId, prompt: [{ type: "text", text: "Now answer normally" }] },
+                });
+                const followUp = await readThroughResponse(handle, "follow-up");
+                assertStringIncludes(joinedAgentText(followUp.messages), "Guide handled this follow-up.");
+                assert(!joinedAgentText(followUp.messages).includes("Active agent:"));
+                assertStringIncludes(JSON.stringify(followUp.messages), '"agentName":"Guide"');
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        { reasoning: true },
+    );
 });
 
 for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-other"]) {
@@ -1250,13 +1298,18 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
         await withRuntimeCommandFixture("runwield-acp-form-ending-", async (fixture) => {
             fixture.setModelResponseFactories([
                 () =>
-                    fauxAssistantMessage(fauxToolCall("user_interview", {
-                        question: {
-                            type: "multiple_choice",
-                            prompt: "Which color do you prefer?",
-                            choices: [{ value: "blue", label: "Blue" }, { value: "green", label: "Green" }],
-                        },
-                    })),
+                    fauxAssistantMessage(
+                        fauxToolCall("user_interview", {
+                            question: {
+                                type: "multiple_choice",
+                                prompt: "Which color do you prefer?",
+                                choices: [
+                                    { value: "blue", label: "Blue" },
+                                    { value: "green", label: "Green" },
+                                ],
+                            },
+                        }),
+                    ),
                 () => fauxAssistantMessage(fauxText("The interview has ended.")),
             ]);
             const handle = startTestServer();
@@ -1303,24 +1356,25 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
                     id: elicitation.id,
                     ...(ending === "other" || ending === "choice" || ending === "empty-other"
                         ? {
-                            result: {
-                                action: "accept",
-                                content: {
-                                    answer: ending === "choice" ? "blue" : "other",
-                                    otherAnswer: ending === "empty-other" ? "  " : "  purple  ",
-                                },
-                            },
-                        }
+                              result: {
+                                  action: "accept",
+                                  content: {
+                                      answer: ending === "choice" ? "blue" : "other",
+                                      otherAnswer: ending === "empty-other" ? "  " : "  purple  ",
+                                  },
+                              },
+                          }
                         : ending === "expired"
-                        ? { error: { code: -32603, message: "Form expired" } }
-                        : { result: { action: ending } }),
+                          ? { error: { code: -32603, message: "Form expired" } }
+                          : { result: { action: ending } }),
                 });
                 const settled = await readThroughResponse(handle, "question");
                 assertEquals(settled.response.result.stopReason, "end_turn");
                 assert(!settled.messages.some((message) => message.method === "elicitation/create"));
-                const interview = settled.messages.find((message) =>
-                    message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
-                    message.params?.update?.rawOutput?.details
+                const interview = settled.messages.find(
+                    (message) =>
+                        message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
+                        message.params?.update?.rawOutput?.details,
                 )?.params.update.rawOutput.details;
                 assert(interview, "The Agent must receive the interview result");
                 if (ending === "other") {
@@ -1401,15 +1455,19 @@ test("ACP /plan-review reports when this Session has no saved review", async () 
             assertStringIncludes(joinedAgentText(result.messages), "no previous Plan review");
             assertEquals(result.response.result.stopReason, "end_turn");
             await drainWorkflowMetrics();
-            const rows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8")).trim().split("\n")
-                .map((line) => JSON.parse(line)).filter((row) =>
-                    row.category === "command" && row.command === "plan-review"
-                );
-            assertEquals(rows.map((row) => [row.event, row.phase, row.outcome]), [
-                ["command_started", "start", undefined],
-                ["command_dispatched", "dispatched", undefined],
-                ["command_finished", "finish", "failed"],
-            ]);
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line))
+                .filter((row) => row.category === "command" && row.command === "plan-review");
+            assertEquals(
+                rows.map((row) => [row.event, row.phase, row.outcome]),
+                [
+                    ["command_started", "start", undefined],
+                    ["command_dispatched", "dispatched", undefined],
+                    ["command_finished", "finish", "failed"],
+                ],
+            );
             assertEquals(new Set(rows.map((row) => row.commandId)).size, 1);
         } finally {
             await closeTestServer(handle);
@@ -1476,8 +1534,8 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
                 !result.messages.some((message) => message.id === "original-review-turn"),
                 "Original prompt must still wait for review after /plan-review",
             );
-            const link = result.messages.find((message) =>
-                message.params?.update?._meta?.runwield?.command === "plan-review"
+            const link = result.messages.find(
+                (message) => message.params?.update?._meta?.runwield?.command === "plan-review",
             )?.params.update;
             assertEquals(link?._meta?.runwield?.reviewUrl, reviewUrl);
             assertStringIncludes(link?.content?.text || "", reviewUrl);
@@ -1504,18 +1562,19 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
             assertEquals(original.response.result.stopReason, "end_turn");
             assertEquals(modelTurns, 1);
             await drainWorkflowMetrics();
-            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8")).trim()
-                .split(
-                    "\n",
-                )
-                .map((line) => JSON.parse(line)).filter((row) =>
-                    row.category === "command" && row.command === "plan-review"
-                );
-            assertEquals(commandRows.map((row) => [row.event, row.outcome]), [
-                ["command_started", undefined],
-                ["command_dispatched", undefined],
-                ["command_finished", "succeeded"],
-            ]);
+            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line))
+                .filter((row) => row.category === "command" && row.command === "plan-review");
+            assertEquals(
+                commandRows.map((row) => [row.event, row.outcome]),
+                [
+                    ["command_started", undefined],
+                    ["command_dispatched", undefined],
+                    ["command_finished", "succeeded"],
+                ],
+            );
             assertEquals(new Set(commandRows.map((row) => row.commandId)).size, 1);
         } finally {
             if (reviewUrl) {
@@ -1558,19 +1617,23 @@ test("ACP /plan-review does not replace a prompt whose response is still pending
             const result = await readThroughResponse(handle, "review-while-busy");
             assertStringIncludes(joinedAgentText(result.messages), "busy with other work");
             assertEquals(result.response.result.stopReason, "end_turn");
-            assert(result.messages.some((message) => message.id === "original-turn"), "Original prompt must finish.");
+            assert(
+                result.messages.some((message) => message.id === "original-turn"),
+                "Original prompt must finish.",
+            );
             await drainWorkflowMetrics();
-            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8")).trim()
-                .split(
-                    "\n",
-                )
-                .map((line) => JSON.parse(line)).filter((row) =>
-                    row.category === "command" && row.command === "plan-review"
-                );
-            assertEquals(commandRows.map((row) => [row.event, row.phase, row.outcome]), [
-                ["command_started", "start", undefined],
-                ["command_finished", "rejected", "rejected"],
-            ]);
+            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line))
+                .filter((row) => row.category === "command" && row.command === "plan-review");
+            assertEquals(
+                commandRows.map((row) => [row.event, row.phase, row.outcome]),
+                [
+                    ["command_started", "start", undefined],
+                    ["command_finished", "rejected", "rejected"],
+                ],
+            );
         } finally {
             handle.releaseHeldResponse?.();
             await closeTestServer(handle);
@@ -1598,8 +1661,8 @@ test("ACP /reload refreshes Runtime resources and advertised commands", async ()
             });
             const result = await readThroughResponse(handle, "reload-command");
             assertStringIncludes(joinedAgentText(result.messages), "Successfully reloaded");
-            const catalogUpdate = result.messages.findLast((message) =>
-                message.params?.update?.sessionUpdate === "available_commands_update"
+            const catalogUpdate = result.messages.findLast(
+                (message) => message.params?.update?.sessionUpdate === "available_commands_update",
             );
             assert(catalogUpdate, JSON.stringify(result.messages));
             const availableCommands = /** @type {{ name: string }[]} */ (catalogUpdate.params.update.availableCommands);
@@ -1674,7 +1737,10 @@ test("ACP rejects prompts with more than one slash command", async () => {
                 method: "session/prompt",
                 params: {
                     sessionId,
-                    prompt: [{ type: "text", text: "/agent" }, { type: "text", text: "/model" }],
+                    prompt: [
+                        { type: "text", text: "/agent" },
+                        { type: "text", text: "/model" },
+                    ],
                 },
             });
             assertEquals(response.error?.code, -32602);
@@ -1780,12 +1846,14 @@ test("ACP session/load replays a real persisted Session and accepts another prom
                 params: {
                     sessionId: created.sessionId,
                     cwd: fixture.projectRoot,
-                    mcpServers: [{
-                        name: "fixture",
-                        command: process.execPath,
-                        args: runtimeSourceArgs(["run", "-A", MCP_FIXTURE_SERVER]),
-                        env: [{ name: "RUNWIELD_MCP_FIXTURE_LOG", value: logPath }],
-                    }],
+                    mcpServers: [
+                        {
+                            name: "fixture",
+                            command: process.execPath,
+                            args: runtimeSourceArgs(["run", "-A", MCP_FIXTURE_SERVER]),
+                            env: [{ name: "RUNWIELD_MCP_FIXTURE_LOG", value: logPath }],
+                        },
+                    ],
                 },
             });
             const loaded = await readThroughResponse(secondHandle, "load");
@@ -1793,16 +1861,18 @@ test("ACP session/load replays a real persisted Session and accepts another prom
             assert(loadFrame, "session/load response frame should be captured");
             assertAcpFrameSchema("LoadSessionResponse", loadFrame, (message) => message.result);
             assert(
-                loaded.messages.some((message) =>
-                    message.method === "session/update" &&
-                    message.params?.update?.sessionUpdate === "user_message_chunk"
+                loaded.messages.some(
+                    (message) =>
+                        message.method === "session/update" &&
+                        message.params?.update?.sessionUpdate === "user_message_chunk",
                 ),
                 JSON.stringify(loaded.messages),
             );
             assert(
-                loaded.messages.some((message) =>
-                    message.method === "session/update" &&
-                    message.params?.update?.sessionUpdate === "agent_message_chunk"
+                loaded.messages.some(
+                    (message) =>
+                        message.method === "session/update" &&
+                        message.params?.update?.sessionUpdate === "agent_message_chunk",
                 ),
             );
             const stablePersistedSessionId = loaded.response.result._meta.runwield.persistedSessionId;
@@ -1848,7 +1918,8 @@ test("ACP rejects overlapping prompts and cancels the real in-flight Runtime tur
             let sawAgentStreaming = false;
             while (!sawAgentStreaming) {
                 const message = await readMessage(handle);
-                sawAgentStreaming = message.params?.update?.sessionUpdate === "agent_message_chunk" &&
+                sawAgentStreaming =
+                    message.params?.update?.sessionUpdate === "agent_message_chunk" &&
                     String(message.params?.update?.content?.text || "").includes("working");
             }
 
@@ -1886,7 +1957,10 @@ test("ACP rejects overlapping prompts and cancels the real in-flight Runtime tur
             });
             const settlingOverlap = await readThroughResponse(handle, "prompt-3");
             assertEquals(settlingOverlap.response.error.code, -32002);
-            assertEquals(settlingOverlap.messages.some((message) => message.id === "prompt-1"), false);
+            assertEquals(
+                settlingOverlap.messages.some((message) => message.id === "prompt-1"),
+                false,
+            );
 
             const cancelled = await readThroughResponse(handle, "prompt-1", 10_000);
             assertEquals(cancelled.response.result.stopReason, "cancelled");
@@ -1899,15 +1973,16 @@ test("ACP rejects overlapping prompts and cancels the real in-flight Runtime tur
             // request can read some of those pending updates before it gets its own error.
             const cancelSequence = [...settlingOverlap.messages, ...cancelled.messages];
             const promptResponseIndex = cancelSequence.findIndex((message) => message.id === "prompt-1");
-            const cancellationIndex = cancelSequence.findIndex((message) =>
-                message.method === "session/update" &&
-                String(message.params?.update?.content?.text || "").includes("Agent run canceled.")
+            const cancellationIndex = cancelSequence.findIndex(
+                (message) =>
+                    message.method === "session/update" &&
+                    String(message.params?.update?.content?.text || "").includes("Agent run canceled."),
             );
             assert(
                 cancellationIndex >= 0,
-                `the Runtime cancellation message should be streamed: ${
-                    JSON.stringify(cancelSequence.slice(-8).map((m) => [m.method, m.id, m.params?.update]))
-                }`,
+                `the Runtime cancellation message should be streamed: ${JSON.stringify(
+                    cancelSequence.slice(-8).map((m) => [m.method, m.id, m.params?.update]),
+                )}`,
             );
             assertEquals(cancellationIndex < promptResponseIndex, true);
             assertEquals(cancelled.messages.at(-1)?.id, "prompt-1");
@@ -1950,7 +2025,8 @@ test("ACP rejects a prompt sent before the Client receives the cancelled respons
             let sawAgentStreaming = false;
             while (!sawAgentStreaming) {
                 const message = await readMessage(handle);
-                sawAgentStreaming = message.params?.update?.sessionUpdate === "agent_message_chunk" &&
+                sawAgentStreaming =
+                    message.params?.update?.sessionUpdate === "agent_message_chunk" &&
                     String(message.params?.update?.content?.text || "").includes("working");
             }
 
@@ -2006,19 +2082,17 @@ test("ACP usage_update reports the Session's cumulative cost, not the last turn'
 
     // The Runtime prices each message on its own; ACP wants the running Session total.
     const notifications = [0.25, 0.25, 0.5].map((costUsd) =>
-        mapEventWithSessionCost(
-            sessionMap,
-            "acp-1",
-            usageEvent(costUsd),
-            { tokens: 48_000, contextWindow: 128_000 },
-        )
+        mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(costUsd), { tokens: 48_000, contextWindow: 128_000 }),
     );
 
-    assertEquals(notifications.map((notification) => /** @type {any} */ (notification).update.cost), [
-        { amount: 0.25, currency: "USD" },
-        { amount: 0.5, currency: "USD" },
-        { amount: 1, currency: "USD" },
-    ]);
+    assertEquals(
+        notifications.map((notification) => /** @type {any} */ (notification).update.cost),
+        [
+            { amount: 0.25, currency: "USD" },
+            { amount: 0.5, currency: "USD" },
+            { amount: 1, currency: "USD" },
+        ],
+    );
     for (const notification of notifications) {
         assertAcpSchema("SessionNotification", JSON.parse(JSON.stringify(notification)));
     }
@@ -2032,20 +2106,13 @@ test("ACP replayed usage events keep adding to the same Session total", () => {
 
     // session/load replays the transcript's priced turns before the next prompt runs.
     for (const costUsd of [0.25, 0.25]) {
-        mapEventWithSessionCost(
-            sessionMap,
-            "acp-1",
-            usageEvent(costUsd),
-            { tokens: 48_000, contextWindow: 128_000 },
-        );
+        mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(costUsd), { tokens: 48_000, contextWindow: 128_000 });
     }
     sessionMap.replaceRuntimeSession("acp-1", { sessionId: "runtime-2", cwd: "/repo" });
-    const afterLoad = mapEventWithSessionCost(
-        sessionMap,
-        "acp-1",
-        usageEvent(0.25),
-        { tokens: 48_000, contextWindow: 128_000 },
-    );
+    const afterLoad = mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(0.25), {
+        tokens: 48_000,
+        contextWindow: 128_000,
+    });
 
     assertEquals(/** @type {any} */ (afterLoad).update.cost, { amount: 0.75, currency: "USD" });
 });
@@ -2054,12 +2121,7 @@ test("ACP non-usage events do not disturb the Session cost total", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
 
-    mapEventWithSessionCost(
-        sessionMap,
-        "acp-1",
-        usageEvent(0.25),
-        { tokens: 48_000, contextWindow: 128_000 },
-    );
+    mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(0.25), { tokens: 48_000, contextWindow: 128_000 });
     mapEventWithSessionCost(
         sessionMap,
         "acp-1",
@@ -2080,7 +2142,7 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
         let latestInputTokens = 0;
         fixture.setModelResponseFactory((context) => {
             latestInputTokens = estimateFauxPromptTokens(context);
-            const outputTokens = 52_000 - (latestInputTokens * 2);
+            const outputTokens = 52_000 - latestInputTokens * 2;
             assert(outputTokens > 0, "fixture prompt must leave room for a 52k exact context total");
             return fauxAssistantMessage(fauxText("x".repeat(outputTokens * 4)));
         });
@@ -2109,10 +2171,7 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
             const update = JSON.parse(frames[frames.length - 1]).params.update;
             assertEquals(update.used, 52_000);
             assertEquals(update.size, 128_000);
-            assert(
-                update.used !== latestInputTokens,
-                "current context must not use the latest message input count",
-            );
+            assert(update.used !== latestInputTokens, "current context must not use the latest message input count");
         } finally {
             await closeTestServer(handle);
         }
@@ -2120,93 +2179,102 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
 });
 
 test("ACP live wire suppresses usage when Runtime context capacity is unavailable", async () => {
-    await withRuntimeCommandFixture("runwield-acp-unknown-capacity-", async (fixture) => {
-        const handle = startTestServer();
-        try {
-            const created = await createSession(handle, fixture.projectRoot);
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "unknown-capacity-command",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "/agent guide" }] },
-            });
-            const result = await readThroughResponse(handle, "unknown-capacity-command");
-            assert(result.response.result, JSON.stringify(result.response));
-            assertEquals(
-                result.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
-                false,
-                "unavailable Runtime capacity must suppress usage on the live wire",
-            );
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { contextWindow: 0 });
+    await withRuntimeCommandFixture(
+        "runwield-acp-unknown-capacity-",
+        async (fixture) => {
+            const handle = startTestServer();
+            try {
+                const created = await createSession(handle, fixture.projectRoot);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "unknown-capacity-command",
+                    method: "session/prompt",
+                    params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "/agent guide" }] },
+                });
+                const result = await readThroughResponse(handle, "unknown-capacity-command");
+                assert(result.response.result, JSON.stringify(result.response));
+                assertEquals(
+                    result.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
+                    false,
+                    "unavailable Runtime capacity must suppress usage on the live wire",
+                );
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        { contextWindow: 0 },
+    );
 });
 
 test("ACP live wire suppresses unknown post-compaction context and restores exact usage", async () => {
-    await withRuntimeCommandFixture("runwield-acp-compacted-usage-", async (fixture) => {
-        fixture.setModelResponseFactories([
-            () => fauxAssistantMessage(fauxText("Context before compaction.")),
-            () => fauxAssistantMessage(fauxText("Compacted context summary.")),
-            () => fauxAssistantMessage(fauxText("Exact context restored.")),
-        ]);
-        const handle = startTestServer();
-        try {
-            const created = await createSession(handle, fixture.projectRoot);
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "before-compaction",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Establish context." }] },
-            });
-            const before = await readThroughResponse(handle, "before-compaction");
-            assert(before.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"));
+    await withRuntimeCommandFixture(
+        "runwield-acp-compacted-usage-",
+        async (fixture) => {
+            fixture.setModelResponseFactories([
+                () => fauxAssistantMessage(fauxText("Context before compaction.")),
+                () => fauxAssistantMessage(fauxText("Compacted context summary.")),
+                () => fauxAssistantMessage(fauxText("Exact context restored.")),
+            ]);
+            const handle = startTestServer();
+            try {
+                const created = await createSession(handle, fixture.projectRoot);
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "before-compaction",
+                    method: "session/prompt",
+                    params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Establish context." }] },
+                });
+                const before = await readThroughResponse(handle, "before-compaction");
+                assert(before.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"));
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "compact-context",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "/compact" }] },
-            });
-            assertEquals((await readThroughResponse(handle, "compact-context")).response.result, {
-                stopReason: "end_turn",
-            });
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "compact-context",
+                    method: "session/prompt",
+                    params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "/compact" }] },
+                });
+                assertEquals((await readThroughResponse(handle, "compact-context")).response.result, {
+                    stopReason: "end_turn",
+                });
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "model-after-compaction",
-                method: "session/set_config_option",
-                params: {
-                    sessionId: created.sessionId,
-                    configId: "model",
-                    value: "runtime-command-fixture/alternate-model",
-                },
-            });
-            const changed = await readThroughResponse(handle, "model-after-compaction");
-            assertEquals(
-                changed.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
-                false,
-                "unknown post-compaction tokens must stay off the live wire",
-            );
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "model-after-compaction",
+                    method: "session/set_config_option",
+                    params: {
+                        sessionId: created.sessionId,
+                        configId: "model",
+                        value: "runtime-command-fixture/alternate-model",
+                    },
+                });
+                const changed = await readThroughResponse(handle, "model-after-compaction");
+                assertEquals(
+                    changed.messages.some((message) => message.params?.update?.sessionUpdate === "usage_update"),
+                    false,
+                    "unknown post-compaction tokens must stay off the live wire",
+                );
 
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "after-compaction",
-                method: "session/prompt",
-                params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Continue." }] },
-            });
-            const after = await readThroughResponse(handle, "after-compaction");
-            assert(
-                after.messages.some((message) =>
-                    message.params?.update?.sessionUpdate === "usage_update" &&
-                    message.params.update.size === 64_000
-                ),
-                "the next exact Runtime snapshot must restore live usage",
-            );
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { additionalModels: [{ id: "alternate-model", name: "Alternate Model", contextWindow: 64_000 }] });
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "after-compaction",
+                    method: "session/prompt",
+                    params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "Continue." }] },
+                });
+                const after = await readThroughResponse(handle, "after-compaction");
+                assert(
+                    after.messages.some(
+                        (message) =>
+                            message.params?.update?.sessionUpdate === "usage_update" &&
+                            message.params.update.size === 64_000,
+                    ),
+                    "the next exact Runtime snapshot must restore live usage",
+                );
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        { additionalModels: [{ id: "alternate-model", name: "Alternate Model", contextWindow: 64_000 }] },
+    );
 });
 
 test("ACP usage_update uses exact Runtime context and suppresses unknown capacity", () => {
@@ -2219,9 +2287,7 @@ test("ACP usage_update uses exact Runtime context and suppresses unknown capacit
     assertEquals(mapRuntimeEventToAcpUpdate(event, 0), null);
 
     assertEquals(
-        /** @type {any} */ (
-            mapRuntimeEventToAcpUpdate(event, 0.25, { tokens: 48_000, contextWindow: 128_000 })
-        ).cost,
+        /** @type {any} */ (mapRuntimeEventToAcpUpdate(event, 0.25, { tokens: 48_000, contextWindow: 128_000 })).cost,
         { amount: 0.25, currency: "USD" },
     );
 });
@@ -2260,25 +2326,27 @@ test("ACP validates new/load inputs and maps missing persisted Sessions", async 
         validateNewSessionParams({
             cwd: REPO_ROOT,
             mcpServers: [{ type: "http", name: "web", url: "https://example.test", headers: [] }],
-        })
+        }),
     );
     assertThrows(() =>
         validateNewSessionParams({
             cwd: REPO_ROOT,
             mcpServers: [{ name: "stdio", command: "/bin/echo", args: ["ok"] }],
-        })
+        }),
     );
     const validMcp = validateNewSessionParams({
         cwd: REPO_ROOT,
         mcpServers: [{ name: "stdio", command: "/bin/echo", args: ["ok"], env: [{ name: "TOKEN", value: "secret" }] }],
     });
-    assertEquals(validMcp.runwieldMcpServers, [{
-        name: "stdio",
-        command: "/bin/echo",
-        args: ["ok"],
-        env: { TOKEN: "secret" },
-        source: "request",
-    }]);
+    assertEquals(validMcp.runwieldMcpServers, [
+        {
+            name: "stdio",
+            command: "/bin/echo",
+            args: ["ok"],
+            env: { TOKEN: "secret" },
+            source: "request",
+        },
+    ]);
 
     await withRuntimeCommandFixture("runwield-acp-invalid-", async (fixture) => {
         const handle = startTestServer();
@@ -2305,27 +2373,31 @@ test("ACP validates new/load inputs and maps missing persisted Sessions", async 
 });
 
 test("ACP session/load maps a persisted Session with no configured model to authentication required", async () => {
-    await withRuntimeCommandFixture("runwield-acp-load-no-model-", async (fixture) => {
-        const persisted = await createIdleUngeneratedPersistedSession(fixture.projectRoot);
-        const handle = startTestServer();
-        try {
-            const response = await request(handle, {
-                jsonrpc: "2.0",
-                id: "load-auth-required",
-                method: "session/load",
-                params: {
-                    sessionId: persisted.piSessionId,
-                    cwd: fixture.projectRoot,
-                    mcpServers: [],
-                    _meta: { runwield: { sessionPath: persisted.transcriptPath } },
-                },
-            });
-            assertEquals(response.error.code, -32000);
-            assertStringIncludes(response.error.message, "login and default model setup");
-        } finally {
-            await closeTestServer(handle);
-        }
-    }, { providerState: "none" });
+    await withRuntimeCommandFixture(
+        "runwield-acp-load-no-model-",
+        async (fixture) => {
+            const persisted = await createIdleUngeneratedPersistedSession(fixture.projectRoot);
+            const handle = startTestServer();
+            try {
+                const response = await request(handle, {
+                    jsonrpc: "2.0",
+                    id: "load-auth-required",
+                    method: "session/load",
+                    params: {
+                        sessionId: persisted.piSessionId,
+                        cwd: fixture.projectRoot,
+                        mcpServers: [],
+                        _meta: { runwield: { sessionPath: persisted.transcriptPath } },
+                    },
+                });
+                assertEquals(response.error.code, -32000);
+                assertStringIncludes(response.error.message, "login and default model setup");
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        { providerState: "none" },
+    );
 });
 
 test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
@@ -2338,10 +2410,10 @@ test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
     };
     assertEquals(mapRuntimeEventToAcpUpdate(event), null);
     assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: false }), null);
-    assertEquals(
-        mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true })?.content,
-        { type: "text", text: "Active agent: guide" },
-    );
+    assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true })?.content, {
+        type: "text",
+        text: "Active agent: guide",
+    });
 });
 
 test("ACP event mapper forwards canonical Runtime tool metadata", () => {
@@ -2450,7 +2522,10 @@ test("ACP interaction adapter maps valid selections and rejects invalid ones", a
             id: "interaction-1",
             type: "select",
             prompt: "Proceed?",
-            options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
+            options: [
+                { value: "yes", label: "Yes" },
+                { value: "no", label: "No" },
+            ],
         }),
         { outcome: "selected", value: "yes", valueLabel: "Yes" },
     );
@@ -2481,7 +2556,10 @@ test("ACP interaction adapter distinguishes approval acceptance from decline", a
         id: "interaction-1",
         type: /** @type {'approval'} */ ("approval"),
         prompt: "Approve?",
-        options: [{ value: "approve", label: "Approve" }, { value: "deny", label: "Deny" }],
+        options: [
+            { value: "approve", label: "Approve" },
+            { value: "deny", label: "Deny" },
+        ],
     };
     assertEquals(await makeAdapter("approve").requestInteraction(request), {
         outcome: "accepted",
@@ -2495,51 +2573,30 @@ test("ACP interaction adapter distinguishes approval acceptance from decline", a
     });
 });
 
-test("ACP interaction adapter falls back to a local browser question without form capabilities", async () => {
-    /** @type {PromiseWithResolvers<string>} */
-    const notified = Promise.withResolvers();
+test("ACP interaction adapter presents a chat selection without form capabilities", async () => {
     const adapter = createAcpInteractionAdapter({
         acpSessionId: "acp-1",
         clientCapabilities: {},
         context: {
-            notify: (
-                /** @type {string} */ _method,
-                /** @type {Record<string, any>} */ params,
-            ) => {
-                notified.resolve(String(params.update?.content?.text || ""));
+            notify: () => {
+                throw new Error("No browser question should open");
             },
         },
+        presentChatQuestion: (interaction) =>
+            Promise.resolve({
+                outcome: "selected",
+                value: interaction.options?.[0].value,
+                valueLabel: interaction.options?.[0].label,
+            }),
     });
-    const pending = adapter.requestInteraction({
-        id: "interaction-browser",
-        type: "select",
-        prompt: "Choose Agent",
-        options: [{ value: "guide", label: "Guide" }, { value: "planner", label: "Planner" }],
-    });
-    const ready = await Promise.race([
-        notified.promise.then((text) => ({ text })),
-        Promise.resolve(pending).then((response) => ({ response })),
-    ]);
-    if ("response" in ready) {
-        assertEquals(ready.response.outcome, "unsupported");
-        assertStringIncludes(ready.response.message || "", "browser question page");
-        return;
-    }
-    const text = ready.text;
-    const [questionUrl] = text.match(/http:\/\/127\.0\.0\.1:\d+\/session-question\?token=[^\s]+/) || [];
-    assert(questionUrl, text);
-    const page = await fetch(questionUrl);
-    const pageText = await page.text();
-    assertEquals(page.status, 200, pageText);
-    assertStringIncludes(pageText, "Choose Agent");
-    const answerUrl = questionUrl.replace("/session-question", "/api/session-question/answer");
-    const submitted = await fetch(answerUrl, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded", origin: new URL(questionUrl).origin },
-        body: "answer=guide",
-    });
-    assertEquals(submitted.status, 200);
-    assertEquals(await pending, { outcome: "selected", value: "guide", valueLabel: "Guide" });
+    assertEquals(
+        await adapter.requestInteraction({
+            type: "select",
+            prompt: "Choose Agent",
+            options: [{ value: "guide", label: "Guide" }],
+        }),
+        { outcome: "selected", value: "guide", valueLabel: "Guide" },
+    );
 });
 
 test("ACP event mapper maps Plan review links without maintainer secrets", () => {
@@ -2558,27 +2615,27 @@ test("ACP event mapper maps Plan review links without maintainer secrets", () =>
     assertEquals(JSON.stringify(update).includes("maintainer"), false);
 });
 
-for (
-    const [reply, expectedValue, expectedOther] of [
-        ["1", "blue", undefined],
-        [" green ", "green", undefined],
-        ["1, but include tests\nand preserve the notes.", "other", "1, but include tests\nand preserve the notes."],
-    ]
-) {
+for (const [reply, expectedValue, expectedOther] of [
+    ["1", "blue", undefined],
+    [" green ", "green", undefined],
+    ["1, but include tests\nand preserve the notes.", "other", "1, but include tests\nand preserve the notes."],
+]) {
     test(`ACP no-form interview returns the original tool result for ${JSON.stringify(reply)}`, async () => {
         await withRuntimeCommandFixture("runwield-acp-interview-chat-", async (fixture) => {
             fixture.setModelResponseFactories([
                 () =>
-                    fauxAssistantMessage(fauxToolCall("user_interview", {
-                        question: {
-                            type: "multiple_choice",
-                            prompt: "Pick a color",
-                            choices: [
-                                { value: "blue", label: "Blue" },
-                                { value: "green", label: "Green" },
-                            ],
-                        },
-                    })),
+                    fauxAssistantMessage(
+                        fauxToolCall("user_interview", {
+                            question: {
+                                type: "multiple_choice",
+                                prompt: "Pick a color",
+                                choices: [
+                                    { value: "blue", label: "Blue" },
+                                    { value: "green", label: "Green" },
+                                ],
+                            },
+                        }),
+                    ),
                 () => fauxAssistantMessage(fauxText("Interview complete.")),
             ]);
             const handle = startTestServer();
@@ -2629,9 +2686,10 @@ for (
                 });
                 const completion = await readThroughResponse(handle, "answer");
                 assertEquals(completion.response.result.stopReason, "end_turn");
-                const result = completion.messages.find((message) =>
-                    message.params?.update?._meta?.runwield?.toolName ===
-                        "user_interview" && message.params?.update?.rawOutput?.details
+                const result = completion.messages.find(
+                    (message) =>
+                        message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
+                        message.params?.update?.rawOutput?.details,
                 )?.params.update.rawOutput.details;
                 assertEquals(result?.status, "completed");
                 assertEquals(result.answers[0].value, expectedValue);
@@ -2648,20 +2706,22 @@ test("ACP chat interview keeps one tool open across three answer requests and an
     await withRuntimeCommandFixture("runwield-acp-batch-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("user_interview", {
-                    questions: [
-                        { type: "yes_no", prompt: "Include tests?", default: true },
-                        {
-                            type: "multiple_choice",
-                            prompt: "Choose scope",
-                            choices: [
-                                { value: "small", label: "Small" },
-                                { value: "large", label: "Large" },
-                            ],
-                        },
-                        { type: "text", prompt: "Any notes?" },
-                    ],
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        questions: [
+                            { type: "yes_no", prompt: "Include tests?", default: true },
+                            {
+                                type: "multiple_choice",
+                                prompt: "Choose scope",
+                                choices: [
+                                    { value: "small", label: "Small" },
+                                    { value: "large", label: "Large" },
+                                ],
+                            },
+                            { type: "text", prompt: "Any notes?" },
+                        ],
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Finished three questions.")),
         ]);
         const handle = startTestServer();
@@ -2729,16 +2789,16 @@ test("ACP chat interview keeps one tool open across three answer requests and an
             const third = await turn("other-text", "  Only APIs\nwith compatibility tests.  ");
             assertStringIncludes(joinedAgentText(third.messages), "Any notes?");
             const final = await turn("notes", "  Keep the order.\nAnd preserve punctuation!  ");
-            const details = final.messages.find((message) =>
-                message.params?.update?._meta?.runwield?.toolName ===
-                    "user_interview" && message.params?.update?.rawOutput?.details
+            const details = final.messages.find(
+                (message) =>
+                    message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
+                    message.params?.update?.rawOutput?.details,
             )?.params.update.rawOutput.details;
             assertEquals(details?.status, "completed");
-            assertEquals(details.answers.map((/** @type {{ value: string | boolean }} */ answer) => answer.value), [
-                true,
-                "other",
-                "Keep the order.\nAnd preserve punctuation!",
-            ]);
+            assertEquals(
+                details.answers.map((/** @type {{ value: string | boolean }} */ answer) => answer.value),
+                [true, "other", "Keep the order.\nAnd preserve punctuation!"],
+            );
             assertEquals(details.answers[1].otherText, "Only APIs\nwith compatibility tests.");
             assertStringIncludes(joinedAgentText(final.messages), "Finished three questions.");
         } finally {
@@ -2751,9 +2811,11 @@ test("ACP interview reply cannot overtake a held question response", async () =>
     await withRuntimeCommandFixture("runwield-acp-held-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("user_interview", {
-                    question: { type: "yes_no", prompt: "Proceed?" },
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: { type: "yes_no", prompt: "Proceed?" },
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Completed after the reply.")),
         ]);
         const handle = startTestServer({ holdResponseId: 0 });
@@ -2824,9 +2886,11 @@ test("ACP cancellation between interview requests settles the original turn", as
     await withRuntimeCommandFixture("runwield-acp-cancel-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("user_interview", {
-                    question: { type: "text", prompt: "What changed?" },
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: { type: "text", prompt: "What changed?" },
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Next turn is usable.")),
         ]);
         const handle = startTestServer();
@@ -2926,12 +2990,14 @@ test("ACP chat interview returns two ordered answers to one waiting model turn",
     await withRuntimeCommandFixture("runwield-acp-two-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("user_interview", {
-                    questions: [
-                        { type: "yes_no", prompt: "Proceed?" },
-                        { type: "text", prompt: "Reason?" },
-                    ],
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        questions: [
+                            { type: "yes_no", prompt: "Proceed?" },
+                            { type: "text", prompt: "Reason?" },
+                        ],
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Both received.")),
         ]);
         const handle = startTestServer();
@@ -2986,14 +3052,15 @@ test("ACP chat interview returns two ordered answers to one waiting model turn",
                 },
             });
             const final = await readThroughResponse(handle, "second");
-            const details = final.messages.find((message) =>
-                message.params?.update?._meta?.runwield?.toolName ===
-                    "user_interview" && message.params?.update?.rawOutput?.details
+            const details = final.messages.find(
+                (message) =>
+                    message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
+                    message.params?.update?.rawOutput?.details,
             )?.params.update.rawOutput.details;
-            assertEquals(details?.answers.map((/** @type {{ value: string | boolean }} */ answer) => answer.value), [
-                false,
-                "Needs more time.",
-            ]);
+            assertEquals(
+                details?.answers.map((/** @type {{ value: string | boolean }} */ answer) => answer.value),
+                [false, "Needs more time."],
+            );
             assertStringIncludes(joinedAgentText(final.messages), "Both received.");
         } finally {
             await closeTestServer(handle);
@@ -3005,9 +3072,11 @@ test("ACP interview cancellation during a blocked question write precedes its re
     await withRuntimeCommandFixture("runwield-acp-question-cancel-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("user_interview", {
-                    question: { type: "text", prompt: "Question while writing?" },
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: { type: "text", prompt: "Question while writing?" },
+                    }),
+                ),
         ]);
         const handle = startTestServer({ holdOutputText: "Question while writing?" });
         try {
@@ -3033,7 +3102,7 @@ test("ACP interview cancellation during a blocked question write precedes its re
             assertEquals(response.result.stopReason, "cancelled");
             assert(
                 messages.some((message) =>
-                    String(message.params?.update?.content?.text || "").includes("Operation canceled.")
+                    String(message.params?.update?.content?.text || "").includes("Operation canceled."),
                 ),
                 "Runtime cancellation update must precede the response",
             );
@@ -3058,7 +3127,8 @@ test("ACP session/delete archives a mapped Session and succeeds for repeated and
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "save" }] },
             });
             await readThroughResponse(handle, "persist-delete", 1000);
-            const session = store.getSessionById(created.persistedSessionId) ||
+            const session =
+                store.getSessionById(created.persistedSessionId) ||
                 store.findSessionByLocator({ piSessionId: created.persistedSessionId });
             assert(session);
             const segments = store.listSessionTranscriptSegments(session.runwieldSessionId);
@@ -3105,15 +3175,13 @@ test("ACP session/delete resolves an unmapped Pi segment ID to its multi-segment
             const transcriptPath = join(dirname(first.transcriptPath), `2026-01-02T00-00-00-000Z_${piSessionId}.jsonl`);
             await fsWriteFile(
                 transcriptPath,
-                `${
-                    JSON.stringify({
-                        type: "session",
-                        version: 3,
-                        id: piSessionId,
-                        timestamp: "2026-01-02T00:00:00.000Z",
-                        cwd: fixture.projectRoot,
-                    })
-                }\n`,
+                `${JSON.stringify({
+                    type: "session",
+                    version: 3,
+                    id: piSessionId,
+                    timestamp: "2026-01-02T00:00:00.000Z",
+                    cwd: fixture.projectRoot,
+                })}\n`,
             );
             const current = store.getCurrentSessionSegment(session.runwieldSessionId);
             assert(current);
@@ -3170,9 +3238,11 @@ test("ACP session/delete cancels busy work and archives only after writer settle
                 if (
                     message.params?.update?.sessionUpdate === "agent_message_chunk" &&
                     String(message.params.update.content?.text || "").includes("working")
-                ) break;
+                )
+                    break;
             }
-            const session = store.getSessionById(created.persistedSessionId) ||
+            const session =
+                store.getSessionById(created.persistedSessionId) ||
                 store.findSessionByLocator({ piSessionId: created.persistedSessionId });
             assert(session);
             assertEquals(store.inspectSessionActivation(session.runwieldSessionId).activation?.state, "active");
@@ -3218,12 +3288,11 @@ for (const mapped of [false, true]) {
                     const created = mapped
                         ? await createSession(handle, fixture.projectRoot)
                         : await createIdleUngeneratedPersistedSession(fixture.projectRoot);
-                    const persistedId = "persistedSessionId" in created
-                        ? created.persistedSessionId
-                        : created.piSessionId;
+                    const persistedId =
+                        "persistedSessionId" in created ? created.persistedSessionId : created.piSessionId;
                     const sessionId = "sessionId" in created ? created.sessionId : `acp-${created.piSessionId}`;
-                    const session = store.getSessionById(persistedId) ||
-                        store.findSessionByLocator({ piSessionId: persistedId });
+                    const session =
+                        store.getSessionById(persistedId) || store.findSessionByLocator({ piSessionId: persistedId });
                     assert(session);
                     proof = store.acquireSessionActivation({
                         runwieldSessionId: session.runwieldSessionId,
@@ -3232,9 +3301,10 @@ for (const mapped of [false, true]) {
                         ownerProcessKind: "workspace",
                         operationId: "remote-delete-op",
                     });
-                    const key = createHash("sha256").update(
-                        `${getHomeDir()}:${session.runwieldSessionId}:remote-delete-op`,
-                    ).digest("hex").slice(0, 40);
+                    const key = createHash("sha256")
+                        .update(`${getHomeDir()}:${session.runwieldSessionId}:remote-delete-op`)
+                        .digest("hex")
+                        .slice(0, 40);
                     socketPath = `/tmp/runwield-${key}.sock`;
                     socket = createServer(async (incoming, response) => {
                         let body = "";
@@ -3300,3 +3370,397 @@ for (const mapped of [false, true]) {
         });
     }
 }
+
+/** @param {TestServerHandle} handle @param {string} sessionId @param {string} text */
+async function chatPrompt(handle, sessionId, text) {
+    const id = crypto.randomUUID();
+    await sendMessage(handle, {
+        jsonrpc: "2.0",
+        id,
+        method: "session/prompt",
+        params: { sessionId, prompt: [{ type: "text", text }] },
+    });
+    const result = await readThroughResponse(handle, id);
+    assertEquals(result.response.result?.stopReason, "end_turn", JSON.stringify(result.response));
+    return result;
+}
+
+/** @param {string} projectRoot */
+async function saveChatMenuPlans(projectRoot) {
+    for (const name of ["alpha", "beta"]) {
+        await savePlan(projectRoot, name, `# ${name}\n\n## Objective\n\nTest ${name}.\n`, {
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            summary: `Test ${name}`,
+            affectedPaths: [],
+            planId: crypto.randomUUID(),
+        });
+    }
+}
+
+test("ACP no-form load-plan rejects invalid replies and continues through sequential menus", async () => {
+    await withRuntimeCommandFixture("acp-load-plan-chat-", async (fixture) => {
+        await saveChatMenuPlans(fixture.projectRoot);
+        const before = await fsReadFile(join(fixture.projectRoot, "docs/plans/beta.md"), "utf8");
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            const opened = await chatPrompt(handle, sessionId, "/load-plan");
+            const text = joinedAgentText(opened.messages);
+            assertStringIncludes(text, "Load plan:");
+            assertStringIncludes(text, "1.");
+            assertStringIncludes(text, "alpha");
+            assertStringIncludes(text, "2.");
+            assertStringIncludes(text, "beta");
+            assert(!text.includes("127.0.0.1"));
+            assert(!opened.messages.some((message) => message.method === "elicitation/create"));
+            for (const reply of ["9", "banana", "/agent", "/agent\nextra", "/"]) {
+                const invalid = await chatPrompt(handle, sessionId, reply);
+                assertStringIncludes(joinedAgentText(invalid.messages), "did not match");
+                assertStringIncludes(joinedAgentText(invalid.messages), "Load plan:");
+                assertEquals(
+                    invalid.messages.filter(
+                        (message) => message.params?.update?.sessionUpdate === "agent_message_chunk",
+                    ).length,
+                    1,
+                );
+            }
+            const loaded = await chatPrompt(handle, sessionId, "2");
+            assertStringIncludes(joinedAgentText(loaded.messages), "Plan loaded: beta");
+            assertStringIncludes(joinedAgentText(loaded.messages), "Resume planning");
+            const details = await chatPrompt(handle, sessionId, "View plan details");
+            assertStringIncludes(joinedAgentText(details.messages), "Test beta");
+            assertStringIncludes(joinedAgentText(details.messages), "What would you like to do?");
+            await chatPrompt(handle, sessionId, "Cancel");
+            assertEquals(await fsReadFile(join(fixture.projectRoot, "docs/plans/beta.md"), "utf8"), before);
+            fixture.setModelResponse("Normal follow-up works.");
+            assertStringIncludes(
+                joinedAgentText((await chatPrompt(handle, sessionId, "Hello")).messages),
+                "Normal follow-up works.",
+            );
+            assertStringIncludes(
+                joinedAgentText((await chatPrompt(handle, sessionId, "/plan-review")).messages),
+                "no previous Plan review",
+            );
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP load-plans accepts numeric replies with OpenAB sender context", async () => {
+    await withRuntimeCommandFixture("acp-load-plan-openab-", async (fixture) => {
+        await saveChatMenuPlans(fixture.projectRoot);
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            const opened = await chatPrompt(handle, sessionId, "/load-plans");
+            const senderContext = '<sender_context>\n{"schema":"openab.sender.v1"}\n</sender_context>';
+            const rejected = [];
+            for (const prompt of [
+                [{ type: "text", text: senderContext }],
+                [
+                    { type: "text", text: "<sender_context>not JSON</sender_context>" },
+                    { type: "text", text: "2" },
+                ],
+                [
+                    { type: "text", text: '<sender_context>{"schema":"different"}</sender_context>' },
+                    { type: "text", text: "2" },
+                ],
+                [
+                    { type: "text", text: senderContext },
+                    { type: "text", text: "1" },
+                    { type: "text", text: senderContext },
+                    { type: "text", text: "2" },
+                ],
+                [
+                    { type: "text", text: senderContext },
+                    { type: "text", text: "2" },
+                    { type: "resource_link", uri: "file:///attachment", name: "attachment" },
+                ],
+            ]) {
+                const id = crypto.randomUUID();
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id,
+                    method: "session/prompt",
+                    params: { sessionId, prompt },
+                });
+                rejected.push(await readThroughResponse(handle, id));
+            }
+            const id = crypto.randomUUID();
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id,
+                method: "session/prompt",
+                params: {
+                    sessionId,
+                    prompt: [
+                        { type: "text", text: senderContext },
+                        { type: "text", text: "2" },
+                    ],
+                },
+            });
+            const result = await readThroughResponse(handle, id);
+            await chatPrompt(handle, sessionId, "Cancel");
+            assertStringIncludes(joinedAgentText(opened.messages), "Load plan:");
+            for (const invalid of rejected) {
+                assertStringIncludes(joinedAgentText(invalid.messages), "did not match");
+            }
+            assertStringIncludes(joinedAgentText(result.messages), "Plan loaded: beta");
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
+for (const cancellation of ["cancel", "session/cancel", "Cancel option"]) {
+    test(`ACP load-plan ${cancellation} settles and records canceled metrics`, async () => {
+        await withRuntimeCommandFixture("acp-load-plan-cancel-", async (fixture) => {
+            await saveChatMenuPlans(fixture.projectRoot);
+            await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
+            const handle = startTestServer();
+            try {
+                const { sessionId } = await createSession(handle, fixture.projectRoot);
+                await chatPrompt(handle, sessionId, "/load-plan");
+                await drainWorkflowMetrics();
+                const metricsPath = getWorkflowMetricsFilePath(fixture.projectRoot);
+                const openedMetrics = await fsReadFile(metricsPath, "utf8");
+                assert(!openedMetrics.includes('"command_finished"'));
+                if (cancellation === "Cancel option") {
+                    await chatPrompt(handle, sessionId, "1");
+                    await chatPrompt(handle, sessionId, "Cancel");
+                } else if (cancellation === "cancel") await chatPrompt(handle, sessionId, "cancel");
+                else {
+                    await sendMessage(handle, { jsonrpc: "2.0", method: "session/cancel", params: { sessionId } });
+                    // Wait until the cancellation settles before sending a fresh turn.
+                    fixture.setModelResponse("Cancellation settled.");
+                    let next;
+                    for (let i = 0; i < 20; i++) {
+                        const id = `after-cancel-${i}`;
+                        await sendMessage(handle, {
+                            jsonrpc: "2.0",
+                            id,
+                            method: "session/prompt",
+                            params: {
+                                sessionId,
+                                prompt: [{ type: "text", text: "Hello" }],
+                            },
+                        });
+                        next = await readThroughResponse(handle, id);
+                        if (next.response.result) break;
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                    assertEquals(next?.response.result?.stopReason, "end_turn");
+                    assertStringIncludes(joinedAgentText(next?.messages || []), "Cancellation settled.");
+                }
+                fixture.setModelResponse("Available after cancel.");
+                assertStringIncludes(
+                    joinedAgentText((await chatPrompt(handle, sessionId, "Hello again")).messages),
+                    "Available after cancel.",
+                );
+                await drainWorkflowMetrics();
+                const rows = (await fsReadFile(metricsPath, "utf8"))
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line))
+                    .filter((row) => row.command === "load-plan" && row.event === "command_finished");
+                assertEquals(
+                    rows.map((row) => row.outcome),
+                    ["canceled"],
+                );
+            } finally {
+                await closeTestServer(handle);
+            }
+        });
+    });
+}
+
+test("ACP no-form agent menu accepts an exact value and updates the next model turn", async () => {
+    await withRuntimeCommandFixture("acp-agent-chat-", async (fixture) => {
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            assertStringIncludes(joinedAgentText((await chatPrompt(handle, sessionId, "/agent")).messages), "guide");
+            const selected = await chatPrompt(handle, sessionId, "guide");
+            assertStringIncludes(joinedAgentText(selected.messages), "Active agent: guide");
+            assertEquals(
+                selected.messages.filter((message) => message.params?.update?._meta?.runwield?.type === "agent_changed")
+                    .length,
+                1,
+            );
+            assert(
+                selected.messages.some((message) => message.params?.update?.sessionUpdate === "config_option_update"),
+            );
+            fixture.setModelResponse("Guide is ready.");
+            const next = await chatPrompt(handle, sessionId, "Hello");
+            assertStringIncludes(joinedAgentText(next.messages), "Guide is ready.");
+            assertStringIncludes(JSON.stringify(next.messages), '"agentName":"Guide"');
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP forms take priority over chat for load-plan", async () => {
+    await withRuntimeCommandFixture("acp-load-plan-form-", async (fixture) => {
+        await saveChatMenuPlans(fixture.projectRoot);
+        const handle = startTestServer();
+        try {
+            await request(handle, {
+                jsonrpc: "2.0",
+                id: "init",
+                method: "initialize",
+                params: {
+                    protocolVersion: 1,
+                    clientCapabilities: { elicitation: { form: {} } },
+                },
+            });
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "load",
+                method: "session/prompt",
+                params: {
+                    sessionId,
+                    prompt: [{ type: "text", text: "/load-plan" }],
+                },
+            });
+            let form;
+            for (let i = 0; i < 40; i++) {
+                const message = await readMessage(handle);
+                assert(!joinedAgentText([message]).includes("Reply with a number"));
+                if (message.method === "elicitation/create") {
+                    form = message;
+                    break;
+                }
+            }
+            assert(form);
+            assertEquals(form.params.message, "Load plan:");
+            await sendMessage(handle, { jsonrpc: "2.0", id: form.id, result: { action: "cancel" } });
+            assertEquals((await readThroughResponse(handle, "load")).response.result?.stopReason, "end_turn");
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP load-plan started Planner interview uses the same chat operation", async () => {
+    await withRuntimeCommandFixture("acp-planner-chat-", async (fixture) => {
+        await saveChatMenuPlans(fixture.projectRoot);
+        fixture.setModelResponseFactories([
+            () =>
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: {
+                            type: "multiple_choice",
+                            prompt: "Which direction?",
+                            choices: [
+                                { value: "blue", label: "Blue" },
+                                { value: "green", label: "Green" },
+                            ],
+                        },
+                    }),
+                ),
+            () => fauxAssistantMessage(fauxText("Planning answer received.")),
+        ]);
+        let handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            await chatPrompt(handle, sessionId, "/load-plan");
+            await chatPrompt(handle, sessionId, "1");
+            const question = await chatPrompt(handle, sessionId, "Resume planning");
+            assertStringIncludes(joinedAgentText(question.messages), "Which direction?");
+            assert(!joinedAgentText(question.messages).includes("127.0.0.1"));
+            const answer = await chatPrompt(handle, sessionId, "1");
+            assertStringIncludes(joinedAgentText(answer.messages), "Planning answer received.");
+            assertStringIncludes(JSON.stringify(answer.messages), '"blue"');
+            const sessionInfo = joinedAgentText((await chatPrompt(handle, sessionId, "/session")).messages);
+            const originalId = sessionInfo.match(/ID:.*?([0-9a-f]{8}-[0-9a-f-]{27,})/)?.[1];
+            assert(originalId, sessionInfo);
+            await closeTestServer(handle);
+            handle = startTestServer();
+            const newSession = await createSession(handle, fixture.projectRoot);
+            fixture.setModelResponseFactories([
+                () =>
+                    fauxAssistantMessage(
+                        fauxToolCall("user_interview", {
+                            question: {
+                                type: "multiple_choice",
+                                prompt: "Adopted Session question?",
+                                choices: [
+                                    { value: "blue", label: "Blue" },
+                                    { value: "green", label: "Green" },
+                                ],
+                            },
+                        }),
+                    ),
+                () => fauxAssistantMessage(fauxText("Adopted answer received.")),
+            ]);
+            await chatPrompt(handle, newSession.sessionId, "/load-plan");
+            const chosen = await chatPrompt(handle, newSession.sessionId, "1");
+            assertStringIncludes(joinedAgentText(chosen.messages), "Continue alpha in its planning Session?");
+            const adopted = await chatPrompt(handle, newSession.sessionId, "switch");
+            assertStringIncludes(joinedAgentText(adopted.messages), "What would you like to do?");
+            const adoptedQuestion = await chatPrompt(handle, newSession.sessionId, "Resume planning");
+            assertStringIncludes(joinedAgentText(adoptedQuestion.messages), "Adopted Session question?");
+            const adoptedAnswer = await chatPrompt(handle, newSession.sessionId, "1");
+            assertStringIncludes(joinedAgentText(adoptedAnswer.messages), "Adopted answer received.");
+            assertStringIncludes(
+                joinedAgentText((await chatPrompt(handle, newSession.sessionId, "/session")).messages),
+                originalId,
+            );
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP no-form model selection records opened and dispatched and changes the next turn", async () => {
+    await withRuntimeCommandFixture(
+        "acp-model-chat-",
+        async (fixture) => {
+            await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
+            const handle = startTestServer();
+            try {
+                const { sessionId } = await createSession(handle, fixture.projectRoot);
+                const opened = await chatPrompt(handle, sessionId, "/model");
+                assertStringIncludes(joinedAgentText(opened.messages), "alternate-model");
+                const selected = await chatPrompt(handle, sessionId, "runtime-command-fixture/alternate-model");
+                assert(
+                    selected.messages.some(
+                        (message) =>
+                            message.params?.update?.sessionUpdate === "config_option_update" &&
+                            message.params.update.configOptions[0].currentValue ===
+                                "runtime-command-fixture/alternate-model",
+                    ),
+                );
+                fixture.setModelResponseFactory((_context, _options, _state, model) => {
+                    assertEquals(model.id, "alternate-model");
+                    return fauxAssistantMessage(fauxText("The selected model answered."));
+                });
+                assertStringIncludes(
+                    joinedAgentText((await chatPrompt(handle, sessionId, "Hello")).messages),
+                    "The selected model answered.",
+                );
+                await drainWorkflowMetrics();
+                const rows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line))
+                    .filter((row) => row.command === "model");
+                assertEquals(
+                    rows.map((row) => [row.event, row.phase, row.outcome]),
+                    [
+                        ["command_started", "opened", undefined],
+                        ["command_dispatched", "dispatched", undefined],
+                        ["command_finished", "finish", "succeeded"],
+                    ],
+                );
+            } finally {
+                await closeTestServer(handle);
+            }
+        },
+        { additionalModels: [{ id: "alternate-model", name: "Alternate" }] },
+    );
+});

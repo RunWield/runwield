@@ -298,6 +298,26 @@ Dashboard refreshes automatically while visible.
 
 **Scope and maturity:** Current.
 
+**Requirement: Confirm home and system Project roots.**
+
+Add and relink inspect the submitted root on the server using Core's
+[exact directory policy](runwield-core-prd.md#project-context-and-initialization). A classified root requires explicit
+Continue/Quit consent before the registration transaction writes Project records or root evidence. The server returns
+HTTP 409 `directory_confirmation_required` with warning text and an opaque acknowledgement bound to the submitted and
+canonical root. Retry rechecks that binding. Responses do not disclose the server home or resolved absolute paths.
+
+Both forms use the same accessible modal, initially focused on Quit, with keyboard containment, Escape dismissal, and
+focus return. Quit keeps the entered form values and makes no registration change. Pending requests prevent duplicate
+submission. Ordinary roots retain their existing one-request success contract. Existing Projects are not revoked.
+
+**Acceptance scenarios:**
+
+- Given an exact server home or a symlink to a listed root, add or relink returns confirmation-required with no writes.
+  Continue registers or relinks once; Quit or Escape keeps the form and existing Project unchanged.
+- Given a changed submitted root or retargeted symlink, an earlier acknowledgement cannot authorize the new target.
+  Existing authentication, request-forgery protection, deduplication, and retarget conflicts still apply.
+- Given an ordinary descendant of a listed root, add and relink need no folder acknowledgement.
+
 **Requirement: Workspace reaches registered Projects.** For each registered Project, Workspace shows:
 
 - registration and RunWield initialization health;
@@ -314,6 +334,13 @@ Records, Session history, branches, and RunWield worktrees stay as they are.
 can relink, disable, or remove a Project whose root is missing or disabled. Disabling is reversible. Remove deletes the
 registration completely and returns to Projects; adding the directory again creates a new registration and rediscovers
 its Sessions and artifacts. Repository content becomes available when the Project is enabled and its root exists.
+Project settings requests preserve caller-supplied HTTP headers in every standard browser header format, together with the
+default JSON content type and owner CSRF token unless explicitly overridden by the caller.
+
+**Requirement: Recover from failed Project requests.** Linking, relinking, and maintenance actions show pending and
+failure feedback beside their controls. A rejected network request clears pending feedback, preserves entered paths,
+and restores the controls for an explicit retry. Failures never navigate or claim completion, and a later successful
+attempt replaces the failure message. Pending requests prevent duplicate submission of the same action.
 
 **Requirement: Restore archived Sessions from Project settings.** Project settings has General and Archived Sessions
 tabs. Archived Sessions lists archived names in pages, links to their conversations, and offers Unarchive. Unarchive
@@ -346,12 +373,20 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   worktrees remain. A removed Project leaves Projects, the sidebar, and the Dashboard, and its old settings URL stops
   resolving; adding its directory again rediscovers its Sessions.
 - Given a missing Project root, its settings page opens and offers relink, disable, and remove.
+- Given custom request headers as a `Headers` instance, tuple list, or record, Project settings requests
+  retain those headers and the default owner CSRF token without changing the caller's request options.
+- When a link, relink, enable, disable, remove, or rescan request loses its connection, the page shows a visible
+  failure, retains entered values, and permits retry without automatic resubmission or navigation. HTTP errors retain
+  the server explanation; successful retries navigate or show rescan diagnostics as usual.
 - Given an archived Session, Archived Sessions lists it with paging and opens its conversation; Unarchive returns the
   same Session to ordinary history.
 - Given a foreign Session or an unauthorized Project, an Archive or Unarchive request fails and the Session stays as
   it was.
 - From a Session or its review, the logo returns to the last Session with the sidebar intact.
 - With many saved Sessions, the sidebar shows its recent names promptly and Show more stays available.
+- In the installed mobile app, Dashboard and Session headers expose the navigation opener on initial render; opening
+  it shows the Workspace menu, logo, and navigation while Project data is still loading. Packaged browser dependencies
+  must work without access to the source checkout.
 - Documentation in the hamburger menu opens `docs.runwield.dev` and leaves the active Session as it is.
 
 ### Installable app and alerts
@@ -462,6 +497,10 @@ shows the latest saved conversation and current work, and the owner continues wh
 Replayed task results stay history. [Pair execution](runwield-core-prd.md#frontend-engineering-and-pair-execution)
 uses the same timeline and composer; a pending checkpoint survives refresh.
 
+**Requirement: Server shutdown cancels local work before waiting.** Stopping the Workspace server cancels its active
+Session turns and pending browser interactions before it waits for accepted operations to settle. The coordination
+store stays open until settlement finishes. Shutdown does not wait for a browser answer.
+
 **Requirement: Workspace stays current through repeated use.** Repeated visits to Sessions, Plans, reviews, and
 questions show current content without a restart, and memory from completed work does not accumulate per visit. A slow
 or disconnected observer receives the latest state when it catches up, and live work continues. This is not a
@@ -476,6 +515,8 @@ universal process-memory limit; memory use of live observation remains a targete
 - Given an attachment the backend cannot accept, the request is rejected with the draft intact, for new and resumed
   Sessions.
 - Given a running Session and an empty composer, the primary action stops the work; typing turns it into Send or Steer.
+- Given an active model turn or an unanswered browser question, stopping the Workspace server cancels the wait and
+  settles accepted work before it closes the coordination store.
 - Given a phone, the composer stays visible above the keyboard and the draft and history position survive closing it.
 - Given a Session switched from Ideator to Planner, the sidebar follows the new Plan as `plan_written` attaches it,
   without a reload, on local and attached browsers.
@@ -618,7 +659,9 @@ feedback, approves for later, or approves and runs the current Plan:
 Only Approve & Run authorizes execution, and only for the current Session; approval gives no other Session permission
 to run the Plan. If the Plan changed after the owner opened it, Workspace shows the
 changed content before it accepts approval. A decision on a review that the TUI or an ACP client opened uses the
-originally reviewed document. A repeated delivery of the same click runs the action once.
+originally reviewed document. A repeated delivery of the same click runs the action once. If a review request supplies
+an approval value, it must be a boolean; malformed approval values leave the Plan and live review unchanged. Feedback
+and review chat may omit approval.
 
 **Requirement: Full-window review.** Plan and Code Review replace the Workspace shell with the full-window review
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
@@ -635,11 +678,34 @@ workbench below the header, and opening one closes the other. The compact Plan R
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
 
+**Requirement: Plan content comes before front matter.** Plan Review uses Wide when no valid width preference is saved.
+Saved width choices remain available in standalone review; Workspace review uses the full document width. View mode
+starts with the front matter card hidden. Show front matter reveals it, and Hide front matter hides it again. Edit mode
+keeps the full Markdown, including editable front matter, regardless of the card's visibility. On phones, document
+actions sit above the title, not beside its first lines.
+
+**Requirement: Contained working-file reads.** Code Review validates the OS-resolved path of the opened file before
+reading response bytes from that same file object. A concurrent directory replacement cannot redirect the read outside
+the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
+or change access controls.
+
 **Requirement: Chat in the review.** Plan and Code Review chats accept attached annotations without a typed message:
 attaching annotations enables Send and its keyboard shortcut. The Agent receives the notes as review context, and the
 conversation shows the submission. Working or unavailable chats stay disabled. While an Epic is in review,
 the Architect discussion stays on the page across rounds, following
 [Core Epic review chat](runwield-core-prd.md#plan-review).
+
+**Requirement: Answer Plan Questions in place.** A valid `wld-question` fence appears as one question card in its Plan
+section, with Yes/No, text, or multiple-choice controls. Multiple choice includes Other with free text. The form marks
+the recommended answer but does not select it for the owner. Invalid blocks remain readable code with a parse-error
+note. Answers survive a reload of the same Plan revision; answers for removed question ids are dropped after revision.
+
+Answered questions attach to Planner chat automatically. The context chip shows the answer count and combines with
+attached review notes. Send and Send Annotations include a “Question answers” section. Removing the chip omits that
+context from the chat message without erasing the answers. Before either approval action, open questions trigger a
+confirmation that names their count and says the recommended answers will be used. Cancel keeps review open. Approval
+follows [Core's question resolution rules](runwield-core-prd.md#plan-review). No bundled Agent writes question blocks;
+local Planner instructions can opt in.
 
 **Requirement: Repair code inside the open review.** A Code Review repair request keeps the same review screen and
 conversation through the repair and the required CI rerun. The Agent's reply and the refreshed changes appear in place,
@@ -695,10 +761,29 @@ every action stays available.
 
 **Acceptance scenarios:**
 
+- Given a Plan Review with no saved width choice, it opens Wide and its front matter card is hidden. Show front matter
+  reveals the card; Hide front matter removes it without changing the Plan.
+- Given hidden front matter, Edit still shows its YAML. After the owner changes a field and saves, Show front matter
+  shows the changed value.
+- Given a saved Compact or Default width, standalone Plan Review keeps that choice.
+- Given a Plan with no front matter, View has no front matter toggle.
+- Given a Plan with a Plan Question in a section, the owner answers it there and reloads; the same answer is restored.
+- Given answered questions and attached review notes, chat shows their combined context count and Send carries both.
+  Removing the chip excludes both from that chat message. Annotation-only Send remains available.
+- Given question-answer feedback, Planner can record the decision in the affected section, remove the answered block,
+  and present the revised Plan in the same review loop. Answers for removed ids no longer appear in the draft.
+- Given an open question, either approval action warns with the count. Cancel keeps review open; confirmation saves
+  the resolved Plan under Core's approval rules.
+
 - Given a Workspace Plan or Code Review, submitting approval or feedback returns to its Session in the same tab; a
   failed decision stays in review.
+- Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
+- Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
+  the read; outside files stay unchanged.
 - Given a Plan changed since the review opened, approval shows the changed content first.
 - Given the same approval click delivered twice, the action runs once; Approve for Later starts no execution.
+- Given a live review receives a nonboolean approval value, the request fails without changing the Plan or consuming the
+  review; a subsequent valid decision still succeeds.
 - Given a saved Epic in review, two message-and-reply rounds with Architect stay on the page, and explicit review
   actions still decide the review.
 - Given Unified selected, a reload keeps Unified with Annotations closed; the first note opens Annotations and a later

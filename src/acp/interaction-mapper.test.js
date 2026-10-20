@@ -1,3 +1,4 @@
+import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
 /**
@@ -45,7 +46,10 @@ test("ACP interaction adapter maps valid selections and rejects invalid ones", a
             id: "interaction-1",
             type: "select",
             prompt: "Proceed?",
-            options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
+            options: [
+                { value: "yes", label: "Yes" },
+                { value: "no", label: "No" },
+            ],
         }),
         { outcome: "selected", value: "yes", valueLabel: "Yes" },
     );
@@ -76,7 +80,10 @@ test("ACP interaction adapter distinguishes approval acceptance from decline", a
         id: "interaction-1",
         type: /** @type {'approval'} */ ("approval"),
         prompt: "Approve?",
-        options: [{ value: "approve", label: "Approve" }, { value: "deny", label: "Deny" }],
+        options: [
+            { value: "approve", label: "Approve" },
+            { value: "deny", label: "Deny" },
+        ],
     };
     assertEquals(await makeAdapter("approve").requestInteraction(request), {
         outcome: "accepted",
@@ -90,52 +97,77 @@ test("ACP interaction adapter distinguishes approval acceptance from decline", a
     });
 });
 
-test("ACP interaction adapter browser fallback cancels with the request signal", async () => {
-    const adapter = createAcpInteractionAdapter({ acpSessionId: "acp-1", clientCapabilities: {}, context: {} });
-    const controller = new AbortController();
-    const pending = adapter.requestInteraction({ type: "text", prompt: "Name?" }, controller.signal);
-    controller.abort();
-    assertEquals(await pending, { outcome: "canceled", message: "Interaction canceled." });
-});
-
-test("ACP browser fallback rejects answer submissions without same-origin proof", async () => {
-    /** @type {PromiseWithResolvers<string>} */
-    const notified = Promise.withResolvers();
-    const adapter = createAcpInteractionAdapter({
-        acpSessionId: "acp-session-1",
-        clientCapabilities: {},
-        context: {
-            notify: (
-                /** @type {string} */ _method,
-                /** @type {{ update: { _meta: { runwield: { questionUrl: string } } } }} */ params,
-            ) => {
-                notified.resolve(params.update._meta.runwield.questionUrl);
+for (const type of /** @type {const} */ (["select", "text", "approval"])) {
+    test(`ACP no-form ${type} is answered in chat, not a browser`, async () => {
+        const adapter = createAcpInteractionAdapter({
+            acpSessionId: "acp-1",
+            clientCapabilities: {},
+            context: {
+                notify: () => {
+                    throw new Error("No browser page expected");
+                },
             },
-        },
+            presentChatQuestion: (interaction) => Promise.resolve({ outcome: "text", value: interaction.prompt }),
+        });
+        assertEquals(await adapter.requestInteraction({ type, prompt: "Question" }), {
+            outcome: "text",
+            value: "Question",
+        });
     });
-    const controller = new AbortController();
-    const pending = adapter.requestInteraction({
-        id: "question-1",
-        type: "text",
-        prompt: "Name?",
-    }, controller.signal);
-    const ready = await Promise.race([
-        notified.promise.then((questionUrl) => ({ questionUrl })),
-        Promise.resolve(pending).then((response) => ({ response })),
-    ]);
-    if ("response" in ready) {
-        assertEquals(ready.response.outcome, "unsupported");
-        return;
-    }
-    const questionUrl = ready.questionUrl;
+}
 
-    const noOrigin = await fetch(questionUrl.replace("/session-question", "/api/session-question/answer"), {
-        method: "POST",
-        body: new URLSearchParams({ answer: "Ada" }),
+test("ACP Artifact Review feedback rejects cross-origin submissions and cancels", async () => {
+    await withRuntimeCommandFixture("acp-artifact-feedback-", async (fixture) => {
+        /** @type {PromiseWithResolvers<string>} */
+        const notified = Promise.withResolvers();
+        const adapter = createAcpInteractionAdapter({
+            acpSessionId: "acp-session-1",
+            clientCapabilities: {},
+            context: {
+                notify: (
+                    /** @type {string} */ _method,
+                    /** @type {{ update: { _meta: { runwield: { questionUrl: string } } } }} */ params,
+                ) => {
+                    if (params.update._meta.runwield.questionUrl)
+                        notified.resolve(params.update._meta.runwield.questionUrl);
+                },
+            },
+        });
+        const controller = new AbortController();
+        const pending = adapter.requestInteraction(
+            {
+                id: "question-1",
+                type: "artifact_review",
+                prompt: "Name?",
+                _meta: { markdown: "# Report", cwd: fixture.projectRoot },
+            },
+            controller.signal,
+        );
+        try {
+            const ready = await Promise.race([
+                notified.promise.then((questionUrl) => ({ questionUrl })),
+                Promise.resolve(pending).then((response) => ({ response })),
+            ]);
+            if ("response" in ready) {
+                throw new Error(`Artifact Review feedback page did not open: ${JSON.stringify(ready.response)}`);
+            }
+            const questionUrl = ready.questionUrl;
+            const page = await fetch(questionUrl);
+            await page.body?.cancel();
+            assertEquals(page.status, 200);
+
+            const noOrigin = await fetch(questionUrl.replace("/session-question", "/api/session-question/answer"), {
+                method: "POST",
+                body: new URLSearchParams({ answer: "Ada" }),
+            });
+            await noOrigin.body?.cancel();
+            assertEquals(noOrigin.status, 403);
+
+            controller.abort();
+            assertEquals((await pending).outcome, "canceled");
+        } finally {
+            controller.abort();
+            await pending;
+        }
     });
-    assertEquals(noOrigin.status, 403);
-    await noOrigin.body?.cancel();
-
-    controller.abort();
-    assertEquals(await pending, { outcome: "canceled", message: "Interaction canceled." });
 });

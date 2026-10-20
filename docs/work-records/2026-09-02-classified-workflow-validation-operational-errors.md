@@ -12,21 +12,12 @@ provenance:
         - "482d1525-3be2-417e-bd9c-9b59bda1d71b"
 ---
 
-# Classified Workflow Validation Operational Errors
+# Typed Workflow Validation operational failures
 
 ## Summary
 
-Workflow Validation now separates implementation failures from operational failures. It adds typed recovery classes,
-stable operational codes, retry and correction handling, CI and Agent discriminated outcomes, publication routing that
-only sends proven merge conflicts to repair, and docs that operational pauses or retries do not change Plan Status.
-Verification passed with focused tests, seams check, type check, and full CI.
-
-## Deviations from Plan
-
-The Plan named `src/shared/workflow/validation-publication.test.ts`, but the checkout used
-`validation-publication-pause.test.js`; verification ran the existing publication test file instead.
+Workflow Validation distinguishes implementation failures from operational failures through typed recovery classes and stable operational codes. Retry and correction handling preserves separate CI and Agent outcomes; publication sends only proven merge conflicts to repair. Operational pauses and retries do not change Plan status.
 
 ## Future Planning Notes
 
-Keep operational retry and correction budgets separate from implementation repair counters. Future validation changes
-should preserve typed boundary results instead of flattening failures into strings or synthetic exit codes.
+Keep operational retry and correction budgets separate from implementation repair counters. Preserve typed boundary results rather than flattening failures into strings or synthetic exit codes.

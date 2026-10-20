@@ -23,10 +23,7 @@ export function emitPreparingInPlaceExecution(hostedSession: HostedSession | und
     return emitExecutionPreparationStatus(hostedSession, "Preparing in-place work because Git is unavailable...");
 }
 
-export function emitCreatingExecutionWorktree(
-    hostedSession: HostedSession | undefined,
-    baseBranch?: string,
-): boolean {
+export function emitCreatingExecutionWorktree(hostedSession: HostedSession | undefined, baseBranch?: string): boolean {
     return emitExecutionPreparationStatus(
         hostedSession,
         `Creating the worktree from base branch ${baseBranchLabel(baseBranch)}...`,
@@ -57,10 +54,7 @@ export function emitIndexingExecutionWorktree(hostedSession: HostedSession | und
     return emitExecutionPreparationStatus(hostedSession, "Indexing the worktree for code search...");
 }
 
-export function emitExecutionWorktreeIndexWarning(
-    hostedSession: HostedSession | undefined,
-    reason: string,
-): boolean {
+export function emitExecutionWorktreeIndexWarning(hostedSession: HostedSession | undefined, reason: string): boolean {
     return emitSystemStatus(hostedSession, `Cymbal index did not complete: ${reason}`, {
         header: "RunWield",
         level: "warning",
@@ -72,7 +66,7 @@ export function emitMaterializingPlanInExecutionWorktree(hostedSession: HostedSe
 }
 
 export function emitRestoredPlanInExecutionWorktree(hostedSession: HostedSession | undefined): boolean {
-    return emitExecutionPreparationStatus(hostedSession, "Restored the missing Plan file in the worktree.");
+    return emitExecutionPreparationStatus(hostedSession, "Copied the Plan into the worktree.");
 }
 
 export function emitReconciledPlanInExecutionWorktree(hostedSession: HostedSession | undefined): boolean {

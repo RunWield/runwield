@@ -11,20 +11,12 @@ provenance:
         - "0c7f7798-b7d2-4b32-8ff3-b4c9d7623336"
 ---
 
-# Rebranded Harns to RunWield
+# RunWield product naming
 
 ## Summary
 
-Completed and verified the cross-cutting RunWield rebrand. The CLI is now `wld`, product-owned state uses `.wld`,
-context files use `RUNWIELD.md`, release and installer assets use the new naming, and runtime, documentation, tests,
-prompts, worktrees, session markers, and the boot logo were updated. The Router display name remains `Harns` as the sole
-intentional legacy exception.
+The CLI uses `wld`, and product-owned state, context documents, releases, installers, and runtime presentation use RunWield naming.
 
-## Deviations from Plan
+## Out of Scope
 
-None recorded.
-
-## Future Planning Notes
-
-The clean break intentionally provides no migration, fallback, alias, or rescue behavior for prior `hns`, `.hns`,
-`HARNS.md`, `harns.active_agent`, `HNS_*`, or Harns worktree state.
+This work does not include migration, fallback, aliases, or rescue behavior for earlier product identities.

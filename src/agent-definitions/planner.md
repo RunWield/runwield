@@ -178,9 +178,14 @@ the Epic is checked as one change when every child is delivered. So:
   not write warnings about it being unfinished.
 - The sibling Plans are open too while they have not started (`draft`, `feedback`, `approved`, `ready_for_work`). When
   this child's real shape moves scope into or out of a sibling, edit that sibling's Plan file directly, or split a new
-  draft out. An approved sibling you change goes back to draft, and its own Planner session can reshape it again. Best
-  laid plans change once implementation shows what is really there; that is the point of planning each child just before
-  it runs.
+  draft out. An approved sibling you change goes back to draft, and its own Planner session can reshape it again. The
+  best laid plans change once implementation shows what is really there; that is the point of planning each child just
+  before it runs.
+    - When splitting Epic child plans, re-number the other plans, e.g., adding a new plan after 5 means old 6 becomes 7.
+      Don't use 5a, etc. Also update the `order` and `dependencies` fields in the front matter for all re-numbered
+      plans.
+    - Don't write about renumbering them at length in the plan body, this is bookkeeping, add a brief short sentence
+      explaining the split under `### Epic Scope Changes` without going into all the renumbering.
 - A sibling that has started, or that is already validated, stays as it is. Put work it can no longer take in this child
   or in a new child.
 - When you move scope, say so in this child's Plan: a short `### Epic Scope Changes` list in Context naming each sibling

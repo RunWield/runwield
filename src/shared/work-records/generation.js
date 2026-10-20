@@ -22,11 +22,7 @@ import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adap
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { dedupeTicketReferencesByUrl } from "../ticket-references.js";
-import {
-    mergeRecorderDeviationText,
-    readPlanDeviations,
-    renderPlanDeviationsForWorkRecord,
-} from "../plan-deviations.ts";
+import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.js";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
@@ -36,6 +32,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 
 const DEFAULT_CLOSURE_REASON = "Reason not specified.";
 const SKIPPED_VERIFICATION_TEXT = "RunWield Workflow Validation was skipped";
+const DONE_ENOUGH_TEXT = "The Epic was closed as done enough.";
 const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Validation did not establish this result";
 
 /**
@@ -64,8 +61,7 @@ const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Va
  * @typedef {Object} GeneratedWorkRecordSections
  * @property {string} title
  * @property {string} summary
- * @property {string} [deviationsFromPlan]
- * @property {string} [deferredWork]
+ * @property {string} [outOfScope]
  * @property {string} [futurePlanningNotes]
  * @property {import('./schema.ts').WorkRecordSupersessionCandidate[]} [supersessionProposals]
  */
@@ -99,11 +95,6 @@ function iso(date) {
 /** @param {unknown} value */
 function nonEmptyString(value) {
     return typeof value === "string" && value.trim() ? value.trim() : "";
-}
-
-/** @param {string} body */
-function extractTitle(body) {
-    return String(body || "").match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
 }
 
 /** @param {unknown} value */
@@ -180,12 +171,7 @@ export function normalizeRecorderOutput(value) {
     return {
         title,
         summary,
-        ...(optionalTrimmedString(record.deviationsFromPlan)
-            ? { deviationsFromPlan: optionalTrimmedString(record.deviationsFromPlan) }
-            : {}),
-        ...(optionalTrimmedString(record.deferredWork)
-            ? { deferredWork: optionalTrimmedString(record.deferredWork) }
-            : {}),
+        ...(optionalTrimmedString(record.outOfScope) ? { outOfScope: optionalTrimmedString(record.outOfScope) } : {}),
         ...(optionalTrimmedString(record.futurePlanningNotes)
             ? { futurePlanningNotes: optionalTrimmedString(record.futurePlanningNotes) }
             : {}),
@@ -210,9 +196,11 @@ export function deriveWorkRecordCompletionMode(source) {
     if (source.attrs.status === "closed_without_verification") return "closed_without_verification";
     if (source.attrs.status === "user_verified") return "user_verified";
     if (
-        source.attrs.status === "validated" || source.attrs.status === "verified" ||
+        source.attrs.status === "validated" ||
+        source.attrs.status === "verified" ||
         (source.pendingPublication && source.attrs.status === "reviewed")
-    ) return "verified";
+    )
+        return "verified";
     return "";
 }
 
@@ -248,14 +236,15 @@ export function recordsBySourcePlanId(records) {
  */
 function findLinkableExistingRecord(source, existingByPlanId) {
     const candidates = source.planId ? existingByPlanId.get(source.planId) || [] : [];
-    return candidates.find((record) =>
-        (record.attrs.status === "approved" ||
-            (source.pendingPublication && record.attrs.status === "pending_verification")) &&
-        record.attrs.origin === "internal" &&
-        record.attrs.scope === source.scope &&
-        record.attrs.completionMode === source.completionMode &&
-        !record.attrs.archivedAt &&
-        !record.attrs.supersededBy
+    return candidates.find(
+        (record) =>
+            (record.attrs.status === "approved" ||
+                (source.pendingPublication && record.attrs.status === "pending_verification")) &&
+            record.attrs.origin === "internal" &&
+            record.attrs.scope === source.scope &&
+            record.attrs.completionMode === source.completionMode &&
+            !record.attrs.archivedAt &&
+            !record.attrs.supersededBy,
     );
 }
 
@@ -282,9 +271,10 @@ export function evaluateWorkRecordSource(source, existingByPlanId = new Map()) {
     const existingRecord = findLinkableExistingRecord(candidate, existingByPlanId);
     return {
         ...candidate,
-        closureReason: completionMode === "closed_without_verification"
-            ? nonEmptyString(source.attrs.closedWithoutVerificationReason) || DEFAULT_CLOSURE_REASON
-            : undefined,
+        closureReason:
+            completionMode === "closed_without_verification"
+                ? nonEmptyString(source.attrs.closedWithoutVerificationReason) || DEFAULT_CLOSURE_REASON
+                : undefined,
         ...(existingRecord ? { existingRecord } : {}),
     };
 }
@@ -345,9 +335,13 @@ export function buildActiveWorkRecordSource(name, loaded) {
 export function attachEpicChildren(sources) {
     return sources.map((source) => {
         if (!isProjectPlan(source.attrs)) return source;
-        const children = sources.filter((candidate) =>
-            isPlannedChangeClassification(candidate.attrs.classification) && candidate.attrs.parentPlan === source.name
-        ).sort(compareChildPlansByOrder);
+        const children = sources
+            .filter(
+                (candidate) =>
+                    isPlannedChangeClassification(candidate.attrs.classification) &&
+                    candidate.attrs.parentPlan === source.name,
+            )
+            .sort(compareChildPlansByOrder);
         return { ...source, children };
     });
 }
@@ -359,7 +353,7 @@ export function attachEpicChildren(sources) {
 export async function previewWorkRecordBackfill(cwd) {
     const existingByPlanId = recordsBySourcePlanId(await listWorkRecords(cwd, { createDir: false }));
     const sources = attachEpicChildren(await discoverWorkRecordSources(cwd)).map((source) =>
-        evaluateWorkRecordSource(source, existingByPlanId)
+        evaluateWorkRecordSource(source, existingByPlanId),
     );
     return {
         sources,
@@ -416,11 +410,6 @@ async function ensureSourcePlanId(cwd, source, options) {
     const planId = options.idGenerator ? options.idGenerator() : crypto.randomUUID();
     const attrs = await updateArchivedPlanFrontMatter(cwd, source.name, { planId });
     return { ...source, planId, attrs };
-}
-
-/** @param {string} value */
-function stripMarkdown(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 /** @param {WorkRecordSource} source */
@@ -503,8 +492,6 @@ async function validateRecorderProposals(cwd, successorRecordId, candidates) {
 function buildRecorderPrompt(source, successorRecordId, settledSupersedes) {
     return JSON.stringify(
         {
-            instruction:
-                "Generate a concise Work Record body draft and call work_record_completed with: title, summary, optional deviationsFromPlan, optional deferredWork, optional futurePlanningNotes, and optional supersessionProposals. source.planDeviations are already confirmed and RunWield will insert them deterministically under Deviations from Plan; do not repeat, omit, contradict, or reinterpret them. deviationsFromPlan is only for other meaningful retrospective deviations. supersessionProposals must be an array of {recordId, reason}; each recordId must be a plain UUID and each reason must be non-blank. settledSupersedes are already confirmed and must not be proposed again. Propose only other existing Work Records that this result appears to replace. Describe durable implementation outcomes and real deferred work. Do not copy transient publication-pending or tests-not-yet-run caveats into the summary or deferred work; RunWield owns final publication and validation evidence. Do not claim unobserved tests passed. Distill executionReport facts into the appropriate sections; RunWield will preserve the raw executionReport separately when present.",
             successorRecordId,
             settledSupersedes,
             source: {
@@ -513,9 +500,6 @@ function buildRecorderPrompt(source, successorRecordId, settledSupersedes) {
                 planId: source.planId,
                 scope: source.scope,
                 completionMode: source.completionMode,
-                deliveryState: source.pendingPublication
-                    ? "pending publication; do not claim merged or delivered"
-                    : "completed",
                 closureReason: source.closureReason,
                 userVerificationNote: source.attrs.userVerificationNote,
                 userVerifiedAt: source.attrs.userVerifiedAt,
@@ -558,20 +542,24 @@ export async function generateRecorderSections(
     const sessionManager = SessionManager.inMemory(cwd);
     try {
         for (let attempt = 1; attempt <= 2; attempt++) {
-            const { event, messages } = await runValidationAgentUntilEvent(SYSTEM_SEMANTIC_REVIEW_PORT, {
-                hostedSession,
-                signal: options.signal,
-                cwd,
-                agentName: AGENTS.RECORDER,
-                userRequest: attempt === 1
-                    ? prompt +
-                        "\nSubmit the sections by calling work_record_completed. Plain text cannot complete this step."
-                    : "No work_record_completed submission was accepted. Use the source already provided to call " +
-                        "work_record_completed now. Correct any rejected arguments; do not return JSON as text.",
-                sessionManager,
-                customTools: [createWorkRecordCompletedTool(hostedSession)],
-                includeEditFallback: false,
-            }, "work_record_completed");
+            const { event, messages } = await runValidationAgentUntilEvent(
+                SYSTEM_SEMANTIC_REVIEW_PORT,
+                {
+                    hostedSession,
+                    signal: options.signal,
+                    cwd,
+                    agentName: AGENTS.RECORDER,
+                    userRequest:
+                        attempt === 1
+                            ? prompt
+                            : "No work_record_completed submission was accepted. Use the source already provided to call " +
+                              "work_record_completed now. Correct any rejected arguments; do not return JSON as text.",
+                    sessionManager,
+                    customTools: [createWorkRecordCompletedTool(hostedSession)],
+                    includeEditFallback: false,
+                },
+                "work_record_completed",
+            );
             if (event) {
                 const sections = normalizeRecorderOutput(event.payload);
                 settleWorkflowToolEvent(hostedSession, event);
@@ -580,9 +568,10 @@ export async function generateRecorderSections(
             const lastAssistant = messages.findLast((message) => message.role === "assistant");
             // Keep only protocol metadata, never provider text or private reasoning.
             const stopped = lastAssistant?.role === "assistant" ? lastAssistant.stopReason : undefined;
-            const diagnostic = stopped === "error" || stopped === "aborted" || stopped === "length"
-                ? `turn ended with ${stopped}`
-                : "turn ended without an accepted work_record_completed call";
+            const diagnostic =
+                stopped === "error" || stopped === "aborted" || stopped === "length"
+                    ? `turn ended with ${stopped}`
+                    : "turn ended without an accepted work_record_completed call";
             if (attempt === 2 || stopped === "error" || stopped === "aborted") {
                 throw new Error(`Recorder submission failed after ${attempt} attempt(s): ${diagnostic}`);
             }
@@ -595,50 +584,23 @@ export async function generateRecorderSections(
 
 /**
  * @param {WorkRecordSource} source
- * @returns {GeneratedWorkRecordSections}
- */
-export function synthesizeWorkRecordSections(source) {
-    const title = extractTitle(source.body) || source.attrs.summary || source.name;
-    const summary = source.completionMode === "closed_without_verification"
-        ? `This work was completed but RunWield Workflow Validation was skipped. Closure reason: ${
-            source.closureReason || DEFAULT_CLOSURE_REASON
-        }`
-        : source.completionMode === "user_verified"
-        ? `This work was marked User Verified by the user. RunWield Workflow Validation did not establish this result. User note: ${
-            nonEmptyString(source.attrs.userVerificationNote) || DEFAULT_CLOSURE_REASON
-        }`
-        : source.completionMode === "done_enough"
-        ? `${source.attrs.summary || title} The PROJECT Epic was marked done enough${
-            source.attrs.epicDoneEnoughSummary ? `: ${source.attrs.epicDoneEnoughSummary}` : "."
-        }`
-        : source.attrs.summary || `Completed ${title}.`;
-    const childLines = (source.children || [])
-        .filter((child) => isPlannedChangeClassification(child.attrs.classification))
-        .map((child) =>
-            `- ${child.name}: ${child.attrs.status}${
-                child.attrs.summary ? ` — ${stripMarkdown(child.attrs.summary)}` : ""
-            }`
-        );
-    return {
-        title,
-        summary,
-        ...(childLines.length ? { deferredWork: childLines.join("\n") } : {}),
-        futurePlanningNotes: `Source Plan: ${source.relativePath}`,
-    };
-}
-
-/**
- * @param {WorkRecordSource} source
  * @param {GeneratedWorkRecordSections} sections
  */
 function prepareGeneratedSections(source, sections) {
     const normalized = normalizeRecorderOutput(sections);
     if (source.completionMode === "user_verified") {
-        const note = nonEmptyString(source.attrs.userVerificationNote) || DEFAULT_CLOSURE_REASON;
+        const note =
+            nonEmptyString(source.attrs.userVerificationNote)
+                .replace(/[\u2500-\u257f]/g, "")
+                .replace(/\s+/g, " ")
+                .trim() || DEFAULT_CLOSURE_REASON;
         const summaryParts = [];
         if (!normalized.summary.includes(USER_VERIFIED_TEXT)) summaryParts.push(`${USER_VERIFIED_TEXT}.`);
         if (!normalized.summary.includes(note)) summaryParts.push(`User verification note: ${note}`);
         return { ...normalized, summary: [...summaryParts, normalized.summary].join(" ").trim() };
+    }
+    if (source.completionMode === "done_enough" && !normalized.summary.includes(DONE_ENOUGH_TEXT)) {
+        return { ...normalized, summary: `${DONE_ENOUGH_TEXT} ${normalized.summary}` };
     }
     if (source.completionMode !== "closed_without_verification") return normalized;
     const reason = source.closureReason || DEFAULT_CLOSURE_REASON;
@@ -704,24 +666,12 @@ export function extractWorkRecordRequirements(body) {
  */
 function buildBody(source, sections) {
     const normalized = prepareGeneratedSections(source, sections);
-    const lines = [
-        `# ${normalized.title}`,
-        "",
-        "## Summary",
-        "",
-        normalized.summary,
-    ];
+    const lines = [`# ${normalized.title}`, "", "## Summary", "", normalized.summary];
     sections = normalized;
-    const confirmedDeviationText = renderPlanDeviationsForWorkRecord(aggregatePlanDeviations(source));
-    const deviationText = mergeRecorderDeviationText(
-        confirmedDeviationText,
-        nonEmptyString(sections.deviationsFromPlan),
-    );
-    if (nonEmptyString(deviationText)) {
-        lines.push("", "## Deviations from Plan", "", nonEmptyString(deviationText));
-    }
-    if (nonEmptyString(sections.deferredWork)) {
-        lines.push("", "## Deferred Work", "", nonEmptyString(sections.deferredWork));
+    const deviationText = renderPlanDeviationsForWorkRecord(aggregatePlanDeviations(source));
+    if (deviationText) lines.push("", "## Deviations from Plan", "", deviationText);
+    if (nonEmptyString(sections.outOfScope)) {
+        lines.push("", "## Out of Scope", "", nonEmptyString(sections.outOfScope));
     }
     if (nonEmptyString(sections.futurePlanningNotes)) {
         lines.push("", "## Future Planning Notes", "", nonEmptyString(sections.futurePlanningNotes));
@@ -760,9 +710,9 @@ async function bestEffortSyncGeneratedRecord(cwd, record, options) {
         });
         return "";
     } catch (error) {
-        return `Work Record index sync failed for ${record.attrs.recordId}: ${
-            conciseError(error)
-        } Run wld wr index rebuild.`;
+        return `Work Record index sync failed for ${record.attrs.recordId}: ${conciseError(
+            error,
+        )} Run wld wr index rebuild.`;
     }
 }
 
@@ -819,8 +769,8 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
                     predecessorRecordIds: declaredIds,
                     mnemotecaPort: options.mnemotecaPort,
                 });
-                record = applied.records.find((candidate) => candidate.attrs.recordId === record.attrs.recordId) ||
-                    record;
+                record =
+                    applied.records.find((candidate) => candidate.attrs.recordId === record.attrs.recordId) || record;
                 indexWarning = applied.indexWarning || "";
             } else {
                 indexWarning = await bestEffortSyncGeneratedRecord(cwd, record, options);
@@ -841,8 +791,8 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
         declaredIds = await validateDeclaredSupersession(cwd, recordId, declaredIds);
         const sections = await generateRecorderSections(cwd, source, options, recordId, declaredIds);
         const declaredIdentities = new Set(declaredIds.map((id) => id.toLowerCase()));
-        const undeclaredProposals = (sections.supersessionProposals || []).filter((candidate) =>
-            !declaredIdentities.has(candidate.recordId.toLowerCase())
+        const undeclaredProposals = (sections.supersessionProposals || []).filter(
+            (candidate) => !declaredIdentities.has(candidate.recordId.toLowerCase()),
         );
         const supersessionProposals = await validateRecorderProposals(cwd, recordId, undeclaredProposals);
         /** @type {import('./schema.ts').WorkRecordFrontMatter} */
@@ -853,9 +803,9 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             scope: /** @type {"planned_change"|"epic"} */ (source.scope),
             workKind: source.attrs.workKind,
             origin: "internal",
-            completionMode:
-                /** @type {"verified"|"closed_without_verification"|"user_verified"|"done_enough"} */ (source
-                    .completionMode),
+            completionMode: /** @type {"verified"|"closed_without_verification"|"user_verified"|"done_enough"} */ (
+                source.completionMode
+            ),
             createdAt: iso(now),
             ...(aggregateWorkRecordTickets(source) ? { tickets: aggregateWorkRecordTickets(source) } : {}),
             ...(declaredIds.length ? { supersedes: declaredIds } : {}),
@@ -886,9 +836,9 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
                     await deleteWorkRecord(cwd, record);
                 } catch (cleanupError) {
                     throw new Error(
-                        `${conciseError(error)} Generated Work Record cleanup also failed: ${
-                            conciseError(cleanupError)
-                        }`,
+                        `${conciseError(error)} Generated Work Record cleanup also failed: ${conciseError(
+                            cleanupError,
+                        )}`,
                         { cause: error },
                     );
                 }

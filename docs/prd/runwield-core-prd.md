@@ -207,6 +207,8 @@ manual edits apply after `/reload`. Hiding the mascot keeps the written identity
 
 - Given an Agent change, the mascot changes to that Agent's prop; a delegated invocation keeps its parent's mascot.
 - Given a busy turn, the mascot animates until an answer, an owner wait, or settlement, and restarts when work resumes.
+- Given Code Review approval or skip, publication clears the selected Agent. The TUI shows Base and the default
+  working text, not the previous repair Agent. A real publication repair turn shows its own Agent while it runs.
 - Given a terminal resize, the mascot stays centered and the conversation and composer stay usable.
 - Given `mascot: false`, the rail, compact dock, and Workspace composer show no mascot; toggling back restores it.
 
@@ -252,6 +254,14 @@ conversation for revision. Approval leads to a readiness check; a Plan that need
 Formatting-only changes during review keep the decision valid. Changes to Plan meaning, code, execution policy, or
 workflow evidence require review of the current Plan.
 
+**Requirement: Settle embedded Plan Questions on approval.** Browser approval replaces each valid `wld-question`
+block in the reviewed Plan with its question and answer in place. An owner answer is marked “answered in review”. An
+unanswered question uses its recommended default, marked “recommended; not answered in review”. Without a default, it
+records “Not answered. Engineer decides.” This happens before the approved Plan is saved, for both approval actions.
+Feedback leaves question blocks available for the planning conversation. Invalid blocks stay unchanged. The bundled
+Agents do not write these blocks; local Planner instructions can opt in. Sequence child Plans use a separate approval
+path and do not resolve these blocks.
+
 **Requirement: Discuss an Epic with Architect during review.** While an Epic is open for review, the user can chat with
 Architect on the review page across several rounds in the same live Session. Architect can revise the Epic and publish
 the next review round on the same page. Only explicit review actions (Send Annotations, cancel, Approve for Later,
@@ -274,6 +284,11 @@ stays light, terminal animations pause during human input, and the decision cont
 - Given an Epic open for review, the user exchanges two messages with Architect and both replies stay on the review
   page; the review stays open until an explicit review action.
 - Given a saved Plan, when the user submits feedback, the planning conversation receives it and can revise the Plan.
+- Given two valid Plan Questions, one answered and one open with a default, browser approval saves the owner answer and
+  the recommended answer with their labels, with no raw question fences. Approval still rejects a changed Plan and
+  applies a repeated decision only once.
+- Given a Plan Question without an owner answer or default, approval records that Engineer decides. Feedback instead
+  keeps the block in the saved Plan.
 - When the user approves for later, the Plan waits; when they approve and run, readiness is checked first.
 - Given an open review, when a commit hook reformats the Plan, the decision still applies; a change to instructions,
   code, links, or execution policy requires a new decision.
@@ -413,8 +428,9 @@ ownership.
 
 **Requirement: Each child starts with the preceding children's published code.** Before the next child is prepared,
 Core fetches the latest Epic branch. The child's planning worktree starts from, or imports, that commit while keeping
-its saved scope and status. The refreshed commit is the child's baseline. A failed fetch keeps continuation
-recoverable.
+its saved scope and status. The refreshed commit is the child's baseline. If the Epic history was rewritten, Core
+carries only the child's planning changes onto the current target and retains the old planning head for recovery.
+Existing implementation changes are never discarded. A failed fetch keeps continuation recoverable.
 
 **Requirement: A child worktree starts only with a session.** Core creates a child's planning worktree only when
 planning, review, re-review, execution, or automatic continuation starts a session in that child. It starts from the
@@ -459,6 +475,8 @@ siblings active. Listings show held work separately from active and finished wor
 - Given an existing default Epic branch and completed children, but no recorded Epic target, `/load-plan` lists that
   branch's current children and opens its next child, not a stale primary-checkout name.
 - Given an unstarted child, loading, selecting, viewing, or canceling creates no worktree and changes no Git refs.
+- Given completed Slicer decomposition, resuming a draft child in the same Session opens its planning worktree with
+  Planner active. The handoff does not reload or restore the Epic-scoped Slicer as a selectable Agent.
 - Given a target-branch child without a Plan ID, starting its session creates a durable identity and planning worktree.
   Repeated or concurrent session preparation reuses both without changing the primary checkout or publishing to the Epic
   branch.
@@ -471,6 +489,11 @@ siblings active. Listings show held work separately from active and finished wor
 - Given a child published from another checkout, preparing the next child includes that publication.
 - Given the next child already has a planning worktree with saved edits, continuation imports the published code and
   keeps those edits.
+- Given the Epic branch was rewritten after the next child's planning worktree was created, continuation moves that
+  worktree onto the new Epic branch, keeps saved scope and status, and does not merge the replaced code history. A retry
+  settles the same refresh.
+- Given implementation changes in that child worktree, continuation preserves them and refuses the planning refresh.
+- Given conflicting saved scope, continuation preserves both versions without leaving an unfinished merge.
 - Given a last child that has validated but not finished publishing, the Epic is not yet implemented.
 - Given all children delivered, a passing integration gate marks the Epic reviewed for that branch head; the primary
   branch is unchanged.
@@ -525,6 +548,11 @@ attempt when it cannot get a positive answer about that item. An empty, unreadab
 result means "could not tell". It does not mean "dead", "finished", "clean", or "passed". RunWield never releases,
 reaps, takes over, or retries an item because a query was empty or failed. It never reports success on that basis.
 
+**Requirement: Test success requires current execution evidence.** RunWield's own isolated test runner counts a file
+as passing only after a successful process exit and a fresh report of executed tests. Missing or empty evidence fails
+validation; explicitly skipped tests remain skipped. Reusing a report directory cannot reuse evidence from an earlier
+invocation, including for files that fail-fast leaves unexecuted.
+
 **Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.** When the user must act,
 RunWield explains what happened, what it is protecting, what is missing, the action the user can take, what Retry will
 continue, and what each choice means. It offers deliberate abandonment with work preserved at the safest recoverable
@@ -534,10 +562,16 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 - Given stale locks, inconsistent settings or storage, or mismatched Plan bookkeeping, RunWield restores its own state
   and continues.
+- Given a restarted process or a reused PID, validation compares process birth evidence with its saved owner and
+  resumes the preserved checkpoint when the original owner is provably gone. A live matching owner still excludes
+  another validation run; unavailable process identity evidence never authorizes takeover.
 - Given a lock whose run status query returns an empty or unreadable result, recovery keeps the lock and the work
   continues.
 - Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current
   and does not act on that result.
+- Given a previously passing test file replaced by an early successful exit or no tests, the next test run fails
+  and does not retain the previous passing report.
+- Given a file containing only explicitly skipped tests, the runner reports it as skipped rather than passed.
 - Given exhausted automatic attempts, the same workflow stays open and recoverable.
 - Given a genuine external prerequisite, the user receives a specific action plus Retry and abandonment choices; Retry
   continues the preserved workflow.
@@ -647,12 +681,18 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+runtime and cannot report success without running the Astro checker.
+
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
 progress display comes from the confirmed validation and publication results of the current attempt.
 
 **Acceptance scenarios:**
 
+- Given a missing or unloadable Workspace checker dependency, `workspace:check` exits nonzero with a recovery message.
+- Given an intentional Astro type error, `workspace:check` executes checking and exits nonzero with its diagnostic.
 - Given no configured command, validation asks once; repair and resumed validation reuse the saved command, and the
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
@@ -705,8 +745,12 @@ approval pending and records no decision or revision. The UI states that review 
 resume; reopening presents a working review link. Completed checks and the implementation stay available. Explicitly
 submitted feedback starts repair and records the decision and revision, followed by checks and another Code Review.
 
-**Requirement: Reach the live review from the terminal.** While a decision is pending, the TUI shows a clickable live
-review URL, including for resumed and direct reviews and when the browser does not open automatically. The settled
+**Requirement: Reach the live review from the terminal.** From launch until a decision arrives, the TUI shows
+“Waiting for Code Review”. When the review surface is ready, the card also shows a clickable live review URL,
+including for resumed and direct reviews and when the browser does not open automatically. The normal message input
+is hidden during Plan review and Code Review. It returns with its draft text when review ends, including on approval,
+cancellation, or failure. During Code Review, the validation progress and results card is also hidden so the review
+message and live link stay visible. The card returns with its current results when review ends. The settled review
 card shows the outcome.
 
 **Requirement: Edit review policies in settings.** The `/settings` menu edits the Code Review and Guided Review policies
@@ -1022,6 +1066,31 @@ theme activates only its theme content. See the [theme reference](../user-docume
 **Scope and maturity:** Current baseline. A compressed Project Brief and further code-intelligence improvements are
 target scope.
 
+**Requirement: Confirm home and system folder use.**
+
+Before local project CLI dispatch or direct TUI startup, RunWield warns “System or home folder detected. Continue?” with
+the selected path and Continue/Quit choices. Quit is the default; cancellation stops before project work or Session
+creation. The policy matches the current account home, filesystem roots, and a fixed cross-platform system-directory
+list by exact normalized or canonical equality. Symlink aliases match; ordinary descendants and similarly named folders
+do not. Consent applies only to the same inspected directory in this invocation, not a persistent trusted-folder
+setting.
+
+Noninteractive project commands refuse with nonzero status and stderr guidance unless a leading
+`--allow-system-directory` flag acknowledges the directory. This flag does not consume piped request input, change
+`--continue`, or bypass Init's file consent. Help, version, global commands, Workspace services, ACP, MCP, and remote
+connections retain their existing behavior. This warning is consent, not a security sandbox or universal unsafe-path
+detector.
+
+**Acceptance scenarios:**
+
+- Given an exact home or listed system directory, when project startup begins, no project work starts before Continue.
+  Quit, Escape, Ctrl-C, and cancellation stop startup. A later process asks again.
+- Given Continue, automatic Init, Tutorial, and empty-folder starter offers are absent and their stored markers are
+  unchanged. Explicit Init and Onboard remain available with their normal consent.
+- Given an ordinary descendant such as `~/projects/app`, `/opt/app`, or `/tmp/app`, startup keeps its normal offers.
+- Given piped `guided-review` input at home, startup refuses before reading it unless the leading acknowledgement is
+  supplied.
+
 **Requirement: Preserve useful project facts and retrieve relevant context.**
 
 - **Mnemoteca:** project and global persistent memory for preferences, project facts, and critical context.
@@ -1089,6 +1158,8 @@ change impact.
 
 **Scope and maturity:** Current TUI baseline. Workspace-native Tutorial controls are deferred.
 
+Home and classified system folders are not eligible for automatic offers, even after Continue.
+
 **Requirement: Offer an optional guided first change.** On one eligible new TUI Session, RunWield offers a Tutorial
 after model setup and the Init decision. The offer shows the current project and states that starting makes a real
 project change, uses the configured model, needs Plan Review, and keeps normal checks and delivery approvals. Start and
@@ -1136,6 +1207,12 @@ the image. Missing fallback setup explains the fix and keeps typed text and imag
 change before Send. Standalone releases resize images cleanly. See [vision fallback
 settings](../user-documentation/settings.md#visionfallback).
 
+**Requirement: Paste clipboard images on demand.** In the TUI, Ctrl-V reads a clipboard image only when the user presses
+it. RunWield does not read or watch the clipboard while idle, including across focus changes, Session replacement,
+and concurrent Sessions. If an explicit paste finds no image, the composer shows "No image in clipboard" until the next
+input or a successful image paste. A clipboard read that finishes after view disposal adds no preview or attachment and
+requests no render. Keyboard help lists Ctrl-V for image paste.
+
 **Requirement: Agents can inspect images.** The Agent can ask `see_image` about a saved Session attachment or a
 referenced project image. Descriptions include readable text, visual state, and uncertainty. Resumed Sessions keep
 access to their own attachments. **Target:** deleting a Session also removes its images.
@@ -1149,6 +1226,9 @@ access to their own attachments. **Target:** deleting a Session also removes its
 - Given a text-only model and no fallback, sending an image shows setup guidance and keeps the message and preview.
 - Given a resumed Session with saved images, its own attachments stay available.
 - Given a standalone release, resizing an image produces a valid image at the requested size.
+- Given several idle TUI Sessions on macOS, no clipboard process starts until the user presses Ctrl-V.
+- Given Ctrl-V with no image available, the composer shows "No image in clipboard"; the next input clears it.
+- Given a clipboard image read that finishes after view disposal, no preview, attachment, or render is added.
 
 ### Image generation
 
@@ -1199,18 +1279,18 @@ or Session. Failures, text-only output, malformed bytes, cancellation, and timeo
 authorship are follow-up scope.
 
 **Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise, repository-owned
-Markdown accounts of what completed work produced and what future planning should remember. They keep meaningful
-deviations, deferred scope, concrete lessons, source Plan links, Ticket links, and useful evidence. Identity and links
-survive renaming, and search can be rebuilt from the documents.
+Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
+lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
+defects. Identity and links survive renaming, and search can be rebuilt from the documents.
 
 - Eligible top-level completed Plans and Epics receive auto-approved records by default. An Epic record summarizes its
   relevant children, including deferred and archived work.
 - Completion labels distinguish RunWield verification, user verification with its note, closure without verification
   with its reason, and done-enough Epics. Missing historical closure reasons are disclosed.
-- A record describes its delivery stage accurately. A record written before publication stays pending until the merge
-  finalizes, and a restart reuses it. After publication, it names the exact confirmed published commit, and earlier
-  Recorder prose stays as pre-publication notes. Publication and test receipts state what was confirmed. A search-index
-  failure is reported separately from successful delivery.
+- A record written before publication stays pending until the merge finalizes, and a restart reuses it. Publication
+  approves the record without rewriting its body. The delivered commit lives only in the source Plan's Delivery
+  Evidence, reached through the record's source Plan provenance. A search-index failure is reported separately from
+  successful delivery.
 
 **Requirement: Recording is best effort and recoverable.** Recording failure leaves the completed Plan and its delivery
 intact. The completion notice shows both outcomes and offers **Retry Work Record**, which regenerates only that Plan's
@@ -1236,6 +1316,9 @@ Git history.
 **Acceptance scenarios:**
 
 - Given an eligible completed Plan, the record links its source and labels how completion was established.
+- Given no recorded Plan Deviations, the record has no Deviations from Plan section.
+- Given publication, the approved record body equals its pre-publication body.
+- Given user verification, the record states the attestation and cleaned note once.
 - Given delivered code and a failed record, the completion menu offers **Retry Work Record**; a retry regenerates only
   that record, and repeating a successful retry keeps one record.
 - Given Recorder returns text without submitting its record, one corrective turn can finish it; if both turns omit it,

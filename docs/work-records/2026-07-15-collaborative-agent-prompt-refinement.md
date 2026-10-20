@@ -18,23 +18,8 @@ provenance:
           note: Reinforces the Ideator behavior through the recurring long-session attention nudge.
 ---
 
-# Collaborative Agent Prompt Refinement
+# Collaborative Agent prompt refinement
 
 ## Summary
 
-Planner, Architect, and Ideator prompts were refined to behave as collaborative thinking partners across both frontier
-and smaller open-source models. Terse `Important Rules` remain as intentional attention anchors, while verbose or
-mechanical guidance was reorganized around discovery, reflected understanding, consequential decisions, and synthesis.
-
-Planner now explores independently, presents a concrete working model, lets the user make consequential product and
-architectural decisions, and writes the final Plan as a synthesis of the resulting conversation. Architect remains
-distinctly high-level and self-contained: it reasons about modules, relationships, data flows, APIs, system fit,
-technology adoption, sibling-project impact, and six-to-twelve-month consequences; resists premature solutioning; and
-uses focused Mermaid diagrams when a visual model materially improves understanding.
-
-Ideator retains the strong instruction to interview relentlessly, but a solo question is now reserved for a
-consequential divergent path. It stays at problem and product altitude, surfaces goals, feasibility, risks, and missing
-considerations, infers reversible minutiae, batches genuinely necessary preferences, and avoids developing a solution
-through field-by-field questions. Memory is stored only after a coherent understanding crystallizes, as a consolidated
-durable conclusion or artifact pointer rather than one memory per answer. The runtime attention nudge was aligned so
-long sessions continue reinforcing these behaviors instead of restoring the previous mechanical cadence.
+Planner, Architect, and Ideator act as collaborative thinking partners, with terse attention anchors for different model capabilities. Planner discovers context independently and synthesizes the user's consequential decisions into a Plan. Architect focuses on system relationships, technology choices, and longer-term consequences. Ideator stays at problem and product level, reserves solo questions for consequential divergent paths, batches other necessary preferences, and stores consolidated memory only after a coherent understanding forms.

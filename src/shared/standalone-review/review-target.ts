@@ -1,5 +1,11 @@
 import { checkAuth, fetchPR, fetchPRContext } from "@plannotator/shared/pr-provider.ts";
-import { parsePRUrl, type PRMetadata, type PRRef, type PRRuntime } from "@plannotator/shared/pr-types.ts";
+import {
+    parsePRUrl,
+    type GithubPRRef,
+    type GitlabMRRef,
+    type PRMetadata,
+    type PRRuntime,
+} from "@plannotator/shared/pr-types.ts";
 import { parseRemoteHost, parseRemoteUrl } from "@plannotator/shared/repo.ts";
 import { getReviewDiff } from "../workflow/git-snapshot.ts";
 import { createPRRuntime } from "./forge-review.ts";
@@ -14,9 +20,10 @@ interface ReviewTargetBase {
     reviewContext?: string;
     computeDiff(cwd?: string): Promise<string>;
 }
+type ReviewPRRef = GithubPRRef | GitlabMRRef;
 export interface PRReviewTarget extends ReviewTargetBase {
     mode: "pr";
-    ref: PRRef;
+    ref: ReviewPRRef;
     metadata: PRMetadata;
     remote: string;
     recoveryReason?: string;
@@ -95,6 +102,7 @@ export async function resolveReviewTargetWithForge(
         const ref = parsePRUrl(arg);
         if (
             !ref ||
+            ref.platform === "bitbucket" ||
             !/^https?:\/\/[^/]+\/(?:[^/]+\/[^/]+\/pull\/\d+|.+\/-\/merge_requests\/\d+)(?:\/(?:files|commits|diffs))?\/?$/.test(
                 arg,
             )

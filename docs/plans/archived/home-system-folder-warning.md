@@ -51,10 +51,10 @@ The user chose these boundaries:
 
 Owning capabilities:
 
-- [Core: Project context and initialization](../prd/runwield-core-prd.md#project-context-and-initialization): add
+- [Core: Project context and initialization](../../prd/runwield-core-prd.md#project-context-and-initialization): add
   **Confirm home and system folder use**; change automatic eligibility under **Offer an optional guided first change**.
   Preserve **Confirm Init's project file changes mechanically**. Folder consent does not replace Init consent.
-- [Workspace: Project access and navigation](../prd/runwield-workspace-prd.md#project-access-and-navigation): add
+- [Workspace: Project access and navigation](../../prd/runwield-workspace-prd.md#project-access-and-navigation): add
   **Confirm home and system Project roots**. Preserve **Limit Workspace reach to registered Projects**, root validation,
   deduplication, and relink safeguards.
 

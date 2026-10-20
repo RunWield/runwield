@@ -11,16 +11,8 @@ provenance:
         - "38f852a4-325e-4726-9fb2-258186fcb8ca"
 ---
 
-# Added vision fallback for text-only models
+# Vision fallback for text-only models
 
 ## Summary
 
-Implemented configurable vision fallback support, including the `see_image` tool, session-scoped image storage, model
-capability checks, safe attachment resolution, and non-destructive paste and submission gating. Vision-capable models
-continue receiving images directly, while text-only models can use a configured fallback vision model. Updated settings
-documentation and verified the feature with automated tests and the full quality gate.
-
-## Future Planning Notes
-
-Session image cleanup remains a potential follow-up; artifacts are stored predictably so future session deletion can
-remove them.
+RunWield provides configurable vision fallback through see_image, Session-scoped image storage, capability checks, and safe attachment resolution. Vision-capable models receive images directly, while text-only models can use a configured vision model. Paste and submission gating preserve user input.

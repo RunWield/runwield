@@ -156,7 +156,7 @@ git switch --create release/vX.Y.Z --track origin/release/vX.Y.Z
 If that local branch already exists, switch to it and verify it against `origin` instead of recreating it. After each
 pushed fix, merge the Release Branch into `main`, resolve conflicts without dropping the fix, push `main`, and verify
 that the fix commit is on remote `main` before creating the next Candidate. Keep the Release Branch while Candidates are
-active. After Stable publication, merge its final tip into `main` and delete the branch as described below.
+active. After Stable publication, CI integrates its final tip into `main` and deletes the remote branch as described below.
 
 ## Candidate promotion
 
@@ -168,11 +168,13 @@ active. After Stable publication, merge its final tip into `main` and delete the
    target Stable tag.
 5. Confirm the tag push. The tag becomes immutable when its GitHub Release is created.
 6. Run `bun run release:promote --candidate <candidate-tag>`.
-7. Wait for the Stable tag-triggered GitHub workflow to publish Stable assets.
+7. Wait for the Stable tag-triggered GitHub workflow to publish the binaries and qualified docs archive, deploy the
+   manual from `docs/stable`, and integrate the Release Branch into `main`.
 8. Edit the published Stable release with the curated temporary notes and verify they landed.
-9. For a branch-based series, fetch the Release Branch and merge its final remote tip into `main`. Resolve conflicts
-   without losing its fixes, push `main`, and verify that the tip is an ancestor of remote `main`. Delete the remote and
-   local Release Branch only after that verification. Do not delete it if Stable publication is still incomplete.
+9. CI merges the final remote Release Branch tip into `main`, verifies its ancestry on remote `main`, and deletes the
+   remote Release Branch. A missing branch is a successful skip. Local branches and worktrees are not changed by CI;
+   remove a local Release Branch only after verifying that its tip is on remote `main`. If integration conflicts,
+   follow the recovery steps below without moving the Stable tag.
 
 Promotion creates a Stable tag at the Candidate tag's peeled commit. The Stable tag annotation may include
 `Promoted-From: <candidate-tag>` and must not persist a separate source commit field. The Release Branch may have
@@ -289,28 +291,40 @@ gh release edit <tag> --notes-file <notes-file>
 
 ## Stable documentation publication
 
-A successful Stable release calls the reusable documentation workflow with the selected release tag. Candidate releases,
-`main` pushes, and failed release publication do not update `docs.runwield.dev`. The workflow verifies that the selected
-tag is still GitHub latest, merges it into `docs/stable` without force-pushing, records the documented version, checks
-the Starlight build, and deploys that exact branch commit through GitHub Pages.
+Stable docs are qualified release artifacts. Before publication, `docs-artifact` prepares one documentation commit,
+builds and checks its Starlight site, and produces `runwield-docs-<tag>.tar.gz` and its `.sha256`. The checked release
+upload set includes both files; `SHA256SUMS` includes the archive. A failed docs gate blocks Stable publication.
+Candidates never build or publish docs assets, change `docs/stable`, or deploy the manual.
+
+`docs/stable` gains exactly one merge commit per Stable release. Its first parent is the peeled Stable tag commit, not
+a later Release Branch tip. Its second parent is the previous docs tip. The committed `docs-site/release.json` records
+the Stable version, release URL, and peeled product commit in `sourceRef`. The archive records the prepared docs commit
+instead. Retries reuse the existing publication commit and never force-push `docs/stable`.
+
+After Stable asset publication, CI pushes the prepared commit without force and dispatches `docs.yml` from
+`docs/stable` with `actions: write`. CI waits for that deployment. Pages checks the allowed branch ref, not a tag ref;
+no environment settings change is required. Deployment verifies the latest Stable version, source commit, checksums,
+and published GitHub SHA-256 digests, then deploys the archive's exact bytes without rebuilding.
 
 Documentation corrections can publish from `docs/stable` without creating or moving a product tag. Keep those changes to
 the public guide allowlist and docs-site tooling, then forward-port them to `main`. A later Stable merge must preserve
-them. If it conflicts, repair the named documentation files and retry; do not reset the branch or overwrite the live
+them. If a correction arrives while a release is building, CI reconciles on the new docs tip without force. An archive
+whose docs commit no longer matches that tip is not deployed; the correction path builds the current tip with frozen
+default-branch tooling instead. Legacy Stable releases without a docs asset use the same correction build path.
+If a merge conflicts, repair the named documentation files and retry; do not reset the branch or overwrite the live
 manual. A product hotfix still uses the ordinary Candidate/Stable or direct Stable patch process above.
 
-Use the `publish-docs` manual workflow to retry the latest Stable deployment. If a tag-triggered release run merges and
-pushes `docs/stable` but Pages rejects the tag under environment branch rules, dispatch `publish-docs` from the allowed
-`main` branch with the Stable tag. Do not merge or push the release again:
+Use this command to retry deployment of the latest Stable manual. It does not merge or push the release again:
 
 ```bash
-gh workflow run docs.yml --ref main -f tag=<stable-tag>
+gh workflow run docs.yml --ref docs/stable -f tag=<stable-tag>
 ```
 
-Use its bootstrap option only once when `docs/stable` does not exist; it starts from the actual latest Stable tag and
-brings over only the reviewed public docs site support. Run `scripts/setup-docs-pages.sh` for the one-time GitHub Pages
-and DNS cutover. An older tag, an API failure, a failed build, or a rejected non-fast-forward push must leave the
-current Pages deployment unchanged.
+For a new repository without `docs/stable`, the reconciliation script retains its one-time bootstrap mode:
+`bash scripts/reconcile-docs-branch.sh <stable-tag> true <reviewed-site-support-commit>`. Run it in a disposable checkout,
+review and push the printed commit to `docs/stable`, then dispatch deployment from that branch. The deployed site
+already has its Pages and DNS configuration. An older tag, an API failure, a failed build, or a rejected non-fast-forward
+push must leave the current Pages deployment unchanged.
 
 ## Recovery
 
@@ -329,6 +343,23 @@ current Pages deployment unchanged.
   fails. Keep the tag at its original commit and recover the existing release. If a workflow fix is required, dispatch
   `release-gate` manually with that tag after the recovery commit reaches the default branch.
 - **Candidate published but should not be promoted**: leave it as a prerelease and publish a later Candidate tag.
+- **Stable docs deployment failed**: keep the published assets and immutable tag. Retry with
+  `gh workflow run docs.yml --ref docs/stable -f tag=<stable-tag>` and verify the live manual. A retry adds no docs commit.
+- **Release Branch integration failed**: the release remains published and the Release Branch stays. Resolve conflicts
+  without losing its fixes, then verify ancestry before deletion:
+
+    ```bash
+    git fetch origin main release/vX.Y.Z
+    git switch main
+    git merge --no-ff origin/release/vX.Y.Z
+    # Resolve conflicts, commit the merge, and push main.
+    git push origin main
+    git fetch origin main release/vX.Y.Z
+    git merge-base --is-ancestor origin/release/vX.Y.Z origin/main
+    # Only after the ancestry check succeeds:
+    git push origin --delete release/vX.Y.Z
+    ```
+
 - **Assets published but notes pending**: do not recreate the release. Retry the notes edit and verify the published
   notes.
 
@@ -349,7 +380,8 @@ gate; it does not trigger an automatic retry or a reduced check.
 - Candidate and promoted Stable tags peel to the same source commit.
 - Candidate publication leaves GitHub latest on the prior Stable.
 - Every pushed Release Branch fix is on remote `main` before the next Candidate is created.
-- After Stable publication, the final Release Branch tip is on remote `main` before the branch is deleted locally and
-  remotely.
-- Local branches, index, working-tree changes, and untracked files remain untouched by the release command; the required
-  merge and branch cleanup are separate operator steps.
+- After Stable publication, CI verifies the final Release Branch tip is on remote `main` before remote branch deletion.
+- The docs archive is a Stable release asset and deployment runs from `docs/stable`, never from the tag ref.
+- A retried Stable publication adds no commit to `docs/stable`; independent corrections stay in the next manual.
+- Local branches, index, working-tree changes, and untracked files remain untouched by the release command and CI.
+  Local branch cleanup remains a separate operator step.

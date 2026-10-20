@@ -11,18 +11,12 @@ provenance:
         - "895523d4-f4ae-45de-9f9e-b508ad0f7889"
 ---
 
-# Planned Change and Work Kind taxonomy shipped
+# Planned Change and Work Kind taxonomy
 
 ## Summary
 
-RunWield now separates planned workflow ceremony from work nature by using PLANNED_CHANGE with explicit Work Kind
-metadata across routing, Plan handling, workflow dispatch, Slicer materialization, Engineer handoffs, Work Records,
-TUI/Workspace labels, prompts, and current docs. Legacy FEATURE routing/classification and feature-scope Work Records
-remain readable through planned-change normalization, while Work Kind FEATURE stays distinct. Verification passed with
-`deno task ci`, including type checks, Workspace check, lint, and 1878 tests.
+PLANNED_CHANGE identifies planned workflow ceremony, while Work Kind identifies the nature of the work. Legacy FEATURE routing, classification, and Work Record scope remain readable through normalization, distinct from Work Kind FEATURE.
 
 ## Future Planning Notes
 
-For future taxonomy changes, prefer compatibility-first normalization and new-artifact serialization over bulk rewriting
-historical Plans or Work Records; ensure prompts, UI labels, schemas, and tests move together so agents and users see
-the same domain language.
+Taxonomy transitions use compatibility normalization and new-artifact serialization rather than bulk rewriting history. Prompts, schemas, and display language must remain aligned.

@@ -1,7 +1,8 @@
 /** Host contracts used by the embedded Plannotator code-review components. */
 
 import { realpathSync, statSync } from "node:fs";
-import { readFile, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
+import { isPathInside, readContainedTextFile } from "../../../../shared/contained-text-file.ts";
 import { isAbsolute, relative, resolve } from "node:path";
 import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
 import { readWorktreeReviewBaseFile, WorktreeReviewComparisonError } from "../../../../shared/workflow/git-snapshot.ts";
@@ -23,6 +24,7 @@ export interface WorkspaceFileOptions {
  * real paths must remain inside the canonical root. Synchronous for TUI rendering.
  * Missing files return null; unsafe paths throw a generic PermissionDenied error.
  * Paths are already decoded by the caller; do not decode query parameters twice.
+ * This path result does not authorize a later pathname read; validate the opened file too.
  */
 export function resolveWorkspaceFile(
     projectRoot: string,
@@ -210,10 +212,7 @@ async function readCandidate(realCwd: string, candidate: string): Promise<Worksp
     const file = resolveWorkspaceFile(realCwd, relative(realCwd, candidate).replaceAll("\\", "/"), {
         allowRelativeTraversal: true,
     });
-    return file ? { path: file.path, contents: await readFile(file.absolutePath, "utf8") } : null;
-}
-
-function isPathInside(path: string, root: string): boolean {
-    const rel = relative(resolve(root), resolve(path));
-    return rel === "" || (rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\") && !isAbsolute(rel));
+    if (!file) return null;
+    const contents = await readContainedTextFile(realCwd, file.absolutePath);
+    return contents === null ? null : { path: file.path, contents };
 }

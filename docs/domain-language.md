@@ -270,8 +270,9 @@ sample project, or a substitute for validation. _Avoid_: Onboarding workflow, tr
 matter records classification, complexity, status, timestamps, and origin. _Avoid_: Blueprint, spec, design doc
 
 **Work Record**: A small repo-local markdown retrospective planning-memory artifact that distills what completed planned
-work actually produced and what future planning should remember. _Avoid_: Review log, chat transcript, implementation
-diary, duplicate Plan
+work actually produced. It holds only facts that stay true after later changes: the delivered outcome, recorded Plan
+Deviations, out-of-scope facts, and durable lessons. _Avoid_: Review log, chat transcript, implementation diary, duplicate
+Plan, known issues list, validation receipt
 
 **Draft Work Record**: An external, manual, or imported Work Record awaiting human review before default search and
 Agent retrieval. _Avoid_: Approved record, generated internal record, memory
@@ -740,6 +741,11 @@ _Avoid_: Classification tool, triage result tool
 **Plan-Written Tool**: The `plan_written` Custom Tool that starts the Review Loop and returns the Plan outcome. _Avoid_:
 Review tool, approval tool
 
+**Plan Question**: The Plan-surface form of the **User-Interview Tool**: an embedded interview question written as a
+`wld-question` block in a Plan, answered by the owner in browser review, and resolved into question-and-answer text on
+approval. Unlike the User-Interview Tool, it is in the Plan body and answered asynchronously, not a blocking tool call
+in the conversation.
+
 **User-Interview Tool**: The `user_interview` Custom Tool for structured clarification questions. _Avoid_: Question
 tool, clarification form
 
@@ -808,10 +814,11 @@ prefix of the current segment as one ordered Session timeline, including complet
 results. _Avoid_: Concatenated transcript, merged session, segment hydration
 
 **Pending Structured Interaction**: A live in-process wait for a user answer, such as `user_interview` or Plan review
-input. In a no-form ACP interview, each question ends one ACP request while the original Runtime operation and tool wait
-remain live; the next request answers that wait. Pending interactions are process-local. The interaction becomes durable
-only when Pi writes the completed tool result; if the owner process is lost first, the user asks the Agent to retry. A
-Pair Checkpoint is not a Pending Structured Interaction; its report and resolution records are durable Session data.
+input. In a no-form ACP client, each chat question (interview, command menu, text, or approval) ends one ACP request while
+Runtime work and its command or tool wait remain live; the next request answers that wait. Pending interactions are
+process-local. The interaction becomes durable only when Pi writes the completed tool result; if the owner process is
+lost first, the user asks the Agent to retry. A Pair Checkpoint is not a Pending Structured Interaction; its report and
+resolution records are durable Session data.
 _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 ## Relationships

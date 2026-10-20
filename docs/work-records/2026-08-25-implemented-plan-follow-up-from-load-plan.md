@@ -12,16 +12,12 @@ provenance:
         - "32c6af85-eb16-4a4a-b0ae-c4dd261a8162"
 ---
 
-# Implemented Plan follow-up from load-plan
+# Follow-up for Implemented Plans
 
 ## Summary
 
-`/load-plan` now lets users open an Implemented Plan's existing Plan Engineer or Frontend Engineer for normal follow-up
-in the recorded execution worktree. The action restores the active execution workflow without starting execution,
-running Workflow Validation, changing Plan status, or creating a replacement worktree. Verification passed with focused
-load-plan tests and `deno task ci`.
+Plan loading can reopen an Implemented Plan's existing Plan Engineer or Frontend Engineer in its recorded execution worktree. The action restores execution context without starting execution, running validation, changing Plan status, or creating a replacement worktree. Follow-up remains normal work in the existing context.
 
 ## Future Planning Notes
 
-For recovery actions that only reopen context, reuse the existing worktree safety check and workflow rehydration path
-instead of adding a new execution or validation route.
+Context-only recovery should reuse worktree safety checks and workflow rehydration rather than create a new execution or validation route.
