@@ -38,6 +38,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -487,6 +488,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.sha }}
+                  submodules: recursive
                   fetch-depth: 0
                   path: tooling
             - name: Checkout Stable source
@@ -554,6 +556,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Checkout tagged schema
               if: needs.metadata.outputs.published != 'true'
@@ -669,6 +672,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -701,6 +705,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -804,6 +809,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -920,6 +926,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
