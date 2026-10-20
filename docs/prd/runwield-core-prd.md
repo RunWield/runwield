@@ -207,6 +207,8 @@ manual edits apply after `/reload`. Hiding the mascot keeps the written identity
 
 - Given an Agent change, the mascot changes to that Agent's prop; a delegated invocation keeps its parent's mascot.
 - Given a busy turn, the mascot animates until an answer, an owner wait, or settlement, and restarts when work resumes.
+- Given Code Review approval or skip, publication clears the selected Agent. The TUI shows Base and the default
+  working text, not the previous repair Agent. A real publication repair turn shows its own Agent while it runs.
 - Given a terminal resize, the mascot stays centered and the conversation and composer stay usable.
 - Given `mascot: false`, the rail, compact dock, and Workspace composer show no mascot; toggling back restores it.
 
