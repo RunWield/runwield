@@ -44,7 +44,7 @@ import {
     ScriptedInteractionSurface,
     ScriptedReviewSurface,
 } from "./scripted-review-surface.js";
-import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 import {
     getCwd,

@@ -4,7 +4,14 @@ export { assertEventIncludes, assertScreenIncludes, runGoldenScenario } from "./
 export { runGoldenChild, sanitizeGoldenChildEnv } from "./subprocess-runner.js";
 export { createGoldenIsolatedEnvironment } from "./isolated-environment.js";
 export { ScriptedReviewSurface } from "./scripted-review-surface.js";
-export { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+export type {
+    VirtualTerminalOptions,
+    VirtualTerminalSize,
+    VirtualTerminalInputCallback,
+    VirtualTerminalResizeCallback,
+    VirtualTerminalProgress,
+} from "./virtual-terminal.ts";
+export { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 export { runGoldenScenarioChildProcess } from "./child-protocol.js";
 export {
     assertGoldenScenarioCoverage,

@@ -78,7 +78,6 @@
     "src/ui/tui/testing/scenario-runner.js",
     "src/ui/tui/testing/scripted-review-surface.js",
     "src/ui/tui/testing/subprocess-runner.js",
-    "src/ui/tui/testing/virtual-terminal.js",
     "src/ui/tui/types.js",
     "src/ui/workspace/astro.config.mjs",
 

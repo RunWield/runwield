@@ -156,7 +156,7 @@ test("golden composition cleans up partial startup failure", async () => {
         const previousHome = process.env["HOME"];
         const previousCwd = getCwd();
         const { createGoldenIsolatedEnvironment } = await import("../testing/isolated-environment.js");
-        const { VirtualTerminal } = await import("../testing/virtual-terminal.js");
+        const { VirtualTerminal } = await import("../testing/virtual-terminal.ts");
         const env = await createGoldenIsolatedEnvironment();
         const terminal = new VirtualTerminal();
         try {

@@ -7,7 +7,7 @@ import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 interface ClaudeTuiFixture {
     composition: InteractiveTuiComposition;

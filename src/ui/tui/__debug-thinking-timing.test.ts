@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { persistThinkingLevel } from "./chat-session.ts";
 

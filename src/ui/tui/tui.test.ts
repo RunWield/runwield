@@ -3,7 +3,7 @@ import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { getTUI, initTUIWithPair, RunWieldTui, stopTUI } from "./tui.ts";
 import { createTuiManager } from "./tui-manager.ts";
 
