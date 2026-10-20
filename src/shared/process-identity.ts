@@ -30,7 +30,8 @@ async function readStartTime(pid: number): Promise<string | undefined> {
                   "-NoProfile",
                   "-NonInteractive",
                   "-Command",
-                  `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
+                  // Avoid cmdlet module discovery, which can stall with a fresh Windows profile.
+                  `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().ToString('o')`,
               ])
             : await query("ps", ["-p", String(pid), "-o", "lstart="]);
     // ps emits no timezone; request UTC explicitly rather than relying on the JS runtime
