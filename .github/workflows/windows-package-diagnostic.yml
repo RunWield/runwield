@@ -1,82 +1,85 @@
-name: Windows release repair diagnostic
+name: Windows package diagnostic
 
 on:
     workflow_dispatch:
         inputs:
             ref:
-                description: Release ref to test
+                description: Git ref to build and test
                 required: true
+                default: fix/windows-package-check
 
 permissions:
     contents: read
 
 jobs:
-    source:
-        strategy:
-            fail-fast: false
-            matrix:
-                runner: [windows-2025, windows-11-arm]
-        runs-on: ${{ matrix.runner }}
-        timeout-minutes: 20
+    build-windows:
+        runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v5
+            - name: Checkout
+              uses: actions/checkout@v5
               with:
                   ref: ${{ inputs.ref }}
                   submodules: recursive
-            - uses: oven-sh/setup-bun@v2
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
-            - run: bun run install:locked
-            - name: Inspect the native process query
-              shell: pwsh
-              run: |
-                  $probe = @'
-                  import { execFileSync } from "node:child_process";
-                  const command = `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`;
-                  for (const timeout of [5000, 30000]) {
-                    const started = Date.now();
-                    try {
-                      const output = execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {timeout, encoding: "utf8"});
-                      console.log(JSON.stringify({timeout, elapsed: Date.now() - started, output}));
-                    } catch (error) {
-                      console.log(JSON.stringify({timeout, elapsed: Date.now() - started, error: error.message, stderr: error.stderr?.toString()}));
-                    }
-                  }
-                  '@
-                  bun --eval $probe
-            - name: Compare process queries in an isolated test HOME
-              shell: pwsh
-              run: |
-                  $probe = @'
-                  import { execFile } from "node:child_process";
-                  import { writeFileSync } from "node:fs";
-                  import { test } from "node:test";
-                  test("probe native process birth queries", async () => {
-                    const results = [];
-                    for (const query of [
-                      `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
-                      `[System.Diagnostics.Process]::GetProcessById(${process.pid}).StartTime.ToUniversalTime().ToString('o')`,
-                    ]) {
-                      for (const timeout of [5000, 30000]) {
-                        const started = Date.now();
-                        const result = await new Promise(resolve => execFile("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query], {timeout}, (error, stdout, stderr) => resolve({query, timeout, elapsed: Date.now() - started, error: error?.message, stdout, stderr})));
-                        results.push(result);
-                      }
-                    }
-                    writeFileSync(new URL("../../.ci-cache/process-query-probe.json", import.meta.url), JSON.stringify(results, null, 2));
-                  });
-                  '@
-                  Set-Content src/shared/process-identity-probe.test.ts $probe
-                  bun scripts/run-tests.js src/shared/process-identity-probe.test.ts
-                  Get-Content .ci-cache/process-query-probe.json
-            - run: bun run workspace:build
-            - name: Run the failing native tests
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
+
+            - name: Generate version file
               env:
-                  WLD_TEST_CONCURRENCY: "1"
-              run: bun scripts/run-tests.js src/shared/process-identity.test.ts src/shared/workflow/validation-repair-resume.integration.test.ts src/ui/tui/model-welcome.test.ts
-            - uses: actions/upload-artifact@v5
-              if: always()
+                  WLD_BUILD_VERSION: v0.10.1-rc.9
+              run: bun scripts/write-version.js
+
+            - name: Cache dependencies
+              run: bun run install:locked
+
+            - name: Compile Windows binary
+              env:
+                  WLD_BUILD_VERSION: v0.10.1-rc.9
+              run: bun run compile --output wld.exe --target bun-windows-x64
+
+            - name: Package Windows artifact
+              run: bun run package:windows --tag v0.10.1-rc.9 --binary wld.exe --output .
+
+            - name: Upload Windows artifact
+              uses: actions/upload-artifact@v5
               with:
-                  name: windows-repair-${{ matrix.runner }}-${{ github.run_attempt }}
-                  path: .ci-cache/
-                  include-hidden-files: true
+                  name: diagnostic-windows-package
+                  path: |
+                      *.zip
+                      *.json
+                      *.sha256
+
+    check-windows:
+        runs-on: windows-latest
+        needs: build-windows
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.ref }}
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
+
+            - name: Download Windows artifact
+              uses: actions/download-artifact@v5
+              with:
+                  name: diagnostic-windows-package
+                  path: windows-package
+
+            - name: Run native Windows package checks
+              shell: pwsh
+              run: |
+                  $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
+                  if (-not $zip) { throw "Windows package ZIP not found" }
+                  bun run package:windows:check --package $zip.FullName
