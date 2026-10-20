@@ -14,13 +14,11 @@ test("Workspace releases an idle retained owner after Stop cancels its task", as
     await withRuntimeCommandFixture(
         "workspace-stop-owner-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
-            console.error("[DEBUG-stop-ci] fixture");
             const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
             const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
             try {
                 const source = join(projectRoot, "background-until-stop.mjs");
                 await writeFile(source, "setInterval(() => {}, 1000);\n");
-                console.error("[DEBUG-stop-ci] compiling");
                 const executable = await writeRuntimeExecutableFixture(
                     join(projectRoot, "background-until-stop"),
                     source,
@@ -36,7 +34,6 @@ test("Workspace releases an idle retained owner after Stop cancels its task", as
                         ),
                     () => fauxAssistantMessage(fauxText("Parent finished.")),
                 ]);
-                console.error("[DEBUG-stop-ci] starting turn");
                 const started = await service.startContinuation({
                     projectId: fixture.project.projectId,
                     runwieldSessionId: fixture.session.runwieldSessionId,
@@ -49,24 +46,19 @@ test("Workspace releases an idle retained owner after Stop cancels its task", as
                     await new Promise((resolve) => setTimeout(resolve, 10));
                     operation = service.getOperation(started.operationId);
                 }
-                console.error("[DEBUG-stop-ci] turn settled", operation.status);
                 assertEquals(operation.status, "completed");
                 const owner = service.runtime
                     .listSessions()
                     .find((entry) => entry.managed?.runwieldSessionId === fixture.session.runwieldSessionId);
                 assert(owner);
                 assertEquals(service.runtime.getSessionBackgroundTaskState(owner.id)?.active, 1);
-                console.error("[DEBUG-stop-ci] cancelling");
                 service.runtime.cancelSession(owner.id);
                 for (let i = 0; i < 400 && service.runtime.getSessionSnapshot(owner.id); i++) {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
-                console.error("[DEBUG-stop-ci] stopped");
                 assertEquals(service.runtime.getSessionSnapshot(owner.id), null);
             } finally {
-                console.error("[DEBUG-stop-ci] closing service");
                 await service.close();
-                console.error("[DEBUG-stop-ci] service closed");
                 service.store.close();
                 await fixture.cleanup();
             }
