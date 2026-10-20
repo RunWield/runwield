@@ -20,6 +20,7 @@ const markdown = new Marked({
         link({ href, tokens }) {
             const label = this.parser.parseInline(tokens);
             // Do not allow executable schemes or implicit resource loads from transcript content.
+            // deno-lint-ignore no-control-regex -- Links must not contain ASCII control or space characters.
             if (!/^(https?:\/\/|mailto:)/i.test(href) || /[\u0000-\u0020]/.test(href)) return label;
             return `<a href="${escapeHtml(href)}" rel="noreferrer noopener">${label}</a>`;
         },

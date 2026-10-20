@@ -373,7 +373,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                         messageId,
                         toolCallId,
                         ...(replayTools.get(toolCallId) || describeRuntimeTool("tool", undefined)),
-                        ...normalizeRuntimeToolResult("[tool result replayed]"),
+                        ...normalizeRuntimeToolResult(typed.content),
                         isError: Boolean(typed.is_error || typed.isError),
                         durationMs: finishReplayTool(toolCallId, common.timestamp),
                     });

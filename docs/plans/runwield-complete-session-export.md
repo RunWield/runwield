@@ -29,7 +29,7 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "RunWield Session Export"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Export and Share the Complete RunWield Session

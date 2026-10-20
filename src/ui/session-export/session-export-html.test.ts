@@ -2,6 +2,7 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import type { SessionExport, SessionExportTimelineEvent } from "../../shared/session/session-export.ts";
 import { renderSessionExportHtml } from "./session-export-html.ts";
+import { createReplayEvents } from "../../shared/session/session-transcript-projection.js";
 
 function fixture(): SessionExport {
     const base = {
@@ -179,3 +180,48 @@ test("HTML embeds RunWield theme tokens without external assets", () => {
     assert.match(html, /color: var\(--rw-text\)/);
     assert.doesNotMatch(html, /@import|url\(|<script\b|<link\b/);
 });
+
+for (const content of [
+    "Recorded <result>",
+    [
+        { type: "text", text: "Recorded <result>" },
+        { type: "text", text: "\nSecond block" },
+        { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+    ],
+]) {
+    test(`HTML preserves legacy ${typeof content === "string" ? "string" : "structured"} tool results from replay`, () => {
+        const exported = fixture();
+        exported.timeline = createReplayEvents("runtime", [
+            {
+                type: "message",
+                id: "call",
+                message: {
+                    role: "assistant",
+                    content: [{ type: "tool_use", id: "legacy-tool", name: "read", input: { path: "report.md" } }],
+                },
+            },
+            {
+                type: "message",
+                id: "result",
+                message: {
+                    role: "user",
+                    content: [{ type: "tool_result", tool_use_id: "legacy-tool", content, is_error: true }],
+                },
+            },
+        ]).map((event) => ({ ...event, segmentOrdinal: 0, segmentKind: "planning" }) as SessionExportTimelineEvent);
+        const result = exported.timeline.find((event) => event.type === "tool_end");
+        assert.ok(result?.type === "tool_end");
+        assert.equal(result.toolCallId, "legacy-tool");
+        assert.equal(result.toolName, "read");
+        assert.equal(result.isError, true);
+        assert.equal(result.output, typeof content === "string" ? content : "Recorded <result>\nSecond block");
+        assert.deepEqual(result.content, typeof content === "string" ? [{ type: "text", text: content }] : content);
+        const html = renderSessionExportHtml(exported);
+        assert.match(html, /<details><summary>[^<]* — Failed<\/summary>[^]*Recorded &lt;result&gt;/);
+        assert.doesNotMatch(html, /\[tool result replayed\]/);
+        if (Array.isArray(content)) {
+            assert.ok(html.includes("Second block"));
+            assert.ok(html.includes("[image]"));
+        }
+    });
+}
