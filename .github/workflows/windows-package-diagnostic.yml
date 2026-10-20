@@ -44,6 +44,31 @@ jobs:
                   }
                   '@
                   bun --eval $probe
+            - name: Compare process queries in an isolated test HOME
+              shell: pwsh
+              run: |
+                  $probe = @'
+                  import { execFile } from "node:child_process";
+                  import { writeFileSync } from "node:fs";
+                  import { test } from "node:test";
+                  test("probe native process birth queries", async () => {
+                    const results = [];
+                    for (const query of [
+                      `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
+                      `[System.Diagnostics.Process]::GetProcessById(${process.pid}).StartTime.ToUniversalTime().ToString('o')`,
+                    ]) {
+                      for (const timeout of [5000, 30000]) {
+                        const started = Date.now();
+                        const result = await new Promise(resolve => execFile("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query], {timeout}, (error, stdout, stderr) => resolve({query, timeout, elapsed: Date.now() - started, error: error?.message, stdout, stderr})));
+                        results.push(result);
+                      }
+                    }
+                    writeFileSync(new URL("../../.ci-cache/process-query-probe.json", import.meta.url), JSON.stringify(results, null, 2));
+                  });
+                  '@
+                  Set-Content src/shared/process-identity-probe.test.ts $probe
+                  bun scripts/run-tests.js src/shared/process-identity-probe.test.ts
+                  Get-Content .ci-cache/process-query-probe.json
             - run: bun run workspace:build
             - name: Run the failing native tests
               env:
