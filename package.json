@@ -32,7 +32,7 @@
         "test:all:suite": "bun scripts/run-tests.js",
         "submodules:check": "bun scripts/check-submodules.js",
         "snip:check": "bun scripts/check-snip-filters.ts",
-        "language-policy:check": "bun scripts/check-language-policy.js",
+        "language-policy:check": "bun scripts/check-language-policy.ts",
         "seams:check": "bun scripts/check-injection-seams.js",
         "doc-links:check": "bun scripts/check-doc-links.js",
         "skills:sync:check": "bun scripts/check-skill-sync.ts",

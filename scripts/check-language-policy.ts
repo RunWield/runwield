@@ -8,26 +8,17 @@ import { listCiFiles } from "./ci-files.ts";
 
 const BASELINE_PATH = new URL("./language-policy-baseline.json", import.meta.url);
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
-const GENERATED_AND_DEPENDENCY_DIRS = new Set([
-    ".astro",
-    ".vite",
-    "_fresh",
-    "coverage",
-    "dist",
-    "node_modules",
-]);
+const GENERATED_AND_DEPENDENCY_DIRS = new Set([".astro", ".vite", "_fresh", "coverage", "dist", "node_modules"]);
 const TEST_DIRS = new Set(["__fixtures__", "__tests__", "fixtures", "test-fixtures", "tests"]);
 const TEST_FILE_PATTERN = /(?:^|[._-])(?:test|spec)(?:\.|$)|_test\./;
 const PRODUCTION_JS_PATTERN = /\.[jm]?jsx?$/;
 const EXCLUDED_PRODUCTION_PATHS = new Set(["src/shared/version.js"]);
 
-/** @param {string} path */
-function toPosixPath(path) {
+function toPosixPath(path: string): string {
     return path.replaceAll("\\", "/");
 }
 
-/** @param {string} path */
-function isProductionJavaScriptPath(path) {
+function isProductionJavaScriptPath(path: string): boolean {
     const normalized = toPosixPath(path);
     if (!normalized.startsWith("src/")) return false;
     if (!PRODUCTION_JS_PATTERN.test(normalized)) return false;
@@ -39,30 +30,24 @@ function isProductionJavaScriptPath(path) {
     return !parts.some((part) => TEST_DIRS.has(part) || GENERATED_AND_DEPENDENCY_DIRS.has(part));
 }
 
-async function collectProductionJavaScriptFiles() {
+async function collectProductionJavaScriptFiles(): Promise<string[]> {
     return (await listCiFiles(REPO_ROOT)).filter(isProductionJavaScriptPath);
 }
 
-/** @returns {Promise<string[]>} */
-async function readBaseline() {
-    const parsed = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
+async function readBaseline(): Promise<string[]> {
+    const parsed: string[] = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
     if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
         throw new Error("language-policy-baseline.json must contain a JSON array of path strings");
     }
     return [...parsed].sort();
 }
 
-/**
- * @param {string[]} left
- * @param {string[]} right
- */
-function difference(left, right) {
+function difference(left: string[], right: string[]): string[] {
     const rightSet = new Set(right);
     return left.filter((entry) => !rightSet.has(entry));
 }
 
-/** @param {string[]} entries */
-function formatList(entries) {
+function formatList(entries: string[]): string {
     return entries.map((entry) => `  - ${entry}`).join("\n");
 }
 
@@ -79,7 +64,7 @@ if (import.meta.main) {
     const staleFiles = difference(baselineFiles, currentFiles);
 
     if (newFiles.length || staleFiles.length) {
-        const sections = [];
+        const sections: string[] = [];
         if (newFiles.length) {
             sections.push(
                 `New production JS files (use .ts/.tsx or intentionally update the policy):\n${formatList(newFiles)}`,
