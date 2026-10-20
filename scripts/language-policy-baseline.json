@@ -72,7 +72,6 @@
     "src/ui/tui/runtime-adapter.js",
     "src/ui/tui/runtime-interaction-adapter.js",
     "src/ui/tui/testing/child-protocol.js",
-    "src/ui/tui/testing/isolated-environment.js",
     "src/ui/tui/testing/portfolio-assertions.js",
     "src/ui/tui/testing/scenario-actor.js",
     "src/ui/tui/testing/scenario-runner.js",
