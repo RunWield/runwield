@@ -13,7 +13,11 @@ function query(command: string, args: string[]): Promise<string> {
         execFile(
             command,
             args,
-            { timeout: 5_000, maxBuffer: 16_384, env: { ...process.env, LC_ALL: "C", TZ: "UTC" } },
+            {
+                timeout: process.platform === "win32" ? 30_000 : 5_000,
+                maxBuffer: 16_384,
+                env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+            },
             (error, stdout) => {
                 if (error) reject(error);
                 else resolve(stdout.trim());
