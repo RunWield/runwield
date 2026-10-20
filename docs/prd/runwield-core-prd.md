@@ -1702,6 +1702,20 @@ Required outcomes:
   resume;
 - intact local Sessions stay usable through TUI and ACP when Workspace registration or pairing is rebuilt.
 
+**Requirement: Export or share the complete Session.** `/export` writes every committed Session Transcript Segment in
+order, with Session identity, name, project path, timestamps, artifacts, and Plan Associations. HTML is a self-contained
+RunWield page with segment headings, Markdown messages, expandable tools, and collapsed thinking. JSON preserves each
+segment's raw entries in a versioned `runwield.session-export` document. `.jsonl` export is retired; the command points
+to `.json` instead. Reads verify all segment evidence and do not change the Session. During a turn, they include only
+committed history. A new empty Session can export without creating a saved Session.
+
+`/share` uploads HTML and JSON to one secret GitHub Gist and reports the Gist URL and an HTML preview link. Both files
+include thinking and full tool output. Anyone with the link can read them. Current scope excludes in-memory Delegated
+Agent, validation, and AI review transcripts and Background Task logs; results recorded in the parent transcript stay
+included. This Gist path is separate from the undelivered
+[Workspace snapshot sharing](runwield-workspace-prd.md#session-snapshot-sharing) and
+[browser download](runwield-workspace-prd.md#session-export) capabilities.
+
 **Requirement: Archive a Session reversibly.** Archive hides a Session from ordinary history and TUI resume lists,
 through ACP or Workspace. Archive and Unarchive keep the Session ID, every transcript segment, Plan Associations, and
 workflow state. Associated Plans still link to it. Direct links and explicit loading work and keep the archive state.
@@ -1745,6 +1759,13 @@ a test result.
 
 **Acceptance scenarios:**
 
+- Given planning, execution, and repair segments, `/export` includes them in order with Session Manifest facts; JSON
+  preserves their raw entries and HTML shows their messages and expandable activity.
+- Given a changed seal or missing transcript, export fails without publishing a partial Session.
+- Given `/export out.jsonl`, the command writes nothing and explains how to use `.json`.
+- Given an empty Session, export succeeds without creating Session persistence.
+- Given authenticated GitHub CLI access, `/share` creates one secret Gist with HTML and JSON and prints both the Gist
+  URL and its HTML preview URL; recorded parent results stay included but in-memory helper transcripts do not.
 - Given a saved Session archived through ACP or Workspace, ordinary history and TUI resume omit it, its Plans link to
   it as archived, and its transcript and state are unchanged; Unarchive restores the same Session.
 - Given a fresh empty composer, opening it creates no runtime state; the first submitted work does.

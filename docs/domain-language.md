@@ -68,6 +68,10 @@ it is not shared project knowledge or a source for cross-Session Agent retrieval
 interaction results as committed transcript history; a live unanswered interaction is not committed history until its
 result is written. _Avoid_: Work Record, planning memory, shared conversation
 
+**Session Export**: A file copy of one Session's complete committed Session Transcript across all Session Transcript
+Segments, with Session Manifest facts. `/export` writes HTML or JSON; `/share` uploads both to a secret GitHub Gist. It is
+not a Shared Session Snapshot. _Avoid_: Pi export, segment export
+
 **Execution Backend**: The model-selected runtime that executes one RunWield Agent turn, such as Pi AgentSession, Claude
 CLI, or Antigravity CLI. It is distinct from a model provider and from an Agent Session object. Changing Execution
 Backend does not transfer Session Transcript, Workflow Tool Event, Plan Lifecycle, or replay authority away from
