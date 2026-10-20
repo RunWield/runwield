@@ -30,6 +30,12 @@ sessionName: "RunWield Session Export"
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "39549eeca4ecce28161940a316fa38a9f919c1be"
+workRecord:
+    status: "generated"
+    recordId: "abf7b3ec-fcb3-4f22-bba6-c47b7cf089c8"
+    path: "docs/work-records/2026-10-20-complete-session-export-and-gist-sharing.md"
+    lastAttemptAt: "2026-10-20T23:45:54.469Z"
 ---
 
 # Export and Share the Complete RunWield Session
