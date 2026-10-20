@@ -1203,7 +1203,13 @@ test("Agy retry reconstructs only committed transcript after classified failure"
         delete process.env["RUNWIELD_AGY_MALFORMED_AFTER_MCP"];
         await fsWriteFile(logPath, "");
 
-        await runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "bad stream turn" });
+        // The retry continues the failed request on purpose, so it declares that intent.
+        await runRootTurn({
+            hostedSession,
+            agentName: AGENTS.GUIDE,
+            userRequest: "bad stream turn",
+            resumePreviousRequest: true,
+        });
 
         branch = getRootSessionBranchEntries(manager) as BranchEntryRecord[];
         const branchText = JSON.stringify(branch);
