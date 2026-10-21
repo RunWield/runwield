@@ -1,4 +1,5 @@
 ---
+planId: "2684dd2f-5c90-4866-b41c-442de9655ac5"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -9,14 +10,14 @@ affectedPaths:
     - "docs/prd/runwield-acp-protocol-prd.md"
     - "docs/acp-implementation-details.md"
     - "docs/user-facing-features.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
-createdAt: "2026-10-19"
-status: "draft"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
-planId: "2684dd2f-5c90-4866-b41c-442de9655ac5"
+createdAt: "2026-10-19"
+origin: "internal"
+userVerifiedAt: null
+targetBranch: "main"
+deliveryBranch: "main"
+status: "in_progress"
 ---
 
 # ACP Mid-Turn Steering Extension
@@ -108,18 +109,9 @@ and submit a normal `session/prompt`.
 | **A. Always return `promptRequired` when idle** (recommended) | Matches clients that opt in, including the behavior proposed to OpenAB. | Small. A client that ignores the outcome could drop the message, but it receives an explicit non-`injected` answer.                                                                                                                                    |
 | B. Match Claude exactly: `startedNewTurn` unless opted in     | Matches clients written against Claude's default.                       | Larger. RunWield has no ACP turn without a `session/prompt` request except Background Task result turns. The live operation must track a detached turn, reject overlapping prompts during it, and handle Sessions not yet prompted on this connection. |
 
-```wld-question
-{
-  "id": "idle-steering-behavior",
-  "type": "multiple_choice",
-  "prompt": "When a client sends _session/steering and no turn is running, what should RunWield do?",
-  "choices": [
-    { "value": "prompt-required", "label": "A. Always return promptRequired; the client sends a normal session/prompt (smaller, recommended)" },
-    { "value": "match-claude", "label": "B. Match Claude: start a detached turn (startedNewTurn) unless the client opts into promptRequired" }
-  ],
-  "default": "prompt-required"
-}
-```
+> **Question (idle-steering-behavior):** When a client sends _session/steering and no turn is running, what should RunWield do?
+>
+> **Answer:** A. Always return promptRequired; the client sends a normal session/prompt (smaller, recommended) (answered in review)
 
 The Implementation Steps below assume option A. Option B adds one step: start the turn through the Runtime's
 next-turn queue with `deliverWhenAvailable`, and make the live ACP operation treat that turn like a Background Task
