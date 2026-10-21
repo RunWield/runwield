@@ -59,7 +59,7 @@
         "release:promote": "bun scripts/release.js promote",
         "release:stable": "bun scripts/release.js stable",
         "package:homebrew": "bun scripts/package-homebrew.js",
-        "package:homebrew:check": "bun scripts/package-homebrew-check.js",
+        "package:homebrew:check": "bun scripts/package-homebrew-check.ts",
         "package:windows": "bun scripts/package-windows.js",
         "package:windows:check": "bun scripts/package-windows-check.js",
         "package:winget": "bun scripts/package-winget.js",
