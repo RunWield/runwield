@@ -1,20 +1,30 @@
 import { env as processEnv, execPath } from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
 import { getCwd } from "../../../constants.js";
-import { spawnNativeProcess } from "../../../shared/foreground-process.ts";
+import { type NativeSpawnOptions, spawnNativeProcess } from "../../../shared/foreground-process.ts";
 /**
  * @module ui/tui/testing/subprocess-runner
  * Bounded subprocess runner used by Golden TUI scenarios.
  */
 
-/**
- * @typedef {Object} GoldenChildResult
- * @property {boolean} success
- * @property {number | null} code
- * @property {string} stdout
- * @property {string} stderr
- * @property {boolean} timedOut
- */
+export interface GoldenChildResult {
+    success: boolean;
+    code: number | null;
+    stdout: string;
+    stderr: string;
+    timedOut: boolean;
+}
+
+export interface GoldenChildOptions {
+    cwd?: string;
+    env?: NativeSpawnOptions["env"];
+    timeoutMs?: number;
+    startupTimeoutMs?: number;
+    awaitReadyMarker?: boolean;
+    terminationGraceMs?: number;
+}
+
+type TextObserver = (text: string) => void;
 
 const SECRET_ENV_PATTERNS = [/API_KEY/i, /TOKEN/i, /AUTH/i, /SECRET/i, /PASSWORD/i];
 
@@ -40,11 +50,8 @@ const DEFAULT_TERMINATION_GRACE_MS = 3_000;
  */
 export const GOLDEN_CHILD_READY_MARKER = "__golden-tui-child-ready__";
 
-/**
- * @param {ReadableStream<Uint8Array>} stream
- * @param {(text: string) => void} [onText] receives the full text decoded so far
- */
-async function readStream(stream, onText) {
+/** Notify onText with the full text decoded so far. */
+async function readStream(stream: ReadableStream<Uint8Array>, onText?: TextObserver) {
     const decoder = new TextDecoder();
     let text = "";
     for await (const chunk of stream) {
@@ -54,12 +61,8 @@ async function readStream(stream, onText) {
     return text + decoder.decode();
 }
 
-/** @param {Record<string, string | undefined>} env */
-export function sanitizeGoldenChildEnv(
-    env = processEnv,
-) {
-    /** @type {Record<string, string>} */
-    const sanitized = {};
+export function sanitizeGoldenChildEnv(env: NodeJS.ProcessEnv = processEnv) {
+    const sanitized: Record<string, string> = {};
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || SECRET_ENV_PATTERNS.some((pattern) => pattern.test(key))) continue;
         sanitized[key] = value;
@@ -72,11 +75,8 @@ export function sanitizeGoldenChildEnv(
  * not start until the child announces readiness, so a slow boot cannot consume
  * the scenario's budget; until then the looser `startupTimeoutMs` applies.
  *
- * @param {string[]} args
- * @param {{ cwd?: string, env?: Record<string, string>, timeoutMs?: number, startupTimeoutMs?: number, awaitReadyMarker?: boolean, terminationGraceMs?: number }} [options]
- * @returns {Promise<GoldenChildResult>}
  */
-export async function runGoldenChild(args, options = {}) {
+export async function runGoldenChild(args: string[], options: GoldenChildOptions = {}): Promise<GoldenChildResult> {
     const child = spawnNativeProcess(execPath, {
         args,
         cwd: options.cwd ?? getCwd(),
@@ -87,8 +87,7 @@ export async function runGoldenChild(args, options = {}) {
     });
     const scenarioTimeoutMs = options.timeoutMs || 5000;
     let timedOut = false;
-    /** @type {ReturnType<typeof setTimeout> | null} */
-    let escalation = null;
+    let escalation: ReturnType<typeof setTimeout> | null = null;
     const kill = () => {
         timedOut = true;
         // Signal first so the child's termination handler can remove its isolated
