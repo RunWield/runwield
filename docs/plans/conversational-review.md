@@ -1,4 +1,5 @@
 ---
+planId: "eb894f76-005e-48bd-a56a-cb3b5977c534"
 classification: "PROJECT"
 type: "sequence"
 complexity: "HIGH"
@@ -17,8 +18,10 @@ affectedPaths:
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/domain-language.md"
 createdAt: "2026-10-19"
-status: "draft"
-planId: "eb894f76-005e-48bd-a56a-cb3b5977c534"
+status: "ready_for_work"
+origin: "internal"
+userVerifiedAt: null
+userVerificationNote: null
 ---
 
 # Conversational Review
