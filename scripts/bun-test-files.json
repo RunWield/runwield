@@ -367,7 +367,7 @@
     "src/shared/windows-bash.test.ts",
     "src/shared/work-records/auto-generation.test.ts",
     "src/shared/work-records/published-delivery-source.test.ts",
-    "src/shared/work-records/recorder-contract.test.js",
+    "src/shared/work-records/recorder-contract.test.ts",
     "src/shared/work-records/supersession.test.ts",
     "src/shared/work-records/work-records.test.js",
     "src/shared/workflow/agent-runners.integration.test.ts",
