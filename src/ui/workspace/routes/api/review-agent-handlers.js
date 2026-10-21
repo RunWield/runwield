@@ -770,6 +770,8 @@ export async function runWldJobCommand(
 
 /** @param {string} cwd @param {string} subcommand */
 async function resolveRunWieldJobCommand(cwd, subcommand) {
+    // Private job commands must use the running binary, not a different installed version.
+    if (isStandaloneExecutable()) return { command: process.execPath, args: [subcommand] };
     if (await commandExists("wld")) return { command: "wld", args: [subcommand] };
     return {
         command: process.execPath,

@@ -107,7 +107,7 @@ export async function runStandaloneReview(
                 reviewConversation: conversation,
                 agentLabel: conversation.agentLabel,
                 signal: controller.signal,
-                guidedReview: buildGuidedReviewPolicy("auto", recommendGuidedReview({ diffText })),
+                guidedReview: buildGuidedReviewPolicy("none", recommendGuidedReview({ diffText })),
                 onSurfaceReady: ({ url, opened }) => {
                     if (opened || conversation.revision === 0) print(`Code Review: ${url}`);
                 },

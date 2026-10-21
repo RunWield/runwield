@@ -1036,7 +1036,8 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
 
 **Acceptance scenarios:**
 
-- Given staged, unstaged, and untracked edits, `wld review` shows all three and Guided Review explains the diff.
+- Given staged, unstaged, and untracked edits, `wld review` shows all three. Guided Review starts only when the
+  owner clicks its toolbar button, not when review opens or the diff refreshes, regardless of diff size.
 - Given a local branch, review opens without a worktree; an Engineer request creates one and the next diff includes its
   edits.
 - Given a PR in a matching remote, Post comments and Approve reach the Forge; a foreign repository is rejected.
@@ -1058,6 +1059,8 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
 - Given a rerun, owner annotations and edited AI annotations remain; unedited AI annotations are replaced.
 - Given a patch change during a run, completion reports an older diff and adds no annotations.
 - Given no discoverable spec, AI review reports no spec and makes no Spec findings against invented requirements.
+- Given a compiled review command and a different `wld` installation on PATH, AI review and Guided Review use the
+  running executable, not the other installation. Explicit provider command overrides remain available.
 - Given malformed output or provider failure, the job reports an error and the owner can rerun it.
 - Given validation-time Code Review, Run AI Review is absent; existing validation and Guided Review remain available.
 
