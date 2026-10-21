@@ -4,7 +4,7 @@ import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/prom
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 
-import { createFixture, readCurlLog, runInstaller, runInstallerInPseudoTty } from "./install-test-helpers.js";
+import { createFixture, readCurlLog, runInstaller, runInstallerInPseudoTty } from "./install-test-helpers.ts";
 
 test("install.sh delegates missing Mnemoteca installs to the official installer", async (t) => {
     await t.test("sandbox database variable present", async () => {

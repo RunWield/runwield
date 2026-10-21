@@ -88,6 +88,25 @@ test("release workflow keeps tag publication and manual recovery channel-safe", 
     );
 });
 
+for (const jobName of [
+    "metadata",
+    "docs-artifact",
+    "assets",
+    "windows-package-check",
+    "homebrew-check",
+    "winget-package",
+    "homebrew-package",
+]) {
+    test(`${jobName} checks out local dependencies before frozen installation`, async () => {
+        const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
+        const job = workflow.slice(workflow.indexOf(`    ${jobName}:`)).split(/\n {4}[a-z][a-z-]+:/)[0];
+        const checkout = job.split("uses: actions/checkout@v5")[1].split(/\n {12}- /)[0];
+
+        assertStringIncludes(checkout, "submodules: recursive");
+        assertStringIncludes(job, "bun run install:locked");
+    });
+}
+
 test("release publication requires native Windows package qualification", async () => {
     const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
     const windowsJob = workflow.match(/\n[ ]{4}windows-package-check:\n([\s\S]*?)\n[ ]{4}release:/)?.[1] || "";

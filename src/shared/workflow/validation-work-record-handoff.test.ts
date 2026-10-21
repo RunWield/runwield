@@ -6,7 +6,7 @@ import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd
 import { savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { getRunWieldSessionDir } from "../session/root-session.js";
-import { listWorkRecords, writeWorkRecord } from "../work-records/store.js";
+import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.js";
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";

@@ -121,7 +121,7 @@ owner page / Plan Review / Code Review / question page
 ```
 
 `src/ui/workspace/server.js:647–674` creates a new import URL for each request. A compiled runtime prefers the bundled
-renderer. `scripts/build-workspace-runtime.js:342–374` produces that single-file module.
+renderer. `scripts/build-workspace-runtime.ts:342–374` produces that single-file module.
 
 Disposable proof: `/tmp/runwield-workspace-import-proof-litBlO/README.md`. An immutable copy of the actual
 24,806,787-byte runtime bundle was tested in separate isolated processes. SHA-256:

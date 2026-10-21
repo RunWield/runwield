@@ -24,7 +24,7 @@ export const SESSION_RUNTIME_METHOD_POLICY = {
     executePlan: "fenced_standalone_mutation",
     expandSessionPromptTemplate: "read_only",
     expandSessionSkillCommand: "read_only",
-    exportSession: "read_only",
+    readSessionExport: "read_only",
     getLastAssistantText: "read_only",
     getQueuedMessages: "projection_adapter_local",
     getRuntimeActiveAgentName: "read_only",

@@ -130,6 +130,7 @@ test("execution preparation progress reports fresh worktree setup before launchi
                 "Creating the worktree from base branch",
                 `Created worktree ${workflow.worktreeBranch} from base branch`,
                 "Copying the Plan into the worktree...",
+                "Copied the Plan into the worktree.",
                 "Marking the Plan as in progress...",
                 "Starting Plan Engineer...",
             ]);

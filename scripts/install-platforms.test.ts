@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import type { TestOs, TestArch } from "./install-test-helpers.js";
+import type { TestOs, TestArch } from "./install-test-helpers.ts";
 import {
     mkdir as fsMkdir,
     readFile as fsReadFile,
@@ -19,7 +19,7 @@ import {
     runInstaller,
     VERSIONS,
     writeExecutable,
-} from "./install-test-helpers.js";
+} from "./install-test-helpers.ts";
 
 interface InstallerPlatform {
     os: TestOs;

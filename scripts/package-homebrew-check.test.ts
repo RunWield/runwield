@@ -60,7 +60,7 @@ exit 42
 
             const child = spawn(
                 process.execPath,
-                runtimeSourceArgs(["run", "-A", "scripts/package-homebrew-check.js", "--tap", tap]),
+                runtimeSourceArgs(["run", "-A", "scripts/package-homebrew-check.ts", "--tap", tap]),
                 {
                     cwd: getCwd(),
                     env: {
