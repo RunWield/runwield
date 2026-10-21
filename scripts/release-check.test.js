@@ -531,7 +531,7 @@ test("Bun release gate compiles and checks the Bun runtime without invoking the 
         ]);
         assertEquals(calls[1], {
             command: "bun",
-            args: ["run", "scripts/assert-workspace-review-runtime.js", "--bun"],
+            args: ["run", "scripts/assert-workspace-review-runtime.ts", "--bun"],
         });
         assertEquals(
             calls.some((call) => call.command === "deno"),

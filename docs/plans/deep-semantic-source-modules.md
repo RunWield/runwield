@@ -323,7 +323,7 @@ Configuration, scripts, and documentation:
 - `scripts/compile.js` — entry path and `--include` resource arguments.
 - `scripts/language-policy-baseline.json` — 210 literal `src/**` paths, every one of which changes.
 - `scripts/write-version.js`, `scripts/check-doc-links.ts`, `scripts/build-workspace-runtime.ts`,
-  `scripts/build-plan-server-runtime.js`, `scripts/assert-workspace-review-runtime.js`,
+  `scripts/build-plan-server-runtime.js`, `scripts/assert-workspace-review-runtime.ts`,
   `scripts/assert-plan-server-image.ts`, `scripts/run-prototype.ts`, and `scripts/lint-rules/` — all reference source
   paths.
 - `.vscode/launch.json` and `.githooks/` if they name `src/cli.ts`.
