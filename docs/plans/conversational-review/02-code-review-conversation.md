@@ -22,14 +22,14 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-19"
-status: "ready_for_work"
 origin: "internal"
 parentPlan: "conversational-review"
 order: 2
 dependencies:
     - "01-plan-review-conversation"
 userVerifiedAt: null
-userVerificationNote: null
+status: "in_progress"
+targetBranch: "main"
 ---
 
 # Code Review Conversation
