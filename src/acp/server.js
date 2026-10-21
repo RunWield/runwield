@@ -146,6 +146,7 @@ export function createInitializeResponse(request) {
                             "session/new",
                             "session/load",
                             "session/prompt",
+                            "_session/steering",
                             "session/cancel",
                             "session/close",
                             "session/delete",
@@ -158,6 +159,7 @@ export function createInitializeResponse(request) {
         },
         authMethods,
         agentInfo: { name: "RunWield", version: VERSION },
+        _meta: { steering: { supported: true } },
     };
 }
 
@@ -330,7 +332,8 @@ export function convertAcpPrompt(blocks) {
     for (const block of blocks) {
         if (!block || typeof block !== "object") throwInvalidParams("Invalid prompt content block");
         if (block.type === "text") {
-            parts.push(String(block.text || ""));
+            if (typeof block.text !== "string") throwInvalidParams("ACP text prompt content requires text");
+            parts.push(block.text);
             continue;
         }
         if (block.type === "image") {
@@ -344,6 +347,9 @@ export function convertAcpPrompt(blocks) {
             continue;
         }
         if (block.type === "resource_link") {
+            if (typeof block.name !== "string" || typeof block.uri !== "string") {
+                throwInvalidParams("ACP resource links require name and uri");
+            }
             const label = block.title || block.name || block.uri;
             parts.push(`[Resource: ${label} <${block.uri}>]`);
             continue;
@@ -353,6 +359,48 @@ export function convertAcpPrompt(blocks) {
         });
     }
     return { text: parts.join("\n").trim(), images };
+}
+
+/**
+ * @typedef {Object} AcpSteeringOptions
+ * @property {string} [idleBehavior]
+ */
+
+/**
+ * @typedef {Object} AcpSteeringMetadata
+ * @property {AcpSteeringOptions} [steering]
+ */
+
+/**
+ * @typedef {Object} AcpSteeringRequest
+ * @property {string} sessionId
+ * @property {AcpPromptBlock[]} prompt
+ * @property {AcpSteeringMetadata} [_meta]
+ */
+
+/**
+ * @param {unknown} params
+ * @returns {AcpSteeringRequest}
+ */
+function validateSteeringParams(params) {
+    const request = /** @type {AcpSteeringRequest | null} */ (params);
+    if (typeof request?.sessionId !== "string" || !request.sessionId.trim()) {
+        throwInvalidParams("_session/steering requires sessionId");
+    }
+    if (!Array.isArray(request.prompt) || request.prompt.length === 0) {
+        throwInvalidParams("_session/steering requires at least one prompt content block");
+    }
+    if (request._meta !== undefined && !isRecord(request._meta)) {
+        throwInvalidParams("_session/steering _meta must be an object");
+    }
+    if (request._meta?.steering !== undefined && !isRecord(request._meta.steering)) {
+        throwInvalidParams("_session/steering _meta.steering must be an object");
+    }
+    const idleBehavior = request._meta?.steering?.idleBehavior;
+    if (idleBehavior !== undefined && idleBehavior !== "promptRequired") {
+        throwInvalidParams("_session/steering idleBehavior must be promptRequired");
+    }
+    return request;
 }
 
 /** @param {string} text */
@@ -1452,6 +1500,27 @@ function createRunWieldAcpServer(context) {
         });
         await notifyAcpContextUsage(context, runtime, sessionMap, runtimeSessionId, sessionId);
         return { configOptions };
+    });
+
+    app.onRequest("_session/steering", validateSteeringParams, async (context) => {
+        const request = context.params;
+        const runtimeSessionId = sessionMap.getRuntimeSessionId(request.sessionId);
+        if (!runtimeSessionId) throwUnknownSession(request.sessionId);
+        const { text, images } = convertAcpPrompt(request.prompt);
+        if (operations.get(request.sessionId)?.question) {
+            return { outcome: "promptRequired", reason: "questionPending" };
+        }
+        if (extractAcpBuiltinCommand(request.prompt)) {
+            throw new RequestError(ACP_INVALID_STATE, "Slash commands cannot steer a running turn.");
+        }
+        const result = await runtime.steerSession(runtimeSessionId, text, images);
+        if (result.ok && result.queued) return { outcome: "injected" };
+        if (result.ok && result.reason === "not_streaming") {
+            return { outcome: "promptRequired", reason: "noRunningTurn" };
+        }
+        throw new RequestError(ACP_INVALID_STATE, result.error || result.reason || "ACP steering was not accepted", {
+            sessionId: request.sessionId,
+        });
     });
 
     app.onRequest(methods.agent.session.prompt, async (context) => {

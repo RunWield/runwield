@@ -459,6 +459,7 @@ test("createInitializeResponse advertises only implemented ACP capabilities", ()
         "session/new",
         "session/load",
         "session/prompt",
+        "_session/steering",
         "session/cancel",
         "session/close",
         "session/delete",
@@ -561,6 +562,12 @@ test("ACP initialize and prompt responses satisfy the published ACP schema", asy
         });
         assertAcpFrameSchema("AuthMethod", authFrame, (message) => message.result);
         assertAcpSchema("AuthMethod", response.result.authMethods[0]);
+        assertEquals(response.result._meta.steering.supported, true);
+        assert(
+            response.result.agentCapabilities.sessionCapabilities._meta.runwield.implementedMethods.includes(
+                "_session/steering",
+            ),
+        );
     } finally {
         await closeTestServer(handle);
     }
@@ -1893,6 +1900,228 @@ test("ACP session/load replays a real persisted Session and accepts another prom
         } finally {
             await closeTestServer(secondHandle);
             await fsRm(logPath).catch(() => {});
+        }
+    });
+});
+
+test("ACP steering reaches the running Agent once before the original prompt settles", async () => {
+    await withRuntimeCommandFixture("runwield-acp-steering-", async (fixture) => {
+        const started = Promise.withResolvers();
+        const held = Promise.withResolvers();
+        const direction = "Use the existing implementation.";
+        let continuationInput = "";
+        fixture.setModelResponseFactories([
+            async () => {
+                started.resolve();
+                await held.promise;
+                return fauxAssistantMessage(fauxText("Starting work."));
+            },
+            (context) => {
+                continuationInput = context.messages.map(fauxMessageToText).join("\n");
+                return fauxAssistantMessage(fauxText("Using the existing implementation."));
+            },
+        ]);
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "work",
+                method: "session/prompt",
+                params: { sessionId, prompt: [{ type: "text", text: "Start working." }] },
+            });
+            // Drain updates while waiting so the stdio output cannot block turn setup.
+            const steering = readThroughResponse(handle, "steer");
+            await started.promise;
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "steer",
+                method: "_session/steering",
+                params: { sessionId, prompt: [{ type: "text", text: direction }] },
+            });
+            const admitted = await steering;
+            assertEquals(admitted.response.result, { outcome: "injected" });
+            assert(!admitted.messages.some((message) => message.id === "work"));
+            held.resolve();
+            const completed = await readThroughResponse(handle, "work");
+            assertEquals(completed.response.result.stopReason, "end_turn");
+            assertStringIncludes(continuationInput, direction);
+            const updates = [...admitted.messages, ...completed.messages].map((message) => message.params?.update);
+            assertEquals(
+                updates.filter(
+                    (update) => update?.sessionUpdate === "user_message_chunk" && update.content.text === direction,
+                ).length,
+                1,
+            );
+            const firstReply = updates.find(
+                (update) => update?.sessionUpdate === "agent_message_chunk" && update.content.text.includes("Starting"),
+            );
+            const secondReply = updates.find(
+                (update) => update?.sessionUpdate === "agent_message_chunk" && update.content.text.includes("Using"),
+            );
+            assert(firstReply?.messageId);
+            assert(secondReply?.messageId);
+            assert(firstReply.messageId !== secondReply.messageId);
+            assertStringIncludes(joinedAgentText(completed.messages), "Using the existing implementation.");
+            assertEquals(completed.messages.at(-1)?.id, "work");
+        } finally {
+            held.resolve();
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP reports steering delivery failure without injecting rejected images", async () => {
+    await withRuntimeCommandFixture("runwield-acp-steering-failure-", async (fixture) => {
+        const modelsPath = join(fixture.homeDir, ".wld", "models.json");
+        const configuration = parseRuntimeFixtureModelConfiguration(await fsReadFile(modelsPath, "utf8"));
+        configuration.providers["runtime-command-fixture"].models[0].input = ["text"];
+        await fsWriteFile(modelsPath, JSON.stringify(configuration));
+        __resetSettingsForTests();
+        const started = Promise.withResolvers();
+        const held = Promise.withResolvers();
+        let modelRequests = 0;
+        fixture.setModelResponseFactory(async () => {
+            modelRequests++;
+            started.resolve();
+            await held.promise;
+            return fauxAssistantMessage(fauxText("Original work complete."));
+        });
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "work",
+                method: "session/prompt",
+                params: { sessionId, prompt: [{ type: "text", text: "Start work." }] },
+            });
+            const failedSteering = readThroughResponse(handle, "image-steer");
+            await started.promise;
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "image-steer",
+                method: "_session/steering",
+                params: {
+                    sessionId,
+                    prompt: [
+                        { type: "text", text: "Rejected image direction." },
+                        { type: "image", data: "aW1n", mimeType: "image/png" },
+                    ],
+                },
+            });
+            const failed = (await failedSteering).response;
+            assert(failed.error, JSON.stringify(failed));
+            assertEquals(failed.result, undefined);
+            held.resolve();
+            assertEquals((await readThroughResponse(handle, "work")).response.result.stopReason, "end_turn");
+            assertEquals(modelRequests, 1);
+            assertEquals(
+                sessionUpdateFrames(handle, "user_message_chunk").filter(
+                    (frame) => JSON.parse(frame).params.update.content.text === "Rejected image direction.",
+                ).length,
+                0,
+            );
+        } finally {
+            held.resolve();
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP idle steering requires a prompt without delivering or duplicating input", async () => {
+    await withRuntimeCommandFixture("runwield-acp-idle-steering-", async (fixture) => {
+        let modelRequests = 0;
+        fixture.setModelResponseFactory(() => {
+            modelRequests++;
+            return fauxAssistantMessage(fauxText("One response."));
+        });
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            const prompt = [{ type: "text", text: "Start this work." }];
+            for (const meta of [undefined, { steering: { idleBehavior: "promptRequired" } }]) {
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "idle-steer",
+                    method: "_session/steering",
+                    params: { sessionId, prompt, _meta: meta },
+                });
+                const idleResponse = (await readThroughResponse(handle, "idle-steer")).response;
+                assertEquals(
+                    idleResponse.result,
+                    {
+                        outcome: "promptRequired",
+                        reason: "noRunningTurn",
+                    },
+                    JSON.stringify(idleResponse),
+                );
+                assertEquals(modelRequests, 0);
+            }
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "idle-prompt",
+                method: "session/prompt",
+                params: { sessionId, prompt },
+            });
+            const completed = await readThroughResponse(handle, "idle-prompt");
+            assertEquals(completed.response.result.stopReason, "end_turn");
+            assertEquals(modelRequests, 1);
+            assertEquals(
+                sessionUpdateFrames(handle, "user_message_chunk").filter(
+                    (frame) => JSON.parse(frame).params.update.content.text === prompt[0].text,
+                ).length,
+                1,
+            );
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP steering rejects invalid input, unknown and closed Sessions, and slash commands", async () => {
+    await withRuntimeCommandFixture("runwield-acp-invalid-steering-", async (fixture) => {
+        let modelRequests = 0;
+        fixture.setModelResponseFactory(() => {
+            modelRequests++;
+            return fauxAssistantMessage(fauxText("Should not run."));
+        });
+        const handle = startTestServer();
+        try {
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            const prompt = [{ type: "text", text: "Do not deliver." }];
+            for (const [params, code] of [
+                [{ sessionId, prompt: [] }, -32602],
+                [{ prompt }, -32602],
+                [{ sessionId: "  ", prompt }, -32602],
+                [{ sessionId, prompt, _meta: { steering: { idleBehavior: "startedNewTurn" } } }, -32602],
+                [{ sessionId: "missing-session", prompt }, -32001],
+                [{ sessionId, prompt: [{ type: "text", text: "/model" }] }, -32002],
+                [{ sessionId, prompt: [{ type: "audio" }] }, -32602],
+                [{ sessionId, prompt: [{ type: "text", text: 123 }] }, -32602],
+                [{ sessionId, prompt: [{ type: "resource_link" }] }, -32602],
+                [{ sessionId, prompt, _meta: [] }, -32602],
+                [{ sessionId, prompt, _meta: { steering: "invalid" } }, -32602],
+            ]) {
+                await sendMessage(handle, { jsonrpc: "2.0", id: "invalid-steer", method: "_session/steering", params });
+                assertEquals(
+                    (await readThroughResponse(handle, "invalid-steer")).response.error?.code,
+                    code,
+                    JSON.stringify(params),
+                );
+            }
+            await sendMessage(handle, { jsonrpc: "2.0", id: "close", method: "session/close", params: { sessionId } });
+            await readThroughResponse(handle, "close");
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "closed-steer",
+                method: "_session/steering",
+                params: { sessionId, prompt },
+            });
+            assertEquals((await readThroughResponse(handle, "closed-steer")).response.error?.code, -32001);
+            assertEquals(modelRequests, 0);
+        } finally {
+            await closeTestServer(handle);
         }
     });
 });
@@ -3763,4 +3992,112 @@ test("ACP no-form model selection records opened and dispatched and changes the 
         },
         { additionalModels: [{ id: "alternate-model", name: "Alternate" }] },
     );
+});
+
+test("ACP steering preserves the waiting chat question for the next prompt", async () => {
+    const reply = "1";
+    const expectedValue = "blue";
+    const expectedOther = undefined;
+    await withRuntimeCommandFixture("runwield-acp-interview-chat-", async (fixture) => {
+        fixture.setModelResponseFactories([
+            () =>
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: {
+                            type: "multiple_choice",
+                            prompt: "Pick a color",
+                            choices: [
+                                { value: "blue", label: "Blue" },
+                                { value: "green", label: "Green" },
+                            ],
+                        },
+                    }),
+                ),
+            () => fauxAssistantMessage(fauxText("Interview complete.")),
+        ]);
+        const handle = startTestServer();
+        try {
+            await request(handle, {
+                jsonrpc: "2.0",
+                id: "init-chat",
+                method: "initialize",
+                params: {
+                    protocolVersion: 1,
+                    clientCapabilities: {},
+                },
+            });
+            const { sessionId } = await createSession(handle, fixture.projectRoot);
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "select-agent",
+                method: "session/prompt",
+                params: {
+                    sessionId,
+                    prompt: [{ type: "text", text: "/agent ideator" }],
+                },
+            });
+            await readThroughResponse(handle, "select-agent");
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: 0,
+                method: "session/prompt",
+                params: {
+                    sessionId,
+                    prompt: [{ type: "text", text: "Interview me" }],
+                },
+            });
+            const question = await readThroughResponse(handle, 0);
+            assertEquals(question.response.result.stopReason, "end_turn");
+            assertStringIncludes(joinedAgentText(question.messages), "Pick a color");
+            assertStringIncludes(joinedAgentText(question.messages), "1. Blue");
+            assert(!JSON.stringify(question.messages).includes("questionUrl"));
+            assert(!question.messages.some((message) => message.method === "elicitation/create"));
+            for (const prompt of [[null], [{ type: "audio" }], [{ type: "resource_link" }]]) {
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "invalid-question-steer",
+                    method: "_session/steering",
+                    params: { sessionId, prompt },
+                });
+                assertEquals(
+                    (await readThroughResponse(handle, "invalid-question-steer")).response.error?.code,
+                    -32602,
+                );
+            }
+            for (const text of [reply, "/model"]) {
+                await sendMessage(handle, {
+                    jsonrpc: "2.0",
+                    id: "steer-answer",
+                    method: "_session/steering",
+                    params: { sessionId, prompt: [{ type: "text", text }] },
+                });
+                assertEquals((await readThroughResponse(handle, "steer-answer")).response.result, {
+                    outcome: "promptRequired",
+                    reason: "questionPending",
+                });
+            }
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "answer",
+                method: "session/prompt",
+                params: {
+                    sessionId,
+                    prompt: [{ type: "text", text: reply }],
+                },
+            });
+            const completion = await readThroughResponse(handle, "answer");
+            assertEquals(completion.response.result.stopReason, "end_turn");
+            const result = completion.messages.find(
+                (message) =>
+                    message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
+                    message.params?.update?.rawOutput?.details,
+            )?.params.update.rawOutput.details;
+            assertEquals(result?.status, "completed");
+            assertEquals(result.answers[0].value, expectedValue);
+            assertEquals(result.answers[0].otherText, expectedOther);
+            assertStringIncludes(joinedAgentText(completion.messages), "Interview complete.");
+        } finally {
+            await closeTestServer(handle);
+        }
+    });
 });

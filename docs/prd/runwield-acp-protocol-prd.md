@@ -237,11 +237,39 @@ Stage 1 proves the reference journey through the shared Session experience. Prot
   once, without repeating it for activation, commands, or same-Agent rebuilds.
 - Black-box compatibility coverage exercises the actual ACP wire behavior OpenAB depends on.
 
+**Requirement: Admit mid-turn steering through the shared Runtime.**
+
+RunWield supports `_session/steering` following Claude's ACP adapter extension, not an ACP v1 standard. Initialization
+advertises top-level `_meta.steering.supported: true`. A supporting client can send steering without waiting for the
+running prompt. Input uses ordinary ACP content conversion and the same Runtime steering owner as TUI and Workspace,
+including Agent Handoff delivery.
+
+`injected` confirms admission, not model consumption. A consumed message appears as `user_message_chunk`; its answer
+uses a new assistant message ID and completes within the original prompt. Idle steering always returns
+`promptRequired` with `noRunningTurn`, without queueing or delivering input. A waiting no-form question instead returns
+`promptRequired` with `questionPending`, so the next ordinary prompt answers it. RunWield does not start a detached turn
+from steering. Invalid parameters, unknown Sessions, and failed delivery return errors rather than claiming admission.
+A waiting question takes precedence over slash-command detection; otherwise slash commands return errors. Normal
+overlapping-prompt rejection and cancellation settlement remain unchanged.
+
+OpenAB's immediate steering delivery and Discord reply placement are target client behavior; support for the extension
+in RunWield does not establish OpenAB interoperability.
+
 `session/resume` is not required for this stage. Correct durable `session/load` behavior is the interoperability
 requirement.
 
 **Acceptance scenarios:**
 
+- Initialization advertises steering at top-level `_meta.steering.supported` in a schema-valid response.
+- Given a running ACP turn, steering returns `injected` before the original prompt settles. The next model request
+  includes the correction once, chat shows one consumed user message, and a new assistant message ID carries the reply
+  before the original prompt ends.
+- Given an idle Session, steering returns `promptRequired` with `noRunningTurn` and makes no model request. A later
+  ordinary prompt delivers the same input once.
+- Given a waiting no-form interview, steering returns `promptRequired` with `questionPending` without bypassing the
+  question. A later ordinary prompt answers it.
+- Empty prompt arrays, missing Session IDs, unsupported idle behavior, and unknown or closed Sessions fail visibly
+  without delivering their text to the model. Slash commands also fail unless a waiting question owns the reply.
 - When a client requests an unsupported protocol version, initialization negotiates supported behavior instead of
   pretending that version is supported.
 - Given a no-form ACP client, when `user_interview` asks three questions, each reaches chat before its ACP response.

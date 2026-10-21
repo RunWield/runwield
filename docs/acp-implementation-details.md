@@ -10,6 +10,54 @@ be used to describe these working integrations as unavailable or awaiting end-to
 requirements live in the [ACP PRD](prd/runwield-acp-protocol-prd.md). This update records owner confirmation; it does
 not claim a new protocol audit or that every optional ACP capability is implemented.
 
+## Mid-turn steering extension
+
+RunWield supports `_session/steering`, following
+[Claude's ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp/blob/1420994ced20919aad127a8bd0294de022449e35/src/acp-agent.ts#L4295-L4388).
+This is an extension, not a standard ACP v1 requirement. `initialize` advertises top-level
+`_meta.steering.supported: true`. The method also appears in
+`agentCapabilities.sessionCapabilities._meta.runwield.implementedMethods`.
+
+Send the request while `session/prompt` is running; do not serialize it behind that prompt:
+
+```json
+{
+    "jsonrpc": "2.0",
+    "id": "steer-1",
+    "method": "_session/steering",
+    "params": {
+        "sessionId": "<sessionId>",
+        "prompt": [{ "type": "text", "text": "Use the existing implementation." }],
+        "_meta": { "steering": { "idleBehavior": "promptRequired" } }
+    }
+}
+```
+
+`sessionId` must be a nonblank string and `prompt` a nonempty content array. Content conversion uses the ordinary
+prompt path: text, images, and resource links. `_meta` is optional; `idleBehavior` must be absent or `"promptRequired"`.
+
+| Result                                                         | Client action                                                                                   |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `{ "outcome": "injected" }`                                    | Do not queue or resend the input. The Runtime admitted it to the active Agent or Agent Handoff. |
+| `{ "outcome": "promptRequired", "reason": "noRunningTurn" }`   | Send the input as `session/prompt`. Steering did not queue or deliver it.                       |
+| `{ "outcome": "promptRequired", "reason": "questionPending" }` | Send `session/prompt` to answer the waiting chat question.                                      |
+
+Unlike Claude's default idle behavior, RunWield always requires a normal prompt when idle. It never returns
+`startedNewTurn` or starts a detached turn from this method.
+
+`injected` confirms admission, not consumption. When the Agent consumes the steering message, ACP emits a
+`user_message_chunk`. The response continues on the original prompt with a new assistant `messageId`; that prompt
+settles after the continuation. Clients control whether this becomes a new chat reply. An ambiguous transport failure
+is not proof of rejection: do not blindly resend input.
+
+Invalid parameters or unsupported content return `-32602`, including while a chat question waits. Unknown or closed
+Sessions return `-32001`. A waiting question takes precedence over slash-command detection: valid reply content returns
+`questionPending`. Otherwise, slash commands return `-32002` rather than steering or queueing. Runtime rejections and
+delivery failures return JSON-RPC errors, not `injected`. Overlapping `session/prompt` still returns `-32002`;
+cancellation and chat question answers are unchanged.
+OpenAB steering delivery and Discord reply placement require client support and remain target behavior, not confirmed
+interoperability.
+
 ## Historical audit — 2026-09-21
 
 **Audit date:** 2026-09-21\
