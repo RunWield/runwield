@@ -1,45 +1,78 @@
 import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
+import type { InitializeRequest, NewSessionRequest, PromptRequest } from "@agentclientprotocol/sdk";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { startRunWieldAcpServer } from "./server.js";
 
-/** @typedef {{ id?: string, method?: string, params?: { sessionId?: string, update?: { sessionUpdate?: string, content?: { text?: string } } }, result?: { sessionId?: string, stopReason?: string, protocolVersion?: number } }} WireFrame */
-/** @typedef {{ cwd?: string, mcpServers?: string[], sessionId?: string, prompt?: Array<{type: string, text: string}>, protocolVersion?: number, clientCapabilities?: { elicitation?: { form?: Record<string, string> } }, clientInfo?: { name: string, version: string } }} WireParams */
+interface WireTextContent {
+    text?: string;
+}
+
+interface WireSessionUpdate {
+    sessionUpdate?: string;
+    content?: WireTextContent;
+}
+
+interface WireSessionNotification {
+    sessionId?: string;
+    update?: WireSessionUpdate;
+}
+
+interface WireResult {
+    sessionId?: string;
+    stopReason?: string;
+    protocolVersion?: number;
+}
+
+interface WireFrame {
+    id?: string;
+    method?: string;
+    params?: WireSessionNotification;
+    result?: WireResult;
+}
+
+type WireParams = InitializeRequest | NewSessionRequest | PromptRequest;
 
 test("ACP sends an automatic task result after the original end_turn response", async () => {
     await withRuntimeCommandFixture("acp-background-wire-", async ({ projectRoot, setModelResponseFactories }) => {
         let generatedInput = "";
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("background_task", {
-                    action: "start",
-                    command: "sleep 0.5; printf 'ACP result data\\n'",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("background_task", {
+                        action: "start",
+                        command: "sleep 0.5; printf 'ACP result data\\n'",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("I started independent work.")),
             (context) => {
                 generatedInput = JSON.stringify(context.messages);
-                return fauxAssistantMessage(fauxToolCall("user_interview", {
-                    question: {
-                        type: "multiple_choice",
-                        prompt: "Pick a color for the result",
-                        choices: [{ value: "blue", label: "Blue" }, { value: "green", label: "Green" }],
-                    },
-                }));
+                return fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: {
+                            type: "multiple_choice",
+                            prompt: "Pick a color for the result",
+                            choices: [
+                                { value: "blue", label: "Blue" },
+                                { value: "green", label: "Green" },
+                            ],
+                        },
+                    }),
+                );
             },
             () => fauxAssistantMessage(fauxText("I received the ACP task result.")),
         ]);
-        const input = new TransformStream();
-        const output = new TransformStream();
+        const input = new TransformStream<Uint8Array, Uint8Array>();
+        const output = new TransformStream<Uint8Array, Uint8Array>();
         const connection = startRunWieldAcpServer(input.readable, output.writable);
         const writer = input.writable.getWriter();
         const reader = output.readable.getReader();
         const decoder = new TextDecoder();
         const encoder = new TextEncoder();
         let buffer = "";
-        /** @type {WireFrame[]} */
-        const pending = [];
+        const pending: WireFrame[] = [];
         async function nextFrame() {
             while (!pending.length) {
                 const { value, done } = await reader.read();
@@ -47,14 +80,13 @@ test("ACP sends an automatic task result after the original end_turn response", 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split("\n");
                 buffer = lines.pop() || "";
-                pending.push(...lines.filter(Boolean).map((line) => /** @type {WireFrame} */ (JSON.parse(line))));
+                pending.push(...lines.filter(Boolean).map((line): WireFrame => JSON.parse(line)));
             }
             const frame = pending.shift();
             if (!frame) throw Error("ACP frame was missing");
             return frame;
         }
-        /** @param {string} id @param {string} method @param {WireParams} params */
-        async function send(id, method, params) {
+        async function send(id: string, method: string, params: WireParams) {
             await writer.write(encoder.encode(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`));
             while (true) {
                 const frame = await nextFrame();
@@ -86,7 +118,8 @@ test("ACP sends an automatic task result after the original end_turn response", 
                 const frame = await nextFrame();
                 if (frame.id === "prompt") extraResponses++;
                 if (
-                    frame.method === "session/update" && frame.params?.sessionId === sessionId &&
+                    frame.method === "session/update" &&
+                    frame.params?.sessionId === sessionId &&
                     frame.params.update?.sessionUpdate === "agent_message_chunk"
                 ) {
                     resultText += frame.params.update.content?.text || "";
