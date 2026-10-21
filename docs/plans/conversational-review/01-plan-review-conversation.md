@@ -1,4 +1,5 @@
 ---
+planId: "74f11e15-6d13-4e7b-9cc8-93a19dba86de"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -30,13 +31,14 @@ affectedPaths:
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
+createdAt: "2026-10-19"
 origin: "internal"
 parentPlan: "conversational-review"
 order: 1
 dependencies: []
-createdAt: "2026-10-19"
-status: "draft"
-planId: "74f11e15-6d13-4e7b-9cc8-93a19dba86de"
+userVerifiedAt: null
+status: "in_progress"
+targetBranch: "main"
 ---
 
 # Plan Review Conversation
