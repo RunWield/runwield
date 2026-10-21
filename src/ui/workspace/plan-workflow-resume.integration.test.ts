@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -19,6 +20,9 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 
+type FixtureSettings = ReturnType<SettingsManager["getGlobalSettings"]>;
+type ResumeResponse = Pick<ReturnType<WorkspaceSessionContinuationService["getOperation"]>, "operationId">;
+
 const repository = defineCommittedGitFixture({
     ".gitignore": ".wld/internal/\n",
     "implementation.txt": "before\n",
@@ -27,7 +31,7 @@ const repository = defineCommittedGitFixture({
 test("Workspace Resume continues a paused validation repair in its existing worktree", async () => {
     await withRuntimeCommandFixture("deferred-validation-repair-", async (fixture) => {
         const { setModelResponseFactories, settingsPath } = fixture;
-        const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
         settings.retry = { enabled: false };
         await fsWriteFile(settingsPath, JSON.stringify(settings));
         const root = await repository.checkout();
@@ -57,15 +61,21 @@ test("Workspace Resume continues a paused validation repair in its existing work
             await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
             const plan = await loadPlan(tree.path, name);
             assertExists(plan);
-            await savePlan(tree.path, name, body, {
-                ...plan.attrs,
-                executionMode: "worktree",
-                executionBaselineTree: baseline,
-                worktreeId: tree.id,
-                worktreePath: tree.path,
-                worktreeBranch: tree.branch,
-                worktreeBaseBranch: "main",
-            }, { expectedRevision: plan.revision });
+            await savePlan(
+                tree.path,
+                name,
+                body,
+                {
+                    ...plan.attrs,
+                    executionMode: "worktree",
+                    executionBaselineTree: baseline,
+                    worktreeId: tree.id,
+                    worktreePath: tree.path,
+                    worktreeBranch: tree.branch,
+                    worktreeBaseBranch: "main",
+                },
+                { expectedRevision: plan.revision },
+            );
             const ready = await loadPlan(tree.path, name);
             assertExists(ready);
             const id = await runtime.createPromptReadySession({
@@ -78,23 +88,25 @@ test("Workspace Resume continues a paused validation repair in its existing work
             setModelResponseFactories([
                 () => fauxAssistantMessage(fauxToolCall("review_diff", { command: "list" })),
                 () =>
-                    fauxAssistantMessage(
-                        fauxToolCall("review_diff", { command: "show", path: "implementation.txt" }),
-                    ),
+                    fauxAssistantMessage(fauxToolCall("review_diff", { command: "show", path: "implementation.txt" })),
                 () =>
                     fauxAssistantMessage(
                         fauxToolCall("review_diff", { command: "show", path: `docs/plans/${name}.md` }),
                     ),
                 () =>
-                    fauxAssistantMessage(fauxToolCall("review_complete", {
-                        approved: false,
-                        feedback: "The implementation is incomplete.",
-                        findings: [{
-                            title: "Missing guard",
-                            requirement: "Implement the requested change",
-                            evidence: "implementation.txt",
-                        }],
-                    })),
+                    fauxAssistantMessage(
+                        fauxToolCall("review_complete", {
+                            approved: false,
+                            feedback: "The implementation is incomplete.",
+                            findings: [
+                                {
+                                    title: "Missing guard",
+                                    requirement: "Implement the requested change",
+                                    evidence: "implementation.txt",
+                                },
+                            ],
+                        }),
+                    ),
                 () => {
                     repairs++;
                     return fauxAssistantMessage(fauxText("Inspecting the missing guard."));
@@ -111,16 +123,21 @@ test("Workspace Resume continues a paused validation repair in its existing work
             const managed = runtime.getSessionSnapshot(id)?.managed;
             assertExists(managed);
             const segments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
-            assertEquals(segments.map((segment) => segment.kind), ["planning", "semantic_repair"]);
+            assertEquals(
+                segments.map((segment) => segment.kind),
+                ["planning", "semantic_repair"],
+            );
             assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
             await runtime.closeAllSessionsWhenIdle();
             const service = new WorkspaceSessionContinuationService({ store });
             try {
-                setModelResponseFactories([(context) => {
-                    repairs++;
-                    assertStringIncludes(JSON.stringify(context.messages), "Missing guard");
-                    return fauxAssistantMessage(fauxText("Continuing the interrupted repair."));
-                }]);
+                setModelResponseFactories([
+                    (context) => {
+                        repairs++;
+                        assertStringIncludes(JSON.stringify(context.messages), "Missing guard");
+                        return fauxAssistantMessage(fauxText("Continuing the interrupted repair."));
+                    },
+                ]);
                 const session = store.getSessionById(managed.runwieldSessionId);
                 assertExists(session);
                 const generation = store.inspectSessionActivation(managed.runwieldSessionId).generation;
@@ -137,7 +154,7 @@ test("Workspace Resume continues a paused validation repair in its existing work
                     params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },
                     state: { store, sessionContinuation: service },
                 });
-                const payload = await response.json();
+                const payload: ResumeResponse = await response.json();
                 assertEquals(response.status, 202, JSON.stringify(payload));
                 assertExists(payload.operationId);
                 for (let i = 0; i < 500 && service.getOperation(payload.operationId).status === "running"; i++) {
@@ -151,7 +168,10 @@ test("Workspace Resume continues a paused validation repair in its existing work
                 assertEquals(repairs, 2, JSON.stringify(payload));
                 assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
                 const resumedSegments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
-                assertEquals(resumedSegments.every((segment) => segment.kind !== "execution"), true);
+                assertEquals(
+                    resumedSegments.every((segment) => segment.kind !== "execution"),
+                    true,
+                );
                 assertEquals(resumedSegments.at(-1).transcriptCwd, await fsRealpath(tree.path));
                 assertStringIncludes(
                     await fsReadFile(resumedSegments.at(-1).transcriptPath, "utf8"),
