@@ -211,7 +211,7 @@ export function selectTestShard(files, shard) {
  */
 export async function prepareGoldenFixtures(files, sandboxRoot) {
     if (!files.some((file) => file.replaceAll("\\", "/").includes("/src/ui/tui/golden-scenarios/"))) return "";
-    const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.js");
+    const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.ts");
     const root = join(sandboxRoot, "golden-fixtures");
     await prepareGoldenRepositoryTemplates(root);
     return root;

@@ -10,7 +10,7 @@ import process from "node:process";
 
 import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 import { join } from "node:path";
-import { createGoldenIsolatedEnvironment } from "./isolated-environment.js";
+import { createGoldenIsolatedEnvironment } from "./isolated-environment.ts";
 import { GOLDEN_CHILD_READY_MARKER, runGoldenChild } from "./subprocess-runner.ts";
 import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.ts";
 
