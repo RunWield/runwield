@@ -237,7 +237,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/ui/session-export/session-export-html.ts` (new): the self-contained HTML renderer.
 - `src/cmd/export/index.ts` and `src/cmd/share/index.ts`: choose the format, write the files, and upload to the Gist.
 - `src/cmd/registry.js`: update the descriptions, usage, and notes for `/export` and `/share`.
-- Tests: `src/cmd/export/index.test.js`, `src/cmd/share/index.test.ts`,
+- Tests: `src/cmd/export/index.test.ts`, `src/cmd/share/index.test.ts`,
   `src/shared/session/managed-read-non-mutation.test.ts`, `src/ui/tui/document-link-lifecycle.test.ts`, the new tests
   below, and `scripts/bun-test-files.json` if the inventory needs the new files.
 - `docs/prd/runwield-core-prd.md`: add the export and share requirement and its scenarios.
@@ -338,7 +338,7 @@ persistence is also out of scope.
 12. Tests (see the Verification Plan) exist and pass:
     - `src/shared/session/session-export.test.ts` (new);
     - `src/ui/session-export/session-export-html.test.ts` (new);
-    - updated `src/cmd/export/index.test.js` and `src/cmd/share/index.test.ts`.
+    - updated `src/cmd/export/index.test.ts` and `src/cmd/share/index.test.ts`.
 
 ## Verification Plan
 
@@ -349,7 +349,7 @@ bun run install:locked
 bun scripts/run-tests.js \
   src/shared/session/session-export.test.ts \
   src/ui/session-export/session-export-html.test.ts \
-  src/cmd/export/index.test.js \
+  src/cmd/export/index.test.ts \
   src/cmd/share/index.test.ts \
   src/shared/session/managed-read-non-mutation.test.ts \
   src/ui/tui/document-link-lifecycle.test.ts \
@@ -386,7 +386,7 @@ bun run seams:check
       executable `<script>` or `onerror=` attribute is present;
     - contains `--rw-` variables;
     - contains no `<script src` and no `<link rel="stylesheet"`.
-- `src/cmd/export/index.test.js`, against a real runtime Session:
+- `src/cmd/export/index.test.ts`, against a real runtime Session:
     - `/export out.json` writes JSON that parses with `format === "runwield.session-export"` and a non-empty `segments`;
     - `/export out.jsonl` returns `"failed"`, the message names `.json`, and no file exists;
     - `/export` with no path writes a `.html` file that starts with `<!doctype html>`;
