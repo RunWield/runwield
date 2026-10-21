@@ -18,8 +18,9 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { resolveRemoteTarget, REMOTE_RESOLVE_COMMAND } from "./target.ts";
 
-/** @param {(home: string, ssh: string) => Promise<void>} fn */
-async function fixture(fn) {
+type RemoteTargetFixtureScenario = (home: string, ssh: string) => Promise<void>;
+
+async function fixture(fn: RemoteTargetFixtureScenario) {
     const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "portable-fixture-")));
     try {
         const ssh = join(root, "ssh");
@@ -94,8 +95,7 @@ test(
             );
             await fsChmod(wrapper, 0o700);
             const repo = join(home, "repo");
-            /** @param {string[]} args */
-            const git = async (args) => {
+            const git = async (args: string[]) => {
                 const output = await captureForegroundProcess("git", { args, cwd: home });
                 if (output.code !== 0) throw new Error(new TextDecoder().decode(output.stderr));
             };

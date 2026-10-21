@@ -238,7 +238,7 @@
     "src/shared/remote/sftp-mount-monitor.test.ts",
     "src/shared/remote/sftp-mount.test.ts",
     "src/shared/remote/supervisor.test.ts",
-    "src/shared/remote/target.test.js",
+    "src/shared/remote/target.test.ts",
     "src/shared/runtime-identity.test.ts",
     "src/shared/runtime-preflight.test.ts",
     "src/shared/runtime-supervisor.test.ts",
