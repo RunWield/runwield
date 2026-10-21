@@ -6,6 +6,7 @@ import { mapReviewAnnotations, postForgeReview } from "./forge-review.ts";
 import { type PRReviewTarget, resolveReviewTargetWithForge } from "./review-target.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { makeForgeFixture } from "./forge-test-fixture.ts";
+import { validateAiReviewResult } from "./ai-review.ts";
 const fixture = defineGitFixture(async (cwd) => {
     await writeFile(`${cwd}/base.txt`, "base\n");
     await git(cwd, ["add", "."]);
@@ -179,6 +180,49 @@ test("cancel during metadata lookup prevents Forge submission", async () => {
             }),
         );
         assertEquals(submissions, []);
+    } finally {
+        await rm(cwd, { recursive: true });
+    }
+});
+
+test("AI findings post as inline, file-level, and general comments through the real Forge adapter", async () => {
+    const cwd = await fixture.checkout();
+    try {
+        const { target, submissions } = await reviewFixture(cwd);
+        const patch =
+            "diff --git a/change.txt b/change.txt\n--- a/change.txt\n+++ b/change.txt\n@@ -1 +1 @@\n-old\n+change\n";
+        const findings = [
+            { file: "change.txt", lineStart: 1, lineEnd: 1, title: "Inline finding" },
+            { file: "change.txt", lineStart: 20, lineEnd: 20, title: "File finding" },
+            { file: null, lineStart: null, lineEnd: null, title: "General finding" },
+        ].map((finding) => ({
+            ...finding,
+            axis: "spec",
+            severity: "issue",
+            side: "new",
+            body: "Keep the spec contract.",
+        }));
+        const result = validateAiReviewResult(JSON.stringify({ schemaVersion: 1, specSource: "PR", findings }), {
+            rawPatch: patch,
+        });
+        if (!result.ok) throw new Error(result.error);
+        // JSON is the same boundary used by the page when it sends annotations to the review loop.
+        const annotations = JSON.parse(JSON.stringify(result.value.annotations));
+        assertEquals(
+            (await postForgeReview(target, { action: "comment", feedback: "", annotations })).status,
+            "posted",
+        );
+        assertEquals(submissions.length, 3);
+        const pending = JSON.parse(submissions[0]);
+        assertEquals(pending.comments, [{ path: "change.txt", line: 1, side: "RIGHT", body: annotations[0].text }]);
+        const fileThread = JSON.parse(submissions[1]);
+        assertEquals(fileThread.variables, {
+            reviewId: "pending-review",
+            path: "change.txt",
+            body: annotations[1].text,
+        });
+        assertStringIncludes(fileThread.variables.body, "Location: change.txt:20 (new)");
+        assertEquals(JSON.parse(submissions[2]), { event: "COMMENT", body: annotations[2].text });
     } finally {
         await rm(cwd, { recursive: true });
     }

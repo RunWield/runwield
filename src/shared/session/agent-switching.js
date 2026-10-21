@@ -65,13 +65,30 @@ function releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName) {
     const planName = typeof workflow.planName === "string" && workflow.planName ? workflow.planName : "quick-fix";
     hostedSession.clearActiveExecutionWorkflow();
     const target = agentName || hostedSession.getRootAgentName() || "the selected Agent";
-    const message = planName === "quick-fix"
-        ? `User switched to ${target}; QUICK_FIX workflow ownership was released. There is no resumable Plan, and working-tree edits remain in place.`
-        : `User switched to ${target}; planned workflow ownership for ${planName} was released. Plan and worktree recovery evidence remain available through /load-plan.`;
+    const message =
+        planName === "quick-fix"
+            ? `User switched to ${target}; QUICK_FIX workflow ownership was released. There is no resumable Plan, and working-tree edits remain in place.`
+            : `User switched to ${target}; planned workflow ownership for ${planName} was released. Plan and worktree recovery evidence remain available through /load-plan.`;
     emitHostedSessionRuntimeEvent(hostedSession, {
         type: RuntimeEventTypes.SYSTEM_STATUS,
         level: "info",
         message,
+    });
+}
+
+/**
+ * Release the selected Agent for RunWield-owned work without disposing its context.
+ *
+ * @param {import('./hosted-session.js').HostedSession} hostedSession
+ */
+export function releaseActiveAgent(hostedSession) {
+    hostedSession.assertActive();
+    hostedSession.setRootAgentName(null);
+    while (hostedSession.getActiveAgentInfo()) hostedSession.popAgentInfo();
+    emitHostedSessionRuntimeEvent(hostedSession, {
+        type: RuntimeEventTypes.AGENT_CHANGED,
+        agentName: "",
+        busyLines: [],
     });
 }
 
@@ -87,8 +104,8 @@ function releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName) {
 export async function switchActiveAgent(hostedSession, options) {
     if (!hostedSession) throw new Error("switchActiveAgent requires a HostedSession");
     hostedSession.assertActive();
-    const managedOperationCapability = options.managedOperationCapability ||
-        hostedSession.getManagedOperationCapability?.() || undefined;
+    const managedOperationCapability =
+        options.managedOperationCapability || hostedSession.getManagedOperationCapability?.() || undefined;
     const agentName = String(options?.agentName || "").trim();
     if (!agentName) throw new Error("switchActiveAgent requires an agentName");
     const activeTransitionId = hostedSession.getAgentTransitionId?.() || null;
@@ -108,8 +125,8 @@ export async function switchActiveAgent(hostedSession, options) {
     const sessionManager = options.sessionManager || hostedSession.getRootSessionManager?.() || undefined;
     const persistedAgentName = readPersistedActiveAgentName(sessionManager);
     const selectionAgent = previousAgentName || persistedAgentName || hostedSession.getActiveAgentInfo?.()?.agentName;
-    const changesAgent = !!selectionAgent &&
-        normalizeAgentInternalName(selectionAgent) !== normalizeAgentInternalName(agentName);
+    const changesAgent =
+        !!selectionAgent && normalizeAgentInternalName(selectionAgent) !== normalizeAgentInternalName(agentName);
     const inheritedManualModel = (() => {
         if (!changesAgent && hostedSession.isUserModelOverride?.()) {
             return activeModelState.provider && !activeModelState.model.startsWith(`${activeModelState.provider}/`)
@@ -123,18 +140,21 @@ export async function switchActiveAgent(hostedSession, options) {
     const modelOverride = options.model ?? inheritedManualModel;
     const cwdProvided = Object.hasOwn(options, "cwd") && typeof options.cwd === "string" && options.cwd.length > 0;
     const requestedCwd = cwdProvided ? String(options.cwd) : "";
-    const configuredModel = modelOverride === undefined
-        ? getConfiguredAgentModel(agentName, requestedCwd || hostedSession.cwd)
-        : undefined;
+    const configuredModel =
+        modelOverride === undefined ? getConfiguredAgentModel(agentName, requestedCwd || hostedSession.cwd) : undefined;
     const requestedModel = modelOverride ?? configuredModel;
     const modelChanged = requestedModel !== undefined && requestedModel !== effectiveModel;
     const effectiveCwd = rootSwitchState?.cwd ?? previousSwitch?.cwd ?? hostedSession.cwd;
     const cwdChanged = cwdProvided && options.cwd !== effectiveCwd;
     const customRootConfigurationProvided = Boolean(
-        options.subAgentDefinition || options.customTools || options.mcpRootTools || options.toolNames ||
-            options.triageMeta ||
-            options.projectStateContext !== undefined || options.includeEditFallback !== undefined ||
-            options.debugLogPath,
+        options.subAgentDefinition ||
+        options.customTools ||
+        options.mcpRootTools ||
+        options.toolNames ||
+        options.triageMeta ||
+        options.projectStateContext !== undefined ||
+        options.includeEditFallback !== undefined ||
+        options.debugLogPath,
     );
     const rootOptions = {
         agentName,
@@ -154,8 +174,12 @@ export async function switchActiveAgent(hostedSession, options) {
         debugLogPath: options.debugLogPath,
         managedOperationCapability,
     };
-    const canReuseRoot = previousRootSession && !options.forceRebuild && !modelChanged &&
-        !cwdChanged && !customRootConfigurationProvided &&
+    const canReuseRoot =
+        previousRootSession &&
+        !options.forceRebuild &&
+        !modelChanged &&
+        !cwdChanged &&
+        !customRootConfigurationProvided &&
         shouldReuseExistingRootSession({ agentName }, previousAgentName);
     const shouldRebuildRoot = !canReuseRoot;
     const nextMetadata = {
@@ -165,9 +189,10 @@ export async function switchActiveAgent(hostedSession, options) {
     };
     const previousHandlerMetadata = typeof previousHandler === "function" ? handlerMetadata.get(previousHandler) : null;
     const canReuseHandler = Boolean(
-        previousHandler && previousHandlerMetadata &&
-            previousHandlerMetadata.agentName === agentName &&
-            !customRootConfigurationProvided,
+        previousHandler &&
+        previousHandlerMetadata &&
+        previousHandlerMetadata.agentName === agentName &&
+        !customRootConfigurationProvided,
     );
 
     if (!shouldRebuildRoot && canReuseHandler) {
@@ -251,7 +276,8 @@ export async function switchActiveAgent(hostedSession, options) {
         // before it has a durable root. Ordinary first activation stays silent
         // because there is no selected Agent identity yet.
         const previousRootIdentity = previousAgentName || persistedAgentName || selectionAgent || "";
-        const rootHandoff = Boolean(previousRootIdentity) &&
+        const rootHandoff =
+            Boolean(previousRootIdentity) &&
             normalizeAgentInternalName(previousRootIdentity) !== normalizeAgentInternalName(committedAgentName);
         const committedBusyLines = getAgentBusyLines(committedAgentName, hostedSession.cwd);
         emitHostedSessionRuntimeEvent(hostedSession, {
@@ -417,8 +443,9 @@ export async function runRootTurnUntilRootWorkflowEvent(args) {
         if (first.kind === "event") {
             if (
                 first.event.kind === "plan_written" &&
-                (/** @type {import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload} */ (first.event
-                        .payload)).outcome === "feedback"
+                /** @type {import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload} */ (
+                    first.event.payload
+                ).outcome === "feedback"
             ) {
                 let feedbackEvent = first.event;
                 const excludedEventIds = [...claimOptions.excludeEventIds, feedbackEvent.eventId];
@@ -438,8 +465,9 @@ export async function runRootTurnUntilRootWorkflowEvent(args) {
                         excludedEventIds.push(next.event.eventId);
                         if (
                             next.event.kind === "plan_written" &&
-                            (/** @type {import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload} */ (next
-                                    .event.payload)).outcome === "feedback"
+                            /** @type {import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload} */ (
+                                next.event.payload
+                            ).outcome === "feedback"
                         ) {
                             settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
                             feedbackEvent = next.event;

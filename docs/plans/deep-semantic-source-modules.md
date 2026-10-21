@@ -322,9 +322,9 @@ Configuration, scripts, and documentation:
   `src/ui/workspace/…`, `src/ui/tui/…`, or `src/shared/version.js`.
 - `scripts/compile.js` — entry path and `--include` resource arguments.
 - `scripts/language-policy-baseline.json` — 210 literal `src/**` paths, every one of which changes.
-- `scripts/write-version.js`, `scripts/check-doc-links.js`, `scripts/build-workspace-runtime.js`,
+- `scripts/write-version.js`, `scripts/check-doc-links.ts`, `scripts/build-workspace-runtime.ts`,
   `scripts/build-plan-server-runtime.js`, `scripts/assert-workspace-review-runtime.js`,
-  `scripts/assert-plan-server-image.ts`, `scripts/run-prototype.js`, and `scripts/lint-rules/` — all reference source
+  `scripts/assert-plan-server-image.ts`, `scripts/run-prototype.ts`, and `scripts/lint-rules/` — all reference source
   paths.
 - `.vscode/launch.json` and `.githooks/` if they name `src/cli.ts`.
 - `docs/architecture.md` (76KB) — rewrite the source guide and dependency diagrams to match the final tree.
@@ -400,7 +400,7 @@ or TUI appearance change. Follow
 
 - `src/shared/workflow/` is already decomposed into 55 modules behind a 124-line `validation.ts` composition root. Move
   those modules as a unit; do not re-split them.
-- `scripts/check-injection-seams.js` and `scripts/check-language-policy.js` are the working model for the new boundary
+- `scripts/check-injection-seams.js` and `scripts/check-language-policy.ts` are the working model for the new boundary
   ratchet: walk the source tree, compare against a committed baseline, fail CI on drift, and offer `--update`. Build the
   port allowlist the same way rather than inventing a new checker shape.
 - `src/shared/git-test-fixture.ts` (`defineGitFixture`) and `makeValidationProjectRoot` remain the way to fake the

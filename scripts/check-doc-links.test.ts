@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.js";
+import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.ts";
 
 function fakeRepo(files: Record<string, string>) {
     return {

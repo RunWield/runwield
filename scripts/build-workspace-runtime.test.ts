@@ -16,7 +16,7 @@ import {
     normalizeCompiledNodeChildProcessImports,
     unrefBundledMessageChannels,
     waitForStableWorkspaceClientAssets,
-} from "./build-workspace-runtime.js";
+} from "./build-workspace-runtime.ts";
 
 test("getOpaqueWorkspaceAssetName hides executable browser modules from compile graph tracing", () => {
     assertEquals(getOpaqueWorkspaceAssetName("client.js"), "client.js.asset");

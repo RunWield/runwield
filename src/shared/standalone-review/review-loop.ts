@@ -56,6 +56,7 @@ export async function runStandaloneReview(
             const diffText = await target.computeDiff(cwd);
             const payload: StandaloneReviewPayload = {
                 mode: target.mode,
+                baseLabel: target.baseLabel,
                 headRef: target.worktree || target.mode === "uncommitted" ? undefined : target.gitRef,
                 reviewContext: target.reviewContext,
                 resultMessage,
