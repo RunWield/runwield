@@ -410,14 +410,14 @@ test("AI review is manual and standalone-only even when the provider is advertis
     const { state, network } = aiReviewNetwork();
     await withReviewSurface(
         undefined,
-        async ({ button }) => {
+        ({ button }) => {
             assertEquals(button("Run AI Review"), undefined);
         },
         network,
     );
     await withReviewSurface(
         { mode: "branch" },
-        async ({ button }) => {
+        ({ button }) => {
             assertEquals(Boolean(button("Run AI Review")), true);
             assertStringIncludes(button("Run AI Review").title, "additional LLM call");
             assertEquals(state.launches, 0);
@@ -435,7 +435,6 @@ test("AI review annotations can be edited, deleted, rerun, and posted with line 
             await act(() => button("Run AI Review").click());
             assertEquals(Boolean(button("Cancel")), true);
             await waitForUi(() => Boolean(button("Run AI Review")));
-            assertStringIncludes(container.textContent, "AI review");
             assertStringIncludes(container.textContent, "Standards 0 · Spec 0 · Tests 3");
             assertStringIncludes(container.textContent, "spec: no spec");
             assertStringIncludes(container.textContent, "fixture-model");
@@ -443,6 +442,7 @@ test("AI review annotations can be edited, deleted, rerun, and posted with line 
             const note = [...container.querySelectorAll(".review-comment-markdown")].find((node) =>
                 node.textContent.includes("keep-1"),
             );
+            assertStringIncludes(note.parentElement.textContent, "AI review");
             await act(() => note.click());
             const input = browser.document.querySelector('textarea[placeholder="Add a global comment..."]');
             assertEquals(Boolean(input), true);
@@ -560,7 +560,7 @@ test("AI review sends its remaining annotations to Engineer through ordinary fee
     const { network } = aiReviewNetwork();
     await withReviewSurface(
         { mode: "branch" },
-        async ({ container, button, submitted }) => {
+        async ({ button, submitted }) => {
             await act(() => button("Run AI Review").click());
             await waitForUi(() => Boolean(button("Run AI Review")));
             await act(() => button("Send to Engineer").click());

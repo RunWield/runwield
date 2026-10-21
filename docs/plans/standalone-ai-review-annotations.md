@@ -26,7 +26,7 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "Guided Review Annotations"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Run AI Review in Standalone Code Review
