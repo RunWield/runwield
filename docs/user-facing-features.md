@@ -335,6 +335,7 @@ Run locally and adapt the harness to your Project.
 - Start the ACP stdio adapter with `wld acp` or `wld --mode acp`.
 - Create, load, continue, cancel, and close Sessions through compatible clients, with history, progress, usage, and
   browser Plan review links.
+- Steer a running Agent through ACP clients that support `_session/steering`; idle Sessions require a normal prompt.
 - Select models and reasoning levels through native ACP configuration controls.
 - Use advertised shared slash commands and answer select, text, and approval questions through native forms when
   supported, or chat otherwise, including `/load-plan`, `/agent`, and `/model` menus.
