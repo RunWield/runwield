@@ -32,6 +32,19 @@ import {
     shouldReplaySessionHistory,
 } from "./chat-session.ts";
 
+async function waitForFolderConsent(terminal: VirtualTerminal): Promise<void> {
+    const marker = "System or home folder detected. Continue?";
+    const deadline = Date.now() + 10_000;
+    let screen = "";
+    while (Date.now() < deadline) {
+        await terminal.flush();
+        screen = terminal.getScreenText();
+        if (screen.includes(marker)) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assertStringIncludes(screen, marker);
+}
+
 test("recordUserInputHistory stores trimmed submitted input", () => {
     const history: string[] = [];
     recordUserInputHistory({ addToHistory: (text) => history.push(text) }, "  /skill:review branch  ");
@@ -805,10 +818,8 @@ test("resuming a home Session from an ordinary cwd requires consent for the sele
             },
         });
         const rejected = assertRejects(() => pending, Error, "Project startup canceled");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        await terminal.flush();
+        await waitForFolderConsent(terminal);
         assertEquals(ready, false);
-        assertStringIncludes(terminal.getScreenText(), "System or home folder detected. Continue?");
         terminal.pressEnter();
         await rejected;
         assertEquals(terminal.stopped, true);
@@ -874,9 +885,7 @@ for (const explicit of [true, false]) {
                 },
             });
             const rejected = assertRejects(() => pending, Error, "Project startup canceled");
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            await terminal.flush();
-            assertStringIncludes(terminal.getScreenText(), "System or home folder detected. Continue?");
+            await waitForFolderConsent(terminal);
             terminal.pressEnter();
             await rejected;
             assertEquals(ready, false);

@@ -147,6 +147,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [scrollTargetAnnotation, setScrollTargetAnnotation] = useState(null);
     const [pendingSelection, setPendingSelection] = useState(null);
     const [globalCommentOpen, setGlobalCommentOpen] = useState(false);
+    const [editingGlobalComment, setEditingGlobalComment] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [compactLayout, setCompactLayout] = useState(false);
     const [fileTreeOpen, setFileTreeOpen] = useState(true);
@@ -183,6 +184,12 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [guide, setGuide] = useState(initialPayload.guidedReviewFixture || null);
     const [guideGenerating, setGuideGenerating] = useState(false);
     const [guideError, setGuideError] = useState("");
+    const [aiReviewJob, setAiReviewJob] = useState(null);
+    const [aiReviewRunning, setAiReviewRunning] = useState(false);
+    const [aiReviewMessage, setAiReviewMessage] = useState("");
+    const aiReviewRunRef = useRef(null);
+    const currentPatchRef = useRef(activeRawPatch);
+    currentPatchRef.current = activeRawPatch;
     const [conversationMessages, setConversationMessages] = useState([]);
     const [conversationComposer, setConversationComposer] = useState("");
     const [conversationContextAttached, setConversationContextAttached] = useState(false);
@@ -197,6 +204,18 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         reviewMountedRef.current = true;
         return () => {
             reviewMountedRef.current = false;
+            const run = aiReviewRunRef.current;
+            if (run) {
+                run.canceled = true;
+                if (run.id)
+                    void fetch(
+                        `/api/agents/jobs/${encodeURIComponent(run.id)}?token=${encodeURIComponent(initialPayload.token)}`,
+                        {
+                            method: "DELETE",
+                            headers: { "x-runwield-review-token": initialPayload.token },
+                        },
+                    ).catch(() => {});
+            }
         };
     }, []);
     const autoGuideStartedRef = useRef(false);
@@ -356,6 +375,109 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             setGuideGenerating(false);
         }
     }, [guideGenerating, initialPayload]);
+
+    const aiReviewAvailable =
+        Boolean(initialPayload.standaloneReview) &&
+        guideCapabilities?.providers?.some((provider) => provider.id === "ai-review" && provider.available);
+
+    async function cancelAiReview() {
+        const run = aiReviewRunRef.current;
+        if (!run || run.cancelPending) return;
+        run.canceled = true;
+        run.cancelPending = true;
+        try {
+            if (run.id) {
+                const response = await fetch(
+                    `/api/agents/jobs/${encodeURIComponent(run.id)}?token=${encodeURIComponent(initialPayload.token)}`,
+                    {
+                        method: "DELETE",
+                        headers: { "x-runwield-review-token": initialPayload.token },
+                    },
+                );
+                if (!response.ok) throw new Error(`AI review cancellation failed: ${response.status}`);
+            }
+            setAiReviewJob((job) => (job ? { ...job, status: "killed" } : job));
+            setAiReviewMessage("AI review canceled");
+        } catch (error) {
+            setAiReviewMessage(error.message || "AI review cancellation failed");
+        } finally {
+            run.cancelPending = false;
+            if (aiReviewRunRef.current === run) {
+                aiReviewRunRef.current = null;
+                if (reviewMountedRef.current) setAiReviewRunning(false);
+            }
+        }
+    }
+
+    async function runAiReview() {
+        if (aiReviewRunRef.current) return;
+        const run = { id: null, patch: activeRawPatch, canceled: false };
+        aiReviewRunRef.current = run;
+        setAiReviewRunning(true);
+        setAiReviewMessage("");
+        setAiReviewJob(null);
+        const headers = { "content-type": "application/json", "x-runwield-review-token": initialPayload.token };
+        const tokenQuery = `token=${encodeURIComponent(initialPayload.token)}`;
+        try {
+            const launch = await fetch(`/api/agents/jobs?${tokenQuery}`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ provider: "ai-review" }),
+            });
+            if (!launch.ok) throw new Error((await launch.text()) || `AI review launch failed: ${launch.status}`);
+            const { job } = await launch.json();
+            run.id = job.id;
+            if (run.canceled || !reviewMountedRef.current) {
+                await fetch(`/api/agents/jobs/${encodeURIComponent(run.id)}?${tokenQuery}`, {
+                    method: "DELETE",
+                    headers,
+                });
+                return;
+            }
+            setAiReviewJob(job);
+            let current = job;
+            while (current.status === "running" && reviewMountedRef.current && !run.canceled) {
+                await pause(750);
+                if (run.canceled || !reviewMountedRef.current) return;
+                const response = await fetch(`/api/agents/jobs?${tokenQuery}`, { headers });
+                if (!response.ok) throw new Error(`AI review status failed: ${response.status}`);
+                const { jobs } = await response.json();
+                current = jobs.find((candidate) => candidate.id === run.id);
+                if (!current) throw new Error("AI review job is no longer available. Run it again.");
+                if (!reviewMountedRef.current || run.canceled) return;
+                setAiReviewJob(current);
+            }
+            if (!reviewMountedRef.current || run.canceled) return;
+            if (current.status !== "done") throw new Error(current.error || `AI review ${current.status}`);
+            const response = await fetch(`/api/ai-review/${encodeURIComponent(run.id)}?${tokenQuery}`, { headers });
+            if (!response.ok || response.status === 202)
+                throw new Error(`AI review result unavailable: ${response.status}`);
+            const result = await response.json();
+            if (!reviewMountedRef.current || run.canceled) return;
+            if (run.patch !== currentPatchRef.current) {
+                setAiReviewMessage("AI review results are for an older diff");
+                return;
+            }
+            setAnnotations((items) => [
+                ...items.filter((item) => item.source !== "ai-review" || item.edited),
+                ...result.annotations,
+            ]);
+            setRightSidebarView("annotations");
+            animateSidebarUpdate(() => setAnnotationsOpen(true));
+            const { counts } = result;
+            const summary = result.annotations.length
+                ? `AI review · Standards ${counts.standards} · Spec ${counts.spec} · Tests ${counts.tests}`
+                : "AI review found no issues";
+            setAiReviewMessage(`${summary} · spec: ${result.specSource || "no spec"}`);
+        } catch (error) {
+            if (reviewMountedRef.current && !run.canceled) setAiReviewMessage(error.message || "AI review failed");
+        } finally {
+            if (aiReviewRunRef.current === run && !run.cancelPending) {
+                aiReviewRunRef.current = null;
+                if (reviewMountedRef.current) setAiReviewRunning(false);
+            }
+        }
+    }
 
     useEffect(() => {
         if (!guidePolicy.autoStart || autoGuideStartedRef.current || guideReady || !guideCapabilitiesKnown) return;
@@ -617,6 +739,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 item.id === id
                     ? {
                           ...item,
+                          ...(item.source === "ai-review" && { edited: true }),
                           ...(text !== undefined && { text }),
                           ...(suggestedCode !== undefined && { suggestedCode }),
                           ...(originalCode !== undefined && { originalCode }),
@@ -1132,6 +1255,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                     })
                                 }
                                 onRestoreAnnotations={() => animateSidebarUpdate(() => setAnnotationsOpen(true))}
+                                aiReviewAvailable={aiReviewAvailable}
+                                aiReviewRunning={aiReviewRunning}
+                                aiReviewJob={aiReviewJob}
+                                aiReviewMessage={aiReviewMessage}
+                                onAiReview={aiReviewRunning ? cancelAiReview : runAiReview}
                                 guideReady={guideReady}
                                 guideOpen={guideOpen}
                                 guideGenerating={guideGenerating}
@@ -1147,7 +1275,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                     if (!guideReady) generateGuide();
                                 }}
                                 globalCommentButtonRef={globalCommentButtonRef}
-                                onToggleGlobalComment={() => setGlobalCommentOpen((open) => !open)}
+                                onToggleGlobalComment={() => {
+                                    setEditingGlobalComment(null);
+                                    setGlobalCommentOpen((open) => !open);
+                                }}
                             />
                             <div className="rw-code-diff-stage">
                                 {!highlightingReady && (
@@ -1368,7 +1499,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                             onSelectAnnotation={setSelectedAnnotationId}
                                             onNavigateToAnnotation={(id) => {
                                                 setSelectedAnnotationId(id);
-                                                if (id) setScrollTargetAnnotation({ id, token: Date.now() });
+                                                const annotation = annotations.find((item) => item.id === id);
+                                                if (annotation?.scope === "general") {
+                                                    setEditingGlobalComment(annotation);
+                                                    setGlobalCommentOpen(true);
+                                                } else if (id) setScrollTargetAnnotation({ id, token: Date.now() });
                                             }}
                                             onDeleteAnnotation={(id) =>
                                                 setAnnotations((items) => items.filter((item) => item.id !== id))
@@ -1399,9 +1534,18 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                         <CommentPopover
                             anchorEl={globalCommentButtonRef.current}
                             contextText="Code review"
-                            draftKey={`code-review:${initialPayload.token}:global`}
+                            key={editingGlobalComment?.id || "new-global"}
+                            draftKey={editingGlobalComment ? undefined : `code-review:${initialPayload.token}:global`}
+                            initialText={editingGlobalComment?.text || ""}
+                            allowImages={!editingGlobalComment}
                             isGlobal
-                            onSubmit={addGlobalComment}
+                            onSubmit={(text, images) => {
+                                if (editingGlobalComment) {
+                                    editAnnotation(editingGlobalComment.id, text);
+                                    setEditingGlobalComment(null);
+                                    setGlobalCommentOpen(false);
+                                } else addGlobalComment(text, images);
+                            }}
                             onClose={() => setGlobalCommentOpen(false)}
                         />
                     )}
@@ -1474,6 +1618,11 @@ function DiffStyleToggle({
     annotationsOpen,
     onRestoreFiles,
     onRestoreAnnotations,
+    aiReviewAvailable,
+    aiReviewRunning,
+    aiReviewJob,
+    aiReviewMessage,
+    onAiReview,
     guideReady,
     guideOpen,
     guideGenerating,
@@ -1486,7 +1635,11 @@ function DiffStyleToggle({
     onToggleGlobalComment,
 }) {
     return (
-        <div className="rw-review-toolbar rw-code-diff-toolbar" aria-label="Diff view options">
+        <div
+            className="rw-review-toolbar rw-code-diff-toolbar"
+            aria-label="Diff view options"
+            data-ai-review={aiReviewAvailable || undefined}
+        >
             <div className="rw-review-toolbar-edge rw-review-toolbar-edge-left rw-code-diff-left-controls">
                 <div className="rw-code-diff-sidebar-restore rw-code-diff-sidebar-restore-left">
                     {!fileTreeOpen && (
@@ -1520,6 +1673,26 @@ function DiffStyleToggle({
                         {formatGuideStatus(guideJob, guideCapabilities, guidePolicy)}
                     </span>
                 </div>
+                {aiReviewAvailable && (
+                    <div className="rw-guide-actions">
+                        <button
+                            className="rw-toolbar-button"
+                            type="button"
+                            onClick={onAiReview}
+                            title="AI review uses an additional LLM call to draft editable annotations."
+                        >
+                            {aiReviewRunning ? "Cancel" : "Run AI Review"}
+                        </button>
+                        <span className="rw-guide-cost-note" role="status">
+                            {[
+                                aiReviewMessage || (!aiReviewJob && "extra LLM call · manual"),
+                                aiReviewJob && formatGuideStatus(aiReviewJob, null, {}),
+                            ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                        </span>
+                    </div>
+                )}
             </div>
             <div className="rw-review-toolbar-edge rw-review-toolbar-edge-right rw-code-diff-layout-controls">
                 <span>Diff view</span>

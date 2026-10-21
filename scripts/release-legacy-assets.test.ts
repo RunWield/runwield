@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
-import { sha256File } from "./build-metadata.js";
+import { sha256File } from "./build-metadata.ts";
 
 test("published recovery keeps immutable pre-metadata release archives", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));

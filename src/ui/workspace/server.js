@@ -48,7 +48,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runConfiguredGuideCommand,
+    runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
 import {
     resolveWorkspaceFile,
@@ -580,7 +580,7 @@ function linkedDocumentKind(path) {
 export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType, reviewConversation }) {
     const reviewAgentState =
         reviewType === "code"
-            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runWldJobCommand })
             : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
@@ -667,7 +667,9 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                 }
                 if (
                     reviewType === "code" &&
-                    (url.pathname.startsWith("/api/agents/") || url.pathname.startsWith("/api/guide/"))
+                    (url.pathname.startsWith("/api/agents/") ||
+                        url.pathname.startsWith("/api/guide/") ||
+                        url.pathname.startsWith("/api/ai-review/"))
                 ) {
                     if (
                         !hasReviewAssetToken(request, token) &&

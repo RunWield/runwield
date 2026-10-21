@@ -9,7 +9,7 @@ import { argv, env, platform } from "node:process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
-import { verifyBuildArtifact } from "./build-metadata.js";
+import { verifyBuildArtifact } from "./build-metadata.ts";
 import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));

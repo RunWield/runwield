@@ -4,7 +4,7 @@ import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 
-import { createFixture, runInstaller, runInstallerInPseudoTty } from "./install-test-helpers.js";
+import { createFixture, runInstaller, runInstallerInPseudoTty } from "./install-test-helpers.ts";
 
 test("install.sh non-interactive mode prints one PATH recommendation without prompts", async () => {
     const fixture = await createFixture();
