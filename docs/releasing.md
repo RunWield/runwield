@@ -382,7 +382,8 @@ gate; it does not trigger an automatic retry or a reduced check.
 
 ## License transition at v0.14.0
 
-The v0.14 release line uses MIT, including candidates. Earlier tagged releases retain their shipped license. Homebrew
+The v0.14 release line uses MIT, including candidates. Both Unix archive formats include the source `LICENSE`;
+publication rejects a new MIT archive whose license is missing or differs from that source. Earlier tagged releases retain their shipped license. Homebrew
 and WinGet generation preserve the pre-v0.14 license metadata when recovering those releases. Bundled dependencies
 retain their own license notices.
 

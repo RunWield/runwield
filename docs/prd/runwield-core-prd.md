@@ -1618,7 +1618,8 @@ native Linux/macOS archive and macOS Homebrew package checks before GitHub publi
 publication. Candidate checks leave Stable channels unchanged. Package recovery keeps the released tag and asset bytes,
 verifies the existing assets, and resumes package publication. Missing or inconsistent assets stop publication.
 Workspace runtime packaging waits for the final server manifest and its imports; it does not bundle an intermediate
-manifest placeholder.
+manifest placeholder. Unix archives include the source license notice; new MIT release publication rejects a missing
+or incorrect notice while recovery preserves already published bytes.
 
 **Acceptance scenarios:**
 
@@ -1637,6 +1638,7 @@ manifest placeholder.
   feature work.
 - Given a tested Candidate and an advanced Release Branch, Stable uses the tested commit.
 - Given a failed package check, no GitHub Release is created.
+- Given a new MIT release archive with a missing or incorrect license notice, publication is blocked.
 - Given an Astro server entry whose manifest is still being written, Workspace runtime packaging waits for the final
   manifest before it invokes the bundler.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.

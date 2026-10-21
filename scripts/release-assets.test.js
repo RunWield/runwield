@@ -50,8 +50,9 @@ async function fixture(tag = "v1.2.3") {
                     sha256,
                 }),
             );
+            await fsCopyFile(new URL("../LICENSE", import.meta.url), join(stage, "LICENSE"));
             const result = await captureScriptProcess("tar", {
-                args: ["-czf", join(input, name), "-C", stage, "wld", "wld.build.json"],
+                args: ["-czf", join(input, name), "-C", stage, "wld", "wld.build.json", "LICENSE"],
             });
             if (!result.success) throw new Error("Could not create test archive");
         } else await fsWriteFile(join(input, name), name);
@@ -165,8 +166,9 @@ for (const field of ["buildId", "version"]) {
             const metadata = JSON.parse(await fsReadFile(metadataPath, "utf8"));
             metadata[field] = field === "buildId" ? "b".repeat(64) : "v9.8.7";
             await fsWriteFile(metadataPath, JSON.stringify(metadata));
+            await fsCopyFile(new URL("../LICENSE", import.meta.url), join(stage, "LICENSE"));
             const result = await captureScriptProcess("tar", {
-                args: ["-czf", join(f.input, name), "-C", stage, "wld", "wld.build.json"],
+                args: ["-czf", join(f.input, name), "-C", stage, "wld", "wld.build.json", "LICENSE"],
             });
             if (!result.success) throw new Error("Could not create test archive");
             const digest = Array.from(
@@ -424,3 +426,23 @@ test("published Stable recovery verifies the independent docs digest", async () 
         await fsRm(f.root, { recursive: true });
     }
 });
+
+for (const includeLicense of [false, true]) {
+    test(`MIT publication rejects ${includeLicense ? "incorrect" : "missing"} license text`, async () => {
+        const f = await fixture("v0.14.0-rc.1");
+        try {
+            const name = `wld-${f.tag}-darwin-arm64.tar.gz`;
+            const stage = join(f.root, "stage-darwin-arm64");
+            await fsWriteFile(join(stage, "LICENSE"), "obsolete license");
+            const members = ["wld", "wld.build.json", ...(includeLicense ? ["LICENSE"] : [])];
+            const packed = await captureScriptProcess("tar", {
+                args: ["-czf", join(f.input, name), "-C", stage, ...members],
+            });
+            assertEquals(packed.success, true);
+            await fsWriteFile(join(f.input, `${name}.sha256`), `${await sha256File(join(f.input, name))}  ${name}\n`);
+            await assertRejects(() => prepareReleaseAssets(f.input, f.output, f.tag), Error, "source LICENSE");
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}

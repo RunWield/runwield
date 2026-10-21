@@ -446,8 +446,8 @@ jobs:
               run: |
                   VERSION="${{ needs.metadata.outputs.build_version }}"
                   ASSET_BASE="wld-${VERSION}-${{ matrix.asset_suffix }}"
-                  tar -czf "${ASSET_BASE}.tar.gz" wld wld.build.json
-                  tar -cf - wld wld.build.json | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
+                  tar -czf "${ASSET_BASE}.tar.gz" wld wld.build.json LICENSE
+                  tar -cf - wld wld.build.json LICENSE | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
                   sha256sum "${ASSET_BASE}.tar.gz" > "${ASSET_BASE}.tar.gz.sha256"
                   sha256sum "${ASSET_BASE}.tar.zst" > "${ASSET_BASE}.tar.zst.sha256"
 

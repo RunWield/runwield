@@ -1,5 +1,11 @@
 import { captureForegroundProcess } from "../captured-process.ts";
-import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    readFile as fsReadFile,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
@@ -42,14 +48,27 @@ test("release extraction checks binary bytes, target, build and archive members"
         await fsWriteFile(path, JSON.stringify(metadata));
         await pack();
         assertEquals(
-            (await extractReleaseRuntime(archive, "linux-x64", {
-                buildId: metadata.buildId,
-                protocol: 1,
-                version: "v1.2.3",
-            }, output))
-                .metadata,
+            (
+                await extractReleaseRuntime(
+                    archive,
+                    "linux-x64",
+                    {
+                        buildId: metadata.buildId,
+                        protocol: 1,
+                        version: "v1.2.3",
+                    },
+                    output,
+                )
+            ).metadata,
             metadata,
         );
+        await fsWriteFile(join(stage, "LICENSE"), "license notice");
+        await pack(["wld", "wld.build.json", "LICENSE"]);
+        await extractReleaseRuntime(archive, "linux-x64", null, output);
+        assertEquals(await fsReadFile(join(output, "LICENSE"), "utf8"), "license notice");
+        await pack(["wld", "wld.build.json", "LICENSE", "LICENSE"]);
+        await assertRejects(() => extractReleaseRuntime(archive, "linux-x64", null, output), Error, "only wld");
+        await pack(["wld", "wld.build.json", "LICENSE"]);
         await assertRejects(() => extractReleaseRuntime(archive, "linux-arm64", null, output), Error, "target");
         await assertRejects(
             () =>
