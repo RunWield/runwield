@@ -17,13 +17,13 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "65541d2566f8a21e7a1658f65932878287ef9238"
 workRecord:
     status: "generated"
     recordId: "b1bc1bf7-3bf5-48ec-8aba-d587fcdabcfa"
     path: "docs/work-records/2026-10-21-acp-mid-turn-steering-extension.md"
     lastAttemptAt: "2026-10-21T18:10:47.955Z"
+status: "verified"
 ---
 
 # ACP Mid-Turn Steering Extension
