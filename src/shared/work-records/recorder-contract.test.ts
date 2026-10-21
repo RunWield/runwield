@@ -15,10 +15,10 @@ import {
     parseWorkRecordMarkdown,
     runWorkRecordBackfill,
 } from "./index.ts";
+import type { WorkRecordFrontMatter } from "./schema.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 
-/** @type {import('./schema.ts').WorkRecordFrontMatter} */
-const INTERNAL_ATTRS = {
+const INTERNAL_ATTRS: WorkRecordFrontMatter = {
     kind: "work_record",
     recordId: "11111111-1111-4111-8111-111111111111",
     status: "approved",
@@ -146,13 +146,12 @@ for (const heading of ["Out of Scope", "Deferred Work"]) {
     });
 }
 
-/**
- * @typedef {Object} CompletionLabelCase
- * @property {"user_verified"|"closed_without_verification"|"done_enough"} mode
- * @property {string} label
- */
-/** @type {CompletionLabelCase[]} */
-const completionLabels = [
+interface CompletionLabelCase {
+    mode: Exclude<WorkRecordFrontMatter["completionMode"], "verified">;
+    label: string;
+}
+
+const completionLabels: CompletionLabelCase[] = [
     {
         mode: "user_verified",
         label: "The user attested verification; RunWield Workflow Validation did not establish this result.",
