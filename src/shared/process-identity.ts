@@ -13,7 +13,11 @@ function query(command: string, args: string[]): Promise<string> {
         execFile(
             command,
             args,
-            { timeout: 5_000, maxBuffer: 16_384, env: { ...process.env, LC_ALL: "C", TZ: "UTC" } },
+            {
+                timeout: process.platform === "win32" ? 30_000 : 5_000,
+                maxBuffer: 16_384,
+                env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+            },
             (error, stdout) => {
                 if (error) reject(error);
                 else resolve(stdout.trim());
@@ -30,7 +34,8 @@ async function readStartTime(pid: number): Promise<string | undefined> {
                   "-NoProfile",
                   "-NonInteractive",
                   "-Command",
-                  `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
+                  // Avoid cmdlet module discovery, which can stall with a fresh Windows profile.
+                  `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().ToString('o')`,
               ])
             : await query("ps", ["-p", String(pid), "-o", "lstart="]);
     // ps emits no timezone; request UTC explicitly rather than relying on the JS runtime

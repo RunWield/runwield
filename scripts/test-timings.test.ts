@@ -14,7 +14,7 @@ import process from "node:process";
 import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { parseRunnerArguments, selectTestShard } from "./run-tests.js";
-import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.js";
+import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.ts";
 
 test("test runner parses scheduling controls without passing them to Deno", () => {
     const parsed = parseRunnerArguments([

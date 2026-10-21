@@ -105,7 +105,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 11. [ ] **Needs Plan — Isolate malformed Work Records.** Listing, reading, search, backfill, and index rebuild must
         remain useful when an unrelated record is malformed. Report the affected record without treating it as approved
         guidance or discarding a usable index before replacement succeeds. Evidence:
-        [record store](src/shared/work-records/store.js), [index rebuild](src/shared/work-records/index-adapter.ts).
+        [record store](src/shared/work-records/store.ts), [index rebuild](src/shared/work-records/index-adapter.ts).
 
 12. [ ] **Needs Plan — Keep same-named Projects' knowledge separate.** Independent repositories named `app`, for
         example, must not share project memories or overwrite each other's Work Record index. Preserve access to

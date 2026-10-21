@@ -348,7 +348,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             return [];
         }
         return mascot.render(width, compact, {
-            agentName: snapshot?.activeAgentInfo?.agentName || snapshot?.activeAgent || "",
+            agentName: snapshot?.activeAgentInfo?.agentName || snapshot?.activeAgent || "router",
             parentAgentName: snapshot?.activeAgent || undefined,
             sessionId: options.getSessionId(),
             pose: mascotPose({ busy: runningTasksComponent.isBusy, answering: mascotAnswering }),

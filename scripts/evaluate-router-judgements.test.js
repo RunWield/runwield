@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { buildBaseline, checkThresholds, summarizeJudgements } from "./evaluate-router-judgements.js";
+import { buildBaseline, checkThresholds, summarizeJudgements } from "./evaluate-router-judgements.ts";
 
 test("summarizeJudgements compares router against human labels", () => {
     const summary = summarizeJudgements([
