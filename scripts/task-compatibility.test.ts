@@ -167,7 +167,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         ...new Set([
             ...cases.map((entry) => entry.last.path),
             "scripts/check-bun-runtime.ts",
-            "scripts/write-version.js",
+            "scripts/write-version.ts",
             "scripts/public-docs.ts",
         ]),
     ];

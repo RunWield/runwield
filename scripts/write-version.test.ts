@@ -6,9 +6,9 @@ import { test } from "node:test";
  */
 
 import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
-import { getExplicitBuildVersion, getGitHubTagName, resolveBuildVersion, writeVersionFile } from "./write-version.js";
+import { getExplicitBuildVersion, getGitHubTagName, resolveBuildVersion, writeVersionFile } from "./write-version.ts";
 
-import type { EnvReader, GitRunner } from "./write-version.js";
+import type { EnvReader, GitRunner } from "./write-version.ts";
 
 type AsyncAction = () => Promise<void>;
 
