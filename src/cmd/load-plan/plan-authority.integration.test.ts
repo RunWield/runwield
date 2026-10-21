@@ -92,12 +92,9 @@ for (const action of ["hold", "review", "validate"]) {
                 if (action !== "validate") {
                     assertEquals(
                         (await loadPlan(alternateRoot, "demo"))?.attrs.status,
-                        action === "hold" ? "on_hold" : "feedback",
+                        action === "hold" ? "on_hold" : "draft",
                     );
-                    assertEquals(
-                        (await findById(projectRoot, "authority-attempt"))?.status,
-                        "active",
-                    );
+                    assertEquals((await findById(projectRoot, "authority-attempt"))?.status, "active");
                 }
                 assertEquals(await fsReadFile(primaryPath, "utf8"), primaryBytes);
             } finally {

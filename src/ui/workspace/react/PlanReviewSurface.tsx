@@ -6,6 +6,7 @@ import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
 import { animateSidebarUpdate } from "../../design-system/components/react/sidebar-motion.ts";
+import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { RunWieldSegmentedControl } from "../../design-system/components/react/RunWieldSegmentedControl.tsx";
@@ -81,24 +82,39 @@ function SequenceReviewSurface({ payload, presentation }) {
     const [active, setActive] = useState(documents[0].planId);
     const controls = useRef(new Map());
     const [busy, setBusy] = useState(false);
+    const [, refreshQueue] = useState(0);
+    const refresh = useCallback(() => refreshQueue((value) => value + 1), []);
+    const [excluded, setExcluded] = useState([]);
     const group = {
+        excluded,
+        setExcluded,
+        refresh,
+        queue: () => [...controls.current.values()].flatMap((control) => control.queue()),
+        clear: (sent) => sent.forEach((document) => controls.current.get(document.planId)?.clear(document)),
+        hasReplyOnly: () => [...controls.current.values()].some((control) => control.hasReplyOnly()),
+        unansweredQuestions: () =>
+            [...controls.current.values()].reduce((count, control) => count + control.unansweredQuestions(), 0),
         controls,
         busy,
         setBusy,
         count: documents.length - 1,
         hasFeedback: documents.some((document) => Boolean(controls.current.get(document.planId)?.read().feedback)),
-        collect: () =>
+        collect: (options) =>
             documents.map((document) => {
                 const control = controls.current.get(document.planId);
                 if (!control) throw new Error("A Sequence tab is still loading. Try again.");
-                return { planId: document.planId, ...control.read() };
+                return { planId: document.planId, ...control.read(options) };
             }),
         complete: (outcome) => controls.current.forEach((control) => control.complete(outcome)),
         revise: (next, options) => {
+            const groupRevised = next.some((document) => {
+                const control = controls.current.get(document.planId);
+                return control?.hasOwnerRevision() || document.plan !== control?.basePlan();
+            });
             setDocuments(next);
             if (!next.some((doc) => doc.planId === active)) setActive(next[0].planId);
             for (const document of next) {
-                controls.current.get(document.planId)?.revise({ ...options, revisedPlan: document.plan });
+                controls.current.get(document.planId)?.revise({ ...options, groupRevised, revisedPlan: document.plan });
             }
         },
     };
@@ -177,13 +193,13 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }, []);
     const [questionAnswers, setQuestionAnswers] = useState([]);
     const questions = useMemo(() => parsePlanQuestions(plan), [plan]);
-    const [questionContextAttached, setQuestionContextAttached] = useState(true);
+    const [sentAnswers, setSentAnswers] = useState([]);
     useEffect(() => {
         const ids = new Set(questions.filter((block) => block.question && !block.error).map((block) => block.id));
         setQuestionAnswers((answers) => answers.filter((answer) => ids.has(answer.id)));
     }, [questions]);
     function answerQuestion(id, value) {
-        setQuestionContextAttached(true);
+        setSentAnswers((answers) => answers.filter((answer) => answer.id !== id));
         setQuestionAnswers((answers) => [
             ...answers.filter((answer) => answer.id !== id),
             ...(typeof value === "string" && !value.trim() ? [] : [{ id, value }]),
@@ -205,7 +221,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             reviewRef.current?.querySelector(`[aria-label="${triggerLabel}"]`)?.focus({ preventScroll: true });
         };
     }, [compactLayout, sidebarOpen, annotationsOpen]);
-    const [rightSidebarView, setRightSidebarView] = useState("annotations");
+    const [rightSidebarView, setRightSidebarView] = useState("planner");
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [exportOpen, setExportOpen] = useState(false);
     const [globalAttachments, setGlobalAttachments] = useState([]);
@@ -225,7 +241,20 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [reviewDraftStorageError, setReviewDraftStorageError] = useState("");
     const [conversationMessages, setConversationMessages] = useState([]);
     const [conversationComposer, setConversationComposer] = useState("");
-    const [conversationContextAttached, setConversationContextAttached] = useState(false);
+    const [localExcluded, setLocalExcluded] = useState([]);
+    const excluded = reviewGroup?.excluded ?? localExcluded;
+    const setExcluded = reviewGroup?.setExcluded ?? setLocalExcluded;
+    const [replyOnlySinceRevision, setReplyOnlySinceRevision] = useState(false);
+    const [pendingApproval, setPendingApproval] = useState(null);
+    const turnInFlight = useRef(false);
+    const sentDirectEditPlan = useRef(null);
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
     const [plannerWorking, setPlannerWorking] = useState(false);
     const [plannerError, setPlannerError] = useState("");
     const [plannerDiffBase, setPlannerDiffBase] = useState(null);
@@ -239,6 +268,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const gridEnabled = useConfigValue("gridEnabled");
     const editorDirty = draftPlan !== plan;
     const directlyEditedPlan = draftPlan === reviewBasePlan ? null : draftPlan;
+    const latestPlan = useRef({ reviewBasePlan, draftPlan });
+    latestPlan.current = { reviewBasePlan, draftPlan };
     const directEditPanel = useMemo(
         () => buildRunWieldDirectEditPanel(reviewBasePlan, directlyEditedPlan ?? reviewBasePlan),
         [directlyEditedPlan, reviewBasePlan],
@@ -382,24 +413,39 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             initialPayload.planDetailUrl &&
             initialPayload.interactionAnswerBaseUrl,
         );
-    const reviewContextCount =
-        annotations.length + codeAnnotations.length + globalAttachments.length + (directlyEditedPlan === null ? 0 : 1);
-    const attachedContextParts = [];
-    if (conversationContextAttached && (reviewContextCount > 0 || reviewGroup?.hasFeedback)) {
-        attachedContextParts.push(
-            reviewContextCount > 0
-                ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"}`
-                : "Sequence review notes",
-        );
+    const unsentAnswers = questionAnswers.filter(
+        (answer) => !sentAnswers.some((sent) => sent.id === answer.id && sent.value === answer.value),
+    );
+    function localQueue() {
+        return [
+            { type: "annotations", label: "annotations", count: annotations.length },
+            { type: "codeAnnotations", label: "file annotations", count: codeAnnotations.length },
+            { type: "globalAttachments", label: "images", count: globalAttachments.length },
+            { type: "directEdit", label: "direct edits", count: directlyEditedPlan === null ? 0 : 1 },
+            { type: "answers", label: "answers", count: unsentAnswers.length },
+        ];
     }
-    if (questionContextAttached && questionAnswers.length > 0) {
-        attachedContextParts.push(
-            `${questionAnswers.length} question ${questionAnswers.length === 1 ? "answer" : "answers"}`,
-        );
-    }
-    const attachedContextLabel = attachedContextParts.length
-        ? `${attachedContextParts.join(" and ")} attached`
-        : undefined;
+    const queueItems = localQueue().map((item) => ({
+        ...item,
+        count: reviewGroup
+            ? reviewGroup
+                  .queue()
+                  .filter((entry) => entry.type === item.type)
+                  .reduce((count, entry) => count + entry.count, 0)
+            : item.count,
+        included: !excluded.includes(item.type),
+    }));
+    useEffect(() => {
+        reviewGroup?.refresh();
+    }, [
+        annotations,
+        codeAnnotations,
+        globalAttachments,
+        directlyEditedPlan,
+        questionAnswers,
+        sentAnswers,
+        replyOnlySinceRevision,
+    ]);
 
     const persistReviewDraftLocally = useCallback(
         (reportError = true) => {
@@ -465,7 +511,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         } finally {
             setReviewDraftReady(true);
         }
-    }, [reviewDraftKey, submittedPlan]);
+    }, [reviewDraftKey]);
 
     useEffect(() => {
         if (!reviewDraftReady || pendingReviewDraft || submitted !== null) return;
@@ -484,14 +530,13 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         };
     }, [pendingReviewDraft, persistReviewDraftLocally, reviewDraftReady, submitted]);
 
-    async function submitApprove(approvalAction) {
-        if (submitting !== null) return;
-        const unanswered = reviewGroup
-            ? 0
-            : parsePlanQuestions(currentPlan()).filter(
-                  (block) =>
-                      block.question && !block.error && !questionAnswers.some((answer) => answer.id === block.id),
-              ).length;
+    async function submitApprove(approvalAction, confirmed = false) {
+        if (turnInFlight.current || submitting !== null || plannerWorking || reviewGroup?.busy) return;
+        if (!confirmed && (replyOnlySinceRevision || reviewGroup?.hasReplyOnly())) {
+            setPendingApproval(approvalAction);
+            return;
+        }
+        const unanswered = reviewGroup ? reviewGroup.unansweredQuestions() : unansweredQuestions();
         if (
             unanswered &&
             !globalThis.confirm(
@@ -522,7 +567,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         }
     }
 
-    async function submitFeedback() {
+    async function sendFallbackAnnotations() {
         setSubmitting("feedback");
         reviewGroup?.setBusy(true);
         try {
@@ -541,40 +586,36 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         }
     }
 
-    function attachReviewContextToConversation() {
-        if (!hasGroupFeedback) return;
-        setConversationContextAttached(true);
-        setRightSidebarView("planner");
-        setPlannerError("");
-    }
-
-    async function sendPlannerMessage() {
-        const message = conversationComposer.trim();
-        const attachedFeedback = attachedContextLabel
-            ? reviewGroup
-                ? reviewGroup
-                      .collect()
-                      .map((document) => document.feedback || "")
-                      .filter(Boolean)
-                      .join("\n\n")
-                : currentFeedback(currentPlan(), {
-                      includeNotes: conversationContextAttached,
-                      includeAnswers: questionContextAttached,
-                  })
-            : "";
-        if ((!message && !attachedFeedback) || plannerWorking) return;
-        const contextLabel = attachedFeedback ? attachedContextLabel : undefined;
+    async function sendPlannerMessage({ answerId, fixedMessage } = {}) {
+        if (turnInFlight.current || plannerWorking || reviewGroup?.busy || submitting !== null) return;
+        const message = answerId ? "" : (fixedMessage ?? conversationComposer.trim());
+        const selection = { queued: true, answerId, answerPlanId: initialPayload.planId };
+        const documents = reviewGroup ? reviewGroup.collect(selection) : null;
+        const sent = documents || [{ planId: initialPayload.planId, ...readReview(selection) }];
+        const attachedFeedback = sent
+            .map((document) => document.feedback || "")
+            .filter(Boolean)
+            .join("\n\n");
+        if (!message && !attachedFeedback) return;
+        const contextLabel = answerId
+            ? "1 answer"
+            : queueItems
+                  .filter((item) => item.included && item.count)
+                  .map((item) => `${item.count} ${item.label}`)
+                  .join(", ");
         const userMessageId = `user-${crypto.randomUUID()}`;
         const agentMessageId = `agent-${crypto.randomUUID()}`;
-        const priorPlan = currentPlan();
+        const priorPlan = reviewBasePlan;
         let eventStartIndex = 0;
         let conversationRevision = 0;
+        let accepted = false;
 
+        turnInFlight.current = true;
         setPlannerWorking(true);
         reviewGroup?.setBusy(true);
         setPlannerError("");
         setError("");
-        setConversationComposer("");
+
         setConversationMessages((items) => [
             ...items,
             {
@@ -597,12 +638,18 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             }
 
             const result = await submit("deny", {
-                ...buildReviewPayload(),
+                ...sent.find((document) => document.planId === initialPayload.planId),
+                ...(documents && { documents }),
                 feedback: buildArtifactConversationFeedback({ message, attachedFeedback, agentLabel }),
                 conversationTurn: true,
-                ...buildPlanSavePayload(),
             });
             if (result?.status === "recovery_required" || result?.result?.kind === "recovery_required") return;
+
+            accepted = true;
+            if (!answerId && fixedMessage === undefined) setConversationComposer("");
+            if (reviewGroup) reviewGroup.clear(sent);
+            else clearSent(sent[0]);
+            setExcluded([]);
 
             if (initialPayload.mode === "dev") {
                 await pause(700);
@@ -617,7 +664,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         initialPayload.plannerConversation?.reply ||
                         "I tightened the Plan and added a clearer verification step.",
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -628,7 +674,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     previousRevision: conversationRevision,
                     eventStartIndex,
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -638,19 +683,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 previousInteractionId: activeInteractionId,
                 eventStartIndex,
                 agentMessageId,
-                clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
             });
         } catch (caught) {
-            setPlannerError(caught instanceof Error ? caught.message : String(caught));
+            const message = caught instanceof Error ? caught.message : String(caught);
+            setPlannerError(message);
+            setError(message);
         } finally {
+            if (!accepted) setConversationMessages((items) => items.filter((item) => item.id !== userMessageId));
+            turnInFlight.current = false;
             setPlannerWorking(false);
             reviewGroup?.setBusy(false);
         }
     }
 
     async function waitForStandaloneReview(options) {
-        const deadline = Date.now() + 180_000;
-        while (Date.now() < deadline) {
+        while (mounted.current) {
             const response = await fetch(initialPayload.conversationStatusUrl);
             const conversation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(conversation.error || `${agentLabel} status is unavailable.`);
@@ -666,7 +713,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         ...options,
                         interactionId: `conversation-${conversation.revision}`,
                         reply: reply.text || "I updated the Sequence.",
-                        clearAttachedContext: true,
                     });
                     return;
                 }
@@ -680,18 +726,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                             ? `I reviewed that request and left the Plan unchanged.`
                             : `I updated the Plan. The changes are open in the diff.`),
                     agentMessageId: options.agentMessageId,
-                    clearAttachedContext: options.clearAttachedContext,
                 });
                 return;
             }
             await pause(750);
         }
-        throw new Error(`${agentLabel} is still working. Check the terminal Session for progress.`);
     }
 
     async function waitForPlannerReview(options) {
-        const deadline = Date.now() + 180_000;
-        while (Date.now() < deadline) {
+        while (mounted.current) {
             const response = await fetch(initialPayload.operationStatusUrl);
             const operation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(operation.error || `${agentLabel} status is unavailable.`);
@@ -713,7 +756,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         ...options,
                         interactionId: interaction.interactionId,
                         reply: reply.text || "I updated the Sequence.",
-                        clearAttachedContext: true,
                     });
                     return;
                 }
@@ -732,17 +774,12 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                             ? "I reviewed that request and left the Plan unchanged."
                             : "I updated the Plan. The changes are open in the diff."),
                     agentMessageId: options.agentMessageId,
-                    clearAttachedContext: options.clearAttachedContext,
                 });
                 return;
             }
 
-            if (["failed", "canceled", "completed"].includes(operation.status)) {
-                throw new Error(operation.error || `${agentLabel} ended without reopening Plan review.`);
-            }
             await pause(750);
         }
-        throw new Error(`${agentLabel} is still working. Return to the Session to check its progress.`);
     }
 
     function applyPlannerRevision(options) {
@@ -754,23 +791,23 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             );
             updateReviewInteractionUrl(options.interactionId);
         }
-        setQuestionContextAttached(true);
-        setPlannerDiffBase(options.priorPlan);
-        setPlannerDiffRevision((value) => value + 1);
-        setReviewBasePlan(options.revisedPlan);
-        setPlan(options.revisedPlan);
-        setDraftPlan(options.revisedPlan);
-        setEditorMode("view");
-        setIsPlanDiffActive(options.revisedPlan !== options.priorPlan);
-        if (options.clearAttachedContext) {
-            setAnnotations([]);
-            setCodeAnnotations([]);
-            setGlobalAttachments([]);
-            setSelectedAnnotationId(null);
-            setSelectedCodeAnnotationId(null);
-            setConversationContextAttached(false);
-            clearReviewDraft();
+        const basePlan = sentDirectEditPlan.current ?? latestPlan.current.reviewBasePlan;
+        const changed = options.revisedPlan !== basePlan;
+        const ownerRevised = sentDirectEditPlan.current !== null;
+        setReplyOnlySinceRevision(!(options.groupRevised ?? (ownerRevised || changed)));
+        if (changed) {
+            setPlannerDiffBase(basePlan);
+            setPlannerDiffRevision((value) => value + 1);
+            setReviewBasePlan(options.revisedPlan);
+            // Keep excluded edits and new drafts made while the Agent was working.
+            if (latestPlan.current.draftPlan === basePlan) {
+                setPlan(options.revisedPlan);
+                setDraftPlan(options.revisedPlan);
+            }
+            setEditorMode("view");
+            setIsPlanDiffActive(true);
         }
+        sentDirectEditPlan.current = null;
     }
 
     function upsertPlannerReply(messageId, body) {
@@ -897,6 +934,12 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         return editorMode === "edit" ? (editorHandleRef.current?.getMarkdown?.() ?? draftPlan) : plan;
     }
 
+    function unansweredQuestions() {
+        return parsePlanQuestions(currentPlan()).filter(
+            (block) => block.question && !block.error && !questionAnswers.some((answer) => answer.id === block.id),
+        ).length;
+    }
+
     function buildReviewPayload() {
         const reviewedPlan = currentPlan();
         const feedback = currentFeedback(reviewedPlan);
@@ -908,16 +951,68 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         };
     }
 
-    function currentFeedback(reviewedPlan = currentPlan(), { includeNotes = true, includeAnswers = true } = {}) {
+    function currentFeedback(reviewedPlan = currentPlan()) {
         return buildPlanReviewFeedback({
             blocks: parsed.blocks,
-            annotations: includeNotes ? annotations : [],
-            codeAnnotations: includeNotes ? codeAnnotations : [],
-            globalAttachments: includeNotes ? globalAttachments : [],
-            basePlan: includeNotes ? reviewBasePlan : reviewedPlan,
+            annotations,
+            codeAnnotations,
+            globalAttachments,
+            basePlan: reviewBasePlan,
             reviewedPlan,
-            questionAnswers: includeAnswers ? questionAnswers : [],
+            questionAnswers: unsentAnswers,
         });
+    }
+
+    function readReview({ queued = false, answerId, answerPlanId } = {}) {
+        const onlyAnswer = Boolean(answerId);
+        const includes = (type) => !onlyAnswer && (!queued || !excluded.includes(type));
+        const answers = onlyAnswer
+            ? answerPlanId === initialPayload.planId
+                ? unsentAnswers.filter((answer) => answer.id === answerId)
+                : []
+            : !queued || !excluded.includes("answers")
+              ? unsentAnswers
+              : [];
+        const reviewedPlan = includes("directEdit") ? currentPlan() : reviewBasePlan;
+        const notes = {
+            annotations: includes("annotations") ? annotations : [],
+            codeAnnotations: includes("codeAnnotations") ? codeAnnotations : [],
+            globalAttachments: includes("globalAttachments") ? globalAttachments : [],
+        };
+        const feedback = buildPlanReviewFeedback({
+            blocks: parsed.blocks,
+            ...notes,
+            basePlan: reviewBasePlan,
+            reviewedPlan,
+            questionAnswers: answers,
+        });
+        return {
+            ...notes,
+            questionAnswers: queued ? answers : questionAnswers,
+            feedback: feedback === "No changes detected." ? "" : feedback,
+            ...buildPlanSavePayload(reviewedPlan),
+            ...(!queued && buildApprovalPolicyPayload()),
+        };
+    }
+
+    function clearSent(sent) {
+        setAnnotations((items) => items.filter((item) => !sent.annotations.some((note) => note.id === item.id)));
+        setCodeAnnotations((items) =>
+            items.filter((item) => !sent.codeAnnotations.some((note) => note.id === item.id)),
+        );
+        setGlobalAttachments((items) =>
+            items.filter((item) => !sent.globalAttachments.some((image) => image.path === item.path)),
+        );
+        setSentAnswers((answers) => [
+            ...answers.filter((answer) => !sent.questionAnswers.some((item) => item.id === answer.id)),
+            ...sent.questionAnswers,
+        ]);
+        if (sent.plan !== reviewBasePlan) {
+            sentDirectEditPlan.current = sent.plan;
+            setReviewBasePlan(sent.plan);
+            setPlan(sent.plan);
+            setDraftPlan(sent.plan);
+        }
     }
 
     function restoreReviewDraft() {
@@ -963,10 +1058,10 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         return buildPlanReviewExecutionPolicyPayload(executionPolicy);
     }
 
-    function buildPlanSavePayload() {
+    function buildPlanSavePayload(reviewedPlan = currentPlan()) {
         const planSaveSettings = getPlanSaveSettings();
         return {
-            plan: currentPlan(),
+            plan: reviewedPlan,
             planSave: {
                 enabled: planSaveSettings.enabled,
                 path: initialPayload.planPath,
@@ -1007,7 +1102,13 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
     if (reviewGroup) {
         reviewGroup.controls.current.set(initialPayload.planId, {
-            read: () => ({ ...buildReviewPayload(), ...buildPlanSavePayload(), ...buildApprovalPolicyPayload() }),
+            read: readReview,
+            basePlan: () => reviewBasePlan,
+            hasOwnerRevision: () => sentDirectEditPlan.current !== null,
+            unansweredQuestions,
+            queue: localQueue,
+            clear: clearSent,
+            hasReplyOnly: () => replyOnlySinceRevision,
             complete: setSubmitted,
             revise: (options) => applyPlannerRevision({ ...options, priorPlan: currentPlan() }),
         });
@@ -1454,16 +1555,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     onOpenLinkedDoc={codeFilePopout.open}
                                                     onToggleCheckbox={toggleCheckbox}
                                                 />
-                                                {!reviewGroup && (
-                                                    <PlanQuestionBlocks
-                                                        containerRef={reviewRef}
-                                                        markdown={plan}
-                                                        blocks={parsed.blocks}
-                                                        questions={questions}
-                                                        answers={questionAnswers}
-                                                        onAnswer={answerQuestion}
-                                                    />
-                                                )}
+                                                <PlanQuestionBlocks
+                                                    containerRef={reviewRef}
+                                                    markdown={plan}
+                                                    blocks={parsed.blocks}
+                                                    questions={questions}
+                                                    answers={questionAnswers}
+                                                    onAnswer={answerQuestion}
+                                                    sentAnswers={sentAnswers}
+                                                    busy={plannerWorking || submitting !== null || reviewGroup?.busy}
+                                                    onSubmitAnswer={
+                                                        conversationEnabled
+                                                            ? (answerId) => sendPlannerMessage({ answerId })
+                                                            : undefined
+                                                    }
+                                                />
                                             </div>
                                         </OverlayScrollArea>
                                     ) : (
@@ -1543,35 +1649,28 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             <PanelCollapseIcon side="right" />
                                         </RunWieldIconButton>
                                     </div>
-                                    {rightSidebarView === "annotations" ? (
+                                    {!conversationEnabled || rightSidebarView === "annotations" ? (
                                         <>
-                                            <div className="rw-review-feedback-action rw-review-action p-2">
-                                                <FeedbackButton
-                                                    onClick={submitFeedback}
-                                                    disabled={
-                                                        !hasGroupFeedback || submitting !== null || plannerWorking
-                                                    }
-                                                    isLoading={submitting === "feedback"}
-                                                    label="Send Annotations"
-                                                    loadingLabel={<RunWieldThinkingDots label="Sending Annotations" />}
-                                                    title={
-                                                        !hasReviewFeedback
-                                                            ? "Add a Plan or file annotation, attachment, or direct Plan edit before sending annotations"
-                                                            : "Send annotations"
-                                                    }
-                                                />
-                                                {conversationEnabled && (
-                                                    <button
-                                                        className="rw-review-context-to-chat"
-                                                        type="button"
-                                                        disabled={!hasGroupFeedback || plannerWorking}
-                                                        onClick={attachReviewContextToConversation}
-                                                    >
-                                                        <PlannerChatIcon />
-                                                        Add to {agentLabel} chat
-                                                    </button>
-                                                )}
-                                            </div>
+                                            {!conversationEnabled && (
+                                                <div className="rw-review-feedback-action rw-review-action p-2">
+                                                    <FeedbackButton
+                                                        onClick={sendFallbackAnnotations}
+                                                        disabled={
+                                                            !hasGroupFeedback || submitting !== null || plannerWorking
+                                                        }
+                                                        isLoading={submitting === "feedback"}
+                                                        label="Send Annotations"
+                                                        loadingLabel={
+                                                            <RunWieldThinkingDots label="Sending Annotations" />
+                                                        }
+                                                        title={
+                                                            !hasReviewFeedback
+                                                                ? "Add a Plan or file annotation, attachment, or direct Plan edit before sending annotations"
+                                                                : "Send annotations"
+                                                        }
+                                                    />
+                                                </div>
+                                            )}
                                             <AnnotationPanel
                                                 isOpen
                                                 presentation="embedded"
@@ -1616,22 +1715,44 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             agentLabel={agentLabel}
                                             messages={conversationMessages}
                                             composer={conversationComposer}
-                                            attachedContextLabel={attachedContextLabel}
-                                            working={plannerWorking}
+                                            queue={{
+                                                items: queueItems,
+                                                onToggle: (type) =>
+                                                    setExcluded((items) =>
+                                                        items.includes(type)
+                                                            ? items.filter((item) => item !== type)
+                                                            : [...items, type],
+                                                    ),
+                                            }}
+                                            working={plannerWorking || reviewGroup?.busy}
                                             disabled={submitting !== null}
                                             error={plannerError}
                                             onComposerChange={setConversationComposer}
-                                            onSend={sendPlannerMessage}
-                                            onDetachContext={() => {
-                                                setConversationContextAttached(false);
-                                                setQuestionContextAttached(false);
-                                            }}
+                                            onSend={() => sendPlannerMessage()}
                                         />
                                     )}
                                 </aside>
                             )}
                         </div>
                     </ScrollViewportContext.Provider>
+                    {pendingApproval !== null && (
+                        <PlanApprovalWarning
+                            agentLabel={agentLabel}
+                            onCancel={() => setPendingApproval(null)}
+                            onAsk={() => {
+                                setPendingApproval(null);
+                                sendPlannerMessage({
+                                    fixedMessage:
+                                        "Please update the Plan to reflect our review conversation. Revise the Plan and call plan_written.",
+                                });
+                            }}
+                            onApprove={() => {
+                                const action = pendingApproval;
+                                setPendingApproval(null);
+                                submitApprove(action, true);
+                            }}
+                        />
+                    )}
                     <PlanReviewSettings
                         open={settingsOpen}
                         onClose={() => setSettingsOpen(false)}
@@ -1686,7 +1807,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             body = {
                 ...body,
                 feedback: body.conversationTurn ? body.feedback : "",
-                documents: reviewGroup.collect(),
+                documents: body.documents || reviewGroup.collect(),
                 planSave: { enabled: false },
             };
         }
@@ -1743,6 +1864,59 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         }
         return payload || { status: "accepted" };
     }
+}
+
+function PlanApprovalWarning({ agentLabel, onCancel, onAsk, onApprove }) {
+    const dialog = useRef(null);
+    const cancel = useRef(null);
+    useEffect(() => {
+        const previous = document.activeElement;
+        dialog.current?.showModal();
+        cancel.current?.focus();
+        return () => {
+            dialog.current?.close();
+            previous?.focus();
+        };
+    }, []);
+    return (
+        <dialog
+            ref={dialog}
+            className="rw-confirmation-dialog"
+            aria-labelledby="plan-approval-warning-title"
+            onCancel={(event) => {
+                event.preventDefault();
+                onCancel();
+            }}
+            onKeyDown={(event) => {
+                if (event.key !== "Tab") return;
+                const buttons = dialog.current.querySelectorAll("button");
+                const first = buttons[0];
+                const last = buttons[buttons.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            }}
+        >
+            <h2 id="plan-approval-warning-title">Approve without a Plan update?</h2>
+            <p className="rw-confirmation-detail">
+                You have discussed the Plan since its latest revision. Ask {agentLabel} to update it, or approve the
+                current Plan as is.
+            </p>
+            <div className="rw-confirmation-actions">
+                <RunWieldButton variant="primary" onClick={onAsk}>
+                    Ask {agentLabel} to update the Plan
+                </RunWieldButton>
+                <RunWieldButton onClick={onApprove}>Approve as is</RunWieldButton>
+                <button ref={cancel} type="button" className="secondary-action" onClick={onCancel}>
+                    Cancel
+                </button>
+            </div>
+        </dialog>
+    );
 }
 
 function PlanReviewHeaderActions({

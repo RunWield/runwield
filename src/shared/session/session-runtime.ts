@@ -25,7 +25,28 @@ import { RuntimeTurns } from "./runtime/turns.ts";
 
 import type { CreateSessionRuntimeOptions, SessionRuntimeComposition } from "./runtime/types.ts";
 export { SessionTurnInProgressError } from "./runtime/support.ts";
+
+// Runtime ownership is not a test capability. It routes a settled root turn
+// back to the Session that owns its managed writer and interaction adapter.
+const planReviewRuntimeOwners = new WeakMap<import("./hosted-session.js").HostedSession, SessionRuntime>();
+
+export async function rearmPlanReviewConversation(
+    session: import("./hosted-session.js").HostedSession,
+    planName: string,
+    planningAgentName: string,
+): Promise<import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
+    const runtime = planReviewRuntimeOwners.get(session);
+    if (!runtime) throw new Error("The Plan review has no owning Session runtime.");
+    return await runtime.continuePlanReviewConversation(session.id, planName, planningAgentName);
+}
+
 export class SessionRuntime {
+    readonly #host: SessionHost;
+
+    private ownPlanReviewRuntime(sessionId: string): void {
+        const session = this.#host.getSession(sessionId);
+        if (session) planReviewRuntimeOwners.set(session, this);
+    }
     readonly #events: RuntimeEvents;
     readonly #queues: RuntimeQueues;
     readonly #reads: RuntimeReads;
@@ -40,6 +61,7 @@ export class SessionRuntime {
     readonly #turns: RuntimeTurns;
 
     constructor(composition: SessionRuntimeComposition) {
+        this.#host = composition.sessionHost;
         const services = new RuntimeServices(composition);
         this.#events = new RuntimeEvents(services);
         this.#queues = new RuntimeQueues(services);
@@ -187,21 +209,29 @@ export class SessionRuntime {
         return this.#settings.clearActiveExecutionWorkflow(...args);
     }
     reopenPlanReview(sessionId: string) {
+        this.ownPlanReviewRuntime(sessionId);
         return this.#workflows.reopenPlanReview(sessionId, this);
+    }
+    continuePlanReviewConversation(sessionId: string, planName: string, planningAgentName: string) {
+        return this.#workflows.continuePlanReviewConversation(sessionId, this, planName, planningAgentName);
     }
     runPlanAction(...args: Parameters<RuntimeWorkflows["runPlanAction"]>) {
         return this.#workflows.runPlanAction(...args);
     }
     reviewSavedPlan(...args: Parameters<RuntimeWorkflows["reviewSavedPlan"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#workflows.reviewSavedPlan(...args);
     }
     executePlan(...args: Parameters<RuntimeWorkflows["executePlan"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#workflows.executePlan(...args);
     }
     runPlanningAgent(...args: Parameters<RuntimeWorkflows["runPlanningAgent"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#workflows.runPlanningAgent(...args);
     }
     runSlicerAgent(...args: Parameters<RuntimeWorkflows["runSlicerAgent"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#workflows.runSlicerAgent(...args);
     }
     runEpicIntegrationGate(...args: Parameters<RuntimeWorkflows["runEpicIntegrationGate"]>) {
@@ -313,9 +343,11 @@ export class SessionRuntime {
         return this.#lifecycle.adoptManagedSession(...args);
     }
     promptUserTurn(...args: Parameters<RuntimeTurns["promptUserTurn"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#turns.promptUserTurn(...args);
     }
     promptManagedSession(...args: Parameters<RuntimeTurns["promptManagedSession"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#turns.promptManagedSession(...args);
     }
     rollManagedSessionSegment(...args: Parameters<RuntimeTurns["rollManagedSessionSegment"]>) {
@@ -352,6 +384,7 @@ export class SessionRuntime {
         return this.#turns.cancelSession(...args);
     }
     promptSession(...args: Parameters<RuntimeTurns["promptSession"]>) {
+        this.ownPlanReviewRuntime(args[0]);
         return this.#turns.promptSession(...args);
     }
     replaceSessionForExecutionFollowUp(

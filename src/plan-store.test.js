@@ -23,6 +23,7 @@ import { readControllerRecord } from "./shared/workflow/controller-registry.ts";
 import {
     archivePlan,
     archivePlansByStatus,
+    canonicalPlanStatus,
     clearPlanCollaborationMetadata,
     countChildPlanProgress,
     createPulledCollaborationPlan,
@@ -233,7 +234,7 @@ test("injectFrontMatter escapes YAML double-quoted values", () => {
 
 test("injectFrontMatter keeps markdown formatted after front matter updates", () => {
     const firstWrite = injectFrontMatter("# Plan\n\nBody", { status: "draft" });
-    const secondWrite = injectFrontMatter(firstWrite, { status: "feedback" });
+    const secondWrite = injectFrontMatter(firstWrite, { status: "approved" });
     const emptyWrite = injectFrontMatter("", { status: "draft" });
 
     assertStringIncludes(firstWrite, "---\n\n# Plan");
@@ -1022,7 +1023,7 @@ testWithFs("listPlans sorts by status, classification, then name", async () => {
             ["ready-project", "PROJECT", "ready_for_work"],
             ["decompose-project", "PROJECT", "ready_for_decomposition"],
             ["draft-feature", "FEATURE", "draft"],
-            ["feedback-feature", "FEATURE", "feedback"],
+            ["feedback-feature", "FEATURE", "draft"],
             ["approved-feature", "FEATURE", "approved"],
             ["in-progress-feature", "FEATURE", "in_progress"],
             ["verified-feature", "FEATURE", "verified"],
@@ -2073,7 +2074,7 @@ testWithFs("updatePlanFrontMatter fails closed on malformed front matter", async
                 updatePlanFrontMatter(
                     cwd,
                     "healed",
-                    { status: "feedback" },
+                    { status: "approved" },
                     {
                         classification: "QUICK_FIX",
                         complexity: "LOW",
@@ -2101,7 +2102,7 @@ test("parsePlanFrontMatter normalizes legacy and invalid statuses", () => {
     assertEquals(completed.attrs.status, "verified");
 
     const inReview = parsePlanFrontMatter(["---", 'status: "in_review"', "---", "body"].join("\n"));
-    assertEquals(inReview.attrs.status, "feedback");
+    assertEquals(inReview.attrs.status, "draft");
 
     const readyForReview = parsePlanFrontMatter(["---", 'status: "ready_for_review"', "---", "body"].join("\n"));
     assertEquals(readyForReview.attrs.status, "implemented");
@@ -2109,6 +2110,52 @@ test("parsePlanFrontMatter normalizes legacy and invalid statuses", () => {
     const invalid = parsePlanFrontMatter(["---", 'status: "whatever"', "---", "body"].join("\n"));
     assertEquals(invalid.attrs.status, "draft");
 });
+
+for (const legacyStatus of ["feedback", "in_review"]) {
+    test(`legacy ${legacyStatus} hold and archive statuses normalize to draft`, () => {
+        const parsed = parsePlanFrontMatter(
+            [
+                "---",
+                "status: on_hold",
+                `heldFromStatus: ${legacyStatus}`,
+                `archivedFromStatus: ${legacyStatus}`,
+                "---",
+                "# Legacy review",
+            ].join("\n"),
+        );
+        assertEquals(parsed.attrs.heldFromStatus, "draft");
+        assertEquals(parsed.attrs.archivedFromStatus, "draft");
+    });
+
+    testWithFs(`legacy ${legacyStatus} Plans read as draft and save the normalized status`, async () => {
+        const cwd = await makeTempDirectory({ prefix: "legacy-review-status-" });
+        try {
+            await savePlan(cwd, "legacy", "# Legacy review\n", { status: "approved" });
+            const path = join(getPlansDir(cwd), "legacy.md");
+            const legacyMarkdown = (await fsReadFile(path, "utf8")).replace(
+                'status: "approved"',
+                `status: "${legacyStatus}"`,
+            );
+            await fsWriteFile(path, legacyMarkdown);
+
+            assertEquals(canonicalPlanStatus(legacyStatus), "draft");
+            assertEquals(parsePlanFrontMatter(legacyMarkdown).attrs.status, "draft");
+            const loaded = await loadPlan(cwd, "legacy");
+            assertEquals(loaded?.attrs.status, "draft");
+            assertEquals((await listPlans(cwd))[0].attrs.status, "draft");
+            const inspected = await inspectPlanFileStrict(path);
+            assert(inspected.kind === "loaded");
+            assertEquals(inspected.attrs.status, "draft");
+            assertEquals(await fsReadFile(path, "utf8"), legacyMarkdown);
+
+            await updatePlanFrontMatterForTest(cwd, "legacy", { status: loaded?.attrs.status });
+            assertStringIncludes(await fsReadFile(path, "utf8"), 'status: "draft"');
+            assertEquals((await loadPlan(cwd, "legacy"))?.body, loaded?.body);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
+}
 
 test("planId front matter round-trips and blank values normalize away", () => {
     const markdown = injectFrontMatter("## Body", { planId: "plan-123" });
@@ -3278,13 +3325,13 @@ test("Plan replacement preserves open readers and publishes the complete new Pla
             await updatePlanFrontMatter(
                 root,
                 "open-reader",
-                { status: "feedback" },
+                { status: "approved" },
                 {},
                 { expectedRevision: initial.revision },
             );
             assertEquals(await reader.readFile("utf8"), initial.markdown);
             const replaced = await loadPlan(root, "open-reader");
-            assertEquals(replaced?.attrs.status, "feedback");
+            assertEquals(replaced?.attrs.status, "approved");
             assertEquals(replaced?.body, initial.body);
         } finally {
             await reader.close();

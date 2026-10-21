@@ -1,3 +1,4 @@
+import type { PlanFrontMatter } from "../../plan-store.js";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import type { HostedRuntimeEventObservation } from "./hosted-session.js";
 
@@ -15,25 +16,66 @@ export interface PlanReviewConversation {
     events: PlanReviewConversationEvent[];
 }
 
+interface PlanReviewBase {
+    attrs: PlanFrontMatter;
+    body: string;
+}
+
 function planningAgentLabel(agentName: string): string {
-    return agentName.trim().split(/[-_\s]+/).filter(Boolean)
-        .map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase())
-        .join(" ") || "Planner";
+    return (
+        agentName
+            .trim()
+            .split(/[-_\s]+/)
+            .filter(Boolean)
+            .map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase())
+            .join(" ") || "Planner"
+    );
 }
 
 /** One session-owned conversation per container Plan identity, across review rounds. */
 export class PlanReviewConversationOwner {
     private readonly conversations = new Map<string, PlanReviewConversation>();
+    private readonly reviewBases = new Map<string, PlanReviewBase>();
+
+    getReviewBase(planId: string) {
+        return this.reviewBases.get(planId);
+    }
+
+    rememberReviewBase(planId: string, base: PlanReviewBase): void {
+        this.reviewBases.set(planId, base);
+    }
+
     private activePlanId: string | null = null;
     private activeAgentName: string | null = null;
     private disposed = false;
 
     capture(event: HostedRuntimeEventObservation): void {
         if (
-            this.disposed || !this.activePlanId || event.type !== RuntimeEventTypes.ASSISTANT_TEXT_DELTA ||
-            typeof event.delta !== "string" || typeof event.messageId !== "string" ||
+            !this.disposed &&
+            this.activePlanId &&
+            (event.type === RuntimeEventTypes.TERMINAL_ERROR ||
+                (event.type === RuntimeEventTypes.SYSTEM_STATUS && "level" in event && event.level === "error")) &&
+            (!event.agentName || event.agentName.toLowerCase() === this.activeAgentName) &&
+            "message" in event &&
+            typeof event.message === "string"
+        ) {
+            this.conversations.get(this.activePlanId)?.events.push({
+                type: "assistant_text_delta",
+                delta: `Agent error: ${event.message}`,
+                messageId: event.messageId || crypto.randomUUID(),
+                agentName: this.activeAgentName || event.agentName || "planner",
+            });
+            return;
+        }
+        if (
+            this.disposed ||
+            !this.activePlanId ||
+            event.type !== RuntimeEventTypes.ASSISTANT_TEXT_DELTA ||
+            typeof event.delta !== "string" ||
+            typeof event.messageId !== "string" ||
             event.agentName?.toLowerCase() !== this.activeAgentName
-        ) return;
+        )
+            return;
         const conversation = this.conversations.get(this.activePlanId);
         if (!conversation) return;
         conversation.events.push({
@@ -76,6 +118,7 @@ export class PlanReviewConversationOwner {
         this.activeAgentName = null;
         const ids = [...this.conversations.values()].map((conversation) => conversation.id);
         this.conversations.clear();
+        this.reviewBases.clear();
         if (ids.length) {
             try {
                 const { stopPlanReviewConversationSurface } = await import("../../ui/review/review-launcher.ts");

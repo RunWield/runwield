@@ -37,8 +37,8 @@ parentPlan: "conversational-review"
 order: 1
 dependencies: []
 userVerifiedAt: null
-status: "in_progress"
 targetBranch: "main"
+status: "implemented"
 ---
 
 # Plan Review Conversation

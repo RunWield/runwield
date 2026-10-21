@@ -74,14 +74,12 @@ async function addActiveWorktree(dir: string): Promise<string> {
     return path;
 }
 
-for (
-    const { status, reopenFirst } of [
-        { status: "implemented", reopenFirst: false },
-        { status: "implemented", reopenFirst: true },
-        { status: "in_progress", reopenFirst: false },
-        { status: "in_progress", reopenFirst: true },
-    ] as const
-) {
+for (const { status, reopenFirst } of [
+    { status: "implemented", reopenFirst: false },
+    { status: "implemented", reopenFirst: true },
+    { status: "in_progress", reopenFirst: false },
+    { status: "in_progress", reopenFirst: true },
+] as const) {
     test(`reapproval reuses ${status} commits and dirty files (reopen first: ${reopenFirst})`, async () => {
         const fixture = await makePlanFile({
             status,
@@ -189,7 +187,7 @@ test("shared Plan review rejects stale revision status and worktree before mutat
     const executionDir = await addActiveWorktree(fixture.dir);
     const executionPlanPath = getStoredPlanPath(executionDir, "plan");
     try {
-        const currentPlan = injectFrontMatter(fixture.markdown, { status: "feedback", worktreeId: "other" });
+        const currentPlan = injectFrontMatter(fixture.markdown, { status: "draft", worktreeId: "other" });
         await fsWriteFile(executionPlanPath, currentPlan);
 
         const result = await applySharedPlanReviewDecision({
@@ -210,7 +208,7 @@ test("shared Plan review rejects stale revision status and worktree before mutat
         });
 
         assertEquals(result.cancellationReason, "stale_plan_review");
-        assertEquals((await loadPlan(executionDir, "plan"))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(executionDir, "plan"))?.attrs.status, "draft");
         assertEquals((await loadPlan(executionDir, "plan"))?.attrs.worktreeId, "wt-prior");
         assertEquals(await fsReadFile(executionPlanPath, "utf8"), currentPlan);
         assertEquals(await fsReadFile(fixture.planPath, "utf8"), fixture.markdown);
@@ -347,8 +345,7 @@ test("shared Plan review commits edited Feedback and approval notes with classif
             decision: {
                 approved: false,
                 feedback: "Keep the note.",
-                plan:
-                    `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Edited Feedback\n`,
+                plan: `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Edited Feedback\n`,
             },
         });
         const feedbackMarkdown = await fsReadFile(feedbackFixture.planPath, "utf8");
@@ -356,7 +353,7 @@ test("shared Plan review commits edited Feedback and approval notes with classif
 
         assertEquals(feedback.approved, false);
         assertStringIncludes(feedbackMarkdown, "# Edited Feedback");
-        assertEquals(feedbackAttrs.status, "feedback");
+        assertEquals(feedbackAttrs.status, "draft");
         assertEquals(feedbackAttrs.classification, "PLANNED_CHANGE");
         assertEquals(feedbackAttrs.executionAgent, "frontend-engineer");
 
@@ -372,8 +369,7 @@ test("shared Plan review commits edited Feedback and approval notes with classif
                 approved: true,
                 feedback: "Approved.",
                 approvalAction: "decompose",
-                plan:
-                    `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Approved Project\n`,
+                plan: `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Approved Project\n`,
             },
         });
         const approvalAttrs = (await loadPlan(approvalFixture.dir, "plan"))?.attrs;
@@ -390,46 +386,109 @@ test("shared Plan review commits edited Feedback and approval notes with classif
     }
 });
 
-for (
-    const { name, original, current, matches } of [
-        {
-            name: "prose wrapping",
-            original: "Review the saved Plan.\n",
-            current: "Review the\nsaved Plan.\n",
-            matches: true,
-        },
-        {
-            name: "list wrapping",
-            original: "- Review the saved Plan.\n",
-            current: "- Review the\n  saved Plan.\n",
-            matches: true,
-        },
-        {
-            name: "table padding",
-            original: "| A | B |\n| - | - |\n| x | y |\n",
-            current: "| A   | B   |\n| --- | --- |\n| x   | y   |\n",
-            matches: true,
-        },
-        { name: "changed prose", original: "Keep the data.\n", current: "Delete the data.\n", matches: false },
-        { name: "hard breaks", original: "First  \nSecond\n", current: "First Second\n", matches: false },
-        { name: "paragraph boundaries", original: "First\n\nSecond\n", current: "First Second\n", matches: false },
-        { name: "code whitespace", original: "```text\na  b\n```\n", current: "```text\na b\n```\n", matches: false },
-        { name: "code newlines", original: "```text\na\nb\n```\n", current: "```text\na b\n```\n", matches: false },
-        { name: "inline code", original: "Run `a  b`.\n", current: "Run `a b`.\n", matches: false },
-        {
-            name: "raw HTML whitespace",
-            original: "Before <pre>a\nb</pre> after.\n",
-            current: "Before <pre>a b</pre> after.\n",
-            matches: false,
-        },
-        { name: "link destinations", original: "[Plan](one.md)\n", current: "[Plan](two.md)\n", matches: false },
-        { name: "list nesting", original: "- One\n  - Two\n", current: "- One\n- Two\n", matches: false },
-        { name: "checkbox state", original: "- [ ] Pending\n", current: "- [x] Pending\n", matches: false },
-        { name: "table content", original: "| A |\n| - |\n| x |\n", current: "| A |\n| - |\n| y |\n", matches: false },
-    ]
-) {
+for (const { name, original, current, matches } of [
+    {
+        name: "prose wrapping",
+        original: "Review the saved Plan.\n",
+        current: "Review the\nsaved Plan.\n",
+        matches: true,
+    },
+    {
+        name: "list wrapping",
+        original: "- Review the saved Plan.\n",
+        current: "- Review the\n  saved Plan.\n",
+        matches: true,
+    },
+    {
+        name: "table padding",
+        original: "| A | B |\n| - | - |\n| x | y |\n",
+        current: "| A   | B   |\n| --- | --- |\n| x   | y   |\n",
+        matches: true,
+    },
+    { name: "changed prose", original: "Keep the data.\n", current: "Delete the data.\n", matches: false },
+    { name: "hard breaks", original: "First  \nSecond\n", current: "First Second\n", matches: false },
+    { name: "paragraph boundaries", original: "First\n\nSecond\n", current: "First Second\n", matches: false },
+    { name: "code whitespace", original: "```text\na  b\n```\n", current: "```text\na b\n```\n", matches: false },
+    { name: "code newlines", original: "```text\na\nb\n```\n", current: "```text\na b\n```\n", matches: false },
+    { name: "inline code", original: "Run `a  b`.\n", current: "Run `a b`.\n", matches: false },
+    {
+        name: "raw HTML whitespace",
+        original: "Before <pre>a\nb</pre> after.\n",
+        current: "Before <pre>a b</pre> after.\n",
+        matches: false,
+    },
+    { name: "link destinations", original: "[Plan](one.md)\n", current: "[Plan](two.md)\n", matches: false },
+    { name: "list nesting", original: "- One\n  - Two\n", current: "- One\n- Two\n", matches: false },
+    { name: "checkbox state", original: "- [ ] Pending\n", current: "- [x] Pending\n", matches: false },
+    { name: "table content", original: "| A |\n| - |\n| x |\n", current: "| A |\n| - |\n| y |\n", matches: false },
+]) {
     test(`Plan review source comparison preserves ${name}`, () => {
         const attrs = parsePlanFrontMatter("# Plan\n").attrs;
         assertEquals(reviewSourceStillMatches({ attrs, body: current }, attrs, original), matches);
     });
+}
+
+for (const status of ["draft", "approved", "ready_for_work", "ready_for_decomposition"] as const) {
+    test(`conversation preserves ${status} bytes, revision, and lifecycle evidence`, async () => {
+        const fixture = await makePlanFile({ status });
+        try {
+            const before = await loadPlan(fixture.dir, "plan");
+            assert(before);
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: before.path,
+                planWithFrontMatter: before.markdown,
+                planRevision: before.revision,
+                originalAttrs: before.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: {
+                    approved: false,
+                    conversationTurn: true,
+                    feedback: "Why this scope?",
+                    plan: before.markdown,
+                },
+            });
+            assertEquals(result.conversationTurn, true);
+            const after = await loadPlan(fixture.dir, "plan");
+            assertEquals(await fsReadFile(before.path, "utf8"), before.markdown);
+            assertEquals(after?.revision, before.revision);
+            assertEquals(after?.attrs, before.attrs);
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
+    });
+}
+
+for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] as const) {
+    for (const meaningful of [true, false]) {
+        test(`conversation direct edit ${meaningful ? "invalidates" : "preserves"} ${status}`, async () => {
+            const fixture = await makePlanFile({ status });
+            try {
+                const before = await loadPlan(fixture.dir, "plan");
+                assert(before);
+                const edit = before.markdown.replace(
+                    "Do the thing.",
+                    meaningful ? "Change the scope." : "Do the\nthing.",
+                );
+                const result = await applySharedPlanReviewDecision({
+                    cwd: fixture.dir,
+                    planName: "plan",
+                    planPath: before.path,
+                    planWithFrontMatter: before.markdown,
+                    planRevision: before.revision,
+                    originalAttrs: before.attrs,
+                    trustedClassification: "PLANNED_CHANGE",
+                    decision: { approved: false, conversationTurn: true, feedback: "An owner edit.", plan: edit },
+                });
+                assertEquals(result.cancellationReason, undefined);
+                const after = await loadPlan(fixture.dir, "plan");
+                assertEquals(after?.attrs.status, meaningful ? "draft" : status);
+                assertEquals(after?.attrs.failureReason, before.attrs.failureReason);
+                assertStringIncludes(after?.body || "", meaningful ? "Change the scope." : "Do the\nthing.");
+            } finally {
+                await fsRm(fixture.dir, { recursive: true });
+            }
+        });
+    }
 }

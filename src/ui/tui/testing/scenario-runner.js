@@ -95,7 +95,7 @@ function createGoldenReviewBrowser(
     onDecision,
     onHumanReviewDecision,
 ) {
-    return {
+    const browser = {
         /** @param {string} url */
         async open(url) {
             if (url.includes("/review/code")) {
@@ -135,6 +135,7 @@ function createGoldenReviewBrowser(
                 response.collaborationRecommendation || (includeExecutionPolicy ? "autonomous" : undefined);
             const body = {
                 approved: response.approved,
+                conversationTurn: response.conversationTurn,
                 feedback: response.feedback,
                 approvalAction,
                 ...(executionAgent ? { executionAgent } : {}),
@@ -146,9 +147,31 @@ function createGoldenReviewBrowser(
                 body,
             ).browser.open(url);
             onDecision?.(response);
+            if (response.conversationTurn) {
+                // A chat round reuses its page: there is no second browser.open.
+                // Drive the next human answer only after RunWield exposes a new round.
+                const page = new URL(url);
+                const token = page.searchParams.get("token");
+                void (async () => {
+                    for (let attempt = 0; attempt < 1000; attempt++) {
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                        const status = await fetch(new URL(`/api/review/conversation?token=${token}`, page.origin), {
+                            headers: { "x-runwield-review-token": token || "" },
+                        })
+                            .then((result) => result.json())
+                            .catch(() => null);
+                        if (status?.revision >= reviewSurface.consumed.length) {
+                            await browser.open(url);
+                            return;
+                        }
+                    }
+                    throw new Error("The conversation never exposed a new live review round.");
+                })();
+            }
             return opened;
         },
     };
+    return browser;
 }
 
 /**
@@ -952,6 +975,10 @@ async function runComposedTuiScenario(scenario, options) {
         const pendingReviewLifecycleObservations = [];
         /** @param {ReturnType<ScriptedReviewSurface['submit']>} response */
         const observeReviewDecision = (response) => {
+            if (response.conversationTurn) {
+                events.push("interaction:PLAN_REVIEW:conversation");
+                return;
+            }
             const event = response.approved ? "review_approved" : "review_feedback";
             events.push(`interaction:PLAN_REVIEW:${response.approved ? "approved" : "feedback"}`);
             events.push(event);
@@ -1344,7 +1371,7 @@ async function runComposedTuiScenario(scenario, options) {
                         const response = pendingReviewLifecycleObservations.shift();
                         if (response) {
                             const eventName = response.approved ? "review_approved" : "review_feedback";
-                            const expectedStatus = response.approved ? "approved" : "feedback";
+                            const expectedStatus = response.approved ? "approved" : "draft";
                             const lifecycle = findFixturePlanLifecycle(join(getCwd(), "docs", "plans"), expectedStatus);
                             persistedLifecycleEvents.push({
                                 event: eventName,

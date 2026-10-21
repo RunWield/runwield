@@ -1,3 +1,4 @@
+import { buildPlanConversationRequest } from "../../shared/workflow/plan-review-conversation.ts";
 import { isSequencePlan } from "../../shared/project-plan.ts";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared/workflow/sequence-review.ts";
 /**
@@ -72,7 +73,7 @@ export interface DirectPlanReviewResult {
     };
 }
 
-const DIRECT_REVIEW_STATUSES = new Set(["draft", "feedback", "approved", "ready_for_work"]);
+const DIRECT_REVIEW_STATUSES = new Set(["draft", "approved", "ready_for_work", "ready_for_decomposition"]);
 
 export function getDirectPlanReviewEligibility(plan: { attrs: PlanFrontMatter }): DirectPlanReviewEligibility {
     if (!DIRECT_REVIEW_STATUSES.has(plan.attrs.status || "")) {
@@ -102,6 +103,56 @@ export async function reviewLoadedPlanDirectly({
     session,
 }: DirectReviewOptions): Promise<DirectPlanReviewResult> {
     assertRecoveryWorktreeIsManaged(plan.planName, await resolveRecoveryWorktree(projectRoot, plan));
+
+    const rearm = async (): Promise<DirectPlanReviewResult> => {
+        const { plan: saved } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true });
+        if (!saved) throw new Error(`Plan ${plan.planName} is unavailable for review.`);
+        return await reviewLoadedPlanDirectly({
+            projectRoot,
+            plan: { ...saved, planName: plan.planName },
+            agentName,
+            activatePlanningAgent: false,
+            deferExecution,
+            uiAPI,
+            executePlan,
+            continueWorkflowValidation,
+            runPlanningAgent,
+            runSlicerAgent,
+            session,
+        });
+    };
+    const deferredPlanningExecution = async (
+        decision: ReturnType<typeof decidePostPlanning>,
+    ): Promise<DirectPlanReviewResult | null> => {
+        if (!deferExecution || decision.kind !== "execute_plan" || !decision.payload.planName) return null;
+        const planName = decision.payload.planName;
+        const location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+        if (!location.plan) throw new Error(`Plan ${planName} is unavailable for execution.`);
+        const confirmed = await confirmAffectedPathChangesBeforeExecution({
+            projectRoot,
+            planName,
+            triageMeta: location.plan.attrs,
+            uiAPI,
+        });
+        if (!confirmed) return { keepPlanAgentActive: true };
+        const evidence = await loadPlanActionEvidence(projectRoot, location.plan.attrs.planId || "");
+        if (evidence.kind !== "success") throw new Error(evidence.message);
+        return {
+            keepPlanAgentActive: false,
+            executionToStart: {
+                options: {
+                    planName,
+                    triageMeta: location.plan.attrs,
+                    approvalEvidence: evidence.evidence,
+                    reviewFeedback: decision.payload.reviewFeedback,
+                    reviewImages: decision.payload.reviewImages,
+                },
+                fallbackPlanContent: location.plan.markdown || location.plan.body || "",
+            },
+        };
+    };
+    const conversationError = (error: Error) =>
+        uiAPI.appendSystemMessage(error.message || "The Agent turn failed.", true, "RunWield");
 
     if (isSequencePlan(plan.attrs)) {
         // Freeze the complete saved set before presentation. No Planner turn is needed to open it.
@@ -156,16 +207,25 @@ export async function reviewLoadedPlanDirectly({
         if (!applied.approved) {
             const planningResult = await runPlanningAgent({
                 agentName,
-                initialRequest: buildReReviewRevisionRequest(plan.planName, applied.feedback),
+                initialRequest: applied.conversationTurn
+                    ? buildPlanConversationRequest({ planName: plan.planName, feedback: applied.feedback })
+                    : buildReReviewRevisionRequest(plan.planName, applied.feedback),
                 triageMeta: applied.planAttrs || plan.attrs,
                 images: outcome.images,
                 planName: plan.planName,
                 associationPurpose: "review",
+            }).catch((error: Error) => {
+                if (!applied.conversationTurn) throw error;
+                conversationError(error);
+                return { outcome: "no_call" };
             });
+            if (applied.conversationTurn && planningResult?.outcome === "no_call") return await rearm();
             const decision = decidePostPlanning(planningResult, {
                 planningAgentName: agentName,
                 fallbackTriageMeta: applied.planAttrs || plan.attrs,
             });
+            const deferred = await deferredPlanningExecution(decision);
+            if (deferred) return deferred;
             await executePostPlanningDecision({
                 decision,
                 fallbackPlanContent: plan.markdown || plan.body || "",
@@ -411,17 +471,26 @@ export async function reviewLoadedPlanDirectly({
 
     const outcome = await runPlanningAgent({
         agentName,
-        initialRequest: buildReReviewRevisionRequest(plan.planName, reviewResult.feedback),
+        initialRequest: reviewResult.conversationTurn
+            ? buildPlanConversationRequest({ planName: plan.planName, feedback: reviewResult.feedback })
+            : buildReReviewRevisionRequest(plan.planName, reviewResult.feedback),
         triageMeta: plan.attrs,
         images: reviewResult.images,
         planName: plan.planName,
         associationPurpose: "review",
+    }).catch((error: Error) => {
+        if (!reviewResult.conversationTurn) throw error;
+        conversationError(error);
+        return { outcome: "no_call" };
     });
+    if (reviewResult.conversationTurn && outcome?.outcome === "no_call") return await rearm();
 
     const planningDecision = decidePostPlanning(outcome, {
         planningAgentName: agentName,
         fallbackTriageMeta: plan.attrs,
     });
+    const deferred = await deferredPlanningExecution(planningDecision);
+    if (deferred) return deferred;
     const postPlanningResult = await executePostPlanningDecision({
         decision: planningDecision,
         fallbackPlanContent: plan.markdown || plan.body || "",

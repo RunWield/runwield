@@ -85,7 +85,7 @@ work.
 - Review `FEATURE` plans before execution.
 - Save approved plans for later execution.
 - Load a plan by name or path with `wld load-plan <name-or-path>`.
-- Continue draft or feedback plans.
+- Continue draft Plans. Legacy feedback Plans read as draft.
 - Re-open approved, implemented, or verified plans for review.
 - Execute ready standalone `FEATURE` plans.
 - Execute ready child `FEATURE` plans from an Epic.

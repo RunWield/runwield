@@ -880,8 +880,7 @@ svg.animate-spin > * {
     white-space: nowrap;
 }
 
-.status-draft,
-.status-feedback {
+.status-draft {
     background: var(--rw-surface-muted);
     border-color: var(--rw-border-strong);
     color: var(--rw-text);
@@ -2456,4 +2455,38 @@ button.danger-action:disabled {
     display: flex;
     gap: 0.5rem;
     justify-content: flex-end;
+}
+
+/* Review Queue: per-type inclusion for the next artifact conversation turn. */
+.rw-review-queue {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rw-space-control-y);
+    margin-bottom: var(--rw-space-control-x);
+}
+.rw-review-queue-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rw-space-control-y);
+    min-width: 0;
+    max-width: 100%;
+    padding-left: var(--rw-space-control-x);
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+    background: var(--rw-surface-muted);
+    color: var(--rw-text);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+.rw-review-queue-item[data-included="false"] {
+    background: var(--rw-surface);
+    color: var(--rw-text-muted);
+    border-style: dashed;
+}
+@media (max-width: 980px) {
+    .rw-review-queue-item .rw-icon-button {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }

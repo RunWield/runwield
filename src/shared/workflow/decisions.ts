@@ -8,14 +8,9 @@ import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { PlanExecutionResult, PlanOutcomeResult } from "./workflow.js";
 
 export type WorkflowDecisionKind =
-    | "execute_plan"
-    | "start_slicer"
-    | "save_plan"
-    | "run_validation"
-    | "complete_session"
-    | "stay_with_agent"
-    | "halt";
+    "execute_plan" | "start_slicer" | "save_plan" | "run_validation" | "complete_session" | "stay_with_agent" | "halt";
 export type WorkflowDecisionReason =
+    | "plan_conversation"
     | "plan_feedback"
     | "plan_review_canceled"
     | "missing_plan_declaration"
@@ -113,6 +108,14 @@ export function decidePostPlanning(
 
     if (outcome === "saved") {
         return decision("save_plan", { planName: planOutcome?.planName });
+    }
+
+    if (outcome === "conversation") {
+        return decision("stay_with_agent", {
+            agentName: planningAgentName,
+            planName: planOutcome?.planName,
+            reason: "plan_conversation",
+        });
     }
 
     if (outcome === "feedback") {

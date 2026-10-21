@@ -304,8 +304,9 @@ file-level code evidence when constructed from existing code. _Avoid_: Line refe
 **Plan Classification**: The Plan front matter workflow shape, limited to `PLANNED_CHANGE` and `PROJECT`; legacy
 `FEATURE` means `PLANNED_CHANGE`. _Avoid_: Routing intent, request type, work kind
 
-**Plan Status**: The lifecycle state of a Plan: `draft`, `feedback`, `approved`, `ready_for_decomposition`,
-`ready_for_work`, `in_progress`, `failed`, `implemented`, `verified`, `closed_without_verification`, or `on_hold`.
+**Plan Status**: The lifecycle state of a Plan: `draft`, `approved`, `ready_for_decomposition`,
+`ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified`, `user_verified`,
+`closed_without_verification`, or `on_hold`.
 _Avoid_: Phase, stage
 
 **Plan Lifecycle**: The state machine that decides how Plan Events change Plan Status and recovery metadata; see
@@ -376,8 +377,8 @@ done plan
 **Closed Without Verification Plan**: A terminal Plan accepted without successful RunWield Workflow Validation. _Avoid_:
 Verified plan, archived plan, on-hold plan
 
-**Review Loop**: The cycle where a planning agent writes or revises a Plan and the user approves or returns it through
-Plannotator. _Avoid_: Feedback loop, approval cycle
+**Review Loop**: The conversation where the owner and a planning Agent discuss a Plan until the owner approves it.
+Revisions happen only when the Plan must change. _Avoid_: Feedback loop, approval cycle
 
 **Semantic Review**: The internal state-machine term for the automated Reviewer check during Workflow Validation. It
 compares the approved Plan with the full proposed branch patch from the recorded target/execution common ancestor to the
@@ -464,10 +465,14 @@ by structured Plan Lifecycle actions. _Avoid_: Raw Plan file editor, front matte
 **Plan UI Server**: The local server that backs Plan Board access to Plan files in the current checkout. _Avoid_: Hosted
 collaboration service, daemon
 
-**Feedback**: Structured user annotations returned when a Plan is denied or re-opened in Plannotator. _Avoid_: Comments,
-notes
+**Feedback**: Review context the owner sends to a planning or engineering Agent in a review conversation turn:
+annotations, attachments, direct edits, and question answers, with or without a message. Feedback is not a decision and
+does not by itself change Plan Status. Code Review still uses its existing repair decision. _Avoid_: Denial, rejection
 
-**Revision**: A single planning pass that updates a Plan in response to Feedback.
+**Review Queue**: The review context waiting in a review chat for the next send. Items enter it by default; the owner
+can exclude them from one send without deleting them. Currently used in Plan review. _Avoid_: Attachments, context chip
+
+**Revision**: A planning pass that changes the Plan during review. A reply without a Plan change is not a Revision.
 
 **Origin**: A Plan front matter value of `internal` for RunWield-created plans or `external` for imported markdown.
 _Avoid_: Source, provenance
@@ -904,7 +909,8 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   unchanged target context, or resolved by a confirmed Plan Deviation.
 - A **Review Advisory** does not block approval.
 - A proposed **Review Override** applies to one delivery only and does not change Plan authority.
-- Denied Plan review produces **Feedback**, and each response to Feedback produces one **Revision**.
+- A Plan review conversation turn can carry **Feedback**. It produces a **Revision** only when the Plan changes.
+  A meaningful Revision returns an approved or ready Plan to `draft`; formatting-only changes preserve its status.
 - A **PRD** may inform multiple Plans without participating in Plan Lifecycle.
 - A **Workspace** contains zero or more registered **Projects** and may host live Sessions across them.
 - A **Project** is the parent boundary for its Sessions, Plans, PRDs, ADRs, Work Records, and code access.

@@ -1,4 +1,5 @@
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
+import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "./review-feedback-images.ts";
 /** A Sequence review is one decision over an ordinary PROJECT and its complete child set. */
 import { join, relative } from "node:path";
@@ -50,11 +51,13 @@ export interface SequenceDocumentDecision extends ReviewImageDecision {
     planId: string;
     plan: string;
     feedback?: string;
+    questionAnswers?: PlanQuestionAnswer[];
     executionAgent?: "engineer" | "frontend-engineer";
     collaborationRecommendation?: "autonomous" | "pair";
 }
 
 export interface SequenceReviewDecision {
+    conversationTurn?: boolean;
     approved?: boolean;
     approvalAction?: PlanApprovalAction;
     feedback?: string;
@@ -62,6 +65,7 @@ export interface SequenceReviewDecision {
 }
 
 export interface SequenceReviewResult {
+    conversationTurn?: boolean;
     approved: boolean;
     feedback?: string;
     revision?: string;
@@ -73,7 +77,7 @@ export interface SequenceReviewResult {
 }
 
 type StoredPlan = NonNullable<Awaited<ReturnType<typeof loadPlan>>> & { name: string };
-const UNSTARTED = new Set(["draft", "feedback", "approved", "ready_for_work", "ready_for_decomposition"]);
+const UNSTARTED = new Set(["draft", "approved", "ready_for_work", "ready_for_decomposition"]);
 
 async function requirePlan(cwd: string, name: string): Promise<StoredPlan> {
     const plan = await loadPlan(cwd, name);
@@ -187,9 +191,9 @@ export async function snapshotSequenceReview(cwd: string, planName: string): Pro
                 frontmatter: member.attrs,
                 ...(policy.ok
                     ? {
-                        executionAgent: policy.policy.executionAgent,
-                        collaborationRecommendation: policy.policy.collaborationRecommendation,
-                    }
+                          executionAgent: policy.policy.executionAgent,
+                          collaborationRecommendation: policy.policy.collaborationRecommendation,
+                      }
                     : {}),
             });
         }
@@ -211,7 +215,8 @@ export async function validateSequenceReviewDecision(
         throw new Error("Choose Approve & Execute or Approve for Later for this Sequence.");
     }
     if (
-        !decision.documents || decision.documents.length !== documents.length ||
+        !decision.documents ||
+        decision.documents.length !== documents.length ||
         new Set(decision.documents.map((edit) => edit.planId)).size !== documents.length
     ) {
         throw new Error("The review must include the Sequence and every child tab.");
@@ -231,17 +236,15 @@ export async function validateSequenceReviewDecision(
         if (!edit || typeof edit.plan !== "string") throw new Error(`Missing decision for ${doc.planName}.`);
         if (/^---\r?\n/.test(edit.plan)) {
             const edited = parsePlanFrontMatter(edit.plan).attrs;
-            for (
-                const key of [
-                    "planId",
-                    "classification",
-                    "type",
-                    "parentPlan",
-                    "order",
-                    "dependencies",
-                    "status",
-                ] as const
-            ) {
+            for (const key of [
+                "planId",
+                "classification",
+                "type",
+                "parentPlan",
+                "order",
+                "dependencies",
+                "status",
+            ] as const) {
                 if (JSON.stringify(edited[key]) !== JSON.stringify(original.frontmatter[key])) {
                     throw new Error(
                         `The review cannot change ${key} in ${doc.planName}. Update the saved Plans and resubmit the Sequence.`,
@@ -269,9 +272,14 @@ interface ApplySequenceReviewOptions {
 }
 
 /** Commit the complete human decision. Tool callers publish a workflow event; direct review continues it inline. */
-export async function applySequenceReviewDecision(
-    { cwd, documents, decision, hostedSession, toolCallId }: ApplySequenceReviewOptions,
-): Promise<SequenceReviewResult> {
+export async function applySequenceReviewDecision({
+    cwd,
+    documents,
+    decision,
+    hostedSession,
+    toolCallId,
+}: ApplySequenceReviewOptions): Promise<SequenceReviewResult> {
+    if (decision.conversationTurn && decision.approved) decision = { ...decision, approved: false };
     const parent = documents[0];
     if (!parent || !isSequencePlan(parent.frontmatter)) throw new Error("Sequence review has no canonical container.");
     if (decision.approved && decision.approvalAction !== "run" && decision.approvalAction !== "later") {
@@ -283,7 +291,8 @@ export async function applySequenceReviewDecision(
     }
     const edits = decision.documents;
     if (
-        !edits || edits.length !== documents.length ||
+        !edits ||
+        edits.length !== documents.length ||
         new Set(edits.map((edit) => edit.planId)).size !== documents.length ||
         edits.some((edit) => !documents.some((doc) => doc.planId === edit.planId) || typeof edit.plan !== "string")
     ) {
@@ -309,72 +318,99 @@ export async function applySequenceReviewDecision(
             ) {
                 throw new Error("Sequence membership or order changed. Review the complete current Sequence again.");
             }
-            const writes = await Promise.all(current.map(async (doc, index) => {
-                const original = documents[index];
-                const currentBody = parsePlanFrontMatter(doc.plan).body;
-                if (
-                    !reviewSourceStillMatches(
-                        { attrs: doc.frontmatter, body: currentBody },
-                        original.frontmatter,
-                        parsePlanFrontMatter(original.plan).body,
-                    )
-                ) {
-                    throw new Error(`Plan ${doc.planName} changed while review was open. Refresh the Sequence review.`);
-                }
-                const edit = edits.find((item) => item.planId === doc.planId)!;
-                const edited = parsePlanFrontMatter(edit.plan);
-                // Only document content and explicit execution-policy controls are editable here.
-                // Membership, type, lifecycle and identity always come from canonical storage.
-                let attrs = {
-                    ...doc.frontmatter,
-                    ...(/^---\r?\n/.test(edit.plan) ? stripRuntimeFields(edited.attrs) : {}),
-                };
-                if (index > 0) {
-                    const policy = resolvePlanExecutionPolicy({
-                        ...attrs,
-                        executionAgent: edit.executionAgent ?? doc.executionAgent,
-                        collaborationRecommendation: edit.collaborationRecommendation ??
-                            doc.collaborationRecommendation,
-                    });
-                    if (!policy.ok) throw new Error(`Invalid execution policy for ${doc.planName}: ${policy.error}`);
-                    attrs = {
-                        ...attrs,
-                        executionAgent: policy.policy.executionAgent,
-                        collaborationRecommendation: policy.policy.collaborationRecommendation,
+            const writes = await Promise.all(
+                current.map(async (doc, index) => {
+                    const original = documents[index];
+                    const currentBody = parsePlanFrontMatter(doc.plan).body;
+                    if (
+                        !reviewSourceStillMatches(
+                            { attrs: doc.frontmatter, body: currentBody },
+                            original.frontmatter,
+                            parsePlanFrontMatter(original.plan).body,
+                        )
+                    ) {
+                        throw new Error(
+                            `Plan ${doc.planName} changed while review was open. Refresh the Sequence review.`,
+                        );
+                    }
+                    const edit = edits.find((item) => item.planId === doc.planId)!;
+                    const edited = parsePlanFrontMatter(
+                        decision.approved ? resolvePlanQuestions(edit.plan, edit.questionAnswers) : edit.plan,
+                    );
+                    // Only document content and explicit execution-policy controls are editable here.
+                    // Membership, type, lifecycle and identity always come from canonical storage.
+                    let attrs = {
+                        ...doc.frontmatter,
+                        ...(/^---\r?\n/.test(edit.plan) ? stripRuntimeFields(edited.attrs) : {}),
                     };
-                }
-                if (attrs.status === "ready_for_work" || attrs.status === "ready_for_decomposition") {
-                    attrs = {
-                        ...attrs,
-                        ...buildPlanEventUpdates("review_reopened", attrs.status, { triageMeta: attrs }),
-                    };
-                }
-                attrs = {
-                    ...attrs,
-                    ...buildPlanEventUpdates(decision.approved ? "review_approved" : "review_feedback", attrs.status, {
-                        triageMeta: attrs,
-                    }),
-                };
-                if (decision.approved) {
-                    if (index === 0) {
+                    if (index > 0) {
+                        const policy = resolvePlanExecutionPolicy({
+                            ...attrs,
+                            executionAgent: edit.executionAgent ?? doc.executionAgent,
+                            collaborationRecommendation:
+                                edit.collaborationRecommendation ?? doc.collaborationRecommendation,
+                        });
+                        if (!policy.ok)
+                            throw new Error(`Invalid execution policy for ${doc.planName}: ${policy.error}`);
                         attrs = {
                             ...attrs,
-                            ...buildPlanEventUpdates("epic_readiness_passed", attrs.status, { triageMeta: attrs }),
-                        };
-                        attrs = {
-                            ...attrs,
-                            ...buildPlanEventUpdates("decomposition_finalized", attrs.status, { triageMeta: attrs }),
-                        };
-                    } else {
-                        attrs = {
-                            ...attrs,
-                            ...buildPlanEventUpdates("readiness_passed", attrs.status, { triageMeta: attrs }),
+                            executionAgent: policy.policy.executionAgent,
+                            collaborationRecommendation: policy.policy.collaborationRecommendation,
                         };
                     }
-                }
-                const markdown = planDocumentMarkdown(injectFrontMatter(edited.body, attrs));
-                return { doc, markdown, attrs, revision: await getPlanRevisionForText(markdown) };
-            }));
+                    const meaningChanged = !reviewSourceStillMatches(
+                        { attrs, body: edited.body },
+                        doc.frontmatter,
+                        currentBody,
+                    );
+                    if (
+                        (!decision.conversationTurn &&
+                            (attrs.status === "ready_for_work" || attrs.status === "ready_for_decomposition")) ||
+                        (meaningChanged &&
+                            ["approved", "ready_for_work", "ready_for_decomposition"].includes(attrs.status))
+                    ) {
+                        attrs = {
+                            ...attrs,
+                            ...buildPlanEventUpdates("review_reopened", attrs.status, { triageMeta: attrs }),
+                        };
+                    }
+                    if (!decision.conversationTurn)
+                        attrs = {
+                            ...attrs,
+                            ...buildPlanEventUpdates(
+                                decision.approved ? "review_approved" : "review_feedback",
+                                attrs.status,
+                                {
+                                    triageMeta: attrs,
+                                },
+                            ),
+                        };
+                    if (decision.approved) {
+                        if (index === 0) {
+                            attrs = {
+                                ...attrs,
+                                ...buildPlanEventUpdates("epic_readiness_passed", attrs.status, { triageMeta: attrs }),
+                            };
+                            attrs = {
+                                ...attrs,
+                                ...buildPlanEventUpdates("decomposition_finalized", attrs.status, {
+                                    triageMeta: attrs,
+                                }),
+                            };
+                        } else {
+                            attrs = {
+                                ...attrs,
+                                ...buildPlanEventUpdates("readiness_passed", attrs.status, { triageMeta: attrs }),
+                            };
+                        }
+                    }
+                    const markdown =
+                        decision.conversationTurn && edit.plan === doc.plan
+                            ? doc.plan
+                            : planDocumentMarkdown(injectFrontMatter(edited.body, attrs));
+                    return { doc, markdown, attrs, revision: await getPlanRevisionForText(markdown) };
+                }),
+            );
             // The complete before/after set is durable BEFORE the first member write.
             await markEffect("sequence_review_prepared", {
                 plans: writes.map(({ doc, markdown, revision }) => ({
@@ -386,6 +422,7 @@ export async function applySequenceReviewDecision(
                 })),
             });
             for (const write of writes) {
+                if (decision.conversationTurn && write.markdown === write.doc.plan) continue;
                 registerRollback(`Restore ${write.doc.planName}`, async () => {
                     const now = await loadPlan(cwd, write.doc.planName);
                     if (now?.revision === write.doc.revision) return;
@@ -398,19 +435,33 @@ export async function applySequenceReviewDecision(
             }
             const feedback = [
                 decision.feedback,
-                ...edits.filter((edit) => edit.feedback).map((edit) => {
-                    const doc = documents.find((item) => item.planId === edit.planId)!;
-                    return `## ${doc.planName} (${doc.planId})\n${edit.feedback}`;
-                }),
-            ].filter(Boolean).join("\n\n");
-            const images = (await Promise.all(edits.map(async (edit) => {
-                const attachments = await loadReviewFeedbackImages(edit, cwd);
-                return attachments;
-            }))).flat();
+                ...edits
+                    .filter((edit) => edit.feedback)
+                    .map((edit) => {
+                        const doc = documents.find((item) => item.planId === edit.planId)!;
+                        return `## ${doc.planName} (${doc.planId})\n${edit.feedback}`;
+                    }),
+            ]
+                .filter(Boolean)
+                .join("\n\n");
+            const images = (
+                await Promise.all(
+                    edits.map(async (edit) => {
+                        const attachments = await loadReviewFeedbackImages(edit, cwd);
+                        return attachments;
+                    }),
+                )
+            ).flat();
             const first = writes[1];
             const execute = decision.approved && decision.approvalAction === "run";
             outcome = {
-                outcome: execute ? "approved_execute" : decision.approved ? "saved" : "feedback",
+                outcome: execute
+                    ? "approved_execute"
+                    : decision.approved
+                      ? "saved"
+                      : decision.conversationTurn
+                        ? "conversation"
+                        : "feedback",
                 planName: execute ? first.doc.planName : parent.planName,
                 triageMeta: execute ? first.attrs : writes[0].attrs,
                 feedback,
@@ -419,6 +470,7 @@ export async function applySequenceReviewDecision(
             await markEffect("sequence_review_accepted", { planIds: documents.map((doc) => doc.planId), toolCallId });
             result = {
                 approved: decision.approved === true,
+                ...(decision.conversationTurn && { conversationTurn: true }),
                 feedback,
                 approvalAction: decision.approvalAction,
                 revision: writes[0].revision,
@@ -452,10 +504,9 @@ export async function applySequenceReviewDecision(
         return {
             ...result,
             cancellationReason: "sequence_handoff_failed",
-            feedback:
-                `The Sequence decision was saved, but its workflow handoff could not be published. Reopen the saved Sequence to retry. ${
-                    error instanceof Error ? error.message : String(error)
-                }`,
+            feedback: `The Sequence decision was saved, but its workflow handoff could not be published. Reopen the saved Sequence to retry. ${
+                error instanceof Error ? error.message : String(error)
+            }`,
         };
     }
     return result;

@@ -97,15 +97,16 @@ function assertReviewApprovedEvent(result) {
 /** @param {GoldenScenarioResult} result */
 function assertPlanReviewLifecyclePersisted(result) {
     const planReview =
-        /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }>, attrs?: Record<string, unknown>, consumed?: unknown[] } | undefined} */ (result
-            .state.planReview);
+        /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }>, attrs?: Record<string, unknown>, consumed?: unknown[] } | undefined} */ (
+            result.state.planReview
+        );
     assert(planReview, "Expected planReview state from production submitPlanForReview transaction.");
     assert(
         planReview.lifecycleEvents?.map((event) => `${event.event}:${event.status}`).join(",") ===
-            "review_feedback:feedback,review_approved:approved",
-        `Expected persisted feedback then approval lifecycle statuses; got ${
-            JSON.stringify(planReview.lifecycleEvents)
-        }`,
+            "review_feedback:draft,review_approved:approved",
+        `Expected persisted feedback then approval lifecycle statuses; got ${JSON.stringify(
+            planReview.lifecycleEvents,
+        )}`,
     );
     assert(planReview.consumed?.length === 2, "Expected scripted review surface to be consumed twice.");
     assert(
@@ -125,15 +126,17 @@ export const routerToGuideInquiryScenario = {
             phase: "triage",
             requiredTools: ["triage_report"],
             thinking: "Classify this as an inquiry and hand it to Guide.",
-            toolCalls: [{
-                name: "triage_report",
-                arguments: {
-                    routingIntent: "INQUIRY",
-                    complexity: "LOW",
-                    summary: "User asks how RunWield routing works.",
-                    sessionName: "routing guide",
+            toolCalls: [
+                {
+                    name: "triage_report",
+                    arguments: {
+                        routingIntent: "INQUIRY",
+                        complexity: "LOW",
+                        summary: "User asks how RunWield routing works.",
+                        sessionName: "routing guide",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "guide-read-fixture",
@@ -150,8 +153,7 @@ export const routerToGuideInquiryScenario = {
             phase: "inquiry",
             ordinal: 2,
             thinking: "Summarize the answer from the read-only context.",
-            text:
-                "Guide answer: Router classifies the request, then RunWield hands the turn to Guide for read-only help.",
+            text: "Guide answer: Router classifies the request, then RunWield hands the turn to Guide for read-only help.",
         },
     ],
     actions: [
@@ -177,8 +179,7 @@ export const escapeCancellationScenario = {
             phase: "inquiry",
             ordinal: 1,
             thinking: "Start a long answer so Escape can interrupt active work.",
-            text:
-                "This answer is intentionally long enough for the Golden harness to press Escape while Runtime work is active. It should be canceled before it completes all rendering.",
+            text: "This answer is intentionally long enough for the Golden harness to press Escape while Runtime work is active. It should be canceled before it completes all rendering.",
         },
         {
             id: "guide-after-cancel",
@@ -208,11 +209,7 @@ export const helpSlashCommandScenario = {
     name: "help-slash-command",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/help" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/help" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [assertHelpSlashVisible, assertKeyboardHelpVisible],
 };
 
@@ -225,9 +222,7 @@ export const startupNoProvidersOpensLoginScenario = {
     // fed in flight once the prompt is on screen. Cancelling follows the real
     // /quit path, which exits the child with code 0 — the child protocol treats
     // that clean exit as this scenario's terminal success signal.
-    startupInput: [
-        { marker: "Welcome to RunWield", keys: "\x1b" },
-    ],
+    startupInput: [{ marker: "Welcome to RunWield", keys: "\x1b" }],
     expectedCleanExit: true,
     actions: [],
     assertions: [assertStartupLoginPromptOpened],
@@ -242,9 +237,7 @@ export const startupProviderWithoutModelsOpensModelScenario = {
     // The model selector blocks composition startup; Esc cancels it so the
     // scenario can resolve and assert the real screen it observed. CI can need a
     // few extra seconds before the selector paints while other golden children run.
-    startupInput: [
-        { marker: "Only showing models from configured providers", keys: "\x1b" },
-    ],
+    startupInput: [{ marker: "Only showing models from configured providers", keys: "\x1b" }],
     actions: [],
     assertions: [assertStartupModelSelectorOpened],
     timeoutMs: 15000,
@@ -268,10 +261,12 @@ export const planReviewTransactionContractScenario = {
             ordinal: 1,
             requiredTools: ["plan_written"],
             thinking: "Submit the Plan for browser review through Runtime interaction.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: { planName: "plan" },
-            }],
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: { planName: "plan" },
+                },
+            ],
         },
         {
             id: "planner-submit-approval-round",
@@ -280,10 +275,12 @@ export const planReviewTransactionContractScenario = {
             ordinal: 2,
             requiredTools: ["plan_written"],
             thinking: "Resubmit the reviewed Plan for approval through the same interaction seam.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: { planName: "plan" },
-            }],
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: { planName: "plan" },
+                },
+            ],
         },
     ],
     actions: [
@@ -299,6 +296,67 @@ export const planReviewTransactionContractScenario = {
     assertions: [assertReviewFeedbackEvent, assertReviewApprovedEvent, assertPlanReviewLifecyclePersisted],
 };
 
+/** @param {GoldenScenarioResult} result */
+function assertReplyOnlyReviewApproval(result) {
+    assertEventIncludes(result, "interaction:PLAN_REVIEW:conversation");
+    assertEventIncludes(result, "interaction:PLAN_REVIEW:approved");
+    assertEventIncludes(result, "runtime:assistant:text");
+    assert(
+        result.events.filter((event) => event === "runtime:tool:start:plan_written").length === 1,
+        "The reply-only turn must not call plan_written again.",
+    );
+    const review =
+        /** @type {{ attrs: { status: string }, lifecycleEvents: Array<{ event: string }>, consumed: Array<{ decision: { approved: boolean } }>, plan: string }} */ (
+            result.state.planReview
+        );
+    assert(review.attrs.status === "ready_for_work", "Approval through the re-armed review must pass readiness.");
+    assert(review.consumed.length === 2, "The same live page must accept chat then approval.");
+    assert(
+        review.lifecycleEvents.map((event) => event.event).join(",") === "review_approved",
+        "A conversation turn must not record review_feedback.",
+    );
+    assert(review.plan.includes("Keep the original scope."), "A text-only reply must not revise the Plan.");
+}
+
+export const planReviewReplyOnlyConversationScenario = {
+    name: "plan-review-reply-only-conversation",
+    composedTui: true,
+    initialAgentName: "planner",
+    terminal: { columns: 100, rows: 30 },
+    reviewDecisions: [
+        { approved: false, conversationTurn: true, feedback: "Why this scope?" },
+        { approved: true, approvalAction: "later" },
+    ],
+    script: [
+        {
+            id: "present-plan",
+            agent: "planner",
+            phase: "plan_review",
+            ordinal: 1,
+            requiredTools: ["plan_written"],
+            toolCalls: [{ name: "plan_written", arguments: { planName: "plan" } }],
+        },
+        {
+            id: "reply-without-revision",
+            agent: "planner",
+            phase: "plan_review",
+            ordinal: 2,
+            text: "This scope meets the requirement. No Plan revision is needed.",
+        },
+    ],
+    actions: [
+        {
+            type: "writeProjectFile",
+            path: "docs/plans/plan.md",
+            text: "---\nclassification: PLANNED_CHANGE\nstatus: draft\nexecutionAgent: engineer\ncollaborationRecommendation: autonomous\n---\n# Plan\n\n## Context\n\nKeep the original scope.\n",
+        },
+        { type: "type", text: "Review the saved Plan." },
+        { type: "enter" },
+        { type: "waitForIdle" },
+    ],
+    assertions: [assertReplyOnlyReviewApproval],
+};
+
 export const fauxProviderProtocolScenario = {
     name: "faux-provider-protocol-contract",
     composedTui: true,
@@ -311,15 +369,17 @@ export const fauxProviderProtocolScenario = {
             requiredTools: ["triage_report"],
             forbiddenTools: ["write", "edit"],
             thinking: "Validate actual Router identity and tool availability.",
-            toolCalls: [{
-                name: "triage_report",
-                arguments: {
-                    routingIntent: "INQUIRY",
-                    complexity: "LOW",
-                    summary: "Protocol check routes to Guide.",
-                    sessionName: "protocol check",
+            toolCalls: [
+                {
+                    name: "triage_report",
+                    arguments: {
+                        routingIntent: "INQUIRY",
+                        complexity: "LOW",
+                        summary: "Protocol check routes to Guide.",
+                        sessionName: "protocol check",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "guide-protocol-real-turn",
@@ -328,11 +388,7 @@ export const fauxProviderProtocolScenario = {
             text: "Guide protocol response from the real faux provider loop.",
         },
     ],
-    actions: [
-        { type: "type", text: "protocol check" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "protocol check" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         (/** @type {GoldenScenarioResult} */ result) =>
             assertEventIncludes(result, "model:faux-provider:router:triage"),
@@ -366,7 +422,10 @@ export const runtimeInteractionContractScenario = {
             request: {
                 type: "select",
                 prompt: "Choose a path",
-                options: [{ value: "a", label: "A" }, { value: "b", label: "B" }],
+                options: [
+                    { value: "a", label: "A" },
+                    { value: "b", label: "B" },
+                ],
             },
         },
         {
@@ -410,6 +469,7 @@ export const initialGoldenScenarios = [
     escapeCancellationScenario,
     helpSlashCommandScenario,
     planReviewTransactionContractScenario,
+    planReviewReplyOnlyConversationScenario,
     fauxProviderProtocolScenario,
     runtimeInteractionContractScenario,
     startupNoProvidersOpensLoginScenario,

@@ -1,3 +1,4 @@
+import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { runActiveAgentTurn } from ".././agent-switching.js";
@@ -67,7 +68,6 @@ function isValidationTriageMeta(
     const statuses = new Set([
         "approved",
         "draft",
-        "feedback",
         "ready_for_decomposition",
         "ready_for_work",
         "in_progress",
@@ -307,6 +307,45 @@ export class RuntimeWorkflows {
         }
     }
 
+    /** Re-arm inside the current managed writer, not through the idle-only command guard. */
+    async continuePlanReviewConversation(
+        sessionId: string,
+        runtime: import("../session-runtime.ts").SessionRuntime,
+        planName: string,
+        planningAgentName: string,
+    ): Promise<import("../../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
+        const session = this.services.sessionHost.requireSession(sessionId);
+        const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
+        const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
+        const location = await resolveWorkflowPlanLocation(session.cwd, planName, { readOnly: true });
+        if (!location.plan?.attrs.planId) throw new Error(`Plan ${planName} is unavailable for review.`);
+        const result = await reopenSavedPlanReview(
+            runtime,
+            sessionId,
+            {
+                planName,
+                planId: location.plan.attrs.planId,
+                planningAgentName,
+                requestedAt: new Date().toISOString(),
+            },
+            (message, isError) =>
+                emitSystemStatus(session, message, { header: "RunWield", level: isError ? "error" : "info" }),
+        );
+        // Hand execution back to the workflow owner. Segment rollover must run
+        // only after the current review writer has released its activation.
+        if (result.executionToStart) {
+            const options = result.executionToStart.options;
+            return {
+                outcome: "approved_execute",
+                planName: options.planName,
+                triageMeta: options.triageMeta,
+                feedback: options.reviewFeedback,
+                images: options.reviewImages,
+            };
+        }
+        return { outcome: result.kind === "unanswered" ? "canceled" : "saved", planName };
+    }
+
     async runPlanAction(
         sessionId: string,
         request: import("../../workflow/plan-actions.ts").PlanActionRequest,
@@ -412,17 +451,36 @@ export class RuntimeWorkflows {
         );
         if (isManagedOperationFailure(reviewed)) throw new Error(reviewed.error);
         let outcome = reviewed;
-        if (outcome.outcome === "feedback") {
+        const conversationTurn = outcome.outcome === "conversation";
+        if (outcome.outcome === "feedback" || conversationTurn) {
             outcome = await this.runPlanningAgent(sessionId, {
                 agentName,
                 planName: plan.planName,
                 triageMeta: outcome.triageMeta || plan.attrs,
                 associationPurpose: "review",
-                initialRequest: `Revise docs/plans/${plan.planName}.md using this review feedback, then submit it with plan_written.\n\n${
-                    outcome.feedback || ""
-                }`,
+                initialRequest: conversationTurn
+                    ? buildPlanConversationRequest({ planName: plan.planName, feedback: outcome.feedback })
+                    : `Revise docs/plans/${plan.planName}.md using this review feedback, then submit it with plan_written.
+
+${outcome.feedback || ""}`,
                 images: outcome.images,
+            }).catch((error: Error) => {
+                if (!conversationTurn) throw error;
+                emitSystemStatus(session, error.message, { level: "error" });
+                return { outcome: "no_call" as const };
             });
+            if (conversationTurn && outcome.outcome === "no_call") {
+                outcome = await this.runWorkflowOperation(
+                    session,
+                    "continuePlanReviewConversation",
+                    {},
+                    async () => {
+                        const { rearmPlanReviewConversation } = await import("../session-runtime.ts");
+                        return await rearmPlanReviewConversation(session, plan.planName, agentName);
+                    },
+                    false,
+                );
+            }
         }
         if (outcome.outcome === "approved_decompose") {
             return await this.runSlicerAgent(sessionId, {

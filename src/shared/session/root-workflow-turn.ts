@@ -1,6 +1,8 @@
+import { emitSystemStatus } from "./session-runtime-events.js";
 import { clearAgentSessionQueueForTransition, runRootTurn } from "./session.js";
 import {
     claimWorkflowToolEvent,
+    publishWorkflowToolEvent,
     listPendingWorkflowToolEvents,
     type PlanWrittenEventPayload,
     settleWorkflowToolEvent,
@@ -88,7 +90,7 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
         if (first.kind === "event") {
             if (
                 first.event.kind === "plan_written" &&
-                (first.event.payload as PlanWrittenEventPayload).outcome === "feedback"
+                ["feedback", "conversation"].includes((first.event.payload as PlanWrittenEventPayload).outcome)
             ) {
                 let feedbackEvent = first.event;
                 const excludedEventIds = [...claimOptions.excludeEventIds, feedbackEvent.eventId];
@@ -102,13 +104,43 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
                     try {
                         const next = await Promise.race([
                             nextEventPromise.then((event) => ({ kind: "event" as const, event })),
-                            turnPromise.then((messages) => ({ kind: "turn" as const, messages })),
+                            turnPromise
+                                .then((messages) => ({ kind: "turn" as const, messages }))
+                                .catch((error: Error) => {
+                                    if ((feedbackEvent.payload as PlanWrittenEventPayload).outcome !== "conversation")
+                                        throw error;
+                                    emitSystemStatus(args.hostedSession, error.message || "The Agent turn failed.", {
+                                        level: "error",
+                                    });
+                                    return { kind: "turn" as const, messages: [] };
+                                }),
                         ]);
-                        if (next.kind === "turn") return { messages: next.messages, event: feedbackEvent };
+                        if (next.kind === "turn") {
+                            const payload = feedbackEvent.payload as PlanWrittenEventPayload;
+                            if (payload.outcome === "conversation" && payload.planName) {
+                                settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
+                                const { rearmPlanReviewConversation } = await import("./session-runtime.ts");
+                                const outcome = await rearmPlanReviewConversation(
+                                    args.hostedSession,
+                                    payload.planName,
+                                    args.agentName,
+                                );
+                                const accepted = publishWorkflowToolEvent({
+                                    hostedSession: args.hostedSession,
+                                    toolCallId: `rearmed-review-${crypto.randomUUID()}`,
+                                    kind: "plan_written",
+                                    payload: outcome,
+                                });
+                                return { messages: next.messages, event: accepted };
+                            }
+                            return { messages: next.messages, event: feedbackEvent };
+                        }
                         excludedEventIds.push(next.event.eventId);
                         if (
                             next.event.kind === "plan_written" &&
-                            (next.event.payload as PlanWrittenEventPayload).outcome === "feedback"
+                            ["feedback", "conversation"].includes(
+                                (next.event.payload as PlanWrittenEventPayload).outcome,
+                            )
                         ) {
                             settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
                             feedbackEvent = next.event;
