@@ -12,17 +12,14 @@ import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { getConfiguredAgentModel } from "../session.js";
 
-/** @typedef {{ model?: string }} AgentModelSetting */
-/** @typedef {{ agents?: Record<string, AgentModelSetting> }} ModelPresetSetting */
+import type { ModelPreset, ModelPresetsMap } from "../../model-presets.ts";
 
-/**
- * @param {string} agentName
- * @param {Record<string, AgentModelSetting> | undefined} agents
- * @param {string | undefined} activeModelPreset
- * @param {Record<string, ModelPresetSetting> | undefined} modelPresets
- * @returns {Promise<string | undefined>}
- */
-async function readConfiguredAgentModel(agentName, agents, activeModelPreset, modelPresets) {
+async function readConfiguredAgentModel(
+    agentName: string,
+    agents: ModelPreset["agents"],
+    activeModelPreset: string | undefined,
+    modelPresets: ModelPresetsMap | undefined,
+): Promise<string | undefined> {
     return await withRuntimeCommandFixture("agent-model-settings-", async ({ projectRoot, settingsPath }) => {
         await fsWriteFile(settingsPath, JSON.stringify({ agents, activeModelPreset, modelPresets }));
         return getConfiguredAgentModel(agentName, projectRoot);
