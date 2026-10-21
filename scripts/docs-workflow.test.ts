@@ -378,6 +378,7 @@ test("docs workflow retains source checks and isolates historical source from fr
     assertStringIncludes(deploy, "ref: ${{ github.sha }}");
     assertStringIncludes(deploy, "path: source");
     assertStringIncludes(deploy, "path: tooling");
+    assertStringIncludes(stepBlock(deploy, "Checkout Bun documentation tooling"), "submodules: recursive");
     assertStringIncludes(deploy, "ref: ${{ github.event.repository.default_branch }}");
     assertStringIncludes(deploy, "bun-version-file: tooling/.bun-version");
     assertStringIncludes(deploy, "working-directory: tooling");
