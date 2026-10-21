@@ -15,7 +15,7 @@ import process from "node:process";
 
 import { join } from "node:path";
 import { parseReleaseTag } from "./release.js";
-import { sha256 } from "./package-windows.js";
+import { sha256 } from "./package-windows.ts";
 
 const RUNWIELD_REPO = "gandazgul/runwield";
 const PACKAGE_ID = "Gandazgul.RunWield";
