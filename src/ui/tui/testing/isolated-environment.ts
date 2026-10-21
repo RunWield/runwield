@@ -29,23 +29,26 @@ export const GOLDEN_FAUX_PROVIDER = "golden";
 export const GOLDEN_FAUX_MODEL = "faux";
 export const GOLDEN_FAUX_API = "golden-faux";
 
-/**
- * @param {string} value
- * @returns {Promise<string>}
- */
-async function sha256(value) {
+async function sha256(value: string) {
     const bytes = new TextEncoder().encode(value);
     const hash = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
-/** @typedef {{ id: string, name?: string, reasoning?: boolean }} GoldenModelDefinition */
+export interface GoldenModelDefinition {
+    id: string;
+    name?: string;
+    reasoning?: boolean;
+}
 
-/**
- * @param {string} runwieldDir
- * @param {{ api?: string, models?: GoldenModelDefinition[] }} [options]
- */
-export async function writeGoldenModelConfig(runwieldDir, options = {}) {
+export interface GoldenModelConfigOptions {
+    api?: string;
+    models?: GoldenModelDefinition[];
+}
+
+export async function writeGoldenModelConfig(runwieldDir: string, options: GoldenModelConfigOptions = {}) {
     const models = options.models || [{ id: GOLDEN_FAUX_MODEL, name: "Golden Faux Model" }];
     await fsMkdir(runwieldDir, { recursive: true });
     await fsWriteFile(
@@ -76,38 +79,34 @@ export async function writeGoldenModelConfig(runwieldDir, options = {}) {
     );
 }
 
-/** @param {number} ms */
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-/** @param {string} path */
-async function removeTempDir(path) {
+async function removeTempDir(path: string) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
             await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
             if (attempt === 4) throw error;
             await delay(20 * (attempt + 1));
         }
     }
 }
 
-/**
- * @typedef {Object} GoldenIsolatedEnvironment
- * @property {string} root
- * @property {string} home
- * @property {string} projectRoot
- * @property {string} remoteRoot
- * @property {string} runwieldDir
- * @property {Record<string, string>} env
- * @property {() => Promise<void>} cleanup
- */
+export interface GoldenIsolatedEnvironment {
+    root: string;
+    home: string;
+    projectRoot: string;
+    remoteRoot: string;
+    runwieldDir: string;
+    env: Record<string, string>;
+    cleanup(): Promise<void>;
+}
 
-/** @param {string} root @param {boolean} initArtifact */
-async function createGoldenRepository(root, initArtifact) {
+async function createGoldenRepository(root: string, initArtifact: boolean) {
     const projectRoot = join(root, "project");
     const remoteRoot = join(root, "remote.git");
     await fsMkdir(projectRoot, { recursive: true });
@@ -134,8 +133,7 @@ async function createGoldenRepository(root, initArtifact) {
     await git(projectRoot, ["push", "-u", "origin", "main"]);
 }
 
-/** @param {string} source @param {string} destination */
-async function copyFixtureTree(source, destination) {
+async function copyFixtureTree(source: string, destination: string): Promise<void> {
     await fsMkdir(destination, { recursive: true });
     for await (const entry of await fsReaddir(source, { withFileTypes: true })) {
         const from = join(source, entry.name);
@@ -149,29 +147,27 @@ async function copyFixtureTree(source, destination) {
 /**
  * Build immutable Git baselines once per suite. Workers copy both repositories;
  * they never share mutable refs, index files, worktrees, or the remote.
- * @param {string} root
  */
-export async function prepareGoldenRepositoryTemplates(root) {
-    await Promise.all([true, false].map(async (initialized) => {
-        const path = join(root, initialized ? "initialized" : "uninitialized");
-        await fsMkdir(path, { recursive: true });
-        await createGoldenRepository(path, initialized);
-    }));
+export async function prepareGoldenRepositoryTemplates(root: string) {
+    await Promise.all(
+        [true, false].map(async (initialized) => {
+            const path = join(root, initialized ? "initialized" : "uninitialized");
+            await fsMkdir(path, { recursive: true });
+            await createGoldenRepository(path, initialized);
+        }),
+    );
 }
 
-/**
- * @typedef {Object} GoldenEnvironmentOptions
- * @property {boolean} [keep]
- * @property {boolean} [initDone]
- * @property {boolean} [initArtifact]
- * @property {string} [repositoryTemplateRoot]
- */
+export interface GoldenEnvironmentOptions {
+    keep?: boolean;
+    initDone?: boolean;
+    initArtifact?: boolean;
+    repositoryTemplateRoot?: string;
+}
 
-/**
- * @param {GoldenEnvironmentOptions} [options]
- * @returns {Promise<GoldenIsolatedEnvironment>}
- */
-export async function createGoldenIsolatedEnvironment(options = {}) {
+export async function createGoldenIsolatedEnvironment(
+    options: GoldenEnvironmentOptions = {},
+): Promise<GoldenIsolatedEnvironment> {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-golden-tui-"));
     const home = join(root, "home");
     const projectRoot = join(root, "project");

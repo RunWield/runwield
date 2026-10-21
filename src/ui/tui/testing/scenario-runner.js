@@ -38,7 +38,7 @@ import {
     GOLDEN_FAUX_MODEL,
     GOLDEN_FAUX_PROVIDER,
     writeGoldenModelConfig,
-} from "./isolated-environment.js";
+} from "./isolated-environment.ts";
 import {
     ScriptedHumanReviewSurface,
     ScriptedInteractionSurface,

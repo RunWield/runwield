@@ -3,7 +3,13 @@ export type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.js"
 export { GoldenScenarioActor } from "./scenario-actor.js";
 export { assertEventIncludes, assertScreenIncludes, runGoldenScenario } from "./scenario-runner.js";
 export { runGoldenChild, sanitizeGoldenChildEnv } from "./subprocess-runner.ts";
-export { createGoldenIsolatedEnvironment } from "./isolated-environment.js";
+export { createGoldenIsolatedEnvironment } from "./isolated-environment.ts";
+export type {
+    GoldenEnvironmentOptions,
+    GoldenIsolatedEnvironment,
+    GoldenModelConfigOptions,
+    GoldenModelDefinition,
+} from "./isolated-environment.ts";
 export { ScriptedReviewSurface } from "./scripted-review-surface.js";
 export type {
     VirtualTerminalOptions,
