@@ -1,3 +1,4 @@
+import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { tmpdir } from "node:os";
 import {
@@ -17,6 +18,17 @@ import { join } from "node:path";
 import { parseReleaseTag } from "./release.js";
 import { sha256 } from "./package-windows.ts";
 
+export interface WingetPackageOptions {
+    tag: string;
+    output: string;
+    baseUrl: string;
+    testOnly: boolean;
+}
+
+interface PublishedPackageMetadata extends RunWieldPackageInstall {
+    [field: string]: RunWieldPackageInstall[keyof RunWieldPackageInstall];
+}
+
 const RUNWIELD_REPO = "gandazgul/runwield";
 const PACKAGE_ID = "Gandazgul.RunWield";
 const PUBLISHER = "Gandazgul";
@@ -26,8 +38,7 @@ function usage() {
     return "Usage: package-winget.js --tag <stable-tag> --output <dir> [--base-url <release-asset-base-url>] [--test-only]";
 }
 
-/** @param {string[]} args */
-export function parsePackageWingetArgs(args) {
+export function parsePackageWingetArgs(args: string[]): WingetPackageOptions {
     const options = { tag: "", output: "", baseUrl: "", testOnly: false };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -42,20 +53,17 @@ export function parsePackageWingetArgs(args) {
     return options;
 }
 
-/** @param {string} url */
-async function readUrlBytes(url) {
+async function readUrlBytes(url: string) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Download failed ${response.status}: ${url}`);
     return new Uint8Array(await response.arrayBuffer());
 }
 
-/** @param {string} tag @param {string} baseUrl */
-function assetBaseUrl(tag, baseUrl) {
+function assetBaseUrl(tag: string, baseUrl: string) {
     return baseUrl || `https://github.com/${RUNWIELD_REPO}/releases/download/${tag}`;
 }
 
-/** @param {string} version */
-function renderVersionManifest(version) {
+function renderVersionManifest(version: string) {
     return `# Created by bun run package:winget
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
 PackageIdentifier: ${PACKAGE_ID}
@@ -66,8 +74,7 @@ ManifestVersion: 1.10.0
 `;
 }
 
-/** @param {string} version */
-function renderLocaleManifest(version) {
+function renderLocaleManifest(version: string) {
     return `# Created by bun run package:winget
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
 PackageIdentifier: ${PACKAGE_ID}
@@ -93,8 +100,7 @@ ManifestVersion: 1.10.0
 `;
 }
 
-/** @param {string} version @param {string} url @param {string} checksum */
-function renderInstallerManifest(version, url, checksum) {
+function renderInstallerManifest(version: string, url: string, checksum: string) {
     return `# Created by bun run package:winget
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 PackageIdentifier: ${PACKAGE_ID}
@@ -120,8 +126,7 @@ ManifestVersion: 1.10.0
 `;
 }
 
-/** @param {string} command @param {string[]} args @param {string} [cwd] */
-async function run(command, args, cwd) {
+async function run(command: string, args: string[], cwd?: string) {
     const result = await captureScriptProcess(command, { args, cwd, stdout: "piped", stderr: "piped" });
     if (result.success) return;
     const decoder = new TextDecoder();
@@ -130,8 +135,7 @@ async function run(command, args, cwd) {
     );
 }
 
-/** @param {string} url */
-async function readPublishedChecksum(url) {
+async function readPublishedChecksum(url: string) {
     const bytes = await readUrlBytes(`${url}.sha256`);
     const text = new TextDecoder().decode(bytes).trim();
     const checksum = text.split(/\s+/)[0]?.toLowerCase() || "";
@@ -139,14 +143,12 @@ async function readPublishedChecksum(url) {
     return checksum;
 }
 
-/** @param {string} root @param {string} path */
-async function assertFile(root, path) {
+async function assertFile(root: string, path: string) {
     const stat = await fsStat(join(root, path)).catch(() => null);
     if (!stat?.isFile()) throw new Error(`Published Windows ZIP is missing ${path}.`);
 }
 
-/** @param {Uint8Array} bytes @param {string} versionTag */
-async function assertZipHasPackageMetadata(bytes, versionTag) {
+async function assertZipHasPackageMetadata(bytes: Uint8Array, versionTag: string) {
     const work = await fsMkdtemp(join(tmpdir(), "runwield-winget-zip-"));
     try {
         const zipPath = join(work, "package.zip");
@@ -154,22 +156,23 @@ async function assertZipHasPackageMetadata(bytes, versionTag) {
         await fsWriteFile(zipPath, bytes);
         await fsMkdir(extractDir, { recursive: true });
         await run("unzip", ["-q", zipPath, "-d", extractDir]);
-        for (
-            const path of [
-                "wld.exe",
-                "runwield-install.json",
-                "runtime/helpers/mnemoteca.exe",
-                "runtime/helpers/cymbal.exe",
-                "runtime/helpers/ketch.exe",
-                "runtime/helpers/agent-browser.exe",
-                "licenses/RUNWIELD-LICENSE.txt",
-                "licenses/mnemoteca-LICENSE.txt",
-                "licenses/cymbal-LICENSE.txt",
-                "licenses/ketch-LICENSE.txt",
-                "licenses/agent-browser-LICENSE.txt",
-            ]
-        ) await assertFile(extractDir, path);
-        const metadata = JSON.parse(await fsReadFile(join(extractDir, "runwield-install.json"), "utf8"));
+        for (const path of [
+            "wld.exe",
+            "runwield-install.json",
+            "runtime/helpers/mnemoteca.exe",
+            "runtime/helpers/cymbal.exe",
+            "runtime/helpers/ketch.exe",
+            "runtime/helpers/agent-browser.exe",
+            "licenses/RUNWIELD-LICENSE.txt",
+            "licenses/mnemoteca-LICENSE.txt",
+            "licenses/cymbal-LICENSE.txt",
+            "licenses/ketch-LICENSE.txt",
+            "licenses/agent-browser-LICENSE.txt",
+        ])
+            await assertFile(extractDir, path);
+        const metadata: PublishedPackageMetadata = JSON.parse(
+            await fsReadFile(join(extractDir, "runwield-install.json"), "utf8"),
+        );
         const expectedMetadata = {
             schemaVersion: 1,
             packageManager: "winget",
@@ -189,8 +192,7 @@ async function assertZipHasPackageMetadata(bytes, versionTag) {
     }
 }
 
-/** @param {{ tag: string, output: string, baseUrl: string, testOnly: boolean }} options */
-export async function packageWinget(options) {
+export async function packageWinget(options: WingetPackageOptions) {
     const parsed = parseReleaseTag(options.tag);
     if (parsed.kind !== "stable") throw new Error(`WinGet manifests require a Stable tag: ${options.tag}`);
     const version = parsed.tag.slice(1);
@@ -215,13 +217,11 @@ export async function packageWinget(options) {
     );
     await fsWriteFile(
         join(options.output, "runwield-winget-package.json"),
-        `${
-            JSON.stringify(
-                { tag: parsed.tag, packageIdentifier: PACKAGE_ID, manifestDir, installerUrl: url, sha256: checksum },
-                null,
-                4,
-            )
-        }\n`,
+        `${JSON.stringify(
+            { tag: parsed.tag, packageIdentifier: PACKAGE_ID, manifestDir, installerUrl: url, sha256: checksum },
+            null,
+            4,
+        )}\n`,
     );
 }
 
