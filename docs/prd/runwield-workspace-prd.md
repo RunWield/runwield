@@ -667,13 +667,14 @@ and review chat may omit approval.
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
 underline tabs (Contents and Versions; Files and Changes). The right sidebar header holds its Annotations and chat tabs
 and the collapse control in one row. After a successful decision in Workspace (approval for later, approval to run or
-decompose, or submitted feedback), the owner returns to the originating Session in the same tab. A failed decision
-keeps the review open. Standalone reviews keep their close-tab or auto-close behavior.
+decompose, or Code Review feedback), the owner returns to the originating Session in the same tab. Plan review chat
+stays on the review page. A failed decision keeps the review open. Standalone reviews keep their close-tab or auto-close
+behavior after a final decision.
 
 **Requirement: Review layouts fit the screen and the owner's preferences.** Code Review remembers the owner's last Split
-or Unified view in this browser. Both layouts and Guided Review wrap long lines. Plan and Code Review start with
-Annotations collapsed and open it at the first annotation; a later manual collapse holds. At 980px and narrower, Files
-in Code Review, and Contents and Annotations in Plan Review, start collapsed; each opens from the toolbar, fills the
+or Unified view in this browser. Both layouts and Guided Review wrap long lines. The right sidebar starts collapsed
+and opens at the first annotation; a later manual collapse holds. Plan review selects chat when the sidebar opens.
+At 980px and narrower, Files in Code Review, and Contents and Annotations in Plan Review, start collapsed; each opens from the toolbar, fills the
 workbench below the header, and opening one closes the other. The compact Plan Review header keeps the title, approval,
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
@@ -689,23 +690,40 @@ reading response bytes from that same file object. A concurrent directory replac
 the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
 or change access controls.
 
-**Requirement: Chat in the review.** Plan and Code Review chats accept attached annotations without a typed message:
-attaching annotations enables Send and its keyboard shortcut. The Agent receives the notes as review context, and the
-conversation shows the submission. Working or unavailable chats stay disabled. While an Epic is in review,
-the Architect discussion stays on the page across rounds, following
-[Core Epic review chat](runwield-core-prd.md#plan-review).
+**Requirement: Chat in the review.** Plan review selects chat by default. Annotations, file annotations, images,
+direct edits, and question answers enter the Review Queue automatically. Each type shows its count and an X. X excludes
+that type from the next send without deleting its items. Send and its keyboard shortcut accept a message, included
+queued context, or both. Sent items leave the queue; excluded items remain and return to included after a send.
+Working or unavailable chats stay disabled. The Annotations pane lists and edits notes; it has no Send Annotations or
+attach-to-chat button when chat is available. A standalone Plan review without chat retains one Send Annotations button.
+
+Planner and Architect can reply without revising. The review stays open across turns under
+[Core Plan review](runwield-core-prd.md#plan-review). Code Review keeps its existing attached-annotations chat and repair
+behavior; it does not yet use this queue.
+
+**Requirement: Warn before approving conversation without a revision.** If an owner turn completed after the latest
+Plan revision in this review, Approve & Run, Approve for Later, or Approve & Slice shows three choices:
+
+- **Ask Planner (or Architect) to update the Plan** sends a fixed request to record the conversation in the Plan.
+- **Approve as is** continues to the existing open-questions confirmation and approval.
+- **Cancel** keeps the review open.
+
+The warning does not appear when the latest turn produced a revision. Queued input still goes with approval.
 
 **Requirement: Answer Plan Questions in place.** A valid `wld-question` fence appears as one question card in its Plan
 section, with Yes/No, text, or multiple-choice controls. Multiple choice includes Other with free text. The form marks
 the recommended answer but does not select it for the owner. Invalid blocks remain readable code with a parse-error
 note. Answers survive a reload of the same Plan revision; answers for removed question ids are dropped after revision.
 
-Answered questions attach to Planner chat automatically. The context chip shows the answer count and combines with
-attached review notes. Send and Send Annotations include a “Question answers” section. Removing the chip omits that
-context from the chat message without erasing the answers. Before either approval action, open questions trigger a
-confirmation that names their count and says the recommended answers will be used. Cancel keeps review open. Approval
-follows [Core's question resolution rules](runwield-core-prd.md#plan-review). No bundled Agent writes question blocks;
-local Planner instructions can opt in.
+Answers queue automatically under their own type. Each answered card offers **Submit answer**, which sends only that
+answer as a conversation turn under “Question answers”, without the composer message or other queued items. The card
+shows **Answer sent**, and that value is not sent again with the next message. While the Agent works, Submit answer is
+disabled and new answers stay queued. Editing a sent answer queues its new value.
+
+Before approval, open questions still trigger the existing confirmation with their count and recommended answers.
+Cancel keeps review open. Approval follows [Core's question resolution rules](runwield-core-prd.md#plan-review). A
+no-chat fallback includes answers in Send Annotations. No bundled Agent writes question blocks; local Planner
+instructions can opt in.
 
 **Requirement: Repair code inside the open review.** A Code Review repair request keeps the same review screen and
 conversation through the repair and the required CI rerun. The Agent's reply and the refreshed changes appear in place,
@@ -768,15 +786,26 @@ every action stays available.
 - Given a saved Compact or Default width, standalone Plan Review keeps that choice.
 - Given a Plan with no front matter, View has no front matter toggle.
 - Given a Plan with a Plan Question in a section, the owner answers it there and reloads; the same answer is restored.
-- Given answered questions and attached review notes, chat shows their combined context count and Send carries both.
-  Removing the chip excludes both from that chat message. Annotation-only Send remains available.
+- Given annotations and question answers, chat is selected and each type has an included queue chip. X on annotations
+  excludes only those notes from the next send and keeps them on the Plan; answers still go to the Agent.
+- Given included queue items and no typed message, Send works. After a send, sent items leave the queue and excluded
+  items remain, included for the next send.
+- Given an answered card, Submit answer sends only that answer, shows Answer sent, and omits it from the next chat
+  send. While the Agent works, Submit answer is disabled and a new answer stays queued.
+- Given chat is available, the Annotations pane has no send or attach-to-chat button. Without chat, Send Annotations
+  remains available.
+- Given a reply-only turn after the latest revision, each applicable approval action offers Ask the Agent to update,
+  Approve as is, and Cancel. Ask sends the update request; Cancel keeps review open; Approve as is continues to the
+  open-questions confirmation. A revision turn clears the warning.
+- Given an Agent error or canceled turn, the error appears and the same review becomes available again. Canceling the
+  review itself does not reopen it.
 - Given question-answer feedback, Planner can record the decision in the affected section, remove the answered block,
   and present the revised Plan in the same review loop. Answers for removed ids no longer appear in the draft.
 - Given an open question, either approval action warns with the count. Cancel keeps review open; confirmation saves
   the resolved Plan under Core's approval rules.
 
-- Given a Workspace Plan or Code Review, submitting approval or feedback returns to its Session in the same tab; a
-  failed decision stays in review.
+- Given a Workspace Plan review, chat replies and revisions stay on the page. Approval returns to its Session in the
+  same tab. Code Review approval or feedback still returns to its Session; a failed decision stays in review.
 - Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
 - Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
   the read; outside files stay unchanged.

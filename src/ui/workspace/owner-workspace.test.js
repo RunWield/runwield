@@ -679,7 +679,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
         );
         const plan = await loadPlan(projectRoot, "owner-plan");
         const openedRevision = await getPlanRevisionForText(plan.markdown);
-        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "feedback" }));
+        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "approved" }));
 
         let resolved = false;
         let rejectedMessage = "";
@@ -736,7 +736,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
         );
         assertEquals(resolved, false);
         assertStringIncludes(rejectedMessage, "Plan Status changed after review opened");
-        assertEquals((await loadPlan(projectRoot, "owner-plan"))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(projectRoot, "owner-plan"))?.attrs.status, "approved");
     } finally {
         await appObject?.close();
         store.close();

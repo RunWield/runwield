@@ -192,19 +192,13 @@ export async function handleEpicPlan({
 
     const canReviewWithArchitect =
         plan.attrs.status === "draft" ||
-        plan.attrs.status === "feedback" ||
         plan.attrs.status === "approved" ||
         (sequence &&
             plan.attrs.status === "ready_for_work" &&
-            children.every((child) =>
-                ["draft", "feedback", "approved", "ready_for_work"].includes(child.attrs.status),
-            ));
+            children.every((child) => ["draft", "approved", "ready_for_work"].includes(child.attrs.status)));
     const canDirectReview =
         !sequence &&
-        (plan.attrs.status === "draft" ||
-            plan.attrs.status === "feedback" ||
-            plan.attrs.status === "approved" ||
-            plan.attrs.status === "ready_for_work");
+        (plan.attrs.status === "draft" || plan.attrs.status === "approved" || plan.attrs.status === "ready_for_work");
     const canOpenSlicer =
         !sequence &&
         (isApprovedEpic ||

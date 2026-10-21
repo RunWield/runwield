@@ -169,3 +169,47 @@ test("direct Plan retains explicit verification through skipped Init, reload, an
         }
     });
 });
+
+test("plan_written returns a conversation outcome and the reply-or-revise rule without changing the Plan", async () => {
+    await withRuntimeCommandFixture("plan-written-conversation-", async ({ projectRoot }) => {
+        await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nKeep this scope.\n", {
+            classification: "PLANNED_CHANGE",
+            status: "ready_for_work",
+            affectedPaths: [],
+            executionAgent: "engineer",
+            collaborationRecommendation: "autonomous",
+        });
+        const { ensurePlanIdentity } = await import("../plan-store.js");
+        const before = await ensurePlanIdentity(projectRoot, "target");
+        const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
+        try {
+            session.setInteractionAdapter({
+                requestInteraction: () => ({
+                    outcome: "selected",
+                    _meta: {
+                        approved: false,
+                        conversationTurn: true,
+                        feedback: "Why this scope?",
+                    },
+                }),
+            });
+            const result = await createPlanWrittenTool({ hostedSession: session }).execute(
+                "conversation",
+                { planName: "target" },
+                undefined,
+                undefined,
+                EXTENSION_CONTEXT,
+            );
+            assertEquals((result.details as { outcome: string }).outcome, "conversation");
+            assertStringIncludes(resultText(result), "Why this scope?");
+            assertStringIncludes(resultText(result), "Reply in chat");
+            assertStringIncludes(resultText(result), "scope, behavior, a decision, or verification");
+            assertStringIncludes(resultText(result), "When in doubt, revise.");
+            assertStringIncludes(resultText(result), "do not call plan_written for an unchanged Plan");
+            assertEquals(await fsReadFile(before.path, "utf8"), before.markdown);
+            assertEquals((await loadPlan(projectRoot, "target"))?.attrs.status, "ready_for_work");
+        } finally {
+            await session.dispose();
+        }
+    });
+});

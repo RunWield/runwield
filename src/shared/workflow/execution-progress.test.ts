@@ -555,7 +555,7 @@ test("execution starts with registered sibling scope moves and leftover planning
         await updatePlanFrontMatter(
             worktree.path,
             "legacy-plan",
-            { status: "feedback" },
+            { status: "draft" },
             {},
             {
                 expectedRevision: legacy.revision,
@@ -581,7 +581,7 @@ test("execution starts with registered sibling scope moves and leftover planning
         assertEquals((await loadPlan(worktree.path, planName))?.attrs.status, "in_progress");
         assertStringIncludes((await loadPlan(siblingWorktree.path, siblingName))!.body, "laptop-owned save bridge");
         assertEquals((await loadPlan(siblingWorktree.path, siblingName))?.attrs.status, "draft");
-        assertEquals((await loadPlan(worktree.path, "legacy-plan"))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(worktree.path, "legacy-plan"))?.attrs.status, "draft");
         assertStringIncludes(
             await git(worktree.path, ["show", "HEAD:docs/plans/save-proof.md"]),
             "Earlier planning proof",

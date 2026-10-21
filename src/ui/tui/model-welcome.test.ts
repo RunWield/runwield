@@ -371,7 +371,8 @@ test("failed root activation returns focus to the editor with recovery guidance"
                 const guidance = screen.slice(screen.indexOf("Failed to initialize root agent after model setup"));
                 const normalizedScreen = guidance.replace(/\s+/g, " ");
                 assertStringIncludes(normalizedScreen, "/model");
-                assertStringIncludes(normalizedScreen, "choose another model");
+                assertStringIncludes(normalizedScreen, "choose another");
+                assertStringIncludes(normalizedScreen, "model, run /login");
                 assertStringIncludes(normalizedScreen, "/login");
                 assertStringIncludes(normalizedScreen, "/quit");
                 const composition = await harness.waitForComposition(30_000);

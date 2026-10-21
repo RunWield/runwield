@@ -18,14 +18,30 @@ A normal FEATURE flow is:
 
 1. Planner writes the Plan.
 2. Plannotator opens in the browser for user review.
-3. Feedback returns the Plan to Planner; Approve records execution metadata and marks it ready for work.
+3. Review chat lets Planner reply or revise; approval records execution metadata and prepares the Plan for work.
 4. RunWield dispatches the recorded `executionAgent`.
 5. Workflow Validation runs.
 6. The Plan becomes RunWield Verified only after delivery evidence and, for worktree execution, proof of merge-back.
 
-Plannotator is the browser review surface RunWield opens for Plan review. Outcomes are Approve, Approve for Later, and
-Feedback. FEATURE Plan Review exposes `executionAgent` and `collaborationRecommendation` controls so the user can select
-the execution owner and autonomous or Pair collaboration recommendation.
+Plannotator is the browser Plan review surface. Approve & Run authorizes execution; Approve for Later prepares the Plan
+without starting it. FEATURE review exposes `executionAgent` and `collaborationRecommendation` controls.
+
+During review, reply in chat to explain, clarify, or ask back. Revise the Plan and call `plan_written` when the answer
+changes scope, behavior, a decision, or verification. When in doubt, revise. Do not call `plan_written` for an unchanged
+Plan. RunWield keeps the same review open after a reply, including after an Agent error or canceled turn. Canceling the
+review itself ends it without reopening.
+
+Opening review or discussing a Plan preserves its status. A meaningful revision to an `approved`, `ready_for_work`, or
+`ready_for_decomposition` Plan returns it to `draft`; formatting-only changes preserve the status.
+
+Chat queues annotations, file annotations, images, direct edits, and question answers by default. Each type has an X
+that excludes it from the next send without deleting it. Send accepts a message, queued context, or both. Submit answer
+sends only that question's answer, marks it sent, and removes it from the queue. It is disabled while the Agent works.
+The Annotations pane has Send Annotations only on a surface without chat.
+
+After a reply-only turn since the latest revision, approval offers Ask Planner (or Architect) to update the Plan,
+Approve as is, or Cancel. Approve as is continues to the existing open-questions confirmation. Remaining review context
+goes with approval.
 
 ## Validation, review, and repair
 
@@ -47,7 +63,6 @@ skips the gate, `ask` prompts the user, and `always` requires it.
 ## Statuses users see
 
 - `draft`: Plan exists but review is not complete.
-- `feedback`: user feedback or interrupted feedback handling returned it to planning.
 - `approved`: user approved it, but preparation is not complete.
 - `ready_for_decomposition`: approved PROJECT Epic is ready for Slicer.
 - `ready_for_work`: FEATURE can execute, or PROJECT Epic can offer child selection.

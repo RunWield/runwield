@@ -249,25 +249,41 @@ conversation history, global settings, memory, and external sources are separate
 **Scope and maturity:** Current baseline.
 
 **Requirement: Apply the user's review decision to the saved Plan.** Planner or Architect presents a saved Plan for
-review. Users can approve and run, approve for later, give feedback, or cancel. Feedback returns to the planning
-conversation for revision. Approval leads to a readiness check; a Plan that needs repair explains what blocks it.
-Formatting-only changes during review keep the decision valid. Changes to Plan meaning, code, execution policy, or
-workflow evidence require review of the current Plan.
+review. Users can approve and run, approve for later, discuss the Plan, or cancel. Epics offer Approve & Slice.
+Approval leads to a readiness check; a Plan that needs repair explains what blocks it. Formatting-only changes during
+review keep the decision valid. Changes to Plan meaning, code, execution policy, or workflow evidence require review of
+the current Plan.
+
+**Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
+It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
+in doubt, it revises. A reply-only turn writes nothing to the Plan file. RunWield keeps the same review and conversation
+open after the turn without requiring another tool call. A long turn has no review timeout. These rules apply to
+initial, direct saved-Plan, `/plan-review`, Epic, and Sequence reviews.
+
+Opening review or discussing a Plan preserves its status. A meaningful revision by the Agent or a saved owner edit
+returns an `approved`, `ready_for_work`, or `ready_for_decomposition` Plan to `draft`. Formatting-only changes preserve
+its status. An Agent error or canceled turn appears in chat and RunWield restores the review. Explicit review
+cancellation, including Escape while the Agent works, ends the review without reopening it.
+
+**Requirement: Keep approval context.** Review input still queued at approval goes to the execution Agent or Slicer.
+The browser queue and approval warning follow
+[Workspace Browser Plan review](runwield-workspace-prd.md#browser-plan-review-and-workflow). Send Annotations is not a
+review action when chat is available. A standalone surface without chat retains that feedback action.
 
 **Requirement: Settle embedded Plan Questions on approval.** Browser approval replaces each valid `wld-question`
 block in the reviewed Plan with its question and answer in place. An owner answer is marked “answered in review”. An
 unanswered question uses its recommended default, marked “recommended; not answered in review”. Without a default, it
 records “Not answered. Engineer decides.” This happens before the approved Plan is saved, for both approval actions.
 Feedback leaves question blocks available for the planning conversation. Invalid blocks stay unchanged. The bundled
-Agents do not write these blocks; local Planner instructions can opt in. Sequence child Plans use a separate approval
-path and do not resolve these blocks.
+Agents do not write these blocks; local Planner instructions can opt in. Sequence approval applies the same settlement
+rules to each reviewed document, including child Plans.
 
 **Requirement: Discuss an Epic with Architect during review.** While an Epic is open for review, the user can chat with
-Architect on the review page across several rounds in the same live Session. Architect can revise the Epic and publish
-the next review round on the same page. Only explicit review actions (Send Annotations, cancel, Approve for Later,
-Approve & Slice) decide the review. A model turn starts when the user sends a message.
+Architect on the review page across rounds in the same live Session. Architect can reply without editing or revise
+the Epic on the same page. Only approval or cancellation ends the conversational review. A model turn starts when the
+user sends a message.
 
-**Requirement: Open saved Plans directly for review.** Loading a draft, feedback, approved, or ready-for-work Plan with
+**Requirement: Open saved Plans directly for review.** Loading a draft, approved, or ready-for-work Plan with
 a valid execution policy offers direct Plan Review. Users inspect and annotate the saved Plan, and the decision follows
 the normal review flow.
 
@@ -283,7 +299,15 @@ stays light, terminal animations pause during human input, and the decision cont
 
 - Given an Epic open for review, the user exchanges two messages with Architect and both replies stay on the review
   page; the review stays open until an explicit review action.
-- Given a saved Plan, when the user submits feedback, the planning conversation receives it and can revise the Plan.
+- Given a draft, approved, or ready Plan in review, when the owner asks a question and the Agent only replies, the
+  Plan file and status stay unchanged, and approval remains available on the same page.
+- Given an approved, ready-for-work, or ready-for-decomposition Plan, a meaningful Agent revision or saved owner edit
+  returns it to draft. Formatting-only changes preserve the status.
+- Given a conversation turn that finishes without `plan_written`, including an Agent error or canceled turn, RunWield
+  restores the review with the same conversation and shows any error. Explicitly canceling the review does not restore it.
+- Given a direct saved-Plan, Epic, or Sequence review, reply-only turns keep review available and approval keeps its
+  existing readiness, group decision, and Agent handoff behavior.
+- Given queued review input at approval, the next Agent receives that context.
 - Given two valid Plan Questions, one answered and one open with a default, browser approval saves the owner answer and
   the recommended answer with their labels, with no raw question fences. Approval still rejects a changed Plan and
   applies a repeated decision only once.
@@ -352,11 +376,11 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 [Plan lifecycle reference](../plan-lifecycle.md) defines each technical status.
 
 **Requirement: Distinguish readiness, validation, delivery, and manual acceptance.** Plan status tells users whether
-work needs review, can start, is running, needs recovery, or is complete. Users can tell apart drafts, feedback,
+work needs review, can start, is running, needs recovery, or is complete. Users can tell apart drafts,
 approval, readiness, work in progress, implementation, review, delivery, manual acceptance, failure, and hold. UI, CLI,
 Plan documents, dependencies, and Work Records use the same meanings.
 
-The ordinary lifecycle is `draft → feedback/approved → ready_for_work → implemented → reviewed → verified`:
+The ordinary lifecycle is `draft → approved → ready_for_work → implemented → reviewed → verified`:
 
 - **Implemented** means the work is done and validation is in progress or pending.
 - **Reviewed** means review passed and delivery is pending.
@@ -370,6 +394,11 @@ Lifecycle rules:
   child selection. Epics are containers; their child Plans execute and validate independently.
 - `on_hold` pauses work and resumes from the previous stage.
 - Board actions follow the same rules as CLI and TUI actions.
+
+**Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
+matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,
+and load-plan paths. No user migration is needed. A later write uses `draft`. The board has no Feedback column or
+manual `feedback` target. Review revisions follow [Plan review](#plan-review).
 
 **Requirement: Record the owner's acceptance as User Verified.** Users can mark a Plan `user_verified` with a
 verification note. This satisfies dependencies and Epic completion and stays visibly distinct from RunWield
@@ -385,6 +414,9 @@ verification.
 
 **Acceptance scenarios:**
 
+- Given a saved `feedback` or `in_review` Plan, the board and load-plan show and handle it as draft without changing
+  its bytes on read. A later write saves draft.
+- Given five reply-only review turns, the Plan file and status are unchanged.
 - Given implemented work whose delivery failed, the Plan shows validation and publication as separate outcomes and
   offers a recovery action.
 - Given a Plan marked User Verified with a note, dependency and Epic checks accept it, and every view labels it

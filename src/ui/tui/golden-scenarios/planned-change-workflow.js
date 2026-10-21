@@ -48,7 +48,7 @@ function assertRealPlanReviewRevisionAndApproval(result) {
     assert(planReview, "Expected production Plan Review transaction state.");
     assert(
         planReview.lifecycleEvents?.map((event) => `${event.event}:${event.status}`).join(",") ===
-            "review_feedback:feedback,review_approved:approved",
+            "review_feedback:draft,review_approved:approved",
         `Expected persisted feedback then approval; got ${JSON.stringify(planReview.lifecycleEvents)}`,
     );
     assert(

@@ -105,48 +105,36 @@ test("decidePostPlanning maps feedback to semantic stay_with_agent reason", () =
 });
 
 test("decidePostPlanning maps canceled to semantic stay_with_agent reason", () => {
-    assertEquals(
-        decidePostPlanning(
-            { outcome: "canceled" },
-            { planningAgentName: "architect", fallbackTriageMeta },
-        ),
-        { kind: "stay_with_agent", payload: { agentName: "architect", reason: "plan_review_canceled" } },
-    );
+    assertEquals(decidePostPlanning({ outcome: "canceled" }, { planningAgentName: "architect", fallbackTriageMeta }), {
+        kind: "stay_with_agent",
+        payload: { agentName: "architect", reason: "plan_review_canceled" },
+    });
 });
 
 test("decidePostPlanning maps no_call and missing planName to missing declaration", () => {
+    assertEquals(decidePostPlanning({ outcome: "no_call" }, { planningAgentName: "planner", fallbackTriageMeta }), {
+        kind: "stay_with_agent",
+        payload: { agentName: "planner", reason: "missing_plan_declaration" },
+    });
     assertEquals(
-        decidePostPlanning(
-            { outcome: "no_call" },
-            { planningAgentName: "planner", fallbackTriageMeta },
-        ),
-        { kind: "stay_with_agent", payload: { agentName: "planner", reason: "missing_plan_declaration" } },
-    );
-    assertEquals(
-        decidePostPlanning(
-            { outcome: "approved_execute" },
-            { planningAgentName: "planner", fallbackTriageMeta },
-        ),
+        decidePostPlanning({ outcome: "approved_execute" }, { planningAgentName: "planner", fallbackTriageMeta }),
         { kind: "stay_with_agent", payload: { agentName: "planner", reason: "missing_plan_declaration" } },
     );
 });
 
 test("decidePostPlanning maps repair_required to plan feedback iteration", () => {
     assertEquals(
-        decidePostPlanning(
-            { outcome: "repair_required" },
-            { planningAgentName: "architect", fallbackTriageMeta },
-        ),
+        decidePostPlanning({ outcome: "repair_required" }, { planningAgentName: "architect", fallbackTriageMeta }),
         { kind: "stay_with_agent", payload: { agentName: "architect", reason: "plan_feedback" } },
     );
 });
 
 test("decidePostPlanning halts on unknown planning outcomes", () => {
     assertEquals(
-        decidePostPlanning(
-            /** @type {any} */ ({ outcome: "something_else" }),
-            { planningAgentName: "planner", fallbackTriageMeta },
-        ),
+        decidePostPlanning(/** @type {any} */ ({ outcome: "something_else" }), {
+            planningAgentName: "planner",
+            fallbackTriageMeta,
+        }),
         { kind: "halt", payload: { reason: "unknown_plan_outcome" } },
     );
 });
@@ -204,10 +192,21 @@ test("decidePostExecution returns stay_with_agent when execution is incomplete",
 
 test("decidePostExecution halts when execution result is missing", () => {
     assertEquals(
-        decidePostExecution(
-            undefined,
-            { planName: "plan-d", triageMeta: fallbackTriageMeta, executionAgentName: "planner" },
-        ),
+        decidePostExecution(undefined, {
+            planName: "plan-d",
+            triageMeta: fallbackTriageMeta,
+            executionAgentName: "planner",
+        }),
         { kind: "halt", payload: { reason: "missing_execution_result" } },
+    );
+});
+
+test("decidePostPlanning keeps a conversation separate from Plan feedback", () => {
+    assertEquals(
+        decidePostPlanning({ outcome: "conversation", planName: "target" }, { planningAgentName: "architect" }),
+        {
+            kind: "stay_with_agent",
+            payload: { agentName: "architect", planName: "target", reason: "plan_conversation" },
+        },
     );
 });

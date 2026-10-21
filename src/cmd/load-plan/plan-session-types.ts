@@ -22,6 +22,7 @@ export interface ReviewImage {
 
 /** What a Plan review returns to the command. */
 export interface PlanReviewOutcome {
+    conversationTurn?: boolean;
     canceled: boolean;
     approved: boolean;
     feedback?: string;

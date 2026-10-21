@@ -32,19 +32,27 @@ times. Quick fixes have no Plan, no AI review, and no separate worktree.
 ## Planned changes
 
 1. **Planner writes a Plan.** Plans are Markdown files under `docs/plans/`.
-2. **You review it** in the browser. Approve it, or send feedback and Planner revises it. During review you can choose
-   who builds it (Engineer, or Frontend Engineer for browser UI work) and whether to work in **Pair** mode.
+2. **You review it** in the browser. Chat with Planner: it can reply without editing, or revise when the Plan must
+   change. The same review stays open. Approve & Run starts work; Approve for Later saves it without starting. You can
+   choose who builds it (Engineer, or Frontend Engineer for browser UI work) and whether to work in **Pair** mode.
 3. **Engineer builds it** in a separate Git worktree, so your checkout stays untouched. In Pair mode (terminal only),
    Engineer stops at checkpoints so you can approve each step, ask for changes, switch to autonomous, or stop.
 4. **RunWield validates it:**
-   - Your verification command runs. Failures go to a fresh Engineer Session to fix, up to three rounds.
-   - An AI reviewer compares the change with the Plan. Its findings are fixed and checked again, for a limited number of
-     rounds.
-   - If you turned on [`codereview`](settings.md#codereview), you review the code yourself before it's merged.
+    - Your verification command runs. Failures go to a fresh Engineer Session to fix, up to three rounds.
+    - An AI reviewer compares the change with the Plan. Its findings are fixed and checked again, for a limited number of
+      rounds.
+    - If you turned on [`codereview`](settings.md#codereview), you review the code yourself before it's merged.
 5. **RunWield delivers it** to the recorded landing branch, confirms delivery, and marks the Plan verified. By default,
    standalone Plans land on `plan/<plan-name>`; you then merge that branch or open a PR to the intended target. To deliver
    directly to the target, enable [Auto-merge into target branch](settings.md#plan-delivery). Until delivery is confirmed,
    the Plan stays reviewed and publication can be retried.
+
+In review chat, annotations, images, edits, and question answers queue automatically. X excludes a type from one send
+without deleting its items. Send accepts a message, queued context, or both. **Submit answer** sends only that question's
+answer and marks it sent; it is disabled while the Agent works. Send Annotations remains only on a review without chat.
+
+After a conversation without a Plan revision, approval offers **Ask Planner to update the Plan**, **Approve as is**, or
+**Cancel**. Approve as is still asks about open questions. Pending review context goes with approval.
 
 If you change your mind about a requirement while Engineer is working, say so. Engineer records it as a **Plan
 Deviation**, and you confirm it before it's saved to the Plan. The AI reviewer then follows your replacement, and the
@@ -78,21 +86,23 @@ This closes it without verification and keeps the remaining child Plans visible;
 
 You see a Plan's status in `wld plans` and on the Plan Board.
 
-| Status                        | Meaning                                                                   |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| `draft`                       | Written but not reviewed yet.                                             |
-| `feedback`                    | You sent feedback; the planning Agent is revising it.                     |
-| `approved`                    | You approved it; it isn't ready to run yet.                               |
-| `ready_for_decomposition`     | An approved Epic, waiting to be split up.                                 |
-| `ready_for_work`              | Ready to build. For an Epic: its Plans are ready to pick.                 |
-| `in_progress`                 | Being built.                                                              |
-| `failed`                      | The build stopped before finishing. Load the Plan to continue.            |
-| `implemented`                 | Built; checks or AI review are next. Passed checks are saved for resume.  |
-| `reviewed`                    | AI review passed; any required code review and delivery are pending.                       |
-| `verified`                    | Checks and review passed; delivery to the recorded landing, including a Plan branch, was confirmed.       |
-| `user_verified`               | You marked it done yourself, with a note, without RunWield validation.    |
-| `closed_without_verification` | You closed it without verification, including an Epic marked done enough. |
-| `on_hold`                     | Paused. Resume it from `wld load-plan` or the Plan Board.                 |
+| Status                        | Meaning                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| `draft`                       | Needs approval, including after a meaningful Plan revision.                                         |
+| `approved`                    | You approved it; it isn't ready to run yet.                                                         |
+| `ready_for_decomposition`     | An approved Epic, waiting to be split up.                                                           |
+| `ready_for_work`              | Ready to build. For an Epic: its Plans are ready to pick.                                           |
+| `in_progress`                 | Being built.                                                                                        |
+| `failed`                      | The build stopped before finishing. Load the Plan to continue.                                      |
+| `implemented`                 | Built; checks or AI review are next. Passed checks are saved for resume.                            |
+| `reviewed`                    | AI review passed; any required code review and delivery are pending.                                |
+| `verified`                    | Checks and review passed; delivery to the recorded landing, including a Plan branch, was confirmed. |
+| `user_verified`               | You marked it done yourself, with a note, without RunWield validation.                              |
+| `closed_without_verification` | You closed it without verification, including an Epic marked done enough.                           |
+| `on_hold`                     | Paused. Resume it from `wld load-plan` or the Plan Board.                                           |
+
+Older `feedback` and `in_review` Plans read as `draft`. Opening review or chatting preserves approval and readiness;
+a meaningful Plan revision returns an approved or ready Plan to draft. Formatting-only changes preserve its status.
 
 Older saved statuses such as `validated_ci`, `validated_reviewer`, and `validated` are read compatibly. RunWield uses
 saved checks and delivery evidence to show the current status; an unfinished publication stays reviewed. For projects

@@ -10,6 +10,7 @@ import { getCwd } from "../../../constants.js";
 /**
  * @typedef {Object} ScriptedReviewDecision
  * @property {boolean} approved
+ * @property {boolean} [conversationTurn]
  * @property {string} [feedback]
  * @property {boolean} [canceled]
  * @property {string} [approvalAction]
@@ -59,6 +60,7 @@ export class ScriptedReviewSurface {
         const approved = Boolean(decision.approved);
         return {
             approved,
+            conversationTurn: decision.conversationTurn === true,
             canceled: Boolean(decision.canceled),
             feedback: decision.feedback || "",
             approvalAction: decision.approvalAction || (approved ? "later" : undefined),

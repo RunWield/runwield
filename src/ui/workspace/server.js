@@ -655,6 +655,7 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             standaloneReview: reviewPayload.standaloneReview,
                             agentLabel: reviewConversation.agentLabel,
                             revision: reviewConversation.revision,
+                            error: reviewConversation.error,
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
                             rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
