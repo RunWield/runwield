@@ -13,44 +13,53 @@ const MNEMOTECA_REPO = "gandazgul/mnemoteca";
 const DEFAULT_INPUTS_PATH = "packaging/homebrew/tested-dependencies.json";
 const ARCHES = Object.freeze(["darwin-arm64", "darwin-x64"]);
 
-/**
- * @typedef {Object} AssetInput
- * @property {string} url
- * @property {string} sha256
- */
+export interface AssetInput {
+    url: string;
+    sha256: string;
+}
 
-/** @typedef {Record<string, AssetInput>} PackageAssets */
+export type PackageAssets = Record<string, AssetInput>;
 
-/**
- * @typedef {Object} MnemotecaInput
- * @property {string} tag
- * @property {string} license
- * @property {string} homepage
- * @property {PackageAssets} assets
- */
+export interface MnemotecaInput {
+    tag: string;
+    license: string;
+    homepage: string;
+    assets: PackageAssets;
+}
 
-/**
- * @typedef {Object} TestedDependencyInput
- * @property {string} formula
- * @property {string} testedVersion
- */
+export interface TestedDependencyInput {
+    formula: string;
+    testedVersion: string;
+}
 
-/**
- * @typedef {Object} HomebrewInputs
- * @property {MnemotecaInput} mnemoteca
- * @property {Record<string, TestedDependencyInput>} homebrewDependencies
- */
+export interface HomebrewInputs {
+    mnemoteca: MnemotecaInput;
+    homebrewDependencies: Record<string, TestedDependencyInput>;
+}
 
-/**
- * @typedef {Object} HomebrewOptions
- * @property {string} wldTag
- * @property {string} mnemotecaTag
- * @property {string} output
- * @property {string} inputsPath
- * @property {string} [wldBaseUrl]
- * @property {string} [mnemotecaBaseUrl]
- * @property {boolean} testOnly
- */
+export interface HomebrewOptions {
+    wldTag: string;
+    mnemotecaTag: string;
+    output: string;
+    inputsPath: string;
+    wldBaseUrl?: string;
+    mnemotecaBaseUrl?: string;
+    testOnly: boolean;
+}
+
+interface WldFormulaInput {
+    version: string;
+    assets: PackageAssets;
+}
+
+interface MnemotecaFormulaInput extends WldFormulaInput {
+    license: string;
+    homepage: string;
+}
+
+interface ExistingPackageManifest extends Partial<ExistingRunWieldPackage> {
+    formulas?: string[];
+}
 
 function usage() {
     return [
@@ -60,10 +69,14 @@ function usage() {
     ].join("\n");
 }
 
-/** @param {string[]} args */
-export function parsePackageHomebrewArgs(args) {
-    /** @type {HomebrewOptions} */
-    const options = { wldTag: "", mnemotecaTag: "", output: "", inputsPath: DEFAULT_INPUTS_PATH, testOnly: false };
+export function parsePackageHomebrewArgs(args: string[]): HomebrewOptions {
+    const options: HomebrewOptions = {
+        wldTag: "",
+        mnemotecaTag: "",
+        output: "",
+        inputsPath: DEFAULT_INPUTS_PATH,
+        testOnly: false,
+    };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
         if (arg === "--test-only") options.testOnly = true;
@@ -80,42 +93,26 @@ export function parsePackageHomebrewArgs(args) {
     return options;
 }
 
-/** @param {string} tag */
-function assertStableTag(tag) {
+function assertStableTag(tag: string) {
     const parsed = parseReleaseTag(tag);
     if (parsed.kind !== "stable") throw new Error(`Homebrew packages require a Stable tag: ${tag}`);
     return parsed;
 }
 
-/**
- * @param {string} baseUrl
- * @param {string} name
- */
-function assetUrl(baseUrl, name) {
+function assetUrl(baseUrl: string, name: string) {
     return `${baseUrl.replace(/\/$/, "")}/${name}`;
 }
 
-/**
- * @param {string} repo
- * @param {string} tag
- * @param {string | undefined} baseUrl
- */
-function releaseBaseUrl(repo, tag, baseUrl) {
+function releaseBaseUrl(repo: string, tag: string, baseUrl: string | undefined) {
     return baseUrl || `https://github.com/${repo}/releases/download/${tag}`;
 }
 
-/**
- * @param {string} url
- * @param {string} repo
- * @param {string} tag
- */
-function assertReleasedAssetUrl(url, repo, tag) {
+function assertReleasedAssetUrl(url: string, repo: string, tag: string) {
     const expected = `https://github.com/${repo}/releases/download/${tag}/`;
     if (!url.startsWith(expected)) throw new Error(`Publishable Homebrew asset must use ${expected}: ${url}`);
 }
 
-/** @param {Uint8Array} bytes */
-async function sha256(bytes) {
+async function sha256(bytes: Uint8Array) {
     const input = new Uint8Array(bytes.length);
     input.set(bytes);
     const hash = await crypto.subtle.digest("SHA-256", input.buffer);
@@ -124,18 +121,13 @@ async function sha256(bytes) {
         .join("");
 }
 
-/** @param {string} url */
-async function readUrlBytes(url) {
+async function readUrlBytes(url: string) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Download failed ${response.status}: ${url}`);
     return new Uint8Array(await response.arrayBuffer());
 }
 
-/**
- * @param {string} text
- * @param {string} assetName
- */
-function checksumForAsset(text, assetName) {
+function checksumForAsset(text: string, assetName: string) {
     for (const line of text.split("\n")) {
         const [sum, name] = line.trim().split(/\s+/, 2);
         if (name === assetName && /^[0-9a-f]{64}$/i.test(sum)) return sum.toLowerCase();
@@ -143,11 +135,7 @@ function checksumForAsset(text, assetName) {
     throw new Error(`Checksum file is missing ${assetName}.`);
 }
 
-/**
- * @param {string} url
- * @param {string} expectedSha
- */
-async function verifyAsset(url, expectedSha) {
+async function verifyAsset(url: string, expectedSha: string) {
     const bytes = await readUrlBytes(url);
     const actual = await sha256(bytes);
     if (actual !== expectedSha.toLowerCase()) {
@@ -155,11 +143,7 @@ async function verifyAsset(url, expectedSha) {
     }
 }
 
-/**
- * @param {string} baseUrl
- * @param {string} assetName
- */
-async function verifiedRunWieldAsset(baseUrl, assetName) {
+async function verifiedRunWieldAsset(baseUrl: string, assetName: string) {
     const shaUrl = assetUrl(baseUrl, `${assetName}.sha256`);
     const shaText = new TextDecoder().decode(await readUrlBytes(shaUrl));
     const expected = checksumForAsset(shaText, assetName);
@@ -168,13 +152,8 @@ async function verifiedRunWieldAsset(baseUrl, assetName) {
     return { url, sha256: expected };
 }
 
-/**
- * @param {MnemotecaInput} input
- * @param {string | undefined} baseUrl
- */
-async function verifiedMnemotecaAssets(input, baseUrl) {
-    /** @type {Record<string, AssetInput>} */
-    const assets = {};
+async function verifiedMnemotecaAssets(input: MnemotecaInput, baseUrl: string | undefined) {
+    const assets: PackageAssets = {};
     for (const arch of ARCHES) {
         const current = input.assets[arch];
         if (!current?.url || !current.sha256) throw new Error(`Missing Mnemoteca asset input for ${arch}.`);
@@ -185,16 +164,11 @@ async function verifiedMnemotecaAssets(input, baseUrl) {
     return assets;
 }
 
-/** @param {string} text */
-function assertNoPlaceholders(text) {
+function assertNoPlaceholders(text: string) {
     if (/TODO|PLACEHOLDER|__[^_]+__/i.test(text)) throw new Error("Generated formula contains a placeholder.");
 }
 
-/**
- * @param {HomebrewInputs} inputs
- * @param {string} tag
- */
-function validateInputs(inputs, tag) {
+function validateInputs(inputs: HomebrewInputs, tag: string) {
     if (!inputs.mnemoteca?.tag || !inputs.mnemoteca.assets) throw new Error("Missing Mnemoteca input metadata.");
     if (inputs.mnemoteca.tag !== tag) {
         throw new Error(`Inputs contain ${inputs.mnemoteca.tag}, not requested Mnemoteca tag ${tag}.`);
@@ -209,11 +183,7 @@ function validateInputs(inputs, tag) {
     }
 }
 
-/**
- * @param {{ version: string, assets: Record<string, AssetInput> }} wld
- * @param {boolean} testOnly
- */
-function renderWldFormula(wld, testOnly) {
+function renderWldFormula(wld: WldFormulaInput, testOnly: boolean) {
     // Homebrew reads Candidate versions correctly, but mistakes Stable archive names for CPU versions.
     // GitHub release URLs and Candidate names already identify the version; repeating it fails brew audit.
     const releaseUrl = `https://github.com/${RUNWIELD_REPO}/releases/download/v${wld.version}/`;
@@ -265,10 +235,7 @@ end
 ${testOnly ? "# test-only artifact; do not publish this formula\n" : ""}`;
 }
 
-/**
- * @param {{ version: string, assets: Record<string, AssetInput>, license: string, homepage: string }} mnemoteca
- */
-function renderMnemotecaFormula(mnemoteca) {
+function renderMnemotecaFormula(mnemoteca: MnemotecaFormulaInput) {
     const releaseUrl = `https://github.com/${MNEMOTECA_REPO}/releases/download/v${mnemoteca.version}/`;
     const versionDeclaration = Object.values(mnemoteca.assets).every((asset) => asset.url.startsWith(releaseUrl))
         ? ""
@@ -326,18 +293,15 @@ bun run package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-dir
 `;
 }
 
-/**
- * @typedef {Object} ExistingRunWieldPackage
- * @property {string} wldTag
- * @property {boolean} testOnly
- */
+export interface ExistingRunWieldPackage {
+    wldTag: string;
+    testOnly: boolean;
+}
 
-/**
- * @param {string} output
- * @param {boolean} requestedTestOnly
- * @returns {Promise<ExistingRunWieldPackage>}
- */
-async function readExistingRunWieldPackage(output, requestedTestOnly) {
+async function readExistingRunWieldPackage(
+    output: string,
+    requestedTestOnly: boolean,
+): Promise<ExistingRunWieldPackage> {
     const formulaPath = join(output, "Formula", "wld.rb");
     const manifestPath = join(output, "runwield-homebrew-package.json");
     const formula = await fsReadFile(formulaPath, "utf8").catch((error) => {
@@ -346,7 +310,7 @@ async function readExistingRunWieldPackage(output, requestedTestOnly) {
         }
         throw error;
     });
-    const manifest = JSON.parse(
+    const manifest: ExistingPackageManifest = JSON.parse(
         await fsReadFile(manifestPath, "utf8").catch((error) => {
             if (error instanceof Error && "code" in error && error.code === "ENOENT") {
                 throw new Error("Mnemoteca-only refresh requires an existing package manifest.");
@@ -370,8 +334,7 @@ async function readExistingRunWieldPackage(output, requestedTestOnly) {
     return { wldTag: parsed.tag, testOnly: Boolean(manifest.testOnly) || requestedTestOnly };
 }
 
-/** @param {HomebrewOptions} options */
-export async function packageHomebrew(options) {
+export async function packageHomebrew(options: HomebrewOptions) {
     if (!options.testOnly && (options.wldBaseUrl || options.mnemotecaBaseUrl)) {
         throw new Error("Base URL overrides require --test-only.");
     }
@@ -381,7 +344,7 @@ export async function packageHomebrew(options) {
             : assertStableTag(options.wldTag)
         : null;
     const mnemotecaTag = assertStableTag(options.mnemotecaTag);
-    const inputs = /** @type {HomebrewInputs} */ (JSON.parse(await fsReadFile(options.inputsPath, "utf8")));
+    const inputs: HomebrewInputs = JSON.parse(await fsReadFile(options.inputsPath, "utf8"));
     validateInputs(inputs, mnemotecaTag.tag);
     const existingWld = wldTag ? null : await readExistingRunWieldPackage(options.output, options.testOnly);
 
@@ -393,8 +356,7 @@ export async function packageHomebrew(options) {
         }
     }
 
-    /** @type {Record<string, AssetInput>} */
-    const wldAssets = {};
+    const wldAssets: PackageAssets = {};
     if (wldTag) {
         const wldBase = releaseBaseUrl(RUNWIELD_REPO, wldTag.tag, options.wldBaseUrl);
         for (const arch of ARCHES) {
