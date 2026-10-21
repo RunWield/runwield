@@ -1,3 +1,4 @@
+import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { copyFile as fsCopyFile, mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import process from "node:process";
@@ -7,14 +8,18 @@ import process from "node:process";
 
 import { resolve } from "node:path";
 
+interface HomebrewCheckManifest {
+    wldTag?: string;
+    mnemotecaTag?: string;
+}
+
 const TAP_NAME = "gandazgul/tap";
 
 function usage() {
     return "Usage: package-homebrew-check.js --tap <directory>";
 }
 
-/** @param {string[]} args */
-function parseArgs(args) {
+function parseArgs(args: string[]) {
     let tap = "";
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -25,14 +30,7 @@ function parseArgs(args) {
     return { tap };
 }
 
-/**
- * @param {string} command
- * @param {string[]} args
- * @param {string} cwd
- * @param {boolean} allowFailure
- * @param {boolean} capture
- */
-async function run(command, args, cwd, allowFailure = false, capture = false) {
+async function run(command: string, args: string[], cwd: string, allowFailure = false, capture = false) {
     console.error(`$ ${command} ${args.join(" ")}`);
     const output = await captureScriptProcess(command, {
         args,
@@ -54,62 +52,54 @@ async function run(command, args, cwd, allowFailure = false, capture = false) {
     return { success: output.success, stdout, stderr };
 }
 
-/** @param {string} tap */
-async function ensureGitTap(tap) {
-    const gitDir = await fsStat(`${tap}/.git`).then((stat) => stat.isDirectory()).catch(() => false);
+async function ensureGitTap(tap: string) {
+    const gitDir = await fsStat(`${tap}/.git`)
+        .then((stat) => stat.isDirectory())
+        .catch(() => false);
     if (!gitDir) await run("git", ["init"], tap);
     await run("git", ["add", "."], tap);
     const status = await run("git", ["status", "--porcelain"], tap, false, true);
     if (!status.stdout.trim()) return;
-    await run("git", [
-        "-c",
-        "user.name=RunWield",
-        "-c",
-        "user.email=runwield@example.invalid",
-        "commit",
-        "-m",
-        "Prepare tap",
-    ], tap);
+    await run(
+        "git",
+        ["-c", "user.name=RunWield", "-c", "user.email=runwield@example.invalid", "commit", "-m", "Prepare tap"],
+        tap,
+    );
 }
 
-/**
- * @param {string} existingPath
- * @param {string} tap
- */
-async function isCloneOfTap(existingPath, tap) {
+async function isCloneOfTap(existingPath: string, tap: string) {
     const origin = await run("git", ["-C", existingPath, "config", "--get", "remote.origin.url"], tap, true, true);
     if (!origin.success) return false;
     const expected = `file://${resolve(tap)}`;
-    return origin.stdout.trim() === expected ||
-        resolve(origin.stdout.trim().replace(/^file:\/\//, "")) === resolve(tap);
+    return (
+        origin.stdout.trim() === expected || resolve(origin.stdout.trim().replace(/^file:\/\//, "")) === resolve(tap)
+    );
 }
 
-/** @param {string} path */
-async function fileSha256(path) {
+async function fileSha256(path: string) {
     const hash = await crypto.subtle.digest("SHA-256", await fsReadFile(path));
-    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
-/**
- * @param {string} fromTap
- * @param {string} toTap
- */
-async function copyRenderedTapFiles(fromTap, toTap) {
+async function copyRenderedTapFiles(fromTap: string, toTap: string) {
     await fsMkdir(`${toTap}/Formula`, { recursive: true });
     for (const path of ["Formula/wld.rb", "Formula/mnemoteca.rb", "README.md", "runwield-homebrew-package.json"]) {
         await fsCopyFile(`${fromTap}/${path}`, `${toTap}/${path}`);
     }
 }
 
-/** @param {string} tap */
-async function registeredTapPath(tap) {
+async function registeredTapPath(tap: string) {
     const existing = await run("brew", ["--repo", TAP_NAME], tap, true, true);
     if (!existing.success) return "";
     const existingPath = resolve(existing.stdout.trim());
-    const exists = await fsStat(existingPath).then((stat) => stat.isDirectory()).catch((error) => {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
-        throw error;
-    });
+    const exists = await fsStat(existingPath)
+        .then((stat) => stat.isDirectory())
+        .catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+            throw error;
+        });
     if (!exists) return "";
     if (existingPath !== resolve(tap) && !(await isCloneOfTap(existingPath, tap))) {
         throw new Error(`Homebrew tap ${TAP_NAME} already points at ${existingPath}. Untap it or pass that path.`);
@@ -118,19 +108,16 @@ async function registeredTapPath(tap) {
     return existingPath;
 }
 
-/** @param {string} tap */
-async function readManifest(tap) {
+async function readManifest(tap: string): Promise<HomebrewCheckManifest> {
     const text = await fsReadFile(`${tap}/runwield-homebrew-package.json`, "utf8");
     return JSON.parse(text);
 }
 
-/**
- * @param {string} tap
- * @param {string} wldTag
- */
-async function assertInstalledRunWieldPackage(tap, wldTag) {
+async function assertInstalledRunWieldPackage(tap: string, wldTag: string) {
     const prefix = (await run("brew", ["--prefix", "gandazgul/tap/wld"], tap, false, true)).stdout.trim();
-    const metadata = JSON.parse(await fsReadFile(`${prefix}/libexec/runwield-install.json`, "utf8"));
+    const metadata: RunWieldPackageInstall = JSON.parse(
+        await fsReadFile(`${prefix}/libexec/runwield-install.json`, "utf8"),
+    );
     if (metadata.packageManager !== "homebrew" || metadata.packageIdentifier !== "gandazgul/tap/wld") {
         throw new Error("Installed RunWield artifact is missing Homebrew ownership metadata.");
     }
@@ -143,11 +130,7 @@ async function assertInstalledRunWieldPackage(tap, wldTag) {
     return executable;
 }
 
-/**
- * @param {string} tap
- * @param {string} executable
- */
-async function assertPackageUpdateAliases(tap, executable) {
+async function assertPackageUpdateAliases(tap: string, executable: string) {
     for (const alias of ["update", "upgrade"]) {
         const output = await run(executable, [alias], tap, false, true);
         if (!output.stdout.includes("brew upgrade gandazgul/tap/wld")) {
@@ -178,26 +161,28 @@ export async function main(args = process.argv.slice(2)) {
     const executable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
     const installedHash = await fileSha256(executable);
     await assertPackageUpdateAliases(tap, executable);
-    if (await fileSha256(executable) !== installedHash) {
+    if ((await fileSha256(executable)) !== installedHash) {
         throw new Error("wld update aliases changed the installed package bytes.");
     }
     await run("brew", ["test", "gandazgul/tap/mnemoteca"], tap);
     await run("brew", ["test", "gandazgul/tap/wld"], tap);
     await run("brew", ["upgrade", "gandazgul/tap/mnemoteca", "gandazgul/tap/wld"], tap);
     const upgradedExecutable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
-    if (await fileSha256(upgradedExecutable) !== installedHash) {
+    if ((await fileSha256(upgradedExecutable)) !== installedHash) {
         throw new Error("brew upgrade changed the installed package bytes.");
     }
     await run("brew", ["uninstall", "gandazgul/tap/wld"], tap);
-    const removed = await fsStat(upgradedExecutable).then(() => false).catch((error) => {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return true;
-        throw error;
-    });
+    const removed = await fsStat(upgradedExecutable)
+        .then(() => false)
+        .catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return true;
+            throw error;
+        });
     if (!removed) throw new Error("brew uninstall left the verified wld executable installed.");
     await run("brew", ["uninstall", "gandazgul/tap/mnemoteca"], tap);
     await run("brew", ["install", "gandazgul/tap/wld"], tap);
     const reinstalledExecutable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
-    if (await fileSha256(reinstalledExecutable) !== installedHash) {
+    if ((await fileSha256(reinstalledExecutable)) !== installedHash) {
         throw new Error("brew reinstall did not restore the same package bytes.");
     }
     console.log("Homebrew formulas audited, installed, tested, upgraded, uninstalled, and ownership-checked.");

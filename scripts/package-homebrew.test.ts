@@ -12,21 +12,31 @@ import {
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { packageHomebrew, parsePackageHomebrewArgs } from "./package-homebrew.js";
+import type { ExistingRunWieldPackage, HomebrewInputs, MnemotecaInput } from "./package-homebrew.js";
+import type { FetchRequest } from "../src/shared/fetch-request.ts";
 
-/** @param {Uint8Array} bytes */
-async function sha256Text(bytes) {
+interface PackageManifest extends ExistingRunWieldPackage {
+    formulas: string[];
+}
+
+interface EditableMnemotecaInput extends Omit<MnemotecaInput, "license"> {
+    license?: string;
+}
+
+interface EditableHomebrewInputs extends Omit<HomebrewInputs, "mnemoteca"> {
+    mnemoteca: EditableMnemotecaInput;
+}
+
+async function sha256Text(bytes: Uint8Array): Promise<string> {
     const input = new Uint8Array(bytes.length);
     input.set(bytes);
     const hash = await crypto.subtle.digest("SHA-256", input.buffer);
-    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
-/**
- * @param {string} root
- * @param {string} name
- * @param {string} text
- */
-async function writeAsset(root, name, text) {
+async function writeAsset(root: string, name: string, text: string): Promise<string> {
     const bytes = new TextEncoder().encode(text);
     await fsWriteFile(join(root, name), bytes);
     return await sha256Text(bytes);
@@ -34,11 +44,7 @@ async function writeAsset(root, name, text) {
 
 async function makeReleaseFixture() {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-homebrew-release-"));
-    /**
-     * @param {string} name
-     * @param {string} text
-     */
-    async function add(name, text) {
+    async function add(name: string, text: string): Promise<string> {
         return await writeAsset(root, name, text);
     }
 
@@ -131,7 +137,9 @@ test("package:homebrew renders formulas from verified immutable assets", async (
         assertStringIncludes(mnemoteca, '  version "0.3.1"\n');
         assertStringIncludes(mnemoteca, "depends_on :macos");
         assertStringIncludes(mnemoteca, "mnemoteca_0.3.1_darwin_arm64.tar.gz");
-        const manifest = JSON.parse(await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"));
+        const manifest: PackageManifest = JSON.parse(
+            await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"),
+        );
         assertEquals(manifest.testOnly, true);
         assertEquals(manifest.formulas, ["Formula/wld.rb", "Formula/mnemoteca.rb"]);
     } finally {
@@ -181,7 +189,9 @@ test("package:homebrew validates Candidate bytes only as test output", async () 
             wldBaseUrl: fixture.baseUrl,
             mnemotecaBaseUrl: fixture.baseUrl,
         });
-        const manifest = JSON.parse(await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"));
+        const manifest: PackageManifest = JSON.parse(
+            await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"),
+        );
         assertEquals(manifest.wldTag, "v1.2.3-rc.1");
         const wld = await fsReadFile(join(output, "Formula", "wld.rb"), "utf8");
         assertStringIncludes(wld, "wld-v1.2.3-rc.1-darwin-arm64.tar.gz");
@@ -218,7 +228,7 @@ test("package:homebrew rejects corrupt release bytes", async () => {
 test("package:homebrew rejects incomplete platform assets", async () => {
     const fixture = await makeReleaseFixture();
     try {
-        const inputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
+        const inputs: EditableHomebrewInputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
         delete inputs.mnemoteca.assets["darwin-x64"];
         await fsWriteFile(fixture.inputsPath, JSON.stringify(inputs));
         await assertRejects(
@@ -264,7 +274,7 @@ test("package:homebrew rejects base URL overrides for publishable output", async
 test("package:homebrew rejects missing publishable license metadata", async () => {
     const fixture = await makeReleaseFixture();
     try {
-        const inputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
+        const inputs: EditableHomebrewInputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
         delete inputs.mnemoteca.license;
         await fsWriteFile(fixture.inputsPath, JSON.stringify(inputs));
         await assertRejects(
@@ -339,7 +349,9 @@ test("package:homebrew refreshes only Mnemoteca when wld tag is omitted", async 
         const mnemoteca = await fsReadFile(join(output, "Formula", "mnemoteca.rb"), "utf8");
         assertStringIncludes(mnemoteca, "class Mnemoteca < Formula");
         assertStringIncludes(mnemoteca, '  version "0.3.1"\n');
-        const manifest = JSON.parse(await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"));
+        const manifest: PackageManifest = JSON.parse(
+            await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"),
+        );
         assertEquals(manifest.testOnly, true);
         assertEquals(manifest.wldTag, "v1.2.3");
         assertEquals(manifest.formulas, ["Formula/wld.rb", "Formula/mnemoteca.rb"]);
@@ -352,15 +364,18 @@ test("package:homebrew release workflow mixed URLs and publication versions", as
     const fixture = await makeReleaseFixture();
     const realFetch = globalThis.fetch;
     // Keep release URLs in generated formulas; serve verified fixture bytes at the network boundary.
-    /** @type {import("../src/shared/fetch-request.ts").FetchRequest} */
-    const fixtureFetch = (input, init) => {
+    const fixtureFetch: FetchRequest = (input, init) => {
         const url = String(input);
-        const name = url.slice(url.lastIndexOf("/") + 1).replace("0.3.3", "0.3.1").replace("-rc.1", "");
+        const name = url
+            .slice(url.lastIndexOf("/") + 1)
+            .replace("0.3.3", "0.3.1")
+            .replace("-rc.1", "");
         if (url.endsWith(".sha256")) {
-            return realFetch(`${fixture.baseUrl}/${name}`, init).then(async (response) =>
-                new Response(
-                    (await response.text()).replace("v1.2.3-", url.includes("-rc.1") ? "v1.2.3-rc.1-" : "v1.2.3-"),
-                )
+            return realFetch(`${fixture.baseUrl}/${name}`, init).then(
+                async (response) =>
+                    new Response(
+                        (await response.text()).replace("v1.2.3-", url.includes("-rc.1") ? "v1.2.3-rc.1-" : "v1.2.3-"),
+                    ),
             );
         }
         return realFetch(`${fixture.baseUrl}/${name}`, init);

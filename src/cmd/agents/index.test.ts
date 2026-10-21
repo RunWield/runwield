@@ -15,7 +15,7 @@ import { setCustomSetting } from "../../shared/settings.js";
 import { getEditorTheme } from "../../ui/theme/theme.js";
 import { createUiApi } from "../../ui/tui/api.js";
 import { SpinnerBlock } from "../../ui/tui/blocks.js";
-import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.js";
+import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
 import { runAgentsCommand } from "./index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 

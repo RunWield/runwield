@@ -11,10 +11,20 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";
 import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";
+import type { WorkRecordFrontMatter, WorkRecordResource } from "./schema.ts";
+
+export interface ListWorkRecordsOptions {
+    createDir?: boolean;
+}
+
+export interface WriteWorkRecordOptions {
+    fileName?: string;
+}
 
 export class WorkRecordReadError extends Error {
-    /** @param {string} filePath @param {string} reason */
-    constructor(filePath, reason) {
+    declare filePath: string;
+    declare reason: string;
+    constructor(filePath: string, reason: string) {
         super(`${filePath}: ${reason}`);
         this.name = "WorkRecordReadError";
         this.filePath = filePath;
@@ -22,20 +32,17 @@ export class WorkRecordReadError extends Error {
     }
 }
 
-/** @param {string} cwd */
-export function getWorkRecordsDir(cwd) {
+export function getWorkRecordsDir(cwd: string) {
     return join(cwd, WORK_RECORDS_DIR_NAME);
 }
 
-/** @param {string} cwd */
-export async function ensureWorkRecordsDir(cwd) {
+export async function ensureWorkRecordsDir(cwd: string) {
     const dir = getWorkRecordsDir(cwd);
     await fsMkdir(dir, { recursive: true });
     return dir;
 }
 
-/** @param {string} title */
-export function slugifyWorkRecordTitle(title) {
+export function slugifyWorkRecordTitle(title: string) {
     return (
         String(title || "work-record")
             .toLowerCase()
@@ -44,19 +51,11 @@ export function slugifyWorkRecordTitle(title) {
     );
 }
 
-/**
- * @param {string} title
- * @param {Date} [date]
- */
-export function buildWorkRecordFileName(title, date = new Date()) {
+export function buildWorkRecordFileName(title: string, date = new Date()) {
     return `${date.toISOString().slice(0, 10)}-${slugifyWorkRecordTitle(title)}.md`;
 }
 
-/**
- * @param {string} cwd
- * @param {string} fileName
- */
-export function resolveWorkRecordPath(cwd, fileName) {
+export function resolveWorkRecordPath(cwd: string, fileName: string) {
     const name = basename(String(fileName || "").replaceAll("\\", "/"));
     if (!name || name !== fileName || name === "." || name === ".." || !name.endsWith(".md")) {
         throw new Error(`Work Record path must be a flat Markdown filename under ${WORK_RECORDS_DIR_NAME}/.`);
@@ -64,19 +63,11 @@ export function resolveWorkRecordPath(cwd, fileName) {
     return join(getWorkRecordsDir(cwd), name);
 }
 
-/**
- * @param {string} cwd
- * @param {string} filePath
- */
-function relativeWorkRecordPath(cwd, filePath) {
+function relativeWorkRecordPath(cwd: string, filePath: string) {
     return relative(cwd, filePath).replaceAll("\\", "/");
 }
 
-/**
- * @param {string} cwd
- * @param {string} fileName
- */
-export async function readWorkRecord(cwd, fileName) {
+export async function readWorkRecord(cwd: string, fileName: string): Promise<WorkRecordResource> {
     const filePath = resolveWorkRecordPath(cwd, fileName);
     const markdown = await fsReadFile(filePath, "utf8");
     try {
@@ -92,12 +83,10 @@ export async function readWorkRecord(cwd, fileName) {
     }
 }
 
-/**
- * @param {string} cwd
- * @param {{ createDir?: boolean }} [options]
- * @returns {Promise<import('./schema.ts').WorkRecordResource[]>}
- */
-export async function listWorkRecords(cwd, options = {}) {
+export async function listWorkRecords(
+    cwd: string,
+    options: ListWorkRecordsOptions = {},
+): Promise<WorkRecordResource[]> {
     const dir = options.createDir === false ? getWorkRecordsDir(cwd) : await ensureWorkRecordsDir(cwd);
     if (options.createDir === false) {
         try {
@@ -108,7 +97,7 @@ export async function listWorkRecords(cwd, options = {}) {
             throw error;
         }
     }
-    const records = [];
+    const records: WorkRecordResource[] = [];
     for await (const entry of await opendir(dir)) {
         if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
         records.push(await readWorkRecord(cwd, entry.name));
@@ -116,11 +105,7 @@ export async function listWorkRecords(cwd, options = {}) {
     return records.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
-/**
- * @param {string} cwd
- * @param {string} recordId
- */
-export async function findWorkRecordById(cwd, recordId) {
+export async function findWorkRecordById(cwd: string, recordId: string): Promise<WorkRecordResource | null> {
     const identity = String(recordId).toLowerCase();
     const records = await listWorkRecords(cwd);
     return records.find((record) => record.attrs.recordId.toLowerCase() === identity) || null;
@@ -128,13 +113,10 @@ export async function findWorkRecordById(cwd, recordId) {
 
 /**
  * Publish validated Markdown without replacing an existing canonical path.
- * @param {string} directory
- * @param {string} filePath
- * @param {string} markdown
  */
-async function createCanonicalFile(directory, filePath, markdown) {
+async function createCanonicalFile(directory: string, filePath: string, markdown: string) {
     const tempPath = join(directory, `.${basename(filePath)}.${crypto.randomUUID()}.tmp`);
-    let file;
+    let file: Awaited<ReturnType<typeof open>> | undefined;
     try {
         file = await open(tempPath, "wx");
         await file.writeFile(markdown);
@@ -149,21 +131,16 @@ async function createCanonicalFile(directory, filePath, markdown) {
     }
 }
 
-/**
- * @param {string} fileName
- * @param {string} recordId
- */
-function collisionFileName(fileName, recordId) {
+function collisionFileName(fileName: string, recordId: string) {
     return `${fileName.slice(0, -3)}-${recordId.toLowerCase()}.md`;
 }
 
-/**
- * @param {string} cwd
- * @param {import('./schema.ts').WorkRecordFrontMatter} attrs
- * @param {string} body
- * @param {{ fileName?: string }} [options]
- */
-export async function writeWorkRecord(cwd, attrs, body, options = {}) {
+export async function writeWorkRecord(
+    cwd: string,
+    attrs: WorkRecordFrontMatter,
+    body: string,
+    options: WriteWorkRecordOptions = {},
+): Promise<WorkRecordResource> {
     const directory = await ensureWorkRecordsDir(cwd);
     const title = body.match(/^#\s+(.+)$/m)?.[1] || attrs.recordId;
     const requestedFileName = options.fileName || buildWorkRecordFileName(title);
@@ -199,8 +176,7 @@ export async function writeWorkRecord(cwd, attrs, body, options = {}) {
     return record;
 }
 
-/** @param {string} directory */
-async function syncDirectory(directory) {
+async function syncDirectory(directory: string) {
     try {
         const handle = await open(directory, "r");
         try {
@@ -215,10 +191,8 @@ async function syncDirectory(directory) {
 
 /**
  * Delete one canonical Work Record only when its path and identity still match.
- * @param {string} cwd
- * @param {import('./schema.ts').WorkRecordResource} currentRecord
  */
-export async function deleteWorkRecord(cwd, currentRecord) {
+export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordResource) {
     const expectedDir = resolve(getWorkRecordsDir(cwd));
     const currentPath = resolve(currentRecord.path || "");
     if (dirname(currentPath) !== expectedDir || !currentRecord.relativePath || !currentPath.endsWith(".md")) {
@@ -242,11 +216,12 @@ export async function deleteWorkRecord(cwd, currentRecord) {
 
 /**
  * Atomically replace one canonical Work Record without permitting an identity or path change.
- * @param {string} cwd
- * @param {import('./schema.ts').WorkRecordResource} currentRecord
- * @param {string} markdown
  */
-export async function replaceWorkRecord(cwd, currentRecord, markdown) {
+export async function replaceWorkRecord(
+    cwd: string,
+    currentRecord: WorkRecordResource,
+    markdown: string,
+): Promise<WorkRecordResource> {
     const expectedDir = resolve(getWorkRecordsDir(cwd));
     const currentPath = resolve(currentRecord.path || "");
     if (dirname(currentPath) !== expectedDir || !currentRecord.relativePath || !currentPath.endsWith(".md")) {
@@ -269,7 +244,7 @@ export async function replaceWorkRecord(cwd, currentRecord, markdown) {
         throw new Error("Current Work Record identity does not match the file at its canonical path.");
     }
     const tempPath = join(expectedDir, `.${basename(currentPath)}.${crypto.randomUUID()}.tmp`);
-    let file;
+    let file: Awaited<ReturnType<typeof open>> | undefined;
     try {
         file = await open(tempPath, "wx");
         await file.writeFile(markdown);

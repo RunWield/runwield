@@ -19,7 +19,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolveTemplateModel } from "../../shared/models/model-validation.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { recordInitOffered } from "../../cmd/init/init-state.ts";
 import { ONBOARDING_TUTORIAL_REQUEST, ONBOARDING_WARNING } from "./onboarding-content.ts";
 import {

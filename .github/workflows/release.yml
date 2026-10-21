@@ -284,7 +284,7 @@ jobs:
             - name: Run Golden TUI release gate
               env:
                   WLD_TEST_CONCURRENCY: "3"
-              run: bun scripts/write-version.js && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
+              run: bun scripts/write-version.ts && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''
@@ -509,7 +509,7 @@ jobs:
                   mkdir docs-artifact
                   tar -czf "docs-artifact/runwield-docs-$RELEASE_TAG.tar.gz" -C source/dist/docs .
                   bun -e '
-                    import { sha256File } from "./tooling/scripts/build-metadata.js";
+                    import { sha256File } from "./tooling/scripts/build-metadata.ts";
                     const name = `runwield-docs-${process.env.RELEASE_TAG}.tar.gz`;
                     const path = `docs-artifact/${name}`;
                     await Bun.write(`${path}.sha256`, `${await sha256File(path)}  ${name}\n`);

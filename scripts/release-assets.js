@@ -12,7 +12,7 @@ import process from "node:process";
 /** Stage one checked, flat release asset set. Never change published bytes. */
 import { join } from "node:path";
 import { expectedReleaseAssetNames, parseReleaseTag } from "./release.js";
-import { verifyBuildArtifact } from "./build-metadata.js";
+import { verifyBuildArtifact } from "./build-metadata.ts";
 import { extractReleaseRuntime } from "../src/shared/remote/release-artifact.ts";
 
 /**

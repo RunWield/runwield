@@ -20,7 +20,7 @@ import {
     isSafePrototypeSlug,
     runPrototype,
     validatePrototypeSetup,
-} from "./run-prototype.js";
+} from "./run-prototype.ts";
 
 interface PrototypeSpawnCall {
     command: string;
@@ -126,7 +126,7 @@ test("prototype launcher executes the configured Bun script and preserves its ex
             args: runtimeSourceArgs([
                 "run",
                 "-A",
-                fileURLToPath(new URL("./run-prototype.js", import.meta.url)),
+                fileURLToPath(new URL("./run-prototype.ts", import.meta.url)),
                 "real-launch",
             ]),
             cwd: dir,

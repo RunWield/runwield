@@ -35,7 +35,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 import { runBoundedTest } from "./run-with-snip.ts";
-import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.js";
+import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.ts";
 
 const TEST_FILE_TIMEOUT_MS = 10 * 60 * 1000;
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -211,7 +211,7 @@ export function selectTestShard(files, shard) {
  */
 export async function prepareGoldenFixtures(files, sandboxRoot) {
     if (!files.some((file) => file.replaceAll("\\", "/").includes("/src/ui/tui/golden-scenarios/"))) return "";
-    const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.js");
+    const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.ts");
     const root = join(sandboxRoot, "golden-fixtures");
     await prepareGoldenRepositoryTemplates(root);
     return root;
@@ -337,7 +337,7 @@ async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
     const queue = [...files];
     /** @type {Array<{ file: string, failureLogPath: string }>} */
     const failures = [];
-    /** @type {Array<{ file: string, durationMs: number }>} */
+    /** @type {import("./test-timings.ts").ObservedTestTiming[]} */
     const observedTimings = [];
     let completed = 0;
     let skippedFiles = 0;

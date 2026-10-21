@@ -57,15 +57,21 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 assertExists(plan);
                 assertEquals(plan.attrs.status, "implemented");
                 assertEquals(plan.attrs.validationPhase, "semantic");
-                await savePlan(tree.path, name, body, {
-                    ...plan.attrs,
-                    executionMode: "worktree",
-                    executionBaselineTree: baseline,
-                    worktreeId: tree.id,
-                    worktreePath: tree.path,
-                    worktreeBranch: tree.branch,
-                    worktreeBaseBranch: "main",
-                }, { expectedRevision: plan.revision });
+                await savePlan(
+                    tree.path,
+                    name,
+                    body,
+                    {
+                        ...plan.attrs,
+                        executionMode: "worktree",
+                        executionBaselineTree: baseline,
+                        worktreeId: tree.id,
+                        worktreePath: tree.path,
+                        worktreeBranch: tree.branch,
+                        worktreeBaseBranch: "main",
+                    },
+                    { expectedRevision: plan.revision },
+                );
                 const ready = await loadPlan(tree.path, name);
                 assertExists(ready);
                 assertEquals(ready.attrs.status, "implemented");
@@ -89,15 +95,19 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                             fauxToolCall("review_diff", { command: "show", path: `docs/plans/${name}.md` }),
                         ),
                     () =>
-                        fauxAssistantMessage(fauxToolCall("review_complete", {
-                            approved: false,
-                            feedback: "The implementation is incomplete.",
-                            findings: [{
-                                title: "Missing guard",
-                                requirement: "Implement the requested change",
-                                evidence: "implementation.txt",
-                            }],
-                        })),
+                        fauxAssistantMessage(
+                            fauxToolCall("review_complete", {
+                                approved: false,
+                                feedback: "The implementation is incomplete.",
+                                findings: [
+                                    {
+                                        title: "Missing guard",
+                                        requirement: "Implement the requested change",
+                                        evidence: "implementation.txt",
+                                    },
+                                ],
+                            }),
+                        ),
                     () => {
                         repairs++;
                         if (interruption === "cancel") {
@@ -109,20 +119,18 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                         if (interruption === "stop") {
                             return fauxAssistantMessage(fauxText("Inspecting the missing guard."));
                         }
-                        const responseText = interruption === "disconnect_compaction"
-                            ? "Inspecting the missing guard. ".repeat(18000)
-                            : "Inspecting the missing guard.";
+                        const responseText =
+                            interruption === "disconnect_compaction"
+                                ? "Inspecting the missing guard. ".repeat(18000)
+                                : "Inspecting the missing guard.";
                         return fauxAssistantMessage(fauxText(responseText), {
                             stopReason: "error",
                             errorMessage: "Unexpected EOF",
                         });
                     },
-                    ...interruption === "disconnect_compaction"
-                        ? [() =>
-                            fauxAssistantMessage(
-                                fauxText("Missing guard. Repair interrupted by EOF; resume it."),
-                            )]
-                        : [],
+                    ...(interruption === "disconnect_compaction"
+                        ? [() => fauxAssistantMessage(fauxText("Missing guard. Repair interrupted by EOF; resume it."))]
+                        : []),
                 ]);
                 const result = await runtime.runValidation(id, {
                     planName: name,
@@ -136,24 +144,32 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 const managed = runtime.getSessionSnapshot(id)?.managed;
                 assertExists(managed);
                 const segments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
-                assertEquals(segments.map((segment) => segment.kind), ["planning", "semantic_repair"]);
+                assertEquals(
+                    segments.map((segment) => segment.kind),
+                    ["planning", "semantic_repair"],
+                );
                 const repairSegment = segments[1];
                 const transcript = await fsReadFile(repairSegment.transcriptPath, "utf8");
                 if (interruption.startsWith("disconnect")) assertStringIncludes(transcript, "Unexpected EOF");
                 if (interruption === "disconnect_compaction") {
                     assertEquals(
-                        transcript.split("\n").filter(Boolean).some((line) => JSON.parse(line).type === "compaction"),
+                        transcript
+                            .split("\n")
+                            .filter(Boolean)
+                            .some((line) => JSON.parse(line).type === "compaction"),
                         true,
                     );
                 }
                 assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
                 let replies = 0;
-                setModelResponseFactories([(context) => {
-                    replies++;
-                    assertStringIncludes(JSON.stringify(context.messages), "continue");
-                    assertStringIncludes(JSON.stringify(context.messages), "Missing guard");
-                    return fauxAssistantMessage(fauxText("Continuing the interrupted repair."));
-                }]);
+                setModelResponseFactories([
+                    (context) => {
+                        replies++;
+                        assertStringIncludes(JSON.stringify(context.messages), "continue");
+                        assertStringIncludes(JSON.stringify(context.messages), "Missing guard");
+                        return fauxAssistantMessage(fauxText("Continuing the interrupted repair."));
+                    },
+                ]);
                 const followUp = await runtime.promptUserTurn(id, { initialRequest: "continue" });
                 assertEquals(followUp.ok, true);
                 assertEquals(replies, 1);
@@ -167,11 +183,16 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                         sessionId: segments[0].piSessionId,
                         sessionPath: segments[0].transcriptPath,
                     });
-                    setModelResponseFactories([(context) => {
-                        replies++;
-                        assertStringIncludes(JSON.stringify(context.messages), "Continuing the interrupted repair.");
-                        return fauxAssistantMessage(fauxText("Repair resumed after restart."));
-                    }]);
+                    setModelResponseFactories([
+                        (context) => {
+                            replies++;
+                            assertStringIncludes(
+                                JSON.stringify(context.messages),
+                                "Continuing the interrupted repair.",
+                            );
+                            return fauxAssistantMessage(fauxText("Repair resumed after restart."));
+                        },
+                    ]);
                     assertEquals(
                         (await restarted.promptUserTurn(loaded.sessionId, { initialRequest: "continue" })).ok,
                         true,

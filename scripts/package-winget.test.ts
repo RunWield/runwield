@@ -12,7 +12,7 @@ import {
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { packageWinget } from "./package-winget.js";
-import { sha256 } from "./package-windows.js";
+import { sha256 } from "./package-windows.ts";
 
 async function run(command: string, args: string[], cwd?: string): Promise<void> {
     const result = await captureScriptProcess(command, { args, cwd, stdout: "piped", stderr: "piped" });

@@ -13,16 +13,33 @@ import { collectNestedReviewAssetUrls, collectReviewAssetUrls } from "./release-
 
 const DEFAULT_RUNTIME_ENTRY = "dist/workspace-runtime/server.mjs";
 
-/** @param {string} message */
-function fail(message) {
+interface RuntimeReviewPayloadBase {
+    token: string;
+    mode: "workflow";
+}
+
+interface PlanRuntimeReviewPayload extends RuntimeReviewPayloadBase {
+    plan: string;
+    planPath: string;
+}
+
+interface CodeRuntimeReviewPayload extends RuntimeReviewPayloadBase {
+    rawPatch: string;
+    gitRef: string;
+    agentCwd: string;
+}
+
+type RuntimeReviewPayload = PlanRuntimeReviewPayload | CodeRuntimeReviewPayload;
+
+interface WorkspaceRuntimeEntry {
+    handle(request: Request): Response | Promise<Response>;
+}
+
+function fail(message: string): never {
     throw new Error(message);
 }
 
-/**
- * @param {string} html
- * @param {string} label
- */
-function assertRealReviewHtml(html, label) {
+function assertRealReviewHtml(html: string, label: string): void {
     if (html.includes("Workspace review UI assets are unavailable")) {
         fail(`${label} rendered the old unavailable-assets page.`);
     }
@@ -40,12 +57,7 @@ function assertRealReviewHtml(html, label) {
     }
 }
 
-/**
- * @param {string} html
- * @param {string} route
- * @param {Record<string, unknown>} payload
- */
-function assertEmbeddedPayloadRoundTrips(html, route, payload) {
+function assertEmbeddedPayloadRoundTrips(html: string, route: string, payload: RuntimeReviewPayload): void {
     const payloadAttribute = route === "/review/plan" ? "data-review-payload" : "data-code-review-payload";
     const openingTag = `<script type="application/json" ${payloadAttribute}>`;
     const payloadStart = html.indexOf(openingTag);
@@ -53,29 +65,19 @@ function assertEmbeddedPayloadRoundTrips(html, route, payload) {
     const jsonStart = payloadStart + openingTag.length;
     const jsonEnd = html.indexOf("</script>", jsonStart);
     if (jsonEnd < 0) fail(`${route} did not close its embedded review payload.`);
-    const decoded = JSON.parse(html.slice(jsonStart, jsonEnd));
+    const decoded: RuntimeReviewPayload = JSON.parse(html.slice(jsonStart, jsonEnd));
     if (JSON.stringify(decoded) !== JSON.stringify(payload)) {
         fail(`${route} did not preserve its embedded review payload.`);
     }
 }
 
-/**
- * @param {string} name
- * @returns {string}
- */
-function getOpaqueWorkspaceAssetName(name) {
+function getOpaqueWorkspaceAssetName(name: string): string {
     return [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"].includes(extname(name).toLowerCase())
         ? `${name}.asset`
         : name;
 }
 
-/**
- * @param {string} assetUrl
- * @param {string} runtimeClientAssetDir
- * @param {boolean} [opaqueAssets]
- * @returns {string}
- */
-function runtimeAssetPathForUrl(assetUrl, runtimeClientAssetDir, opaqueAssets) {
+function runtimeAssetPathForUrl(assetUrl: string, runtimeClientAssetDir: string, opaqueAssets?: boolean): string {
     const url = new URL(assetUrl);
     const encodedName = url.pathname.slice("/_astro/".length);
     const assetName = decodeURIComponent(encodedName);
@@ -85,16 +87,14 @@ function runtimeAssetPathForUrl(assetUrl, runtimeClientAssetDir, opaqueAssets) {
     return join(runtimeClientAssetDir, opaqueAssets ? getOpaqueWorkspaceAssetName(assetName) : assetName);
 }
 
-/**
- * @param {string} html
- * @param {string} baseUrl
- * @param {string} runtimeClientAssetDir
- * @param {boolean} [opaqueAssets]
- * @returns {Promise<void>}
- */
-export async function assertReviewAssetsAvailableInRuntime(html, baseUrl, runtimeClientAssetDir, opaqueAssets = true) {
+export async function assertReviewAssetsAvailableInRuntime(
+    html: string,
+    baseUrl: string,
+    runtimeClientAssetDir: string,
+    opaqueAssets = true,
+): Promise<void> {
     const pending = collectReviewAssetUrls(html, baseUrl);
-    const seen = new Set();
+    const seen = new Set<string>();
 
     while (pending.length) {
         const assetUrl = pending.shift();
@@ -120,15 +120,14 @@ export async function assertReviewAssetsAvailableInRuntime(html, baseUrl, runtim
     if (!seen.size) fail("Workspace review page did not reference any runtime assets.");
 }
 
-/**
- * @param {string} runtimeEntry
- * @param {string} route
- * @param {Record<string, unknown>} payload
- * @param {boolean} [bunRuntime]
- */
-async function assertReviewRoute(runtimeEntry, route, payload, bunRuntime = false) {
+async function assertReviewRoute(
+    runtimeEntry: string,
+    route: string,
+    payload: RuntimeReviewPayload,
+    bunRuntime = false,
+): Promise<void> {
     const absoluteRuntimeEntry = resolve(runtimeEntry);
-    const entry = await import(toFileUrl(absoluteRuntimeEntry).href);
+    const entry: WorkspaceRuntimeEntry = await import(toFileUrl(absoluteRuntimeEntry).href);
     if (typeof entry.handle !== "function") fail(`${runtimeEntry} does not export handle().`);
 
     const token = String(payload.token || "review-runtime-token");
@@ -149,8 +148,7 @@ async function assertReviewRoute(runtimeEntry, route, payload, bunRuntime = fals
     );
 }
 
-/** @param {string[]} [args] */
-export async function main(args = process.argv.slice(2)) {
+export async function main(args: string[] = process.argv.slice(2)): Promise<void> {
     const bunRuntime = args[0] === "--bun";
     const runtimeEntry = bunRuntime ? "dist/workspace-bun/server/entry.mjs" : args[0] || DEFAULT_RUNTIME_ENTRY;
     await assertReviewRoute(

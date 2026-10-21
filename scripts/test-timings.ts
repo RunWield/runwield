@@ -11,37 +11,42 @@ const TIMING_FILE_VERSION = 1;
 // observation instead of leaving long files at the end for two further runs.
 const MINIMUM_SCHEDULING_RUNS = 1;
 
-/**
- * @typedef {Object} TestTiming
- * @property {number} durationMs
- * @property {number} runs
- */
+export interface TestTiming {
+    durationMs: number;
+    runs: number;
+}
 
-/**
- * @typedef {Object} TestTimingFile
- * @property {number} version
- * @property {Record<string, TestTiming>} files
- */
+export interface TestTimingFile {
+    version: number;
+    files: Record<string, TestTiming>;
+}
 
-/** @param {string} path @returns {Promise<Record<string, TestTiming>>} */
-export async function readTestTimings(path) {
+export interface ObservedTestTiming {
+    file: string;
+    durationMs: number;
+}
+
+export async function readTestTimings(path: string): Promise<Record<string, TestTiming>> {
     try {
-        const parsed = JSON.parse(await fsReadFile(path, "utf8"));
+        const parsed: TestTimingFile = JSON.parse(await fsReadFile(path, "utf8"));
         if (parsed?.version !== TIMING_FILE_VERSION || !parsed.files || Array.isArray(parsed.files)) return {};
-        /** @type {Record<string, TestTiming>} */
-        const timings = {};
+        const timings: Record<string, TestTiming> = {};
         for (const [file, timing] of Object.entries(parsed.files)) {
             if (
-                timing && typeof timing === "object" && !Array.isArray(timing) &&
-                typeof timing.durationMs === "number" && timing.durationMs >= 0 &&
-                typeof timing.runs === "number" && timing.runs > 0
+                timing &&
+                typeof timing === "object" &&
+                !Array.isArray(timing) &&
+                typeof timing.durationMs === "number" &&
+                timing.durationMs >= 0 &&
+                typeof timing.runs === "number" &&
+                timing.runs > 0
             ) {
                 timings[file] = { durationMs: timing.durationMs, runs: timing.runs };
             }
         }
         return timings;
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return {};
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
         console.error(
             `[tests] ignored invalid timing history ${path}: ${error instanceof Error ? error.message : error}`,
         );
@@ -53,12 +58,8 @@ export async function readTestTimings(path) {
  * Put historically slow files first. Unknown files use the known median so new
  * tests do not collect at either end of the queue.
  *
- * @param {string[]} files
- * @param {string} root
- * @param {Record<string, TestTiming>} timings
- * @returns {string[]}
  */
-export function orderTestsByTiming(files, root, timings) {
+export function orderTestsByTiming(files: string[], root: string, timings: Record<string, TestTiming>): string[] {
     const trusted = Object.values(timings).filter((timing) => timing.runs >= MINIMUM_SCHEDULING_RUNS);
     const known = trusted.map((timing) => timing.durationMs).sort((a, b) => a - b);
     const fallback = known.length ? known[Math.floor(known.length / 2)] : 0;
@@ -67,12 +68,10 @@ export function orderTestsByTiming(files, root, timings) {
         const rightName = relative(root, right);
         const leftTiming = timings[leftName];
         const rightTiming = timings[rightName];
-        const leftDuration = leftTiming && leftTiming.runs >= MINIMUM_SCHEDULING_RUNS
-            ? leftTiming.durationMs
-            : fallback;
-        const rightDuration = rightTiming && rightTiming.runs >= MINIMUM_SCHEDULING_RUNS
-            ? rightTiming.durationMs
-            : fallback;
+        const leftDuration =
+            leftTiming && leftTiming.runs >= MINIMUM_SCHEDULING_RUNS ? leftTiming.durationMs : fallback;
+        const rightDuration =
+            rightTiming && rightTiming.runs >= MINIMUM_SCHEDULING_RUNS ? rightTiming.durationMs : fallback;
         const durationDifference = rightDuration - leftDuration;
         return durationDifference || leftName.localeCompare(rightName);
     });
@@ -82,11 +81,11 @@ export function orderTestsByTiming(files, root, timings) {
  * Merge one run into history. Recent data has one quarter of the weight so a
  * transient slow runner does not reorder the whole suite.
  *
- * @param {Record<string, TestTiming>} previous
- * @param {Array<{ file: string, durationMs: number }>} observed
- * @returns {Record<string, TestTiming>}
  */
-export function mergeTestTimings(previous, observed) {
+export function mergeTestTimings(
+    previous: Record<string, TestTiming>,
+    observed: ObservedTestTiming[],
+): Record<string, TestTiming> {
     const merged = { ...previous };
     for (const { file, durationMs } of observed) {
         const old = previous[file];
@@ -98,12 +97,10 @@ export function mergeTestTimings(previous, observed) {
     return merged;
 }
 
-/** @param {string} path @param {Record<string, TestTiming>} files */
-export async function writeTestTimings(path, files) {
+export async function writeTestTimings(path: string, files: Record<string, TestTiming>): Promise<void> {
     await fsMkdir(dirname(path), { recursive: true });
     const temporaryPath = `${path}.${crypto.randomUUID()}.tmp`;
-    /** @type {TestTimingFile} */
-    const payload = { version: TIMING_FILE_VERSION, files };
+    const payload: TestTimingFile = { version: TIMING_FILE_VERSION, files };
     await fsWriteFile(temporaryPath, `${JSON.stringify(payload, null, 2)}\n`);
     await fsRename(temporaryPath, path);
 }

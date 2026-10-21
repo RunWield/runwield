@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { captureScriptProcess } from "./script-process.ts";
+import { type ScriptProcessOptions, captureScriptProcess } from "./script-process.ts";
 import { getCwd } from "../src/constants.js";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import process from "node:process";
@@ -14,37 +14,57 @@ import { join, normalize, relative, resolve } from "node:path";
 const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const THROWAWAY_MARKER = ["THROWAWAY", "PROTOTYPE"].join(" ");
 
-/**
- * @typedef {Object} PrototypeProcessPort
- * @property {(command: string, options: import("./script-process.ts").ScriptProcessOptions) => { status: Promise<{ code: number }> }} spawn
- */
+export interface PrototypeExitStatus {
+    code: number;
+}
 
-/** @type {PrototypeProcessPort} */
-const SYSTEM_PROTOTYPE_PROCESS_PORT = Object.freeze({
-    spawn: (command, options) => ({ status: captureScriptProcess(command, options) }),
+export interface PrototypeProcess {
+    status: Promise<PrototypeExitStatus>;
+}
+
+export interface PrototypeProcessPort {
+    spawn(command: string, options: ScriptProcessOptions): PrototypeProcess;
+}
+
+export interface PrototypeLocationOptions {
+    cwd?: string;
+}
+
+export interface PrototypeRunOptions extends PrototypeLocationOptions {
+    slug: string;
+}
+
+export interface PrototypeSetup {
+    dir: string;
+    configPath: string;
+    relativeConfigPath: string;
+}
+
+interface PrototypePackageScripts {
+    dev?: string;
+}
+
+interface PrototypePackageConfig {
+    scripts?: PrototypePackageScripts;
+}
+
+const SYSTEM_PROTOTYPE_PROCESS_PORT: PrototypeProcessPort = Object.freeze({
+    spawn: (command: string, options: ScriptProcessOptions) => ({ status: captureScriptProcess(command, options) }),
 });
 
-/** @param {string} slug */
-export function isSafePrototypeSlug(slug) {
+export function isSafePrototypeSlug(slug: string): boolean {
     return SAFE_SLUG_RE.test(slug);
 }
 
-/** @param {string} cwd @param {string} slug */
-export function prototypeDir(cwd, slug) {
+export function prototypeDir(cwd: string, slug: string): string {
     return resolve(cwd, "prototypes", slug);
 }
 
-/** @param {string} cwd @param {string} path */
-function repoRelative(cwd, path) {
+function repoRelative(cwd: string, path: string): string {
     return normalize(relative(cwd, path)).replaceAll("\\", "/");
 }
 
-/**
- * @param {string} cwd
- * @param {string} slug
- * @returns {Promise<{ dir: string, configPath: string, relativeConfigPath: string }>}
- */
-export async function validatePrototypeSetup(cwd, slug) {
+export async function validatePrototypeSetup(cwd: string, slug: string): Promise<PrototypeSetup> {
     if (!isSafePrototypeSlug(slug)) {
         throw new Error("Prototype slug must be kebab-case: lowercase letters/numbers separated by single dashes.");
     }
@@ -65,7 +85,7 @@ export async function validatePrototypeSetup(cwd, slug) {
     if (!stat.isDirectory()) throw new Error(`Prototype path is not a directory: ${relativeDir}/`);
 
     const configPath = join(dir, "package.json");
-    let config;
+    let config: PrototypePackageConfig;
     try {
         config = JSON.parse(await fsReadFile(configPath, "utf8"));
     } catch (error) {
@@ -78,8 +98,7 @@ export async function validatePrototypeSetup(cwd, slug) {
     return { dir, configPath, relativeConfigPath: repoRelative(cwd, configPath) };
 }
 
-/** @param {string} cwd @param {string} relativePath */
-export async function isGitIgnored(cwd, relativePath) {
+export async function isGitIgnored(cwd: string, relativePath: string): Promise<boolean> {
     const output = await captureScriptProcess("git", {
         args: ["check-ignore", "-q", relativePath],
         cwd,
@@ -89,12 +108,7 @@ export async function isGitIgnored(cwd, relativePath) {
     return output.success;
 }
 
-/**
- * @param {{ cwd?: string, slug: string }} opts
- * @param {PrototypeProcessPort} processPort
- * @returns {Promise<number>}
- */
-export async function runPrototype(opts, processPort) {
+export async function runPrototype(opts: PrototypeRunOptions, processPort: PrototypeProcessPort): Promise<number> {
     const cwd = opts.cwd || getCwd();
     const setup = await validatePrototypeSetup(cwd, opts.slug);
     const args = ["run", "--cwd", setup.dir, "dev"];
@@ -109,11 +123,7 @@ export async function runPrototype(opts, processPort) {
     return status.code;
 }
 
-/**
- * @param {{ cwd?: string }} [opts]
- * @returns {Promise<string[]>}
- */
-export async function findTrackedPrototypeArtifacts(opts = {}) {
+export async function findTrackedPrototypeArtifacts(opts: PrototypeLocationOptions = {}): Promise<string[]> {
     const cwd = opts.cwd || getCwd();
     const output = await captureScriptProcess("git", {
         args: ["ls-files", "-z"],
@@ -123,7 +133,7 @@ export async function findTrackedPrototypeArtifacts(opts = {}) {
     });
     if (!output.success) throw new Error("Could not inspect tracked files for prototype artifacts.");
     const files = new TextDecoder().decode(output.stdout).split("\0").filter(Boolean);
-    const violations = [];
+    const violations: string[] = [];
     for (const file of files) {
         if (file.startsWith("prototypes/")) {
             violations.push(file);
@@ -145,13 +155,11 @@ export async function findTrackedPrototypeArtifacts(opts = {}) {
     return violations;
 }
 
-/** @param {string} basename */
-function isPrototypeArtifactFilename(basename) {
+function isPrototypeArtifactFilename(basename: string): boolean {
     return basename.includes(".prototype.") || /Prototype\./.test(basename);
 }
 
-/** @param {string} file */
-function isAllowedPrototypeConventionFile(file) {
+function isAllowedPrototypeConventionFile(file: string): boolean {
     const normalized = file.replaceAll("\\", "/");
     const basename = normalized.split("/").at(-1) || normalized;
     if (normalized.startsWith("src/skills/prototype/") && /\.mdx?$/i.test(basename)) return true;

@@ -12,11 +12,33 @@ import { getHomeDir } from "../src/constants.js";
 import { parseCsv, toCsv } from "./router-eval-utils.js";
 import { JUDGEMENT_COLUMNS } from "./write-router-judgement-csv.js";
 
+export interface RouterJudgementCsvRow {
+    [column: string]: string | undefined;
+    requestText?: string;
+    humanJudgement?: string;
+    humanNotes?: string;
+}
+
+export interface RouterJudgementHumanSeed {
+    intent: "INQUIRY" | "OPERATION";
+    note: string;
+}
+
+export interface RouterJudgementCurationResult {
+    rows: RouterJudgementCsvRow[];
+    removedGreetings: number;
+    seededHumanJudgements: number;
+}
+
+interface RouterJudgementCurationArguments {
+    _: (string | number)[];
+    help?: boolean;
+    in?: string;
+    out?: string;
+}
+
 const DEFAULT_CSV_NAME = "router-judgements.csv";
 
-/**
- * @returns {string}
- */
 export function getDefaultRouterJudgementCsvPath() {
     return join(getHomeDir(), ".wld", "router-eval", DEFAULT_CSV_NAME);
 }
@@ -31,29 +53,19 @@ const PURE_GREETING_REQUESTS = new Set([
     "hi there how are you doing",
 ]);
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-function normalizeRequest(value) {
+function normalizeRequest(value: string | null | undefined) {
     return value == null ? "" : String(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/**
- * @param {Record<string, string>} row
- * @returns {boolean}
- */
-export function isPureGreetingRow(row) {
+export function isPureGreetingRow(row: RouterJudgementCsvRow) {
     return PURE_GREETING_REQUESTS.has(normalizeRequest(row.requestText));
 }
 
 /**
  * Seed only cases that are clear under the current six-intent contract.
  *
- * @param {Record<string, string>} row
- * @returns {{ intent: string, note: string } | null}
  */
-export function getUnambiguousHumanSeed(row) {
+export function getUnambiguousHumanSeed(row: RouterJudgementCsvRow): RouterJudgementHumanSeed | null {
     const request = normalizeRequest(row.requestText);
 
     if (isPureGreetingRow(row)) {
@@ -86,16 +98,11 @@ export function getUnambiguousHumanSeed(row) {
     return null;
 }
 
-/**
- * @param {Array<Record<string, string>>} rows
- * @returns {{ rows: Array<Record<string, string>>, removedGreetings: number, seededHumanJudgements: number }}
- */
-export function curateRows(rows) {
+export function curateRows(rows: RouterJudgementCsvRow[]): RouterJudgementCurationResult {
     let keptGreeting = false;
     let removedGreetings = 0;
     let seededHumanJudgements = 0;
-    /** @type {Array<Record<string, string>>} */
-    const curated = [];
+    const curated: RouterJudgementCsvRow[] = [];
 
     for (const original of rows) {
         const row = { ...original };
@@ -120,24 +127,23 @@ export function curateRows(rows) {
     return { rows: curated, removedGreetings, seededHumanJudgements };
 }
 
-/**
- * @param {string[]} argv
- */
-export async function main(argv) {
-    const args = parseArgs(argv, {
+export async function main(argv: string[]) {
+    const args: RouterJudgementCurationArguments = parseArgs(argv, {
         string: ["in", "out"],
         boolean: ["help"],
         alias: { h: "help", i: "in", o: "out" },
     });
 
     if (args.help) {
-        console.log([
-            "Usage: bun scripts/curate-router-judgement-csv.js [options]",
-            "",
-            "Options:",
-            `  --in, -i <path>   CSV to curate (default: ${getDefaultRouterJudgementCsvPath()})`,
-            "  --out, -o <path>  Curated CSV output (default: same as --in)",
-        ].join("\n"));
+        console.log(
+            [
+                "Usage: bun scripts/curate-router-judgement-csv.js [options]",
+                "",
+                "Options:",
+                `  --in, -i <path>   CSV to curate (default: ${getDefaultRouterJudgementCsvPath()})`,
+                "  --out, -o <path>  Curated CSV output (default: same as --in)",
+            ].join("\n"),
+        );
         return;
     }
 
@@ -146,16 +152,18 @@ export async function main(argv) {
     await fsMkdir(dirname(outputPath), { recursive: true });
     const result = curateRows(parseCsv(await fsReadFile(inputPath, "utf8")));
     await fsWriteFile(outputPath, toCsv(JUDGEMENT_COLUMNS, result.rows));
-    console.log(JSON.stringify(
-        {
-            output: outputPath,
-            rows: result.rows.length,
-            removedGreetings: result.removedGreetings,
-            seededHumanJudgements: result.seededHumanJudgements,
-        },
-        null,
-        2,
-    ));
+    console.log(
+        JSON.stringify(
+            {
+                output: outputPath,
+                rows: result.rows.length,
+                removedGreetings: result.removedGreetings,
+                seededHumanJudgements: result.seededHumanJudgements,
+            },
+            null,
+            2,
+        ),
+    );
 }
 
 if (import.meta.main) {

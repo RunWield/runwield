@@ -4,31 +4,17 @@ import { stat as fsStat } from "node:fs/promises";
  * Verify local submodule hygiene without network access.
  *
  * This check is intended for fast per-change CI. Remote fetchability for pinned
- * commits lives in scripts/check-submodule-fetchability.js.
+ * commits lives in scripts/check-submodule-fetchability.ts.
  */
 
-/**
- * @typedef {Object} CommandResult
- * @property {boolean} success
- * @property {number} code
- * @property {string} stdout
- * @property {string} stderr
- */
+interface SubmoduleStatus {
+    prefix: string;
+    sha: string;
+    path: string;
+    line: string;
+}
 
-/**
- * @typedef {Object} SubmoduleStatus
- * @property {string} prefix
- * @property {string} sha
- * @property {string} path
- * @property {string} line
- */
-
-/**
- * @param {string} command
- * @param {string[]} args
- * @returns {Promise<CommandResult>}
- */
-async function run(command, args) {
+async function run(command: string, args: string[]) {
     const output = await captureScriptProcess(command, {
         args,
         stdout: "piped",
@@ -43,24 +29,17 @@ async function run(command, args) {
     };
 }
 
-/**
- * @returns {Promise<boolean>}
- */
-async function hasGitmodules() {
+async function hasGitmodules(): Promise<boolean> {
     try {
         const stat = await fsStat(".gitmodules");
         return stat.isFile();
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
 
-/**
- * @param {string} output
- * @returns {SubmoduleStatus[]}
- */
-function parseSubmoduleStatus(output) {
+function parseSubmoduleStatus(output: string): SubmoduleStatus[] {
     return output.split("\n").flatMap((line) => {
         if (!line.trim()) return [];
         const match = line.match(/^([ +-U])([0-9a-f]{40})\s+([^\s]+)(?:\s|$)/);
@@ -69,10 +48,7 @@ function parseSubmoduleStatus(output) {
     });
 }
 
-/**
- * @returns {Promise<SubmoduleStatus[]>}
- */
-async function readRecursiveSubmoduleStatus() {
+async function readRecursiveSubmoduleStatus(): Promise<SubmoduleStatus[]> {
     const result = await run("git", ["submodule", "status", "--recursive"]);
     if (!result.success) {
         throw new Error(`Failed to read submodule status:\n${result.stderr || result.stdout}`);
@@ -80,11 +56,7 @@ async function readRecursiveSubmoduleStatus() {
     return parseSubmoduleStatus(result.stdout);
 }
 
-/**
- * @param {SubmoduleStatus[]} statuses
- * @returns {boolean}
- */
-function reportUninitializedOrMismatchedSubmodules(statuses) {
+function reportUninitializedOrMismatchedSubmodules(statuses: SubmoduleStatus[]): boolean {
     let failed = false;
     for (const status of statuses) {
         if (status.prefix === "-") {
@@ -104,11 +76,7 @@ function reportUninitializedOrMismatchedSubmodules(statuses) {
     return failed;
 }
 
-/**
- * @param {SubmoduleStatus} status
- * @returns {Promise<boolean>}
- */
-async function reportDirtySubmodule(status) {
+async function reportDirtySubmodule(status: SubmoduleStatus): Promise<boolean> {
     const result = await run("git", [
         "-C",
         status.path,
@@ -129,11 +97,7 @@ async function reportDirtySubmodule(status) {
     return true;
 }
 
-/**
- * @param {SubmoduleStatus[]} statuses
- * @returns {Promise<boolean>}
- */
-async function reportDirtySubmodules(statuses) {
+async function reportDirtySubmodules(statuses: SubmoduleStatus[]): Promise<boolean> {
     let failed = false;
     for (const status of statuses) {
         if (status.prefix === "-") continue;
@@ -142,10 +106,7 @@ async function reportDirtySubmodules(statuses) {
     return failed;
 }
 
-/**
- * @returns {Promise<void>}
- */
-async function main() {
+async function main(): Promise<void> {
     if (!(await hasGitmodules())) {
         console.log("No .gitmodules file found; skipping local submodule check.");
         return;

@@ -4,7 +4,7 @@ import process from "node:process";
 import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 import { join } from "node:path";
 import { _setTestStatePath } from "../../../cmd/init/init-state.ts";
-import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.js";
+import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.ts";
 
 interface SharedEnvironmentScenarioRequest {
     scenarioModule: string;

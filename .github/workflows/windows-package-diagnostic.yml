@@ -34,7 +34,7 @@ jobs:
             - name: Generate version file
               env:
                   WLD_BUILD_VERSION: v0.10.1-rc.9
-              run: bun scripts/write-version.js
+              run: bun scripts/write-version.ts
 
             - name: Cache dependencies
               run: bun run install:locked

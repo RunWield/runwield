@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES, getArchivedEpicArtifactPath } from "./epic-artifacts.ts";
 import { getPlanArchiveRetentionPolicy } from "./settings.js";
-import { listWorkRecords } from "./work-records/store.js";
+import { listWorkRecords } from "./work-records/store.ts";
 
 export type ArchiveRetentionPolicy = {
     retentionDays: number;

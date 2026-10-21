@@ -1,5 +1,6 @@
+import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
 import { getCwd } from "../src/constants.js";
-import { spawnNativeProcess } from "../src/shared/foreground-process.ts";
+import { type NativeSpawnOptions, spawnNativeProcess } from "../src/shared/foreground-process.ts";
 import { collectProcessOutput } from "../src/testing/subprocess-output.ts";
 import { tmpdir } from "node:os";
 import {
@@ -22,8 +23,7 @@ function usage() {
     return "Usage: package-windows-check.js --package <wld-*-windows-x64.zip>";
 }
 
-/** @param {string[]} args */
-function parseArgs(args) {
+function parseArgs(args: string[]) {
     const options = { packagePath: "" };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -34,8 +34,7 @@ function parseArgs(args) {
     return options;
 }
 
-/** @param {string} command @param {string[]} args @param {{ cwd?: string, env?: Record<string, string>, stdin?: string }} [options] */
-async function run(command, args, options = {}) {
+async function run(command: string, args: string[], options: CommandOptions = {}) {
     const child = spawnNativeProcess(command, {
         args,
         cwd: options.cwd ?? getCwd(),
@@ -57,39 +56,58 @@ async function run(command, args, options = {}) {
     return { stdout, stderr };
 }
 
-/** @param {string} path */
-async function assertFile(path) {
+async function assertFile(path: string) {
     const stat = await fsStat(path).catch(() => null);
     if (!stat?.isFile()) throw new Error(`Package check missing file: ${path}`);
 }
 
-/**
- * @typedef {Object} AcpRunWieldMetadata
- * @property {string} [persistedSessionId]
- * @property {string} [runtimeSessionId]
- * @property {string} [sessionPath]
- */
+interface CommandOptions {
+    cwd?: string;
+    env?: NativeSpawnOptions["env"];
+    stdin?: string;
+}
 
-/**
- * @typedef {Object} AcpResult
- * @property {number} [protocolVersion]
- * @property {{ name?: string }} [agentInfo]
- * @property {{ name?: string }[]} [authMethods]
- * @property {string} [sessionId]
- * @property {{ runwield?: AcpRunWieldMetadata }} [_meta]
- */
+interface AcpRunWieldMetadata {
+    persistedSessionId?: string;
+    runtimeSessionId?: string;
+    sessionPath?: string;
+}
 
-/**
- * @typedef {Object} AcpMessage
- * @property {string | number} [id]
- * @property {AcpResult} [result]
- */
+interface AcpNamedResult {
+    name?: string;
+}
 
-/**
- * @param {ReadableStream<Uint8Array>} stream
- * @param {AcpMessage[]} messages
- */
-async function collectAcpOutput(stream, messages) {
+interface AcpResultMetadata {
+    runwield?: AcpRunWieldMetadata;
+}
+
+interface AcpResult {
+    protocolVersion?: number;
+    agentInfo?: AcpNamedResult;
+    authMethods?: AcpNamedResult[];
+    sessionId?: string;
+    _meta?: AcpResultMetadata;
+}
+
+interface AcpMessage {
+    id?: string | number;
+    result?: AcpResult;
+}
+
+interface AcpSessionParams {
+    cwd: string;
+    sessionId?: string;
+    mcpServers: [];
+}
+
+interface AcpSessionRequest {
+    jsonrpc: string;
+    id?: string | number;
+    method: string;
+    params: AcpSessionParams;
+}
+
+async function collectAcpOutput(stream: ReadableStream<Uint8Array>, messages: AcpMessage[]) {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let output = "";
@@ -115,23 +133,20 @@ async function collectAcpOutput(stream, messages) {
     return output;
 }
 
-/** @param {AcpMessage[]} messages @param {string} id */
-async function waitForAcpResponse(messages, id) {
+async function waitForAcpResponse(messages: AcpMessage[], id: string) {
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
         if (messages.some((message) => message.id === id)) return;
-        await new Promise((resolve) => setTimeout(resolve, 25));
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`ACP response ${id} timed out.`);
 }
 
-/**
- * @param {string} exe
- * @param {Record<string, string>} env
- * @param {Record<string, unknown>[]} requests
- * @returns {Promise<AcpMessage[]>}
- */
-async function runAcpExchange(exe, env, requests) {
+async function runAcpExchange(
+    exe: string,
+    env: Record<string, string>,
+    requests: AcpSessionRequest[],
+): Promise<AcpMessage[]> {
     const child = spawnNativeProcess(exe, {
         args: ["--mode", "acp"],
         cwd: getCwd(),
@@ -142,8 +157,7 @@ async function runAcpExchange(exe, env, requests) {
     });
     const writer = child.stdin.getWriter();
     const encoder = new TextEncoder();
-    /** @type {AcpMessage[]} */
-    const messages = [];
+    const messages: AcpMessage[] = [];
     const stdoutPromise = collectAcpOutput(child.stdout, messages);
     const stderrPromise = new Response(child.stderr).text();
     const initialize = {
@@ -162,7 +176,9 @@ async function runAcpExchange(exe, env, requests) {
         await writer.close();
         const status = await Promise.race([
             child.status,
-            new Promise((_, reject) => setTimeout(() => reject(new Error("ACP process exit timed out.")), 10_000)),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("ACP process exit timed out.")), 10_000),
+            ),
         ]);
         const stdout = await stdoutPromise;
         const stderr = await stderrPromise;
@@ -182,8 +198,7 @@ async function runAcpExchange(exe, env, requests) {
     }
 }
 
-/** @param {string} exe @param {Record<string, string>} env */
-async function checkAcpProtocolExchange(exe, env) {
+async function checkAcpProtocolExchange(exe: string, env: Record<string, string>) {
     const messages = await runAcpExchange(exe, env, [
         {
             jsonrpc: "2.0",
@@ -220,13 +235,11 @@ async function checkAcpProtocolExchange(exe, env) {
     }
 }
 
-/** @param {string} exe @param {Record<string, string>} env */
-async function checkCoreHelperFlows(exe, env) {
+async function checkCoreHelperFlows(exe: string, env: Record<string, string>) {
     await run(exe, ["package-smoke", "core-flows"], { env: { ...env, WLD_INTERNAL_PACKAGE_CHECK: "1" } });
 }
 
-/** @param {string} exe @param {Record<string, string>} env */
-async function checkProviderSetupLaunch(exe, env) {
+async function checkProviderSetupLaunch(exe: string, env: Record<string, string>) {
     const child = spawnNativeProcess(exe, {
         args: ["login", "api-key", "openai"],
         cwd: getCwd(),
@@ -237,9 +250,9 @@ async function checkProviderSetupLaunch(exe, env) {
     });
     const writer = child.stdin.getWriter();
     const encoder = new TextEncoder();
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
     await writer.write(encoder.encode("sk-runwield-package-smoke"));
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
     await writer.write(encoder.encode("\r"));
     await writer.close();
     const timeout = setTimeout(() => {
@@ -265,22 +278,43 @@ async function checkProviderSetupLaunch(exe, env) {
     }
 }
 
-/** @typedef {{ planId?: string }} DashboardSmokeItem */
-/** @typedef {{ key: string, items: DashboardSmokeItem[] }} DashboardSmokeSection */
-/** @typedef {{ pending: boolean, failed: boolean }} DashboardSmokeSectionProgress */
-/** @typedef {{ pending: boolean, totalProjects: number }} DashboardSmokeProgress */
-/** @typedef {{ source: string, message: string }} DashboardSmokeDiagnostic */
-/**
- * @typedef {Object} DashboardSmokeFrame
- * @property {string} type
- * @property {DashboardSmokeProgress} [progress]
- * @property {DashboardSmokeSection[]} [sections]
- * @property {DashboardSmokeDiagnostic[]} [diagnostics]
- * @property {Record<string, DashboardSmokeSectionProgress>} [sectionProgress]
- */
+interface DashboardSmokeItem {
+    planId?: string;
+}
 
-/** @param {string} exe @param {Record<string, string>} env */
-async function checkWorkspacePairingAndArtifacts(exe, env) {
+interface DashboardSmokeSection {
+    key: string;
+    items: DashboardSmokeItem[];
+}
+
+interface DashboardSmokeSectionProgress {
+    pending: boolean;
+    failed: boolean;
+}
+
+interface DashboardSmokeProgress {
+    pending: boolean;
+    totalProjects: number;
+}
+
+interface DashboardSmokeDiagnostic {
+    source: string;
+    message: string;
+}
+
+interface DashboardSmokeFrame {
+    type: string;
+    progress?: DashboardSmokeProgress;
+    sections?: DashboardSmokeSection[];
+    diagnostics?: DashboardSmokeDiagnostic[];
+    sectionProgress?: Record<string, DashboardSmokeSectionProgress>;
+}
+
+interface PairingResponse {
+    code?: string;
+}
+
+async function checkWorkspacePairingAndArtifacts(exe: string, env: Record<string, string>) {
     const home = env.USERPROFILE;
     const projectRoot = join(home, "workspace-artifact-project");
     const fixture = await makeManagedSessionFixture({ home, projectRoot });
@@ -288,9 +322,7 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
         await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
         await fsWriteFile(
             join(projectRoot, "docs", "plans", "dashboard-smoke.md"),
-            `---\nplanId: windows-dashboard-smoke\nclassification: FEATURE\nstatus: user_verified\nuserVerifiedAt: "${
-                new Date().toISOString()
-            }"\n---\n# Windows Dashboard smoke\n`,
+            `---\nplanId: windows-dashboard-smoke\nclassification: FEATURE\nstatus: user_verified\nuserVerifiedAt: "${new Date().toISOString()}"\n---\n# Windows Dashboard smoke\n`,
         );
         await fsWriteFile(
             join(projectRoot, "artifact.md"),
@@ -310,8 +342,13 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
         try {
             const origin = `http://127.0.0.1:${port}`;
             for (let attempt = 0; attempt < 50; attempt += 1) {
-                if (await fetch(`${origin}/pair`).then((response) => response.ok).catch(() => false)) break;
-                await new Promise((resolve) => setTimeout(resolve, 100));
+                if (
+                    await fetch(`${origin}/pair`)
+                        .then((response) => response.ok)
+                        .catch(() => false)
+                )
+                    break;
+                await new Promise<void>((resolve) => setTimeout(resolve, 100));
             }
             const pairing = await fetch(`${origin}/api/owner/pairing/request`, {
                 method: "POST",
@@ -320,7 +357,7 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
             });
             if (pairing.status !== 201) throw new Error(`Workspace pairing request failed with ${pairing.status}.`);
             const proofCookie = pairing.headers.get("set-cookie")?.match(/rw_pairing_proof=([^;]+)/)?.[1];
-            const { code } = await pairing.json();
+            const { code }: PairingResponse = await pairing.json();
             if (!code || !proofCookie) throw new Error("Workspace pairing did not return a code and proof cookie.");
             await run(exe, ["workspace", "pair", code], { env });
             const claim = await fetch(`${origin}/api/owner/pairing/claim`, {
@@ -335,21 +372,28 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
                 signal: AbortSignal.timeout(30_000),
             });
             const dashboardText = await dashboardResponse.text();
-            const frames = dashboardText.trim().split("\n").filter(Boolean).map(
-                /** @returns {DashboardSmokeFrame} */ (line) => JSON.parse(line),
-            );
+            const frames = dashboardText
+                .trim()
+                .split("\n")
+                .filter(Boolean)
+                .map((line): DashboardSmokeFrame => JSON.parse(line));
             const completed = frames.at(-1);
             if (
-                dashboardResponse.status !== 200 || completed?.type !== "complete" ||
-                completed.progress?.pending !== false || !((completed.progress?.totalProjects ?? 0) >= 1) ||
-                completed.sections?.length !== 4 || completed.diagnostics?.length !== 0 ||
-                ["needs-you", "ready", "in-progress", "recently-finished"].some((key) =>
-                    completed.sectionProgress?.[key]?.failed !== false ||
-                    completed.sectionProgress?.[key]?.pending !== false
+                dashboardResponse.status !== 200 ||
+                completed?.type !== "complete" ||
+                completed.progress?.pending !== false ||
+                !((completed.progress?.totalProjects ?? 0) >= 1) ||
+                completed.sections?.length !== 4 ||
+                completed.diagnostics?.length !== 0 ||
+                ["needs-you", "ready", "in-progress", "recently-finished"].some(
+                    (key) =>
+                        completed.sectionProgress?.[key]?.failed !== false ||
+                        completed.sectionProgress?.[key]?.pending !== false,
                 ) ||
-                !completed.sections.some((section) =>
-                    section.key === "recently-finished" &&
-                    section.items.some((item) => item.planId === "windows-dashboard-smoke")
+                !completed.sections.some(
+                    (section) =>
+                        section.key === "recently-finished" &&
+                        section.items.some((item) => item.planId === "windows-dashboard-smoke"),
                 )
             ) {
                 throw new Error(`Packaged Dashboard did not load successfully:\n${dashboardText}`);
@@ -380,8 +424,7 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
     }
 }
 
-/** @param {string} exe @param {Record<string, string>} env */
-async function checkPublicationFlow(exe, env) {
+async function checkPublicationFlow(exe: string, env: Record<string, string>) {
     await run(exe, ["package-smoke", "publication"], { env: { ...env, WLD_INTERNAL_PACKAGE_CHECK: "1" } });
 }
 
@@ -395,25 +438,26 @@ async function main(args = process.argv.slice(2)) {
         await run("powershell", [
             "-NoProfile",
             "-Command",
-            `Expand-Archive -LiteralPath ${JSON.stringify(options.packagePath)} -DestinationPath ${
-                JSON.stringify(extract)
-            } -Force`,
+            `Expand-Archive -LiteralPath ${JSON.stringify(options.packagePath)} -DestinationPath ${JSON.stringify(
+                extract,
+            )} -Force`,
         ]);
         const exe = join(extract, "wld.exe");
-        for (
-            const path of [
-                "runtime/helpers/mnemoteca.exe",
-                "runtime/helpers/cymbal.exe",
-                "runtime/helpers/ketch.exe",
-                "runtime/helpers/agent-browser.exe",
-                "licenses/RUNWIELD-LICENSE.txt",
-                "licenses/mnemoteca-LICENSE.txt",
-                "licenses/cymbal-LICENSE.txt",
-                "licenses/ketch-LICENSE.txt",
-                "licenses/agent-browser-LICENSE.txt",
-            ]
-        ) await assertFile(join(extract, path));
-        const metadata = JSON.parse(await fsReadFile(join(extract, "runwield-install.json"), "utf8"));
+        for (const path of [
+            "runtime/helpers/mnemoteca.exe",
+            "runtime/helpers/cymbal.exe",
+            "runtime/helpers/ketch.exe",
+            "runtime/helpers/agent-browser.exe",
+            "licenses/RUNWIELD-LICENSE.txt",
+            "licenses/mnemoteca-LICENSE.txt",
+            "licenses/cymbal-LICENSE.txt",
+            "licenses/ketch-LICENSE.txt",
+            "licenses/agent-browser-LICENSE.txt",
+        ])
+            await assertFile(join(extract, path));
+        const metadata: RunWieldPackageInstall = JSON.parse(
+            await fsReadFile(join(extract, "runwield-install.json"), "utf8"),
+        );
         if (metadata.packageManager !== "winget" || metadata.packageIdentifier !== "Gandazgul.RunWield") {
             throw new Error("Package metadata does not identify Gandazgul.RunWield WinGet ownership.");
         }

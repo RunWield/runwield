@@ -26,28 +26,24 @@ const DEFAULT_BUNDLE_PATH = "remote-server.js";
 
 export const REQUIRED_WORKSPACE_RUNTIME_FILES = Object.freeze(["server.mjs"]);
 
-/**
- * @typedef {Object} RuntimeAssetCopy
- * @property {string} source
- * @property {string} destination
- */
+export interface RuntimeAssetCopy {
+    source: string;
+    destination: string;
+}
 
-/**
- * @typedef {Object} PlanServerRuntimeBuildOptions
- * @property {string} [remoteEntry]
- * @property {string} [workspaceRuntimeDir]
- * @property {string} [runtimeDir]
- * @property {string} [bundlePath]
- * @property {RuntimeAssetCopy[]} [assetCopies]
- */
+export interface PlanServerRuntimeBuildOptions {
+    remoteEntry?: string;
+    workspaceRuntimeDir?: string;
+    runtimeDir?: string;
+    bundlePath?: string;
+    assetCopies?: RuntimeAssetCopy[];
+}
 
-/**
- * @typedef {Object} PlanServerRuntimeBuildPort
- * @property {(command: string, args: string[]) => Promise<void>} run
- */
+export interface PlanServerRuntimeBuildPort {
+    run(command: string, args: string[]): Promise<void>;
+}
 
-/** @type {RuntimeAssetCopy[]} */
-export const DEFAULT_PLAN_SERVER_RUNTIME_ASSETS = [
+export const DEFAULT_PLAN_SERVER_RUNTIME_ASSETS: RuntimeAssetCopy[] = [
     { source: "brand/logo.svg", destination: "brand/logo.svg" },
     { source: "src/agent-definitions/architect.md", destination: "src/agent-definitions/architect.md" },
     { source: "src/agent-definitions/engineer.md", destination: "src/agent-definitions/engineer.md" },
@@ -65,11 +61,7 @@ export const DEFAULT_PLAN_SERVER_RUNTIME_ASSETS = [
     { source: "src/ui/theme/catppuccin-mocha.json", destination: "src/ui/theme/catppuccin-mocha.json" },
 ];
 
-/**
- * @param {string} path
- * @returns {Promise<void>}
- */
-async function assertFile(path) {
+async function assertFile(path: string): Promise<void> {
     const info = await fsStat(path).catch((error) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
@@ -77,11 +69,7 @@ async function assertFile(path) {
     if (!info?.isFile()) throw new Error(`Required Plan Server runtime file is missing: ${path}`);
 }
 
-/**
- * @param {string} path
- * @returns {Promise<void>}
- */
-async function assertDirectory(path) {
+async function assertDirectory(path: string): Promise<void> {
     const info = await fsStat(path).catch((error) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
@@ -89,23 +77,14 @@ async function assertDirectory(path) {
     if (!info?.isDirectory()) throw new Error(`Required Plan Server runtime directory is missing: ${path}`);
 }
 
-/**
- * @param {string} workspaceRuntimeDir
- * @returns {Promise<void>}
- */
-async function assertWorkspaceRuntimeFiles(workspaceRuntimeDir) {
+async function assertWorkspaceRuntimeFiles(workspaceRuntimeDir: string): Promise<void> {
     await assertDirectory(workspaceRuntimeDir);
     for (const file of REQUIRED_WORKSPACE_RUNTIME_FILES) {
         await assertFile(join(workspaceRuntimeDir, file));
     }
 }
 
-/**
- * @param {string} command
- * @param {string[]} args
- * @returns {Promise<void>}
- */
-async function runCommand(command, args) {
+async function runCommand(command: string, args: string[]): Promise<void> {
     const result = await captureScriptProcess(command, {
         args,
         stdout: "piped",
@@ -118,15 +97,9 @@ async function runCommand(command, args) {
     throw new Error(output || `${command} failed with exit code ${result.code}`);
 }
 
-/** @type {PlanServerRuntimeBuildPort} */
-const SYSTEM_PLAN_SERVER_RUNTIME_BUILD_PORT = Object.freeze({ run: runCommand });
+const SYSTEM_PLAN_SERVER_RUNTIME_BUILD_PORT: PlanServerRuntimeBuildPort = Object.freeze({ run: runCommand });
 
-/**
- * @param {string} source
- * @param {string} destination
- * @returns {Promise<void>}
- */
-async function copyDirectory(source, destination) {
+async function copyDirectory(source: string, destination: string): Promise<void> {
     await fsMkdir(destination, { recursive: true });
     for await (const entry of await fsReaddir(source, { withFileTypes: true })) {
         const sourcePath = join(source, entry.name);
@@ -140,27 +113,16 @@ async function copyDirectory(source, destination) {
     }
 }
 
-/**
- * @param {RuntimeAssetCopy[]} assets
- * @returns {string[]}
- */
-export function listRuntimeAssetDestinations(assets = DEFAULT_PLAN_SERVER_RUNTIME_ASSETS) {
+export function listRuntimeAssetDestinations(
+    assets: RuntimeAssetCopy[] = DEFAULT_PLAN_SERVER_RUNTIME_ASSETS,
+): string[] {
     return assets.map((asset) => asset.destination).sort();
 }
 
-/**
- * @param {string} runtimeDir
- * @returns {Promise<string[]>}
- */
-export async function listRuntimeFiles(runtimeDir) {
-    /** @type {string[]} */
-    const files = [];
+export async function listRuntimeFiles(runtimeDir: string): Promise<string[]> {
+    const files: string[] = [];
 
-    /**
-     * @param {string} root
-     * @param {string} prefix
-     */
-    async function walk(root, prefix) {
+    async function walk(root: string, prefix: string): Promise<void> {
         for await (const entry of await fsReaddir(root, { withFileTypes: true })) {
             const childPrefix = prefix ? `${prefix}/${entry.name}` : entry.name;
             const childPath = join(root, entry.name);
@@ -173,11 +135,7 @@ export async function listRuntimeFiles(runtimeDir) {
     return files.sort();
 }
 
-/**
- * @param {string[]} files
- * @returns {string[]}
- */
-export function findProhibitedRuntimeFiles(files) {
+export function findProhibitedRuntimeFiles(files: string[]): string[] {
     return files.filter((file) => {
         if (file === DEFAULT_BUNDLE_PATH) return false;
         if (file.startsWith("dist/workspace-runtime/")) return false;
@@ -198,12 +156,10 @@ export function findProhibitedRuntimeFiles(files) {
     });
 }
 
-/**
- * @param {PlanServerRuntimeBuildOptions} options
- * @param {PlanServerRuntimeBuildPort} port
- * @returns {Promise<void>}
- */
-export async function buildPlanServerRuntime(options, port) {
+export async function buildPlanServerRuntime(
+    options: PlanServerRuntimeBuildOptions,
+    port: PlanServerRuntimeBuildPort,
+): Promise<void> {
     const remoteEntry = options.remoteEntry || DEFAULT_REMOTE_ENTRY;
     const workspaceRuntimeDir = options.workspaceRuntimeDir || DEFAULT_WORKSPACE_RUNTIME_DIR;
     const runtimeDir = options.runtimeDir || DEFAULT_PLAN_SERVER_RUNTIME_DIR;

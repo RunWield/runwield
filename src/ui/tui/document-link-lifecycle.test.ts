@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { getTUI } from "./tui.ts";
 
 /** Exercise a hyperlink-capable terminal independently of the developer's terminal. */

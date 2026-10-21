@@ -38,13 +38,13 @@ import {
     GOLDEN_FAUX_MODEL,
     GOLDEN_FAUX_PROVIDER,
     writeGoldenModelConfig,
-} from "./isolated-environment.js";
+} from "./isolated-environment.ts";
 import {
     ScriptedHumanReviewSurface,
     ScriptedInteractionSurface,
     ScriptedReviewSurface,
 } from "./scripted-review-surface.js";
-import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 import {
     getCwd,
@@ -2303,7 +2303,7 @@ async function runComposedTuiScenario(scenario, options) {
                             : null;
                         plans.push({ name: planName, attrs, controllerState: controller?.state || null });
                     }
-                    const { listWorkRecords } = await import("../../../shared/work-records/store.js");
+                    const { listWorkRecords } = await import("../../../shared/work-records/store.ts");
                     const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
                     const capturedProjectState = {
                         runtimeSnapshot: composition.runtime.getSessionSnapshot(composition.sessionId),

@@ -2,16 +2,13 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { test } from "node:test";
 import { readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runExportCommand } from "./index.ts";
+import type { SessionExportDocument } from "../../shared/session/session-export.ts";
 
-/**
- * @param {import('../../shared/session/session-runtime.ts').SessionRuntime} sessionRuntime
- * @param {string} sessionId
- */
-function makeContext(sessionRuntime, sessionId) {
-    const messages = /** @type {string[]} */ ([]);
+function makeContext(sessionRuntime: SessionRuntime, sessionId: string) {
+    const messages: string[] = [];
     let cleared = false;
     return {
         messages,
@@ -20,7 +17,7 @@ function makeContext(sessionRuntime, sessionId) {
             sessionId,
             sessionRuntime,
             sessionStartedAt: "2026-10-19T12:00:00.000Z",
-            uiAPI: { appendSystemMessage: (/** @type {string} */ message) => messages.push(message) },
+            uiAPI: { appendSystemMessage: (message: string) => messages.push(message) },
             editor: {
                 disableSubmit: true,
                 setText: () => {
@@ -39,7 +36,7 @@ test("export writes the complete Session JSON document and creates parent direct
         try {
             await runExportCommand(["exports/session.json"], fixture.context);
             const path = join(projectRoot, "exports/session.json");
-            const exported = JSON.parse(await readFile(path, "utf8"));
+            const exported: SessionExportDocument = JSON.parse(await readFile(path, "utf8"));
             assertEquals(exported.format, "runwield.session-export");
             assertEquals(exported.version, 1);
             assertEquals(exported.segments.length, 1);
