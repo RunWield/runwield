@@ -11,29 +11,44 @@ import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import { parseCsv, scoreAgainstHuman } from "./router-eval-utils.js";
 
+export interface RouterJudgementSummary {
+    labelledRows: number;
+    unlabelledRows: number;
+    router: ReturnType<typeof scoreAgainstHuman>;
+}
+
+export interface RouterJudgementThresholds {
+    minRouterAgreementRate?: number;
+    maxRouterMeanDistance?: number;
+}
+
+interface RouterJudgementArguments {
+    _: (string | number)[];
+    help?: boolean;
+    csv?: string;
+    baseline?: string;
+    "baseline-out"?: string;
+    "min-router-agreement"?: string;
+    "max-router-mean-distance"?: string;
+}
+
+interface RouterJudgementBaselineInput {
+    thresholds?: RouterJudgementThresholds;
+}
+
 const DEFAULT_CSV_NAME = "router-judgements.csv";
 
-/**
- * @returns {string}
- */
 export function getDefaultRouterJudgementCsvPath() {
     return join(getHomeDir(), ".wld", "router-eval", DEFAULT_CSV_NAME);
 }
 
-/**
- * @param {unknown} value
- * @returns {number | undefined}
- */
-function parseNumber(value) {
+function parseNumber(value: string | number | null | undefined) {
     if (value === undefined || value === null || value === "") return undefined;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/**
- * @param {Array<Record<string, string>>} rows
- */
-export function summarizeJudgements(rows) {
+export function summarizeJudgements(rows: Record<string, string>[]): RouterJudgementSummary {
     const labelledRows = rows.filter((row) => row.humanJudgement?.trim()).length;
     const router = scoreAgainstHuman(rows, "routerDecision");
 
@@ -44,14 +59,8 @@ export function summarizeJudgements(rows) {
     };
 }
 
-/**
- * @param {ReturnType<typeof summarizeJudgements>} summary
- * @param {{ minRouterAgreementRate?: number, maxRouterMeanDistance?: number }} thresholds
- * @returns {string[]}
- */
-export function checkThresholds(summary, thresholds) {
-    /** @type {string[]} */
-    const failures = [];
+export function checkThresholds(summary: RouterJudgementSummary, thresholds: RouterJudgementThresholds) {
+    const failures: string[] = [];
     if (
         thresholds.minRouterAgreementRate !== undefined &&
         summary.router.agreementRate < thresholds.minRouterAgreementRate
@@ -71,12 +80,7 @@ export function checkThresholds(summary, thresholds) {
     return failures;
 }
 
-/**
- * @param {ReturnType<typeof summarizeJudgements>} summary
- * @param {string} csvPath
- * @returns {Record<string, unknown>}
- */
-export function buildBaseline(summary, csvPath) {
+export function buildBaseline(summary: RouterJudgementSummary, csvPath: string) {
     return {
         createdAt: new Date().toISOString(),
         csv: csvPath,
@@ -89,30 +93,29 @@ export function buildBaseline(summary, csvPath) {
     };
 }
 
-/**
- * @param {string[]} argv
- */
-export async function main(argv) {
-    const args = parseArgs(argv, {
+export async function main(argv: string[]) {
+    const args: RouterJudgementArguments = parseArgs(argv, {
         string: ["csv", "baseline", "baseline-out", "min-router-agreement", "max-router-mean-distance"],
         boolean: ["help"],
         alias: { h: "help" },
     });
 
     if (args.help) {
-        console.log([
-            "Usage: bun scripts/evaluate-router-judgements.js [options]",
-            "",
-            "Fill humanJudgement in router-judgements.csv with one of:",
-            "  INQUIRY, IDEATION, OPERATION, QUICK_FIX, FEATURE, PROJECT",
-            "",
-            "Options:",
-            `  --csv <path>                       Judgement CSV (default: ${getDefaultRouterJudgementCsvPath()})`,
-            "  --baseline <path>                  Read thresholds from a previous baseline JSON",
-            "  --baseline-out <path>              Write current metrics and suggested thresholds",
-            "  --min-router-agreement <number>    Fail if Router agreement is below this rate, e.g. 0.90",
-            "  --max-router-mean-distance <number> Fail if Router mean distance is above this value",
-        ].join("\n"));
+        console.log(
+            [
+                "Usage: bun scripts/evaluate-router-judgements.js [options]",
+                "",
+                "Fill humanJudgement in router-judgements.csv with one of:",
+                "  INQUIRY, IDEATION, OPERATION, QUICK_FIX, FEATURE, PROJECT",
+                "",
+                "Options:",
+                `  --csv <path>                       Judgement CSV (default: ${getDefaultRouterJudgementCsvPath()})`,
+                "  --baseline <path>                  Read thresholds from a previous baseline JSON",
+                "  --baseline-out <path>              Write current metrics and suggested thresholds",
+                "  --min-router-agreement <number>    Fail if Router agreement is below this rate, e.g. 0.90",
+                "  --max-router-mean-distance <number> Fail if Router mean distance is above this value",
+            ].join("\n"),
+        );
         return;
     }
 
@@ -120,14 +123,13 @@ export async function main(argv) {
     const rows = parseCsv(await fsReadFile(csvPath, "utf8"));
     const summary = summarizeJudgements(rows);
 
-    /** @type {{ minRouterAgreementRate?: number, maxRouterMeanDistance?: number }} */
-    const thresholds = {
+    const thresholds: RouterJudgementThresholds = {
         minRouterAgreementRate: parseNumber(args["min-router-agreement"]),
         maxRouterMeanDistance: parseNumber(args["max-router-mean-distance"]),
     };
 
     if (args.baseline) {
-        const baseline = JSON.parse(await fsReadFile(args.baseline, "utf8"));
+        const baseline: RouterJudgementBaselineInput | null = JSON.parse(await fsReadFile(args.baseline, "utf8"));
         const baselineThresholds = baseline?.thresholds || {};
         thresholds.minRouterAgreementRate ??= parseNumber(baselineThresholds.minRouterAgreementRate);
         thresholds.maxRouterMeanDistance ??= parseNumber(baselineThresholds.maxRouterMeanDistance);
