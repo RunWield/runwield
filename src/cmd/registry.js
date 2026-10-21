@@ -907,7 +907,7 @@ export function getSlashCommandDefinition(commandName, slashSurface = "tui") {
  * @param {string[]} args
  */
 export function requiresProjectDirectoryConsent(name, args = []) {
-    if (name === "guided-review") return true;
+    if (name === "guided-review" || name === "ai-review") return true;
     const command = getCommandDefinition(name);
     if (!command) return true;
     if (!hasCommandSurface(command, "cli")) return false;
