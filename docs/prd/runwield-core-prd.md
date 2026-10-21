@@ -1538,8 +1538,9 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
-**Scope and maturity:** Current shell installation and Candidate release baseline. Homebrew and WinGet packages are
-prepared; public availability waits for owner publication. Runtime layout changes during upgrades follow
+**Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. Homebrew packages are
+prepared; public availability waits for owner publication. Windows releases and checks, including WinGet manifest
+preparation and submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout changes during upgrades follow
 [Work protection](#work-protection).
 
 **Requirement: Install through a shell installer or a package manager.** Users install RunWield as a standalone binary
@@ -1556,7 +1557,7 @@ Homebrew:
 - Stable package installs update through the package manager; Candidate and exact-version installer options apply to
   shell installs.
 
-WinGet:
+WinGet (retained packaging capability; publication and checks paused):
 
 - Windows x64 ZIP assets with `wld.exe`, package metadata, helper executables, and license notices;
 - pinned helper URLs and SHA-256 values, with Git for Windows as a package dependency;
@@ -1579,7 +1580,7 @@ commit and stabilize later Candidates on the series' Release Branch with reviewe
 continues on `main`. Stable promotion uses the exact tested Candidate.
 
 **Requirement: Qualify packages before publication and keep published bytes.** Candidate and Stable releases pass
-native Windows and macOS Homebrew package checks before GitHub publication; a failed or timed-out check blocks
+native Linux/macOS archive and macOS Homebrew package checks before GitHub publication; a failed or timed-out check blocks
 publication. Candidate checks leave Stable channels unchanged. Package recovery keeps the released tag and asset bytes,
 verifies the existing assets, and resumes package publication. Missing or inconsistent assets stop publication.
 Workspace runtime packaging waits for the final server manifest and its imports; it does not bundle an intermediate
@@ -1593,7 +1594,8 @@ manifest placeholder.
 - Given a loose Windows executable, `wld update` gives Windows package guidance.
 - Given missing helpers in a package install, RunWield tells the user to repair the package.
 - Given a new Homebrew install, Ketch comes from Homebrew Core.
-- Given a Stable release while WinGet submission is paused, the workflow prepares manifest artifacts.
+- Given a release while Windows publication is paused, it publishes only Linux/macOS assets, runs no Windows jobs,
+  and prepares no WinGet manifests. Existing Windows releases remain unchanged.
 - Given an available Candidate, Enter or Yes starts the update; No or Ctrl-D cancels it.
 - Given Git under `%LOCALAPPDATA%/Programs/Git`, an Agent creates a branch through Bash without `shellPath`.
 - Given RC1, the Candidate tag and new Release Branch point to the same committed source.

@@ -63,13 +63,7 @@ export function releaseAssetNames(tag) {
         parseReleaseTag(tag).kind === "stable"
             ? [`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`]
             : [];
-    return [
-        ...expectedReleaseAssetNames(tag),
-        `wld-${tag}-windows-x64.zip`,
-        `wld-${tag}-windows-x64.zip.sha256`,
-        "runwield-windows-package.json",
-        ...docs,
-    ];
+    return [...expectedReleaseAssetNames(tag), ...docs];
 }
 
 /** @param {string} directory @returns {Promise<string[]>} */
@@ -105,6 +99,15 @@ export async function prepareReleaseAssets(input, output, tag, published = false
     let names = releaseAssetNames(tag);
     if (published) {
         if (!metadata) throw new Error("Published recovery requires GitHub asset digests");
+        // Recover historical Windows bytes only when the immutable host manifest lists them.
+        const windows = [
+            ...["tar.gz", "tar.zst", "zip"].flatMap((extension) => [
+                `wld-${tag}-windows-x64.${extension}`,
+                `wld-${tag}-windows-x64.${extension}.sha256`,
+            ]),
+            "runwield-windows-package.json",
+        ];
+        names.push(...windows.filter((name) => metadata.assets.some((asset) => asset.name === name)));
         const docs = names.filter((name) => name.startsWith("runwield-docs-"));
         const publishedDocs = docs.filter((name) => metadata.assets.some((asset) => asset.name === name));
         if (publishedDocs.length > 0 && publishedDocs.length !== docs.length) {

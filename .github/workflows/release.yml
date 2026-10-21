@@ -356,15 +356,6 @@ jobs:
         permissions:
             contents: read
 
-    windows-checks:
-        needs: metadata
-        uses: ./.github/workflows/release-windows.yml
-        with:
-            source_sha: ${{ needs.metadata.outputs.source_sha }}
-            build_version: ${{ needs.metadata.outputs.build_version }}
-        permissions:
-            contents: read
-
     containers-checks:
         needs: metadata
         uses: ./.github/workflows/release-containers.yml
@@ -401,10 +392,6 @@ jobs:
                       bun_target: bun-linux-arm64
                       asset_suffix: linux-arm64
                       binary_name: wld
-                    - target: x86_64-pc-windows-msvc
-                      bun_target: bun-windows-x64
-                      asset_suffix: windows-x64
-                      binary_name: wld.exe
 
         steps:
             - name: Checkout
@@ -453,18 +440,10 @@ jobs:
               run: |
                   VERSION="${{ needs.metadata.outputs.build_version }}"
                   ASSET_BASE="wld-${VERSION}-${{ matrix.asset_suffix }}"
-                  if [[ "${{ matrix.binary_name }}" == "wld" ]]; then
-                    tar -czf "${ASSET_BASE}.tar.gz" wld wld.build.json
-                    tar -cf - wld wld.build.json | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
-                  else
-                    tar -czf "${ASSET_BASE}.tar.gz" wld.exe wld.exe.build.json
-                    tar -cf - wld.exe wld.exe.build.json | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
-                  fi
+                  tar -czf "${ASSET_BASE}.tar.gz" wld wld.build.json
+                  tar -cf - wld wld.build.json | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
                   sha256sum "${ASSET_BASE}.tar.gz" > "${ASSET_BASE}.tar.gz.sha256"
                   sha256sum "${ASSET_BASE}.tar.zst" > "${ASSET_BASE}.tar.zst.sha256"
-                  if [[ "${{ matrix.asset_suffix }}" == "windows-x64" ]]; then
-                    bun scripts/package-windows.js --tag "$VERSION" --binary "${{ matrix.binary_name }}" --output .
-                  fi
 
             - name: Upload build artifact
               uses: actions/upload-artifact@v5
@@ -473,8 +452,6 @@ jobs:
                   path: |
                       *.tar.gz
                       *.tar.zst
-                      *.zip
-                      runwield-windows-package.json
                       *.sha256
 
     docs-artifact:
@@ -663,38 +640,6 @@ jobs:
                     }
                   '
 
-    windows-package-check:
-        if: ${{ !cancelled() && needs.assets.result == 'success' }}
-        runs-on: windows-latest
-        needs: [metadata, assets]
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v5
-              with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
-                  submodules: recursive
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
-              with:
-                  bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
-              run: bun run install:locked
-
-            - name: Download Windows package artifact
-              uses: actions/download-artifact@v5
-              with:
-                  name: release-upload
-                  path: windows-package
-
-            - name: Run native Windows package checks
-              shell: pwsh
-              run: |
-                  $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
-                  if (-not $zip) { throw "Windows package ZIP not found" }
-                  bun run package:windows:check --package $zip.FullName
-
     homebrew-check:
         if: ${{ !cancelled() && needs.assets.result == 'success' }}
         runs-on: macos-15
@@ -757,7 +702,7 @@ jobs:
                   bun run package:homebrew:check --tap homebrew-check
 
     release:
-        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.windows-package-check.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.windows-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
+        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
         runs-on: ubuntu-latest
         needs:
             - metadata
@@ -766,11 +711,9 @@ jobs:
             - golden
             - release-check
             - assets
-            - windows-package-check
             - native-package-check
             - homebrew-check
             - unix-checks
-            - windows-checks
             - containers-checks
         steps:
             - name: Checkout
@@ -796,119 +739,6 @@ jobs:
                   overwrite_files: false
                   fail_on_unmatched_files: true
                   files: release-upload/*
-
-    winget-package:
-        runs-on: ubuntu-latest
-        if: ${{ !cancelled() && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
-        needs:
-            - metadata
-            - release
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v5
-              with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
-                  submodules: recursive
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
-              with:
-                  bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
-              run: bun run install:locked
-
-            - name: Render WinGet manifest artifact
-              run: |
-                  bun run package:winget --tag "${{ needs.metadata.outputs.tag }}" --output winget-manifests
-                  tar -czf "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz" -C winget-manifests .
-                  shasum -a 256 "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz" > "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz.sha256"
-
-            - name: Upload WinGet manifest artifact
-              uses: actions/upload-artifact@v5
-              with:
-                  name: runwield-winget-manifests-${{ needs.metadata.outputs.tag }}
-                  path: |
-                      runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz
-                      runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz.sha256
-
-    winget-submit:
-        runs-on: windows-latest
-        # Owner paused submissions until further notice; keep manifest preparation active.
-        if: ${{ false }}
-        needs:
-            - metadata
-            - winget-package
-
-        steps:
-            - name: Download WinGet manifest artifact
-              uses: actions/download-artifact@v5
-              with:
-                  name: runwield-winget-manifests-${{ needs.metadata.outputs.tag }}
-                  path: winget-package
-
-            - name: Submit WinGet pull request
-              shell: pwsh
-              env:
-                  WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
-              run: |
-                  if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
-                      throw "WINGET_CREATE_GITHUB_TOKEN is not configured"
-                  }
-
-                  $version = "${{ needs.metadata.outputs.build_version }}".TrimStart("v")
-                  $prTitle = "New version: Gandazgul.RunWield version $version"
-                  $headers = @{
-                      Authorization = "Bearer $env:WINGET_CREATE_GITHUB_TOKEN"
-                      Accept = "application/vnd.github+json"
-                      "X-GitHub-Api-Version" = "2022-11-28"
-                  }
-
-                  $catalogUri = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/g/Gandazgul/RunWield/$version"
-                  try {
-                      Invoke-RestMethod $catalogUri -Headers $headers -ErrorAction Stop | Out-Null
-                      Write-Host "Gandazgul.RunWield $version is already in the WinGet catalog; submission is complete."
-                      exit 0
-                  } catch {
-                      if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
-                  }
-
-                  $query = [uri]::EscapeDataString("repo:microsoft/winget-pkgs is:pr is:open in:title `"$prTitle`"")
-                  $search = Invoke-RestMethod "https://api.github.com/search/issues?q=$query" -Headers $headers
-                  $existingPr = $search.items | Where-Object { $_.title -eq $prTitle } | Select-Object -First 1
-                  if ($existingPr) {
-                      Write-Host "WinGet submission already exists: $($existingPr.html_url)"
-                      exit 0
-                  }
-
-                  $archive = Join-Path $PWD "winget-package/runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz"
-                  $checksumFile = "$archive.sha256"
-                  $expectedChecksum = ((Get-Content $checksumFile -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
-                  $actualChecksum = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-                  if ($actualChecksum -ne $expectedChecksum) {
-                      throw "WinGet manifest artifact checksum mismatch"
-                  }
-
-                  $manifestRoot = Join-Path $PWD "winget-manifests"
-                  New-Item -ItemType Directory -Path $manifestRoot | Out-Null
-                  tar -xzf $archive -C $manifestRoot
-
-                  $wingetCreateVersion = "1.12.13.0"
-                  $wingetCreateChecksum = "24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea"
-                  $wingetCreate = Join-Path $PWD "wingetcreate.exe"
-                  $wingetCreateUrl = "https://github.com/microsoft/winget-create/releases/download/v$wingetCreateVersion/wingetcreate.exe"
-                  Invoke-WebRequest $wingetCreateUrl -OutFile $wingetCreate
-                  $actualToolChecksum = (Get-FileHash $wingetCreate -Algorithm SHA256).Hash.ToLowerInvariant()
-                  if ($actualToolChecksum -ne $wingetCreateChecksum) {
-                      throw "WingetCreate checksum mismatch"
-                  }
-
-                  $manifestPath = Join-Path $manifestRoot "Gandazgul.RunWield/$version"
-                  & $wingetCreate submit $manifestPath --prtitle $prTitle --no-open
-                  if ($LASTEXITCODE -ne 0) {
-                      throw "WingetCreate submission failed with exit code $LASTEXITCODE"
-                  }
 
     homebrew-package:
         runs-on: macos-15

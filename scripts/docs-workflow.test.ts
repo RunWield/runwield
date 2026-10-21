@@ -39,12 +39,10 @@ interface ReleaseState {
     releaseCheckResult: string;
     buildResult: string;
     assetsResult: string;
-    windowsResult: string;
     homebrewResult: string;
     releaseResult: string;
     nativePackageResult: string;
     unixResult: string;
-    platformWindowsResult: string;
     containersResult: string;
     docsResult: string;
 }
@@ -59,12 +57,10 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
         "needs.release-check.result": state.releaseCheckResult,
         "needs.build.result": state.buildResult,
         "needs.assets.result": state.assetsResult,
-        "needs.windows-package-check.result": state.windowsResult,
         "needs.homebrew-check.result": state.homebrewResult,
         "needs.release.result": state.releaseResult,
         "needs.native-package-check.result": state.nativePackageResult,
         "needs.unix-checks.result": state.unixResult,
-        "needs.windows-checks.result": state.platformWindowsResult,
         "needs.containers-checks.result": state.containersResult,
         "needs.docs-artifact.result": state.docsResult,
     };
@@ -84,12 +80,10 @@ const successfulRelease: ReleaseState = {
     releaseCheckResult: "success",
     buildResult: "success",
     assetsResult: "success",
-    windowsResult: "success",
     homebrewResult: "success",
     releaseResult: "success",
     nativePackageResult: "success",
     unixResult: "success",
-    platformWindowsResult: "success",
     containersResult: "success",
     docsResult: "success",
 };
@@ -147,11 +141,9 @@ test("fresh and existing releases traverse the actual qualification conditions",
         "goldenResult",
         "releaseCheckResult",
         "assetsResult",
-        "windowsResult",
         "homebrewResult",
         "nativePackageResult",
         "unixResult",
-        "platformWindowsResult",
         "containersResult",
         "docsResult",
     ]) {

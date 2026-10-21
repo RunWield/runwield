@@ -21,6 +21,8 @@ permissions:
 
 jobs:
     native:
+        # Windows publication and checks are paused by owner decision.
+        if: ${{ false }}
         name: Windows ${{ matrix.arch }} ${{ matrix.phase }} ${{ matrix.shard || '' }}
         runs-on: ${{ matrix.runner }}
         timeout-minutes: ${{ matrix.phase == 'source' && 60 || 20 }}

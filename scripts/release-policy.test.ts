@@ -88,15 +88,7 @@ test("release workflow keeps tag publication and manual recovery channel-safe", 
     );
 });
 
-for (const jobName of [
-    "metadata",
-    "docs-artifact",
-    "assets",
-    "windows-package-check",
-    "homebrew-check",
-    "winget-package",
-    "homebrew-package",
-]) {
+for (const jobName of ["metadata", "docs-artifact", "assets", "homebrew-check", "homebrew-package"]) {
     test(`${jobName} checks out local dependencies before frozen installation`, async () => {
         const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
         const job = workflow.slice(workflow.indexOf(`    ${jobName}:`)).split(/\n {4}[a-z][a-z-]+:/)[0];
@@ -107,42 +99,13 @@ for (const jobName of [
     });
 }
 
-test("release publication requires native Windows package qualification", async () => {
+test("Windows release builds, checks, and WinGet publication stay paused", async () => {
     const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const windowsJob = workflow.match(/\n[ ]{4}windows-package-check:\n([\s\S]*?)\n[ ]{4}release:/)?.[1] || "";
-    const releaseJob = workflow.match(/\n[ ]{4}release:\n([\s\S]*)$/)?.[1] || "";
-
-    assertEquals(windowsJob.includes("if: ${{ false }}"), false);
-    assertStringIncludes(windowsJob, "runs-on: windows-latest");
-    assertStringIncludes(windowsJob, "bun run package:windows:check --package");
-    assertMatch(releaseJob, /needs:[\s\S]*- windows-package-check/);
-});
-
-test("WinGet submission stays disabled while Stable manifest preparation remains active", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const submitStart = workflow.indexOf("    winget-submit:");
-    const submitEnd = workflow.indexOf("\n    homebrew-package:", submitStart);
-    const submitJob = workflow.slice(submitStart, submitEnd);
-
-    assertEquals(submitStart >= 0, true);
-    assertEquals(submitEnd > submitStart, true);
-    assertStringIncludes(
-        workflow,
-        "ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}",
-    );
-    assertMatch(submitJob, /\n {8}if: \$\{\{ false \}\}\n/);
-    const packageJob = workflow.slice(workflow.indexOf("    winget-package:"), submitStart);
-    assertStringIncludes(packageJob, "needs.metadata.outputs.kind == 'stable'");
-    assertStringIncludes(packageJob, "bun run package:winget");
-    const qualification = workflow.slice(workflow.indexOf("    homebrew-check:"), workflow.indexOf("    release:"));
-    assertEquals(qualification.includes("WINGET_CREATE_GITHUB_TOKEN"), false);
-    assertStringIncludes(submitJob, "- winget-package");
-    assertStringIncludes(submitJob, "WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}");
-    assertStringIncludes(submitJob, "wingetcreate.exe");
-    assertStringIncludes(submitJob, "manifests/g/Gandazgul/RunWield/$version");
-    assertStringIncludes(submitJob, "is:pr is:open in:title");
-    assertStringIncludes(submitJob, "submit $manifestPath --prtitle $prTitle --no-open");
-    assertEquals(submitJob.includes("submit $manifestPath --token"), false);
+    assertEquals(/windows|winget/i.test(workflow), false);
+    for (const file of ["release-windows.yml", "windows-package-diagnostic.yml"]) {
+        const paused = await fsReadFile(`.github/workflows/${file}`, "utf8");
+        assertMatch(paused, /jobs:\n {4}[a-z-]+:\n[^]*?if: \$\{\{ false \}\}/);
+    }
 });
 
 test("Stable releases validate on macOS before publishing the Homebrew tap", async () => {
@@ -188,19 +151,17 @@ test("release workflow runs source, Golden, and binary qualification in parallel
     assertMatch(workflow, /release-check:\n[\s\S]*?needs: metadata/);
     const build = workflow.slice(workflow.indexOf("    build:"), workflow.indexOf("    assets:"));
     assertStringIncludes(build, "needs: metadata");
-    const assets = workflow.slice(workflow.indexOf("    assets:"), workflow.indexOf("    windows-package-check:"));
+    const assets = workflow.slice(workflow.indexOf("    assets:"), workflow.indexOf("    native-package-check:"));
     assertStringIncludes(assets, "needs: [metadata, build, docs-artifact]");
-    const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    winget-package:"));
+    const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    homebrew-package:"));
     for (const gate of [
         "ci",
         "golden",
         "release-check",
         "assets",
-        "windows-package-check",
         "homebrew-check",
         "native-package-check",
         "unix-checks",
-        "windows-checks",
         "containers-checks",
     ]) {
         assertStringIncludes(release, `- ${gate}\n`);
@@ -238,7 +199,7 @@ test("README links to wld release policy", async () => {
 
 test("release publication waits for Candidate and Stable Homebrew checks", async () => {
     const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    winget-package:"));
+    const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    homebrew-package:"));
     assertStringIncludes(release, "- homebrew-check");
     const check = workflow.slice(workflow.indexOf("    homebrew-check:"), workflow.indexOf("    release:"));
     assertEquals(check.split("        steps:")[0].includes("kind == 'stable'"), false);
@@ -310,7 +271,7 @@ test("release executables use pinned Bun while native package and Stable channel
     assertEquals(build.includes("scripts/compile.js"), false);
     assertStringIncludes(build, 'embedded.runtime !== "bun"');
     assertStringIncludes(binaryGate, "scripts/release-check.js --runtime bun --binary-only");
-    for (const target of ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "windows-x64"]) {
+    for (const target of ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]) {
         assertStringIncludes(build, `bun_target: bun-${target}`);
     }
 });

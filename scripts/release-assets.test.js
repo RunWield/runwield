@@ -71,6 +71,7 @@ test("release assets exclude incidental package JSON and produce a unique flat s
     try {
         await fsMkdir(join(f.input, "other"));
         await fsWriteFile(join(f.input, "package.json"), "{}");
+        await fsWriteFile(join(f.input, `wld-${f.tag}-windows-x64.zip`), "not part of new publication");
         await fsWriteFile(join(f.input, "other/package.json"), "{}");
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const names = Array.fromAsync(await fsReaddir(f.output, { withFileTypes: true }), (entry) => entry.name);
@@ -197,14 +198,13 @@ test("published release recovery requires independent asset digests", async () =
 
 for (const tag of ["v1.2.3", "v1.2.3-rc.1"]) {
     test(`${tag} upload set includes docs only for Stable`, () => {
-        const expected = [
-            ...expectedReleaseAssetNames(tag),
-            `wld-${tag}-windows-x64.zip`,
-            `wld-${tag}-windows-x64.zip.sha256`,
-            "runwield-windows-package.json",
-        ];
+        const expected = [...expectedReleaseAssetNames(tag)];
         if (tag === "v1.2.3") expected.push(`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`);
         assertEquals(releaseAssetNames(tag).sort(), expected.sort());
+        assertEquals(
+            releaseAssetNames(tag).some((name) => name.includes("windows")),
+            false,
+        );
     });
 }
 
@@ -296,6 +296,41 @@ async function legacyFixture() {
     const metadata = join(f.root, "published.json");
     await fsWriteFile(metadata, JSON.stringify({ assets }));
     return { ...f, metadata, assets };
+}
+
+for (const missing of [false, true]) {
+    test(`published recovery retains original Windows bytes and rejects missing files: ${missing}`, async () => {
+        const f = await legacyFixture();
+        try {
+            const name = `wld-${f.tag}-windows-x64.zip`;
+            const path = join(f.input, name);
+            await fsWriteFile(path, "original Windows package");
+            const sum = `${await sha256File(path)}  ${name}\n`;
+            await fsWriteFile(`${path}.sha256`, sum);
+            const previousSums = await fsReadFile(join(f.input, "SHA256SUMS"), "utf8");
+            await fsWriteFile(join(f.input, "SHA256SUMS"), previousSums + sum);
+            const names = await fsReaddir(f.input);
+            const assets = [];
+            for (const file of names) {
+                assets.push({ name: file, digest: `sha256:${await sha256File(join(f.input, file))}` });
+            }
+            await fsWriteFile(f.metadata, JSON.stringify({ assets }));
+            if (missing) {
+                await fsRm(path);
+                await assertRejects(
+                    () => prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata),
+                    Error,
+                    `Expected one ${name}; found 0`,
+                );
+            } else {
+                await prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata);
+                assertEquals(await fsReadFile(join(f.output, name)), await fsReadFile(path));
+                assertEquals(await fsReadFile(join(f.output, "SHA256SUMS"), "utf8"), previousSums + sum);
+            }
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
 }
 
 test("published legacy Stable recovery preserves a release with neither docs asset in metadata", async () => {

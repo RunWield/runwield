@@ -83,7 +83,10 @@ test("releaseMetadataForTag emits GitHub channel metadata", () => {
 test("expectedReleaseAssetNames covers all WLD release assets", () => {
     const names = expectedReleaseAssetNames("v1.2.3-rc.1");
     assertEquals(names.includes("wld-v1.2.3-rc.1-linux-x64.tar.gz"), true);
-    assertEquals(names.includes("wld-v1.2.3-rc.1-windows-x64.tar.zst.sha256"), true);
+    assertEquals(
+        names.some((name) => name.includes("windows")),
+        false,
+    );
     assertEquals(names.includes("SHA256SUMS"), true);
     assertEquals(names.includes("config.schema.json"), true);
 });
