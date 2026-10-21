@@ -11,7 +11,14 @@ export type {
     GoldenModelDefinition,
 } from "./isolated-environment.ts";
 export { ScriptedReviewSurface } from "./scripted-review-surface.js";
-export { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+export type {
+    VirtualTerminalOptions,
+    VirtualTerminalSize,
+    VirtualTerminalInputCallback,
+    VirtualTerminalResizeCallback,
+    VirtualTerminalProgress,
+} from "./virtual-terminal.ts";
+export { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 export { runGoldenScenarioChildProcess } from "./child-protocol.js";
 export {
     assertGoldenScenarioCoverage,

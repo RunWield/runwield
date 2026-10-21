@@ -122,7 +122,7 @@ test("real stdin closure cancels the directory selector and restores terminal re
 import process from "node:process";
 import { confirmProjectDirectory } from ${JSON.stringify(moduleUrl("../../ui/tui/directory-warning.ts"))};
 import { initTUIWithPair, RunWieldTui, stopTUI } from ${JSON.stringify(moduleUrl("../../ui/tui/tui.ts"))};
-import { VirtualTerminal } from ${JSON.stringify(moduleUrl("../../ui/tui/testing/virtual-terminal.js"))};
+import { VirtualTerminal } from ${JSON.stringify(moduleUrl("../../ui/tui/testing/virtual-terminal.ts"))};
 const terminal = new VirtualTerminal();
 const tui = new RunWieldTui(terminal);
 initTUIWithPair({ terminal, tui });

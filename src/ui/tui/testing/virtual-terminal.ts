@@ -7,11 +7,19 @@ import xtermHeadless from "@xterm/headless";
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 
-/**
- * @typedef {Object} VirtualTerminalOptions
- * @property {number} [columns]
- * @property {number} [rows]
- */
+export interface VirtualTerminalOptions {
+    columns?: number;
+    rows?: number;
+}
+
+export interface VirtualTerminalSize {
+    columns: number;
+    rows: number;
+}
+
+export type VirtualTerminalInputCallback = (data: string) => void;
+export type VirtualTerminalResizeCallback = (size: VirtualTerminalSize) => void;
+export type VirtualTerminalProgress = boolean | number | null;
 
 /**
  * Test Terminal implementation compatible with the methods pi-tui calls on
@@ -19,8 +27,21 @@ const { Terminal: HeadlessTerminal } = xtermHeadless;
  * tests and output is rendered into an xterm headless buffer.
  */
 export class VirtualTerminal {
-    /** @param {VirtualTerminalOptions} [options] */
-    constructor(options = {}) {
+    declare _columns: number;
+    declare _rows: number;
+    declare _xterm: InstanceType<typeof HeadlessTerminal>;
+    declare _onInput: VirtualTerminalInputCallback | null;
+    declare _onResize: VirtualTerminalResizeCallback | null;
+    declare _pendingWrites: Promise<void>[];
+    declare writes: string;
+    declare started: boolean;
+    declare stopped: boolean;
+    declare title: string;
+    declare progress: VirtualTerminalProgress;
+    declare kittyProtocolActive: boolean;
+    declare modifyOtherKeysActive: boolean;
+
+    constructor(options: VirtualTerminalOptions = {}) {
         this._columns = options.columns || 80;
         this._rows = options.rows || 24;
         this._xterm = new HeadlessTerminal({
@@ -28,11 +49,8 @@ export class VirtualTerminal {
             rows: this._rows,
             allowProposedApi: true,
         });
-        /** @type {((data: string) => void) | null} */
         this._onInput = null;
-        /** @type {((size: { columns: number, rows: number }) => void) | null} */
         this._onResize = null;
-        /** @type {Promise<void>[]} */
         this._pendingWrites = [];
         this.writes = "";
         this.started = false;
@@ -51,11 +69,7 @@ export class VirtualTerminal {
         return this._rows;
     }
 
-    /**
-     * @param {(data: string) => void} onInput
-     * @param {(size: { columns: number, rows: number }) => void} [onResize]
-     */
-    start(onInput, onResize) {
+    start(onInput: VirtualTerminalInputCallback, onResize?: VirtualTerminalResizeCallback) {
         this._onInput = onInput;
         this._onResize = onResize || null;
         this.started = true;
@@ -68,11 +82,10 @@ export class VirtualTerminal {
         this.stopped = true;
     }
 
-    /** @param {string} data */
-    write(data) {
+    write(data: string) {
         this.writes += data;
         this._pendingWrites.push(
-            new Promise((resolve) => {
+            new Promise<void>((resolve) => {
                 // Only xterm's callback proves the viewport consumed this write.
                 // A timer can expire while parsing is still queued on a busy runner.
                 this._xterm.write(data, resolve);
@@ -80,14 +93,12 @@ export class VirtualTerminal {
         );
     }
 
-    /** @param {string} data */
-    input(data) {
+    input(data: string) {
         if (!this._onInput) throw new Error("Virtual terminal has not been started.");
         this._onInput(data);
     }
 
-    /** @param {string} text */
-    typeText(text) {
+    typeText(text: string) {
         for (const char of text) this.input(char);
     }
 
@@ -103,8 +114,7 @@ export class VirtualTerminal {
         this.input("\x03");
     }
 
-    /** @param {number} columns @param {number} rows */
-    resize(columns, rows) {
+    resize(columns: number, rows: number) {
         this._columns = columns;
         this._rows = rows;
         this._xterm.resize(columns, rows);
@@ -116,14 +126,13 @@ export class VirtualTerminal {
             const pending = this._pendingWrites.splice(0);
             await Promise.all(pending);
         }
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
 
     getViewportLines() {
         const buffer = this._xterm.buffer.active;
         const viewportY = Number(buffer.viewportY || 0);
-        /** @type {string[]} */
-        const lines = [];
+        const lines: string[] = [];
         for (let i = 0; i < this._rows; i++) {
             lines.push(buffer.getLine(viewportY + i)?.translateToString(true) || "");
         }
@@ -134,8 +143,7 @@ export class VirtualTerminal {
         return normalizeScreenText(this.getViewportLines().join("\n"));
     }
 
-    /** @param {number} row @param {number} column */
-    hasDefaultBackground(row, column) {
+    hasDefaultBackground(row: number, column: number) {
         const buffer = this._xterm.buffer.active;
         const cell = buffer.getLine(Number(buffer.viewportY || 0) + row)?.getCell(column);
         return cell?.isBgDefault() ?? true;
@@ -157,8 +165,7 @@ export class VirtualTerminal {
         this.write("\x1b[2J\x1b[H");
     }
 
-    /** @param {number} row @param {number} [col] */
-    moveBy(row, col = 0) {
+    moveBy(row: number, col = 0) {
         if (row > 0) this.write(`\x1b[${row}B`);
         if (row < 0) this.write(`\x1b[${Math.abs(row)}A`);
         if (col > 0) this.write(`\x1b[${col}C`);
@@ -173,13 +180,11 @@ export class VirtualTerminal {
         this.write("\x1b[?25h");
     }
 
-    /** @param {string} title */
-    setTitle(title) {
+    setTitle(title: string) {
         this.title = title;
     }
 
-    /** @param {boolean | number | null} progress */
-    setProgress(progress) {
+    setProgress(progress: VirtualTerminalProgress) {
         this.progress = progress;
     }
 
@@ -199,7 +204,7 @@ export class VirtualTerminal {
 }
 
 /** @param {string} text */
-export function normalizeScreenText(text) {
+export function normalizeScreenText(text: string) {
     const esc = String.fromCharCode(27);
     const bel = String.fromCharCode(7);
     const oscPattern = new RegExp(`${esc}\\][^${bel}]*(?:${bel}|${esc}\\\\)`, "g");

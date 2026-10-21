@@ -30,7 +30,7 @@ import { getSettingsManager } from "../../shared/settings.js";
 import { startRunWieldAcpServer } from "../../acp/server.js";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
 import { runTerminalAuthSetup } from "./terminal-auth-setup.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 interface AcpMessage {
     id?: string;
@@ -374,7 +374,7 @@ test("terminal auth setup succeeds against a temporary source mutation where cre
                 `import { getSettingsManager } from "./src/shared/settings.js";\n` +
                 `import { initTUIWithPair, stopTUI } from "./src/ui/tui/tui.ts";\n` +
                 `import { runTerminalAuthSetup } from "./src/ui/tui/terminal-auth-setup.ts";\n` +
-                `import { VirtualTerminal } from "./src/ui/tui/testing/virtual-terminal.js";\n` +
+                `import { VirtualTerminal } from "./src/ui/tui/testing/virtual-terminal.ts";\n` +
                 `async function waitForScreen(terminal: VirtualTerminal, text: string): Promise<void> {\n` +
                 `  const startedAt = Date.now();\n` +
                 `  while (Date.now() - startedAt < 10000) {\n` +

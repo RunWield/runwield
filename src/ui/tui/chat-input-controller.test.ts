@@ -15,7 +15,7 @@ import { getSettingsManager } from "../../shared/settings.js";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { type ChatInputRuntime, createChatInputController } from "./chat-input-controller.ts";
 import { createInteractiveCompositionHarness } from "./testing/interactive-composition-fixture.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
 import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";

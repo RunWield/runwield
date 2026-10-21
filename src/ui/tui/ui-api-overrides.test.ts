@@ -8,7 +8,7 @@ import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-c
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
 import { createUiApi } from "./api.js";
 import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";

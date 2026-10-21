@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView } from "./chat-view.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 import { createValidationSessionPort } from "../../shared/workflow/validation-session-adapter.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
