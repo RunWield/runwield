@@ -22,16 +22,20 @@ const HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*$/;
 const CODE_FENCE_PATTERN = /^\s*(?:```|~~~)/;
 const FRONT_MATTER_DELIMITER_PATTERN = /^---\s*$/;
 
-/**
- * @typedef {Object} BrokenLink
- * @property {string} sourceFile
- * @property {number} line
- * @property {string} target
- * @property {string} reason
- */
+export interface RelativeLink {
+    line: number;
+    target: string;
+}
 
-/** @returns {Promise<string[]>} */
-async function trackedMarkdownFiles() {
+export interface BrokenLink extends RelativeLink {
+    sourceFile: string;
+    reason: string;
+}
+
+export type ReadTextFile = (path: string) => Promise<string>;
+export type PathExists = (path: string) => Promise<boolean>;
+
+async function trackedMarkdownFiles(): Promise<string[]> {
     const output = await captureScriptProcess("git", {
         args: ["ls-files", "-z", "*.md"],
         cwd: REPO_ROOT,
@@ -48,13 +52,8 @@ async function trackedMarkdownFiles() {
         .sort();
 }
 
-/**
- * GitHub-style heading slug: lowercase, drop punctuation, spaces to hyphens.
- *
- * @param {string} heading
- * @returns {string}
- */
-export function headingSlug(heading) {
+/** GitHub-style heading slug: lowercase, drop punctuation, spaces to hyphens. */
+export function headingSlug(heading: string): string {
     return heading
         .replace(/`/g, "")
         .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -65,13 +64,8 @@ export function headingSlug(heading) {
         .replace(/\s+/g, "-");
 }
 
-/**
- * @param {string} markdown
- * @returns {Set<string>}
- */
-export function headingSlugs(markdown) {
-    /** @type {Set<string>} */
-    const slugs = new Set();
+export function headingSlugs(markdown: string): Set<string> {
+    const slugs = new Set<string>();
     let inFence = false;
     let inFrontMatter = markdown.startsWith("---\n");
     const lines = markdown.split("\n");
@@ -99,23 +93,14 @@ export function headingSlugs(markdown) {
     return slugs;
 }
 
-/**
- * @param {string} target
- * @returns {boolean}
- */
-function isCheckableRelativeLink(target) {
+function isCheckableRelativeLink(target: string): boolean {
     if (!target || target.startsWith("#")) return false;
     if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return false;
     return !target.startsWith("//");
 }
 
-/**
- * @param {string} markdown
- * @returns {Array<{ line: number, target: string }>}
- */
-export function extractRelativeLinks(markdown) {
-    /** @type {Array<{ line: number, target: string }>} */
-    const links = [];
+export function extractRelativeLinks(markdown: string): RelativeLink[] {
+    const links: RelativeLink[] = [];
     let inFence = false;
     let inFrontMatter = markdown.startsWith("---\n");
     const lines = markdown.split("\n");
@@ -138,16 +123,10 @@ export function extractRelativeLinks(markdown) {
     return links;
 }
 
-/**
- * @param {string[]} files
- * @param {(path: string) => Promise<string>} [readTextFile]
- * @param {(path: string) => Promise<boolean>} [pathExists]
- * @returns {Promise<BrokenLink[]>}
- */
 export async function findBrokenLinks(
-    files,
-    readTextFile = (path) => fsReadFile(join(REPO_ROOT, path), "utf8"),
-    pathExists = async (path) => {
+    files: string[],
+    readTextFile: ReadTextFile = (path) => fsReadFile(join(REPO_ROOT, path), "utf8"),
+    pathExists: PathExists = async (path) => {
         try {
             await fsStat(join(REPO_ROOT, path));
             return true;
@@ -155,11 +134,9 @@ export async function findBrokenLinks(
             return false;
         }
     },
-) {
-    /** @type {BrokenLink[]} */
-    const broken = [];
-    /** @type {Map<string, Set<string> | null>} */
-    const slugCache = new Map();
+): Promise<BrokenLink[]> {
+    const broken: BrokenLink[] = [];
+    const slugCache = new Map<string, Set<string> | null>();
 
     for (const sourceFile of files) {
         // `git ls-files` still reports a tracked file after it has been deleted or
@@ -198,8 +175,7 @@ export async function findBrokenLinks(
     return broken;
 }
 
-/** @param {BrokenLink[]} broken */
-function formatBrokenLinks(broken) {
+function formatBrokenLinks(broken: BrokenLink[]) {
     return broken
         .map((entry) => `  ${entry.sourceFile}:${entry.line}  ${entry.target}\n      ${entry.reason}`)
         .join("\n");
