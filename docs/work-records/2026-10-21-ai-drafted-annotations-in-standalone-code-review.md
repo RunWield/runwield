@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "6127923c-9c2f-4fa3-8e58-eca6e7dcc09b"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "fd55996c-a04a-45b8-bc67-b24df82af0e2"
 ---
-
 # AI-drafted annotations in Standalone Code Review
 
 ## Summary

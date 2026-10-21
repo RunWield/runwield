@@ -26,13 +26,13 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "Guided Review Annotations"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "b26023d01b8d9465cfccced8c15181241ef96638"
 workRecord:
     status: "generated"
     recordId: "6127923c-9c2f-4fa3-8e58-eca6e7dcc09b"
     path: "docs/work-records/2026-10-21-ai-drafted-annotations-in-standalone-code-review.md"
     lastAttemptAt: "2026-10-21T16:09:47.355Z"
+status: "verified"
 ---
 
 # Run AI Review in Standalone Code Review
