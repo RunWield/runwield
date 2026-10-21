@@ -442,7 +442,7 @@ test("SessionRuntime public surface remains adapter-neutral and explicit", () =>
         "executePlan",
         "expandSessionPromptTemplate",
         "expandSessionSkillCommand",
-        "exportSession",
+        "readSessionExport",
         "getLastAssistantText",
         "getQueuedMessages",
         "getRuntimeActiveAgentName",

@@ -1059,6 +1059,14 @@ chapter. Shared `.rw-guide-*` block styles live in `src/ui/design-system/compone
 Guided Review generation controls must disclose that generation can use an additional LLM call. When auto-generation
 finishes, show a non-stealing **Guided Review ready** affordance instead of switching the reviewer away from plain Diff.
 
+Standalone Code Review places **Run AI Review** beside the Guided Review generation control, using the existing
+`rw-guide-actions` toolbar, button, and status styles with `--rw-*` semantic tokens. It never starts automatically and
+its title discloses an additional LLM call. While running, **Cancel** replaces the button; the status shows elapsed time,
+model, tokens, and cost when available. Completion shows Standards, Spec, and Tests counts and the spec source, or
+reports no issues. Errors and results for an older diff stay in the status area without changing annotations.
+Generated annotations use the existing annotation styles and show **AI review** as author. Their text includes axis and
+blocking or advisory severity; color alone must not carry that meaning. Validation-time Code Review has no such control.
+
 ### User Verified status intent
 
 Use the explicit label **User Verified** for `user_verified`. It is a closed/successful lifecycle outcome, but not

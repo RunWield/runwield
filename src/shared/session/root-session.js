@@ -5,7 +5,7 @@
 
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
 import { encodeCwdForSessionDir } from "./session-directory-name.ts";
 export { encodeCwdForSessionDir } from "./session-directory-name.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
@@ -94,9 +94,10 @@ export async function createRootSessionManager(mode, cwd) {
     const sessionDir = getRunWieldSessionDir(canonicalCwd);
     ensureDir(sessionDir);
 
-    const manager = mode === "continue"
-        ? SessionManager.continueRecent(canonicalCwd, sessionDir)
-        : SessionManager.create(canonicalCwd, sessionDir);
+    const manager =
+        mode === "continue"
+            ? SessionManager.continueRecent(canonicalCwd, sessionDir)
+            : SessionManager.create(canonicalCwd, sessionDir);
     return installSessionPersistence(manager);
 }
 
@@ -175,8 +176,11 @@ export async function resolveCreatedRootSessionPath(cwd, sessionManager) {
     const transcriptPath = sessionManager.getSessionFile?.();
     const sessionDir = getRunWieldSessionDir(cwd);
     if (
-        !transcriptPath || typeof transcriptPath !== "string" || !isAbsolute(transcriptPath) ||
-        !isPathInside(transcriptPath, sessionDir) || !basename(transcriptPath).includes(piSessionId)
+        !transcriptPath ||
+        typeof transcriptPath !== "string" ||
+        !isAbsolute(transcriptPath) ||
+        !isPathInside(transcriptPath, sessionDir) ||
+        !basename(transcriptPath).includes(piSessionId)
     ) {
         throw new Error(`Created Session transcript was not found: ${piSessionId}`);
     }
@@ -284,17 +288,17 @@ export async function classifyRootSessionLocator(options) {
     const canonicalHistoricalProjects = [];
     for (const project of projects) {
         const roots = store.listProjectRootEvidence(project.projectId);
-        const exactCurrent = roots.some((root) =>
-            root.rootState === "current" && requestedCwd === resolve(root.enteredRoot)
+        const exactCurrent = roots.some(
+            (root) => root.rootState === "current" && requestedCwd === resolve(root.enteredRoot),
         );
-        const canonicalCurrent = roots.some((root) =>
-            root.rootState === "current" && isSameOrInsidePath(realCwd, root.canonicalRoot)
+        const canonicalCurrent = roots.some(
+            (root) => root.rootState === "current" && isSameOrInsidePath(realCwd, root.canonicalRoot),
         );
-        const exactHistorical = roots.some((root) =>
-            root.rootState === "historical" && requestedCwd === resolve(root.enteredRoot)
+        const exactHistorical = roots.some(
+            (root) => root.rootState === "historical" && requestedCwd === resolve(root.enteredRoot),
         );
-        const canonicalHistorical = roots.some((root) =>
-            root.rootState === "historical" && isSameOrInsidePath(realCwd, root.canonicalRoot)
+        const canonicalHistorical = roots.some(
+            (root) => root.rootState === "historical" && isSameOrInsidePath(realCwd, root.canonicalRoot),
         );
         if (exactCurrent) exactCurrentProjects.push(project);
         else if (canonicalCurrent) canonicalCurrentProjects.push(project);
@@ -302,9 +306,8 @@ export async function classifyRootSessionLocator(options) {
         else if (canonicalHistorical) canonicalHistoricalProjects.push(project);
     }
     const currentProjects = exactCurrentProjects.length > 0 ? exactCurrentProjects : canonicalCurrentProjects;
-    const historicalProjects = exactHistoricalProjects.length > 0
-        ? exactHistoricalProjects
-        : canonicalHistoricalProjects;
+    const historicalProjects =
+        exactHistoricalProjects.length > 0 ? exactHistoricalProjects : canonicalHistoricalProjects;
     if (currentProjects.length > 1 || historicalProjects.length > 1) {
         return { kind: "blocked", reason: "locator_conflict" };
     }
@@ -313,14 +316,16 @@ export async function classifyRootSessionLocator(options) {
     }
     const project = currentProjects[0] || null;
     if (!project) return { kind: "uncataloged", reason: "session_project_absent" };
-    const currentRoots = store.listProjectRootEvidence(project.projectId)
-        .filter((root) =>
-            root.rootState === "current" &&
-            (isSameOrInsidePath(realCwd, root.canonicalRoot) || isSameOrInsidePath(requestedCwd, root.enteredRoot))
+    const currentRoots = store
+        .listProjectRootEvidence(project.projectId)
+        .filter(
+            (root) =>
+                root.rootState === "current" &&
+                (isSameOrInsidePath(realCwd, root.canonicalRoot) || isSameOrInsidePath(requestedCwd, root.enteredRoot)),
         );
     if (
-        currentRoots.some((root) =>
-            resolve(realCwd) !== resolve(root.canonicalRoot) && requestedCwd !== resolve(root.enteredRoot)
+        currentRoots.some(
+            (root) => resolve(realCwd) !== resolve(root.canonicalRoot) && requestedCwd !== resolve(root.enteredRoot),
         )
     ) {
         return { kind: "blocked", reason: "nested_project_root" };
@@ -349,15 +354,15 @@ export async function classifyRootSessionLocator(options) {
         transcriptPath: requestedSessionPath,
     });
     const catalogedSegment = catalogedByPath
-        ? store.listSessionTranscriptSegments(catalogedByPath.runwieldSessionId).find((segment) =>
-            resolve(segment.transcriptPath) === requestedSessionPath
-        )
+        ? store
+              .listSessionTranscriptSegments(catalogedByPath.runwieldSessionId)
+              .find((segment) => resolve(segment.transcriptPath) === requestedSessionPath)
         : null;
     const locatorSessionDir = isPathInside(requestedSessionPath, projectSessionDir)
         ? projectSessionDir
         : catalogedSegment
-        ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
-        : undefined;
+          ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
+          : undefined;
     let locator;
     try {
         locator = await readCatalogSafeRootSessionLocator({
@@ -413,8 +418,9 @@ export async function listPersistedRootSessions(cwd) {
     const sessionDir = getRunWieldSessionDir(canonicalCwd);
     const sessions = /** @type {PersistedRootSessionInfo[]} */ (await SessionManager.list(canonicalCwd, sessionDir));
     if (enteredCwd !== canonicalCwd) {
-        const legacySessions =
-            /** @type {PersistedRootSessionInfo[]} */ (await SessionManager.list(enteredCwd, sessionDir));
+        const legacySessions = /** @type {PersistedRootSessionInfo[]} */ (
+            await SessionManager.list(enteredCwd, sessionDir)
+        );
         const seen = new Set(sessions.map((session) => `${session.id}:${resolve(session.path)}`));
         for (const session of legacySessions) {
             const key = `${session.id}:${resolve(session.path)}`;
@@ -588,9 +594,7 @@ export async function readCatalogSafeRootSessionLocator(options) {
         if (!headerCwd || !isAbsolute(headerCwd)) {
             throw new Error("Persisted session header is missing an absolute cwd");
         }
-        const match = basename(sessionPath).match(
-            /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/,
-        );
+        const match = basename(sessionPath).match(/^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/);
         if (!match || match[2] !== piSessionId) {
             throw new Error("Persisted session filename does not exactly match the Pi session id");
         }
@@ -641,9 +645,10 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
     const diagnostics = [];
     /** @type {CatalogSafeRootSessionCandidate[]} */
     const candidates = [];
-    const recentLimit = typeof options.recentLimit === "number" && Number.isFinite(options.recentLimit)
-        ? Math.max(0, Math.floor(options.recentLimit))
-        : null;
+    const recentLimit =
+        typeof options.recentLimit === "number" && Number.isFinite(options.recentLimit)
+            ? Math.max(0, Math.floor(options.recentLimit))
+            : null;
     try {
         for (const entry of await readdir(sessionDir, { withFileTypes: true })) {
             if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
@@ -664,13 +669,18 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
             }
         }
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return { locators, diagnostics };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return { locators, diagnostics };
         throw error;
     }
-    const candidatesToRead = recentLimit === null ? candidates : candidates.toSorted((left, right) => {
-        const timeDifference = (right.modified?.getTime() || 0) - (left.modified?.getTime() || 0);
-        return timeDifference || right.sessionPath.localeCompare(left.sessionPath);
-    }).slice(0, recentLimit);
+    const candidatesToRead =
+        recentLimit === null
+            ? candidates
+            : candidates
+                  .toSorted((left, right) => {
+                      const timeDifference = (right.modified?.getTime() || 0) - (left.modified?.getTime() || 0);
+                      return timeDifference || right.sessionPath.localeCompare(left.sessionPath);
+                  })
+                  .slice(0, recentLimit);
     for (const candidate of candidatesToRead) {
         try {
             locators.push(
@@ -691,199 +701,4 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
     }
     locators.sort((a, b) => a.sessionPath.localeCompare(b.sessionPath));
     return { locators, diagnostics };
-}
-
-/**
- * @param {string} value
- * @returns {string}
- */
-function escapeHtml(value) {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-}
-
-/**
- * @param {unknown} value
- * @returns {string}
- */
-function toDisplayText(value) {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) {
-        return value.map((block) => {
-            if (!block || typeof block !== "object") return "";
-            const typedBlock =
-                /** @type {{ type?: string, text?: string, name?: string, input?: unknown, content?: unknown }} */ (
-                    block
-                );
-
-            if (typedBlock.type === "text") return typedBlock.text || "";
-            if (typedBlock.type === "tool_use") {
-                return `[tool_use:${typedBlock.name || "unknown"}] ${JSON.stringify(typedBlock.input || {})}`;
-            }
-            if (typedBlock.type === "tool_result") {
-                const contentText = toDisplayText(typedBlock.content || "");
-                return `[tool_result] ${contentText}`;
-            }
-            return JSON.stringify(block);
-        }).join("\n");
-    }
-
-    if (value === null || value === undefined) return "";
-    return String(value);
-}
-
-/**
- * Export current session branch as linear JSONL (Pi-like behavior).
- *
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
- * @param {string} [outputPath]
- * @returns {string}
- */
-export function exportRootSessionToJsonl(sessionManager, outputPath) {
-    const filePath = resolve(outputPath || `session-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
-    ensureDir(dirname(filePath));
-
-    const header = {
-        type: "session",
-        id: sessionManager.getSessionId(),
-        timestamp: new Date().toISOString(),
-        cwd: sessionManager.getCwd(),
-    };
-
-    const branchEntries = sessionManager.getBranch();
-    const lines = [JSON.stringify(header)];
-
-    let prevId = null;
-    for (const entry of branchEntries) {
-        const linearEntry = { ...entry, parentId: prevId };
-        lines.push(JSON.stringify(linearEntry));
-        prevId = entry.id;
-    }
-
-    writeFileSync(filePath, `${lines.join("\n")}\n`);
-    return filePath;
-}
-
-/**
- * Export current session branch to a simple HTML transcript.
- *
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
- * @param {string} [outputPath]
- * @returns {Promise<string>}
- */
-export async function exportRootSessionToHtml(sessionManager, outputPath) {
-    const filePath = resolve(outputPath || `session-${new Date().toISOString().replace(/[:.]/g, "-")}.html`);
-    ensureDir(dirname(filePath));
-
-    const entries = sessionManager.getBranch();
-    let skipNextNamedInvocation = "";
-    const rows = entries.flatMap((entry) => {
-        const timestamp = entry.timestamp || "";
-
-        if (entry.type === "message") {
-            const role = entry.message?.role || "unknown";
-            const message = /** @type {{ content?: unknown }} */ (entry.message);
-            const textValue = toDisplayText(message.content || "");
-            if (skipNextNamedInvocation && role === "user" && textValue === skipNextNamedInvocation) {
-                skipNextNamedInvocation = "";
-                return [];
-            }
-            skipNextNamedInvocation = "";
-            const text = escapeHtml(textValue);
-            return [
-                `<section class=\"entry message ${escapeHtml(role)}\"><header>${escapeHtml(timestamp)} — ${
-                    escapeHtml(role)
-                }</header><pre>${text}</pre></section>`,
-            ];
-        }
-
-        const customEntry =
-            /** @type {{ type?: string, customType?: string, data?: { compactInvocation?: string } }} */ (
-                entry
-            );
-        const namedInvocationData = customEntry.data;
-        const namedInvocationText =
-            customEntry.type === "custom" && customEntry.customType === "runwield.named_invocation" &&
-                typeof namedInvocationData?.compactInvocation === "string"
-                ? namedInvocationData.compactInvocation
-                : "";
-        if (namedInvocationText) {
-            skipNextNamedInvocation = namedInvocationText;
-            const text = escapeHtml(namedInvocationText);
-            return `<section class=\"entry message user\"><header>${
-                escapeHtml(timestamp)
-            } — user</header><pre>${text}</pre></section>`;
-        }
-
-        if (entry.type === "custom_message") {
-            const text = escapeHtml(toDisplayText(entry.content || ""));
-            return `<section class=\"entry custom\"><header>${escapeHtml(timestamp)} — custom_message:${
-                escapeHtml(entry.customType || "")
-            }</header><pre>${text}</pre></section>`;
-        }
-
-        if (entry.type === "compaction") {
-            return `<section class=\"entry system\"><header>${escapeHtml(timestamp)} — compaction</header><pre>${
-                escapeHtml(entry.summary || "")
-            }</pre></section>`;
-        }
-
-        if (entry.type === "branch_summary") {
-            return `<section class=\"entry system\"><header>${escapeHtml(timestamp)} — branch_summary</header><pre>${
-                escapeHtml(entry.summary || "")
-            }</pre></section>`;
-        }
-
-        if (entry.type === "model_change") {
-            const text = `${entry.provider || ""}/${entry.modelId || ""}`;
-            return `<section class=\"entry meta\"><header>${escapeHtml(timestamp)} — model_change</header><pre>${
-                escapeHtml(text)
-            }</pre></section>`;
-        }
-
-        if (entry.type === "thinking_level_change") {
-            return `<section class=\"entry meta\"><header>${
-                escapeHtml(timestamp)
-            } — thinking_level_change</header><pre>${escapeHtml(entry.thinkingLevel || "")}</pre></section>`;
-        }
-
-        return `<section class=\"entry meta\"><header>${escapeHtml(timestamp)} — ${
-            escapeHtml(entry.type || "entry")
-        }</header><pre>${escapeHtml(JSON.stringify(entry, null, 2))}</pre></section>`;
-    }).join("\n");
-
-    const title = `RunWield Session Export — ${sessionManager.getSessionId()}`;
-    const html = [
-        "<!doctype html>",
-        "<html lang='en'>",
-        "<head>",
-        '  <meta charset="utf-8" />',
-        `  <title>${escapeHtml(title)}</title>`,
-        "  <style>",
-        "    body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#111;color:#eee;padding:24px;line-height:1.4}",
-        "    h1{font-size:18px;margin:0 0 16px}",
-        "    .meta{color:#aaa;margin-bottom:16px}",
-        "    .entry{border:1px solid #333;border-radius:8px;padding:12px;margin:0 0 12px;background:#1a1a1a}",
-        "    .entry header{font-size:12px;color:#9ca3af;margin-bottom:8px}",
-        "    .entry.message.user{border-color:#2563eb}",
-        "    .entry.message.assistant{border-color:#16a34a}",
-        "    .entry.custom,.entry.system{border-color:#7c3aed}",
-        "    pre{white-space:pre-wrap;word-break:break-word;margin:0}",
-        "  </style>",
-        "</head>",
-        "<body>",
-        `  <h1>${escapeHtml(title)}</h1>`,
-        `  <div class=\"meta\">cwd: ${escapeHtml(sessionManager.getCwd())}</div>`,
-        rows,
-        "</body>",
-        "</html>",
-        "",
-    ].join("\n");
-
-    await writeFile(filePath, html);
-    return filePath;
 }
