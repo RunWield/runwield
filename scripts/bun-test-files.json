@@ -277,7 +277,7 @@
     "src/shared/session/claude-cli-model-selection.test.ts",
     "src/shared/session/close-awaits-operation.test.ts",
     "src/shared/session/cross-surface-workflow-invariants.integration.test.ts",
-    "src/shared/session/deferred-validation-repair.integration.test.js",
+    "src/shared/session/deferred-validation-repair.integration.test.ts",
     "src/shared/session/early-steering.test.js",
     "src/shared/session/execution-metrics.integration.test.ts",
     "src/shared/session/execution-segment-runtime.test.ts",
