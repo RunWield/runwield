@@ -30,6 +30,7 @@ type ExecutionRecord = {
     requestId?: string | null;
     attemptId?: string | null;
     outcome?: string;
+    reason?: string;
     callCount?: number;
 };
 
@@ -173,6 +174,7 @@ test("one unfinished review keeps one cumulative model-turn budget across a retr
                 executions.map((record) => record.outcome),
                 ["succeeded", "succeeded", "failed"],
             );
+            assertEquals(executions[2]?.reason, "runaway_loop_guard");
             assertEquals(
                 executions.map((record) => record.callCount),
                 [2, 56, 40],
