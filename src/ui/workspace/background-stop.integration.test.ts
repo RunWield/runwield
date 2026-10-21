@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { platform } from "node:process";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
@@ -18,7 +18,15 @@ test("Workspace releases an idle retained owner after Stop cancels its task", as
             const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
             try {
                 const source = join(projectRoot, "background-until-stop.mjs");
-                await writeFile(source, "setInterval(() => {}, 1000);\n");
+                const watchdogPath = join(projectRoot, "background-watchdog-fired");
+                // Bound failed cleanup without letting a natural exit satisfy Stop.
+                await writeFile(
+                    source,
+                    `import { writeFileSync } from "node:fs";
+setTimeout(() => { writeFileSync(${JSON.stringify(watchdogPath)}, "expired"); process.exit(1); }, 30_000);
+setInterval(() => {}, 1000);
+`,
+                );
                 const executable = await writeRuntimeExecutableFixture(
                     join(projectRoot, "background-until-stop"),
                     source,
@@ -57,6 +65,14 @@ test("Workspace releases an idle retained owner after Stop cancels its task", as
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
                 assertEquals(service.runtime.getSessionSnapshot(owner.id), null);
+                const watchdogFired = await readFile(watchdogPath).then(
+                    () => true,
+                    (error: NodeJS.ErrnoException) => {
+                        if (error.code === "ENOENT") return false;
+                        throw error;
+                    },
+                );
+                assertEquals(watchdogFired, false, "Stop must cancel the task before its fixture watchdog exits");
             } finally {
                 await service.close();
                 service.store.close();
