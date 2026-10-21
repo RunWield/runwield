@@ -657,3 +657,40 @@ esac
         await fsRm(root, { recursive: true });
     }
 });
+
+for (const extension of ["js", "ts"]) {
+    test(`release recovery runs Golden preparation from ${extension} product source`, async () => {
+        const root = await fsMkdtemp(join(tmpdir(), "runwield-golden-compat-"));
+        try {
+            const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8");
+            const command = stepRun(jobBlock(workflow, "golden-shards"), "Run Golden TUI release gate");
+            await write(join(root, `scripts/write-version.${extension}`), 'console.log("VERSION-PREPARED");\n');
+            await write(join(root, "scripts/run-tests.js"), 'console.log("GOLDEN-RUN", ...process.argv.slice(2));\n');
+            const result = await runShell(command, {}, root);
+            assertEquals(result.code, 0, decoder.decode(result.stderr));
+            const output = decoder.decode(result.stdout);
+            assertStringIncludes(output, "VERSION-PREPARED\nGOLDEN-RUN --isolated");
+            assertStringIncludes(output, "src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast");
+        } finally {
+            await fsRm(root, { recursive: true });
+        }
+    });
+
+    test(`release recovery builds container bundles from ${extension} product source`, async () => {
+        const root = await fsMkdtemp(join(tmpdir(), "runwield-container-compat-"));
+        try {
+            const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release-containers.yml"), "utf8");
+            const command = stepRun(workflow, "Build remote runtime bundles");
+            await write(join(root, "scripts/build-workspace-runtime.ts"), 'console.log("WORKSPACE-BUILT");\n');
+            await write(
+                join(root, `scripts/build-plan-server-runtime.${extension}`),
+                'console.log("PLAN-SERVER-BUILT");\n',
+            );
+            const result = await runShell(command, {}, root);
+            assertEquals(result.code, 0, decoder.decode(result.stderr));
+            assertEquals(decoder.decode(result.stdout).trim(), "WORKSPACE-BUILT\nPLAN-SERVER-BUILT");
+        } finally {
+            await fsRm(root, { recursive: true });
+        }
+    });
+}

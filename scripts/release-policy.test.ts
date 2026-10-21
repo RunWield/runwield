@@ -59,6 +59,7 @@ test("wld release policy distinguishes repository-specific policy from generic w
 test("release workflow keeps tag publication and manual recovery channel-safe", async () => {
     const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
 
+    assertStringIncludes(workflow, 'git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"');
     assertStringIncludes(workflow, "workflow_dispatch:");
     assertMatch(workflow, /workflow_dispatch:[\s\S]*tag:[\s\S]*required: true/);
     assertStringIncludes(workflow, "RELEASE_TAG: ${{ inputs.tag || github.ref_name }}");

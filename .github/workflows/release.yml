@@ -74,7 +74,7 @@ jobs:
                   RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
               run: |
                   set -euo pipefail
-                  git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+                  git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"
                   source_sha=$(git rev-parse 'FETCH_HEAD^{commit}')
                   echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
                   bun_version=$(git show "$source_sha:.bun-version")
@@ -284,7 +284,13 @@ jobs:
             - name: Run Golden TUI release gate
               env:
                   WLD_TEST_CONCURRENCY: "3"
-              run: bun scripts/write-version.ts && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
+              run: |
+                  if [ -f scripts/write-version.ts ]; then
+                    bun scripts/write-version.ts
+                  else
+                    bun scripts/write-version.js
+                  fi
+                  bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''
