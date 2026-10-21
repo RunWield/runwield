@@ -26,11 +26,7 @@ import {
     startReviewWorkspaceServer,
 } from "./server.js";
 
-import {
-    createReviewAgentState,
-    reviewAgentApi,
-    runConfiguredGuideCommand,
-} from "./routes/api/review-agent-handlers.js";
+import { createReviewAgentState, reviewAgentApi, runWldJobCommand } from "./routes/api/review-agent-handlers.js";
 
 import {
     registerReviewDecisionPromise,
@@ -426,7 +422,7 @@ test("review guide jobs prefer WLD over external agent host CLIs", async () => {
                         everythingElse: [],
                     },
                 },
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
 
             const launch = await reviewAgentApi(
@@ -514,7 +510,7 @@ test("default review guide usage frames update a running job and remain after co
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "usage-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const launch = await reviewAgentApi(
                 new Request("http://localhost/api/agents/jobs", {
@@ -632,7 +628,7 @@ test("custom review guide commands do not interpret stderr usage-like text", asy
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "custom-no-usage-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const doneJob = await runReviewGuideJob(state);
             assertEquals(doneJob?.status, "done");
@@ -683,7 +679,7 @@ test("failed default review guide commands report subprocess stderr and keep par
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "failed-usage-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const failedJob = await runReviewGuideJob(state);
             assertEquals(failedJob?.status, "failed");
@@ -732,7 +728,7 @@ test("default review guide commands fail clearly on malformed usage frames", asy
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "malformed-frame-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const failedJob = await runReviewGuideJob(state);
             assertEquals(failedJob?.status, "failed");

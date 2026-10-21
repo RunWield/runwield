@@ -987,6 +987,16 @@ pushes.
   `origin HEAD` as upstream when needed. RunWield confirms a clean tree, a new HEAD, and upstream equality. A failed
   push keeps the commit; a retry publishes it without another commit. Detached HEAD disables the action.
 
+**Requirement: Draft annotations with AI review.** Standalone Code Review offers a manual **Run AI Review** control
+beside Guided Review. It discloses the additional LLM call, supports cancellation, and shows elapsed time, model,
+usage, and cost when available. It runs the bundled `review` skill (including project overrides), not Semantic Review,
+with sequential Standards, Spec, and Tests passes. It finds the spec without asking; without a spec, it grades no
+invented requirements. Findings become ordinary editable, deletable annotations labeled **AI review**, with their axis
+and blocking or advisory severity in the text. Line annotations must fit a diff hunk on the cited side; other findings
+fall back to file or general annotations and retain their cited location. Completion shows per-axis counts and the spec
+source, or reports no issues. Reruns replace only unedited AI annotations. Results from an older patch add nothing.
+Validation-time Code Review does not offer this control.
+
 **Requirement: Protect review work.** Closing the review publishes nothing. On completion, cancellation, or
 interruption, RunWield closes its Sessions and removes only its own clean worktrees whose HEAD equals upstream. Dirty
 or unpushed work stays, and RunWield reports its path and branch. Engineer starts after checkout setup completes. The
@@ -1007,6 +1017,15 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
   approval with the existing commit.
 - Given review exit, clean created checkouts at upstream are removed, and dirty, unpushed, reused, and primary
   checkouts remain.
+- Given an AI finding on a changed line, its annotation keeps the file, line range, and old or new side. A cited line
+  outside the hunks becomes a file annotation; an unchanged file becomes a general annotation with the cited location.
+- Given generated annotations, the owner can edit or delete them. Post comments and Approve keep their text, position,
+  and side; Send to Engineer includes the remaining annotation text, including axis and severity.
+- Given a rerun, owner annotations and edited AI annotations remain; unedited AI annotations are replaced.
+- Given a patch change during a run, completion reports an older diff and adds no annotations.
+- Given no discoverable spec, AI review reports no spec and makes no Spec findings against invented requirements.
+- Given malformed output or provider failure, the job reports an error and the owner can rerun it.
+- Given validation-time Code Review, Run AI Review is absent; existing validation and Guided Review remain available.
 
 ### Frontend engineering and pair execution
 

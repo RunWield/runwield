@@ -381,11 +381,13 @@ Plannotator. _Avoid_: Feedback loop, approval cycle
 
 **Semantic Review**: The internal state-machine term for the automated Reviewer check during Workflow Validation. It
 compares the approved Plan with the full proposed branch patch from the recorded target/execution common ancestor to the
-current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. _Avoid_: Code Review, Forge
+current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. **Run AI Review** in
+Standalone Code Review is not Semantic Review. _Avoid_: Code Review, Forge
 review, automated tests
 
 **Standalone Code Review**: Code Review of a PR, branch, or uncommitted changes without a Plan or Plan lifecycle.
-Started with `wld review`. The gate **Code Review** still means the Plan validation gate.
+Started with `wld review`. Run AI Review runs the bundled `review` skill and adds its findings as annotations.
+The gate **Code Review** still means the Plan validation gate.
 
 **Review Worktree**: A worktree created on demand for Standalone Code Review, outside the Plan worktree registry.
 RunWield preserves it when it holds uncommitted or unpushed work. An existing branch checkout can be reused but is not
