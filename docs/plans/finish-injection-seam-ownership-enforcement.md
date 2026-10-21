@@ -8,7 +8,7 @@ affectedPaths:
     - "docs/domain-language.md"
     - "docs/plans/deep-semantic-source-modules.md"
     - "scripts/check-injection-seams.js"
-    - "scripts/check-injection-seams.test.js"
+    - "scripts/check-injection-seams.test.ts"
     - "scripts/external-capability-ports.json"
     - "src/shared/git-port.ts"
     - "src/shared/package-resources.ts"
@@ -186,7 +186,7 @@ the Implementation Steps need, including files not named here. Stop and report o
 intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk
 grows, or the Verification Plan no longer proves the objective.
 
-- `scripts/check-injection-seams.js` and `scripts/check-injection-seams.test.js` — resolve and validate required
+- `scripts/check-injection-seams.js` and `scripts/check-injection-seams.test.ts` — resolve and validate required
   behavioral contracts against the exact ownership manifest; preserve optional-fallback and test-hook detection.
 - `scripts/external-capability-ports.json` — declare every current genuine production external capability with no debt
   or internal-machinery entries.
@@ -283,7 +283,7 @@ session-independent validation extraction rather than replacing their historical
 
 ## Verification Plan
 
-- Automated checker contract: `deno run -A scripts/run-tests.js scripts/check-injection-seams.test.js`. Tests must fail
+- Automated checker contract: `deno run -A scripts/run-tests.js scripts/check-injection-seams.test.ts`. Tests must fail
   for an undeclared imported `*Port`, a local all-required mixed port, a constructor-injected renamed collaborator, a
   stale manifest member, a missing declaration, a manifest entry for known RunWield machinery, and a declared generic
   dispatcher that routes an operation discriminator to both external and RunWield-owned work. They must pass for exact

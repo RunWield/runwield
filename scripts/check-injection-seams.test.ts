@@ -33,8 +33,7 @@ test("collectSeams scans production source and scripts but excludes tests", asyn
     }
 });
 
-/** @param {string[]} lines */
-function conditionalLines(...lines) {
+function conditionalLines(...lines: string[]): string[] {
     return collectConditionalSeams(lines.join("\n")).map((offender) => offender.split(" ")[1]);
 }
 
@@ -127,10 +126,7 @@ test("collectConditionalSeams flags a seam gated on the bag itself", () => {
 });
 
 test("collectConditionalSeams flags a seam gated on a different dep", () => {
-    assertEquals(
-        conditionalLines("const head = __deps?.mergeExecutionWorktree ? fakeHead : getBranchHead;"),
-        ["1"],
-    );
+    assertEquals(conditionalLines("const head = __deps?.mergeExecutionWorktree ? fakeHead : getBranchHead;"), ["1"]);
 });
 
 // The shape that sat live in workflow.js under a green ratchet: the `__deps` reads are
@@ -149,10 +145,7 @@ test("collectConditionalSeams flags a condition whose deps are not adjacent to t
 });
 
 test("collectConditionalSeams flags a branch on an injected value compared to a literal", () => {
-    assertEquals(
-        conditionalLines('const run = __deps?.mode === "fake" ? fakeRun : runLocalCI;'),
-        ["1"],
-    );
+    assertEquals(conditionalLines('const run = __deps?.mode === "fake" ? fakeRun : runLocalCI;'), ["1"]);
 });
 
 test("collectConditionalSeams cannot be defeated by renaming the bag", () => {
@@ -688,9 +681,7 @@ test("findRegressions rejects newly visible seams inside a known module by defau
         "src/known.ts": { seams: ["existing", "newlyVisible"], machinery: [], conditional: [] },
     };
 
-    assertEquals(findRegressions(current, baseline), [
-        "src/known.ts: new injection seam(s): newlyVisible.",
-    ]);
+    assertEquals(findRegressions(current, baseline), ["src/known.ts: new injection seam(s): newlyVisible."]);
 });
 
 test("findRegressions explicitly adopts newly visible modules and seams in known modules", () => {
