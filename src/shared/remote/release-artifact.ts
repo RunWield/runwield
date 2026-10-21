@@ -5,8 +5,8 @@ import { getCwd } from "../../constants.js";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { chmod as fsChmod, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ArtifactMetadata } from "../../../scripts/build-metadata.js";
-import { sha256Bytes, verifyBuildArtifact } from "../../../scripts/build-metadata.js";
+import type { ArtifactMetadata } from "../../../scripts/build-metadata.ts";
+import { sha256Bytes, verifyBuildArtifact } from "../../../scripts/build-metadata.ts";
 
 export interface LauncherIdentity {
     buildId: string;

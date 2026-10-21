@@ -42,6 +42,27 @@ type TranscriptSegment = {
     sealedTerminalEntryId: string | null;
 };
 
+export type TranscriptEntry =
+    import("@earendil-works/pi-coding-agent").SessionEntry | import("@earendil-works/pi-coding-agent").SessionHeader;
+
+export type VerifiedTranscriptSegment = {
+    segmentId: string;
+    ordinal: number;
+    kind: "planning" | "execution" | "semantic_repair" | "session";
+    label: string;
+    piSessionId: string;
+    sealed: boolean;
+    current: boolean;
+    transcriptCwd: string;
+    entries: TranscriptEntry[];
+};
+
+type SegmentReplayOptions = {
+    runwieldSessionId: string;
+    runtimeSessionId?: string;
+    cwd: string;
+};
+
 type CommittedGeneration = {
     generation: number;
     byteLength: number;
@@ -179,48 +200,62 @@ async function verifyCurrentSegment(segment: TranscriptSegment, generation: Comm
     return evidence;
 }
 
+/** Read each committed segment once. Reject invalid evidence before returning any history. */
+export async function readVerifiedTranscriptSegments(
+    options: ProjectAggregateTranscriptOptions,
+): Promise<VerifiedTranscriptSegment[]> {
+    const { segments, current } = requireOrderedManifest(options);
+    const verified: VerifiedTranscriptSegment[] = [];
+    for (const segment of segments) {
+        const isCurrent = segment.segmentId === current.segmentId;
+        const evidence = isCurrent
+            ? await verifyCurrentSegment(segment, options.generation)
+            : await verifySealedSegment(segment);
+        const kind = normalizeSegmentKind(segment.kind);
+        verified.push({
+            segmentId: segment.segmentId,
+            ordinal: segment.ordinal,
+            kind,
+            label: segmentLabel(kind, segment.ordinal),
+            piSessionId: segment.piSessionId,
+            sealed: !isCurrent,
+            current: isCurrent,
+            transcriptCwd: segment.transcriptCwd,
+            entries: evidence.entries,
+        });
+    }
+    return verified;
+}
+
+/** Project one pinned read, retaining Agent context across segment boundaries. */
+export function projectSegmentReplayEvents(
+    verified: VerifiedTranscriptSegment[],
+    options: SegmentReplayOptions,
+): ProjectedRuntimeEvent[] {
+    const agentProjectionState = { agentName: null, displayName: null, hasBaseline: false };
+    return verified.flatMap((segment) =>
+        createReplayEvents(options.runtimeSessionId || options.runwieldSessionId, segment.entries, {
+            segmentId: segment.segmentId,
+            projectRoot: segment.transcriptCwd || options.cwd,
+            agentProjectionState,
+        }).map((event) => ({ ...event, segmentOrdinal: segment.ordinal, segmentKind: segment.kind })),
+    );
+}
+
 export async function projectAggregateTranscript(
     options: ProjectAggregateTranscriptOptions,
 ): Promise<AggregateProjectionResult | AggregateProjectionFailure> {
     try {
-        const { segments, current } = requireOrderedManifest(options);
-        const aggregateEntries: JsonValue[] = [];
-        const segmentMetadata: VerifiedSegmentMetadata[] = [];
-        const replayEvents: ProjectedRuntimeEvent[] = [];
-        const agentProjectionState: { agentName: string | null; displayName: string | null; hasBaseline: boolean } = {
-            agentName: null,
-            displayName: null,
-            hasBaseline: false,
-        };
-        for (const segment of segments) {
-            const evidence = segment.segmentId === current.segmentId
-                ? await verifyCurrentSegment(segment, options.generation)
-                : await verifySealedSegment(segment);
-            aggregateEntries.push(...evidence.entries);
-            const kind = normalizeSegmentKind(segment.kind);
-            replayEvents.push(
-                ...createReplayEvents(
-                    options.runtimeSessionId || options.runwieldSessionId,
-                    evidence.entries,
-                    {
-                        segmentId: segment.segmentId,
-                        projectRoot: segment.transcriptCwd || options.cwd,
-                        agentProjectionState,
-                    },
-                ).map((event) => ({
-                    ...event,
-                    segmentOrdinal: segment.ordinal,
-                    segmentKind: kind,
-                })),
-            );
-            segmentMetadata.push({
-                ordinal: segment.ordinal,
-                kind,
-                label: segmentLabel(kind, segment.ordinal),
-                sealed: segment.segmentId !== current.segmentId,
-                current: segment.segmentId === current.segmentId,
-            });
-        }
+        const verified = await readVerifiedTranscriptSegments(options);
+        const aggregateEntries = verified.flatMap((segment) => segment.entries);
+        const replayEvents = projectSegmentReplayEvents(verified, options);
+        const segmentMetadata = verified.map(({ ordinal, kind, label, sealed, current }) => ({
+            ordinal,
+            kind,
+            label,
+            sealed,
+            current,
+        }));
         const info = buildProjectedSessionInfo(aggregateEntries, {
             sessionId: options.runwieldSessionId,
             cwd: options.cwd,

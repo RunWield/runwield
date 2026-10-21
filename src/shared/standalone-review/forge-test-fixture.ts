@@ -30,9 +30,12 @@ export async function makeForgeFixture(cwd: string) {
                           ? "main"
                           : "",
             }),
-        runCommandWithInput: (_cmd, _args, input) => {
+        runCommandWithInput: (_cmd, args, input) => {
             submissions.push(input);
-            return Promise.resolve({ exitCode: 0, stderr: "", stdout: "{}" });
+            const response = args.includes("graphql")
+                ? { data: { addPullRequestReviewThread: { thread: { id: "file-thread" } } } }
+                : { id: 42, node_id: "pending-review" };
+            return Promise.resolve({ exitCode: 0, stderr: "", stdout: JSON.stringify(response) });
         },
     };
     return {

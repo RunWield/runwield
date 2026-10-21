@@ -2303,7 +2303,7 @@ async function runComposedTuiScenario(scenario, options) {
                             : null;
                         plans.push({ name: planName, attrs, controllerState: controller?.state || null });
                     }
-                    const { listWorkRecords } = await import("../../../shared/work-records/store.js");
+                    const { listWorkRecords } = await import("../../../shared/work-records/store.ts");
                     const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
                     const capturedProjectState = {
                         runtimeSnapshot: composition.runtime.getSessionSnapshot(composition.sessionId),

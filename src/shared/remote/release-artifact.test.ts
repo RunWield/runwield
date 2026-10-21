@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { sha256Bytes } from "../../../scripts/build-metadata.js";
+import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import { extractReleaseRuntime, releaseRuntimeName } from "./release-artifact.ts";
 
 test("release names select only the VERSION-tagged GNU target", () => {

@@ -987,6 +987,16 @@ pushes.
   `origin HEAD` as upstream when needed. RunWield confirms a clean tree, a new HEAD, and upstream equality. A failed
   push keeps the commit; a retry publishes it without another commit. Detached HEAD disables the action.
 
+**Requirement: Draft annotations with AI review.** Standalone Code Review offers a manual **Run AI Review** control
+beside Guided Review. It discloses the additional LLM call, supports cancellation, and shows elapsed time, model,
+usage, and cost when available. It runs the bundled `review` skill (including project overrides), not Semantic Review,
+with sequential Standards, Spec, and Tests passes. It finds the spec without asking; without a spec, it grades no
+invented requirements. Findings become ordinary editable, deletable annotations labeled **AI review**, with their axis
+and blocking or advisory severity in the text. Line annotations must fit a diff hunk on the cited side; other findings
+fall back to file or general annotations and retain their cited location. Completion shows per-axis counts and the spec
+source, or reports no issues. Reruns replace only unedited AI annotations. Results from an older patch add nothing.
+Validation-time Code Review does not offer this control.
+
 **Requirement: Protect review work.** Closing the review publishes nothing. On completion, cancellation, or
 interruption, RunWield closes its Sessions and removes only its own clean worktrees whose HEAD equals upstream. Dirty
 or unpushed work stays, and RunWield reports its path and branch. Engineer starts after checkout setup completes. The
@@ -1007,6 +1017,15 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
   approval with the existing commit.
 - Given review exit, clean created checkouts at upstream are removed, and dirty, unpushed, reused, and primary
   checkouts remain.
+- Given an AI finding on a changed line, its annotation keeps the file, line range, and old or new side. A cited line
+  outside the hunks becomes a file annotation; an unchanged file becomes a general annotation with the cited location.
+- Given generated annotations, the owner can edit or delete them. Post comments and Approve keep their text, position,
+  and side; Send to Engineer includes the remaining annotation text, including axis and severity.
+- Given a rerun, owner annotations and edited AI annotations remain; unedited AI annotations are replaced.
+- Given a patch change during a run, completion reports an older diff and adds no annotations.
+- Given no discoverable spec, AI review reports no spec and makes no Spec findings against invented requirements.
+- Given malformed output or provider failure, the job reports an error and the owner can rerun it.
+- Given validation-time Code Review, Run AI Review is absent; existing validation and Guided Review remain available.
 
 ### Frontend engineering and pair execution
 
@@ -1098,7 +1117,9 @@ detector.
   project context, store memories, and record initialization.
 - **Sleep:** `wld sleep` and `/sleep` clean up memory and context.
 - **Cymbal:** semantic and structural code intelligence for search, symbol lookup, impact analysis, and tracing.
-- **Snip:** optional filtering of command output into compact diagnostics.
+- **Snip:** optional, fail-open filtering of command output into compact diagnostics. RunWield wraps only an eligible
+  leading plain command, preserving shell syntax, exit status, and output destinations under the Snip filtering contract.
+  Unsupported constructs, live expansions, and stderr redirections pass through unchanged.
 - **Project context:** `docs/domain-language.md`, memories, settings, and Plan files hold durable project knowledge.
 
 **Requirement: Discover and retain both project commands during Init.** Init discovers repository-supported verification
@@ -1149,6 +1170,9 @@ for truncated content. Failed code queries report failure; a successful empty qu
 - Given a superseded or mixed Memory, Sleep keeps a verified current lesson and the backup keeps the old record.
 - Given a glossary map, Agents follow its links regardless of code layout.
 - Given batched reads where one target is missing, the successful results stay visible in request order.
+- Given a shell loop, conditional, function, group, heredoc, or stderr redirection, Snip leaves the command unchanged.
+- Given an eligible leading command followed by a pipeline or `&&`/`||` chain, Snip wraps only that command, runs it
+  once, preserves its exit status and output destinations, and leaves the rest of the shell program unchanged.
 
 **Target: concise project briefing.** Compressed project context where it is useful, without filling every prompt.
 Future code-intelligence work addresses demonstrated gaps in finding code, understanding dependencies, and assessing
@@ -1697,6 +1721,20 @@ Required outcomes:
   resume;
 - intact local Sessions stay usable through TUI and ACP when Workspace registration or pairing is rebuilt.
 
+**Requirement: Export or share the complete Session.** `/export` writes every committed Session Transcript Segment in
+order, with Session identity, name, project path, timestamps, artifacts, and Plan Associations. HTML is a self-contained
+RunWield page with segment headings, Markdown messages, expandable tools, and collapsed thinking. JSON preserves each
+segment's raw entries in a versioned `runwield.session-export` document. `.jsonl` export is retired; the command points
+to `.json` instead. Reads verify all segment evidence and do not change the Session. During a turn, they include only
+committed history. A new empty Session can export without creating a saved Session.
+
+`/share` uploads HTML and JSON to one secret GitHub Gist and reports the Gist URL and an HTML preview link. Both files
+include thinking and full tool output. Anyone with the link can read them. Current scope excludes in-memory Delegated
+Agent, validation, and AI review transcripts and Background Task logs; results recorded in the parent transcript stay
+included. This Gist path is separate from the undelivered
+[Workspace snapshot sharing](runwield-workspace-prd.md#session-snapshot-sharing) and
+[browser download](runwield-workspace-prd.md#session-export) capabilities.
+
 **Requirement: Archive a Session reversibly.** Archive hides a Session from ordinary history and TUI resume lists,
 through ACP or Workspace. Archive and Unarchive keep the Session ID, every transcript segment, Plan Associations, and
 workflow state. Associated Plans still link to it. Direct links and explicit loading work and keep the archive state.
@@ -1740,6 +1778,13 @@ a test result.
 
 **Acceptance scenarios:**
 
+- Given planning, execution, and repair segments, `/export` includes them in order with Session Manifest facts; JSON
+  preserves their raw entries and HTML shows their messages and expandable activity.
+- Given a changed seal or missing transcript, export fails without publishing a partial Session.
+- Given `/export out.jsonl`, the command writes nothing and explains how to use `.json`.
+- Given an empty Session, export succeeds without creating Session persistence.
+- Given authenticated GitHub CLI access, `/share` creates one secret Gist with HTML and JSON and prints both the Gist
+  URL and its HTML preview URL; recorded parent results stay included but in-memory helper transcripts do not.
 - Given a saved Session archived through ACP or Workspace, ordinary history and TUI resume omit it, its Plans link to
   it as archived, and its transcript and state are unchanged; Unarchive restores the same Session.
 - Given a fresh empty composer, opening it creates no runtime state; the first submitted work does.
@@ -1802,6 +1847,11 @@ reduced to coarse command labels; memory calls record their action and scope. Us
 and cost values. Each execution records its available tools. Background tasks and delegates keep links to their
 parent. Missing measurements are marked unavailable or partial.
 
+Each Code Review decision records a `code_review_decision` event with the decision, prior AI review round count,
+AI approval or human takeover outcome, and Code Review round within the delivery attempt. Feedback presence and
+annotation count are metadata only; feedback text, annotation content, and images stay out of metrics. Missing AI
+review evidence is marked unavailable, not approved.
+
 **Acceptance scenarios:**
 
 - Given `workflowMetrics` off or unset, no metrics records are written.
@@ -1812,6 +1862,10 @@ parent. Missing measurements are marked unavailable or partial.
 - Given a template or Skill command that starts Agent work, one invocation ID links it to the execution; a picker
   closed without a choice records cancellation.
 - Given manual `/compact` outside an Agent turn, the compaction is recorded under the Session and command.
+- Given AI approval followed by Code Review changes requested, one decision event identifies both outcomes and the
+  prior AI review round count without feedback or annotation content.
+- Given human takeover at the AI round limit and a second Code Review request for changes, the event identifies
+  human takeover and Code Review round two. Closing or skipping review records no decision event.
 
 ## Browser and shared-review requirements
 

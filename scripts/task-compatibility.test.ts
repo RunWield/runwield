@@ -158,7 +158,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "prototype",
             args: ["example", "--", "--port", "4321"],
-            last: { path: "scripts/run-prototype.js", args: ["example", "--", "--port", "4321"] },
+            last: { path: "scripts/run-prototype.ts", args: ["example", "--", "--port", "4321"] },
         },
     ];
     // These fixture programs stand in for subprocess boundaries only. The actual
