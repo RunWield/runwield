@@ -2,7 +2,7 @@ import { assertEquals } from "../../../testing/assertions.ts";
 
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
-import { runGoldenChild, sanitizeGoldenChildEnv } from "./subprocess-runner.js";
+import { runGoldenChild, sanitizeGoldenChildEnv } from "./subprocess-runner.ts";
 
 test("sanitizeGoldenChildEnv strips common credential variables", () => {
     const env = sanitizeGoldenChildEnv({ OPENAI_API_KEY: "secret", PATH: "/bin", AUTH_TOKEN: "secret" });

@@ -8,7 +8,7 @@ import process from "node:process";
 // Run isolated source and standalone renderer, saved-operation, and combined workloads.
 import { join, resolve } from "node:path";
 import { compileBun } from "./compile-bun.ts";
-import { sha256File } from "./build-metadata.js";
+import { sha256File } from "./build-metadata.ts";
 
 interface Sample {
     type: string;

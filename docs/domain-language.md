@@ -68,6 +68,10 @@ it is not shared project knowledge or a source for cross-Session Agent retrieval
 interaction results as committed transcript history; a live unanswered interaction is not committed history until its
 result is written. _Avoid_: Work Record, planning memory, shared conversation
 
+**Session Export**: A file copy of one Session's complete committed Session Transcript across all Session Transcript
+Segments, with Session Manifest facts. `/export` writes HTML or JSON; `/share` uploads both to a secret GitHub Gist. It is
+not a Shared Session Snapshot. _Avoid_: Pi export, segment export
+
 **Execution Backend**: The model-selected runtime that executes one RunWield Agent turn, such as Pi AgentSession, Claude
 CLI, or Antigravity CLI. It is distinct from a model provider and from an Agent Session object. Changing Execution
 Backend does not transfer Session Transcript, Workflow Tool Event, Plan Lifecycle, or replay authority away from
@@ -377,11 +381,13 @@ Plannotator. _Avoid_: Feedback loop, approval cycle
 
 **Semantic Review**: The internal state-machine term for the automated Reviewer check during Workflow Validation. It
 compares the approved Plan with the full proposed branch patch from the recorded target/execution common ancestor to the
-current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. _Avoid_: Code Review, Forge
+current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. **Run AI Review** in
+Standalone Code Review is not Semantic Review. _Avoid_: Code Review, Forge
 review, automated tests
 
 **Standalone Code Review**: Code Review of a PR, branch, or uncommitted changes without a Plan or Plan lifecycle.
-Started with `wld review`. The gate **Code Review** still means the Plan validation gate.
+Started with `wld review`. Run AI Review runs the bundled `review` skill and adds its findings as annotations.
+The gate **Code Review** still means the Plan validation gate.
 
 **Review Worktree**: A worktree created on demand for Standalone Code Review, outside the Plan worktree registry.
 RunWield preserves it when it holds uncommitted or unpushed work. An existing branch checkout can be reused but is not

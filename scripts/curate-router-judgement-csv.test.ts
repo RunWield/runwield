@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { curateRows, getUnambiguousHumanSeed, isPureGreetingRow } from "./curate-router-judgement-csv.js";
+import { curateRows, getUnambiguousHumanSeed, isPureGreetingRow } from "./curate-router-judgement-csv.ts";
 
 test("isPureGreetingRow identifies greeting rows", () => {
     assertEquals(isPureGreetingRow({ requestText: "hi there" }), true);

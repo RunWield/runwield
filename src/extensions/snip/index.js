@@ -3,6 +3,8 @@
  * Optional Snip command prefix extension for RunWield agent invocations.
  */
 
+import { parseLeadingSimpleCommand } from "./leading-simple-command.ts";
+
 const SHELL_BUILTINS = new Set([
     ".",
     "alias",
@@ -30,6 +32,34 @@ const SHELL_BUILTINS = new Set([
     "umask",
     "unalias",
     "unset",
+    "declare",
+    "typeset",
+    "local",
+    "readonly",
+    "let",
+    "wait",
+    "getopts",
+    "shopt",
+    "hash",
+    "builtin",
+    "enable",
+    "mapfile",
+    "readarray",
+    "dirs",
+    "disown",
+    "kill",
+    "times",
+    "caller",
+    "logout",
+    "suspend",
+    "bind",
+    "fc",
+    "history",
+    "complete",
+    "compgen",
+    "compopt",
+    "help",
+    ":",
 ]);
 
 /** Commands (by prefix) that should never be wrapped with `snip run --`. */
@@ -67,36 +97,39 @@ const SNIP_NO_FILTER_STDERR_PATTERN = '^snip: no filter for ".+", passing throug
  */
 function withFilteredSnipStderr(command, failureLabel = null) {
     if (failureLabel) {
-        const ignoredFailureLines =
-            `^(Check .+|Checked [0-9]+ files?|running [0-9]+ tests? from .+|.+ \\.\\.\\. ok( \\(.+\\))?|ok \\| [0-9]+ passed \\| 0 failed.*|snip: tracking error:.*|snip: no filter for .*)$`;
-        return `( runwield_snip_stdout="$(mktemp -t runwield-snip-stdout.XXXXXX)" || exit 1; ` +
+        const ignoredFailureLines = `^(Check .+|Checked [0-9]+ files?|running [0-9]+ tests? from .+|.+ \\.\\.\\. ok( \\(.+\\))?|ok \\| [0-9]+ passed \\| 0 failed.*|snip: tracking error:.*|snip: no filter for .*)$`;
+        return (
+            `( runwield_snip_stdout="$(mktemp -t runwield-snip-stdout.XXXXXX)" || exit 1; ` +
             `runwield_snip_stderr="$(mktemp -t runwield-snip-stderr.XXXXXX)" || exit 1; ` +
             `trap 'rm -f "$runwield_snip_stdout" "$runwield_snip_stderr"' EXIT; ` +
-            `SNIP_TEE=0 ${command} >"$runwield_snip_stdout" 2>"$runwield_snip_stderr"; ` +
+            `{ SNIP_TEE=0 ${command}; } >"$runwield_snip_stdout" 2>"$runwield_snip_stderr"; ` +
             `runwield_snip_status=$?; if [ "$runwield_snip_status" -eq 0 ]; then ` +
             `cat "$runwield_snip_stdout"; grep -vE '${SNIP_NO_FILTER_STDERR_PATTERN}' "$runwield_snip_stderr" >&2; ` +
-            `else runwield_snip_log="$(mktemp -t runwield-${
-                failureLabel.replaceAll(" ", "-")
-            }-failure.XXXXXX)" || exit 1; ` +
+            `else runwield_snip_log="$(mktemp -t runwield-${failureLabel.replaceAll(
+                " ",
+                "-",
+            )}-failure.XXXXXX)" || exit 1; ` +
             `{ cat "$runwield_snip_stdout"; grep -vE '${SNIP_NO_FILTER_STDERR_PATTERN}' "$runwield_snip_stderr"; } | ` +
             `grep -vE '${ignoredFailureLines}' | ` +
             `sed -E 's/^FAILED \\| [0-9]+ passed \\| ([1-9][0-9]*) failed/FAILED | \\1 failed/' >"$runwield_snip_log"; ` +
             `if [ ! -s "$runwield_snip_log" ]; then printf '%s failed with exit code %s.\\n' '${failureLabel}' "$runwield_snip_status" >"$runwield_snip_log"; fi; ` +
             `printf '${failureLabel} failed, read the failure log here: %s\\n' "$runwield_snip_log" >&2; fi; ` +
-            `exit "$runwield_snip_status" )`;
+            `exit "$runwield_snip_status" )`
+        );
     }
-    return `( runwield_snip_stderr="$(mktemp -t runwield-snip-stderr.XXXXXX)" || exit 1; ` +
+    return (
+        `( runwield_snip_stderr="$(mktemp -t runwield-snip-stderr.XXXXXX)" || exit 1; ` +
         `trap 'rm -f "$runwield_snip_stderr"' EXIT; ${command} 2>"$runwield_snip_stderr"; ` +
         `runwield_snip_status=$?; grep -vE '${SNIP_NO_FILTER_STDERR_PATTERN}' "$runwield_snip_stderr" >&2; ` +
-        `exit "$runwield_snip_status" )`;
+        `exit "$runwield_snip_status" )`
+    );
 }
 
 /**
- * @param {string} commandText
+ * @param {string[]} words
  * @returns {string | null}
  */
-function getDenoValidationFailureLabel(commandText) {
-    const words = splitWords(commandText).map((word) => word.replace(/^['"]|['"]$/g, ""));
+function getDenoValidationFailureLabel(words) {
     if (words.length < 2 || baseCommand(words[0]) !== "deno") return null;
     switch (words[1]) {
         case "test":
@@ -110,121 +143,6 @@ function getDenoValidationFailureLabel(commandText) {
         default:
             return null;
     }
-}
-
-/**
- * @param {string} command
- * @returns {number}
- */
-function findFirstSegmentEnd(command) {
-    let quote = "";
-    for (let i = 0; i < command.length; i++) {
-        const char = command[i];
-        if (quote) {
-            if (char === "\\") {
-                i++;
-                continue;
-            }
-            if (char === quote) quote = "";
-            continue;
-        }
-        if (char === "'" || char === '"') {
-            quote = char;
-            continue;
-        }
-        if (char === "\n" || char === ";" || char === "|") return i;
-        if (char === "&" && command[i + 1] === "&") return i;
-    }
-    return command.length;
-}
-
-/**
- * @param {string} segment
- * @returns {boolean}
- */
-function hasCommandSubstitution(segment) {
-    let quote = "";
-    for (let i = 0; i < segment.length; i++) {
-        const char = segment[i];
-        if (quote === "'") {
-            if (char === quote) quote = "";
-            continue;
-        }
-        if (quote === '"') {
-            if (char === "\\") {
-                i++;
-                continue;
-            }
-            if (char === quote) {
-                quote = "";
-                continue;
-            }
-            if (char === "$" && segment[i + 1] === "(") return true;
-            if (char === "`") return true;
-            continue;
-        }
-        if (char === "'" || char === '"') {
-            quote = char;
-            continue;
-        }
-        if (char === "\\") {
-            i++;
-            continue;
-        }
-        if (char === "$" && segment[i + 1] === "(") return true;
-        if (char === "`") return true;
-    }
-    return false;
-}
-
-/**
- * @param {string} segment
- * @returns {string[]}
- */
-function splitWords(segment) {
-    const words = [];
-    let current = "";
-    let quote = "";
-    for (let i = 0; i < segment.length; i++) {
-        const char = segment[i];
-        if (quote) {
-            if (char === "\\") {
-                current += char;
-                if (i + 1 < segment.length) current += segment[++i];
-                continue;
-            }
-            if (char === quote) {
-                quote = "";
-                current += char;
-                continue;
-            }
-            current += char;
-            continue;
-        }
-        if (char === "'" || char === '"') {
-            quote = char;
-            current += char;
-            continue;
-        }
-        if (/\s/.test(char)) {
-            if (current) {
-                words.push(current);
-                current = "";
-            }
-            continue;
-        }
-        current += char;
-    }
-    if (current) words.push(current);
-    return words;
-}
-
-/**
- * @param {string} word
- * @returns {boolean}
- */
-function isEnvAssignment(word) {
-    return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(word);
 }
 
 /**
@@ -248,11 +166,10 @@ const GIT_OPTIONS_WITH_VALUES = new Set([
 ]);
 
 /**
- * @param {string} commandText
+ * @param {string[]} words
  * @returns {boolean}
  */
-function isGitDiffCommand(commandText) {
-    const words = splitWords(commandText);
+function isGitDiffCommand(words) {
     if (words.length < 2 || baseCommand(words[0]) !== "git") return false;
 
     for (let index = 1; index < words.length; index++) {
@@ -271,50 +188,19 @@ function isGitDiffCommand(commandText) {
 }
 
 /**
- * @param {string} segment
- * @returns {{ envPrefix: string, commandText: string, commandName: string } | null}
- */
-function parseSimpleSegment(segment) {
-    const leading = segment.match(/^\s*/)?.[0] || "";
-    const trimmed = segment.trim();
-    if (!trimmed) return null;
-    if (hasCommandSubstitution(segment)) return null;
-
-    const words = splitWords(trimmed);
-    if (words.length === 0) return null;
-
-    let index = 0;
-    while (index < words.length && isEnvAssignment(words[index])) index++;
-    if (index >= words.length) return null;
-
-    const envWords = words.slice(0, index);
-    const commandName = baseCommand(words[index]);
-    const commandOffset = segment.indexOf(words[index]);
-    if (commandOffset < 0) return null;
-
-    return {
-        envPrefix: leading + (envWords.length > 0 ? `${envWords.join(" ")} ` : ""),
-        commandText: segment.slice(commandOffset),
-        commandName,
-    };
-}
-
-/**
  * @param {string} originalCommand
  * @returns {string | null}
  */
 function rewriteCommand(originalCommand) {
-    const segmentEnd = findFirstSegmentEnd(originalCommand);
-    const segment = originalCommand.slice(0, segmentEnd);
-    const rest = originalCommand.slice(segmentEnd);
-    const parsed = parseSimpleSegment(segment);
+    const parsed = parseLeadingSimpleCommand(originalCommand);
     if (!parsed) return null;
     if (parsed.commandName === "snip" || SHELL_BUILTINS.has(parsed.commandName)) return null;
-    if (isGitDiffCommand(parsed.commandText)) return null;
+    if (parsed.stderrRedirected) return null;
+    if (isGitDiffCommand(parsed.words)) return null;
     if (NO_REWRITE_PREFIXES.some((prefix) => parsed.commandText.startsWith(prefix))) return null;
 
-    const snipCommand = `${parsed.envPrefix}snip run -- ${parsed.commandText.trimEnd()}`;
-    return `${withFilteredSnipStderr(snipCommand, getDenoValidationFailureLabel(parsed.commandText))}${rest}`;
+    const snipCommand = `${parsed.envPrefix}snip run -- ${parsed.commandText}`;
+    return `${withFilteredSnipStderr(snipCommand, getDenoValidationFailureLabel(parsed.words))}${parsed.rest}`;
 }
 
 /**
@@ -328,8 +214,8 @@ export default function snipExtension(pi) {
         const input = event.input;
         if (!input || typeof input.command !== "string") return;
 
-        const originalCommand = input.command.trim();
-        if (!originalCommand) return;
+        const originalCommand = input.command;
+        if (!originalCommand.trim()) return;
 
         try {
             const rewritten = rewriteCommand(originalCommand);
@@ -342,9 +228,7 @@ export default function snipExtension(pi) {
 }
 
 export const __testing = {
-    findFirstSegmentEnd,
     getDenoValidationFailureLabel,
-    parseSimpleSegment,
     rewriteCommand,
     withFilteredSnipStderr,
 };

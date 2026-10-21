@@ -263,10 +263,11 @@ Continue the same work in the terminal or browser, find what needs attention, an
 
 ### Session export and sharing
 
-- Export the current session to HTML with `/export`.
-- Export the current session to JSONL with `/export output.jsonl`.
+- Export all committed Session segments and Manifest facts to self-contained HTML with `/export`.
+- Export every segment's raw entries to versioned JSON with `/export output.json`; `.jsonl` export is retired.
 - Choose an explicit export path with `/export <path>`.
-- Share the current session as a secret GitHub Gist with `/share`.
+- Upload Session HTML and JSON to one secret GitHub Gist with `/share`, with a Gist URL and an HTML preview link.
+- Include thinking and full tool output in exported and shared files. Anyone with the secret Gist link can read them.
 
 ## Models and tools
 

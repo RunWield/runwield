@@ -15,7 +15,7 @@ import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
 import { expectedReleaseAssetNames } from "./release.js";
-import { sha256File } from "./build-metadata.js";
+import { sha256File } from "./build-metadata.ts";
 
 /** @param {string} tag */
 async function fixture(tag = "v1.2.3") {
