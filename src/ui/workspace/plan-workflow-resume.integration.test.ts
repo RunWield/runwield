@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -19,6 +20,9 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 
+type FixtureSettings = ReturnType<SettingsManager["getGlobalSettings"]>;
+type ResumeResponse = Pick<ReturnType<WorkspaceSessionContinuationService["getOperation"]>, "operationId">;
+
 const repository = defineCommittedGitFixture({
     ".gitignore": ".wld/internal/\n",
     "implementation.txt": "before\n",
@@ -27,7 +31,7 @@ const repository = defineCommittedGitFixture({
 test("Workspace Resume continues a paused validation repair in its existing worktree", async () => {
     await withRuntimeCommandFixture("deferred-validation-repair-", async (fixture) => {
         const { setModelResponseFactories, settingsPath } = fixture;
-        const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
         settings.retry = { enabled: false };
         await fsWriteFile(settingsPath, JSON.stringify(settings));
         const root = await repository.checkout();
@@ -150,7 +154,7 @@ test("Workspace Resume continues a paused validation repair in its existing work
                     params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },
                     state: { store, sessionContinuation: service },
                 });
-                const payload = await response.json();
+                const payload: ResumeResponse = await response.json();
                 assertEquals(response.status, 202, JSON.stringify(payload));
                 assertExists(payload.operationId);
                 for (let i = 0; i < 500 && service.getOperation(payload.operationId).status === "running"; i++) {
