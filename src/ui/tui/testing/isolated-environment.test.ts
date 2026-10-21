@@ -12,7 +12,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { git } from "../../../shared/git-test-fixture.ts";
-import { createGoldenIsolatedEnvironment, prepareGoldenRepositoryTemplates } from "./isolated-environment.js";
+import { createGoldenIsolatedEnvironment, prepareGoldenRepositoryTemplates } from "./isolated-environment.ts";
 
 test("createGoldenIsolatedEnvironment creates isolated HOME and Project then cleans them", async () => {
     const env = await createGoldenIsolatedEnvironment();
