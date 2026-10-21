@@ -400,7 +400,7 @@ or TUI appearance change. Follow
 
 - `src/shared/workflow/` is already decomposed into 55 modules behind a 124-line `validation.ts` composition root. Move
   those modules as a unit; do not re-split them.
-- `scripts/check-injection-seams.js` and `scripts/check-language-policy.js` are the working model for the new boundary
+- `scripts/check-injection-seams.js` and `scripts/check-language-policy.ts` are the working model for the new boundary
   ratchet: walk the source tree, compare against a committed baseline, fail CI on drift, and offer `--update`. Build the
   port allowlist the same way rather than inventing a new checker shape.
 - `src/shared/git-test-fixture.ts` (`defineGitFixture`) and `makeValidationProjectRoot` remain the way to fake the
