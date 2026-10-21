@@ -23,13 +23,17 @@ test("review remains open after failed push and completes when the existing comm
             await git(cwd, ["remote", "add", "origin", remote]);
             await git(cwd, ["push", "-u", "origin", "HEAD"]);
             await writeFile(`${cwd}/edit.txt`, "approved\n");
+            // Both external turns must finish before the browser closes the review.
+            const turnDelayMs = 3_900;
             setModelResponseFactories([
                 async () => {
+                    await new Promise((resolve) => setTimeout(resolve, turnDelayMs));
                     await git(cwd, ["add", "."]);
                     await git(cwd, ["commit", "-m", "approved"]);
                     return fauxAssistantMessage("Commit created; push failed.");
                 },
                 async () => {
+                    await new Promise((resolve) => setTimeout(resolve, turnDelayMs));
                     await git(cwd, ["push"]);
                     return fauxAssistantMessage("Published the existing commit.");
                 },
@@ -53,7 +57,8 @@ test("review remains open after failed push and completes when the existing comm
                             const before = await read();
                             await post("feedback");
                             let retried = false;
-                            for (let i = 0; i < 300; i++) {
+                            const deadline = Date.now() + 30_000;
+                            while (Date.now() < deadline) {
                                 const next = await read();
                                 if (next.completed) {
                                     completed = true;

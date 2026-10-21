@@ -237,6 +237,15 @@ jobs:
                   New-Item -ItemType Directory -Force $destination | Out-Null
                   $bytes = 0
                   $count = 0
+                  foreach ($file in (Get-ChildItem $env:RUNNER_TEMP -File -Filter 'tests-*.log' | Select-Object -First 100)) {
+                    if ($file.Length -gt 5MB -or $bytes + $file.Length -gt 20MB -or $count -ge 100) {
+                      Write-Warning "Failure log retention limit: $($file.FullName)"
+                      continue
+                    }
+                    Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $destination $file.Name)
+                    $bytes += $file.Length
+                    $count++
+                  }
                   $roots = Get-ChildItem $env:RUNNER_TEMP -Directory -Filter 'rw-*'
                   foreach ($root in $roots) {
                     $files = Get-ChildItem $root.FullName -File -Recurse -ErrorAction SilentlyContinue |
