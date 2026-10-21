@@ -12,7 +12,7 @@ affectedPaths:
     - "src/ui/tui/"
     - "scripts/compile.js"
     - "scripts/write-version.ts"
-    - "scripts/release-assets.js"
+    - "scripts/release-assets.ts"
     - "docs/domain-language.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
     - "docs/prd/runwield-core-prd.md"
@@ -117,7 +117,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   interactive terminal transport, or graceful deadline. Preserve their existing callers' cancellation behavior.
 - `src/ui/tui/` — compose the dormant connection view from existing terminal components without chat, settings, model,
   onboarding, or persistence startup. Do not redesign ordinary chat.
-- `scripts/compile.js`, `scripts/write-version.ts`, `scripts/release-assets.js`, and generated build metadata — bind
+- `scripts/compile.js`, `scripts/write-version.ts`, `scripts/release-assets.ts`, and generated build metadata — bind
   launcher and remote artifacts to the same build inputs/protocol and verify transferred bytes. Reuse current GNU/Linux
   target names and checksum conventions; do not introduce another release/version authority.
 - CLI/help, connection/process, compile/asset, and TUI tests — prove wrong-machine prevention, startup isolation,

@@ -112,7 +112,7 @@ bun run compile --output bin/wld
 BUILD_ID=$(bun -e 'console.log((await Bun.file("bin/wld.build.json").json()).buildId)')
 bun run compile --target x86_64-unknown-linux-gnu --output bin/wld-linux-x64 --expect-build-id "$BUILD_ID"
 bun run compile --target aarch64-unknown-linux-gnu --output bin/wld-linux-arm64 --expect-build-id "$BUILD_ID"
-bun scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
+bun scripts/release-assets.ts development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
 ```
 
 Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never

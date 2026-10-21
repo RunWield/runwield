@@ -15,7 +15,7 @@ affectedPaths:
     - "src/ui/review/"
     - "src/ui/workspace/server.js"
     - "scripts/compile.js"
-    - "scripts/release-assets.js"
+    - "scripts/release-assets.ts"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"

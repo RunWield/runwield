@@ -570,7 +570,7 @@ jobs:
                   RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
               run: |
                   cp release-source/config.schema.json release-artifacts/config.schema.json
-                  bun scripts/release-assets.js release-artifacts release-upload "$RELEASE_TAG"
+                  bun scripts/release-assets.ts release-artifacts release-upload "$RELEASE_TAG"
 
             - name: Reuse and verify published assets
               if: needs.metadata.outputs.published == 'true'
@@ -580,7 +580,7 @@ jobs:
               run: |
                   gh release download "$RELEASE_TAG" --dir release-artifacts
                   gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > published-release.json
-                  bun scripts/release-assets.js release-artifacts release-upload "$RELEASE_TAG" published published-release.json
+                  bun scripts/release-assets.ts release-artifacts release-upload "$RELEASE_TAG" published published-release.json
 
             - name: Retain checked release bytes
               uses: actions/upload-artifact@v5

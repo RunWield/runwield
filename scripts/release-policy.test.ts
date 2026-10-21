@@ -78,7 +78,7 @@ test("release workflow keeps tag publication and manual recovery channel-safe", 
     assertStringIncludes(workflow, "overwrite_files: false");
     assertStringIncludes(workflow, "config.schema.json");
     assertStringIncludes(workflow, "release-upload/*");
-    assertStringIncludes(workflow, "scripts/release-assets.js");
+    assertStringIncludes(workflow, "scripts/release-assets.ts");
     assertStringIncludes(workflow, "wld-${VERSION}-${{ matrix.asset_suffix }}");
 
     const policy = await fsReadFile("docs/releasing.md", "utf8");
