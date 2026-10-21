@@ -1,3 +1,4 @@
+import type { TerminalRuntime } from "./terminal-fixture.ts";
 import { bashFixtureExecutable, bashFixturePath, quoteBashFixture } from "./bash-fixture.ts";
 import { captureForegroundProcess } from "../src/shared/captured-process.ts";
 import { captureScriptProcess } from "./script-process.ts";
@@ -22,15 +23,43 @@ import { RUNWIELD_ROOT } from "../runtime-root.js";
  */
 export const REPO_ROOT = RUNWIELD_ROOT;
 
-/** @param {string[]} segments */
-export function repoPath(...segments) {
+export function repoPath(...segments: string[]) {
     return join(REPO_ROOT, ...segments);
 }
 
-/** @typedef {"Darwin" | "Linux"} TestOs */
-/** @typedef {"x86_64" | "arm64"} TestArch */
-/** @typedef {"wld" | "cymbal" | "ketch" | "snip"} ReleaseBinaryName */
-/** @typedef {ReleaseBinaryName | "mnemoteca" | "agent-browser"} BinaryName */
+export type TestOs = "Darwin" | "Linux";
+export type TestArch = "x86_64" | "arm64";
+export type ReleaseBinaryName = "wld" | "cymbal" | "ketch" | "snip";
+export type BinaryName = ReleaseBinaryName | "mnemoteca" | "agent-browser";
+
+export interface InstallFixtureOptions {
+    os?: TestOs;
+    arch?: TestArch;
+    badChecksumFor?: ReleaseBinaryName;
+    omitChecksumFor?: ReleaseBinaryName;
+    badDigestFor?: BinaryName;
+    omitDigestFor?: BinaryName;
+    missingAssetFor?: BinaryName;
+    missingExecutableFor?: BinaryName;
+    latestApiFailsFor?: string[];
+    releaseApiFailsFor?: string[];
+    mnemotecaInstallerFails?: boolean;
+    mnemotecaInstallerSkipsExecutable?: boolean;
+    mnemotecaInstallerPrompts?: boolean;
+}
+
+export interface InstallerPtyOptions {
+    extraEnv?: Record<string, string>;
+}
+
+export interface InstallerOptions extends InstallerPtyOptions {
+    extraPathDir?: string;
+    requestedVersion?: string | null;
+    noninteractive?: boolean;
+    unsetEnv?: string[];
+}
+
+export type InstallFixture = Awaited<ReturnType<typeof createFixture>>;
 
 export const VERSIONS = {
     runwield: "v9.9.9",
@@ -39,40 +68,29 @@ export const VERSIONS = {
     snip: "v0.22.0",
 };
 
-/** @type {BinaryName[]} */
-export const BINARY_NAMES = ["wld", "mnemoteca", "cymbal", "ketch", "agent-browser", "snip"];
+export const BINARY_NAMES: BinaryName[] = ["wld", "mnemoteca", "cymbal", "ketch", "agent-browser", "snip"];
 
-/** @type {ReleaseBinaryName[]} */
-export const RELEASE_BINARY_NAMES = ["wld", "cymbal", "ketch", "snip"];
+export const RELEASE_BINARY_NAMES: ReleaseBinaryName[] = ["wld", "cymbal", "ketch", "snip"];
 
-/** @type {Array<Exclude<ReleaseBinaryName, "wld">>} */
-export const HELPER_NAMES = ["cymbal", "ketch", "snip"];
+export const HELPER_NAMES: Exclude<ReleaseBinaryName, "wld">[] = ["cymbal", "ketch", "snip"];
 
-/**
- * @param {string} path
- * @param {string} body
- */
-export async function writeExecutable(path, body) {
+export async function writeExecutable(path: string, body: string) {
     await fsWriteFile(path, body);
     await fsChmod(path, 0o755);
 }
 
-/**
- * @param {string} root
- * @param {string} binaryName
- * @param {string} [entryName]
- */
-export async function makeArchive(root, binaryName, entryName = binaryName) {
+export async function makeArchive(root: string, binaryName: string, entryName = binaryName) {
     const dir = await fsMkdtemp(join(root ?? tmpdir(), "runwield-fixture-"));
-    const body = binaryName === "wld"
-        ? `#!/usr/bin/env bash
+    const body =
+        binaryName === "wld"
+            ? `#!/usr/bin/env bash
 if [[ "$1" == "snip-filters" && "$2" == "install" ]]; then
   printf 'snip=%s\npath=%s\n' "$(command -v snip || true)" "$PATH" >> "\${WLD_FILTER_LOG:?}"
   exit 0
 fi
 echo wld version
 `
-        : `#!/usr/bin/env bash\necho ${binaryName} version\n`;
+            : `#!/usr/bin/env bash\necho ${binaryName} version\n`;
     await writeExecutable(join(dir, entryName), body);
     const archive = join(root, `${binaryName}-${entryName}.tar.gz`);
     const status = await captureScriptProcess("tar", { args: ["-czf", archive, "-C", dir, entryName] });
@@ -80,20 +98,15 @@ echo wld version
     return archive;
 }
 
-/**
- * @param {string} path
- */
-export async function sha256(path) {
+export async function sha256(path: string) {
     const bytes = await fsReadFile(path);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
-/**
- * @param {TestOs} os
- * @param {TestArch} arch
- */
-export function assetNamesFor(os, arch) {
+export function assetNamesFor(os: TestOs, arch: TestArch) {
     const helperOs = os === "Darwin" ? "darwin" : "linux";
     const helperArch = arch === "x86_64" ? "amd64" : "arm64";
     const wldArch = arch === "x86_64" ? "x64" : "arm64";
@@ -107,10 +120,7 @@ export function assetNamesFor(os, arch) {
     };
 }
 
-/**
- * @param {{ os?: TestOs, arch?: TestArch, badChecksumFor?: ReleaseBinaryName, omitChecksumFor?: ReleaseBinaryName, badDigestFor?: BinaryName, omitDigestFor?: BinaryName, missingAssetFor?: BinaryName, missingExecutableFor?: BinaryName, latestApiFailsFor?: string[], releaseApiFailsFor?: string[], mnemotecaInstallerFails?: boolean, mnemotecaInstallerSkipsExecutable?: boolean, mnemotecaInstallerPrompts?: boolean }} [options]
- */
-export async function createFixture(options = {}) {
+export async function createFixture(options: InstallFixtureOptions = {}) {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const fixtureDir = join(root, "fixtures");
     const binDir = join(root, "fake-bin");
@@ -124,8 +134,7 @@ export async function createFixture(options = {}) {
     await fsMkdir(binDir);
     await fsMkdir(installDir);
 
-    /** @type {Record<ReleaseBinaryName, string>} */
-    const archivePaths = /** @type {Record<ReleaseBinaryName, string>} */ ({});
+    const archivePaths: Partial<Record<ReleaseBinaryName, string>> = {};
     for (const name of RELEASE_BINARY_NAMES) {
         const entryName = options.missingExecutableFor === name ? `${name}-wrong` : name;
         archivePaths[name] = await makeArchive(root, name, entryName);
@@ -134,17 +143,14 @@ export async function createFixture(options = {}) {
         }
     }
 
-    /** @type {Partial<Record<BinaryName, string>>} */
-    const digests = {};
+    const digests: Partial<Record<BinaryName, string>> = {};
     for (const name of RELEASE_BINARY_NAMES) {
         if (options.missingAssetFor === name) continue;
         digests[name] = options.badDigestFor === name ? "0".repeat(64) : await sha256(join(fixtureDir, assets[name]));
     }
 
-    /** @type {string[]} */
-    const wldSums = [];
-    /** @type {string[]} */
-    const helperSums = [];
+    const wldSums: string[] = [];
+    const helperSums: string[] = [];
     for (const name of RELEASE_BINARY_NAMES) {
         if (options.missingAssetFor === name || options.omitChecksumFor === name) continue;
         const checksum = options.badChecksumFor === name ? "0".repeat(64) : digests[name];
@@ -163,8 +169,8 @@ export async function createFixture(options = {}) {
         );
         const expandedAssetsHtml = assetDigest
             ? `<a href="/${name}/download/${assets[name]}">${
-                assets[name]
-            }</a>\n<clipboard-copy id="clipboard-button-${assetDigest}"></clipboard-copy>\n`
+                  assets[name]
+              }</a>\n<clipboard-copy id="clipboard-button-${assetDigest}"></clipboard-copy>\n`
             : `<a href="/${name}/download/${assets[name]}">${assets[name]}</a>\n`;
         await fsWriteFile(join(fixtureDir, `${name}-expanded-assets.html`), expandedAssetsHtml);
     }
@@ -175,8 +181,8 @@ export async function createFixture(options = {}) {
 set -euo pipefail
 printf 'repo=%s\\ninstall_dir=%s\\ndb_path=%s\\n' "\${MNEMOTECA_REPO:-}" "\${INSTALL_DIR:-}" "\${MNEMOTECA_DB_PATH-unset}" >> '${bashFixturePath(mnemotecaInstallerLog)}'
 ${
-            options.mnemotecaInstallerPrompts
-                ? `printf 'Mnemoteca upgrade prompt: '
+    options.mnemotecaInstallerPrompts
+        ? `printf 'Mnemoteca upgrade prompt: '
 answer=
 for _ in 1 2 3; do
   IFS= read -r answer || answer=
@@ -184,9 +190,11 @@ for _ in 1 2 3; do
 done
 printf 'answer=%s\\n' "$answer" >> '${bashFixturePath(mnemotecaInstallerLog)}'
 `
-                : ""
-        }${options.mnemotecaInstallerFails ? "exit 42\n" : ""}${
-            options.mnemotecaInstallerSkipsExecutable ? "exit 0\n" : `mkdir -p "\${INSTALL_DIR:?}"
+        : ""
+}${options.mnemotecaInstallerFails ? "exit 42\n" : ""}${
+            options.mnemotecaInstallerSkipsExecutable
+                ? "exit 0\n"
+                : `mkdir -p "\${INSTALL_DIR:?}"
 cat >"$INSTALL_DIR/mnemoteca" <<'MNEMOTECABIN'
 #!/usr/bin/env bash
 echo mnemoteca version
@@ -297,14 +305,9 @@ chmod 755 "$prefix/bin/agent-browser"
     return { root, fixtureDir, binDir, installDir, curlLog, mnemotecaInstallerLog, os, arch, assets };
 }
 
-/**
- * @param {Awaited<ReturnType<typeof createFixture>>} fixture
- * @param {{ extraPathDir?: string, requestedVersion?: string | null, noninteractive?: boolean, extraEnv?: Record<string, string>, unsetEnv?: string[] }} [options]
- */
-export async function runInstaller(fixture, options = {}) {
+export async function runInstaller(fixture: InstallFixture, options: InstallerOptions = {}) {
     const pathPrefix = options.extraPathDir ? `${bashFixturePath(options.extraPathDir)}:` : "";
-    /** @type {Record<string, string>} */
-    const env = {
+    const env: NodeJS.ProcessEnv = {
         ...{ ...process.env },
         WLD_FIXTURE_PATH: `${pathPrefix}${bashFixturePath(fixture.binDir)}:/usr/bin:/bin`,
         HOME: fixture.root,
@@ -315,7 +318,12 @@ export async function runInstaller(fixture, options = {}) {
     };
     for (const key of options.unsetEnv ?? []) delete env[key];
     if (options.noninteractive !== false) env.WLD_NONINTERACTIVE = "1";
-    const args = ["-c", 'export PATH="$WLD_FIXTURE_PATH"; exec /bin/bash "$@"', "installer-fixture", bashFixturePath(repoPath("install.sh"))];
+    const args = [
+        "-c",
+        'export PATH="$WLD_FIXTURE_PATH"; exec /bin/bash "$@"',
+        "installer-fixture",
+        bashFixturePath(repoPath("install.sh")),
+    ];
     if (options.requestedVersion !== null) args.push(options.requestedVersion ?? VERSIONS.runwield);
     const output = await captureScriptProcess(bashFixtureExecutable(), {
         args,
@@ -332,24 +340,22 @@ export async function runInstaller(fixture, options = {}) {
     };
 }
 
-/**
- * @param {Awaited<ReturnType<typeof createFixture>>} fixture
- * @param {string} input
- * @param {{ extraEnv?: Record<string, string> }} [options]
- */
-export async function runInstallerInPseudoTty(fixture, input, options = {}) {
+export async function runInstallerInPseudoTty(
+    fixture: InstallFixture,
+    input: string,
+    options: InstallerPtyOptions = {},
+) {
     const scriptPath = repoPath("install.sh");
-    const command = `PATH=${quoteShell(`${bashFixturePath(fixture.binDir)}:/usr/bin:/bin`)} HOME=${
-        quoteShell(bashFixturePath(fixture.root))
-    } WLD_INSTALL_DIR=${quoteShell(bashFixturePath(fixture.installDir))} WLD_NONINTERACTIVE=0 WLD_TEST_UNAME_S=${
-        quoteShell(fixture.os)
-    } WLD_TEST_UNAME_M=${quoteShell(fixture.arch)} ${
-        Object.entries(options.extraEnv ?? {}).map(([key, value]) => `${key}=${quoteShell(key === "WLD_FILTER_LOG" ? bashFixturePath(value) : value)}`).join(" ")
-    } /bin/bash ${quoteShell(bashFixturePath(scriptPath))} ${quoteShell(VERSIONS.runwield)}`;
+    const command = `PATH=${quoteShell(`${bashFixturePath(fixture.binDir)}:/usr/bin:/bin`)} HOME=${quoteShell(
+        bashFixturePath(fixture.root),
+    )} WLD_INSTALL_DIR=${quoteShell(bashFixturePath(fixture.installDir))} WLD_NONINTERACTIVE=0 WLD_TEST_UNAME_S=${quoteShell(
+        fixture.os,
+    )} WLD_TEST_UNAME_M=${quoteShell(fixture.arch)} ${Object.entries(options.extraEnv ?? {})
+        .map(([key, value]) => `${key}=${quoteShell(key === "WLD_FILTER_LOG" ? bashFixturePath(value) : value)}`)
+        .join(" ")} /bin/bash ${quoteShell(bashFixturePath(scriptPath))} ${quoteShell(VERSIONS.runwield)}`;
     if (process.versions.bun) {
         // macOS `script` rejects Bun's socket-backed stdin; attach an actual PTY directly.
-        /** @type {import("./terminal-fixture.ts").TerminalRuntime} */
-        const bun = Reflect.get(globalThis, String("Bun"));
+        const bun: TerminalRuntime = Reflect.get(globalThis, String("Bun"));
         const decoder = new TextDecoder();
         let stdout = "";
         const child = bun.spawn([bashFixtureExecutable(), "-lc", command], {
@@ -372,9 +378,10 @@ export async function runInstallerInPseudoTty(fixture, input, options = {}) {
             child.terminal.close();
         }
     }
-    const scriptArgs = process.platform === "linux"
-        ? ["-q", "-c", command, "/dev/null"]
-        : ["-q", "/dev/null", "/bin/bash", "-lc", command];
+    const scriptArgs =
+        process.platform === "linux"
+            ? ["-q", "-c", command, "/dev/null"]
+            : ["-q", "/dev/null", "/bin/bash", "-lc", command];
     const output = await captureForegroundProcess("script", {
         args: scriptArgs,
         cwd: REPO_ROOT,
@@ -387,21 +394,15 @@ export async function runInstallerInPseudoTty(fixture, input, options = {}) {
     };
 }
 
-/**
- * @param {string} value
- */
-function quoteShell(value) {
+function quoteShell(value: string) {
     return quoteBashFixture(value);
 }
 
-/**
- * @param {string} curlLog
- */
-export async function readCurlLog(curlLog) {
+export async function readCurlLog(curlLog: string) {
     try {
         return await fsReadFile(curlLog, "utf8");
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return "";
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
         throw error;
     }
 }
