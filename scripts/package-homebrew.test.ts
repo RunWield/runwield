@@ -42,16 +42,16 @@ async function writeAsset(root: string, name: string, text: string): Promise<str
     return await sha256Text(bytes);
 }
 
-async function makeReleaseFixture() {
+async function makeReleaseFixture(tag = "v1.2.3") {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-homebrew-release-"));
     async function add(name: string, text: string): Promise<string> {
         return await writeAsset(root, name, text);
     }
 
-    const wldArm = await add("wld-v1.2.3-darwin-arm64.tar.gz", "wld arm");
-    const wldX64 = await add("wld-v1.2.3-darwin-x64.tar.gz", "wld x64");
-    await add("wld-v1.2.3-darwin-arm64.tar.gz.sha256", `${wldArm}  wld-v1.2.3-darwin-arm64.tar.gz\n`);
-    await add("wld-v1.2.3-darwin-x64.tar.gz.sha256", `${wldX64}  wld-v1.2.3-darwin-x64.tar.gz\n`);
+    const wldArm = await add(`wld-${tag}-darwin-arm64.tar.gz`, "wld arm");
+    const wldX64 = await add(`wld-${tag}-darwin-x64.tar.gz`, "wld x64");
+    await add(`wld-${tag}-darwin-arm64.tar.gz.sha256`, `${wldArm}  wld-${tag}-darwin-arm64.tar.gz\n`);
+    await add(`wld-${tag}-darwin-x64.tar.gz.sha256`, `${wldX64}  wld-${tag}-darwin-x64.tar.gz\n`);
     const memArm = await add("mnemoteca_0.3.1_darwin_arm64.tar.gz", "memory arm");
     const memX64 = await add("mnemoteca_0.3.1_darwin_amd64.tar.gz", "memory x64");
 
@@ -130,7 +130,7 @@ test("package:homebrew renders formulas from verified immutable assets", async (
         assertEquals(dependencies, [...dependencies].sort(), "Formula dependencies must be alphabetized");
         assertStringIncludes(wld, "runwield-install.json");
         assertStringIncludes(wld, "brew upgrade gandazgul/tap/wld");
-        assertStringIncludes(wld, "license :cannot_represent");
+        assertStringIncludes(wld, 'license "MIT"');
         assertStringIncludes(wld, "depends_on :macos");
         assertStringIncludes(wld, "# test-only artifact; do not publish this formula");
         assertStringIncludes(mnemoteca, "class Mnemoteca < Formula");
@@ -409,7 +409,7 @@ test("package:homebrew release workflow mixed URLs and publication versions", as
                     wld,
                     mode === "mixed"
                         ? "http://127.0.0.1:8765/"
-                        : `https://github.com/gandazgul/runwield/releases/download/${tag}/`,
+                        : `https://github.com/RunWield/runwield/releases/download/${tag}/`,
                 );
             }
         }
@@ -418,3 +418,30 @@ test("package:homebrew release workflow mixed URLs and publication versions", as
         await fixture.close();
     }
 });
+
+for (const [tag, license] of [
+    ["v0.1.0", '"MIT"'],
+    ["v0.12.4", ":cannot_represent"],
+    ["v0.14.0-rc.1", '"MIT"'],
+    ["v0.14.0", '"MIT"'],
+]) {
+    test(`package:homebrew preserves the release license for ${tag}`, async () => {
+        const fixture = await makeReleaseFixture(tag);
+        try {
+            const output = join(fixture.root, "tap");
+            await packageHomebrew({
+                wldTag: tag,
+                mnemotecaTag: "v0.3.1",
+                output,
+                inputsPath: fixture.inputsPath,
+                wldBaseUrl: fixture.baseUrl,
+                mnemotecaBaseUrl: fixture.baseUrl,
+                testOnly: true,
+            });
+            const formula = await fsReadFile(join(output, "Formula", "wld.rb"), "utf8");
+            assertStringIncludes(formula, `license ${license}`);
+        } finally {
+            await fixture.close();
+        }
+    });
+}

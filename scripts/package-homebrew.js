@@ -6,8 +6,9 @@ import process from "node:process";
 
 import { basename, join } from "node:path";
 import { parseReleaseTag } from "./release.js";
+import { releaseLicense } from "./release-license.ts";
 
-const RUNWIELD_REPO = "gandazgul/runwield";
+const RUNWIELD_REPO = "RunWield/runwield";
 const MNEMOTECA_REPO = "gandazgul/mnemoteca";
 const DEFAULT_INPUTS_PATH = "packaging/homebrew/tested-dependencies.json";
 const ARCHES = Object.freeze(["darwin-arm64", "darwin-x64"]);
@@ -118,7 +119,9 @@ async function sha256(bytes) {
     const input = new Uint8Array(bytes.length);
     input.set(bytes);
     const hash = await crypto.subtle.digest("SHA-256", input.buffer);
-    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /** @param {string} url */
@@ -214,16 +217,16 @@ function renderWldFormula(wld, testOnly) {
     // Homebrew reads Candidate versions correctly, but mistakes Stable archive names for CPU versions.
     // GitHub release URLs and Candidate names already identify the version; repeating it fails brew audit.
     const releaseUrl = `https://github.com/${RUNWIELD_REPO}/releases/download/v${wld.version}/`;
-    const versionDeclaration = !wld.version.includes("-rc.") &&
-            !Object.values(wld.assets).every((asset) => asset.url.startsWith(releaseUrl))
-        ? `  version "${wld.version}"\n`
-        : "";
+    const versionDeclaration =
+        !wld.version.includes("-rc.") && !Object.values(wld.assets).every((asset) => asset.url.startsWith(releaseUrl))
+            ? `  version "${wld.version}"\n`
+            : "";
     return `require "json"
 
 class Wld < Formula
   desc "Plan-first AI coding harness"
-  homepage "https://github.com/gandazgul/runwield"
-${versionDeclaration}  license :cannot_represent
+  homepage "https://github.com/RunWield/runwield"
+${versionDeclaration}  license ${releaseLicense(wld.version).homebrew}
 
   if Hardware::CPU.arm?
     url "${wld.assets["darwin-arm64"].url}"
@@ -310,9 +313,9 @@ brew install gandazgul/tap/wld
 brew install gandazgul/tap/mnemoteca
 \`\`\`
 
-RunWield license: https://github.com/gandazgul/runwield/blob/main/LICENSE
+RunWield license: https://github.com/RunWield/runwield/blob/main/LICENSE
 
-The RunWield formula uses Homebrew's \`:cannot_represent\` metadata because the project license is not an SPDX license.
+RunWield v0.14.0 and later use MIT metadata. Recovery of earlier releases preserves their original license metadata.
 
 Regenerate from this repository with:
 
@@ -338,14 +341,14 @@ async function readExistingRunWieldPackage(output, requestedTestOnly) {
     const formulaPath = join(output, "Formula", "wld.rb");
     const manifestPath = join(output, "runwield-homebrew-package.json");
     const formula = await fsReadFile(formulaPath, "utf8").catch((error) => {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
             throw new Error("Mnemoteca-only refresh requires an existing Formula/wld.rb.");
         }
         throw error;
     });
     const manifest = JSON.parse(
         await fsReadFile(manifestPath, "utf8").catch((error) => {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") {
                 throw new Error("Mnemoteca-only refresh requires an existing package manifest.");
             }
             throw error;
@@ -373,7 +376,9 @@ export async function packageHomebrew(options) {
         throw new Error("Base URL overrides require --test-only.");
     }
     const wldTag = options.wldTag
-        ? (options.testOnly ? parseReleaseTag(options.wldTag) : assertStableTag(options.wldTag))
+        ? options.testOnly
+            ? parseReleaseTag(options.wldTag)
+            : assertStableTag(options.wldTag)
         : null;
     const mnemotecaTag = assertStableTag(options.mnemotecaTag);
     const inputs = /** @type {HomebrewInputs} */ (JSON.parse(await fsReadFile(options.inputsPath, "utf8")));

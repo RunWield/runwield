@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping improve RunWield. RunWield is source-available and accepts issues and pull requests, but it is not
-open source yet. Before contributing, read the [license](../LICENSE).
+Thanks for helping improve RunWield. RunWield is open source under the [MIT License](../LICENSE) from v0.14.0.
+Issues and pull requests are welcome.
 
 ## Start with the design docs
 
@@ -335,11 +335,8 @@ RunWield itself is plan-by-default for non-trivial work. Contributions should pr
 
 ## License note
 
-RunWield is source-available and free to use, inspect, and run for personal, internal, or commercial work. You may
-submit issues and pull requests.
-
-You may not distribute modified versions, publish derivative works, rebrand RunWield, or offer it as a competing product
-or service without prior written permission.
+Contributions to RunWield are made under the [MIT License](../LICENSE). Preserve copyright, license, and attribution
+notices for third-party material and identify its source. Earlier releases retain their tagged licenses.
 
 ## Maintaining portable skills
 

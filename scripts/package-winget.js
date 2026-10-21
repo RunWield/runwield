@@ -15,9 +15,10 @@ import process from "node:process";
 
 import { join } from "node:path";
 import { parseReleaseTag } from "./release.js";
+import { releaseLicense } from "./release-license.ts";
 import { sha256 } from "./package-windows.ts";
 
-const RUNWIELD_REPO = "gandazgul/runwield";
+const RUNWIELD_REPO = "RunWield/runwield";
 const PACKAGE_ID = "Gandazgul.RunWield";
 const PUBLISHER = "Gandazgul";
 const PACKAGE_NAME = "RunWield";
@@ -75,12 +76,12 @@ PackageVersion: ${version}
 PackageLocale: en-US
 Publisher: ${PUBLISHER}
 PublisherUrl: https://github.com/gandazgul
-PublisherSupportUrl: https://github.com/gandazgul/runwield/issues
+PublisherSupportUrl: https://github.com/RunWield/runwield/issues
 PrivacyUrl: https://runwield.dev/privacy/
 PackageName: ${PACKAGE_NAME}
-PackageUrl: https://github.com/gandazgul/runwield
-License: Free Use License
-LicenseUrl: https://github.com/gandazgul/runwield/blob/v${version}/LICENSE
+PackageUrl: https://github.com/RunWield/runwield
+License: ${releaseLicense(version).winget}
+LicenseUrl: https://github.com/RunWield/runwield/blob/v${version}/LICENSE
 ShortDescription: Plan-first AI coding harness.
 Description: RunWield is a local, plan-first AI coding harness for software projects.
 Tags:
@@ -154,21 +155,20 @@ async function assertZipHasPackageMetadata(bytes, versionTag) {
         await fsWriteFile(zipPath, bytes);
         await fsMkdir(extractDir, { recursive: true });
         await run("unzip", ["-q", zipPath, "-d", extractDir]);
-        for (
-            const path of [
-                "wld.exe",
-                "runwield-install.json",
-                "runtime/helpers/mnemoteca.exe",
-                "runtime/helpers/cymbal.exe",
-                "runtime/helpers/ketch.exe",
-                "runtime/helpers/agent-browser.exe",
-                "licenses/RUNWIELD-LICENSE.txt",
-                "licenses/mnemoteca-LICENSE.txt",
-                "licenses/cymbal-LICENSE.txt",
-                "licenses/ketch-LICENSE.txt",
-                "licenses/agent-browser-LICENSE.txt",
-            ]
-        ) await assertFile(extractDir, path);
+        for (const path of [
+            "wld.exe",
+            "runwield-install.json",
+            "runtime/helpers/mnemoteca.exe",
+            "runtime/helpers/cymbal.exe",
+            "runtime/helpers/ketch.exe",
+            "runtime/helpers/agent-browser.exe",
+            "licenses/RUNWIELD-LICENSE.txt",
+            "licenses/mnemoteca-LICENSE.txt",
+            "licenses/cymbal-LICENSE.txt",
+            "licenses/ketch-LICENSE.txt",
+            "licenses/agent-browser-LICENSE.txt",
+        ])
+            await assertFile(extractDir, path);
         const metadata = JSON.parse(await fsReadFile(join(extractDir, "runwield-install.json"), "utf8"));
         const expectedMetadata = {
             schemaVersion: 1,
@@ -215,13 +215,11 @@ export async function packageWinget(options) {
     );
     await fsWriteFile(
         join(options.output, "runwield-winget-package.json"),
-        `${
-            JSON.stringify(
-                { tag: parsed.tag, packageIdentifier: PACKAGE_ID, manifestDir, installerUrl: url, sha256: checksum },
-                null,
-                4,
-            )
-        }\n`,
+        `${JSON.stringify(
+            { tag: parsed.tag, packageIdentifier: PACKAGE_ID, manifestDir, installerUrl: url, sha256: checksum },
+            null,
+            4,
+        )}\n`,
     );
 }
 
