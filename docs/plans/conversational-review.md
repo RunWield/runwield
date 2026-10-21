@@ -61,8 +61,7 @@ reuses the review queue and the reply-or-revise conversation model. No Slicer de
 
 ## Decisions
 
-- **No `feedback` status in Core.** Every unapproved Plan is `draft`. A GitHub-style split between "comment" and
-  "request changes" may come later as a multi-user Workspace review state, never as a Core Plan Status.
+- **No `feedback` status in Core.** Every unapproved Plan is `draft`. Review conversation activity is not a Core Plan Status.
 - **Only a real Plan change cancels approval.** A reply-only turn changes nothing.
 - **The Agent does not have to revise.** The approval warning is deterministic and fires after any chat turn since the
   last revision. It will be tuned after real use.

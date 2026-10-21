@@ -9,7 +9,7 @@ web
 ## Users
 
 The primary user is an experienced developer making meaningful code changes with AI. Personal Workspace serves one owner
-moving between a terminal and a browser, including a phone. Team collaboration is later scope.
+moving between a terminal and a browser, including a phone.
 
 ## Product Purpose
 
@@ -18,15 +18,15 @@ returning to the same Session across screens. The Plan Board makes Plans, Epics,
 visible. The user can review intent before code changes, inspect evidence afterward, and keep decisions in durable
 records.
 
-Current Workspace includes a local Plan Board and browser review surfaces. Reliable end-to-end continuation of a Session
-between the TUI and a phone, a cross-Project home, and broader team collaboration remain product goals, not claims of
-current readiness.
+Current Workspace includes personal Sessions, registered Projects, Plan Boards, and browser review surfaces. The
+[Workspace PRD](docs/prd/runwield-workspace-prd.md) distinguishes the delivered first iteration from remaining continuity
+and browser requirements; this product record does not claim every target is complete.
 
 ## Positioning
 
 Workspace centers on Plans and their lifecycle, not generic AI chat, an agent dashboard, an issue tracker, or a browser
 IDE. It connects human review of intent with local execution, validation, and durable records. The local Core workflow
-stays useful without a hosted Workspace.
+remains free and independently useful.
 
 ## Operating Context
 
@@ -43,7 +43,7 @@ surfaces.
   and code review.
 - A Plan is the durable center of planned-work review, execution, validation, recovery, and associated Sessions.
   Approval does not automatically authorize execution.
-- Personal Workspace serves one owner across screens; simultaneous multi-user collaboration is later scope.
+- Personal Workspace serves one owner across screens. Shared Plan review uses separate capability links.
 - Project roots are explicit trust boundaries. The browser must not silently broaden access to other local paths.
 - Private Session history is for continuation; Plans, PRDs, ADRs, and Work Records carry durable project knowledge.
 
@@ -56,7 +56,7 @@ Use the public names RunWield and RunWield Workspace. Use Plan, Session, Project
 ## Evidence on Hand
 
 - [RunWield Workspace PRD](docs/prd/runwield-workspace-prd.md) distinguishes current capabilities from planned personal
-  and team work.
+  work.
 - [RunWield PRD](docs/prd/runwield.md) defines the product family and positioning.
 - [Design system](docs/design-system.md) and `src/ui/workspace/` document the incumbent browser implementation.
 - [Demo video](brand/runwield-demo.mp4) and [poster](brand/runwield-demo-poster.jpg) show a real workflow. Do not invent

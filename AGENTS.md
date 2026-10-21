@@ -77,7 +77,7 @@ Organize requirements inside these five PRDs by capability, with stable links, n
 acceptance scenarios. Each capability has one owning PRD; link shared requirements instead of duplicating them. In the
 same change that alters behavior, update the owning capability, scenarios, and affected references. Planning labels
 proposed additions, changes, and removals; it does not claim they shipped. Keep current, target, and deferred behavior
-distinct. The root PRD owns product-family promises, Core shared local behavior, Workspace browser/team journeys,
+distinct. The root PRD owns product-family promises, Core shared local behavior, Workspace personal browser and shared Plan review journeys,
 Connect external-host use, and ACP external-client compatibility. This five-document ownership is specific to this repo;
 bundled agent guidance must work with any user's PRD structure.
 

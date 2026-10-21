@@ -41,7 +41,7 @@ validation, memory, or Workspace goals need a distinct product surface.
 - **Work protection:** RunWield preserves user work and asks before any action that could destroy it.
 - **Tool-driven workflow:** Agents declare intent with workflow tools; orchestration code owns lifecycle transitions,
   execution, validation, and recovery.
-- **Local-first control:** Core is fully useful without the hosted Workspace.
+- **Local-first control:** Core provides an independently useful local workflow.
 - **Context parsimony:** Agents use targeted project context, memory recall, code intelligence, and Plan artifacts.
 - **Pi compatibility by default:** RunWield follows Pi Coding Agent conventions where its product vision allows.
 - **Extensible but guarded:** Users customize Agents, skills, prompt templates, and tools; protected workflow tools keep
@@ -1040,6 +1040,8 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
 - Given a local branch, review opens without a worktree; an Engineer request creates one and the next diff includes its
   edits.
 - Given a PR in a matching remote, Post comments and Approve reach the Forge; a foreign repository is rejected.
+  In a checkout or linked worktree, a repository mismatch prints a concise error and exits with code 1, without a
+  stack trace or runtime-crash recovery advice.
 - Given a moved remote head, posting refreshes the review and marks Guided Review stale; local edits and commits stay
   protected.
 - Given failed checkout setup, an unchanged unused worktree is removed and the next Engineer request retries; changes
@@ -1919,7 +1921,7 @@ Core includes the local browser client that `wld plans ui` launches and the CLI 
 The [Workspace local Plan management capability](runwield-workspace-prd.md#local-plan-management) and
 [shared Plan collaboration capability](runwield-workspace-prd.md#shared-plan-collaboration) own their surface
 requirements and use Core's [Plan lifecycle](#plan-lifecycle), [Plan review](#plan-review), and
-[execution and recovery](#execution-validation-and-recovery). Local use is complete without hosted Workspace.
+[execution and recovery](#execution-validation-and-recovery). Local use needs no RunWield account or subscription.
 
 ## Delivery and Architectural References
 

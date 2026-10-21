@@ -239,7 +239,7 @@ execution contexts. Commands without model work have no model-usage record; late
 For browser-only commands, add `POST /api/owner/projects/:projectId/command-metrics` beside the Owner Session routes.
 Use existing `ownerFetch`, paired-device/origin/CSRF protection, and `requireOwnerProjectRoot`. Accept only a bounded,
 validated command-observation payload; derive the Project root on the server. Check any optional Session link belongs to
-that Project. Write through the local recorder, not Workspace SQLite, shared artifacts, or SaaS services. It must work
+that Project. Write through the local recorder, not Workspace SQLite, shared artifacts, or external services. It must work
 in new-Session mode without creating a Session. No offline browser backlog or network-dependent command failure.
 
 ## Expected Change Surface
@@ -415,4 +415,4 @@ metrics types.
 - **Assumption for review:** `!`/`!!` user shell shortcuts and standalone top-level CLI commands are not slash commands
   or Agent tools, so they remain outside this change. Their inclusion would be a separate scope extension.
 - **Assumption for review:** browser recording uses the existing local Owner server, including paired-device access.
-  Future SaaS analytics and RunWield Connect host telemetry remain out of scope.
+  External analytics and RunWield Connect host telemetry remain out of scope.

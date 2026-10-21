@@ -618,7 +618,7 @@ Use the shell pattern for full-page browser surfaces:
 - main content below navigation.
 
 The shell should feel like a local tool, not a marketing site. Avoid large hero sections, decorative imagery, and sparse
-SaaS-dashboard layouts.
+dashboard layouts.
 
 ### Tabs
 
@@ -988,7 +988,7 @@ automated score does not establish visual acceptance.
 ## Non-goals for v1
 
 - No marketing-page layouts or effects; brand colors and website typography are shared.
-- No large-radius, oversized SaaS-dashboard component language.
+- No large-radius, oversized dashboard component language.
 - No requirement to extract a full component library immediately.
 - No generated palette replacing the approved brand or browser theme modules.
 - No browser theme picker or light theme in the current scope; keep future themes easy to swap.

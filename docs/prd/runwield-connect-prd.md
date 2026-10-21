@@ -35,7 +35,7 @@ The product-family promises are:
 | ------------------ | -------------------------------------------------------- |
 | RunWield Connect   | Keep your agent. Add RunWield planning and verification. |
 | RunWield Core      | Run the complete local workflow through `wld`.           |
-| RunWield Workspace | Collaborate on planning and records across projects.     |
+| RunWield Workspace | Use the personal browser workflow across projects.       |
 
 When Core drives a workflow but delegates agent turns to Pi, Claude through `claude -p`, or another harness, those are
 Execution Backends within Core. They are siblings at the runtime boundary and do not need separate product names.

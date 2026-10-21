@@ -26,9 +26,8 @@ questions without requesting repairs. When a repair is needed, checks and a refr
 
 **Goals:** Use the Plan review queue in Code Review. Change review state only when the reviewed patch changes.
 
-**Non-goals:** Threaded comments, unaddressed-comment tracking, and multi-reviewer teams belong to the
-[Collaborative SaaS Workspace](runwield-workspace-prd.md#collaborative-saas-workspace). Standalone Code Review
-(`wld review`) is unchanged; it already has an Engineer chat that does not force a repair.
+**Non-goals:** Threaded comments, unaddressed-comment tracking, and multi-reviewer assignment and policy.
+Standalone Code Review (`wld review`) is unchanged; it already has an Engineer chat that does not force a repair.
 
 ## Why Are We Building It?
 

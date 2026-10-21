@@ -10,9 +10,8 @@ updatedAt: "2026-10-16"
 **Document role: Living central PRD.** Principles and lasting requirements for the personal browser Workspace and its
 continuity with the TUI and phone.
 
-**Status:** The personal local Workspace is delivered in its first iteration. Collaborative SaaS
-Workspace requirements are collected in [Collaborative SaaS Workspace](#collaborative-saas-workspace) until they move
-to their own PRD. External-client and chat access are owned by the [ACP PRD](runwield-acp-protocol-prd.md); external
+**Status:** The personal local Workspace is delivered in its first iteration and remains free and open source.
+External-client and chat access are owned by the [ACP PRD](runwield-acp-protocol-prd.md); external
 Agent hosts are owned by the [Connect PRD](runwield-connect-prd.md).
 
 Architectural choices belong in ADRs, implementation steps and remaining work in Plans, and delivery evidence in Work
@@ -113,8 +112,7 @@ Workspace indexes and projects repository artifacts; the repository files stay c
 - from owner-approved paired browser devices;
 - across several registered local Projects.
 
-This is a durable personal self-hosted product. Teams are served by the
-[Collaborative SaaS Workspace](#collaborative-saas-workspace).
+This is a durable personal self-hosted product included in RunWield Core.
 
 ## Capability Requirements
 
@@ -202,8 +200,7 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 ### Shared Plan collaboration
 
 **Scope and maturity:** Current self-hosted collaboration protocol. The container definitions are for testing; runtime
-isolation for production hosting is deferred. Hosted deployment and further browser actions belong to the
-[Collaborative SaaS Workspace](#collaborative-saas-workspace).
+isolation for production hosting is deferred.
 
 **Requirement: Share review revisions with explicit access.** Workspace supports encrypted Plan sharing through
 self-hosted Shared Spaces:
@@ -228,8 +225,7 @@ Shared review follows [Core Plan review](runwield-core-prd.md#plan-review) and
 [Plan lifecycle](runwield-core-prd.md#plan-lifecycle).
 
 **Deferred:** public creation credentials and their rotation/recovery, signed multi-architecture image publication,
-activity/audit feeds, Revision diffs, comment attachments, and closed-Space export. Hosted and browser-management scope
-stays in [Collaborative SaaS Workspace](#collaborative-saas-workspace).
+activity/audit feeds, Revision diffs, comment attachments, and closed-Space export.
 
 **Acceptance scenarios:**
 
@@ -969,140 +965,6 @@ This cross-capability journey shows that the capabilities work together. One tru
 - Separate hosted execution environments per Project.
 - Identical token-by-token animation on every open screen; each screen updates as work is saved.
 - Replacing Shared Plan capability links with Workspace device identity.
-
-## Collaborative SaaS Workspace
-
-**Status:** Coming soon. These requirements will move to a dedicated SaaS Workspace PRD. Nothing in this section is
-delivered. The personal Workspace above stays the foundation; team features build on it without adding ceremony to
-personal use. Hosted execution follows proven planning, workflow, isolation, and recovery.
-
-Deferred from the self-hosted [Shared Plan collaboration](#shared-plan-collaboration) to SaaS:
-
-- hosted Workspace deployment (Cloudflare D1);
-- browser-side push, close, unshare, delete, and Plan body editing;
-- automated collaboration notifications;
-- [Forge Change Request Delivery](forge-change-request-delivery-prd.md) as an explicitly selected delivery and review
-  mode, with RunWield-native review and Direct Delivery as the default.
-
-### Team planning and governance
-
-**Scope and maturity:** SaaS target.
-
-**Requirement: Team-chosen roles and approval policy.** Team planned work uses a Plan-centered experience with
-product-facing areas: Ideas, Planning, Review, Ready, In Progress, Verifying, Done, and On Hold. Raw Core statuses stay
-visible in detail views. From the Plan screen, users start an idea, create or refine a PRD, create a Plan or an Epic,
-review a Plan, and inspect Work Records and planning memory. Work Record search is secondary to the Plan workspace.
-
-The team product adds independently hosted Projects, team and organization membership, Project-level authorization and
-policy, and collaborator-visible artifacts. It starts with three roles: **Admin**, **Member**, and **Reviewer/Guest**.
-Teams decide how strictly they divide planning, architecture, and execution; finer Member permissions can come later.
-
-Default policy is lightweight:
-
-- Members create and collaborate with minimal ceremony.
-- Important Plans go through review.
-- Work Records auto-approve after Recorder generation.
-- Epics need explicit approval before decomposition or work.
-
-Optional stricter settings restrict who approves Plans, require Work Record review before retrieval, require ADR links
-for architectural Plans, and require explicit approval before a Plan enters Ready.
-
-**Acceptance scenarios:**
-
-- Given default policy, members shape a Plan together while important Plans and Epics receive their required review.
-- When a team enables stricter approval or Work Record review, those choices govern the relevant transition or
-  retrieval, and Core verification keeps its meaning.
-- A user moves from an idea or PRD into a Plan or Epic and later finds the resulting Work Record.
-
-### Team artifact privacy and authorship
-
-**Scope and maturity:** SaaS target. Owner-private conversation is a product-wide principle.
-
-**Requirement: Share durable artifacts and keep working transcripts private.**
-
-- Plans, PRDs, ADRs, and Work Records are team-visible according to Workspace permissions.
-- Working conversations are private by default, and chat messages stay with their Session.
-- Code-review discussion, assignment, and approval state are collaboration process data held in Workspace; only durable
-  results (Plans, Work Records, and commits) enter the repository.
-- Artifacts record user and Agent authorship, shown as quiet metadata: author, drafting Agent, approval mode, and
-  source references.
-- Admin and debug Session access exists where policy allows.
-- Product analytics are anonymized and aggregated unless users opt into broader sharing.
-
-**Acceptance scenarios:**
-
-- Given a collaborator permitted to read a Plan, its artifacts and authorship are visible and the author's working
-  transcript stays private.
-- When review discussion is saved, it stays in Workspace, and the repository receives durable results.
-
-### Team planning intelligence
-
-**Scope and maturity:** SaaS target.
-
-**Requirement: Trusted planning knowledge across permitted Projects.** Shared cross-Project planning intelligence is
-the main reason to pay for Workspace. It strengthens planning; RunWield is not hosted Agent management:
-
-```text
-A trusted planning system where every material change has a reviewable intent, governed execution, independently
-verified outcome, and reusable record of what the team learned.
-```
-
-Workspace extends Core's repository records with:
-
-- team-wide Work Record search;
-- cross-Project retrieval for new Plans;
-- context packs for Ideator, Planner, and Architect;
-- compression and deduplication of older records;
-- answers to "what did we decide before?" across Projects;
-- filters by Project, area, Plan type, completion mode, and status.
-
-**Acceptance scenarios:**
-
-- Given current records across team Projects, a Planner's retrieved context keeps provenance, completion confidence,
-  and Project scope.
-- When older records are compressed or deduplicated, source Plans stay intact and current guidance stays distinct from
-  history.
-
-### Team code review and delivery
-
-**Scope and maturity:** SaaS target. Personal review is owner-only.
-
-**Requirement: Shared review responsibility and shared checks before merge.**
-
-- Human review defaults to Workspace, with assignable reviewers and Agent assistance for reviewer and author.
-- Teams can select forge-hosted or Dual Review per repository, team, or instance; each gate keeps its own decisions.
-- Workspace merges validated, approved work after shared CI succeeds. Local checks are a fast tier ahead of shared CI.
-  Publication uses a labeled Forge Change Request as the CI-and-merge envelope, with the actual author, reviewer, and
-  merger identities.
-- Approval counts, required checks, and self-merge policy have familiar forge meanings. GitHub sign-in and correct
-  person attribution are high priority; identity, audit, and review responsibility stay explicit.
-- Externally contributed work can become source material for a maintainer-owned Plan with contributor and maintainer
-  provenance.
-
-**Shared requirements:** [Core execution and validation](runwield-core-prd.md#execution-validation-and-recovery) and
-[team planning and governance](#team-planning-and-governance).
-
-**Acceptance scenarios:**
-
-- Given validated work whose shared CI fails, Workspace holds the merge.
-- When a teammate is assigned review, assistance, decisions, and merge attribution keep the author, reviewer, and
-  merger identities.
-- Given Dual Review, each gate keeps its own decision.
-- Given an external contribution adopted by a maintainer, the Plan and delivery keep both identities.
-
-### Proposed SaaS domain language
-
-**Assignable Human Review**: Workspace-hosted code review assigned to a teammate, with Agent assistance for reviewer
-and author. Discussion and approval state are Workspace process data; only durable results are committed. _Avoid_: pull
-request, PR review, review sync
-
-**Forge** (proposed redefinition): by default, the remote Git host and merge substrate; review and repository policy
-are RunWield capabilities that a team can delegate to the Forge per repository. _Avoid_: system of record for intent,
-review, or memory; required review gate
-
-**Project Evidence Graph**: a rebuildable provenance projection that connects project intent, decisions, Plans,
-delivery evidence, and outcomes, with source artifacts as project truth. _Avoid_: Plan Evidence Graph, Session
-Transcript graph, source of truth
 
 ## References
 

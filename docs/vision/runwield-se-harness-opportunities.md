@@ -32,7 +32,7 @@ That means RunWield should focus on:
 - preserving traceability across artifacts
 - maintaining records, memories, docs, and plans as living inputs to future work
 - keeping durable artifacts in markdown or other open, easy-to-export formats so the local harness remains useful
-  without SaaS and the hosted product can make a credible no-vendor-lock-in promise
+  independently and users can retain their project knowledge
 
 ## Reframed Gap
 
@@ -131,7 +131,7 @@ also support richer ways to attach external context to a plan: ticket links, des
 existing docs, prior incidents, PRs, CI runs, and decision records.
 
 This does not require native integrations for every platform at first. A URL plus a good context-ingestion path can
-already be valuable. Tighter integrations can come later, especially for paid/team offerings.
+already be valuable. Tighter integrations can come later, as their user value becomes clear.
 
 ### 4. Work Records as the Traceability Backbone
 
@@ -346,7 +346,6 @@ Later shape:
 - tighter GitHub Issues, Linear, Jira, or GitLab issue integrations
 - authenticated ticket updates
 - status synchronization
-- paid offering opportunities for team workflows
 
 ### Pull Requests and CI History
 
@@ -455,35 +454,6 @@ Opportunities:
 This is a major part of making RunWield a stronger factory middle, because frontend work is not just code correctness.
 RunWield still has a lot of room to grow here: design intake, implementation guidance, browser evidence, visual review,
 accessibility checks, responsive behavior, and human design judgment all need better support.
-
-### Repository Intelligence for SaaS
-
-The hosted RunWield Workspace can augment the local harness by running an init-like intelligence pass across repos,
-teams, and work history.
-
-The goal would be to help humans plan with a higher-level understanding of the codebase:
-
-- architecture summaries
-- dependency maps
-- ownership and boundary hints
-- recurring risk areas
-- testing and validation coverage
-- recent work history
-- stale docs or plans
-- cross-repo relationships
-- release and incident context
-
-The SaaS product should still operate over local-first, open artifacts where possible: markdown plans, Work Records,
-ADRs, PRDs, docs, exported maps, and other easy-to-export formats. Hosted features can add indexing, search,
-collaboration, visualization, and cross-repo intelligence, but they should not trap the core project knowledge in a
-proprietary-only store.
-
-This supports a trust story:
-
-- no vendor lock-in for core planning and work history
-- useful local harness even without SaaS
-- hosted value comes from augmentation, collaboration, indexing, and richer views
-- users can export the important artifacts and continue working
 
 ### Production Incidents
 

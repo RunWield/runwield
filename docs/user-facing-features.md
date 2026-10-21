@@ -203,7 +203,7 @@ Continue the same work in the terminal or browser, find what needs attention, an
   first.
 - Unarchive from the Archived Sessions tab in Project settings. Direct and Plan links remain readable while archived.
 - Use personal remote Workspace with device pairing and an owner connection to the machine running the work.
-- Treat shared Plan review separately from simultaneous multi-user Session collaboration, which remains future scope.
+- Share individual Plans for encrypted review; personal Sessions remain owner-controlled.
 
 ### Interactive TUI and session management
 
@@ -401,8 +401,6 @@ Run locally and adapt the harness to your Project.
   durable host actions and fresh-process outcomes remain work in progress. Existing Claude CLI execution inside RunWield
   is a separate capability, not proof that Connect has shipped.
 - **Reusable software-factory components:** a product direction, not an already delivered independent component suite.
-- **Broader team Workspace:** shared Plan review exists; team governance and simultaneous multi-user Session work are
-  not implied by personal Workspace support.
 - **Remote Session-save redesign:** the October laptop-owned SSH save proof supports design review only, not production
   adoption.
 - **Plan Store redesign and metrics dashboard/export:** proposals, not replacements for the current Markdown artifacts

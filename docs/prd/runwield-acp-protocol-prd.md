@@ -33,8 +33,7 @@ The continuing product requirements are:
 Personal Workspace and ACP share the same user outcome: the owner can continue a saved Session from another screen
 without closing an idle client. Neither channel introduces a separate conversation or approval model.
 
-OpenAB is a practical validation host, not a permanent RunWield infrastructure commitment. A future SaaS deployment may
-fork OpenAB or build a purpose-optimized integration layer if tenancy, throughput, operations, or channel UX require it.
+OpenAB is a replaceable validation host for the personal ACP workflow.
 
 <a id="2-problem-statement"></a>
 
@@ -57,8 +56,7 @@ gateway is deferred until a demonstrated product need justifies it.
 - ACP is the external-client contract; clients should not need bespoke RunWield integrations for ordinary workflows.
 - OpenAB is the first reference chat host and remains replaceable. Prefer generic upstream contributions; a passing,
   reviewed contribution branch plus an open PR is sufficient for the first proof.
-- OpenAB supports end-to-end personal workflows through Discord and its other supported chats. Team identity and SaaS
-  operations remain separate scope.
+- OpenAB supports end-to-end personal workflows through Discord and its other supported chats.
 - Use standard or generic ACP interactions where supported. Unsupported interactions must be visible rather than
   silently answered.
 - Plan review remains in the browser. Telegram delivers the link and reports feedback or approval outcomes.
@@ -461,8 +459,7 @@ current JetBrains, Air, or OpenAB chat support:
 - an independently reachable Shared Plan server;
 - a pinned OpenAB release or contribution commit.
 
-A development tunnel is acceptable for concept validation. Production tenancy, account linking, billing, and
-availability guarantees are not required.
+A development tunnel is acceptable for concept validation; the acceptance scope is one trusted operator.
 
 ## Historical Stage 1 Cross-Capability Acceptance
 
@@ -484,7 +481,6 @@ availability guarantees are not required.
 Discord and other OpenAB-supported chats are already supported. Separate future scope includes:
 
 - Multiple Telegram users, groups, topics, or concurrent project routing.
-- SaaS tenancy, account linking, billing, quotas, audit administration, or availability guarantees.
 - A RunWield-owned multi-platform chat gateway.
 - A permanent private OpenAB fork.
 - Native Telegram transport in RunWield core.
@@ -508,7 +504,7 @@ Discord and other OpenAB-supported chats are already supported. Separate future 
 | **Shared Plan URLs can be forwarded.**                             | Treat them as capability links under the Shared Plan server's existing authorization and expiry policy; do not conflate them with Telegram identity.                                             |
 | **Automatic ACP permission approval could authorize unsafe work.** | Confirm RunWield emits no permission requests in Stage 1, document the limitation, and pursue deny-by-default upstream handling before relying on the method.                                    |
 | **A crash leaves ambiguous partial side effects.**                 | Preserve partial work, explain what is uncertain, and offer informed recovery choices without blind repetition.                                                                                  |
-| **OpenAB's process-per-thread model may not scale efficiently.**   | Accept it for the single-operator proof; measure before adopting it for a hosted service. Preserve RunWield's multi-session Session Host for other clients.                                      |
+| **OpenAB's process-per-thread model may not scale efficiently.**   | Measure process and memory costs for the single-operator workflow. Preserve RunWield's multi-session Session Host for other clients.                                                             |
 | **Reference-client accommodations could leak into core.**          | Keep OpenAB-specific transport behavior outside RunWield; core changes must improve standard ACP or adapter-neutral Runtime semantics.                                                           |
 
 <a id="10-future-work-unlocked"></a>
@@ -518,7 +514,6 @@ Discord and other OpenAB-supported chats are already supported. Separate future 
 - Validate Slack and Discord through the same OpenAB ACP core.
 - Add richer IDE integrations through conforming ACP clients.
 - Let the owner start, resume, or monitor the same Sessions across Workspace, ACP, and TUI.
-- Evaluate a forked OpenAB deployment or RunWield-owned gateway for SaaS tenancy and scale.
 - Add richer ACP session discovery, configuration, and workflow-specific presentation without weakening standard
   fallbacks.
 - Run multiple chat-backed Hosted Sessions in one RunWield process when the chosen host can exploit that architecture.
