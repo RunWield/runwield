@@ -1401,6 +1401,18 @@ disabled, the catalog uses project `.wld`, home `.wld`, and bundled skills. The 
 user-selected PR or change against project standards, the requested behavior, and test strength; it complements the
 workflow Reviewer.
 
+**Requirement: Portable skills install independently.** Guide, Ideator, and Review are available from
+[RunWield/skills](https://github.com/RunWield/skills) without downloading Core. They work in other coding agents and
+projects without requiring RunWield-specific tools. Core maintenance detects changes to the portable skills, their
+supporting documents, and the source definitions they adapt, so maintainers review wording drift before accepting it.
+
+**Acceptance scenarios:**
+
+- A user installs the portable skills from their dedicated repository without installing Core.
+- A source definition or portable skill changes; the synchronization check fails and names the files requiring review.
+- A new supporting document or unintended published skill is detected; validation reports it rather than silently
+  accepting a stale inventory.
+
 **Requirement: Named Invocations keep their full expansion.** Skill and Prompt Template invocations inject full
 instructions when invoked and reach the active model with the current Agent's instructions and tools. The saved
 expansion stays available through follow-ups, compaction, and resume. Prompt Templates display rendered content; Skills

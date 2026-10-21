@@ -340,3 +340,9 @@ submit issues and pull requests.
 
 You may not distribute modified versions, publish derivative works, rebrand RunWield, or offer it as a competing product
 or service without prior written permission.
+
+## Maintaining portable skills
+
+The `skills/` submodule checks out [RunWield/skills](https://github.com/RunWield/skills). Initialize it with
+`git submodule update --init skills`. Core keeps the review baseline and fails CI when the portable skills drift from
+their reviewed source definitions. See [skills maintenance](skills-maintenance.md) for the edit and publication steps.

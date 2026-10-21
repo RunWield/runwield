@@ -218,6 +218,20 @@ database, all greppable.
 [customization](https://docs.runwield.dev/customization/) · [collaboration](https://docs.runwield.dev/collaboration/) ·
 [troubleshooting](https://docs.runwield.dev/troubleshooting/)
 
+### Portable skills
+
+Install Guide, Ideator, and Review in another coding agent without downloading Core:
+
+```sh
+npx skills@latest add RunWield/skills
+```
+
+Previously installed from `gandazgul/runwield` or `RunWield/runwield`? Run the command above once with the same agents
+and installation scope (add `-g` for global installs), accepting replacement if prompted, to use the new source.
+
+See [RunWield Skills](https://github.com/RunWield/skills). Contributors maintain its checkout at `skills/`; the
+[skills maintenance guide](docs/skills-maintenance.md) explains synchronization and publishing.
+
 ### Contributing
 
 Use Bun 1.4.3 (pinned in `.bun-version`).
