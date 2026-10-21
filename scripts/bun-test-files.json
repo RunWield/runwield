@@ -706,7 +706,7 @@
     "src/ui/workspace/workspace-portable.test.ts",
     "src/ui/workspace/workspace-pwa.test.js",
     "src/ui/workspace/workspace-remote-review.test.js",
-    "src/ui/workspace/workspace-remote-server.test.js",
+    "src/ui/workspace/workspace-remote-server.test.ts",
     "src/ui/workspace/workspace-remote-storage.test.js",
     "src/ui/workspace/workspace-renderer-lifecycle.test.ts",
     "src/ui/workspace/workspace-review.test.js",
