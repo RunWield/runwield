@@ -60,7 +60,7 @@
         "release:stable": "bun scripts/release.js stable",
         "package:homebrew": "bun scripts/package-homebrew.js",
         "package:homebrew:check": "bun scripts/package-homebrew-check.ts",
-        "package:windows": "bun scripts/package-windows.js",
+        "package:windows": "bun scripts/package-windows.ts",
         "package:windows:check": "bun scripts/package-windows-check.ts",
         "package:winget": "bun scripts/package-winget.js",
         "prototype": "bun scripts/run-prototype.ts",

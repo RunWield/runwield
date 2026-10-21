@@ -634,7 +634,7 @@ export async function runReleaseCheck(options, port) {
         await mustRun(
             "Smoke test Workspace code and Plan review routes",
             "bun",
-            ["run", "scripts/assert-workspace-review-runtime.js", "--bun"],
+            ["run", "scripts/assert-workspace-review-runtime.ts", "--bun"],
             { cwd: rootDir },
             runner,
         );

@@ -1,3 +1,4 @@
+import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { tmpdir } from "node:os";
 import { getCwd } from "../src/constants.js";
@@ -23,23 +24,33 @@ import { parseReleaseTag } from "./release.js";
 const DEFAULT_INPUTS_PATH = "packaging/windows/tested-dependencies.json";
 const PACKAGE_ID = "Gandazgul.RunWield";
 
-/**
- * @typedef {Object} WindowsHelperInput
- * @property {string} name
- * @property {string} version
- * @property {string} url
- * @property {string} sha256
- * @property {string} license
- * @property {string} licenseUrl
- * @property {string[]} requiredFiles
- */
+export interface WindowsHelperInput {
+    name: string;
+    version: string;
+    url: string;
+    sha256: string;
+    license: string;
+    licenseUrl: string;
+    requiredFiles: string[];
+}
+
+export interface WindowsPackageOptions {
+    tag: string;
+    binary: string;
+    output: string;
+    inputsPath: string;
+}
+
+interface WindowsPackageInputs {
+    packageIdentifier?: string;
+    helpers?: WindowsHelperInput[];
+}
 
 function usage() {
     return "Usage: package-windows.js --tag <tag> --binary <path-to-wld.exe> --output <dir> [--inputs <path>]";
 }
 
-/** @param {string[]} args */
-export function parsePackageWindowsArgs(args) {
+export function parsePackageWindowsArgs(args: string[]): WindowsPackageOptions {
     const options = { tag: "", binary: "", output: "", inputsPath: DEFAULT_INPUTS_PATH };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -53,16 +64,16 @@ export function parsePackageWindowsArgs(args) {
     return options;
 }
 
-/** @param {Uint8Array} bytes */
-export async function sha256(bytes) {
+export async function sha256(bytes: Uint8Array) {
     const input = new Uint8Array(bytes.length);
     input.set(bytes);
     const hash = await crypto.subtle.digest("SHA-256", input.buffer);
-    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
-/** @param {string} url */
-export function normalizeGitHubBlobUrl(url) {
+export function normalizeGitHubBlobUrl(url: string) {
     const parsed = new URL(url);
     if (parsed.hostname !== "github.com") return url;
     const parts = parsed.pathname.split("/").filter(Boolean);
@@ -71,21 +82,18 @@ export function normalizeGitHubBlobUrl(url) {
     return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${pathParts.join("/")}`;
 }
 
-/** @param {string} url */
-async function readUrlBytes(url) {
+async function readUrlBytes(url: string) {
     if (url.startsWith("file://")) return await fsReadFile(fromFileUrl(url));
     const response = await fetch(normalizeGitHubBlobUrl(url));
     if (!response.ok) throw new Error(`Download failed ${response.status}: ${url}`);
     return new Uint8Array(await response.arrayBuffer());
 }
 
-/** @param {string} name */
-function sanitizeLicenseFileName(name) {
+function sanitizeLicenseFileName(name: string) {
     return name.replace(/[^A-Za-z0-9._-]/g, "-");
 }
 
-/** @param {string} binary @param {string} tag */
-async function assertBinaryReleaseIdentity(binary, tag) {
+async function assertBinaryReleaseIdentity(binary: string, tag: string) {
     const bytes = await fsReadFile(binary);
     const text = new TextDecoder().decode(bytes);
     if (!text.includes(`"${tag}"`)) {
@@ -93,8 +101,7 @@ async function assertBinaryReleaseIdentity(binary, tag) {
     }
 }
 
-/** @param {string} command @param {string[]} args @param {string} [cwd] */
-async function run(command, args, cwd) {
+async function run(command: string, args: string[], cwd?: string) {
     const result = await captureScriptProcess(command, {
         args,
         cwd,
@@ -108,8 +115,7 @@ async function run(command, args, cwd) {
     );
 }
 
-/** @param {string} root @param {string} fileName @returns {Promise<string>} */
-async function findFile(root, fileName) {
+async function findFile(root: string, fileName: string): Promise<string> {
     for await (const entry of await fsReaddir(root, { withFileTypes: true })) {
         const path = join(root, entry.name);
         if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) return path;
@@ -121,8 +127,7 @@ async function findFile(root, fileName) {
     return "";
 }
 
-/** @param {WindowsHelperInput} helper */
-function renderNotice(helper) {
+function renderNotice(helper: WindowsHelperInput) {
     return [
         `${helper.name} ${helper.version}`,
         `License: ${helper.license}`,
@@ -133,8 +138,7 @@ function renderNotice(helper) {
     ].join("\n");
 }
 
-/** @param {WindowsHelperInput} helper @param {string} helpersDir @param {string} licensesDir @param {string} downloadDir */
-async function installHelper(helper, helpersDir, licensesDir, downloadDir) {
+async function installHelper(helper: WindowsHelperInput, helpersDir: string, licensesDir: string, downloadDir: string) {
     const bytes = await readUrlBytes(helper.url);
     const actual = await sha256(bytes);
     if (actual !== String(helper.sha256).toLowerCase()) {
@@ -161,8 +165,7 @@ async function installHelper(helper, helpersDir, licensesDir, downloadDir) {
     await fsWriteFile(join(licensesDir, `${helper.name}.NOTICE.txt`), renderNotice(helper));
 }
 
-/** @param {string} tag @param {string} [installDirectory] */
-function packageMetadata(tag, installDirectory = ".") {
+function packageMetadata(tag: string, installDirectory = "."): RunWieldPackageInstall {
     return {
         schemaVersion: 1,
         packageManager: "winget",
@@ -174,37 +177,31 @@ function packageMetadata(tag, installDirectory = ".") {
     };
 }
 
-/** @param {string} packageDir */
-async function assertPackageComplete(packageDir) {
-    for (
-        const path of [
-            "wld.exe",
-            "runwield-install.json",
-            "runtime/helpers/mnemoteca.exe",
-            "runtime/helpers/cymbal.exe",
-            "runtime/helpers/ketch.exe",
-            "runtime/helpers/agent-browser.exe",
-            "licenses/RUNWIELD-LICENSE.txt",
-            "licenses/mnemoteca-LICENSE.txt",
-            "licenses/cymbal-LICENSE.txt",
-            "licenses/ketch-LICENSE.txt",
-            "licenses/agent-browser-LICENSE.txt",
-        ]
-    ) {
+async function assertPackageComplete(packageDir: string) {
+    for (const path of [
+        "wld.exe",
+        "runwield-install.json",
+        "runtime/helpers/mnemoteca.exe",
+        "runtime/helpers/cymbal.exe",
+        "runtime/helpers/ketch.exe",
+        "runtime/helpers/agent-browser.exe",
+        "licenses/RUNWIELD-LICENSE.txt",
+        "licenses/mnemoteca-LICENSE.txt",
+        "licenses/cymbal-LICENSE.txt",
+        "licenses/ketch-LICENSE.txt",
+        "licenses/agent-browser-LICENSE.txt",
+    ]) {
         const stat = await fsStat(join(packageDir, path)).catch(() => null);
         if (!stat?.isFile()) throw new Error(`Windows package is missing ${path}.`);
     }
 }
 
-/** @param {{ tag: string, binary: string, output: string, inputsPath: string }} options */
-export async function packageWindows(options) {
+export async function packageWindows(options: WindowsPackageOptions) {
     const parsed = parseReleaseTag(options.tag);
     const binaryStat = await fsStat(options.binary).catch(() => null);
     if (!binaryStat?.isFile()) throw new Error(`Compiled Windows binary not found: ${options.binary}`);
     await assertBinaryReleaseIdentity(options.binary, parsed.tag);
-    const inputs = /** @type {{ packageIdentifier?: string, helpers?: WindowsHelperInput[] }} */ (JSON.parse(
-        await fsReadFile(options.inputsPath, "utf8"),
-    ));
+    const inputs: WindowsPackageInputs = JSON.parse(await fsReadFile(options.inputsPath, "utf8"));
     if (inputs.packageIdentifier !== PACKAGE_ID) throw new Error(`Windows package identifier must be ${PACKAGE_ID}.`);
     if (!Array.isArray(inputs.helpers) || inputs.helpers.length === 0) {
         throw new Error("Windows helper inventory is empty.");
@@ -241,9 +238,11 @@ export async function packageWindows(options) {
         await fsWriteFile(join(output, `${zipName}.sha256`), `${sum}  ${zipName}\n`);
         await fsWriteFile(
             join(output, "runwield-windows-package.json"),
-            `${
-                JSON.stringify({ tag: parsed.tag, asset: zipName, sha256: sum, packageIdentifier: PACKAGE_ID }, null, 4)
-            }\n`,
+            `${JSON.stringify(
+                { tag: parsed.tag, asset: zipName, sha256: sum, packageIdentifier: PACKAGE_ID },
+                null,
+                4,
+            )}\n`,
         );
     } finally {
         await fsRm(work, { recursive: true }).catch(() => {});

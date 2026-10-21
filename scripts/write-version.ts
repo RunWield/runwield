@@ -10,7 +10,7 @@
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { env } from "node:process";
-import { REMOTE_PROTOCOL_VERSION } from "./build-metadata.js";
+import { REMOTE_PROTOCOL_VERSION } from "./build-metadata.ts";
 
 const FILE_PATH = "src/shared/version.js";
 const EXPLICIT_BUILD_VERSION_ENV = "WLD_BUILD_VERSION";

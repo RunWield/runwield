@@ -3,7 +3,7 @@ import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWrit
 import { tmpdir } from "node:os";
 import { assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { assertReviewAssetsAvailableInRuntime } from "./assert-workspace-review-runtime.js";
+import { assertReviewAssetsAvailableInRuntime } from "./assert-workspace-review-runtime.ts";
 
 test("Workspace review runtime asset gate follows nested JS and CSS references", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "wld-review-runtime-assets-"));

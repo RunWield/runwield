@@ -153,7 +153,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "package:windows",
             args: ["--binary", "a directory/wld.exe"],
-            last: { path: "scripts/package-windows.js", args: ["--binary", "a directory/wld.exe"] },
+            last: { path: "scripts/package-windows.ts", args: ["--binary", "a directory/wld.exe"] },
         },
         {
             task: "prototype",
