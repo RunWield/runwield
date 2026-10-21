@@ -30,28 +30,19 @@ const INPUTS = [
 const EXCLUDED = new Set([BUILD_IDENTITY_PATH, "src/shared/version.js"]);
 const encoder = new TextEncoder();
 
-/** @param {Uint8Array} bytes */
-export async function sha256Bytes(bytes) {
+export async function sha256Bytes(bytes: Uint8Array): Promise<string> {
     return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes))))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 }
 
-/** @param {string} path */
-export async function sha256File(path) {
+export async function sha256File(path: string): Promise<string> {
     return sha256Bytes(await readFile(path));
 }
 
-/**
- * @param {string} root
- * @param {boolean} includeRuntime
- * @returns {Promise<string[]>}
- */
-async function inputFiles(root, includeRuntime) {
-    /** @type {string[]} */
-    const found = [];
-    /** @param {string} name */
-    async function visit(name) {
+async function inputFiles(root: string, includeRuntime: boolean): Promise<string[]> {
+    const found: string[] = [];
+    async function visit(name: string): Promise<void> {
         if (
             EXCLUDED.has(name) ||
             name.endsWith(".test.js") ||
@@ -84,14 +75,13 @@ async function inputFiles(root, includeRuntime) {
     return found.sort();
 }
 
-/**
- * @param {string} root
- * @param {string} runtimeVersion
- * @param {string[]} compileOptions Common flags/includes, without output, target or reload.
- * @param {boolean} [includeRuntime]
- * @returns {Promise<string>}
- */
-export async function computeBuildIdentity(root, runtimeVersion, compileOptions, includeRuntime = true) {
+/** Common flags/includes exclude output, target, and reload. */
+export async function computeBuildIdentity(
+    root: string,
+    runtimeVersion: string,
+    compileOptions: string[],
+    includeRuntime = true,
+): Promise<string> {
     const parts = [
         JSON.stringify({
             schema: BUILD_METADATA_SCHEMA,
@@ -106,20 +96,20 @@ export async function computeBuildIdentity(root, runtimeVersion, compileOptions,
     return sha256Bytes(encoder.encode(parts.join("\n")));
 }
 
-/**
- * @typedef {Object} ArtifactMetadata
- * @property {number} schema
- * @property {number} protocol
- * @property {string} buildId
- * @property {string} target
- * @property {string} version
- * @property {string} sha256
- */
+export interface ArtifactMetadata {
+    schema: number;
+    protocol: number;
+    buildId: string;
+    target: string;
+    version: string;
+    sha256: string;
+}
 
-/** @param {string} artifact @param {string} metadataPath @returns {Promise<ArtifactMetadata>} */
-export async function verifyBuildArtifact(artifact, metadataPath = `${artifact}.build.json`) {
-    /** @type {ArtifactMetadata} */
-    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
+export async function verifyBuildArtifact(
+    artifact: string,
+    metadataPath = `${artifact}.build.json`,
+): Promise<ArtifactMetadata> {
+    const metadata: ArtifactMetadata = JSON.parse(await readFile(metadataPath, "utf8"));
     if (
         metadata.schema !== BUILD_METADATA_SCHEMA ||
         metadata.protocol !== REMOTE_PROTOCOL_VERSION ||

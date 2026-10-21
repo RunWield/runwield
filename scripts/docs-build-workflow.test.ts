@@ -4,7 +4,7 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 import { git } from "../src/shared/git-test-fixture.ts";
-import { sha256File } from "./build-metadata.js";
+import { sha256File } from "./build-metadata.ts";
 import {
     decoder,
     docsFixture,
