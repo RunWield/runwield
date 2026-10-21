@@ -107,6 +107,9 @@ export async function reviewLoadedPlanDirectly({
     const rearm = async (): Promise<DirectPlanReviewResult> => {
         const { plan: saved } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true });
         if (!saved) throw new Error(`Plan ${plan.planName} is unavailable for review.`);
+        const eligibility = getDirectPlanReviewEligibility(saved);
+        if (!eligibility.eligible)
+            throw new Error(eligibility.message || `Plan ${plan.planName} cannot be reviewed in its current status.`);
         return await reviewLoadedPlanDirectly({
             projectRoot,
             plan: { ...saved, planName: plan.planName },

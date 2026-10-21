@@ -143,7 +143,8 @@ test("Plan review stale errors offer a clear reload action", async () => {
 
 test("Plan annotations use default chat and a per-type queue instead of sending or attaching from the pane", async () => {
     await withReview(async ({ container, button, addNote, openChat, fill, submitted }) => {
-        await openChat();
+        const opener = container.querySelector('[aria-label="Open annotations sidebar"]');
+        if (opener) await act(() => opener.click());
         assertEquals(container.querySelector('button[title="Planner"]').getAttribute("aria-selected"), "true");
         await addNote("Keep the existing URLs.");
         assertStringIncludes(container.querySelector('[aria-label="Review Queue"]').textContent, "1 annotations");
@@ -976,3 +977,31 @@ test("a Sequence child revision clears the group approval warning and preserves 
         { sequenceDocuments },
     );
 });
+
+for (const workspace of [false, true]) {
+    test(`${workspace ? "Workspace" : "standalone"} reports a failed review re-arm instead of waiting indefinitely`, async () => {
+        await withReview(
+            async ({ container, button, fill, failRearm }) => {
+                const opener = container.querySelector('[aria-label="Open annotations sidebar"]');
+                if (opener) await act(() => opener.click());
+                await fill(container.querySelector('textarea[aria-label="Message Planner"]'), "Explain the scope.");
+                failRearm("Plan target cannot be reviewed in its current status.");
+                await act(() => button("Send to Planner").click());
+                assertStringIncludes(container.textContent, "Plan target cannot be reviewed in its current status.");
+                await fill(container.querySelector('textarea[aria-label="Message Planner"]'), "Try again.");
+                assertEquals(button("Send to Planner").disabled, false);
+                assertEquals(button("Approve & Run").disabled, false);
+            },
+            "# Plan\n",
+            workspace
+                ? {
+                      conversationStatusUrl: undefined,
+                      operationStatusUrl: "/operation",
+                      planDetailUrl: "/detail",
+                      interactionAnswerBaseUrl: "/answers",
+                      interactionId: "initial",
+                  }
+                : {},
+        );
+    });
+}

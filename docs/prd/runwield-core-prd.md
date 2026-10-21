@@ -275,8 +275,8 @@ block in the reviewed Plan with its question and answer in place. An owner answe
 unanswered question uses its recommended default, marked “recommended; not answered in review”. Without a default, it
 records “Not answered. Engineer decides.” This happens before the approved Plan is saved, for both approval actions.
 Feedback leaves question blocks available for the planning conversation. Invalid blocks stay unchanged. The bundled
-Agents do not write these blocks; local Planner instructions can opt in. Sequence child Plans use a separate approval
-path and do not resolve these blocks.
+Agents do not write these blocks; local Planner instructions can opt in. Sequence approval applies the same settlement
+rules to each reviewed document, including child Plans.
 
 **Requirement: Discuss an Epic with Architect during review.** While an Epic is open for review, the user can chat with
 Architect on the review page across rounds in the same live Session. Architect can reply without editing or revise

@@ -35,15 +35,21 @@ export async function rearmPlanReviewConversation(
     planName: string,
     planningAgentName: string,
 ): Promise<import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
-    const runtime = planReviewRuntimeOwners.get(session);
-    if (!runtime) throw new Error("The Plan review has no owning Session runtime.");
-    return await runtime.continuePlanReviewConversation(session.id, planName, planningAgentName);
+    if (session.planReviewConversations.canceled) return { outcome: "canceled", planName };
+    try {
+        const runtime = planReviewRuntimeOwners.get(session);
+        if (!runtime) throw new Error("The Plan review has no owning Session runtime.");
+        return await runtime.continuePlanReviewConversation(session.id, planName, planningAgentName);
+    } catch (error) {
+        session.planReviewConversations.failActive(error instanceof Error ? error.message : String(error));
+        throw error;
+    }
 }
 
 export class SessionRuntime {
     readonly #host: SessionHost;
 
-    private ownPlanReviewRuntime(sessionId: string): void {
+    #ownPlanReviewRuntime(sessionId: string): void {
         const session = this.#host.getSession(sessionId);
         if (session) planReviewRuntimeOwners.set(session, this);
     }
@@ -209,7 +215,7 @@ export class SessionRuntime {
         return this.#settings.clearActiveExecutionWorkflow(...args);
     }
     reopenPlanReview(sessionId: string) {
-        this.ownPlanReviewRuntime(sessionId);
+        this.#ownPlanReviewRuntime(sessionId);
         return this.#workflows.reopenPlanReview(sessionId, this);
     }
     continuePlanReviewConversation(sessionId: string, planName: string, planningAgentName: string) {
@@ -219,19 +225,19 @@ export class SessionRuntime {
         return this.#workflows.runPlanAction(...args);
     }
     reviewSavedPlan(...args: Parameters<RuntimeWorkflows["reviewSavedPlan"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#workflows.reviewSavedPlan(...args);
     }
     executePlan(...args: Parameters<RuntimeWorkflows["executePlan"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#workflows.executePlan(...args);
     }
     runPlanningAgent(...args: Parameters<RuntimeWorkflows["runPlanningAgent"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#workflows.runPlanningAgent(...args);
     }
     runSlicerAgent(...args: Parameters<RuntimeWorkflows["runSlicerAgent"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#workflows.runSlicerAgent(...args);
     }
     runEpicIntegrationGate(...args: Parameters<RuntimeWorkflows["runEpicIntegrationGate"]>) {
@@ -343,11 +349,11 @@ export class SessionRuntime {
         return this.#lifecycle.adoptManagedSession(...args);
     }
     promptUserTurn(...args: Parameters<RuntimeTurns["promptUserTurn"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#turns.promptUserTurn(...args);
     }
     promptManagedSession(...args: Parameters<RuntimeTurns["promptManagedSession"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#turns.promptManagedSession(...args);
     }
     rollManagedSessionSegment(...args: Parameters<RuntimeTurns["rollManagedSessionSegment"]>) {
@@ -384,7 +390,7 @@ export class SessionRuntime {
         return this.#turns.cancelSession(...args);
     }
     promptSession(...args: Parameters<RuntimeTurns["promptSession"]>) {
-        this.ownPlanReviewRuntime(args[0]);
+        this.#ownPlanReviewRuntime(args[0]);
         return this.#turns.promptSession(...args);
     }
     replaceSessionForExecutionFollowUp(

@@ -306,14 +306,16 @@ function assertReplyOnlyReviewApproval(result) {
         "The reply-only turn must not call plan_written again.",
     );
     const review =
-        /** @type {{ attrs: { status: string }, lifecycleEvents: Array<{ event: string }>, consumed: Array<{ decision: { approved: boolean } }>, plan: string }} */ (
+        /** @type {{ attrs: { status: string }, conversationDocuments: Array<{ before?: string, after?: string }>, lifecycleEvents: Array<{ event: string }>, consumed: Array<{ decision: { approved: boolean } }>, plan: string }} */ (
             result.state.planReview
         );
     assert(review.attrs.status === "ready_for_work", "Approval through the re-armed review must pass readiness.");
     assert(review.consumed.length === 2, "The same live page must accept chat then approval.");
     assert(
-        review.lifecycleEvents.map((event) => event.event).join(",") === "review_approved",
-        "A conversation turn must not record review_feedback.",
+        review.conversationDocuments.length === 1 &&
+            typeof review.conversationDocuments[0].before === "string" &&
+            review.conversationDocuments[0].after === review.conversationDocuments[0].before,
+        "A conversation turn must preserve the entire saved Plan, including lifecycle metadata.",
     );
     assert(review.plan.includes("Keep the original scope."), "A text-only reply must not revise the Plan.");
 }

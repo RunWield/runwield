@@ -935,19 +935,21 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     const savedFeedbackSuffix = reviewResult.feedback
                         ? `\n\nFeedback/annotations from review: ${reviewResult.feedback}`
                         : "";
+                    const details = {
+                        ...params,
+                        outcome: "saved" as const,
+                        planName,
+                        triageMeta: projectMeta,
+                        ...reviewContextDetails(reviewResult),
+                    };
+                    publishAcceptedPlanOutcome(details, reviewResult.images);
                     return textResult(
                         appendPlanAssociationFailure(
                             appendSessionCompleteGuidance(
                                 `Plan "${planName}" approved and saved for later decomposition. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
                             ),
                         ),
-                        {
-                            ...params,
-                            outcome: "saved",
-                            planName,
-                            triageMeta: projectMeta,
-                            ...reviewContextDetails(reviewResult),
-                        },
+                        details,
                         true,
                         reviewResult.images,
                     );

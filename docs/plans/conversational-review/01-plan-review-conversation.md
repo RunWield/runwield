@@ -38,7 +38,7 @@ order: 1
 dependencies: []
 userVerifiedAt: null
 targetBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Plan Review Conversation

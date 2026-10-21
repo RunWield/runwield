@@ -8,7 +8,6 @@ import { readPersistedActiveAgentName, readPersistedManualModelState } from "./a
 import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
 import {
     appendDebugLog,
-    clearAgentSessionQueueForTransition,
     ensureRootAgentSession,
     getConfiguredAgentModel,
     getRootSessionSwitchState,

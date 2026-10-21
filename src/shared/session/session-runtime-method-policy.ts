@@ -17,6 +17,7 @@ export const SESSION_RUNTIME_METHOD_POLICY = {
     closeSession: "cancellation_cleanup",
     closeSessionWhenIdle: "cancellation_cleanup",
     compactSession: "fenced_standalone_mutation",
+    continuePlanReviewConversation: "nested_only_mutation",
     createInteractiveSession: "initializer_adopter",
     createPromptReadySession: "initializer_adopter",
     cycleSessionThinkingLevel: "fenced_standalone_mutation",

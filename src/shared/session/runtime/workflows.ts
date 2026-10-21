@@ -20,80 +20,18 @@ import type { RuntimeReads } from "./reads.ts";
 import type { RuntimeAgentSettings } from "./agent-settings.ts";
 import type { RuntimeManagedSync } from "./managed-sync.ts";
 import type { RuntimeTurns } from "./turns.ts";
+import { isValidationTriageMeta } from "./workflow-options.ts";
 import type {
+    RuntimeValidationResult,
+    SemanticRepairHandoffResult,
+    SemanticRepairContinuation,
+    RuntimeSemanticRepairOptions,
     RuntimeExecutePlanOptions,
     RuntimePlanningOptions,
     RuntimeSlicerOptions,
-    RuntimeTriageInput,
     RuntimeValidationOptions,
     RuntimeWorkflowOptions,
 } from "./workflow-options.ts";
-
-type WorkflowValidationResult = import("../../workflow/validation.ts").WorkflowValidationResult;
-interface SemanticRepairHandoffResult {
-    kind: "semantic_repair_handoff";
-    planName?: string;
-    projectRoot?: string;
-    semanticRepairHandoff: NonNullable<WorkflowValidationResult["semanticRepairHandoff"]>;
-}
-type SemanticRepairContinuation = Omit<
-    import("../../workflow/execution-segment-handoff.ts").SemanticRepairSegmentContinuation,
-    "activeWorkflow"
-> & { activeWorkflow: import("../hosted-session.js").ActiveExecutionWorkflow };
-interface RuntimeSemanticRepairOptions {
-    planName: string;
-    planContent?: string;
-    triageMeta?: import("../../../tools/plan-written.ts").TriageMeta;
-}
-
-export interface RuntimeValidationResult {
-    kind?: string;
-    ok?: boolean;
-    error?: string;
-    planName?: string;
-    projectRoot?: string;
-    reason?: string;
-    executionComplete?: boolean;
-    executionContext?: import("../hosted-session.js").ActiveExecutionWorkflow;
-    executionSegmentHandoff?: import("../../workflow/execution-segment-handoff.ts").ExecutionSegmentContinuation;
-    epicContinuation?: NonNullable<WorkflowValidationResult["epicContinuation"]>;
-    semanticRepairHandoff?: WorkflowValidationResult["semanticRepairHandoff"];
-}
-
-function isValidationTriageMeta(
-    value: RuntimeTriageInput,
-): value is import("../../../tools/plan-written.ts").TriageMeta {
-    const classifications = new Set(["QUICK_FIX", "PLANNED_CHANGE", "FEATURE", "PROJECT"]);
-    const complexities = new Set(["LOW", "MEDIUM", "HIGH"]);
-    const statuses = new Set([
-        "approved",
-        "draft",
-        "ready_for_decomposition",
-        "ready_for_work",
-        "in_progress",
-        "failed",
-        "implemented",
-        "validated_ci",
-        "reviewed",
-        "validated",
-        "blocked",
-        "canceled",
-        "abandoned",
-        "superseded",
-    ]);
-    const executionAgents = new Set(["engineer", "frontend-engineer"]);
-    return (
-        value.planId !== null &&
-        value.parentPlan !== null &&
-        (value.classification === undefined ||
-            (value.classification !== null && classifications.has(value.classification))) &&
-        (value.complexity === undefined || (value.complexity !== null && complexities.has(value.complexity))) &&
-        (value.status === undefined || (value.status !== null && statuses.has(value.status))) &&
-        (!("executionAgent" in value) ||
-            value.executionAgent === undefined ||
-            (typeof value.executionAgent === "string" && executionAgents.has(value.executionAgent)))
-    );
-}
 
 type RuntimeEventsDependency = Pick<RuntimeEvents, "emitSessionEvent" | "runBusyOperation">;
 type RuntimeLifecycleDependency = Pick<
@@ -301,6 +239,7 @@ export class RuntimeWorkflows {
             ) {
                 return { kind: "busy", message: "This Session is busy with other work. Try again when it is idle." };
             }
+            session.planReviewConversations.failActive(error instanceof Error ? error.message : String(error));
             throw error;
         } finally {
             this.reopeningPlanReviews.delete(sessionId);
@@ -343,6 +282,7 @@ export class RuntimeWorkflows {
                 images: options.reviewImages,
             };
         }
+        if (result.kind !== "complete" && result.kind !== "unanswered") throw new Error(result.message);
         return { outcome: result.kind === "unanswered" ? "canceled" : "saved", planName };
     }
 
@@ -625,13 +565,20 @@ ${outcome.feedback || ""}`,
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.runPlanningAgent: session not found");
         return await this.runWorkflowOperation(session, "runPlanningAgent", options, async () => {
+            session.planReviewConversations.canceled = false;
             const { runPlanningAgent } = await import("../../workflow/workflow.js");
             const manager = session.getRootSessionManager();
-            return await runPlanningAgent({
-                ...options,
-                hostedSession: session,
-                sessionManager: isRuntimeRootSessionManager(manager) ? manager : undefined,
-            });
+            try {
+                const result = await runPlanningAgent({
+                    ...options,
+                    hostedSession: session,
+                    sessionManager: isRuntimeRootSessionManager(manager) ? manager : undefined,
+                });
+                return session.planReviewConversations.canceled ? { outcome: "canceled" as const } : result;
+            } catch (error) {
+                if (session.planReviewConversations.canceled) return { outcome: "canceled" as const };
+                throw error;
+            }
         });
     }
 

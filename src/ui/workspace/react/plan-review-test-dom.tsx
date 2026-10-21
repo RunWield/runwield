@@ -100,11 +100,12 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
     let rejectNext = false;
     let heldStatus;
     let releaseStatus;
-    let statusEvents = [];
+    const statusEvents = [];
     let pendingReply;
     let pendingError;
     let nextDocuments = overrides.sequenceDocuments;
     let emptyPolls = 0;
+    let rearmError;
 
     try {
         for (const name of names)
@@ -158,12 +159,25 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
                               request: { type: "plan_review", planReview: { sequenceDocuments: nextDocuments } },
                           }
                         : null;
-                return Promise.resolve(Response.json({ status: "completed", events: statusEvents, liveInteraction }));
+                return Promise.resolve(
+                    Response.json({
+                        status: rearmError ? "failed" : "completed",
+                        error: rearmError,
+                        events: statusEvents,
+                        liveInteraction: rearmError ? null : liveInteraction,
+                    }),
+                );
             }
             if (String(url) === "/detail") return Promise.resolve(Response.json({ plan: { markdown: nextPlan } }));
             if (String(url) === "/status") {
                 const response = () =>
-                    Response.json({ revision, plan: nextPlan, sequenceDocuments: nextDocuments, events: statusEvents });
+                    Response.json({
+                        revision: rearmError ? revision - 1 : revision,
+                        error: revision > 0 ? rearmError : undefined,
+                        plan: nextPlan,
+                        sequenceDocuments: nextDocuments,
+                        events: statusEvents,
+                    });
                 if (heldStatus && revision > 0) return heldStatus.then(response);
                 return Promise.resolve(response());
             }
@@ -220,6 +234,9 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
             delayRearm: (polls) => {
                 emptyPolls = polls;
             },
+            failRearm: (message) => {
+                rearmError = message;
+            },
             failNext: () => {
                 rejectNext = true;
             },
@@ -229,7 +246,7 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
                 });
             },
             release: async () => {
-                await act(async () => {
+                await act(() => {
                     releaseStatus?.();
                     heldStatus = null;
                 });

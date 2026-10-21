@@ -13,6 +13,7 @@ export interface PlanReviewConversation {
     id: string;
     agentLabel: string;
     revision: number;
+    error?: string;
     events: PlanReviewConversationEvent[];
 }
 
@@ -48,6 +49,7 @@ export class PlanReviewConversationOwner {
     private activePlanId: string | null = null;
     private activeAgentName: string | null = null;
     private disposed = false;
+    canceled = false;
 
     capture(event: HostedRuntimeEventObservation): void {
         if (
@@ -98,10 +100,17 @@ export class PlanReviewConversationOwner {
             };
             this.conversations.set(planId, conversation);
         }
+        this.canceled = false;
         this.activePlanId = planId;
         this.activeAgentName = planningAgentName;
         conversation.agentLabel = planningAgentLabel(planningAgentName);
+        delete conversation.error;
         return conversation;
+    }
+
+    failActive(message: string): void {
+        const conversation = this.activePlanId ? this.conversations.get(this.activePlanId) : null;
+        if (conversation) conversation.error = message;
     }
 
     /** End capture after a final decision. A conversation turn is not final. */

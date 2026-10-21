@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { ok as assert } from "node:assert/strict";
+import { ok as assert, rejects } from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type TranscriptContext } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -42,8 +42,8 @@ async function answer(url: string, body: ReviewAnswer) {
 }
 
 for (const source of ["tool", "saved", "epic"] as const) {
-    for (const reply of ["text-only reply", "Agent error", "Agent cancellation"] as const) {
-        test(`${source} review re-arms the same conversation after ${reply} and accepts approval`, async () => {
+    for (const reply of ["text-only reply", "Agent error", "Escape cancellation", "unreviewable Plan"] as const) {
+        test(`${source} review handles ${reply}`, async () => {
             await withRuntimeCommandFixture(
                 "conversation-rearm-",
                 async ({ homeDir, projectRoot, setModelResponseFactories }) => {
@@ -73,8 +73,13 @@ for (const source of ["tool", "saved", "epic"] as const) {
                             : []),
                         async (context) => {
                             transcript = context;
+                            if (reply === "unreviewable Plan") {
+                                const markdown = await readFile(initial.path, "utf8");
+                                await writeFile(initial.path, markdown.replace(/^status:.*$/m, "status: implemented"));
+                                throw new Error("The Agent left a Plan that cannot be reviewed.");
+                            }
                             if (reply === "Agent error") throw new Error("The planning provider is unavailable.");
-                            if (reply === "Agent cancellation") {
+                            if (reply === "Escape cancellation") {
                                 agentWorking = true;
                                 await agentGate;
                             }
@@ -140,12 +145,43 @@ for (const source of ["tool", "saved", "epic"] as const) {
                             conversationTurn: true,
                             feedback: "Why this boundary?",
                         });
-                        if (reply === "Agent cancellation") {
+                        if (reply === "Escape cancellation") {
                             for (let i = 0; i < 300 && !agentWorking; i++)
                                 await new Promise((resolve) => setTimeout(resolve, 10));
                             assert(agentWorking, "The planning provider must be working before cancellation");
                             assertEquals(runtime.cancelSession(sessionId).aborted, true);
                             releaseAgent();
+                        }
+                        if (reply === "Escape cancellation") {
+                            await Promise.race([
+                                running,
+                                new Promise((_, reject) =>
+                                    setTimeout(() => reject(new Error("Canceled review reopened")), 3000),
+                                ),
+                            ]);
+                            assertEquals(rounds, 1, "Escape during the Agent turn must not reopen review");
+                            assertEquals(await readFile(before.path, "utf8"), before.markdown);
+                            return;
+                        }
+                        if (reply === "unreviewable Plan") {
+                            await rejects(
+                                Promise.race([
+                                    running,
+                                    new Promise((_, reject) =>
+                                        setTimeout(() => reject(new Error("Re-arm did not settle")), 3000),
+                                    ),
+                                ]),
+                                /cannot be reviewed|not reviewable|status/i,
+                            );
+                            assertEquals(rounds, 1);
+                            const statusUrl = new URL(firstUrl);
+                            statusUrl.pathname = "/api/review/conversation";
+                            const response = await fetch(statusUrl);
+                            assertEquals(response.status, 200);
+                            const status = await response.json();
+                            assertStringIncludes(status.error, "review");
+                            assertEquals(status.revision, conversations[0].revision);
+                            return;
                         }
                         for (let i = 0; i < 500 && rounds < 2; i++)
                             await new Promise((resolve) => setTimeout(resolve, 10));

@@ -434,6 +434,7 @@ test("SessionRuntime public surface remains adapter-neutral and explicit", () =>
         "closeSessionWhenIdle",
         "compactSession",
         "constructor",
+        "continuePlanReviewConversation",
         "createInteractiveSession",
         "createPromptReadySession",
         "cycleSessionThinkingLevel",

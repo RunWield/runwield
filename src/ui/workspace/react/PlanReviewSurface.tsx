@@ -701,6 +701,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             const response = await fetch(initialPayload.conversationStatusUrl);
             const conversation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(conversation.error || `${agentLabel} status is unavailable.`);
+            if (conversation.error) throw new Error(conversation.error);
 
             const events = Array.isArray(conversation.events) ? conversation.events : [];
             const reply = collectArtifactConversationReply(events, options.eventStartIndex);
@@ -745,6 +746,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 upsertPlannerReply(options.agentMessageId, reply.text);
             }
 
+            if (operation.status === "failed") {
+                throw new Error(operation.error || "The Plan review could not be restored. Reload to try again.");
+            }
             const interaction = operation.liveInteraction;
             if (
                 interaction?.interactionId &&
