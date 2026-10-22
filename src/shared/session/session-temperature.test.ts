@@ -8,20 +8,38 @@ import {
     normalizeContext,
 } from "@earendil-works/pi-ai";
 import { applySessionTemperature } from "./session.js";
+import type {
+    Api,
+    AssistantMessage,
+    AssistantMessageEventStream,
+    Model,
+    SimpleStreamOptions,
+    TranscriptContext,
+} from "@earendil-works/pi-ai";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
-/**
- * @typedef {Object} StreamCall
- * @property {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @property {import('@earendil-works/pi-ai').TranscriptContext} context
- * @property {import('@earendil-works/pi-ai').SimpleStreamOptions | undefined} options
- */
+interface StreamCall {
+    model: Model<Api>;
+    context: TranscriptContext;
+    options: SimpleStreamOptions | undefined;
+}
 
-/**
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @param {string} [errorMessage]
- * @returns {import('@earendil-works/pi-ai').AssistantMessage}
- */
-function assistantMessage(model, errorMessage) {
+interface TemperatureSessionFixture {
+    agent: Pick<AgentSession["agent"], "streamFunction">;
+}
+
+interface SessionFixture {
+    session: AgentSession;
+    calls: StreamCall[];
+}
+
+type StreamResponder = (
+    model: Model<Api>,
+    options: SimpleStreamOptions | undefined,
+    calls: StreamCall[],
+) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
+
+function assistantMessage(model: Model<Api>, errorMessage?: string): AssistantMessage {
     return {
         role: "assistant",
         content: [],
@@ -42,12 +60,7 @@ function assistantMessage(model, errorMessage) {
     };
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @param {string} [errorMessage]
- * @returns {import('@earendil-works/pi-ai').AssistantMessageEventStream}
- */
-function completedStream(model, errorMessage) {
+function completedStream(model: Model<Api>, errorMessage?: string): AssistantMessageEventStream {
     const stream = createAssistantMessageEventStream();
     const message = assistantMessage(model, errorMessage);
     stream.push({ type: "start", partial: message });
@@ -59,29 +72,21 @@ function completedStream(model, errorMessage) {
     return stream;
 }
 
-/**
- * @param {(model: import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>, options: import('@earendil-works/pi-ai').SimpleStreamOptions | undefined, calls: StreamCall[]) => import('@earendil-works/pi-ai').AssistantMessageEventStream | Promise<import('@earendil-works/pi-ai').AssistantMessageEventStream>} responder
- * @returns {{ session: import('@earendil-works/pi-coding-agent').AgentSession, calls: StreamCall[] }}
- */
-function fakeSession(responder) {
-    /** @type {StreamCall[]} */
-    const calls = [];
-    const session = /** @type {import('@earendil-works/pi-coding-agent').AgentSession} */ ({
+function fakeSession(responder: StreamResponder): SessionFixture {
+    const calls: StreamCall[] = [];
+    const session: TemperatureSessionFixture = {
         agent: {
             streamFunction(model, context, options) {
                 calls.push({ model, context, options });
                 return responder(model, options, calls);
             },
         },
-    });
-    return { session, calls };
+    };
+    // Preserve the existing stream-only SDK fixture; the wrapper uses no other session members.
+    return { session: session as AgentSession, calls };
 }
 
-/**
- * @param {Partial<import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>>} overrides
- * @returns {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>}
- */
-function testModel(overrides) {
+function testModel(overrides: Partial<Model<Api>>): Model<Api> {
     return {
         id: "test-model",
         name: "Test model",
@@ -116,11 +121,9 @@ test("applySessionTemperature omits temperature for known no-sampling model fami
         applySessionTemperature(session, 0.4);
 
         const events = [];
-        const source = await session.agent.streamFunction(
-            model,
-            normalizeContext({ messages: [] }),
-            { temperature: 0.9 },
-        );
+        const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
+            temperature: 0.9,
+        });
         for await (const event of source) {
             events.push(event.type);
         }
@@ -136,11 +139,7 @@ test("applySessionTemperature still configures providers that accept it", async 
     applySessionTemperature(session, 0.4);
 
     const model = testModel({ id: "temperature-model" });
-    const source = await session.agent.streamFunction(
-        model,
-        normalizeContext({ messages: [] }),
-        { maxTokens: 100 },
-    );
+    const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), { maxTokens: 100 });
     for await (const _event of source) {
         // Consume the wrapped stream.
     }
@@ -179,11 +178,7 @@ test("applySessionTemperature retries exact unsupported parameter errors without
     });
     const events = [];
     const signal = AbortSignal.timeout(5_000);
-    const source = await session.agent.streamFunction(
-        model,
-        transcript,
-        { maxTokens: 100, signal },
-    );
+    const source = await session.agent.streamFunction(model, transcript, { maxTokens: 100, signal });
     for await (const event of source) {
         events.push(event.type);
     }
@@ -192,7 +187,10 @@ test("applySessionTemperature retries exact unsupported parameter errors without
     assertStrictEquals(calls[0].context, transcript);
     assertStrictEquals(calls[1].context, transcript);
     assertEquals(getCurrentSystemPrompt(calls[1].context.messages), "Base instructions\n\nLater instructions");
-    assertEquals(getCurrentTools(calls[1].context.messages).map((tool) => tool.name), ["current"]);
+    assertEquals(
+        getCurrentTools(calls[1].context.messages).map((tool) => tool.name),
+        ["current"],
+    );
     assertEquals(calls[0].options?.maxTokens, 100);
     assertEquals(calls[0].options?.temperature, 0.4);
     assertStrictEquals(calls[0].options?.signal, signal);
@@ -220,19 +218,17 @@ test("applySessionTemperature retries temperature capability errors", async () =
 
         const model = testModel({ id: `fixed-temperature-model-${index}` });
         const events = [];
-        const source = await session.agent.streamFunction(
-            model,
-            normalizeContext({ messages: [] }),
-            { maxTokens: 100 },
-        );
+        const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
+            maxTokens: 100,
+        });
         for await (const event of source) {
             events.push(event.type);
         }
 
-        assertEquals(calls.map((call) => call.options), [
-            { maxTokens: 100, temperature: 0.4 },
-            { maxTokens: 100 },
-        ]);
+        assertEquals(
+            calls.map((call) => call.options),
+            [{ maxTokens: 100, temperature: 0.4 }, { maxTokens: 100 }],
+        );
         assertEquals(events, ["start", "done"]);
     }
 });
@@ -248,21 +244,18 @@ test("applySessionTemperature remembers discovered temperature capability failur
     applySessionTemperature(session, 0.4);
 
     for (let i = 0; i < 2; i += 1) {
-        const source = await session.agent.streamFunction(
-            model,
-            normalizeContext({ messages: [] }),
-            { maxTokens: 100 },
-        );
+        const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
+            maxTokens: 100,
+        });
         for await (const _event of source) {
             // Consume the wrapped stream.
         }
     }
 
-    assertEquals(calls.map((call) => call.options), [
-        { maxTokens: 100, temperature: 0.4 },
-        { maxTokens: 100 },
-        { maxTokens: 100 },
-    ]);
+    assertEquals(
+        calls.map((call) => call.options),
+        [{ maxTokens: 100, temperature: 0.4 }, { maxTokens: 100 }, { maxTokens: 100 }],
+    );
 });
 
 test("applySessionTemperature retries rejected temperature capability requests", async () => {
@@ -280,19 +273,15 @@ test("applySessionTemperature retries rejected temperature capability requests",
     applySessionTemperature(session, 0.4);
 
     const events = [];
-    const source = await session.agent.streamFunction(
-        model,
-        normalizeContext({ messages: [] }),
-        { maxTokens: 100 },
-    );
+    const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), { maxTokens: 100 });
     for await (const event of source) {
         events.push(event.type);
     }
 
-    assertEquals(calls.map((call) => call.options), [
-        { maxTokens: 100, temperature: 0.4 },
-        { maxTokens: 100 },
-    ]);
+    assertEquals(
+        calls.map((call) => call.options),
+        [{ maxTokens: 100, temperature: 0.4 }, { maxTokens: 100 }],
+    );
     assertEquals(events, ["start", "done"]);
 });
 
@@ -308,17 +297,18 @@ test("applySessionTemperature terminates wrapped streams on rejected provider er
         applySessionTemperature(session, 0.4);
 
         const events = [];
-        const source = await session.agent.streamFunction(
-            model,
-            normalizeContext({ messages: [] }),
-            { maxTokens: 100 },
-        );
+        const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
+            maxTokens: 100,
+        });
         for await (const event of source) {
             events.push(event);
         }
 
         assertEquals(calls.length, 1);
-        assertEquals(events.map((event) => event.type), ["error"]);
+        assertEquals(
+            events.map((event) => event.type),
+            ["error"],
+        );
         const errorEvent = events[0];
         if (errorEvent.type !== "error") throw new Error("expected an error event");
         assertEquals(errorEvent.reason, testCase.reason);
@@ -341,11 +331,7 @@ test("applySessionTemperature does not retry unsupported temperature after conte
     applySessionTemperature(session, 0.4);
 
     const events = [];
-    const source = await session.agent.streamFunction(
-        model,
-        normalizeContext({ messages: [] }),
-        { maxTokens: 100 },
-    );
+    const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), { maxTokens: 100 });
     for await (const event of source) {
         events.push(event.type);
     }
