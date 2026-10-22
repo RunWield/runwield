@@ -153,6 +153,47 @@ test("committed projection replays Agy backend status as display-only system sta
     assertEquals(JSON.stringify(events).includes("workflow_tool_event"), false);
 });
 
+test("committed projection replays loop-guard stops without exposing fingerprints", () => {
+    const events = createReplayEvents("synthetic-loop-guard", [
+        {
+            type: "custom",
+            id: "synthetic-loop-turn",
+            customType: "runwield.loop_guard_turn",
+            data: { version: 1, requestId: "synthetic-request", turnCount: 2 },
+        },
+        {
+            type: "custom",
+            id: "synthetic-loop-tool",
+            customType: "runwield.loop_guard_tool",
+            data: {
+                version: 1,
+                requestId: "synthetic-request",
+                signature: "private-fingerprint",
+            },
+        },
+        {
+            type: "custom",
+            id: "synthetic-loop-stop",
+            customType: "runwield.loop_guard_stop",
+            data: {
+                version: 1,
+                requestId: "synthetic-request",
+                reason: "repeating_tool_cycle",
+                stoppedAt: "2026-10-16T14:00:00.000Z",
+            },
+        },
+    ]);
+
+    assertEquals(events.map((event) => ({ type: event.type, level: event.level, header: event.header })), [
+        { type: "system_status", level: "warning", header: "RunWield" },
+    ]);
+    assertEquals(
+        events[0].message,
+        "Stopped this request after a tool call and result cycle repeated. Your Session is saved; send a new instruction to continue.",
+    );
+    assertEquals(JSON.stringify(events).includes("private-fingerprint"), false);
+});
+
 test("committed projection replays CLI backend final messages as ordinary transcript text", async () => {
     await withHome(async (home) => {
         const cwd = `${home}/project`;

@@ -19,6 +19,7 @@ import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-a
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { HostedSession } from "../session/hosted-session.js";
 import { runIsolatedAgentSession } from "../session/session.js";
+import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.js";
 import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.js";
@@ -73,6 +74,7 @@ export type IsolatedAgentSessionOptions = {
     userRequest: string;
     images?: Array<{ base64: string; mimeType: string }>;
     cwd: string;
+    resumePreviousRequest?: boolean;
     subAgentDefinition?: {
         id: import("../session/subagent-definitions.ts").SubAgentDefinitionId;
         options?: import("../session/subagent-definitions.ts").LoadSubAgentDefinitionOptions;
@@ -82,6 +84,8 @@ export type IsolatedAgentSessionOptions = {
     includeEditFallback?: boolean;
     sessionManager?: SessionManager;
     dispatchKind?: import("../session/request-dispatch.ts").RequestDispatchKind;
+    /** Request identity owned by a controller that runs several attempts as one unfinished unit of work. */
+    controllerRequestId?: string;
 };
 
 export type SemanticReviewPort = {
@@ -95,6 +99,15 @@ export const SYSTEM_SEMANTIC_REVIEW_PORT: SemanticReviewPort = Object.freeze({
 const pendingRepairManagers = new WeakMap<HostedSession, Map<string, SessionManager>>();
 type RepairSession = { manager: SessionManager; cwd: string; agentName: string; planName?: string };
 const lastRepairSessions = new WeakMap<HostedSession, RepairSession>();
+
+function hasUnfinishedRepairAttempt(manager: SessionManager): boolean {
+    const latest = readRequestAttemptEntries(manager).at(-1);
+    return Boolean(
+        latest &&
+            latest.dispatchKind === "validation_repair" &&
+            latest.phase !== "completed",
+    );
+}
 
 function getPendingRepairManager(hostedSession: HostedSession, cwd: string, userRequest: string): SessionManager {
     let managers = pendingRepairManagers.get(hostedSession);
@@ -266,6 +279,7 @@ async function runIsolatedRequest(
                         : [...REVIEWER_SUBAGENT_TOOLS],
                 customTools: bindReviewDiffTools(hostedSession, request.customTools),
                 includeEditFallback: false,
+                ...(request.controllerRequestId ? { controllerRequestId: request.controllerRequestId } : {}),
                 sessionManager:
                     (request.sessionManager as unknown as SessionManager) || SessionManager.inMemory(request.cwd),
             },
@@ -349,6 +363,7 @@ async function runIsolatedRequest(
             cwd: request.cwd,
             subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
             customTools: bindReviewDiffTools(hostedSession, request.customTools),
+            resumePreviousRequest: hasUnfinishedRepairAttempt(repairManager),
             sessionManager: repairManager,
         },
         "task_completed",
@@ -511,6 +526,7 @@ export function createValidationSessionPort(
                     userRequest,
                     cwd,
                     dispatchKind: "validation_repair",
+                    resumePreviousRequest: hasUnfinishedRepairAttempt(repairManager),
                     subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
                     sessionManager: repairManager,
                 },

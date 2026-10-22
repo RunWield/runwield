@@ -136,6 +136,7 @@ import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "./session-name.ts";
+import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 /** @returns {string | null} */
 function homePromptsDir() {
@@ -3888,6 +3889,7 @@ function agentTransitionSteeringSignature(steering) {
  * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
  * @param {AgentTransitionSteeringEntry[]} [opts.transitionSteering]
  * @param {() => void} [opts.onTransitionSteeringConsumed]
+ * @param {string} [opts.requestId]
  *
  * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
  */
@@ -3908,6 +3910,7 @@ export async function runPrompt({
     hostedSession,
     transitionSteering = [],
     onTransitionSteeringConsumed,
+    requestId = `prompt:${crypto.randomUUID()}`,
 }) {
     subscriberState.resetTurn();
 
@@ -3972,11 +3975,14 @@ export async function runPrompt({
             // Cancellation is best effort; the active prompt still observes the AbortSignal check below.
         }
     };
+    const loopGuard = attachRunawayLoopGuard({ session, requestId, hostedSession });
 
     try {
         signal?.throwIfAborted();
+        loopGuard.throwIfStopped();
         signal?.addEventListener("abort", abortPrompt, { once: true });
         while (true) {
+            loopGuard.throwIfStopped();
             if (hostedSession) {
                 await hostedSession.waitForAgentSteeringPreparations();
                 signal?.throwIfAborted();
@@ -4050,13 +4056,17 @@ export async function runPrompt({
         ) {
             throw new Error("background_result_cancelled");
         }
+        loopGuard.throwIfStopped();
         await session.prompt(preparedImages.text, requestOptions);
+        loopGuard.throwIfStopped();
         signal?.throwIfAborted();
         await session.agent.waitForIdle();
+        loopGuard.throwIfStopped();
     } catch (error) {
         promptError = error instanceof Error ? error : new Error(String(error));
         throw error;
     } finally {
+        loopGuard.dispose();
         signal?.removeEventListener("abort", abortPrompt);
         // Defensive cleanup handles abort/error paths where thinking_end may never fire.
         subscriberState.endThinking();
@@ -4528,6 +4538,8 @@ function recordPiExecutionContext(recorder, session, projection, samplingPoint) 
  * @param {import('../mcp/integration.ts').McpIntegration} [opts.mcpIntegration]
  * @param {AbortSignal} [opts.signal]
  * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
+ * @param {boolean} [opts.resumePreviousRequest] Explicitly continue the preceding unfinished request.
+ * @param {string} [opts.taskId] Stable identity for the controller-owned task being continued.
  * @param {boolean} [opts.disableAutoCompaction]
  * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
  * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
@@ -4540,6 +4552,8 @@ export async function runRootTurn({
     customTools,
     signal,
     dispatchKind = "interactive",
+    resumePreviousRequest = false,
+    taskId,
     disableAutoCompaction = false,
 }) {
     const targetHostedSession = requireHostedSession(hostedSession, "runRootTurn");
@@ -4610,6 +4624,8 @@ export async function runRootTurn({
         dispatch = prepareRequestDispatch(sessionManager, {
             userRequest: effectiveUserRequest,
             dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
+            resumePreviousRequest,
+            ...(!targetHostedSession.generatedTaskTurnId && taskId ? { taskId } : {}),
             ...(targetHostedSession.generatedTaskTurnId ? { taskId: targetHostedSession.generatedTaskTurnId } : {}),
             backend,
         });
@@ -4693,6 +4709,7 @@ export async function runRootTurn({
                     disableAutoCompaction,
                     hostedSession: targetHostedSession,
                     transitionSteering,
+                    requestId: dispatch.requestId,
                     onTransitionSteeringConsumed: () => {
                         transitionSteeringConsumed = true;
                     },
@@ -4704,7 +4721,12 @@ export async function runRootTurn({
                         : signal?.aborted
                           ? "canceled"
                           : "failed";
-                piReason = piOutcome === "succeeded" ? "completed" : piOutcome;
+                piReason =
+                    err instanceof RunawayLoopGuardStoppedError
+                        ? "runaway_loop_guard"
+                        : piOutcome === "succeeded"
+                          ? "completed"
+                          : piOutcome;
                 throw err;
             } finally {
                 executionMetricsForSession.delete(piSession);
@@ -4844,6 +4866,8 @@ export async function runNonInteractiveAgentPrompt({
  * @param {AbortSignal} [opts.signal] - Optional cancellation signal for transient delegated sessions.
  * @param {boolean} [opts.background] - Independent read-only child without foreground ownership.
  * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
+ * @param {boolean} [opts.resumePreviousRequest] Explicitly continue this isolated request's prior failed attempt.
+ * @param {string} [opts.controllerRequestId] Request identity owned by a controller that runs several attempts as one unfinished unit of work.
  * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
  * @param {ExecutionSessionBuiltCallback} [opts.onExecutionSessionBuilt]
  * @param {string} [opts.parentExecutionId]
@@ -4933,6 +4957,9 @@ export async function runIsolatedAgentSession(opts) {
         const dispatch = prepareRequestDispatch(session.sessionManager, {
             userRequest: opts.userRequest,
             dispatchKind: opts.dispatchKind || "interactive",
+            resumePreviousRequest: opts.resumePreviousRequest === true,
+            ...(opts.controllerRequestId ? { controllerRequestId: opts.controllerRequestId } : {}),
+            ...(opts.taskId ? { taskId: opts.taskId } : {}),
             backend: executionSession?.kind || "pi",
         });
         const beforeCount = getRootExecutionMessages(executionRoot).length;
@@ -5020,6 +5047,7 @@ export async function runIsolatedAgentSession(opts) {
                             debugLogPath: opts.debugLogPath,
                             signal: opts.signal,
                             disableAutoCompaction: opts.disableAutoCompaction === true,
+                            requestId: dispatch.requestId,
                         }),
                     );
                 } catch (err) {
@@ -5029,7 +5057,12 @@ export async function runIsolatedAgentSession(opts) {
                             : opts.signal?.aborted
                               ? "canceled"
                               : "failed";
-                    piReason = piOutcome === "succeeded" ? "completed" : piOutcome;
+                    piReason =
+                        err instanceof RunawayLoopGuardStoppedError
+                            ? "runaway_loop_guard"
+                            : piOutcome === "succeeded"
+                              ? "completed"
+                              : piOutcome;
                     throw err;
                 } finally {
                     executionMetricsForSession.delete(session);
