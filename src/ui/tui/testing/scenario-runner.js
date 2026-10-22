@@ -102,14 +102,40 @@ function createGoldenReviewBrowser(
                 if (!humanReviewSurface) throw new Error("Unexpected Code Review interaction.");
                 const response = humanReviewSurface.submit({ url });
                 if (response.manual) return false;
-                const opened = await createScriptedReviewBrowser(response.approved ? "decision" : "feedback", {
-                    approved: response.approved,
-                    feedback: response.feedback,
-                    annotations: response.annotations,
-                    images: response.images,
-                    reviewType: "code",
-                }).browser.open(url);
+                const opened = await createScriptedReviewBrowser(
+                    response.conversationTurn ? "deny" : response.approved ? "decision" : "feedback",
+                    {
+                        approved: response.approved,
+                        conversationTurn: response.conversationTurn,
+                        feedback: response.feedback,
+                        annotations: response.annotations,
+                        images: response.images,
+                        reviewType: "code",
+                    },
+                ).browser.open(url);
                 onHumanReviewDecision?.(response);
+                if (response.conversationTurn) {
+                    const page = new URL(url);
+                    const token = page.searchParams.get("token");
+                    void (async () => {
+                        for (let attempt = 0; attempt < 1000; attempt++) {
+                            await new Promise((resolve) => setTimeout(resolve, 10));
+                            const status = await fetch(
+                                new URL(`/api/review/conversation?token=${token}`, page.origin),
+                                {
+                                    headers: { "x-runwield-review-token": token || "" },
+                                },
+                            )
+                                .then((result) => result.json())
+                                .catch(() => null);
+                            if (status?.revision >= humanReviewSurface.consumed.length) {
+                                await browser.open(url);
+                                return;
+                            }
+                        }
+                        throw new Error("The Code Review conversation never exposed a new round.");
+                    })();
+                }
                 return opened;
             }
             if (!reviewSurface) throw new Error("Unexpected Plan Review interaction.");

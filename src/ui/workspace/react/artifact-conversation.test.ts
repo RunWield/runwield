@@ -58,3 +58,12 @@ test("Plan and Code Review conversations accept annotations without a user messa
         assertStringIncludes(feedback, "### Continue the review");
     }
 });
+
+test("Code Review conversation can reply without editing and requires authority for scope changes", () => {
+    const feedback = buildArtifactConversationFeedback({ message: "Why use a Set?", artifactKind: "code" });
+    assertStringIncludes(feedback, "Reply in chat to explain, clarify, or ask back.");
+    assertStringIncludes(feedback, "Edit the working files only when the request needs a code change.");
+    assertStringIncludes(feedback, "A reply without an edit keeps Code Review open with the same diff.");
+    assertStringIncludes(feedback, "confirmed Plan Deviation through `record_plan_deviation`");
+    assertEquals(feedback.includes("reporting what changed"), false);
+});

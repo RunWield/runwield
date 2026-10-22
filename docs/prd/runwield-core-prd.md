@@ -553,11 +553,15 @@ graph TD
     C --> D[Verification Command]
     D --> E[AI review]
     E --> F[Code Review]
-    F --> G[Publication]
+    F -->|approve or skip| G[Publication]
     G --> H[verified]
     D -->|fails| R[Repair]
     E -->|findings| R
-    F -->|feedback| R
+    F -->|patch changed| HR[Owner-requested repair]
+    HR --> HC[Verification Command]
+    HC --> F
+    HC -->|fails| HR
+    F -->|reply only| F
     R --> D
 ```
 
@@ -774,8 +778,26 @@ implementation intact; continuing validation through `load-plan` offers the choi
 
 **Requirement: Canceling a review leaves it pending.** Canceling an open Code Review, including with Escape, leaves
 approval pending and records no decision or revision. The UI states that review is pending and offers Retry or Plan
-resume; reopening presents a working review link. Completed checks and the implementation stay available. Explicitly
-submitted feedback starts repair and records the decision and revision, followed by checks and another Code Review.
+resume; reopening presents a working review link. Completed checks and the implementation stay available.
+
+**Requirement: Let the reviewed patch decide whether chat requests changes.** Engineer can answer, edit code, or both.
+For Git execution, RunWield compares the full reviewed patch before and after each Code Review conversation turn, after
+its own metadata writes. The patch itself decides, not the Agent's report:
+
+- **Unchanged patch:** the conversation continues and Code Review reopens immediately with the same diff. No CI run
+  starts. The review decision and timestamp, Delivery Evidence, Plan Status (`reviewed`), and CI results stay unchanged.
+- **Changed patch:** RunWield records “Changes requested”, invalidates the prior approval and timestamp, records
+  `changes_requested`, and returns the Plan to `implemented`. Once repair completes, RunWield records completed repair
+  evidence, runs CI, skips automatic AI review, and reopens Code Review with the fresh diff and the same conversation.
+  An edit that stops on a blocker keeps the repair pending; it does not reopen review over unfinished work.
+
+A non-Git in-place project has no patch identity: every conversation turn uses the repair-and-check flow, even a
+question. Non-conversation feedback from a no-chat surface also keeps that flow. Standalone Code Review (`wld review`)
+is unchanged; see [Standalone code review](#standalone-code-review).
+
+**Requirement: Scope changes need confirmed Plan authority.** If Code Review chat agrees to change the Plan's scope,
+Engineer proposes a [Plan Deviation](#plan-deviations). Only dedicated owner confirmation makes the replacement
+authoritative for execution, AI review, and Work Records. Agreement in chat alone does not replace the requirement.
 
 **Requirement: Reach the live review from the terminal.** From launch until a decision arrives, the TUI shows
 “Waiting for Code Review”. When the review surface is ready, the card also shows a clickable live review URL,
@@ -797,6 +819,18 @@ Guided Review keeps its `auto` option; stored review `none` is labeled **Never**
   again.
 - Given repeated terminal cancellation, the Plan stays `reviewed` with no recorded decision; Retry presents a working
   link, and approval records one decision.
+- Given a Git-backed Plan in Code Review, when the owner asks why a change was made and Engineer only replies, review
+  reopens with the same patch and approval remains available. No CI starts, no Delivery Evidence changes, the decision
+  and timestamp stay unchanged, and the Plan stays `reviewed`.
+- Given Engineer reports a fix without changing the patch, the turn has the same reply-only result. An edit reverted
+  within the turn also leaves the patch unchanged.
+- Given the owner requests a fix and Engineer completes an edit, RunWield records “Changes requested” and completed
+  repair evidence, invalidates approval, runs CI, skips AI review, and reopens Code Review with the new diff and earlier
+  conversation.
+- Given a non-Git in-place project, a chat question still starts repair and CI because patch identity is unavailable.
+- Given a no-chat review surface, submitted feedback still starts repair, checks, and another Code Review.
+- Given chat agreement to drop a Plan requirement, the original requirement remains authoritative until the owner
+  confirms a Plan Deviation. Canceling confirmation leaves it unchanged.
 - Given policy edits, they survive reload; a global edit leaves an explicit project override in place.
 
 #### Delivery and publication
@@ -939,14 +973,20 @@ with a reason. Only confirmed fixes close issues. States and reasons survive rec
 findings, defects missed earlier, repair-introduced defects, and issues still open.
 
 **Requirement: Focused repair.** Semantic and Code Review repairs run with focused, fresh context in the same Session
-and Plan workflow, including for Frontend Engineer work. Feedback, annotations, and images reach the repair Agent;
-unclear references lead to a clarification question.
+and Plan workflow, including for Frontend Engineer work. Feedback, annotations, images, and prior Code Review
+conversation reach the Agent; unclear references lead to a clarification question. A Git-backed Code Review conversation
+turn can end with a plain-text reply without a repair completion signal. It records no repair-start evidence. The
+[Code Review gate](#code-review-gate) uses patch identity to distinguish a reply from a repair and requires a confirmed
+[Plan Deviation](#plan-deviations) for scope changes; non-Git in-place turns always use repair.
 
 **Requirement: Hand the decision to the user after automatic rounds.** After three automatic rounds and their repairs
-and checks, users choose another verification round or Code Review. In Code Review, feedback starts repair and checks,
-then returns to Code Review, for as many rounds as the user wants. Users can nudge a stalled Reviewer or repair Agent
-in its existing conversation. Every pause explains what continuing will do. The round limit bounds automatic effort;
-the workflow continues under [Workflow completion](#workflow-completion-and-automatic-recovery).
+and checks, users choose another verification round or Code Review. In Git-backed Code Review, only a conversation
+turn that changes the reviewed patch returns to checks; a reply-only turn keeps the decision, evidence, status, and CI
+results. After an owner-requested repair, CI runs and Code Review reopens in the same conversation without another AI
+review. Non-conversation feedback and non-Git in-place turns retain repair and checks. User rounds have no automatic
+limit. Users can nudge a stalled Reviewer or repair Agent in its existing conversation. Every pause explains what
+continuing will do. The round limit bounds automatic effort; the workflow continues under
+[Workflow completion](#workflow-completion-and-automatic-recovery).
 
 **Requirement: Useful advisories.** Final nonblocking advisories go with the delivered Plan as labeled
 post-validation context, once. Review quality is judged by useful convergence and escaped defects.
@@ -966,8 +1006,12 @@ post-validation context, once. Review quality is judged by useful convergence an
   weak but honest assertions stay advisory.
 - Given target work imported after execution started, the patch shows only the branch's own changes.
 - Given a missing target branch or unrelated histories, review stops with a recoverable comparison failure.
-- After the automatic rounds, when the user chooses Code Review, feedback leads to repair and checks and returns to
-  Code Review.
+- After the automatic rounds, when the user chooses Code Review and Engineer completes a requested patch change,
+  checks run and the same Code Review conversation reopens; automatic AI review does not resume.
+- Given a Git-backed Code Review question, a plain-text answer with no patch change reopens review without repair
+  evidence or another CI run, as specified by the [Code Review gate](#code-review-gate).
+- Given an edit that stops on a blocker, the prior approval is invalidated and the repair stays pending with its blocker;
+  review does not reopen over unfinished work.
 
 **Requirement: Suggest code by editing the diff.**
 

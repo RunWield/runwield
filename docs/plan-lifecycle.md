@@ -110,9 +110,11 @@ not executable implementation work.
 when one is recorded.
 
 `implemented`: Implementation work finished in the execution worktree and is ready for the next Mechanical Validation
-phase. CI failure or Semantic Review or Code Review feedback returns here so the next validation call restarts at CI
-with durable retry counters. For an Epic with its own branch, `implemented` means every included child is delivered to
-the Epic branch and the integration gate has not passed on the current branch head.
+phase. CI failure, Semantic Review findings, or Code Review repair returns here so the next validation call restarts
+at CI with durable retry counters. A Git-backed Code Review conversation turn returns here only when the reviewed patch
+changes; a reply leaves the Plan `reviewed`. Non-Git in-place turns and non-conversation feedback always start repair.
+For an Epic with its own branch, `implemented` means every included child is delivered to the Epic branch and the
+integration gate has not passed on the current branch head.
 
 Mechanical validation progress is controller state, not a new public Plan status. The Plan stays `implemented` when CI
 passes; `validationPhase: semantic` ensures a fresh process resumes review without rerunning passed CI.
@@ -447,18 +449,30 @@ For worktree-backed plans:
    open Code Review now. There is no dead end: the work is never left with nowhere to go.
 7. If `codereview` is `ask` or `always`, RunWield opens or offers Plannotator Code Review after Semantic Review passes
    and before merge-back. The optional `guidedReview` setting can generate a Guided Review Explainer inside that
-   already-open Code Review, but it does not create a Plan Status, Plan Event, or Front Matter field. User feedback goes
-   to the Reviewer-Feedback Engineer in the same fresh-session way, along with the annotations and images, and Code
-   Review then reopens. Code Review always sees the same full proposed branch patch as AI review, never a repair-scoped
-   one. Reload resolves the recorded target and execution HEAD again and includes current committed and uncommitted
+   already-open Code Review, but it does not create a Plan Status, Plan Event, or Front Matter field. A conversation
+   turn goes to the Reviewer-Feedback Engineer in a fresh isolated session with the conversation history, annotations,
+   images, and diff access. Engineer can reply, edit code, or both. Code Review always sees the same full proposed branch
+   patch as AI review, never a repair-scoped one. Reload resolves the recorded target and execution HEAD again and
+   includes current committed and uncommitted
    files. User approval reached through the round-limit escape hatch is authoritative and permits merge-back even though
    Semantic Review never approved; the record distinguishes that case.
 
-    Once the change is in a human's hands the loop belongs to them: CI reruns and code review reopens after every
-    feedback round, for as many rounds as they give, and automatic Semantic Review rounds do not resume. **The only exits
-    are approval or quitting the review.** Feedback never exhausts a budget, and the three-round semantic cap does not
-    apply—it counts automatic rounds, not user rounds. Interrupting and resuming mid-cycle returns to Code Review rather
-    than restarting Semantic Review.
+    For Git execution, RunWield compares the reviewed patch before and after the turn, after its own metadata writes.
+    The patch decides, not the Agent's report. An identical patch reopens Code Review immediately with the reply and the
+    same diff. No CI starts, and Delivery Evidence, review decision and timestamp, Plan Status, and CI results stay
+    unchanged. A plain-text answer needs no repair completion signal.
+
+    A changed patch records “Changes requested”, invalidates the prior approval and timestamp, and returns the Plan to
+    `implemented`. Completed repair records its evidence, reruns CI, and reopens Code Review with the fresh diff and the
+    same conversation. An edit blocked before completion stays in repair with its blocker. Non-Git in-place projects
+    have no patch identity, so every conversation turn retains the repair-and-check flow. Non-conversation feedback
+    retains that flow too. Scope changes agreed in chat become authority only through a confirmed
+    [Plan Deviation](prd/runwield-core-prd.md#plan-deviations).
+
+    Once the change is in a human's hands the loop belongs to them: automatic Semantic Review rounds do not resume after
+    owner-requested changes. **The only exits are approval or quitting the review.** Conversation and repair rounds have
+    no automatic budget; the three-round semantic cap counts automatic rounds, not user rounds. Interrupting and
+    resuming mid-cycle returns to Code Review rather than restarting Semantic Review.
 
 8. If validation fails, RunWield keeps Plan Status `implemented`, records the failure and mechanical restart phase, and
    leaves the completed execution attempt and worktree available for recovery.
@@ -486,9 +500,11 @@ For worktree-backed plans:
 Publication recovery is defined by [ADR-016](adr/016-proof-bearing-publication-state-machine.md). Legacy lifecycle
 labels are interpreted using saved validation and delivery evidence; status strings alone do not prove publication.
 
-Code Review has no separate public status. An offer, cancellation, or pending decision keeps the Plan `reviewed`; user
-feedback returns it to `implemented` for fresh CI and then back to human review. Final review metadata records whether
-Code Review was not required, skipped, or approved. Recovery preserves canonical human-review mode, decision, and
+Code Review has no separate public status. An offer, cancellation, pending decision, or reply-only Git conversation
+keeps the Plan `reviewed`. A conversation turn that changes the patch returns it to `implemented` for fresh CI and then
+back to human review with the same conversation and no AI review rerun. Non-Git in-place turns and non-conversation
+feedback always use that repair flow. Final review metadata records whether Code Review was not required, skipped, or
+approved. Recovery preserves canonical human-review mode, decision, and
 timestamp when no newer result exists. Restarting execution, resetting recovery, or reopening the Plan clears stale
 review and completion evidence.
 

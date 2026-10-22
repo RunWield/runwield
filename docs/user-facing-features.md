@@ -141,8 +141,9 @@ Implement approved work, inspect the evidence, and distinguish successful checks
 - Repair review findings with a dedicated agent in fresh context, which reports what it did for each finding.
 - Offer another verification round or an immediate code review when automatic rounds run out, rather than stranding the
   work.
-- Repair code review feedback with the same fresh-context agent, then rerun CI and reopen code review for as many
-  feedback rounds as you give — the cycle ends only when you approve or quit.
+- Discuss code review with a fresh-context agent. In Git projects, reply-only turns keep review and CI results; patch
+  changes rerun CI and reopen the same conversation without another AI review. Non-Git projects still repair on every
+  turn. Review rounds continue until you approve or quit.
 - Send validation failures back through repair attempts.
 - Preserve the original execution owner during validation repairs.
 - Optionally use a Code Review gate during validation when configured.

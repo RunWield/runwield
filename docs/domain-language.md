@@ -396,8 +396,10 @@ owned or removed by Standalone Code Review.
 
 **Code Review**: The optional RunWield gate where a person reviews the same full proposed branch patch used by Semantic
 Review before delivery. Reload recomputes it from the recorded target, execution HEAD, and current worktree files. The
-user approves the diff or sends feedback. Internal compatibility identifiers can still use `humanReview` or
-`human_review`, but user-facing copy calls this **code review**. _Avoid_: Human Review, Semantic Review, Forge review,
+user approves the diff or discusses it with Engineer. For Git execution, a conversation turn records “Changes
+requested” only when the reviewed patch changes; a reply leaves the decision, Delivery Evidence, Plan Status, and CI
+results unchanged. Non-Git in-place turns and non-conversation feedback always use repair. Internal compatibility
+identifiers can still use `humanReview` or `human_review`, but user-facing copy calls this **code review**. _Avoid_: Human Review, Semantic Review, Forge review,
 Plan Review Loop
 
 **Review Issue Ledger**: The temporary per-attempt record of requirement coverage, Review Issues, repair claims, and
@@ -469,10 +471,12 @@ collaboration service, daemon
 
 **Feedback**: Review context the owner sends to a planning or engineering Agent in a review conversation turn:
 annotations, attachments, direct edits, and question answers, with or without a message. Feedback is not a decision and
-does not by itself change Plan Status. Code Review still uses its existing repair decision. _Avoid_: Denial, rejection
+does not by itself change Plan Status. In Git-backed Code Review chat, only a changed reviewed patch records “Changes
+requested” and starts checks. _Avoid_: Denial, rejection
 
 **Review Queue**: The review context waiting in a review chat for the next send. Items enter it by default; the owner
-can exclude them from one send without deleting them. Currently used in Plan review. _Avoid_: Attachments, context chip
+can exclude them from one send without deleting them. Used in Plan review and validation-time Code Review.
+_Avoid_: Attachments, context chip
 
 **Revision**: A planning pass that changes the Plan during review. A reply without a Plan change is not a Revision.
 

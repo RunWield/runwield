@@ -26,8 +26,9 @@ export function buildArtifactConversationFeedback(input: ArtifactConversationFee
         "",
         "### Continue the review",
         codeReview
-            ? "Reply briefly to the user, then update the working files when the request requires it. " +
-              "Finish by reporting what changed so Code Review can reload the current diff."
+            ? "Reply in chat to explain, clarify, or ask back. Edit the working files only when the request needs a code change. " +
+              "A reply without an edit keeps Code Review open with the same diff. " +
+              "An agreed scope change requires a confirmed Plan Deviation through `record_plan_deviation` before implementation."
             : "Reply in chat to explain, clarify, or ask back. Revise the Plan and call `plan_written` when the answer " +
               "changes scope, behavior, a decision, or verification. When in doubt, revise. " +
               "A reply without a revision keeps the review open.",

@@ -334,11 +334,13 @@ async function runIsolatedRequest(
     }
     const repairManager = request.sessionManager
         ? (request.sessionManager as unknown as SessionManager)
-        : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
-    await prepareRepairInvocation(hostedSession, request.cwd);
+        : request.conversationTurn
+          ? SessionManager.inMemory(request.cwd)
+          : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
+    if (!request.conversationTurn) await prepareRepairInvocation(hostedSession, request.cwd);
     // An automatic repair is fresh non-generated work, not a continuation of the completed task.
     hostedSession.backgroundTasks.resumeDelivery();
-    const { event } = await runValidationAgentUntilEvent(
+    const { event, messages } = await runValidationAgentUntilEvent(
         isolatedSessions,
         {
             hostedSession,
@@ -353,7 +355,27 @@ async function runIsolatedRequest(
         },
         "task_completed",
     );
-    const report = await acceptedRepairOutcome(hostedSession, event);
+    let report: AgentTurnOutcome;
+    if (request.conversationTurn) {
+        const providerFailure = readReviewerProviderFailure(messages);
+        if (providerFailure) {
+            return { kind: "feedback_engineer", outcome: "operational_failure", failure: providerFailure };
+        }
+        if (event?.kind === "task_completed") {
+            settleWorkflowToolEvent(hostedSession, event);
+            const payload = event.payload as import("./workflow-tool-events.ts").TaskCompletedEventPayload;
+            report = { completed: true, report: payload.message };
+        } else {
+            const text = messages
+                .filter((message) => message.role === "assistant")
+                .flatMap((message) => message.content.filter((part) => part.type === "text").map((part) => part.text))
+                .join("\n")
+                .trim();
+            report = { completed: false, report: text, blockerText: text };
+        }
+    } else {
+        report = await acceptedRepairOutcome(hostedSession, event);
+    }
     lastRepairSessions.set(hostedSession, {
         manager: repairManager,
         cwd: request.cwd,

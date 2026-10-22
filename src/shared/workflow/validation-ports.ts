@@ -197,6 +197,8 @@ export type IsolatedAgentSessionRequest =
       }
     | {
           kind: "feedback_engineer";
+          /** A reply may end in plain text; patch identity decides whether validation restarts. */
+          conversationTurn?: boolean;
           agentName: string;
           userRequest: string;
           cwd: string;
