@@ -15,10 +15,10 @@ The first experiment compares two configurations:
 
 1. **Baseline** — the current Semantic Reviewer discovery and verification prompts.
 2. **Candidate** — the same Reviewer with a first-discovery reconnaissance pass that:
-   - explains the changed behavior and its input, environment, state, and surrounding-code assumptions;
-   - searches adversarially for failure modes;
-   - carries only confirmed defects and still-plausible risks into the verdict;
-   - suppresses every risk it rules out.
+    - explains the changed behavior and its input, environment, state, and surrounding-code assumptions;
+    - searches adversarially for failure modes;
+    - carries only confirmed defects and still-plausible risks into the verdict;
+    - suppresses every risk it rules out.
 
 Keep the model, provider, tools, Plan, repository revision, Runtime settings, and sampling settings equal. Randomize
 configuration order within each fixture repetition so provider drift or warm-cache order does not consistently favor one
@@ -149,11 +149,11 @@ precision collapse, a severe miss, or a clean-approval regression.
 
 The reviewable pilot catalog contains:
 
-- 12 discovery families, each with a defective and clean twin: 24 scenarios;
+- 16 discovery families, each with a defective and clean twin: 32 scenarios;
 - 6 multi-defect discovery scenarios;
 - 6 repair-state verification scenarios.
 
-That produces 36 scenarios. Two prompt configurations with three trials each require 216 Reviewer rounds. Start with a
+That produces 44 scenarios. Two prompt configurations with three trials each require 264 Reviewer rounds. Start with a
 one-trial smoke pass before spending the full model budget.
 
 ## External Methodology References

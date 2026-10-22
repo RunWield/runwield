@@ -71,7 +71,7 @@ defects:
       wrongBehavior: All projects are returned.
       evidence:
           - src/project-filter.ts
-      proofCommand: deno task test:oracle --filter "empty selection means none"
+      proofCommand: bun run test:oracle --test-name-pattern "empty selection means none"
       acceptableConcepts:
           - explicit empty selection
           - fallback selects every project
