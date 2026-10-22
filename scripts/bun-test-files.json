@@ -55,7 +55,7 @@
     "scripts/write-router-judgement-csv.test.ts",
     "scripts/write-version.test.ts",
     "src/acp/background-task-wire.test.ts",
-    "src/acp/interaction-mapper.test.js",
+    "src/acp/interaction-mapper.test.ts",
     "src/acp/chat-interaction.test.ts",
     "src/acp/chat-interaction-runtime.test.ts",
     "src/acp/managed-session.integration.test.ts",
