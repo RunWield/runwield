@@ -35,8 +35,8 @@ dependencies:
     - "01-plan-review-conversation"
 userVerifiedAt: null
 targetBranch: "main"
-status: "reviewed"
 validatedCommit: "234967fe6c401dbabee7a26d191566235876c33e"
+status: "verified"
 ---
 
 # Code Review Conversation

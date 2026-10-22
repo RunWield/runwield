@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "06b05a39-3df8-41bf-a084-718e1238093e"
-status: "pending_verification"
+status: "approved"
 scope: "epic"
 origin: "internal"
 completionMode: "done_enough"
@@ -10,7 +10,6 @@ provenance:
     sourcePlans:
         - "eb894f76-005e-48bd-a56a-cb3b5977c534"
 ---
-
 # Conversational Plan and Code Review
 
 ## Summary

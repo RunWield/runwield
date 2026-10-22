@@ -20,7 +20,6 @@ affectedPaths:
 createdAt: "2026-10-19"
 origin: "internal"
 userVerifiedAt: null
-status: "reviewed"
 epicCompletionMode: "done_enough"
 epicDoneEnoughAt: "2026-10-22T02:47:51.646Z"
 epicDoneEnoughSummary: "All 2 child plans are completed after conversational-review/02-code-review-conversation."
@@ -29,6 +28,7 @@ workRecord:
     recordId: "06b05a39-3df8-41bf-a084-718e1238093e"
     path: "docs/work-records/2026-10-22-conversational-plan-and-code-review.md"
     lastAttemptAt: "2026-10-22T02:48:01.980Z"
+status: "verified"
 ---
 
 # Conversational Review
