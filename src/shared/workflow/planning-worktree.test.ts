@@ -19,6 +19,7 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { loadControllerView, writeControllerState } from "./controller-registry.ts";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 
@@ -918,6 +919,28 @@ test("planning preparation stops when target fetch fails", async () => {
     );
 
     assertEquals((await listEntries(repo)).length, 0);
+});
+
+test("execution evidence and catalog reads do not fetch Epic branches", async () => {
+    const repo = await fixture.checkout();
+    const planning = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const remote = await fixture.checkout();
+    await git(repo, ["remote", "add", "origin", remote]);
+    await git(repo, ["update-ref", "refs/remotes/origin/epic-target", "epic-target"]);
+    const fetchHead = join(repo, ".git", "FETCH_HEAD");
+    await fsWriteFile(fetchHead, "previous explicit fetch\n");
+
+    const plans = await listPlans(repo);
+    assertEquals(
+        plans.find((plan) => plan.name === "epic/01-child")?.path,
+        join(planning.entry.path, "docs/plans/epic/01-child.md"),
+    );
+    const evidence = await loadPlanActionEvidence(repo, "plan-child-01");
+    assertEquals(evidence.kind, "success");
+    assertEquals(await fsReadFile(fetchHead, "utf8"), "previous explicit fetch\n");
 });
 
 test("target discovery errors stop the catalog before stale overlays", async () => {

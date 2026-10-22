@@ -923,6 +923,10 @@ formatting-only Plan drift and keeps changed definitions, body text, and staged 
 Plans' catalog reads and validation continue. Loading the affected Plan reports the exact missing path and keeps all
 work, runtime state, and its Plan ID.
 
+**Requirement: Continuation evidence does not wait on unrelated remotes.** Catalog and Plan action evidence reads use
+existing local Git snapshots and registered execution documents without fetching Epic branches. Remote refresh stays
+with the selected Epic's workflow preparation; continuing an existing implementation does not refresh other Epics.
+
 **Acceptance scenarios:**
 
 - Given an implemented Plan with committed and uncommitted repairs, revising and approving it again continues in the
@@ -940,6 +944,8 @@ work, runtime state, and its Plan ID.
   an unfinished attempt receives the normal recovery check.
 - Given two Plans and a missing execution document for one, the other Plan's reads and validation succeed, and loading
   the affected Plan names the missing path.
+- Given an in-progress Plan and unrelated Epics with remote branches, choosing Continue and Proceed loads execution
+  evidence without fetching those branches and preserves the selected Plan's worktree authority.
 
 ### Semantic review and repair
 

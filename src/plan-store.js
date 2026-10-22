@@ -2867,8 +2867,9 @@ export async function listPlans(cwd) {
 
 /**
  * List saved plans, reading target-branch children only for `onlyEpic` when it
- * is given. Reading an Epic's target branch fetches it and reads every Plan on
- * it, so a lookup scoped to one Epic must not pay that for every other Epic.
+ * is given. Catalog evidence uses existing Git snapshots; remote refresh belongs
+ * to the selected Epic's workflow. A scoped lookup also avoids reading every
+ * Plan on unrelated Epic branches.
  *
  * @param {string} cwd
  * @param {string | null} onlyEpic
@@ -2893,7 +2894,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
             let targetChildren;
             try {
-                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
+                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name, {
+                    refresh: false,
+                });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (
