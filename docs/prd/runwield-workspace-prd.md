@@ -663,13 +663,14 @@ and review chat may omit approval.
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
 underline tabs (Contents and Versions; Files and Changes). The right sidebar header holds its Annotations and chat tabs
 and the collapse control in one row. After a successful decision in Workspace (approval for later, approval to run or
-decompose, or Code Review feedback), the owner returns to the originating Session in the same tab. Plan review chat
-stays on the review page. A failed decision keeps the review open. Standalone reviews keep their close-tab or auto-close
-behavior after a final decision.
+decompose, or no-chat Code Review feedback), the owner returns to the originating Session in the same tab. Plan review
+and Code Review chat stay on the review page. A failed decision keeps the review open. Standalone reviews keep their
+close-tab or auto-close behavior after a final decision.
 
 **Requirement: Review layouts fit the screen and the owner's preferences.** Code Review remembers the owner's last Split
-or Unified view in this browser. Both layouts and Guided Review wrap long lines. The right sidebar starts collapsed
-and opens at the first annotation; a later manual collapse holds. Plan review selects chat when the sidebar opens.
+or Unified view in this browser. Both layouts and Guided Review wrap long lines. Validation-time Code Review opens
+with chat when available; no-chat review starts with the right sidebar collapsed and opens it at the first annotation.
+A later manual collapse holds. Plan review selects chat when the sidebar opens.
 At 980px and narrower, Files in Code Review, and Contents and Annotations in Plan Review, start collapsed; each opens from the toolbar, fills the
 workbench below the header, and opening one closes the other. The compact Plan Review header keeps the title, approval,
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
@@ -686,16 +687,20 @@ reading response bytes from that same file object. A concurrent directory replac
 the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
 or change access controls.
 
-**Requirement: Chat in the review.** Plan review selects chat by default. Annotations, file annotations, images,
-direct edits, and question answers enter the Review Queue automatically. Each type shows its count and an X. X excludes
-that type from the next send without deleting its items. Send and its keyboard shortcut accept a message, included
-queued context, or both. Sent items leave the queue; excluded items remain and return to included after a send.
-Working or unavailable chats stay disabled. The Annotations pane lists and edits notes; it has no Send Annotations or
-attach-to-chat button when chat is available. A standalone Plan review without chat retains one Send Annotations button.
+**Requirement: Chat in the review.** Plan review and validation-time Code Review select chat by default and use the
+shared Review Queue. All available context types are included automatically: Plan annotations, file annotations,
+images, direct edits, and question answers; Code Review annotations, attachments, and edit suggestions. Each type shows
+its count and an X. X excludes that type from the next send without deleting its items. Send and its keyboard shortcut
+accept a message, included queued context, or both. Sent items leave the queue; excluded items remain and return to
+included after a send. Working or unavailable chats stay disabled.
 
-Planner and Architect can reply without revising. The review stays open across turns under
-[Core Plan review](runwield-core-prd.md#plan-review). Code Review keeps its existing attached-annotations chat and repair
-behavior; it does not yet use this queue.
+The Annotations pane lists and edits notes. With chat available, these surfaces have no Send Annotations, feedback
+decision, or attach-to-chat button; chat Send does not close the review. Without chat, the existing feedback button
+remains. Standalone Code Review (`wld review`) is unchanged.
+
+Planner and Architect can reply without revising under [Core Plan review](runwield-core-prd.md#plan-review). In Code
+Review, Engineer can reply, edit code, or both under [Core's patch identity rule](runwield-core-prd.md#code-review-gate).
+The same review and conversation stay open across turns.
 
 **Requirement: Warn before approving conversation without a revision.** If an owner turn completed after the latest
 Plan revision in this review, Approve & Run, Approve for Later, or Approve & Slice shows three choices:
@@ -721,11 +726,12 @@ Cancel keeps review open. Approval follows [Core's question resolution rules](ru
 no-chat fallback includes answers in Send Annotations. No bundled Agent writes question blocks; local Planner
 instructions can opt in.
 
-**Requirement: Repair code inside the open review.** A Code Review repair request keeps the same review screen and
-conversation through the repair and the required CI rerun. The Agent's reply and the refreshed changes appear in place,
+**Requirement: Repair code inside the open review.** A Code Review turn keeps the same review screen and conversation.
+A Git-backed reply-only turn reopens with the same diff and no CI rerun. A changed patch keeps the screen through repair
+and the required CI rerun; automatic AI review does not resume. The Agent's reply and the current changes appear in place,
 with chat history, the selected file, diff collapse choices, the Guided Review or diff mode, and collapsed guide
-sections intact. Guide prose from an earlier revision is marked as such until it is regenerated. Long repairs keep
-their live updates.
+sections intact. Guide prose from an earlier revision is marked as such until it is regenerated. Long turns keep their
+live updates; waiting for a reply or refreshed review has no fixed send deadline.
 
 **Requirement: One Plan-centered workflow surface.** Once a Plan exists, its Plan home brings together:
 
@@ -801,7 +807,8 @@ every action stays available.
   the resolved Plan under Core's approval rules.
 
 - Given a Workspace Plan review, chat replies and revisions stay on the page. Approval returns to its Session in the
-  same tab. Code Review approval or feedback still returns to its Session; a failed decision stays in review.
+  same tab. Code Review chat stays on the page; approval or no-chat feedback returns to its Session. A failed decision
+  stays in review.
 - Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
 - Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
   the read; outside files stay unchanged.
@@ -814,8 +821,14 @@ every action stays available.
 - Given Unified selected, a reload keeps Unified with Annotations closed; the first note opens Annotations and a later
   manual collapse holds.
 - Given a narrow screen, Files starts closed, its toolbar button opens it, and long lines wrap in Split and Unified.
-- Given a repair request in Code Review, the reply and current diff arrive in the same review, with collapse choices and
-  chat history intact.
+- Given validation-time Code Review with chat, chat is the default view. Annotations, attachments, and edit suggestions
+  appear in the Review Queue included by default. No attach-to-chat or feedback-decision button appears.
+- Given X excludes Code Review annotations, the next Send omits those notes without deleting them. Other included types
+  still go to Engineer; excluded notes are included again for the next send.
+- Given a Git-backed Code Review question and no patch change, the reply appears with the same diff, viewed files,
+  collapse choices, guide state, and chat history, without CI progress or navigation away from review.
+- Given a completed patch change in Code Review, CI runs and the reply and fresh diff arrive in the same conversation,
+  with the selected file, collapse choices, and guide state intact. AI review is skipped.
 - Given an idle Plan approved for later, Review Plan opens a live review; Approve & Run starts execution in that
   Session.
 - Given an approved Plan with no Session, Review Plan creates one review Session; repeated requests reuse it.

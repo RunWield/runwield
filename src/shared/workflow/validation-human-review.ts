@@ -20,7 +20,7 @@ import { getPlanAttrs, readSemanticRoundState, recordLifecycleEvent, recordMetri
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { emitProgress } from "./validation-emit.ts";
 import { pauseForUserAction, requestInteraction } from "./validation-interactions.ts";
-import { dispatchReviewFeedbackRepair } from "./validation-semantic.ts";
+import { dispatchReviewConversationTurn, dispatchReviewFeedbackRepair } from "./validation-semantic.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 
 type HumanReviewAnnotations = Array<{ file?: string; line?: number; text?: string; body?: string }>;
@@ -197,37 +197,10 @@ export async function runHumanReviewPhase(
         if (humanReview.canceled) return noAnswer(true);
         if (
             humanReview.approved ||
-            humanReview.feedback ||
-            humanReview.annotations.length ||
-            humanReview.images.length
+            ((!humanReview.conversationTurn || context.nonGitInPlace) &&
+                (humanReview.feedback || humanReview.annotations.length || humanReview.images.length))
         ) {
-            const evidence = await readDeliveryEvidence(
-                context.projectRoot,
-                args.planName,
-                context.worktreeId || "in-place",
-            );
-            const aiReview = evidence.entries.findLast((entry) => entry.kind === "ai" || entry.kind === "ai-skip");
-            const aiReviewOutcome =
-                aiReview?.kind === "ai" && aiReview.outcome === "Approved"
-                    ? "approved"
-                    : aiReview?.kind === "ai-skip" && aiReview.outcome === "Human takeover"
-                      ? "human_takeover"
-                      : aiReview?.kind === "ai-skip" && aiReview.outcome === "Skipped"
-                        ? "skipped"
-                        : "unavailable";
-            await recordMetric(args, context.projectRoot, {
-                category: "validation",
-                event: "code_review_decision",
-                planName: args.planName,
-                details: {
-                    decision: humanReview.approved ? "approved" : "changes_requested",
-                    semanticRound: readSemanticRoundState(args, context).semanticRound,
-                    aiReviewOutcome,
-                    codeReviewRound: evidence.entries.filter((entry) => entry.kind === "human").length + 1,
-                    hasFeedback: Boolean(humanReview.feedback.trim()),
-                    annotationCount: humanReview.annotations.length,
-                },
-            });
+            await recordDecision(humanReview);
         }
         if (humanReview.approved) {
             await recordDeliveryEvidence(
@@ -259,14 +232,6 @@ export async function runHumanReviewPhase(
         }
         if (humanReview.feedback || humanReview.annotations.length || humanReview.images.length) {
             const feedbackText = buildHumanReviewFeedbackText(humanReview.feedback, humanReview.annotations);
-            await recordDeliveryEvidence(
-                context.projectRoot,
-                args.planName,
-                context.worktreeId || "in-place",
-                "human",
-                "Changes requested",
-                feedbackText,
-            );
             const conversationContext =
                 humanReview.conversationTurn && conversationHistory.length > 0
                     ? [
@@ -279,6 +244,88 @@ export async function runHumanReviewPhase(
                           feedbackText,
                       ].join("\n")
                     : feedbackText;
+            if (humanReview.conversationTurn && !context.nonGitInPlace) {
+                // Capture after all RunWield writes, immediately before the isolated turn.
+                const before = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                const turn = await dispatchReviewConversationTurn(args, context, {
+                    diffText: before,
+                    findingsSection: conversationContext,
+                    repairKind: "human_feedback",
+                    images: humanReview.images,
+                    reason: feedbackText,
+                });
+                const after = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                const changed = before !== after;
+                if (turn.report.trim()) {
+                    conversationHistory.push(
+                        { role: "user", text: feedbackText },
+                        { role: "agent", text: turn.report },
+                    );
+                    reviewConversation.events.push({
+                        type: "assistant_text_delta",
+                        delta: turn.report,
+                        messageId: `code-review-${crypto.randomUUID()}`,
+                        agentName: agentLabel,
+                    });
+                }
+                diffText = after;
+                if (changed) {
+                    await recordDecision(humanReview);
+                    await recordDeliveryEvidence(
+                        context.projectRoot,
+                        args.planName,
+                        context.worktreeId || "in-place",
+                        "human",
+                        "Changes requested",
+                        feedbackText,
+                    );
+                    if (turn.completed) {
+                        await recordDeliveryEvidence(
+                            context.projectRoot,
+                            args.planName,
+                            context.worktreeId || "in-place",
+                            "human-revision",
+                            "Completed",
+                            turn.report,
+                        );
+                    }
+                    await persistHumanReviewMetadata(args, context.executionCwd, {
+                        humanReviewMode: mode,
+                        humanReviewDecision: "changes_requested",
+                        humanReviewedAt: null,
+                    });
+                    await recordLifecycleEvent(
+                        args,
+                        context.projectRoot,
+                        "validation_failed",
+                        "reviewed",
+                        feedbackText,
+                    );
+                }
+                // Plain text succeeds only for an unchanged patch. An edit still needs accepted completion.
+                if (!changed && (turn.completed || turn.report.trim())) return { kind: "conversation" };
+                return {
+                    kind: "decided",
+                    result: {
+                        kind: "paused",
+                        planName: args.planName,
+                        projectRoot: context.projectRoot,
+                        reason:
+                            changed && turn.completed
+                                ? "Code review feedback repair completed."
+                                : turn.reason || "The review turn returned no answer. Retry the turn.",
+                        ...(changed && turn.completed ? { continueValidation: true } : {}),
+                    },
+                };
+            }
+            await recordDeliveryEvidence(
+                context.projectRoot,
+                args.planName,
+                context.worktreeId || "in-place",
+                "human",
+                "Changes requested",
+                feedbackText,
+            );
             // Editing invalidates the checked revision even if the Agent is interrupted.
             await persistHumanReviewMetadata(args, context.executionCwd, {
                 humanReviewMode: mode,
@@ -333,6 +380,36 @@ export async function runHumanReviewPhase(
         }
 
         return noAnswer(false);
+    }
+
+    async function recordDecision(humanReview: ReturnType<typeof normalizeHumanReview>): Promise<void> {
+        const evidence = await readDeliveryEvidence(
+            context.projectRoot,
+            args.planName,
+            context.worktreeId || "in-place",
+        );
+        const aiReview = evidence.entries.findLast((entry) => entry.kind === "ai" || entry.kind === "ai-skip");
+        const aiReviewOutcome =
+            aiReview?.kind === "ai" && aiReview.outcome === "Approved"
+                ? "approved"
+                : aiReview?.kind === "ai-skip" && aiReview.outcome === "Human takeover"
+                  ? "human_takeover"
+                  : aiReview?.kind === "ai-skip" && aiReview.outcome === "Skipped"
+                    ? "skipped"
+                    : "unavailable";
+        await recordMetric(args, context.projectRoot, {
+            category: "validation",
+            event: "code_review_decision",
+            planName: args.planName,
+            details: {
+                decision: humanReview.approved ? "approved" : "changes_requested",
+                semanticRound: readSemanticRoundState(args, context).semanticRound,
+                aiReviewOutcome,
+                codeReviewRound: evidence.entries.filter((entry) => entry.kind === "human").length + 1,
+                hasFeedback: Boolean(humanReview.feedback.trim()),
+                annotationCount: humanReview.annotations.length,
+            },
+        });
     }
 
     function noAnswer(canceled: boolean): { kind: "no_answer"; pause: UserActionPause } {

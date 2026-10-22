@@ -14,3 +14,15 @@ Manual verification steps for conversational-review/01-plan-review-conversation
 - [ ] After a reply-only turn, select Approve & Run. Confirm that the approval warning appears, then select “Approve as is” and confirm that the Plan runs.
 
 <!-- runwield:manual-qa:end child="conversational-review/01-plan-review-conversation" -->
+
+<!-- runwield:manual-qa:start child="conversational-review/02-code-review-conversation" -->
+
+## Code Review Conversation
+
+Manual verification steps for conversational-review/02-code-review-conversation
+
+- [ ] In a headed browser, run validation on a small Plan with `codereview: always`. Ask a question in Code Review. Confirm that a reply appears, the diff stays the same, no CI progress appears, and Approve works.
+- [ ] Ask for a one-line code change. Confirm that CI runs, then Code Review opens with the new diff and the earlier chat.
+- [ ] Agree in chat to remove a Plan requirement. Confirm that the Engineer proposes a Plan Deviation and that the Plan does not change until you confirm it.
+
+<!-- runwield:manual-qa:end child="conversational-review/02-code-review-conversation" -->

@@ -636,6 +636,7 @@
     "src/ui/workspace/browser/session-tab-notifications.test.ts",
     "src/ui/workspace/browser/workflow-action.test.ts",
     "src/ui/workspace/browser/workspace-notifications.test.ts",
+    "src/ui/workspace/code-review-conversation.test.tsx",
     "src/ui/workspace/code-review-highlighting.test.ts",
     "src/ui/workspace/command-metrics.test.ts",
     "src/ui/workspace/delivery-record-retry.integration.test.ts",

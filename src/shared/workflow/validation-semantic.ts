@@ -148,12 +148,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     }
 
     if (round >= SEMANTIC_REVIEW_CYCLES && state.lastRepairReport) {
-        const action = await promptForSemanticRoundLimit(
-            args,
-            round,
-            openItems(ledger).length,
-            true,
-        );
+        const action = await promptForSemanticRoundLimit(args, round, openItems(ledger).length, true);
         if (action === "code_review") {
             await recordDeliveryEvidence(
                 context.projectRoot,
@@ -426,7 +421,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 },
             });
             if (!repair.completed) {
-                const reason = repair.reason ||
+                const reason =
+                    repair.reason ||
                     "Reviewer-Feedback Engineer stopped without task_completed during semantic repair.";
                 return { kind: "paused", planName: args.planName, projectRoot: context.projectRoot, reason };
             }
@@ -491,12 +487,12 @@ export async function runReviewerRound(
     diffText: string,
 ): Promise<
     | {
-        kind: "complete";
-        outcome: ValidationReviewOutcome;
-        ledger: SemanticRoundState["reviewLedger"];
-        resolvedCount: number;
-        appendedCount: number;
-    }
+          kind: "complete";
+          outcome: ValidationReviewOutcome;
+          ledger: SemanticRoundState["reviewLedger"];
+          resolvedCount: number;
+          appendedCount: number;
+      }
     | { kind: "paused"; result: ValidationPhaseResult }
     | { kind: "failed"; reason: string }
 > {
@@ -510,8 +506,8 @@ export async function runReviewerRound(
     let inspectedDiff = false;
     let latestOutcome: ValidationReviewOutcome | null = null;
     // A child of an Epic with its own branch is reviewed for its own correctness, with the Epic as context.
-    const epicContext = await loadEpicReviewContext(context.projectRoot, args.planName, args.triageMeta).catch(() =>
-        null
+    const epicContext = await loadEpicReviewContext(context.projectRoot, args.planName, args.triageMeta).catch(
+        () => null,
     );
     let operationalAttempt = 1;
     const repairDiffText = state.repairBaselineTree
@@ -616,19 +612,19 @@ export async function runReviewerRound(
             const outcome = sessionOutcome.reviewOutcome;
             const unaccounted = unaccountedOpenItems(state.reviewLedger, outcome?.findings);
             if (!outcome) {
-                const correction = inspection.feedback() ||
+                const correction =
+                    inspection.feedback() ||
                     (unaccounted.length
-                        ? `Account for every open finding: ${
-                            unaccounted.join(", ")
-                        }. Reuse the existing identities exactly; confirm or reject each fix with a reason.`
+                        ? `Account for every open finding: ${unaccounted.join(
+                              ", ",
+                          )}. Reuse the existing identities exactly; confirm or reject each fix with a reason.`
                         : "");
                 const failure = classifyValidationOperationalError({
                     source: "reviewer_protocol",
                     kind: "missing_review_complete",
                     operation: "semantic_review",
                     message: "Semantic Reviewer finished without an accepted review_complete.",
-                    required:
-                        `No review_complete was accepted. Follow any tool rejection instructions and retry without restarting the review. ${correction}`,
+                    required: `No review_complete was accepted. Follow any tool rejection instructions and retry without restarting the review. ${correction}`,
                 });
                 const decision = decideValidationRecovery({
                     failure,
@@ -688,9 +684,9 @@ export async function runReviewerRound(
             } else if (unaccounted.length > 0) {
                 const required = `Your result does not mention ${
                     unaccounted.length === 1 ? "this open finding" : "these open findings"
-                }: ${
-                    unaccounted.join(", ")
-                }. Every open finding must appear in your \`findings\` array — with \`resolved: true\` if you have verified the fix in the code, or with \`resolved: false\` and what is still missing. Reuse the existing identities exactly; do not renumber them or report the same issue as a new finding. Call review_complete again with the complete set.`;
+                }: ${unaccounted.join(
+                    ", ",
+                )}. Every open finding must appear in your \`findings\` array — with \`resolved: true\` if you have verified the fix in the code, or with \`resolved: false\` and what is still missing. Reuse the existing identities exactly; do not renumber them or report the same issue as a new finding. Call review_complete again with the complete set.`;
                 const failure = classifyValidationOperationalError({
                     source: "reviewer_protocol",
                     kind: "unaccounted_findings",
@@ -849,13 +845,16 @@ export function buildSemanticReviewAttempt(
     const toolDiffs = hasRepairScope ? { full: diffText, repair: repairDiffText } : { full: diffText };
     // `createReviewDiffTool` returns a Pi ToolDefinition; the engine brands it opaque
     // here so the adapter can un-brand it once at the port boundary.
-    const customTools = [createReviewDiffTool(toolDiffs, {
-        inspection,
-        ledger: state.reviewLedger,
-    }) as unknown as OpaqueToolDefinition];
+    const customTools = [
+        createReviewDiffTool(toolDiffs, {
+            inspection,
+            ledger: state.reviewLedger,
+        }) as unknown as OpaqueToolDefinition,
+    ];
     if (attempt > 1) {
         return {
-            prompt: nudgeReason ||
+            prompt:
+                nudgeReason ||
                 "You have not called review_complete yet. Finish this review now by calling review_complete with your decision. Do not restart the review — use what you have already inspected.",
             customTools,
         };
@@ -916,6 +915,55 @@ export function buildSemanticReviewAttempt(
     };
 }
 
+/** Run one reply-or-edit turn without recording a repair or changing validation metadata. */
+export async function dispatchReviewConversationTurn(
+    args: ValidationLoopArgs,
+    context: PhaseContext,
+    packet: ReviewFeedbackRepairPacket,
+): Promise<{ completed: boolean; report: string; reason?: string }> {
+    args.session.setActiveWorkflow(context.workflowBase);
+    try {
+        const outcome = await args.session.runIsolatedAgentSession({
+            kind: "feedback_engineer",
+            conversationTurn: true,
+            agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
+            userRequest: [
+                "## Code Review conversation turn",
+                "Reply in chat to explain, clarify, or ask back. Edit working files only when the request needs a code change.",
+                "A reply without an edit keeps Code Review open and does not restart checks. End a reply in plain text.",
+                "After an edit, run focused checks and call task_completed. If an edit is blocked, stop in plain text and name the blocker.",
+                "A scope change agreed in chat is authority only after record_plan_deviation confirms and records it. Reload the effective Plan after confirmation. Do not edit the Plan directly.",
+                `Execution checkout: ${context.executionCwd}`,
+                `Plan: ${args.planName}`,
+                "",
+                packet.findingsSection,
+                "",
+                buildDiffInspectionSection(packet.diffText),
+            ].join("\n"),
+            images: packet.images,
+            cwd: context.executionCwd,
+            customTools: [
+                createReviewDiffTool({ full: packet.diffText }) as OpaqueToolDefinition &
+                    ReturnType<typeof createReviewDiffTool>,
+            ],
+        });
+        if (outcome.outcome === "operational_failure") {
+            return { completed: false, report: "", reason: outcome.failure.message };
+        }
+        const report = outcome.taskReport;
+        return {
+            completed: report.completed,
+            report: report.report,
+            ...(!report.completed
+                ? { reason: repairBlockedReason(args, context.projectRoot, report.blockerText) }
+                : {}),
+        };
+    } catch (error) {
+        await logValidationFailure(error instanceof Error ? error : new Error(String(error)), "review_conversation");
+        return { completed: false, report: "", reason: "The review conversation could not finish. Retry the turn." };
+    }
+}
+
 export async function dispatchReviewFeedbackRepair(
     args: ValidationLoopArgs,
     context: PhaseContext,
@@ -941,9 +989,10 @@ export async function dispatchReviewFeedbackRepair(
                 worktreeId: context.worktreeId,
                 worktreeBranch: context.worktreeBranch,
                 worktreeBaseBranch: context.worktreeBaseBranch,
-                authorityNote: packet.repairKind === "human_feedback"
-                    ? "A human reviewed this change. Their feedback is authoritative."
-                    : "A code reviewer found these issues. Fix every finding.",
+                authorityNote:
+                    packet.repairKind === "human_feedback"
+                        ? "A human reviewed this change. Their feedback is authoritative."
+                        : "A code reviewer found these issues. Fix every finding.",
                 repairsNeeded: [
                     "### Findings",
                     "",
@@ -991,12 +1040,10 @@ export async function dispatchReviewFeedbackRepair(
 export function reviewFindingMetrics(findings: ValidationReviewOutcome["findings"], round: number) {
     return {
         initialFindingCount: round === 1 ? findings.filter((finding) => !finding.id).length : 0,
-        missedOriginalCount: round > 1
-            ? findings.filter((finding) => !finding.id && finding.origin === "missed_original").length
-            : 0,
-        repairRegressionCount: round > 1
-            ? findings.filter((finding) => !finding.id && finding.origin === "repair_regression").length
-            : 0,
+        missedOriginalCount:
+            round > 1 ? findings.filter((finding) => !finding.id && finding.origin === "missed_original").length : 0,
+        repairRegressionCount:
+            round > 1 ? findings.filter((finding) => !finding.id && finding.origin === "repair_regression").length : 0,
         unclassifiedNewCount: round > 1 ? findings.filter((finding) => !finding.id && !finding.origin).length : 0,
         existingStillOpenCount: findings.filter((finding) => finding.id && !finding.resolved).length,
         fixConfirmedCount: findings.filter((finding) => finding.id && finding.resolved).length,
