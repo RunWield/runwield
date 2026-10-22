@@ -404,7 +404,7 @@
     "src/shared/workflow/metrics-process-boundary.test.ts",
     "src/shared/workflow/metrics.test.js",
     "src/shared/workflow/orchestrator.test.ts",
-    "src/shared/workflow/pair-execution.test.js",
+    "src/shared/workflow/pair-execution.test.ts",
     "src/shared/workflow/plan-action-evidence.test.ts",
     "src/shared/workflow/plan-approval.test.ts",
     "src/shared/workflow/plan-branch.test.ts",
