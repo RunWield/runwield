@@ -35,7 +35,7 @@ dependencies:
     - "01-plan-review-conversation"
 userVerifiedAt: null
 targetBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Code Review Conversation

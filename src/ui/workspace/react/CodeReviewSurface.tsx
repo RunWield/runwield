@@ -2094,7 +2094,7 @@ function hasAnnotationInput(annotation) {
 }
 
 function withoutAnnotationNote(annotation) {
-    const { text, suggestedCode, originalCode, ...anchor } = annotation;
+    const { text: _text, suggestedCode: _suggestedCode, originalCode: _originalCode, ...anchor } = annotation;
     return anchor;
 }
 
