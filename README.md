@@ -20,8 +20,6 @@ architect review and a series of plans to implement in manageable chunks.
 ideate -> plan -> execute -> record -> use records to plan better
 ```
 
-<p align="center"><img src="brand/workspace-session.png" width="900" alt="A RunWield Workspace session. Projects and their Plans are listed on the left, the Plan Engineer's conversation and activity are in the middle, and the Plan's workflow on the right shows Planning, Execution, Tests and CI, AI review, and Code Review completed." /></p>
-
 [![RunWield in action: plan review, execution, validation, and code review. Watch the full 90-second demo.](brand/runwield-promo.gif)](https://youtu.be/IHplUpFZIuU)
 
 [Website](https://runwield.dev) · [Install](#install-in-30-seconds) · [How it works](#the-problem) ·
