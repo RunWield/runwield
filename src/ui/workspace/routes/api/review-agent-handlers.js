@@ -66,6 +66,14 @@ export function createReviewAgentState(options) {
 /** @param {ReviewAgentState} state */
 export async function cleanupReviewAgentState(state) {
     for (const entry of state.jobs.values()) entry.abortController.abort("review server stopped");
+    for (const controller of state.streams) {
+        try {
+            controller.close();
+        } catch {
+            // The client may already have closed its stream.
+        }
+    }
+    state.streams.clear();
     await Promise.allSettled([...state.jobs.values()].map((entry) => entry.done));
     await state.widgets.cleanup();
 }
@@ -189,9 +197,10 @@ function createGuideJob(state, provider) {
         startedAt: now,
         endedAt: null,
         command: provider ? [provider.provider, "guided-review"] : ["fixture"],
-        cwd: typeof state.reviewPayload.agentCwd === "string" && state.reviewPayload.agentCwd.trim()
-            ? state.reviewPayload.agentCwd
-            : state.cwd,
+        cwd:
+            typeof state.reviewPayload.agentCwd === "string" && state.reviewPayload.agentCwd.trim()
+                ? state.reviewPayload.agentCwd
+                : state.cwd,
         engine: provider?.provider || "fixture",
         model: provider?.model || "unknown",
         usageState: provider?.provider === "wld" ? "pending" : "unavailable",

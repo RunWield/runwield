@@ -1,4 +1,7 @@
-import { removeExecutableFixtureDirectory, writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import {
+    removeExecutableFixtureDirectory,
+    writeRuntimeExecutableFixture,
+} from "../../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
@@ -1386,4 +1389,72 @@ test("review API returns 401 for invalid token and 404 for expired matching toke
         }),
     );
     assertEquals(expiredResponse.status, 404);
+});
+
+test("stopping Code Review ends its agent event stream while another review keeps answering", async () => {
+    const plan = startReviewWorkspaceServer({
+        cwd: getCwd(),
+        token: "stream-plan",
+        reviewPayload: { plan: "# Remaining Plan" },
+        reviewType: "plan",
+    });
+    const code = startReviewWorkspaceServer({
+        cwd: getCwd(),
+        token: "stream-code",
+        reviewPayload: {},
+        reviewType: "code",
+    });
+    const abort = new AbortController();
+    try {
+        assertEquals(code.url, plan.url);
+        const response = await fetch(`${code.url}/api/agents/jobs/stream?token=stream-code`, { signal: abort.signal });
+        assertEquals(response.status, 200);
+        const reader = response.body.getReader();
+        assertEquals((await reader.read()).done, false);
+        await code.stop();
+        assertEquals((await reader.read()).done, true);
+        const remaining = await fetch(`${plan.url}/review/plan?token=stream-plan`);
+        assertEquals(remaining.status, 200);
+        assertStringIncludes(await remaining.text(), "Remaining Plan");
+        assertEquals(await code.waitForDecision(), {
+            approved: false,
+            feedback: "",
+            annotations: [],
+            exit: true,
+            canceled: true,
+        });
+    } finally {
+        abort.abort();
+        await code.stop();
+        await plan.stop();
+    }
+});
+
+test("aborting one review signal leaves other registrations on the host live", async () => {
+    const signal = new AbortController();
+    const first = startReviewWorkspaceServer({
+        cwd: getCwd(),
+        token: "abort-first",
+        reviewPayload: { plan: "# First" },
+        reviewType: "plan",
+        signal: signal.signal,
+    });
+    const second = startReviewWorkspaceServer({
+        cwd: getCwd(),
+        token: "abort-second",
+        reviewPayload: { plan: "# Second" },
+        reviewType: "plan",
+    });
+    try {
+        assertEquals(first.url, second.url);
+        signal.abort();
+        await first.stop();
+        assertEquals((await first.waitForDecision()).canceled, true);
+        const response = await fetch(`${second.url}/review/plan?token=abort-second`);
+        assertEquals(response.status, 200);
+        await response.text();
+    } finally {
+        await first.stop();
+        await second.stop();
+    }
 });

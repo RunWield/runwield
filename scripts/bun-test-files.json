@@ -700,6 +700,7 @@
     "src/ui/workspace/routes/api/review-actions.test.ts",
     "src/ui/workspace/routes/api/review-file-content.test.ts",
     "src/ui/workspace/routes/api/review-guide-cwd.test.ts",
+    "src/ui/workspace/server/review-host.test.ts",
     "src/ui/workspace/server/review-payload-json.test.ts",
     "src/ui/workspace/server/workspace-search.test.ts",
     "src/ui/workspace/session-artifact-route.integration.test.ts",
