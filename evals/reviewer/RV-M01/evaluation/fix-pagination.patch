@@ -1,0 +1,13 @@
+diff --git a/src/pagination.ts b/src/pagination.ts
+index f5de3c7..cd2da92 100644
+--- a/src/pagination.ts
++++ b/src/pagination.ts
+@@ -7,7 +7,7 @@ export async function collectProjects(catalog: ProjectCatalog): Promise<Project[
+     while (true) {
+         const page = await catalog.page(cursor);
+         projects.push(...page.items);
+-        if (!page.items.length) break;
++
+         if (page.nextCursor === undefined) break;
+         if (visited.has(page.nextCursor)) throw new Error("Catalog repeated cursor");
+         visited.add(page.nextCursor);

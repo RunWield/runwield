@@ -2,8 +2,22 @@
 
 ## Status
 
-Review draft. These are proposed fixture families and expected truths, not yet materialized scored fixtures. Human
-review of the selection comes before writing source packages, hidden verifiers, or baseline results.
+Partly materialized. The Reviewer-only smoke runner has nine admitted discovery cases in five packages. The remaining
+35 scenarios are drafts. Human review of each Plan, diff, proof, and oracle comes before paid execution.
+
+| State              | Scenarios                                                | Source                                                          |
+| ------------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
+| Materialized smoke | RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, RV-M01 A | [Fixtures and run instructions](../../evals/reviewer/README.md) |
+| Draft pairs        | RV-D01–D03, RV-D06–D11, RV-D14–D16 (A/B)                 | Catalog below                                                   |
+| Draft multi-defect | RV-M02–M06                                               | Catalog below                                                   |
+| Draft repair-state | RV-R01–R06                                               | Catalog below                                                   |
+
+The current runner measures the baseline only, one trial per smoke case. The
+[2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine rounds. The owner
+accepted its 13 blocking
+findings, including findings on two oracle-clean twins. Four packages are now revision 2 after repairs; these revisions
+have no paid measurements. The other 35 scenarios, candidate
+comparison, repetitions, and repair-state execution remain target.
 
 The catalog contains 44 scenarios:
 
@@ -113,7 +127,7 @@ find.
 
 ## Human Review Questions
 
-Before materialization, review this catalog for:
+Before materializing more cases, review this catalog for:
 
 1. Are any pairs too easy because the Plan gives away the exact defect?
 2. Are any clean twins still arguably defective?
