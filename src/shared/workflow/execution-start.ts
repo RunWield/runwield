@@ -232,6 +232,7 @@ export async function startActiveExecutionWorkflow({
     ports,
 }) {
     if (!hostedSession) throw new Error("startActiveExecutionWorkflow: hostedSession is required");
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     const projectRoot = resolvePrimaryCheckoutRoot(hostedSession.cwd);
     const sourceLocation = await resolveWorkflowPlanLocation(projectRoot, planName);
     if (sourceLocation.archived) {
@@ -560,6 +561,7 @@ export async function startActiveExecutionWorkflow({
                     attemptId,
                     ...targetPreparation,
                 };
+                hostedSession.getManagedOperationCapability?.()?.assertLive();
                 await addRunWieldOwnedGitignoreBlock(projectRoot, hostedSession);
                 const worktreeArtifacts = await createWorktreeGitArtifacts(worktreeOptions);
                 await addRunWieldOwnedGitignoreBlock(worktreeArtifacts.path, hostedSession);

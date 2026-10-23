@@ -5,6 +5,7 @@ export function sessionDigest(contents: string | Uint8Array): string {
     return createHash("sha256").update(contents).digest("hex");
 }
 /** File-free, operation-scoped messages on the existing authenticated control channel. */
+import type { PlanAssociatedSession } from "../session/plan-session-lookup.ts";
 import type { TranscriptEvidence } from "../session/file-session-store-types.ts";
 
 export const MAX_SESSION_BYTES = 16 * 1024 * 1024;
@@ -12,10 +13,60 @@ export const REMOTE_SESSION_IDENTITY_ENTRY = "runwield.remote_identity";
 export interface RemoteSessionRequest {
     operation: string;
     sequence: number;
-    kind: "hydrate" | "inspect" | "append" | "rewrite" | "attachment" | "attachment-read" | "checkpoint" | "uncertain";
+    kind:
+        | "hydrate"
+        | "inspect"
+        | "append"
+        | "rewrite"
+        | "attachment"
+        | "attachment-read"
+        | "checkpoint"
+        | "uncertain"
+        | "artifact"
+        | "plan-association"
+        | "plan-review"
+        | "segment"
+        | "records"
+        | "plan-sessions"
+        | "rollover";
     /** Exact JSONL bytes, attachment JSON, or an attachment ref; never a path or a writer proof. */
     contents: string;
 }
+export interface RemoteRolloverOptions {
+    kind: "execution" | "semantic_repair";
+    transcriptCwd?: string;
+    continuation: import("../workflow/execution-segment-handoff.ts").SegmentHandoffPayload;
+    expectedGeneration?: number | null;
+    lineageGroupKey?: string | null;
+}
+export type RemoteRolloverResult = Omit<
+    import("../session/segment-rollover.ts").SegmentRolloverResult,
+    "transcriptPath" | "successorProof"
+>;
+export interface RemoteRolloverReceipt {
+    operation: string;
+    result: RemoteRolloverResult;
+}
+export interface RemotePlanSession extends PlanAssociatedSession {
+    verified: boolean;
+}
+export interface RemotePlanSessionQuery {
+    planId: string;
+    sessionId?: string;
+}
+export interface RemoteSessionRecords {
+    planSessions: RemotePlanSession[];
+    lastPlanReview: import("../session/file-session-store-types.ts").LastPlanReviewReference | null;
+    planAssociations: import("../session/file-session-store-types.ts").ManifestPlanAssociation[];
+}
+export type RemoteArtifactOptions = Omit<
+    import("../session/file-session-store-types.ts").RegisterSessionArtifactOptions,
+    "idFactory" | "now"
+>;
+export type RemotePlanReview = Pick<
+    import("../session/file-session-store-types.ts").LastPlanReviewReference,
+    "planId" | "planName" | "planningAgentName"
+>;
 export interface RemoteSessionResponse {
     operation: string;
     sequence: number;
@@ -113,10 +164,28 @@ export function validateSessionRequest(input: RemoteSessionRequest): void {
             "attachment-read",
             "checkpoint",
             "uncertain",
+            "artifact",
+            "plan-association",
+            "plan-review",
+            "segment",
+            "records",
+            "plan-sessions",
+            "rollover",
         ].includes(input.kind) ||
         typeof input.contents !== "string" ||
         new TextEncoder().encode(input.contents).length > MAX_SESSION_BYTES ||
-        (!["append", "rewrite", "attachment", "attachment-read"].includes(input.kind) && input.contents !== "")
+        (![
+            "append",
+            "rewrite",
+            "attachment",
+            "attachment-read",
+            "artifact",
+            "plan-association",
+            "plan-review",
+            "plan-sessions",
+            "rollover",
+        ].includes(input.kind) &&
+            input.contents !== "")
     )
         throw new Error("Invalid remote Session request");
 }

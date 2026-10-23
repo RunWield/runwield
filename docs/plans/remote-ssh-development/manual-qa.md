@@ -119,3 +119,40 @@ Manual verification steps for remote-ssh-development/05-keep-memory-and-integrat
       remotely, and that project servers show as remote.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop" -->
+
+## Forward Personal MCP Tools from the Laptop
+
+Manual verification steps for remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop
+
+- [ ] On the live pilot, call a personal MCP tool and a project MCP tool; confirm the personal server runs on the laptop with laptop home as its cwd, and the project server runs remotely with the Session cwd.
+- [ ] Check `/mcp` for each server's location and connection status. Run `/mcp reconnect <server>`, then call the personal tool again.
+- [ ] Cancel a cooperative slow personal tool call; confirm the server receives cancellation and does not record the delayed effect.
+- [ ] Drop the SSH connection during a tool call, reconnect, and confirm the call is not replayed and no owned laptop server process remains.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
+## Carry Remote Context Through Delivery Workflows
+
+Manual verification steps for remote-ssh-development/07-carry-remote-context-through-delivery-workflows
+
+- [ ] On `sct`, take a remote-only Plan through planning, approval, execution, validation, AI review, any required repair, Work Record generation, merge, and confirmed publication. Confirm the laptop sentinel tree remains unchanged.
+- [ ] Complete a remote execution handoff, disconnect, reconnect, and run `/resume`. Confirm it continues in the successor segment and shows laptop-saved lineage.
+- [ ] Disconnect during validation and during publication. Reconnect and run `/resume`; confirm it reports proven and uncertain outcomes and does not repeat an external action until you choose.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/08-stop-owned-remote-work-on-connection-loss" -->
+
+## Stop Owned Remote Work on Connection Loss
+
+Manual verification steps for remote-ssh-development/08-stop-owned-remote-work-on-connection-loss
+
+- [ ] In a connected remote Session, start a long-running command and an Agent-started `nohup sleep 600 &`; disconnect the laptop SSH process and confirm both processes stop on the server.
+- [ ] Start a `sleep` process in a separate SSH login; disconnect the RunWield connection and confirm the separate process continues running.
+- [ ] Confirm the remote mount directory is removed after disconnect and no mount-cleanup error appears.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/08-stop-owned-remote-work-on-connection-loss" -->

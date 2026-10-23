@@ -86,6 +86,29 @@ export interface PromptSessionOptions {
     triageMeta?: Partial<import("../../../plan-store.js").PlanFrontMatter>;
 }
 
+export interface PromptSessionResult {
+    ok: boolean;
+    turns: number;
+    error?: string;
+    replacementSessionId?: string;
+    templateNewSession?: boolean;
+    _validationResult?: import("./workflows.ts").RuntimeValidationResult | null;
+    namedInvocation?: {
+        kind: string;
+        name: string;
+        expansionDigest: string;
+        profile: import("../named-invocation.ts").NamedInvocationPayload["profile"];
+        messageCount: number;
+    };
+}
+
+export interface UserPromptResult extends PromptSessionResult {
+    managed: boolean;
+    submittedRequest: string;
+    restoreDraft: boolean;
+    historyText?: string;
+}
+
 export interface LoadSessionOptions {
     cwd: string;
     sessionId: string;
