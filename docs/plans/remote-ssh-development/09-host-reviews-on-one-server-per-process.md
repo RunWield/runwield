@@ -20,8 +20,8 @@ order: 9
 dependencies: []
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "bc3363b271e9eb0187df84cacea59e9c2709bb4a"
+status: "verified"
 ---
 
 # Host Reviews on One Server per Process
