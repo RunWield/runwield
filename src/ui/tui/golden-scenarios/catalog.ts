@@ -8,7 +8,7 @@ import { initialGoldenScenarios } from "./initial-scenarios.js";
 import { loadPlanWorkflowScenarios } from "./load-plan-workflow.ts";
 import { loadPlanEpicWorkflowScenarios } from "./load-plan-epic-workflow.ts";
 import { plannedChangeWorkflowScenarios } from "./planned-change-workflow.js";
-import { presentationAndTerminalScenarios } from "./presentation-and-terminal.js";
+import { presentationAndTerminalScenarios } from "./presentation-and-terminal.ts";
 import { projectWorkflowScenarios } from "./project-workflow.js";
 import { projectRoutingWorkflowScenarios } from "./project-routing-workflow.ts";
 import { roleJourneyScenarios } from "./role-journeys.js";
