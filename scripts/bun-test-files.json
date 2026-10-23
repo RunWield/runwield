@@ -22,7 +22,7 @@
     "scripts/docs-build-workflow.test.ts",
     "scripts/docs-dependencies.test.ts",
     "scripts/docs-workflow.test.ts",
-    "scripts/evaluate-router-judgements.test.js",
+    "scripts/evaluate-router-judgements.test.ts",
     "scripts/extract-router-decisions.test.ts",
     "scripts/homebrew-tap-access-policy.test.ts",
     "scripts/install-integrity.test.ts",
