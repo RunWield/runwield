@@ -3,35 +3,51 @@
  * Composed Golden role journey scenarios.
  */
 
+import type { GoldenScenario } from "../testing/scenario-runner.js";
+import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.js";
+import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenario} GoldenScenario */
+// The JavaScript runner exposes opaque evidence; retain the existing casts with named shapes.
+interface RecordedRoleInteraction {
+    interaction?: Pick<RuntimeInteractionRequest, "type">;
+}
 
-/** @param {string} routingIntent */
-function triageTurn(routingIntent) {
+interface RoleProjectEvidence {
+    registryEntries?: WorktreeRegistryEntry[];
+}
+
+interface RoleGitEvidence {
+    branch?: string;
+    status?: string;
+    trackedFiles?: string;
+}
+
+function triageTurn(routingIntent: string) {
     return {
         id: `router-${routingIntent.toLowerCase()}`,
         agent: "router",
         phase: "triage",
         requiredTools: ["triage_report"],
         thinking: `Route to ${routingIntent}.`,
-        toolCalls: [{
-            name: "triage_report",
-            arguments: {
-                routingIntent,
-                complexity: "LOW",
-                summary: `Golden ${routingIntent} role journey.`,
-                sessionName: `golden ${routingIntent.toLowerCase()}`,
+        toolCalls: [
+            {
+                name: "triage_report",
+                arguments: {
+                    routingIntent,
+                    complexity: "LOW",
+                    summary: `Golden ${routingIntent} role journey.`,
+                    sessionName: `golden ${routingIntent.toLowerCase()}`,
+                },
             },
-        }],
+        ],
     };
 }
 
-/** @type {GoldenScenario} */
-export const guideInquiryRoleJourneyScenario = {
+export const guideInquiryRoleJourneyScenario: GoldenScenario = {
     name: "role-guide-inquiry-readonly",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
@@ -98,8 +114,7 @@ export const guideInquiryRoleJourneyScenario = {
     ],
 };
 
-/** @type {GoldenScenario} */
-export const ideationInterviewPrdScenario = {
+export const ideationInterviewPrdScenario: GoldenScenario = {
     name: "role-ideator-interview-prd-synthesis",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
@@ -117,20 +132,25 @@ export const ideationInterviewPrdScenario = {
             ordinal: 1,
             requiredTools: ["user_interview"],
             thinking: "Interview before synthesis.",
-            toolCalls: [{
-                name: "user_interview",
-                arguments: {
-                    questions: [
-                        { type: "text", prompt: "What outcome matters?", id: "outcome" },
-                        {
-                            type: "multiple_choice",
-                            prompt: "Choose priority",
-                            id: "priority",
-                            choices: [{ value: "small", label: "Small" }, { value: "broad", label: "Broad" }],
-                        },
-                    ],
+            toolCalls: [
+                {
+                    name: "user_interview",
+                    arguments: {
+                        questions: [
+                            { type: "text", prompt: "What outcome matters?", id: "outcome" },
+                            {
+                                type: "multiple_choice",
+                                prompt: "Choose priority",
+                                id: "priority",
+                                choices: [
+                                    { value: "small", label: "Small" },
+                                    { value: "broad", label: "Broad" },
+                                ],
+                            },
+                        ],
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "ideator-prd",
@@ -140,26 +160,34 @@ export const ideationInterviewPrdScenario = {
             requiredTools: ["write"],
             thinking: "Materialize only the requested concise PRD artifact.",
             text: "PRD synthesized after the interview.",
-            toolCalls: [{
-                name: "write",
-                arguments: {
-                    path: "docs/prd/golden-ideation-prd.md",
-                    content: "# Golden Ideation PRD\n\nOutcome: A concise PRD.\nPriority: Small.\n",
+            toolCalls: [
+                {
+                    name: "write",
+                    arguments: {
+                        path: "docs/prd/golden-ideation-prd.md",
+                        content: "# Golden Ideation PRD\n\nOutcome: A concise PRD.\nPriority: Small.\n",
+                    },
                 },
-            }],
+            ],
         },
     ],
-    actions: [{ type: "type", text: "help me shape a PRD" }, { type: "enter" }, {
-        type: "waitForIdle",
-        timeoutMs: 10000,
-    }, {
-        type: "assertProjectFile",
-        path: "docs/prd/golden-ideation-prd.md",
-        exists: true,
-    }, {
-        type: "assertOnlyProjectChanges",
-        paths: ["docs/prd", "docs/prd/golden-ideation-prd.md"],
-    }],
+    actions: [
+        { type: "type", text: "help me shape a PRD" },
+        { type: "enter" },
+        {
+            type: "waitForIdle",
+            timeoutMs: 10000,
+        },
+        {
+            type: "assertProjectFile",
+            path: "docs/prd/golden-ideation-prd.md",
+            exists: true,
+        },
+        {
+            type: "assertOnlyProjectChanges",
+            paths: ["docs/prd", "docs/prd/golden-ideation-prd.md"],
+        },
+    ],
     assertions: [
         assertRuntimeEvent("role:ideator", "runtime:agent:ideator"),
         assertsGoldenCoverage("intent:IDEATION", (result) => {
@@ -175,16 +203,14 @@ export const ideationInterviewPrdScenario = {
             );
         }),
         assertsGoldenCoverage("block:text", (result) => {
-            const interactions = /** @type {Array<{ interaction?: { type?: string } }> | undefined} */ (result.state
-                .scriptedInteractions);
+            const interactions = result.state.scriptedInteractions as RecordedRoleInteraction[] | undefined;
             assert(
                 interactions?.some((entry) => entry.interaction?.type === "text"),
                 "Expected text interview prompt.",
             );
         }),
         assertsGoldenCoverage("block:select", (result) => {
-            const interactions = /** @type {Array<{ interaction?: { type?: string } }> | undefined} */ (result.state
-                .scriptedInteractions);
+            const interactions = result.state.scriptedInteractions as RecordedRoleInteraction[] | undefined;
             assert(
                 interactions?.some((entry) => entry.interaction?.type === "select"),
                 "Expected select interview prompt.",
@@ -193,8 +219,7 @@ export const ideationInterviewPrdScenario = {
     ],
 };
 
-/** @type {GoldenScenario} */
-export const operatorOperationScenario = {
+export const operatorOperationScenario: GoldenScenario = {
     name: "role-operator-operation-self-verified",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
@@ -211,10 +236,15 @@ export const operatorOperationScenario = {
             toolCalls: [{ name: "task_completed", arguments: { message: "- Self-verified operation complete." } }],
         },
     ],
-    actions: [{ type: "type", text: "list current status only" }, { type: "enter" }, {
-        type: "waitForIdle",
-        timeoutMs: 10000,
-    }, { type: "assertProjectUnchanged" }],
+    actions: [
+        { type: "type", text: "list current status only" },
+        { type: "enter" },
+        {
+            type: "waitForIdle",
+            timeoutMs: 10000,
+        },
+        { type: "assertProjectUnchanged" },
+    ],
     assertions: [
         assertRuntimeEvent("role:operator", "runtime:agent:operator"),
         assertsGoldenCoverage("intent:OPERATION", (result) => {
@@ -230,8 +260,7 @@ export const operatorOperationScenario = {
     ],
 };
 
-/** @type {GoldenScenario} */
-export const engineerQuickFixMechanicalValidationScenario = {
+export const engineerQuickFixMechanicalValidationScenario: GoldenScenario = {
     name: "role-engineer-quick-fix-mechanical-validation",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
@@ -310,10 +339,8 @@ export const engineerQuickFixMechanicalValidationScenario = {
         }),
         assertsGoldenCoverage("durable:quick-fix-delivery", (result) => {
             assertEventIncludes(result, "project:file-checked");
-            const projectState = /** @type {{ registryEntries?: unknown[] } | undefined} */ (result.state.projectState);
-            const gitState =
-                /** @type {{ branch?: string, status?: string, trackedFiles?: string } | undefined} */ (result.state
-                    .gitState);
+            const projectState = result.state.projectState as RoleProjectEvidence | undefined;
+            const gitState = result.state.gitState as RoleGitEvidence | undefined;
             assert(
                 typeof gitState?.trackedFiles === "string",
                 "Expected QUICK_FIX Git tracking evidence to be recorded.",
@@ -329,22 +356,21 @@ export const engineerQuickFixMechanicalValidationScenario = {
             assert(result.state.editorUsable === true, "Expected TUI usable after QUICK_FIX completion.");
             assert(
                 Array.isArray(result.state.planFiles) && result.state.planFiles.length === 0,
-                `Expected QUICK_FIX to create no Plan files under docs/plans/; got ${
-                    JSON.stringify(result.state.planFiles)
-                }`,
+                `Expected QUICK_FIX to create no Plan files under docs/plans/; got ${JSON.stringify(
+                    result.state.planFiles,
+                )}`,
             );
             assert(
                 (projectState?.registryEntries || []).length === 0,
-                `Expected QUICK_FIX to leave no worktree registry entries; got ${
-                    JSON.stringify(projectState?.registryEntries)
-                }`,
+                `Expected QUICK_FIX to leave no worktree registry entries; got ${JSON.stringify(
+                    projectState?.registryEntries,
+                )}`,
             );
         }),
     ],
 };
 
-/** @type {GoldenScenario[]} */
-export const roleJourneyScenarios = [
+export const roleJourneyScenarios: GoldenScenario[] = [
     guideInquiryRoleJourneyScenario,
     ideationInterviewPrdScenario,
     operatorOperationScenario,
