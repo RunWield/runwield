@@ -532,7 +532,7 @@
     "src/ui/session-export/session-export-html.test.ts",
     "src/ui/theme/theme-discovery.test.ts",
     "src/ui/theme/theme-json.test.ts",
-    "src/ui/theme/theme-registry.test.js",
+    "src/ui/theme/theme-registry.test.ts",
     "src/ui/tui/__debug-thinking-timing.test.ts",
     "src/ui/tui/agent-mascot-view.test.ts",
     "src/ui/tui/agent-mascot.test.ts",
