@@ -40,6 +40,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
 
 /**
  * @typedef {Object} ReviewAgentState
+ * @property {boolean} stopped
  * @property {string} token
  * @property {string} cwd
  * @property {Record<string, unknown>} reviewPayload
@@ -56,6 +57,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
 export function createReviewAgentState(options) {
     return {
         ...options,
+        stopped: false,
         jobs: new Map(),
         streams: new Set(),
         widgets: createReviewWidgetStore(),
@@ -65,6 +67,7 @@ export function createReviewAgentState(options) {
 
 /** @param {ReviewAgentState} state */
 export async function cleanupReviewAgentState(state) {
+    state.stopped = true;
     for (const entry of state.jobs.values()) entry.abortController.abort("review server stopped");
     for (const controller of state.streams) {
         try {
@@ -85,6 +88,7 @@ export async function cleanupReviewAgentState(state) {
  * @returns {Promise<Response | null>}
  */
 export async function reviewAgentApi(request, url, state) {
+    if (state.stopped) return new Response("Review stopped.", { status: 503, ...noStore() });
     if (request.method === "GET" && url.pathname === "/api/agents/capabilities") {
         const provider = detectGuideProvider();
         return Response.json(
@@ -116,6 +120,7 @@ export async function reviewAgentApi(request, url, state) {
 
     if (request.method === "POST" && url.pathname === "/api/agents/jobs") {
         const body = await request.json().catch(() => ({}));
+        if (state.stopped) return new Response("Review stopped.", { status: 503, ...noStore() });
         if (
             !body ||
             typeof body !== "object" ||

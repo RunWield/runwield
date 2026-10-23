@@ -27,6 +27,7 @@ import {
 
 import {
     createReviewAgentState,
+    cleanupReviewAgentState,
     reviewAgentApi,
     runConfiguredGuideCommand,
 } from "./routes/api/review-agent-handlers.js";
@@ -1430,7 +1431,7 @@ test("stopping Code Review ends its agent event stream while another review keep
     }
 });
 
-test("aborting one review signal leaves other registrations on the host live", async () => {
+test("aborting one review signal leaves other registrations on the host live", { timeout: 5000 }, async () => {
     const signal = new AbortController();
     const first = startReviewWorkspaceServer({
         cwd: getCwd(),
@@ -1448,7 +1449,6 @@ test("aborting one review signal leaves other registrations on the host live", a
     try {
         assertEquals(first.url, second.url);
         signal.abort();
-        await first.stop();
         assertEquals((await first.waitForDecision()).canceled, true);
         const response = await fetch(`${second.url}/review/plan?token=abort-second`);
         assertEquals(response.status, 200);
@@ -1456,5 +1456,37 @@ test("aborting one review signal leaves other registrations on the host live", a
     } finally {
         await first.stop();
         await second.stop();
+    }
+});
+
+test("review cleanup rejects new streams and jobs including requests waiting for their body", async () => {
+    const state = createReviewAgentState({
+        cwd: getCwd(),
+        token: "cleanup-admission",
+        reviewPayload: { ...makeGuideReviewPayload(), guidedReviewFixture: JSON.parse(makeGuideJson()) },
+        runGuideCommand: UNUSED_GUIDE_COMMAND,
+    });
+    const streamUrl = new URL("http://localhost/api/agents/jobs/stream");
+    const jobsUrl = new URL("http://localhost/api/agents/jobs");
+    const stream = await reviewAgentApi(new Request(streamUrl), streamUrl, state);
+    const reader = stream.body.getReader();
+    assertEquals((await reader.read()).done, false);
+    const body = new TransformStream();
+    const pending = reviewAgentApi(new Request(jobsUrl, { method: "POST", body: body.readable }), jobsUrl, state);
+    try {
+        const cleanup = cleanupReviewAgentState(state);
+        const lateStream = reviewAgentApi(new Request(streamUrl), streamUrl, state);
+        assertEquals((await lateStream).status, 503);
+        await cleanup;
+        assertEquals((await reader.read()).done, true);
+        const newJob = new Request(jobsUrl, { method: "POST", body: JSON.stringify({ provider: "guide" }) });
+        assertEquals((await reviewAgentApi(newJob, jobsUrl, state)).status, 503);
+        const writer = body.writable.getWriter();
+        await writer.write(new TextEncoder().encode(JSON.stringify({ provider: "guide" })));
+        await writer.close();
+        assertEquals((await pending).status, 503);
+    } finally {
+        await cleanupReviewAgentState(state);
+        await reader.cancel();
     }
 });

@@ -144,15 +144,9 @@ test("registration during shutdown starts a working listener without waiting for
 });
 
 test("handler failures use that registration's error response without stopping other reviews", async () => {
-    const a = reviewHost.register(
-        "A",
-        async () => {
-            throw new Error("A failed");
-        },
-        {
-            onError: (error) => new Response(error.message, { status: 503 }),
-        },
-    );
+    const a = reviewHost.register("A", () => Promise.reject(new Error("A failed")), {
+        onError: (error) => new Response(error.message, { status: 503 }),
+    });
     const b = register("B");
     try {
         const response = await fetch(`${a.origin}/review/plan?token=A`);

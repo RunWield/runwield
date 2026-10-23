@@ -433,3 +433,28 @@ test("document reader shares the review origin and disposal revokes only its own
         }
     });
 });
+
+test("invalid reader rebinding does not block public assets for a later review", async () => {
+    await withProject(async (root, host) => {
+        await write(root, "README.md", "# Reader");
+        await readPage(resolved(host, "README.md"));
+        host.rebind(join(root, "missing-project"));
+        assertEquals(host.resolve("README.md"), null);
+        const review = startReviewWorkspaceServer({
+            cwd: root,
+            token: "after-invalid-reader",
+            reviewPayload: { plan: "# Review" },
+            reviewType: "plan",
+        });
+        try {
+            await expectStatus(new URL("/tokens.css", review.url), 200);
+            const page = await fetch(`${review.url}/review/plan?token=after-invalid-reader`);
+            assertEquals(page.status, 200);
+            assertStringIncludes(await page.text(), "# Review");
+            await host.dispose();
+            await expectStatus(new URL("/tokens.css", review.url), 200);
+        } finally {
+            await review.stop();
+        }
+    });
+});

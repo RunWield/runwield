@@ -35,7 +35,7 @@ export class DocumentLinkHost {
             : null;
         if (this.#registration) {
             const previous = this.#registration;
-            this.#registration = this.#register();
+            this.#registration = this.#root ? this.#register() : null;
             void previous.release();
         }
     }
