@@ -117,7 +117,9 @@ import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/
 import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
-import { WORKSPACE_PWA_PATHS, workspacePwaResponse } from "./server/workspace-pwa.ts";
+import { workspacePwaResponse } from "./server/workspace-pwa.ts";
+import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
+import { reviewHost } from "./server/review-host.ts";
 import { createWorkspaceSearchService } from "./server/workspace-search.ts";
 
 const WORKSPACE_DIR = join(RUNWIELD_SOURCE_ROOT, "ui", "workspace");
@@ -1310,22 +1312,6 @@ async function textFileResponse(path, contentType) {
     }
 }
 
-/** @param {string} pathname */
-function isPublicWorkspaceAsset(pathname) {
-    return (
-        WORKSPACE_PWA_PATHS.includes(pathname) ||
-        pathname === "/styles.css" ||
-        pathname === "/tokens.css" ||
-        pathname === "/components.css" ||
-        pathname === "/workspace.css" ||
-        pathname === "/workspace-shell.js" ||
-        pathname === "/design-system/sidebar-motion.js" ||
-        pathname === "/theme.css" ||
-        pathname === "/brand/logo.svg" ||
-        pathname.startsWith("/_astro/")
-    );
-}
-
 function jsonNotFound() {
     return Response.json(
         { error: "not_found", message: "Not found.", status: 404 },
@@ -1459,11 +1445,10 @@ export function startSessionQuestionWorkspaceServer(options) {
 }
 
 /**
- * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation, host?: string, port?: number, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
+ * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
  */
 export function startReviewWorkspaceServer(options) {
     const cwd = options.cwd ?? getCwd();
-    const host = options.host ?? "127.0.0.1";
     let decision = registerReviewDecisionPromise(options.token);
     const app = createReviewWorkspaceApp({
         cwd,
@@ -1472,34 +1457,22 @@ export function startReviewWorkspaceServer(options) {
         reviewType: options.reviewType,
         reviewConversation: options.reviewConversation,
     });
-    let server;
+    let registration;
     try {
-        server = serveHttp(
-            {
-                hostname: host,
-                port: options.port ?? 0,
-                automaticCompression: true,
-                onListen(address) {
-                    options.onOutput?.({
-                        stream: "stdout",
-                        text: `Listening on http://${address.hostname}:${address.port}/\n`,
-                    });
-                },
-                onError(error) {
-                    const text = error instanceof Error ? error.stack || error.message : String(error);
-                    options.onOutput?.({ stream: "stderr", text: `${text}\n` });
-                    return new Response("Internal Server Error", { status: 500 });
-                },
+        registration = reviewHost.register(options.token, app.handler(), {
+            onError(error) {
+                const text = error instanceof Error ? error.stack || error.message : String(error);
+                options.onOutput?.({ stream: "stderr", text: `${text}\n` });
+                return new Response("Internal Server Error", { status: 500 });
             },
-            app.handler(),
-        );
+        });
     } catch (error) {
         const text = error instanceof Error ? error.stack || error.message : String(error);
         options.onOutput?.({ stream: "stderr", text: `${text}\n` });
         throw error;
     }
-    const port = server.addr.port;
-    const url = `http://${host}:${port}`;
+    const url = registration.origin;
+    options.onOutput?.({ stream: "stdout", text: `Listening on ${url}/\n` });
     /** @type {Promise<void> | null} */
     let stopPromise = null;
 
@@ -1511,7 +1484,7 @@ export function startReviewWorkspaceServer(options) {
                 : { approved: false, feedback: "", annotations: [], exit: true, canceled: true };
         resolveReviewDecision(options.token, canceledDecision);
         stopPromise ??= Promise.resolve(app.cleanup())
-            .then(() => server.shutdown())
+            .then(() => registration.release())
             .catch((error) => {
                 const text = error instanceof Error ? error.stack || error.message : String(error);
                 options.onOutput?.({ stream: "stderr", text: `${text}\n` });
