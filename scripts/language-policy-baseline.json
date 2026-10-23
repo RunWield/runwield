@@ -5,7 +5,6 @@
     "src/cmd/help/index.js",
     "src/cmd/registry.js",
     "src/constants.js",
-    "src/extensions/snip/index.js",
     "src/plan-store.js",
     "src/shared/collaboration/client.js",
     "src/shared/collaboration/protocol.js",
