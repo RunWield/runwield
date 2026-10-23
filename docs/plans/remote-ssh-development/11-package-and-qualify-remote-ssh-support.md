@@ -19,7 +19,7 @@ createdAt: "2026-09-21T02:05:52.824Z"
 status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
-order: 10
+order: 11
 dependencies:
     - "01-establish-the-remote-connection-and-matched-runtime"
     - "02-bridge-local-models-and-personal-resources"
@@ -29,7 +29,8 @@ dependencies:
     - "06-forward-personal-mcp-tools-from-the-laptop"
     - "07-carry-remote-context-through-delivery-workflows"
     - "08-stop-owned-remote-work-on-connection-loss"
-    - "09-open-remote-reviews-in-the-local-browser"
+    - "09-host-reviews-on-one-server-per-process"
+    - "10-open-remote-reviews-in-the-local-browser"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 ---

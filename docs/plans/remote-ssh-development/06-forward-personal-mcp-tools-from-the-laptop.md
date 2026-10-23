@@ -55,8 +55,8 @@ personal MCP servers run on the laptop with their existing credentials, and thei
   behavior. `McpIntegration.call` in the old draft does not exist. Public `createMcpExtension` and `McpTransport` in the
   pinned Pi 1.0.0 packages support the selected relay without another MCP client or naming system.
 
-No scope moves to siblings. Child07 still owns delivery workflow context; child08 owns browser review; child09 owns
-release/platform qualification. This child proves personal MCP through ordinary remote conversation.
+No scope moves to siblings. Child07 still owns delivery workflow context; child08 owns disconnect and recovery; child09
+hosts reviews on one server; child10 owns local browser forwarding; child11 owns release/platform qualification. This child proves personal MCP through ordinary remote conversation.
 
 ## Objective
 

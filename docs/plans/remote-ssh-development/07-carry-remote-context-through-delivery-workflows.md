@@ -88,7 +88,7 @@ This child delivers the non-browser part of the Remote SSH PRD:
 
 - [Remote workflows and local review](../../prd/remote-ssh-prd.md#remote-workflows-and-local-review): **Complete normal
   Core work remotely**, and the scenario "planning, review, execution, validation, and publication occur remotely and the
-  local Session records the results". The local browser is child09.
+  local Session records the results". The local browser is child10, after the review-host refactor in child09.
 - [Disconnect and recovery](../../prd/remote-ssh-prd.md#disconnect-and-recovery): **Preserve work and report
   uncertainty**, and the scenario "a remote edit or publication attempt whose result was not saved locally is checked
   on reconnect, not repeated".
@@ -211,7 +211,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   cross-machine workflow tests.
 - `docs/prd/remote-ssh-prd.md`, `docs/prd/runwield-core-prd.md`, `docs/domain-language.md` — delivered scope and links.
 
-Not touched: process termination on loss (child08), browser forwarding and Guided Review (child09), Claude CLI and
+Not touched: process termination on loss (child08), review hosting (child09), browser forwarding and Guided Review (child10), Claude CLI and
 Antigravity CLI backends (stay refused by `model-execution.ts`), remote `/sleep` (deferred by the Epic).
 
 ## Reuse Opportunities
@@ -266,8 +266,8 @@ Antigravity CLI backends (stay refused by `model-execution.ts`), remote `/sleep`
   Delivery concludes only after confirmed publication or deliberate user abandonment, as in local mode.
 - The Remote SSH PRD marks **Complete normal Core work remotely**, its planning-to-publication scenario, workflow context
   and rollover on resume, and the reconnect-without-replay scenario for workflows as delivered. Local browser review
-  stays target scope in child09, and owned-process termination stays target scope in child08. The links to the renamed
-  `09-open-remote-reviews-in-the-local-browser` resolve.
+  stays target scope in child10, and owned-process termination stays target scope in child08. Child09 first establishes
+  the shared review host; the links to `10-open-remote-reviews-in-the-local-browser` resolve.
 - The Core PRD **Laptop-owned remote Session saves** section states that artifacts, Plan Associations, Plan review
   references, and segment rollover use the laptop save bridge. Its "workflow authorization and rollover remain target"
   note is removed.
@@ -326,7 +326,7 @@ All automated tests run a real remote runtime against a real laptop `RemoteSessi
 - Behavior expected to stop existing: `remote-runtime-guards.test.ts` assertions that non-root and sub-agent Sessions are
   refused in remote mode. Rewrite them to assert the new rule: in-memory agents are admitted, persisted managers and an
   unbridged root are refused. Do not delete them without that replacement.
-- Live on `sct` (Plan review uses a manual `ssh -L` forward of the printed review URL until child09): take a remote-only
+- Live on `sct` (Plan review uses a manual `ssh -L` forward of the printed review URL until child10): take a remote-only
   Plan through planning, Plan review approval, isolated execution, validation, AI review, repair where triggered, Work
   Record generation, merge, and confirmed publication. Confirm the laptop sentinel tree is unchanged.
 - Live on `sct` (moved from child04): after an execution handoff creates a successor segment, disconnect, reconnect, and
@@ -347,8 +347,8 @@ All automated tests run a real remote runtime against a real laptop `RemoteSessi
   collection, and the remote project locator stay those of the parent project.
 - **No remote-mode branches in tools.** The guard, the capability, and the rollover path are construction-time
   boundaries. Workflow and tool code calls the same interfaces in local and remote mode.
-- **Plan review before child09.** The review server runs on remote loopback. `BrowserPort.open` returns `opened: false`
-  and the URL is shown. A user can reach it with a manual SSH forward until child09 automates it.
+- **Plan review before child10.** The review server runs on remote loopback. `BrowserPort.open` returns `opened: false`
+  and the URL is shown. A user can reach it with a manual SSH forward until child10 automates it.
 - **Assumption: background log location.** Remote background task logs are transient and do not survive the runtime.
   A connection-owned private directory matches that lifetime. They are not part of laptop Session history.
 - **CLI backends.** Claude CLI and Antigravity CLI stay refused in remote mode, including for delegated and repair

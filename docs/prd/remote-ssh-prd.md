@@ -300,7 +300,7 @@ review, isolated execution, validation, semantic review and repair, Work Records
 workflow. In-memory delegated agents and reviewers use the laptop model bridge. Session artifacts, Plan Associations,
 review references, and transcript rollover are laptop-owned. Existing approval and validation meanings remain unchanged.
 Automatic local browser access remains target scope in
-[child09](../plans/remote-ssh-development/09-open-remote-reviews-in-the-local-browser.md). Until then, review servers
+[child09](../plans/remote-ssh-development/10-open-remote-reviews-in-the-local-browser.md). Until then, review servers
 print their remote loopback URL; the user can open them through a manual SSH forward.
 
 **Delivered requirement: Complete normal Core work remotely.** Reading and editing, Git, code search, planning, isolated
