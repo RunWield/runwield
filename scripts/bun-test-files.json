@@ -208,7 +208,7 @@
     "src/shared/owner-coordination/pairing.test.ts",
     "src/shared/owner-coordination/projects.test.ts",
     "src/shared/owner-coordination/segment-activation-evidence.test.ts",
-    "src/shared/owner-coordination/segment-rollover-commit.test.js",
+    "src/shared/owner-coordination/segment-rollover-commit.test.ts",
     "src/shared/owner-coordination/session-activations.test.ts",
     "src/shared/owner-coordination/session-segment-evidence.test.ts",
     "src/shared/owner-coordination/session-segments.test.ts",
