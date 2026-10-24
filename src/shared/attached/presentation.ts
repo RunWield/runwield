@@ -1,4 +1,5 @@
-import type { AttachedNextAction, AttachedOperationResult, AttachedWorkflowView } from "./operations.ts";
+import type { AttachedCarrierResult } from "./coordinator.ts";
+import type { AttachedNextAction, AttachedWorkflowView } from "./operations.ts";
 
 export function actionId(action: AttachedNextAction, workflow: AttachedWorkflowView): string | null {
     return "actionId" in action ? action.actionId : (workflow.review?.actionId ?? null);
@@ -40,7 +41,7 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
         return { ...summary, consentKind: action.consentKind, disclosure: action.disclosure };
     }
     if (action.kind === "review") return { ...summary, planName: action.planName };
-    if (action.kind === "plan_ready" || action.kind === "implemented") {
+    if (action.kind === "plan_ready" || action.kind === "plan_saved" || action.kind === "implemented") {
         return { ...summary, planName: action.planName, guidance: action.guidance };
     }
     if (action.kind === "delivered") {
@@ -121,7 +122,7 @@ function compactWorkflow(workflow: AttachedWorkflowView) {
     };
 }
 
-export function compactStatus(result: AttachedOperationResult, review: { url: string } | null) {
+export function compactStatus(result: AttachedCarrierResult, review: { url: string } | null) {
     if (!result.workflow) return result;
     return {
         ok: result.ok,
@@ -132,7 +133,7 @@ export function compactStatus(result: AttachedOperationResult, review: { url: st
     };
 }
 
-export function compactResult(result: AttachedOperationResult) {
+export function compactResult(result: AttachedCarrierResult) {
     if (!result.workflow) return result;
     return {
         ...result,

@@ -1,3 +1,4 @@
+import { saveAttachedReviewChat } from "../../shared/attached/coordinator.ts";
 import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { rm as fsRm, mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { git } from "../../shared/git-test-fixture.ts";
-import { type AttachedJsonObject } from "../../shared/attached/operations.ts";
+import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "../../shared/attached/operations.ts";
 import {
     activateInput,
     CLI_PATH,
@@ -19,6 +20,7 @@ import {
     readRecordBytes,
     runOperation,
     spawnAttachedCli,
+    submitReview,
     triageReportInput,
 } from "../../shared/attached/attached-test-fixture.ts";
 import process from "node:process";
@@ -120,7 +122,9 @@ test("the removed submit CLI name prints a usage error", async () => {
             cwd: projectRoot,
         });
         assertEquals(result.code, 1);
-        assert(new TextDecoder().decode(result.stderr).includes("Usage: wld attached"));
+        const usage = new TextDecoder().decode(result.stderr);
+        assert(usage.includes("Usage: wld attached"));
+        for (const { name } of ATTACHED_OPERATIONS) assert(usage.includes(name), name);
     });
 });
 
@@ -131,5 +135,24 @@ test("CLI activation still requires host evidence", async () => {
         assertEquals(result.code, 1);
         assertEquals(result.result.ok, false);
         assert(!result.result.ok && result.result.rejection.field === "evidence");
+    });
+});
+
+test("CLI get_pending_chat returns the oldest pending Plan review turn", async () => {
+    await withProject(async (projectRoot) => {
+        const workflow = await submitReview(projectRoot);
+        assert(workflow.review);
+        const { actionId, planRevision } = workflow.review;
+        for (const feedback of ["First question", "Second question"]) {
+            await saveAttachedReviewChat(projectRoot, workflow.workflowId, actionId, { feedback }, planRevision);
+        }
+        const cli = await spawnAttachedCli("get_pending_chat", projectRoot, {
+            workflowId: workflow.workflowId,
+            actionId,
+        });
+        assertEquals(cli.code, 0, cli.stderr);
+        assert(cli.result.ok && "chat" in cli.result);
+        assertEquals(cli.result.operation, "get_pending_chat");
+        assertEquals(cli.result.chat.message, "First question");
     });
 });

@@ -4,7 +4,12 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
-import { ATTACHED_OPERATIONS, type AttachedJsonObject, type AttachedOperationName } from "./operations.ts";
+import {
+    ATTACHED_OPERATIONS,
+    type AttachedJsonObject,
+    isAttachedReadOperation,
+    type AttachedLifecycleOperationName,
+} from "./operations.ts";
 import { locateAttachedWorkflows, loadAttachedWorkflowRecord } from "./record-store.ts";
 import { activateInput, EVIDENCE, runOperation, withProject } from "./attached-test-fixture.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
@@ -105,7 +110,7 @@ for (const adapterContract of [undefined, -1, 1.5, "1"]) {
     });
 }
 
-const payloads: Record<AttachedOperationName, AttachedJsonObject> = {
+const payloads: Record<AttachedLifecycleOperationName, AttachedJsonObject> = {
     activate: { requestText: "Add value", hostRequestId: "host-request" },
     triage_report: {
         actionId: "pending",
@@ -132,6 +137,8 @@ for (const refusal of [
     },
 ]) {
     for (const operation of ATTACHED_OPERATIONS.filter((entry) => entry.inputSchema.required.includes("evidence"))) {
+        if (isAttachedReadOperation(operation.name)) continue;
+        const name = operation.name;
         test(`${operation.name} rejects ${refusal.reason} before changing workflow, Plan, worktree, or registry`, async () => {
             const fixture = await attachedValidationFixture();
             try {
@@ -149,7 +156,7 @@ for (const refusal of [
                 const input: AttachedJsonObject = {
                     operationId: `stale-${operation.name}`,
                     evidence: refusal.evidence,
-                    payload: payloads[operation.name],
+                    payload: payloads[name],
                     ...(operation.name !== "activate" && { workflowId: fixture.workflowId, expectedRevision: 2 }),
                 };
                 const result = await runOperation(operation.name, fixture.root, input);

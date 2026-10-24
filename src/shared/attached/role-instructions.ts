@@ -28,7 +28,7 @@ const ENVELOPE_ADDENDUM = [
     "  - `expectedRevision`: `workflow.revision` from the last RunWield result.",
     "  - `payload.actionId`: `workflow.nextAction.actionId` from the last RunWield result.",
     "- After each call, follow `workflow.nextAction`, even when the result has no `instructions`. Follow role " +
-        "instructions when present. For `plan_ready`, immediately call `start_execution` and dispatch a fresh host worker, unless consent was declined; then stop. For `return_to_host`, tell the user the outcome and continue as ordinary Claude Code.",
+        "instructions when present. For `plan_ready`, immediately call `start_execution` and dispatch a fresh host worker, unless consent was declined; then stop. For `plan_saved`, report that the Plan is Ready For Work, saved for later, and stop, unless the user invoked `/runwield:implement`. That user command calls `start_execution` for either `plan_ready` or `plan_saved`. For `return_to_host`, tell the user the outcome and continue as ordinary Claude Code.",
     "- Stay in Claude Code and the browser; use no RunWield CLI or TUI commands.",
 ].join("\n");
 

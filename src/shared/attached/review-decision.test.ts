@@ -3,8 +3,11 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { listEntries } from "../worktree-registry.js";
+import { executionInput } from "./execution-test-fixture.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
     planWrittenInput,
@@ -219,5 +222,188 @@ test("Core feedback after Attached approval yields a usable new Planner action",
         assert(submitted.ok);
         assertEquals(submitted.workflow.state, "awaiting_review");
         assertEquals(submitted.workflow.review?.round, 2);
+    });
+});
+
+for (const approvalAction of ["later", "run"] as const) {
+    test(`Approve ${approvalAction} keeps readiness and starts only on explicit execution`, async () => {
+        await withProject(async (root) => {
+            const workflow = await submitReview(root);
+            const opened = await openAttachedReviewRound(root, workflow.workflowId);
+            assert(opened.kind === "opened");
+            await applyAttachedReviewDecision(root, workflow.workflowId, opened.basis, { ...approval, approvalAction });
+            assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "ready_for_work");
+            assertEquals((await listEntries(root)).length, 0);
+            const fresh = await spawnAttachedCli("status", root, { workflowId: workflow.workflowId });
+            assert(fresh.result.ok);
+            assertEquals(fresh.result.workflow.state, "plan_ready");
+            assertEquals(fresh.result.workflow.nextAction.kind, approvalAction === "run" ? "plan_ready" : "plan_saved");
+            assert("guidance" in fresh.result.workflow.nextAction);
+            if (approvalAction === "later") {
+                assertStringIncludes(fresh.result.workflow.nextAction.guidance, "Ready For Work");
+                assertStringIncludes(fresh.result.workflow.nextAction.guidance, "/runwield:implement");
+            }
+            const started = await runOperation(
+                "start_execution",
+                root,
+                executionInput(fresh.result.workflow, "explicit-start"),
+            );
+            assert(started.ok && started.workflow.nextAction.kind === "implementation", JSON.stringify(started));
+        });
+    });
+}
+
+test("Core readiness without a saved browser outcome stays saved for later", async () => {
+    await withProject(async (root) => {
+        const workflow = await submitReview(root);
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "readiness_passed",
+            currentStatus: "approved",
+        });
+        const before = await loadPlan(root, "dark-mode-toggle");
+        assert(before);
+        const status = await runOperation("status", root, { workflowId: workflow.workflowId });
+        assert(status.ok);
+        assertEquals(status.workflow.state, "plan_ready");
+        assertEquals(status.workflow.nextAction.kind, "plan_saved");
+        assertEquals(status.workflow.review?.outcome, undefined);
+        assertEquals((await listEntries(root)).length, 0);
+        assertEquals(
+            await loadPlan(root, "dark-mode-toggle"),
+            before,
+            "Status must not write readiness or controller state.",
+        );
+    });
+});
+
+test("a newer Core approval cannot reuse an earlier Attached run decision", async () => {
+    await withProject(async (root) => {
+        const workflow = await submitReview(root);
+        const opened = await openAttachedReviewRound(root, workflow.workflowId);
+        assert(opened.kind === "opened");
+        await applyAttachedReviewDecision(root, workflow.workflowId, opened.basis, approval);
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "review_reopened",
+            currentStatus: "ready_for_work",
+        });
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "review_approved",
+            currentStatus: "feedback",
+        });
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "readiness_passed",
+            currentStatus: "approved",
+        });
+        const before = await loadPlan(root, "dark-mode-toggle");
+        const record = await readRecordBytes(root, workflow.workflowId);
+        const fresh = await spawnAttachedCli("status", root, { workflowId: workflow.workflowId });
+        assert(fresh.result.ok);
+        assertEquals(fresh.result.workflow.state, "plan_ready");
+        assertEquals(fresh.result.workflow.nextAction.kind, "plan_saved");
+        assert(!fresh.result.workflow.execution);
+        assertEquals((await listEntries(root)).length, 0);
+        assertEquals(await loadPlan(root, "dark-mode-toggle"), before);
+        assertEquals(await readRecordBytes(root, workflow.workflowId), record);
+    });
+});
+
+test("an older saved run outcome without approval revision proof stays saved for later", async () => {
+    await withProject(async (root) => {
+        const workflow = await submitReview(root);
+        const opened = await openAttachedReviewRound(root, workflow.workflowId);
+        assert(opened.kind === "opened");
+        await applyAttachedReviewDecision(root, workflow.workflowId, opened.basis, approval);
+        const location = locateAttachedWorkflows(root);
+        const loaded = await loadAttachedWorkflowRecord(location, workflow.workflowId);
+        assert(loaded.status === "found" && loaded.record.review);
+        const oldRecord = {
+            ...loaded.record,
+            review: { ...loaded.record.review },
+            revision: loaded.record.revision + 1,
+        };
+        delete oldRecord.review.approvalControllerRevision;
+        const written = await writeAttachedWorkflowRecord(location, oldRecord, loaded.record.revision);
+        assertEquals(written.status, "written");
+        const before = await loadPlan(root, "dark-mode-toggle");
+        const record = await readRecordBytes(root, workflow.workflowId);
+        const status = await runOperation("status", root, { workflowId: workflow.workflowId });
+        assert(status.ok);
+        assertEquals(status.workflow.state, "plan_ready");
+        assertEquals(status.workflow.nextAction.kind, "plan_saved");
+        assertEquals((await listEntries(root)).length, 0);
+        assertEquals(await loadPlan(root, "dark-mode-toggle"), before);
+        assertEquals(await readRecordBytes(root, workflow.workflowId), record);
+    });
+});
+
+test("reopening after a controller-only draft update rejects the old browser basis without writes", async () => {
+    await withProject(async (root) => {
+        const workflow = await submitReview(root);
+        const first = await openAttachedReviewRound(root, workflow.workflowId);
+        assert(first.kind === "opened");
+        await updatePlanFrontMatter(
+            root,
+            "dark-mode-toggle",
+            { failureReason: "New Core evidence." },
+            {},
+            { expectedRevision: first.basis.review.planRevision },
+        );
+        const second = await openAttachedReviewRound(root, workflow.workflowId);
+        assert(second.kind === "opened");
+        assertEquals(second.basis.review.planRevision, first.basis.review.planRevision);
+        assert(second.basis.review.controllerRevision !== first.basis.review.controllerRevision);
+        const before = await loadPlan(root, "dark-mode-toggle");
+        const record = await readRecordBytes(root, workflow.workflowId);
+        await assertRejects(
+            () => applyAttachedReviewDecision(root, workflow.workflowId, first.basis, approval),
+            Error,
+            "action_superseded",
+        );
+        assertEquals(await loadPlan(root, "dark-mode-toggle"), before);
+        assertEquals(await readRecordBytes(root, workflow.workflowId), record);
+        assertEquals(
+            (await applyAttachedReviewDecision(root, workflow.workflowId, second.basis, approval)).kind,
+            "approved",
+        );
+        assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "ready_for_work");
+    });
+});
+
+test("a controller-only Core update rejects a pinned Attached draft decision without writes", async () => {
+    await withProject(async (root) => {
+        const workflow = await submitReview(root);
+        const opened = await openAttachedReviewRound(root, workflow.workflowId);
+        assert(opened.kind === "opened");
+        await updatePlanFrontMatter(
+            root,
+            "dark-mode-toggle",
+            { failureReason: "New Core evidence." },
+            {},
+            { expectedRevision: opened.basis.review.planRevision },
+        );
+        const before = await loadPlan(root, "dark-mode-toggle");
+        assert(before);
+        const record = await readRecordBytes(root, workflow.workflowId);
+        await assertRejects(
+            () => applyAttachedReviewDecision(root, workflow.workflowId, opened.basis, approval),
+            Error,
+            "Plan changed after review opened",
+        );
+        assertEquals(await loadPlan(root, "dark-mode-toggle"), before);
+        assertEquals(await readRecordBytes(root, workflow.workflowId), record);
     });
 });

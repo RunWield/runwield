@@ -22,14 +22,17 @@ import {
 import {
     type AttachedJsonObject,
     type AttachedJsonValue,
-    type AttachedOperationName,
+    type AttachedLifecycleOperationName,
     type AttachedOperationResult,
 } from "../../shared/attached/operations.ts";
 import { type AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
 
 import process from "node:process";
 
-type Carrier = (operation: AttachedOperationName, input: AttachedJsonObject) => Promise<AttachedOperationResult>;
+type Carrier = (
+    operation: AttachedLifecycleOperationName,
+    input: AttachedJsonObject,
+) => Promise<AttachedOperationResult>;
 
 function schemaObject(value: AttachedJsonValue | undefined): AttachedJsonObject {
     assert(value !== null && typeof value === "object" && !Array.isArray(value));
@@ -238,7 +241,7 @@ for (const adapterContract of [undefined, 0, 1])
             });
             const client = new Client({ name: "claude-code", version: EVIDENCE.hostVersion });
             async function call(
-                name: AttachedOperationName,
+                name: AttachedLifecycleOperationName,
                 input: AttachedJsonObject,
             ): Promise<AttachedOperationResult> {
                 const { evidence: _evidence, ...argumentsWithoutEvidence } = input;

@@ -373,7 +373,7 @@ async function runLockedPublicationPhase(
             .catch(() => false);
         if (!exists) repairMergeWorktreePath = undefined;
     }
-    let agentRepairs = 0;
+    let agentRepairs = args.hostTurn ? args.validationCheckpoint?.publicationRepairs || 0 : 0;
     // A restarted validation can inherit a repair checkout that is still inside
     // Git's merge transaction. Normalize it before attempting another merge.
     let pendingFinalizeFailure: PublicationFailure | undefined;
@@ -447,6 +447,7 @@ async function runLockedPublicationPhase(
             try {
                 if (await dispatchMergeRepair(args, context, reason, failure)) continue;
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 pendingFinalizeFailure = normalizePublicationFailure(
                     caught instanceof Error ? caught : new Error(String(caught)),
                 );

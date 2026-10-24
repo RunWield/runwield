@@ -23,7 +23,9 @@ Show any returned `compatibility` notice to the user before continuing. On `inco
 5. After cancellation, tell the user review was canceled and ask what to do next. The workflow remains open.
    `/runwield:plan-review` restores it in a fresh conversation. For `plan_ready`, immediately call `start_execution`
    with a new `operationId`, current `workflowId` and `expectedRevision`, and `payload: {}`. No separate confirmation is
-   needed after approval. Follow the implementation flow below. Answer unrelated requests as ordinary Claude Code.
+   needed after Approve & Run. For `plan_saved`, report that the Plan is Ready For Work, saved for later, and stop.
+   Tell the user `/runwield:implement` starts it. Follow the implementation flow below only for `plan_ready`.
+   Answer unrelated requests as ordinary Claude Code.
 
 ## Implementation flow
 

@@ -33,7 +33,18 @@ export type AttachedOperationName =
     | "review_complete"
     | "review_reply"
     | "validation_decision"
-    | "work_record_completed";
+    | "work_record_completed"
+    | AttachedReadOperationName;
+
+export type AttachedReadOperationName = "get_instructions" | "get_artifact" | "get_pending_chat";
+export type AttachedLifecycleOperationName = Exclude<AttachedOperationName, AttachedReadOperationName>;
+
+export interface AttachedActionReadEnvelope extends StatusEnvelope {
+    actionId: string;
+    content: "instructions" | "chat" | "prompt" | "execution_report" | "repair_report";
+    offsetBytes?: number;
+    maxBytes?: number;
+}
 
 /** Version of the Triage role and outcome contract the host receives with a Triage action. */
 export const ATTACHED_TRIAGE_CONTRACT_VERSION = "runwield.attached.triage/1";
@@ -51,6 +62,7 @@ const TRANSCRIPT_FIELD_PATTERN = /^(transcript|messages|conversation|history|tur
 const PATH_FIELD_PATTERN = /(path|paths|dir|directory|cwd|root|file|files|worktree)$/i;
 
 export type AttachedRejectionCode =
+    | "home_unavailable"
     | "invalid_input"
     | "payload_too_large"
     | "unknown_field"
@@ -198,6 +210,8 @@ export interface AttachedReviewRound {
     actionId: string;
     planRevision: string;
     controllerRevision: number;
+    /** Canonical revision after this round's approval and readiness, not its review basis. */
+    approvalControllerRevision?: number;
     waitingReason: "user_decision";
     status: "pending" | "applied" | "revising";
     outcome?: AttachedReviewOutcome;
@@ -221,6 +235,7 @@ export type AttachedNextAction =
     | ({ kind: "plan"; projectSetup: string[] } & PendingHostAction)
     | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
     | { kind: "plan_ready"; planName: string; guidance: string }
+    | { kind: "plan_saved"; planName: string; guidance: string }
     | { kind: "consent"; actionId: string; consentKind: "non_git_in_place"; disclosure: string }
     | ({
           kind: "implementation";
@@ -571,6 +586,55 @@ export function parseStatusInput(projectRoot: string, input: AttachedJsonValue |
             ...(object.workflowId !== undefined && { workflowId: readIdentifier(object, "workflowId", "workflowId") }),
         };
     });
+}
+
+/** Read operations share one strict, evidence-free envelope across carriers. */
+export function parseAttachedActionReadInput(
+    name: AttachedReadOperationName,
+    projectRoot: string,
+    input: AttachedJsonValue | undefined,
+) {
+    const parsed = parse(input, (): AttachedActionReadEnvelope => {
+        const keys = [
+            "workflowId",
+            "actionId",
+            ...(name === "get_artifact" ? ["artifact", "offsetBytes", "maxBytes"] : []),
+        ];
+        const object = readObject(input, "", keys);
+        let content: AttachedActionReadEnvelope["content"] = name === "get_instructions" ? "instructions" : "chat";
+        if (name === "get_artifact") {
+            const artifact = object.artifact;
+            if (artifact !== "prompt" && artifact !== "execution_report" && artifact !== "repair_report") {
+                reject("invalid_input", "artifact", "Use prompt, execution_report, or repair_report.");
+            }
+            content = artifact;
+        }
+        for (const key of ["offsetBytes", "maxBytes"]) {
+            const value = object[key];
+            if (
+                value !== undefined &&
+                (typeof value !== "number" ||
+                    !Number.isSafeInteger(value) ||
+                    value < (key === "maxBytes" ? 4 : 0) ||
+                    (key === "maxBytes" && value > 65536))
+            ) {
+                reject("invalid_input", key, "Use offsetBytes >= 0 and maxBytes between 4 and 65536.");
+            }
+        }
+        return {
+            projectRoot,
+            workflowId: readIdentifier(object, "workflowId", "workflowId"),
+            actionId: readIdentifier(object, "actionId", "actionId"),
+            content,
+            ...(typeof object.offsetBytes === "number" && { offsetBytes: object.offsetBytes }),
+            ...(typeof object.maxBytes === "number" && { maxBytes: object.maxBytes }),
+        };
+    });
+    return parsed.ok ? parsed : { ...parsed, rejection: { ...parsed.rejection, code: "invalid_input" as const } };
+}
+
+export function isAttachedReadOperation(name: AttachedOperationName): name is AttachedReadOperationName {
+    return name === "get_instructions" || name === "get_artifact" || name === "get_pending_chat";
 }
 
 const IDENTIFIER_SCHEMA = { type: "string", pattern: IDENTIFIER_PATTERN.source };
@@ -1053,3 +1117,45 @@ ATTACHED_OPERATIONS.push({
         },
     }),
 });
+
+// Append reads after all lifecycle descriptors to keep the published MCP tool order.
+ATTACHED_OPERATIONS.push(
+    {
+        name: "get_instructions",
+        description:
+            "Fetch complete Core instructions or the exact decision prompt and options for the current action. The action ID must still be current. Call this from the worker that will perform the action, or from the coordinator before presenting a decision to the user.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["workflowId", "actionId"],
+            properties: { workflowId: IDENTIFIER_SCHEMA, actionId: IDENTIFIER_SCHEMA },
+        },
+    },
+    {
+        name: "get_artifact",
+        description:
+            "Read a bounded UTF-8 page of the current action's prompt, execution report, or repair report. Continue with nextOffsetBytes until truncated is false. Use review_diff for diff inspection receipts.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["workflowId", "actionId", "artifact"],
+            properties: {
+                workflowId: IDENTIFIER_SCHEMA,
+                actionId: IDENTIFIER_SCHEMA,
+                artifact: { type: "string", enum: ["prompt", "execution_report", "repair_report"] },
+                offsetBytes: { type: "integer", minimum: 0 },
+                maxBytes: { type: "integer", minimum: 4, maximum: 65536 },
+            },
+        },
+    },
+    {
+        name: "get_pending_chat",
+        description: "Fetch the oldest pending review chat turn after compact status reports chatPending.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["workflowId", "actionId"],
+            properties: { workflowId: IDENTIFIER_SCHEMA, actionId: IDENTIFIER_SCHEMA },
+        },
+    },
+);

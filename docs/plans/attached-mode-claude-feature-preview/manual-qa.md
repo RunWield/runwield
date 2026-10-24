@@ -183,3 +183,17 @@ Manual verification steps for attached-mode-claude-feature-preview/08-prove-and-
 - [ ] In Claude Code, confirm the marketplace install instructions and plugin command names are clear, and that compatibility notices or rejection guidance tell the user what to do.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/10-repair-integration-findings" -->
+
+## Repair integration findings
+
+Manual verification steps for attached-mode-claude-feature-preview/10-repair-integration-findings
+
+- [ ] Approve a Plan for later in Attached mode. Confirm it is Ready For Work and no execution starts; run `/runwield:implement` and confirm execution starts.
+- [ ] Open an Attached review, change the Plan review in Core, then submit the old Attached decision. Confirm the newer Core decision remains unchanged.
+- [ ] Create a publication merge conflict during Attached delivery. Confirm a Claude repair request appears in the publication root; resolve and stage the conflict, then confirm delivery completes with the resolved content.
+- [ ] Run `get_instructions`, `get_artifact`, and `get_pending_chat` with `wld attached`. Confirm each returns the expected content.
+- [ ] Unset `HOME` and run an Attached operation. Confirm it rejects with a message to set `HOME` and creates no files in the project.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/10-repair-integration-findings" -->

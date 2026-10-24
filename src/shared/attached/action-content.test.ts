@@ -1,8 +1,10 @@
+import { activateInput, pendingTriage, runOperation, withProject } from "./attached-test-fixture.ts";
+import type { AttachedJsonObject } from "./operations.ts";
 import { test } from "node:test";
 import { ok as assert, deepStrictEqual, strictEqual as equal } from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readAttachedAction } from "./coordinator.ts";
+import { readAttachedAction, runAttachedOperation } from "./coordinator.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { inspectSemantic } from "./delivery-test-fixture.ts";
 
@@ -171,4 +173,41 @@ test("artifact reads reject invalid page limits, unavailable reports, and supers
     } finally {
         await fixture.close();
     }
+});
+
+test("shared read operations reject malformed envelopes without changing the pending action", async () => {
+    await withProject(async (root) => {
+        const triage = pendingTriage(await runOperation("activate", root, activateInput()));
+        const before = await runOperation("status", root, { workflowId: triage.workflowId });
+        for (const name of ["get_instructions", "get_artifact", "get_pending_chat"] as const) {
+            const input: AttachedJsonObject = {
+                workflowId: triage.workflowId,
+                actionId: triage.actionId,
+                ...(name === "get_artifact" && { artifact: "prompt" }),
+            };
+            for (const invalid of [
+                {},
+                { ...input, actionId: "" },
+                { ...input, workflowId: "../escape" },
+                { ...input, extra: true },
+                { ...input, evidence: {} },
+                ...(name === "get_artifact"
+                    ? [
+                          { ...input, artifact: "other" },
+                          { ...input, offsetBytes: -1 },
+                          { ...input, offsetBytes: 0.5 },
+                          { ...input, maxBytes: "64" },
+                          { ...input, maxBytes: 3 },
+                          { ...input, maxBytes: 65537 },
+                      ]
+                    : [{ ...input, maxBytes: 64 }]),
+            ]) {
+                const result = await runAttachedOperation(name, root, JSON.stringify(invalid));
+                assert(!result.ok, JSON.stringify(invalid));
+                equal(result.operation, name);
+                equal(result.rejection.code, "invalid_input", JSON.stringify(invalid));
+            }
+        }
+        deepStrictEqual(await runOperation("status", root, { workflowId: triage.workflowId }), before);
+    });
 });
