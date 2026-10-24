@@ -18,6 +18,27 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
     - "README.md"
+planDeviations:
+    - id: "call_3e68298d432c4303ae0a6e9b5abf2b9f|fc_022278afe10ed04e016adb707f175881938e90a9495309927a"
+      supersededRequirement: "For `code_review`, show `review.url` and poll `status` every two seconds while the browser is open."
+      replacementRequirement: "For `code_review`, show `review.url` and avoid repeated full-workflow `status` calls while the browser is open. Use a token-bounded way to detect the review decision, preserve timely feedback/approval detection and recovery, and fetch full workflow details only when they change or are needed."
+      reason: "A live headed walkthrough reported about 10K tokens per status poll. The two-second full-response polling rule can repeatedly incur that cost."
+      approvedAt: "2026-10-23T14:35:25.620Z"
+    - id: "call_a85283e63be34fafb6406616263e427c|fc_022278afe10ed04e016adb715ea7d881938060f236d461133f"
+      supersededRequirement: "For `code_review`, show `review.url` and avoid repeated full-workflow `status` calls while the browser is open. Use a token-bounded way to detect the review decision, preserve timely feedback/approval detection and recovery, and fetch full workflow details only when they change or are needed."
+      replacementRequirement: "For Plan review and code review, keep the existing `status` operation but make polling responses a compact status summary containing only the workflow identity, state, revision, pending action kind and identity, and decision status needed to detect approval or feedback. Omit repeated role instructions, Plans, diffs, and other unchanged workflow payloads. Preserve timely decision detection and recovery; allow callers to fetch the full workflow when needed."
+      reason: "The owner requests a simple status response rather than a large repeated payload; token measurements are not required."
+      approvedAt: "2026-10-23T14:39:08.733Z"
+    - id: "call_c1884418a5874117af38d4809116e9da|fc_022278afe10ed04e016adba44836f481939654bae151b401a1"
+      supersededRequirement: "For Plan review and code review, keep the existing `status` operation but make polling responses a compact status summary containing only the workflow identity, state, revision, pending action kind and identity, and decision status needed to detect approval or feedback. Omit repeated role instructions, Plans, diffs, and other unchanged workflow payloads. Preserve timely decision detection and recovery; allow callers to fetch the full workflow when needed."
+      replacementRequirement: "Make compact status the default for every status call. Return only workflow identity, state, revision, pending action identity, chat presence, and decision status. Keep full instructions available on explicit request. Do not embed Plans, diffs, or execution reports in status or reviewer/recorder action payloads; expose large artifacts through references and bounded reads. Let reviewer subagents fetch their own complete instructions by action ID, without requiring the coordinating agent to copy or condense them. Support waiting for browser decisions through a bounded long-poll status call that returns on a revision/action change or timeout, preserving restart recovery. For validation-command questions, use a command explicitly present in the user request or Plan; otherwise ask the user and show them the question rather than silently assuming an answer."
+      reason: "The actual full status response was 56K characters and exceeded the host context. The current compact polling option still leaves full payloads as the default and does not solve instruction handoff, browser wait, or surfaced command decisions."
+      approvedAt: "2026-10-23T18:16:08.826Z"
+    - id: "call_fc4623e2f1a94367aaba3fae8d5e2787|fc_0cc29478207e5431016adcbbf8310481938bba77c6bccf1d04"
+      supersededRequirement: "Verification Plan: **Live acceptance:** `bun run workspace:build`, then `bun scripts/connect-claude-acceptance.ts --keep` on the acceptance machine. Expected: exit 0, every row in `summary.json` passes with evidence, and the proposed entry matches what was committed to `compatibility.ts`. Repeat for any older floor version. **Headed pair run (default permissions):** install with `/plugin marketplace add` from a local clone of this branch, then `/plugin install runwield@runwield`, in an uninitialized trusted repo. Walk the journey in a real browser, exercise review chat, changes, Feedback, approval, interruption recovery, disable and uninstall, and record permission prompts. Implementation steps 9, 11, and 13 require the related live proof, observed permissions, and delivered Preview claims."
+      replacementRequirement: "Close this Plan without another live acceptance run or headed/default-permissions walkthrough. Accept the automated checks already run and retain the existing historical acceptance evidence unchanged, with its recorded source identity, plugin version, and bypass-in-throwaway permission limit. Do not claim that the current changed source or default-permissions journey has live proof. Keep the guide, compatibility matrix, and PRD claims limited to the evidence actually available; do not invent observed permission prompts or declare broader Preview release qualification. RunWield's normal automated validation and delivery may proceed without further live Claude model runs."
+      reason: "The user does not want another live acceptance run now and requests ending the work. This replaces the remaining live-proof requirements, not the evidence or automated validation requirements."
+      approvedAt: "2026-10-24T14:09:06.593Z"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
 createdAt: "2026-10-07T03:22:49.110Z"
@@ -26,9 +47,9 @@ parentPlan: "attached-mode-claude-feature-preview"
 order: 9
 dependencies:
     - "07-answer-review-chat-from-the-claude-session"
-targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
-status: "in_progress"
+targetBranch: "epic/attached-mode-claude-feature-preview"
+status: "implemented"
 ---
 
 # Prove and document the supported Claude Preview

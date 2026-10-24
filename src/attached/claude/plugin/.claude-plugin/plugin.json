@@ -1,5 +1,5 @@
 {
     "name": "runwield",
-    "version": "0.1.0",
-    "description": "Plan one FEATURE request with RunWield inside Claude Code."
+    "version": "0.2.3",
+    "description": "RunWield Connect for Claude Code Preview: plan, review, implement, validate, and deliver one FEATURE request."
 }

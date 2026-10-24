@@ -4,14 +4,14 @@ import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images
 import { normalizeCodeReviewDecision } from "../../ui/review/code-review.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import { buildHumanReviewFeedbackText } from "../workflow/validation-human-review.ts";
-import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.js";
+import type { ReviewDecision, ReviewDecisionReceipt } from "../../ui/workspace/routes/api/review-handlers.js";
 
 export async function applyAttachedCodeReviewDecision(
     projectRoot: string,
     workflowId: string,
     actionId: string,
     decision: ReviewDecision,
-): Promise<void> {
+): Promise<void | ReviewDecisionReceipt> {
     if (decision.conversationTurn) {
         await saveAttachedReviewChat(projectRoot, workflowId, actionId, decision);
         return;
@@ -20,6 +20,8 @@ export async function applyAttachedCodeReviewDecision(
     if (loaded.status !== "found") throw new Error("The Attached workflow cannot be restored.");
     const record = loaded.record;
     if (record.validation?.actionId !== actionId) throw new Error("The code review round changed. Read status.");
+    const request = record.validation.request;
+    if (request?.kind !== "decision") throw new Error("The code review decision identity is missing.");
     const normalized = normalizeCodeReviewDecision(JSON.parse(JSON.stringify(decision)));
     const canceled = normalized.canceled || normalized.exit;
     const paths = await loadReviewFeedbackImagePaths(
@@ -36,10 +38,11 @@ export async function applyAttachedCodeReviewDecision(
     ]
         .filter(Boolean)
         .join("\n\n");
+    const operationId = crypto.randomUUID();
     const result = await runValidationOperation("validation_decision", {
         projectRoot,
         workflowId,
-        operationId: crypto.randomUUID(),
+        operationId,
         expectedRevision: record.revision,
         evidence: record.evidence,
         payload: {
@@ -51,4 +54,12 @@ export async function applyAttachedCodeReviewDecision(
         },
     });
     if (!result.ok) throw new Error(result.rejection.message);
+    return {
+        operationId,
+        workflowId,
+        actionId,
+        attemptId: request.identity.attemptId,
+        generation: request.identity.generation,
+        decisionKey: request.identity.key,
+    };
 }

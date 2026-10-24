@@ -29,6 +29,10 @@ first-party plugins. A Connect plugin lets users explicitly invoke RunWield work
 while that host retains the conversation and makes every model call. _Avoid_: Plugin mode, always-on RunWield, trial
 mode
 
+**Compatibility Matrix**: Core-owned, versioned data of tested External Agent Host versions, adapter contracts,
+capabilities, and limits for a Connect adapter. Activation checks it; only acceptance evidence adds tested entries.
+_Avoid_: support list, capability manifest
+
 **Attached Mode**: The internal architecture underlying RunWield Connect, in which an External Agent Host makes every
 model call and users invoke RunWield explicitly for individual user requests. Use RunWield Connect in customer-facing
 product language. _Avoid_: Public product name, RunWield Execution Backend
@@ -864,7 +868,8 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   a **Session Transcript**.
 - One **Attached Workflow Record** exists for each **Attached Workflow**. It is not a **Session**. Only the **Attached
   Workflow Coordinator** writes it.
-- An **Attached Workflow Record** references **Plan** and worktree truth and never copies it.
+- An **Attached Workflow Record** references **Plan** and worktree truth and never copies it. It stores the
+  **Compatibility Matrix** activation assessment as evidence, not authority.
 - An **Aggregate Transcript Projection** emits no part of a generation until every included **Sealed Session Transcript
   Segment** and the current committed segment prefix have verified.
 - A **Verified Plan** has the same meaning in **RunWield Connect** and **RunWield Core**, regardless of which

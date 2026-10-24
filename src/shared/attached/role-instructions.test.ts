@@ -59,7 +59,10 @@ test("Planner instructions keep initial submission and feedback review in Claude
             assert(handoff.ok && handoff.instructions, JSON.stringify(handoff));
             const text = handoff.instructions.text;
             assertStringIncludes(text, "even when the result has no `instructions`");
-            assertStringIncludes(text, "show `review.url` and poll `status`");
+            assertStringIncludes(text, "show `review.url` and wait with MCP `status`");
+            assertStringIncludes(text, "waitForRevision");
+            assertStringIncludes(text, "timeoutMs: 30000");
+            assertStringIncludes(text, "context.projectSetup");
             assertStringIncludes(text, "read its feedback, image paths, and note");
             assertStringIncludes(text, "Browser edits are already saved; do not apply them twice.");
             assertStringIncludes(text, "Stay in Claude Code and the browser; use no RunWield CLI or TUI commands.");

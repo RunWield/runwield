@@ -16,6 +16,10 @@ test("Claude command instructions automatically dispatch a host worker and retur
         assertEquals(text.includes("implementation_complete"), false);
         assertEquals(text.includes("execution handoff is a later Preview step"), false);
     }
+    for (const source of [request, review]) {
+        assertStringIncludes(source, "waitForRevision");
+        assertStringIncludes(source, "timeoutMs");
+    }
     for (const source of [request, restore]) {
         const text = source.replace(/\s+/g, " ");
         for (const field of ["executionCwd", "planPath", "planName", "role", "message"]) {
@@ -28,7 +32,31 @@ test("Claude command instructions automatically dispatch a host worker and retur
         assertStringIncludes(text, "invoking checkout");
         assertStringIncludes(text, "bullet");
         assertStringIncludes(text, "user-visible message before dispatch");
-        assertStringIncludes(text, "verbatim (do not summarize");
+        assertStringIncludes(text, "instructions");
         assertStringIncludes(text, "Git checkpoint");
     }
+});
+
+test("every Claude command shows Core compatibility guidance before continuing", async () => {
+    for (const command of ["request", "plan-review", "implement", "validate"]) {
+        const source = await fsReadFile(new URL(`./plugin/commands/${command}.md`, import.meta.url), "utf8");
+        const text = source.replace(/\s+/g, " ");
+        assertStringIncludes(text, "Show any returned `compatibility` notice to the user before continuing");
+        assertStringIncludes(text, "`incompatible_adapter`");
+        assertStringIncludes(text, "`unsupported_host_version`");
+        assertStringIncludes(text, "show Core's update message and stop");
+        assertEquals(text.includes("Installation and full preflight are separate capabilities"), false);
+    }
+});
+
+test("validation instructions preserve the Core text and selection answer contracts", async () => {
+    const text = (await fsReadFile(new URL("./plugin/commands/validate.md", import.meta.url), "utf8")).replace(
+        /\s+/g,
+        " ",
+    );
+    assertStringIncludes(text, "`text` request");
+    assertStringIncludes(text, 'outcome: "text"');
+    assertStringIncludes(text, "`select` request");
+    assertStringIncludes(text, 'outcome: "selected"');
+    assertStringIncludes(text, "already supplied");
 });

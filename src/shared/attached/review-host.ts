@@ -267,7 +267,12 @@ async function ensureCodeReviewHosted(
             surfaceId: `attached-code:${workflow.workflowId}`,
             onDecision: async (decision) => {
                 try {
-                    await applyAttachedCodeReviewDecision(projectRoot, workflow.workflowId, action.actionId, decision);
+                    return await applyAttachedCodeReviewDecision(
+                        projectRoot,
+                        workflow.workflowId,
+                        action.actionId,
+                        decision,
+                    );
                 } catch (error) {
                     const live = hosted.get(workflow.workflowId);
                     if (live) live.stale = true;
