@@ -848,8 +848,10 @@ repair that weakens a test to resolve a finding is a repair-introduced regressio
 
 **Requirement: Review one proposed branch patch.** For Git execution, review sees the branch's proposed change relative
 to its recorded target branch: committed, staged, unstaged, and untracked work, with target-only changes excluded. The
-same patch supplies AI review, repair context, and Code Review, including after reload. A missing target, missing
-execution commit, or unrelated history is a recoverable comparison failure.
+same patch supplies AI review, repair context, and Code Review, including after reload. Before-file text uses the same
+comparison base. Review follows the publication target's selected remote, not a stale local branch; local-only delivery
+uses the local target. A recorded remote target cannot silently become a local comparison if its remote is unavailable.
+A missing target, missing execution commit, or unrelated history is a recoverable comparison failure.
 
 **Requirement: Read the change before deciding.** The Reviewer receives the approved Plan. Rounds one and two read the
 complete diff of every changed file; round two also verifies earlier findings. Round three onward reads the complete
@@ -889,7 +891,10 @@ post-validation context, once. Review quality is judged by useful convergence an
 - Given a test that would pass with a plausible wrong implementation, review reports a blocking finding that names it;
   weak but honest assertions stay advisory.
 - Given target work imported after execution started, the patch shows only the branch's own changes.
-- Given a missing target branch or unrelated histories, review stops with a recoverable comparison failure.
+- Given a retained worktree and a local target behind the selected remote target, all review surfaces exclude work already
+  delivered to that remote and retain every committed and uncommitted proposal. Before-file text matches that patch.
+- Given a missing required remote target, a missing target branch, or unrelated histories, review stops with a recoverable
+  comparison failure instead of substituting a stale local branch.
 - After the automatic rounds, when the user chooses Code Review, feedback leads to repair and checks and returns to
   Code Review.
 
@@ -1811,9 +1816,12 @@ Native usage buckets are non-overlapping. Cache-inclusive input is reduced only 
 Unknown cache basis keeps counts in metadata only. Reasoning is split from output. Partial rows send only known buckets,
 never zero for missing counts, and carry `usage_complete=false` with missing-bucket flags. Langfuse sums those sent
 buckets: its partial-row token total is a known subtotal, not a complete measurement. Cost carries Core's reported or
-calculated source. Unavailable cost sends neither cost details nor a native model name. Reported zero stays zero. A
-native model name is sent only with supplied cost. Langfuse can add its own calculated cost to vendor totals without an
-estimate label; that is destination behavior, not additional RunWield cost evidence.
+calculated source. Partial or unavailable cost sends neither cost details nor a native model name. A known partial
+subtotal stays in metadata with `cost_complete=false`, not in the vendor's native cost total. Cost coverage is separate
+from token coverage: complete catalog cost can accompany partial tokens. Older rows keep their prior coverage rule.
+Reported zero stays zero. A native model name is sent only with supplied complete cost. Langfuse can add its own
+calculated cost to vendor totals without an estimate label; that is destination behavior, not additional RunWield cost
+evidence.
 
 Measured generation timestamps come from the row's observed edges. An unmeasured generation has zero duration at its
 observation time and `timing_measured=false`; this does not establish measured zero latency. The package performs no
@@ -1836,11 +1844,13 @@ outcome. The explicit remote model proof turn is not a Usage source; its vision 
 **Requirement: Cross-process recording has bounded lock acquisition and truthful persistence.** All writers to the
 primary Project journal take an OS file lock before the same `proper-lockfile` lock, including linked worktrees and
 separate Core processes. The OS lock does not expire while a writer is paused. Current epoch checkpoints avoid scans of
-retained history. If a checkpoint is missing or behind, each locked call reads at most 256 KiB of new journal bytes and
-commits recovery progress. Calls report non-persistence while recovery is pending; later calls resume recording after
-the checkpoint reaches the journal tail. Recovery preserves retained rows and does not replay skipped observations. Each
-invocation bounds lock acquisition to approximately one second. A persistence success requires synchronous append and
-file sync; it does not promise complete coverage. Timeout, compromised lock, storage failure, disabled collection, and
+retained history. If a checkpoint is missing or behind, each lock acquisition reads at most 256 KiB of new journal bytes
+and commits recovery progress. A recording call reports non-persistence while recovery is pending and starts automatic
+recovery without waiting for more observations. Recovery releases the guard between chunks. Export authorization and
+history clear wait for a complete checkpoint before taking their action. Later recording resumes after recovery;
+retained rows stay unchanged and skipped observations are not replayed. Each recording invocation bounds lock
+acquisition to approximately one second. A persistence success requires synchronous append and file sync; it does not
+promise complete coverage. Timeout, compromised lock, storage failure, disabled collection, and
 stale collection boundaries return non-persistence without blocking delivery or claiming saved data. Captured
 observation identity and epoch stay fixed during an acquisition retry. No failed observation is queued for replay.
 
@@ -1860,8 +1870,11 @@ claims of prevented defects. Tool fan-out is not model-request fan-out.
 **Requirement: Publication recording precedes removal of attempt evidence and cannot gate delivery.** Both cleanup paths
 await a bounded, non-fatal recording attempt before pruning. Confirmed publication is observed even when cleanup keeps
 user files or a branch. A retained controller marker distinguishes complete, incomplete, and unverified observation
-coverage. A recording failure does not block or reverse publication. A process interruption cannot invent an
-observation. Git evidence and Plan Front Matter remain delivery authority under
+coverage. Recording reuses classification from the retained delivery and its captured history epoch; redundant
+metadata reads do not consume the append budget. Before recording, Core retains incomplete coverage with a content-free
+reason. Only confirmed persistence makes it complete. Failed, timed-out, interrupted, and legacy unverified observations
+are not queued for replay by later cleanup or restart. A recording failure does not block or reverse publication. A
+process interruption cannot invent an observation. Git evidence and Plan Front Matter remain delivery authority under
 [Execution, validation, and recovery](#execution-validation-and-recovery). Confirmed publication and deliberate user
 abandonment remain the only delivery conclusions. An interrupted Agent turn is ongoing work, not abandonment. An open
 Session without an observed delivery workflow is not an undelivered failure.
@@ -1869,7 +1882,9 @@ Session without an observed delivery workflow is not an undelivered failure.
 **Requirement: Plan attribution uses committed, time-scoped associations.** A Session observation links to a Plan only
 when its committed Plan Association covers the observation time and transcript segment. A new association ends the
 previous scope in that segment; a sealed segment ends its scope. General discussion has no Plan link. A Session that
-touches multiple Plans does not assign each observation to every Plan. A delivery attempt's committed registry
+touches multiple Plans does not assign each observation to every Plan. Model usage uses the known workflow Plan scope
+and observed model time, not delayed reconciliation time. A later association cannot claim an earlier model call.
+A delivery attempt's committed registry
 association identifies its Plan independently of Session ownership. Missing attribution stays absent. Outcome records
 retain operation, transition, or confirmed delivery identity and exclude free-form errors.
 
@@ -1937,10 +1952,17 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
 - Given either full cleanup or an attempt already at `cleanup_complete`, when cleanup repeats, its stable publication
   identity produces no second journal row. Keeping user files does not remove the confirmed-publication observation.
 - Given disabled collection or an unwritable journal, publication still completes and prunes. Where controller evidence
-  can be retained, coverage is incomplete. A process death before recording leaves unverified coverage and no invented
-  outcome; a death after recording and before prune leaves the durable observation for restart.
+  can be retained, coverage is incomplete with a content-free reason. A process death before recording leaves
+  incomplete coverage and no invented outcome; restart does not backfill the missed measurement. A death after recording
+  and before prune keeps the durable observation without resending it.
+- Given either cleanup path and slow or failed auxiliary coverage storage, delivery and cleanup do not wait beyond the
+  existing recording budget. Coverage stays incomplete unless its persistence was confirmed. Already retained delivery
+  classification reaches append without another Git metadata read.
 - Given disjoint committed Plan Association time scopes in one Session, observations link only to the matching Plan at
   that time. Unassigned discussion and uncommitted associations do not create Plan links.
+- Given a model call before a Plan association and delayed usage reconciliation after it, the earlier call stays
+  unlinked. A call in committed implementation links to its observed workflow Plan, even if reconciliation follows
+  a later Plan association.
 - Given an interrupted repair turn or a non-Plan Session, measurements do not label the workflow abandoned or count an
   open Session as an undelivered failure. A parallel tool batch creates no model-request fan-out claim.
 - Given `workflowMetrics` disabled or unset with no prior enabled history, when turns, tool calls, or slash commands
@@ -1971,6 +1993,9 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
 - Given a complete priced request, reported-zero request, unavailable-cost request, partial agy turn, and complete CLI
   aggregate, Langfuse receives one content-free observation per attempt with the corresponding native fields and flags.
   Partial buckets stay absent; the aggregate creates no child generations or second parent total.
+- Given a Guided Review cost subtotal with partial cost coverage, Langfuse receives the subtotal in metadata with
+  `cost_complete=false`, without native cost details or a native model name. A partial-token agy turn with complete
+  catalog cost still sends native cost. Local cost coverage follows the separate cost fact.
 - Given uncertain ingestion or delayed readback, the exporter does not retry. Matching native readback confirms
   presence, including equivalent empty native representations and fully identical unmerged versions. This does not
   authorize a retry or claim exactly-once ingestion. Vendor-invented buckets, costs, complete values, or conflicting
@@ -2002,6 +2027,10 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
   only the incomplete tail is removed, and an explicit `measurement_gap` records the lost bytes.
 - Given corrupt interior lines, when repair runs, those lines remain and gap evidence surfaces their line numbers;
   successful persistence of a later observation does not claim complete historical coverage.
+- Given a large history with a missing checkpoint, one recording call starts bounded automatic recovery. Recovery
+  continues without new observations, and later work records without reconstructing skipped activity.
+- Given recovery in progress, export authorization and clear wait for stable history. A clear does not restore removed
+  rows when background recovery continues.
 
 #### Export consent
 

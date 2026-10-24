@@ -20,6 +20,12 @@ affectedPaths:
     - "docs/domain-language.md"
     - "docs/user-documentation/settings.md"
     - "src/skills/runwield/SETTINGS.md"
+planDeviations:
+    - id: "call_09720c81ea2c4911846f8d3cbc399bcc|fc_0258d2b237ed04c0016adcdd02e46881908e11e80ed9fe57b1"
+      supersededRequirement: "Stop and report\nonly when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture\nshifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective."
+      replacementRequirement: "Repair the workflow review-baseline selection defect discovered during live acceptance, including the necessary workflow-validation code and regression tests, then retry the live documentation workflow through unchanged CI, normal review, and confirmed publication to the approved Epic target. Preserve prior deliveries and owner changes; do not bypass review or manually change branches. Stop and report other discoveries that change approved intent, increase migration or compatibility risk, or invalidate the Verification Plan."
+      reason: "The owner instructed: “fix it and try again.” Semantic Review compares a stale local target with 31 previously delivered non-documentation files, while the recorded remote execution base has only the expected two Markdown files."
+      approvedAt: "2026-10-24T16:32:18.050Z"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
 devServerCommand: "bun run workspace:dev"
@@ -31,9 +37,9 @@ parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 10
 dependencies:
     - "09-workspace-export-settings-and-delivery-status"
-targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
-status: "in_progress"
+targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
+status: "implemented"
 ---
 
 # End-to-End Usage and Export Acceptance

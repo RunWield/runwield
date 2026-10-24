@@ -51,6 +51,7 @@ interface JournalRow {
     costAmount?: number | null;
     costCurrency?: string;
     costSource?: string;
+    costAvailability?: string;
     measurementAvailability?: string;
     totalLatencyMs?: number | null;
     completedAt?: number | null;
@@ -302,7 +303,8 @@ function addUsage(target: UsageTotals, row: JournalRow): void {
         ["reported", "calculated"].includes(row.costSource || "")
     ) {
         cost.value += row.costAmount;
-        if (row.measurementAvailability === "partial") cost.exclusions++;
+        if (row.costAvailability ? row.costAvailability !== "complete" : row.measurementAvailability === "partial")
+            cost.exclusions++;
     } else {
         target.reportedCostUsd.exclusions++;
         target.estimatedCostUsd.exclusions++;
@@ -416,6 +418,24 @@ export class UsageReporter {
 
     /** Caller supplies only authorized roots. Worktree aliases resolve to one journal. */
     query(projectRoots: string[], period: UsagePeriod, timeZone: string) {
+        const withheld = new Set<string>();
+        for (let attempt = 0; ; attempt++) {
+            const changed = new Set<string>();
+            const report = this.snapshot(projectRoots, period, timeZone, withheld, changed);
+            if (!changed.size) return report;
+            // Retry a concurrent clear twice. Withhold only unstable Projects after that;
+            // each further pass fences another Project, so the read remains bounded.
+            if (attempt >= 2) for (const path of changed) withheld.add(path);
+        }
+    }
+
+    private snapshot(
+        projectRoots: string[],
+        period: UsagePeriod,
+        timeZone: string,
+        withheld: Set<string>,
+        changed: Set<string>,
+    ) {
         const start = dateNumber(period.start);
         const end = dateNumber(period.end);
         if (start >= end) throw new Error("invalid_usage_period");
@@ -425,6 +445,8 @@ export class UsageReporter {
             month: "2-digit",
             day: "2-digit",
         });
+        const rangeStart = dayBoundary(period.start, formatter);
+        const rangeEnd = dayBoundary(period.end, formatter);
         const dates: string[] = [];
         for (let date = start; date < end; date += 86400000) dates.push(new Date(date).toISOString().slice(0, 10));
         const paths = journalPaths(projectRoots);
@@ -436,9 +458,12 @@ export class UsageReporter {
             let unavailable = false;
             let historyClearPending = false;
             try {
+                if (withheld.has(path)) throw new Error("history_clear_pending");
                 cache = this.refresh(path);
             } catch (error) {
-                historyClearPending = error instanceof Error && error.message === "history_clear_pending";
+                if (error instanceof Error && error.message === "history_changed") changed.add(path);
+                historyClearPending =
+                    error instanceof Error && ["history_clear_pending", "history_changed"].includes(error.message);
                 unavailable = !(error instanceof Error && "code" in error && error.code === "ENOENT");
                 this.journals.delete(path);
                 cache = { epoch: "initial", offset: 0, rows: new Map(), corruptLines: 0, incompleteTail: false };
@@ -446,8 +471,8 @@ export class UsageReporter {
             const rows = [...cache.rows.values()].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
             const through = rows.at(-1)?.ts || null;
             const selected = rows.filter((row) => {
-                const day = localDate(observationTime(row), formatter);
-                return day >= period.start && day < period.end;
+                const time = observationTime(row);
+                return time >= rangeStart && time < rangeEnd;
             });
             const active = new Set<string>();
             const daily = dates.map((date): UsageDay => ({ date, totals: totals(), gaps: [], tokens: null }));
@@ -463,7 +488,7 @@ export class UsageReporter {
                 if (row.executionId && row.event === "execution_started") starts.set(row.executionId, row);
                 if (row.executionId && row.event === "execution_finished") finishes.set(row.executionId, row);
                 if (
-                    localDate(observationTime(row), formatter) < period.end &&
+                    observationTime(row) < rangeEnd &&
                     row.attemptId &&
                     row.planId &&
                     [
@@ -490,10 +515,7 @@ export class UsageReporter {
                 const finish = finishes.get(id);
                 if (!finish || ["incomplete", "interrupted"].includes(finish.outcome || "")) {
                     incompleteExecutions.add(id);
-                    if (
-                        localDate(observationTime(row), formatter) < period.end &&
-                        (!finish || localDate(observationTime(finish), formatter) >= period.start)
-                    ) {
+                    if (observationTime(row) < rangeEnd && (!finish || observationTime(finish) >= rangeStart)) {
                         incomplete.push(link(projectId, finish || row));
                     }
                 }
@@ -505,7 +527,8 @@ export class UsageReporter {
                     (!row.executionId || !starts.has(row.executionId))
                 ) {
                     if (row.executionId) incompleteExecutions.add(row.executionId);
-                    if (selected.includes(row)) incomplete.push(link(projectId, row));
+                    if (observationTime(row) >= rangeStart && observationTime(row) < rangeEnd)
+                        incomplete.push(link(projectId, row));
                 }
             }
             let overlappingUsage = 0;
@@ -513,8 +536,14 @@ export class UsageReporter {
             const publicationIds = new Set<string>();
             const repairIds = new Set<string>();
             const validationIds = new Set<string>();
+            const legacyDays = new Set<string>();
+            const incompleteDays = new Set(incomplete.map((item) => localDate(Date.parse(item.asOf), formatter)));
             for (const row of selected) {
                 const day = days.get(localDate(observationTime(row), formatter))!;
+                if (row.v === 1 && !["collection_epoch", "history_epoch", "measurement_gap"].includes(row.event))
+                    legacyDays.add(day.date);
+                if (row.event === "measurement_gap" || (row.executionId && incompleteExecutions.has(row.executionId)))
+                    incompleteDays.add(day.date);
                 if (row.v !== 2) continue;
                 if (
                     row.event === "command_started" ||
@@ -631,7 +660,7 @@ export class UsageReporter {
                 }
             }
             for (const row of latestWorkflows.values()) {
-                if (localDate(observationTime(row), formatter) >= period.end) continue;
+                if (observationTime(row) >= rangeEnd) continue;
                 if (row.event === "publication_confirmed") continue;
                 if (row.event === "workflow_abandoned") {
                     const day = days.get(localDate(observationTime(row), formatter));
@@ -654,35 +683,8 @@ export class UsageReporter {
                 )
                     day.gaps.push("disabled");
                 if (!through || Date.parse(through) < end) day.gaps.push("not_yet_collected");
-                if (
-                    selected.some(
-                        (row) =>
-                            row.v === 1 &&
-                            !["collection_epoch", "history_epoch", "measurement_gap"].includes(row.event) &&
-                            localDate(observationTime(row), formatter) === day.date,
-                    )
-                )
-                    day.gaps.push("legacy");
-                if (
-                    selected.some(
-                        (row) =>
-                            row.event === "measurement_gap" && localDate(observationTime(row), formatter) === day.date,
-                    ) ||
-                    cache.corruptLines ||
-                    cache.incompleteTail
-                )
-                    day.gaps.push("incomplete");
-                if (incomplete.some((item) => localDate(Date.parse(item.asOf), formatter) === day.date)) {
-                    day.gaps.push("incomplete");
-                }
-                if (
-                    selected.some(
-                        (row) =>
-                            row.executionId &&
-                            incompleteExecutions.has(row.executionId) &&
-                            localDate(observationTime(row), formatter) === day.date,
-                    )
-                )
+                if (legacyDays.has(day.date)) day.gaps.push("legacy");
+                if (incompleteDays.has(day.date) || cache.corruptLines || cache.incompleteTail)
                     day.gaps.push("incomplete");
                 if (unavailable) day.gaps.push("unavailable");
                 day.gaps = [...new Set(day.gaps)];
@@ -744,10 +746,14 @@ export class UsageReporter {
         // A clear in another process can occur during aggregation, after suffix refresh.
         for (const path of paths) {
             const cache = this.journals.get(path);
-            if (cache && this.epoch(path) !== cache.epoch) {
-                this.journals.delete(path);
-                throw new Error("usage_history_changed");
+            if (!cache) continue;
+            try {
+                if (this.epoch(path) === cache.epoch) continue;
+            } catch (error) {
+                if (!(error instanceof Error && error.message === "history_clear_pending")) throw error;
             }
+            this.journals.delete(path);
+            changed.add(path);
         }
         return {
             period,

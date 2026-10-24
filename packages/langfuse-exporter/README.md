@@ -74,8 +74,11 @@ Usage rules:
   `reasoning_available`, and individual `missing_*` flags. A partial row's Langfuse total is only the sum of known
   buckets, not a complete measurement.
 - Only a finite, nonnegative, supplied USD cost with `reported` or `calculated` evidence is sent as `{total: amount}`.
-  Reported zero is retained. The native model name is sent only with that cost. Without cost, the model is metadata
-  only. Langfuse may still add its own calculated cost; readback does not treat that as matching RunWield evidence.
+  Explicit partial or unavailable cost sends neither native cost nor a native model name. Known subtotals remain in
+  metadata with `cost_complete=false`. Token and cost coverage are independent; complete agy catalog cost can accompany
+  partial tokens. Rows without explicit cost coverage retain their earlier mapping. Reported zero is retained. The
+  native model name is sent only with native cost; otherwise it stays in metadata. Langfuse-added cost does not match
+  RunWield evidence.
 - Valid measured start and end use their ISO times. Otherwise the span has zero duration at `occurredAt`, marked
   `timing_measured=false`. CLI measured timing is subprocess timing, not model-server latency.
 

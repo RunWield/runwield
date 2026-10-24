@@ -38,7 +38,8 @@ optional Langfuse export plugin. It does not build a developer productivity scor
 - Pi, Claude CLI, and Antigravity CLI. Include ordinary Sessions and RunWield-started auxiliary model calls, not only
   planned implementation. Coverage does not promise identical upstream detail.
 - Link available measurements to Sessions, Plans, validation, repair, and confirmed publication. Do not invent links.
-- Local measurement is **on by default**. Preserve explicit user opt-outs. This changes the current opt-in default.
+- Local measurement remains **opt-in**. An absent setting records nothing. Preserve explicit user opt-outs, per the
+  [owner’s 2026-10-06 decision](reliable-usage-dashboard-and-langfuse-export/01-core-measurement-history-and-default-on-recording.md#epic-scope-changes).
 - Show metrics that were actually collected, including understood legacy records. Never mine old transcripts to create
   historical metrics. Disabled periods remain gaps after re-enabling.
 - Keep local measurements until the user deletes them. No automatic age-based expiry.
@@ -179,8 +180,8 @@ where possible rather than rescanning years of data per browser request. A durab
 load warrants it, and must remain rebuildable without transcripts.
 
 The existing `workflowMetrics` boolean/object setting stays compatible. Normalize both forms, preserve existing scope
-precedence and explicit false values, and change the absent-setting default to enabled. Existing explicit opt-outs are
-not overwritten during upgrade. Display local-on and export-off clearly in settings.
+precedence and explicit false values. An absent setting remains disabled. Existing explicit opt-outs are not overwritten
+during upgrade. Display local recording and separate export permission clearly in settings.
 
 Recording control changes create a collection epoch. An invocation is eligible only if collection was enabled at its
 start and remains in that epoch when its observation is accepted. Disabling stops recording immediately and rejects late
@@ -190,7 +191,7 @@ observed changes without inventing an exact unobserved change time; an unobserve
 measurements,” not a known disabled duration.
 
 Recording permission controls new writes, not access to already collected history. Turning recording off must not hide
-older measurements. Upgrade must not label pre-upgrade empty periods as covered merely because the new default is on.
+older measurements. Upgrade must not label pre-upgrade empty periods as covered when recording is later enabled.
 Existing v1 metrics remain readable without copying generic `details` into the new contract. Display only fields with
 known meanings, labeled legacy/partial. Never infer missing tokens, cost, Plan joins, or active days from event volume.
 Do not display the same observation from v1 and v2; new collection has one writer path. Legacy history is not exported.
@@ -358,7 +359,7 @@ shared design system and its documentation in the same change.
 - **General OpenTelemetry deployment deferred:** direct, narrowly mapped HTTP export avoids operating a collector and
   prevents accidental content capture. Review new vendor versions and mapping compatibility in plugin tests.
 
-The durable commitments are default-on local recording, explicit gaps, versioned safe observations, and separate export
+The durable commitments are opt-in local recording, explicit gaps, versioned safe observations, and separate export
 permission. No new ADR is needed: these choices remain in the Epic, and ADR-015's Session authority does not change.
 
 ## Vertical Slice Findings
@@ -452,7 +453,7 @@ The following named scenarios identify the observable product outcomes and their
 
 | Outcome / proposed acceptance scenario      | Evidence that distinguishes delivery from a counterfeit                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Core — Record by default, respect gaps**  | Fresh configuration records; explicit false does not. An upgrade fixture combines explicit false, real v1 metrics, transcript-only activity and later enablement: old metrics stay visible, old unknown periods remain unknown. Work between disable/re-enable produces no records, aggregates or exports after restart/replay. A crossing invocation is excluded.                                                                                                                 |
+| **Core — Record by opt-in, respect gaps**   | Fresh configuration records nothing; explicit enablement records, and explicit false does not. An upgrade fixture combines explicit false, real v1 metrics, transcript-only activity and later enablement: old metrics stay visible, old unknown periods remain unknown. Work between disable/re-enable produces no records, aggregates or exports after restart/replay. A crossing invocation is excluded.                                                                        |
 | **Core — Include all supported work**       | Known Pi, Claude and agy usage plus delegation, AI review, compaction and vision calls contributes once. Duplicate chunks and parent/cumulative totals do not double-count. A CLI cancellation exposes missing usage rather than zero. Fixtures establish field provenance; real CLI samples confirm tested versions.                                                                                                                                                              |
 | **Core — Persist truthful measurements**    | Concurrent Sessions/processes retain valid, uniquely identified records. Kill/restart around writes exposes only persisted evidence and explicit incomplete records. Reporting/cache rebuild leaves models, transcripts and Plans untouched. Disk failure does not stop work or pretend measurements were saved.                                                                                                                                                                   |
 | **Core — Preserve outcome meaning**         | A failed validation, repair, and confirmed publication yields one delivered attempt and separate attempt counts. Kill/restart before both publication prune paths yields one durable observation or explicit incomplete/unverified coverage, never blocked publication or invented history. Repeated cleanup does not add publication. Interruption is ongoing; non-Plan work is not undelivered failure.                                                                          |
@@ -476,7 +477,7 @@ exporting real records require owner authorization; do not upload existing histo
 
 Protect existing Session/home navigation, design-system behavior, pairing, Project access, explicit recording opt-outs,
 Session authority, worktree protection, redaction and truthful workflow completion. Expected changes are local recording
-on by default, real reportable measurements instead of zero-filled absence, independent exporter loading, and visible
+by explicit opt-in, real reportable measurements instead of zero-filled absence, independent exporter loading, and visible
 collection/delivery gaps. Historical metrics reconstruction must never exist.
 
 ### Proposed domain language

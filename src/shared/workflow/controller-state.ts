@@ -36,6 +36,8 @@ export type WorkflowControllerState = {
         eventId: string;
         historyEpoch?: string;
         coverage: "unverified" | "complete" | "incomplete";
+        /** Fixed recorder reason only. Never retain exception text or filesystem paths. */
+        reason?: string;
     };
     executionReport?: string | null;
     humanReviewMode?: "none" | "ask" | "always" | null;

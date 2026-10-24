@@ -2266,6 +2266,7 @@ export async function buildAgentSession({
                         executionMetricsForSession.get(session) ||
                         new ExecutionMetricsRecorder({
                             projectRoot: sessionCwd,
+                            hostedSession: targetHostedSession || undefined,
                             sessionId: effectiveSessionManager.getSessionId(),
                             managedSessionId: targetHostedSession?.getManagedMetadata()?.runwieldSessionId,
                             segmentId: targetHostedSession?.getManagedMetadata()?.currentSegmentId,
@@ -3236,6 +3237,7 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                 hostedSession.cwd,
                 session.sessionManager.getSessionId(),
                 hostedSession.activeCommandInvocationId,
+                hostedSession,
             );
             void manualCompaction.start(piContextSnapshot(session, projection, "before_compaction"));
             return;
@@ -3278,6 +3280,7 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                 hostedSession.cwd,
                 session.sessionManager.getSessionId(),
                 hostedSession.activeCommandInvocationId,
+                hostedSession,
             );
             if (summarizationRetryAttempt !== null) {
                 void branchSummaryRetries.retryFinish(summarizationRetryAttempt, "failed");
@@ -4666,6 +4669,7 @@ export async function runRootTurn({
             const piSession = isExecutionSession(session) ? session.session : session;
             const recorder = new ExecutionMetricsRecorder({
                 projectRoot: meta.cwd || targetHostedSession.cwd,
+                hostedSession: targetHostedSession,
                 sessionId: sessionManager.getSessionId?.(),
                 managedSessionId: targetHostedSession.getManagedMetadata()?.runwieldSessionId,
                 segmentId: targetHostedSession.getManagedMetadata()?.currentSegmentId,

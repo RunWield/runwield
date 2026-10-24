@@ -1,5 +1,8 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
+import { setSystemTime } from "bun:test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { UsageReporter } from "./usage-reporting.ts";
 import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { recordWorkflowMetric } from "./metrics.js";
@@ -215,6 +218,7 @@ test("ExecutionMetricsRecorder writes exposure, tool start/finish, usage, snapsh
             cacheReadTokens: 300,
             cacheWriteTokens: 100,
             costAmount: 0.0125,
+            costAvailability: "complete",
             costCurrency: "USD",
             model: "claude-3-7-sonnet",
             usageKind: "turn",
@@ -286,6 +290,7 @@ test("ExecutionMetricsRecorder writes exposure, tool start/finish, usage, snapsh
         assertEquals(usageRecord.cacheReadTokens, 300);
         assertEquals(usageRecord.cacheWriteTokens, 100);
         assertEquals(usageRecord.costAmount, 0.0125);
+        assertEquals(usageRecord.costAvailability, "complete");
 
         // Verify execution finished
         const endRecord = records.find((r) => r.event === "execution_finished");
@@ -546,8 +551,8 @@ test("reconciled Pi tool-result usage retains zero cost and observed turn identi
         const row = (await readMetrics()).find((record) => record.event === "model_usage");
         assert(row);
         assertEquals(
-            [row.usageKind, row.costAmount, row.costSource, row.inputCacheBasis],
-            ["request", 0, "calculated", "excludes_cache"],
+            [row.usageKind, row.costAmount, row.costSource, row.costAvailability, row.inputCacheBasis],
+            ["request", 0, "calculated", "complete", "excludes_cache"],
         );
         assertEquals(typeof row.turnId, "string");
     });
@@ -687,5 +692,42 @@ test("standalone summary retry retains source, index, delay and settled outcome"
             rows.every((row) => row.executionId === undefined),
             true,
         );
+    });
+});
+
+test("delayed standalone Pi usage belongs to its entry day, not collection day", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        try {
+            setSystemTime(new Date("2026-11-02T04:59:00Z"));
+            const entries = SessionManager.inMemory(projectRoot);
+            const entry = entries.appendUsage("cache_warm", "fixture", "model", {
+                input: 10,
+                output: 2,
+                cacheRead: 3,
+                cacheWrite: 4,
+                totalTokens: 19,
+                cost: { input: 0.2, output: 0.3, cacheRead: 0, cacheWrite: 0, total: 0.5 },
+            });
+            setSystemTime(new Date("2026-11-02T05:01:00Z"));
+            const recorder = new ExecutionMetricsRecorder({ projectRoot });
+            await recorder.reconcilePiEntries(entries.getEntries(), new Set());
+            const usage = (await readMetrics()).find((row) => row.event === "model_usage");
+            assertEquals(usage?.ts, entry.timestamp);
+            const report = new UsageReporter().query(
+                [projectRoot],
+                { start: "2026-11-01", end: "2026-11-03" },
+                "America/New_York",
+            );
+            assertEquals(
+                report.daily.map((day) => day.totals.tokens.value),
+                [19, 0],
+            );
+            assertEquals(
+                report.daily.map((day) => day.totals.estimatedCostUsd.value),
+                [0.5, 0],
+            );
+        } finally {
+            setSystemTime();
+        }
     });
 });

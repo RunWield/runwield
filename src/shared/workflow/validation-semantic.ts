@@ -106,7 +106,11 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     const state = readSemanticRoundState(args, context);
     const round = state.semanticRound;
     const ledger = state.reviewLedger;
-    const diffText = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+    const diffText = await getWorktreeReviewDiff(
+        context.executionCwd,
+        context.worktreeBaseBranch || "",
+        context.worktreeBaseRef,
+    );
     if (requiresImplementationDiff(args.triageMeta) && !hasImplementationDiff(diffText, args.planName)) {
         const planOnly = Boolean(diffText.trim());
         const reason = planOnly

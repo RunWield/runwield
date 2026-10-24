@@ -1,3 +1,4 @@
+import { resolvePublicationUpstream as resolveRemoteTarget } from "../publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -24,9 +25,9 @@ import {
     removeWorktreeGitArtifacts,
 } from "../worktree.js";
 import { getWorkflowMetricsFilePath } from "./metrics.js";
-import { resolveCollectionEpoch } from "./metrics-journal.ts";
+import { type JournalResult, resolveCollectionEpoch } from "./metrics-journal.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "./outcome-observations.ts";
-import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
+import { type ControllerRecord, readControllerRecord, writeControllerState } from "./controller-registry.ts";
 import {
     advancePublicationAttempt,
     assertPublicationAttempt,
@@ -75,18 +76,6 @@ async function artifactEvidence(attempt: PublicationAttempt): Promise<Publicatio
     });
     if (planPaths.length === 0) return null;
     return { artifactCommit: head.stdout, planPaths: [...new Set(planPaths)] };
-}
-
-async function resolveRemoteTarget(
-    projectRoot: string,
-    targetBranch: string,
-): Promise<{ remote: string; branch: string; url: string } | null> {
-    const configuredRemote = await git(projectRoot, ["config", "--get", `branch.${targetBranch}.remote`]);
-    const remote = configuredRemote.code === 0 && configuredRemote.stdout ? configuredRemote.stdout : "origin";
-    if (remote === ".") return null;
-    const url = await git(projectRoot, ["remote", "get-url", remote]);
-    if (url.code !== 0 || !url.stdout) return null;
-    return { remote, branch: targetBranch, url: url.stdout };
 }
 
 async function integratedEvidence(
@@ -170,8 +159,7 @@ async function publishedEvidence(
     const integrationCommit = attempt.integrationCommit;
     const targetBaseCommit = attempt.targetBaseCommit;
     if (!integrationCommit || !targetBaseCommit) return null;
-    let remote =
-        attempt.publicationMode === "local" ? null : await resolveRemoteTarget(projectRoot, attempt.targetBranch);
+    let remote;
     if (attempt.publicationMode === "remote") {
         // Once published, changed branch configuration must not change which
         // upstream supplies the proof, or silently fall back to local history.
@@ -179,6 +167,9 @@ async function publishedEvidence(
         const url = await git(projectRoot, ["remote", "get-url", attempt.upstreamRemote]);
         if (url.code !== 0 || !url.stdout) return null;
         remote = { remote: attempt.upstreamRemote, branch: attempt.upstreamBranch, url: url.stdout };
+    } else {
+        remote =
+            attempt.publicationMode === "local" ? null : await resolveRemoteTarget(projectRoot, attempt.targetBranch);
     }
     if (!remote) {
         const target = `refs/heads/${attempt.targetBranch}`;
@@ -415,8 +406,16 @@ export type PublicationCleanupResult = {
     preservedFiles?: string;
 };
 
-async function retainPublicationCompletion(projectRoot: string, attempt: PublicationAttempt): Promise<void> {
-    if (!attempt.verifiedAt) return;
+type RetainedPublicationCompletion = {
+    record: ControllerRecord;
+    shouldObserve: boolean;
+};
+
+async function retainPublicationCompletion(
+    projectRoot: string,
+    attempt: PublicationAttempt,
+): Promise<RetainedPublicationCompletion | null> {
+    if (!attempt.verifiedAt) return null;
     const identity = { planId: attempt.planId, planName: attempt.planName };
     const previous = await readControllerRecord(projectRoot, identity);
     const observed = previous?.state.publicationObservation;
@@ -428,7 +427,7 @@ async function retainPublicationCompletion(projectRoot: string, attempt: Publica
             historyEpoch = "unavailable";
         }
     }
-    await writeControllerState(projectRoot, identity, {
+    const record = await writeControllerState(projectRoot, identity, {
         verifiedAt: attempt.verifiedAt,
         publicationReceipt: attempt.publishedCommit
             ? {
@@ -439,15 +438,20 @@ async function retainPublicationCompletion(projectRoot: string, attempt: Publica
             : null,
         updatedAt: attempt.verifiedAt,
         publicationObservation:
-            observed?.attemptId === attempt.attemptId && observed.coverage === "complete"
+            observed?.attemptId === attempt.attemptId && observed.coverage !== "unverified"
                 ? observed
                 : {
                       attemptId: attempt.attemptId,
                       eventId: workflowOutcomeEventId("publication_confirmed", attempt.attemptId),
                       historyEpoch,
-                      coverage: "unverified",
+                      // Write the safe fallback before recording. An exception,
+                      // deadline, or process death must not leave an apparently
+                      // unattempted observation that restart could backfill.
+                      coverage: "incomplete",
+                      reason: "recording_unconfirmed",
                   },
     });
+    return { record, shouldObserve: observed?.attemptId !== attempt.attemptId };
 }
 
 /** Keep exact delivery bytes readable after staging cleanup and later target changes. */
@@ -476,8 +480,8 @@ async function settlePublicationIndex(
     projectRoot: string,
     attempt: PublicationAttempt,
     port: WorkRecordMnemotecaPort,
-): Promise<void> {
-    if (!attempt.publishedCommit) return;
+): Promise<Map<string, string>> {
+    if (!attempt.publishedCommit) return new Map();
     const paths = attempt.planPaths || [`docs/plans/${attempt.planName}.md`];
     if (attempt.publicationMode === "local") {
         const head = await git(projectRoot, ["rev-parse", `refs/heads/${attempt.targetBranch}`]);
@@ -485,8 +489,14 @@ async function settlePublicationIndex(
             throw new Error("Published Work Record source cannot be proven on its target.");
         }
         await retainDeliveryCommit(projectRoot, projectRoot, attempt);
-        await indexPublishedWorkRecords(projectRoot, projectRoot, head.stdout, paths, port, attempt.publishedCommit);
-        return;
+        return await indexPublishedWorkRecords(
+            projectRoot,
+            projectRoot,
+            head.stdout,
+            paths,
+            port,
+            attempt.publishedCommit,
+        );
     }
     if (attempt.publicationMode !== "remote" || !attempt.upstreamRemote || !attempt.upstreamBranch) {
         throw new Error("Published Work Record source is unavailable.");
@@ -513,69 +523,85 @@ async function settlePublicationIndex(
         const head = await git(inspection, ["rev-parse", "FETCH_HEAD"]);
         if (head.code !== 0) throw new Error("Published Work Record target cannot be read.");
         await retainDeliveryCommit(projectRoot, inspection, attempt);
-        await indexPublishedWorkRecords(projectRoot, inspection, head.stdout, paths, port, attempt.publishedCommit);
+        return await indexPublishedWorkRecords(
+            projectRoot,
+            inspection,
+            head.stdout,
+            paths,
+            port,
+            attempt.publishedCommit,
+        );
     } finally {
         await fsRm(inspection, { recursive: true });
     }
 }
 
 /** Recording and coverage retention cannot hold confirmed delivery open. */
-async function observeConfirmedPublication(projectRoot: string, attempt: PublicationAttempt): Promise<void> {
-    const eventId = workflowOutcomeEventId("publication_confirmed", attempt.attemptId);
+async function observeConfirmedPublication(
+    projectRoot: string,
+    attempt: PublicationAttempt,
+    completion: RetainedPublicationCompletion | null,
+    planKind: string | undefined,
+): Promise<void> {
+    // Retained coverage is an observation receipt, not a retry queue. In
+    // particular, legacy unverified observations are not historical measurements.
+    if (!completion?.shouldObserve) return;
+    const observed = completion.record.state.publicationObservation;
     const identity = { planId: attempt.planId, planName: attempt.planName };
     const deadline = Date.now() + 5000;
     const pending = async () => {
-        let planKind: string | undefined;
-        for (const path of attempt.planPaths || []) {
-            const artifact = await git(projectRoot, ["show", `${attempt.artifactCommit}:${path}`]);
-            if (artifact.code !== 0) continue;
-            const { attrs } = parsePlanFrontMatter(artifact.stdout);
-            if (attrs.planId === attempt.planId) {
-                planKind = attrs.classification;
-                break;
-            }
+        // The index owner already parsed the exact retained delivery bytes, and
+        // retention already resolved the epoch. No Git classification or runtime
+        // reread belongs ahead of the bounded (~1s lock) journal append.
+        let result: JournalResult;
+        try {
+            result = await recordWorkflowOutcome(projectRoot, {
+                event: "publication_confirmed",
+                planId: attempt.planId,
+                planKind,
+                historyEpoch: observed?.historyEpoch,
+                category: "recovery",
+                operationId: attempt.attemptId,
+                attemptId: attempt.attemptId,
+                planName: attempt.planName,
+                outcome: "succeeded",
+                ts: attempt.verifiedAt,
+                persistenceDeadline: deadline,
+            });
+        } catch {
+            result = { persisted: false, reason: "recording_failed" };
         }
-        const original = await readControllerRecord(projectRoot, identity);
-        const result = await recordWorkflowOutcome(projectRoot, {
-            event: "publication_confirmed",
-            planId: attempt.planId,
-            planKind,
-            historyEpoch: original?.state.publicationObservation?.historyEpoch,
-            category: "recovery",
-            operationId: attempt.attemptId,
-            attemptId: attempt.attemptId,
-            planName: attempt.planName,
-            outcome: "succeeded",
-            ts: attempt.verifiedAt,
-            persistenceDeadline: deadline,
-        });
+        // Only coverage retention needs a fresh revision. Append has already had
+        // its full acquisition budget, regardless of this runtime read's cost.
         const retained = await readControllerRecord(projectRoot, identity);
         if (Date.now() >= deadline || retained?.state.publicationObservation?.attemptId !== attempt.attemptId) return;
+        if (retained.state.publicationObservation.coverage === "complete") return;
         await writeControllerState(
             projectRoot,
             identity,
             {
                 publicationObservation: {
                     attemptId: attempt.attemptId,
-                    eventId,
-                    historyEpoch: result.historyEpoch || retained?.state.publicationObservation?.historyEpoch,
-                    coverage:
-                        result.persisted || retained.state.publicationObservation.coverage === "complete"
-                            ? "complete"
-                            : "incomplete",
+                    eventId: workflowOutcomeEventId("publication_confirmed", attempt.attemptId),
+                    historyEpoch: result.historyEpoch || observed?.historyEpoch,
+                    coverage: result.persisted ? "complete" : "incomplete",
+                    ...(result.persisted ? {} : { reason: result.reason || "recording_failed" }),
                 },
             },
             { expectedRevision: retained.revision },
-        ).catch(() => {});
+        );
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         await Promise.race([
-            pending().catch(() => {}),
+            pending(),
             new Promise<void>((resolve) => {
-                timer = setTimeout(resolve, 5000);
+                timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
             }),
         ]);
+    } catch {
+        // Coverage storage can also fail. The prewritten incomplete,
+        // recording_unconfirmed marker remains truthful; delivery still wins.
     } finally {
         clearTimeout(timer);
     }
@@ -594,11 +620,13 @@ export async function cleanupStoredPublication(
     // Reconciliation validates before inspecting Git or changing any receipt.
     let attempt = await reconcileStoredPublication(projectRoot, initial);
     let preservedFiles = await existingPublicationSavedFiles(attempt.executionCwd);
+    let completion: RetainedPublicationCompletion | null = null;
+    let planKinds = new Map<string, string>();
     if (attempt.phase === "publication_verified" || attempt.phase === "cleanup_complete") {
         // Index availability must not hide delivery already proven by Git.
-        await retainPublicationCompletion(projectRoot, attempt);
+        completion = await retainPublicationCompletion(projectRoot, attempt);
         try {
-            await settlePublicationIndex(projectRoot, attempt, workRecordMnemotecaPort);
+            planKinds = await settlePublicationIndex(projectRoot, attempt, workRecordMnemotecaPort);
         } catch (error) {
             return {
                 complete: false,
@@ -615,7 +643,7 @@ export async function cleanupStoredPublication(
         }
     }
     if (attempt.phase === "cleanup_complete") {
-        await observeConfirmedPublication(projectRoot, attempt);
+        await observeConfirmedPublication(projectRoot, attempt, completion, planKinds.get(attempt.planId));
         await pruneEntry(projectRoot, attempt.attemptId);
         return { complete: true, attempt, worktreeKept: false, branchKept: false, details: [], preservedFiles };
     }
@@ -638,7 +666,7 @@ export async function cleanupStoredPublication(
             details: [`Could not confirm that ${attempt.targetBranch} still contains the published commits.`],
         };
     }
-    await observeConfirmedPublication(projectRoot, attempt);
+    await observeConfirmedPublication(projectRoot, attempt, completion, planKinds.get(attempt.planId));
     const details: string[] = [];
     let worktreeKept = false;
     let branchKept = false;

@@ -42,20 +42,19 @@ async function waitForPrompt(uiAPI, signal, openPrompt) {
 export function createTuiInteractionAdapter(uiAPI, ports) {
     return {
         supportsInteraction(type) {
-            return type === RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION ||
-                type === RuntimeInteractionTypes.ARTIFACT_REVIEW;
+            return (
+                type === RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION ||
+                type === RuntimeInteractionTypes.ARTIFACT_REVIEW
+            );
         },
         async requestInteraction(request, signal) {
             if (request.type === RuntimeInteractionTypes.SELECT || request.type === RuntimeInteractionTypes.APPROVAL) {
-                const value = await waitForPrompt(
-                    uiAPI,
-                    signal,
-                    () =>
-                        uiAPI.promptSelect(
-                            request.prompt,
-                            request.options || [],
-                            request._meta?.presentation === "code_review_offer" ? { persistResult: false } : undefined,
-                        ),
+                const value = await waitForPrompt(uiAPI, signal, () =>
+                    uiAPI.promptSelect(
+                        request.prompt,
+                        request.options || [],
+                        request._meta?.presentation === "code_review_offer" ? { persistResult: false } : undefined,
+                    ),
                 );
                 if (value === null) return { outcome: RuntimeInteractionOutcomes.CANCELED };
                 const option = (request.options || []).find((item) => item.value === value);
@@ -83,15 +82,12 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 };
             }
             if (request.type === RuntimeInteractionTypes.TEXT) {
-                const value = await waitForPrompt(
-                    uiAPI,
-                    signal,
-                    () =>
-                        uiAPI.promptText(request.prompt, {
-                            defaultValue: request.defaultValue,
-                            placeholder: request.placeholder,
-                            allowEmpty: request.allowEmpty,
-                        }),
+                const value = await waitForPrompt(uiAPI, signal, () =>
+                    uiAPI.promptText(request.prompt, {
+                        defaultValue: request.defaultValue,
+                        placeholder: request.placeholder,
+                        allowEmpty: request.allowEmpty,
+                    }),
                 );
                 if (value === null) return { outcome: RuntimeInteractionOutcomes.CANCELED };
                 return { outcome: RuntimeInteractionOutcomes.TEXT, value };
@@ -125,11 +121,16 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 const prompt = [
                     "Plan Deviation confirmation",
                     typeof request.prompt === "string" ? request.prompt.trim() : "",
-                ].filter(Boolean).join("\n\n");
-                const options = request.options && request.options.length ? request.options : [
-                    { value: "confirm", label: "Confirm Plan Deviation" },
-                    { value: "cancel", label: "Cancel; keep the original Plan requirement" },
-                ];
+                ]
+                    .filter(Boolean)
+                    .join("\n\n");
+                const options =
+                    request.options && request.options.length
+                        ? request.options
+                        : [
+                              { value: "confirm", label: "Confirm Plan Deviation" },
+                              { value: "cancel", label: "Cancel; keep the original Plan requirement" },
+                          ];
                 const value = await uiAPI.promptSelect(prompt, options);
                 if (value === null || value === "cancel") return { outcome: RuntimeInteractionOutcomes.CANCELED };
                 if (value !== "confirm") {
@@ -163,8 +164,8 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                         outcome: result.canceled
                             ? RuntimeInteractionOutcomes.CANCELED
                             : result.approved
-                            ? RuntimeInteractionOutcomes.ACCEPTED
-                            : RuntimeInteractionOutcomes.SELECTED,
+                              ? RuntimeInteractionOutcomes.ACCEPTED
+                              : RuntimeInteractionOutcomes.SELECTED,
                         _meta: result,
                     };
                 } finally {
@@ -192,6 +193,7 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                         planAttrs: meta.planAttrs,
                         executionCwd: meta.executionCwd,
                         targetBranch: typeof meta.targetBranch === "string" ? meta.targetBranch : undefined,
+                        targetBaseRef: typeof meta.targetBaseRef === "string" ? meta.targetBaseRef : undefined,
                         guidedReview: meta.guidedReview,
                         reviewConversation: meta.reviewConversation,
                         agentLabel: typeof meta.agentLabel === "string" ? meta.agentLabel : undefined,
@@ -209,17 +211,19 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                             if (typeof meta.onSurfaceReady === "function") meta.onSurfaceReady(surface);
                         },
                     });
-                    status = result.canceled || result.exit
-                        ? `Code Review canceled; approval is still pending. Retry or /load-plan ${meta.planName} to reopen it.`
-                        : result.approved
-                        ? "Code Review approved."
-                        : "Code Review feedback received.";
-                    return {
-                        outcome: result.canceled || result.exit
-                            ? RuntimeInteractionOutcomes.CANCELED
+                    status =
+                        result.canceled || result.exit
+                            ? `Code Review canceled; approval is still pending. Retry or /load-plan ${meta.planName} to reopen it.`
                             : result.approved
-                            ? RuntimeInteractionOutcomes.ACCEPTED
-                            : RuntimeInteractionOutcomes.SELECTED,
+                              ? "Code Review approved."
+                              : "Code Review feedback received.";
+                    return {
+                        outcome:
+                            result.canceled || result.exit
+                                ? RuntimeInteractionOutcomes.CANCELED
+                                : result.approved
+                                  ? RuntimeInteractionOutcomes.ACCEPTED
+                                  : RuntimeInteractionOutcomes.SELECTED,
                         _meta: result,
                     };
                 } catch (error) {

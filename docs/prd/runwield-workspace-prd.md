@@ -356,7 +356,9 @@ and endpoint or external-project changes before the write. Clear removes selecte
 payloads, not Sessions, Plans, worktrees, settings, or remote data. Revoke stops new sends. A new destination boundary
 does not send old pending items. All dialogs state that a sent request cannot be recalled where applicable. Results show
 per-Project clear failures and in-flight delivery. The Report remains readable after a clear, including a concurrent
-clear from another process.
+clear from another process. While a clear is pending, the affected Project has no old rows and shows **Clear did not
+finish** with **Retry clear**. Retry uses the existing confirmed clear action and works with recording off; viewing a
+report never changes history.
 
 **Acceptance scenarios:**
 
@@ -389,6 +391,10 @@ clear from another process.
   not send. Non-loopback HTTP is refused; loopback HTTP needs explicit consent and a visible badge.
 - Given clear or revoke while delivery is in flight, confirmation explains the limit and the result reports it.
   Clearing leaves Sessions, Plans, settings, and worktrees unchanged; the Report loads immediately afterward.
+- Given a pending clear, the Report returns a readable response, hides that Project's old measurements, and shows a
+  Project-specific notice. Concurrent clears do not expose internal error codes or hide stable Project totals.
+- Given a stranded clear with recording off and no export running, **Retry clear** asks for confirmation and finishes
+  the existing clear. The Report refreshes without manual file changes; recording stays off.
 - Given global recording enabled and a Project override off, the global choice changes while that Project stays off.
   Project settings are unchanged, and new work in a Project without an override records through Core.
 - Given an unpaired request, an invalid POST origin or CSRF token, or an unknown or disabled Project ID, the operation

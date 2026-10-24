@@ -38,9 +38,10 @@ export async function runHumanReviewPhase(
     context: PhaseContext,
 ): Promise<ValidationPhaseResult> {
     const persistedMode = args.triageMeta.humanReviewMode;
-    const mode = persistedMode === "always" || persistedMode === "ask" || persistedMode === "none"
-        ? persistedMode
-        : getCodeReviewMode(context.projectRoot);
+    const mode =
+        persistedMode === "always" || persistedMode === "ask" || persistedMode === "none"
+            ? persistedMode
+            : getCodeReviewMode(context.projectRoot);
     if (mode === "none") {
         await persistHumanReviewMetadata(args, context.executionCwd, {
             humanReviewMode: "none",
@@ -85,8 +86,7 @@ export async function runHumanReviewPhase(
                 planName: args.planName,
                 projectRoot: context.projectRoot,
                 awaitingUserAction: true,
-                reason:
-                    `Code review is still waiting for your decision. Resume with /load-plan ${args.planName} to choose again.`,
+                reason: `Code review is still waiting for your decision. Resume with /load-plan ${args.planName} to choose again.`,
             };
         }
         if (response.value === "skip") {
@@ -111,12 +111,12 @@ export async function runHumanReviewPhase(
 
     let diffText = context.nonGitInPlace
         ? ""
-        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "", context.worktreeBaseRef);
     const planAttrs = getPlanAttrs(args.planContent);
     const planTitle = codeReviewPlanTitle(args.planContent, args.planName);
     const agentLabel = args.session.getAgentDisplayName(AGENTS.REVIEWER_FEEDBACK_ENGINEER, context.projectRoot);
     const conversationState = args.codeReviewConversation || { history: [] };
-    const reviewConversation = conversationState.conversation ||= {
+    const reviewConversation = (conversationState.conversation ||= {
         id: crypto.randomUUID(),
         agentLabel,
         revision: 0,
@@ -126,7 +126,7 @@ export async function runHumanReviewPhase(
             messageId: string;
             agentName: string;
         }>,
-    };
+    });
     const conversationHistory = conversationState.history;
     const guidedReview = {
         mode: getGuidedReviewMode(context.projectRoot),
@@ -148,7 +148,7 @@ export async function runHumanReviewPhase(
             stage: "terminal",
             checks: { humanReview: "pending" },
         });
-        if (await pauseForUserAction(args, outcome.pause) === "retry") continue;
+        if ((await pauseForUserAction(args, outcome.pause)) === "retry") continue;
         return {
             kind: "paused",
             planName: args.planName,
@@ -173,6 +173,7 @@ export async function runHumanReviewPhase(
                 planAttrs,
                 diffText,
                 targetBranch: context.worktreeBaseBranch,
+                targetBaseRef: context.worktreeBaseRef,
                 executionCwd: context.executionCwd,
                 guidedReview,
                 reviewConversation,
@@ -233,45 +234,36 @@ export async function runHumanReviewPhase(
                 "Changes requested",
                 feedbackText,
             );
-            const conversationContext = humanReview.conversationTurn && conversationHistory.length > 0
-                ? [
-                    "Prior Code Review conversation:",
-                    ...conversationHistory.map((entry) =>
-                        `${entry.role === "user" ? "User" : agentLabel}: ${entry.text}`
-                    ),
-                    "",
-                    "Current message:",
-                    feedbackText,
-                ].join("\n")
-                : feedbackText;
+            const conversationContext =
+                humanReview.conversationTurn && conversationHistory.length > 0
+                    ? [
+                          "Prior Code Review conversation:",
+                          ...conversationHistory.map(
+                              (entry) => `${entry.role === "user" ? "User" : agentLabel}: ${entry.text}`,
+                          ),
+                          "",
+                          "Current message:",
+                          feedbackText,
+                      ].join("\n")
+                    : feedbackText;
             // Editing invalidates the checked revision even if the Agent is interrupted.
             await persistHumanReviewMetadata(args, context.executionCwd, {
                 humanReviewMode: mode,
                 humanReviewDecision: "changes_requested",
                 humanReviewedAt: null,
             });
-            await recordLifecycleEvent(
-                args,
-                context.projectRoot,
-                "validation_failed",
-                "reviewed",
-                feedbackText,
-            );
+            await recordLifecycleEvent(args, context.projectRoot, "validation_failed", "reviewed", feedbackText);
             const repair = await dispatchReviewFeedbackRepair(args, context, {
                 diffText,
                 findingsSection: conversationContext,
                 repairKind: "human_feedback",
                 images: humanReview.images,
-                reason:
-                    `User code review returned feedback. Dispatching repair...\nUser Code Review Feedback:\n${feedbackText}`,
+                reason: `User code review returned feedback. Dispatching repair...\nUser Code Review Feedback:\n${feedbackText}`,
             });
             if (repair.completed) {
                 if (humanReview.conversationTurn) {
                     const reply = repair.report.trim() || "I applied the requested changes and refreshed the diff.";
-                    conversationHistory.push(
-                        { role: "user", text: feedbackText },
-                        { role: "agent", text: reply },
-                    );
+                    conversationHistory.push({ role: "user", text: feedbackText }, { role: "agent", text: reply });
                     reviewConversation.events.push({
                         type: "assistant_text_delta",
                         delta: reply,
@@ -280,7 +272,11 @@ export async function runHumanReviewPhase(
                     });
                     diffText = context.nonGitInPlace
                         ? ""
-                        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                        : await getWorktreeReviewDiff(
+                              context.executionCwd,
+                              context.worktreeBaseBranch || "",
+                              context.worktreeBaseRef,
+                          );
                 }
                 return {
                     kind: "decided",
@@ -332,17 +328,18 @@ export function normalizeHumanReview(response: ValidationInteractionResponse): {
     canceled: boolean;
     conversationTurn: boolean;
 } {
-    const meta = response._meta && typeof response._meta === "object"
-        ? response._meta as {
-            approved?: boolean;
-            feedback?: string;
-            annotations?: HumanReviewAnnotations;
-            images?: Array<{ base64: string; mimeType: string }>;
-            exit?: boolean;
-            canceled?: boolean;
-            conversationTurn?: boolean;
-        }
-        : {};
+    const meta =
+        response._meta && typeof response._meta === "object"
+            ? (response._meta as {
+                  approved?: boolean;
+                  feedback?: string;
+                  annotations?: HumanReviewAnnotations;
+                  images?: Array<{ base64: string; mimeType: string }>;
+                  exit?: boolean;
+                  canceled?: boolean;
+                  conversationTurn?: boolean;
+              })
+            : {};
     const canceled = meta.canceled === true || meta.exit === true || response.outcome === "canceled";
     if (canceled) {
         return {
@@ -372,10 +369,7 @@ function buildHumanReviewFeedbackText(feedback: string, annotations: HumanReview
         ? annotations.filter((annotation) => !feedbackIncludesAnnotation(feedback, annotation))
         : annotations;
     const annotationText = formatCodeReviewAnnotations(missingAnnotations);
-    return [
-        baseFeedback,
-        annotationText ? `Annotations:\n${annotationText}` : "",
-    ].filter(Boolean).join("\n\n");
+    return [baseFeedback, annotationText ? `Annotations:\n${annotationText}` : ""].filter(Boolean).join("\n\n");
 }
 
 function feedbackIncludesAnnotation(feedback: string, annotation: HumanReviewAnnotations[number]): boolean {
@@ -390,13 +384,15 @@ function normalizeFeedbackText(text: string): string {
 }
 
 export function formatCodeReviewAnnotations(annotations: HumanReviewAnnotations): string {
-    return annotations.map((annotation, index) => {
-        const location = [annotation.file, annotation.line].filter((part) => part !== undefined && part !== "").join(
-            ":",
-        );
-        const text = annotation.text || annotation.body || "(no annotation text)";
-        return `${index + 1}. ${location ? `${location}: ` : ""}${text}`;
-    }).join("\n");
+    return annotations
+        .map((annotation, index) => {
+            const location = [annotation.file, annotation.line]
+                .filter((part) => part !== undefined && part !== "")
+                .join(":");
+            const text = annotation.text || annotation.body || "(no annotation text)";
+            return `${index + 1}. ${location ? `${location}: ` : ""}${text}`;
+        })
+        .join("\n");
 }
 
 export async function persistHumanReviewMetadata(

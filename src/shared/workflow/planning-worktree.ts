@@ -235,13 +235,13 @@ async function readTargetChildren(projectRoot: string, ref: string, parentPlanNa
     const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", ref, "docs/plans"]);
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
     const children: Array<{ name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }> = [];
-    for (const relativePath of listed.split(/\r?\n/).filter((line) => line.endsWith(".md"))) {
+    const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
+    const sources = await readTargetPlanMarkdowns(projectRoot, relativePaths, ref);
+    for (const [relativePath, markdown] of sources) {
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
-        const source = await readTargetPlanMarkdown(projectRoot, planName, ref);
-        if (!source) continue;
-        const parsed = parsePlanFrontMatter(source.markdown);
+        const parsed = parsePlanFrontMatter(markdown);
         if (parsed.attrs.parentPlan !== parentName) continue;
-        children.push({ name: planName, path: `${ref}:${source.relativePath}`, attrs: parsed.attrs });
+        children.push({ name: planName, path: `${ref}:${relativePath}`, attrs: parsed.attrs });
     }
     return children;
 }

@@ -8,10 +8,14 @@
  */
 
 import { estimateContextTextTokens } from "../session/session-context-report.ts";
+import type { HostedSession } from "../session/hosted-session.js";
+import { openFileSessionStore } from "../session/file-session-store.ts";
+import { planAssociationAtTime, type AssociationTimeScope } from "../session/plan-association.ts";
 import {
     classifyToolSubUsage,
     drainWorkflowMetrics,
     getWorkflowMetricsFilePath,
+    normalizeObservedTime,
     recordWorkflowMetric,
 } from "./metrics.js";
 
@@ -35,10 +39,14 @@ export class SessionContextMetricsRecorder {
         private readonly projectRoot: string,
         private readonly sessionId: string | null,
         private readonly commandId: string | null,
+        hostedSession?: HostedSession,
     ) {
         this.usageRecorder = new ExecutionMetricsRecorder({
             projectRoot,
+            hostedSession,
             sessionId: sessionId ?? undefined,
+            managedSessionId: hostedSession?.getManagedMetadata()?.runwieldSessionId,
+            segmentId: hostedSession?.getManagedMetadata()?.currentSegmentId,
             commandId: commandId ?? undefined,
         });
     }
@@ -109,6 +117,8 @@ export class SessionContextMetricsRecorder {
 
 export interface ExecutionRecorderOptions {
     projectRoot: string;
+    /** Owned workflow context supplies a known Plan name, never association history alone. */
+    hostedSession?: HostedSession;
     sessionId?: string;
     managedSessionId?: string;
     segmentId?: string;
@@ -135,9 +145,12 @@ export interface ExecutionRecorderOptions {
 interface ModelUsageTiming {
     startedAt: string | null;
     endedAt: string | null;
+    scope: AssociationTimeScope | null;
 }
 
 export interface ModelUsageObservation {
+    /** Original source observation instant, when available; never inferred from settlement. */
+    observedAt?: string | null;
     sourceId?: string;
     usageKind?: UsageKind;
     provider?: string;
@@ -154,6 +167,7 @@ export interface ModelUsageObservation {
     costUsd?: number | null;
     costCurrency?: "USD";
     costSource?: "calculated" | "reported" | "unavailable";
+    costAvailability?: MeasurementAvailability;
     measurementAvailability?: MeasurementAvailability;
     unavailableReason?: string | null;
     aggregationBasis?: "turn" | "request" | "alternative";
@@ -617,6 +631,7 @@ export class ExecutionMetricsRecorder {
     readonly sourceSurface: string;
     readonly userInitiated: boolean;
     private historyEpoch: string;
+    private readonly hostedSession?: HostedSession;
 
     private seq = 0;
     private startedAt: number;
@@ -644,6 +659,7 @@ export class ExecutionMetricsRecorder {
         this.recorderId = `rec_${crypto.randomUUID()}`;
         this.executionId = options.executionId || `exec_${crypto.randomUUID()}`;
         this.projectRoot = options.projectRoot;
+        this.hostedSession = options.hostedSession;
         this.sessionId = options.sessionId;
         this.managedSessionId = options.managedSessionId;
         this.segmentId = options.segmentId;
@@ -1030,9 +1046,13 @@ export class ExecutionMetricsRecorder {
 
     /** Pi persists this same message object after message_end. Keep its own observed edges. */
     recordPiAssistantMessageEnd(message: import("@earendil-works/pi-ai").AssistantMessage): void {
+        const startedAt = this.getObservedTurnStartedAt();
         this.piMessageTiming.set(message, {
-            startedAt: this.getObservedTurnStartedAt(),
+            startedAt,
             endedAt: new Date().toISOString(),
+            scope: this.modelUsageScope(
+                startedAt ?? (Number.isFinite(message.timestamp) ? (new Date(message.timestamp).toJSON() ?? "") : ""),
+            ),
         });
     }
 
@@ -1082,28 +1102,58 @@ export class ExecutionMetricsRecorder {
                 entry.type === "message" && entry.message.role === "assistant"
                     ? this.piMessageTiming.get(entry.message)
                     : undefined;
-            await this.recordModelUsage({
-                startedAt: timing?.startedAt ?? null,
-                endedAt: timing?.endedAt ?? null,
-                sourceId: entry.id,
-                usageKind,
-                provider,
-                model,
-                inputTokens: typeof usage.input === "number" ? usage.input : null,
-                outputTokens: typeof usage.output === "number" ? usage.output : null,
-                reasoningTokens: typeof usage.reasoning === "number" ? usage.reasoning : null,
-                cacheReadTokens: typeof usage.cacheRead === "number" ? usage.cacheRead : null,
-                cacheWriteTokens: typeof usage.cacheWrite === "number" ? usage.cacheWrite : null,
-                costAmount: typeof usage.cost?.total === "number" ? usage.cost.total : null,
-                costSource: typeof usage.cost?.total === "number" ? "calculated" : "unavailable",
-                inputCacheBasis: "excludes_cache",
-                aggregationBasis: usageKind === "request" ? "request" : "turn",
-                turnId: this.piEntryTurnIds.get(entry.id) ?? null,
-            });
+            // Assistant timestamps belong to the model evidence, not delayed journal settlement.
+            const observedAt = normalizeObservedTime(
+                entry.type === "message" && entry.message.role === "assistant"
+                    ? Number.isFinite(entry.message.timestamp)
+                        ? (new Date(entry.message.timestamp).toJSON() ?? "")
+                        : ""
+                    : entry.timestamp,
+            );
+            await this.recordModelUsage(
+                {
+                    observedAt,
+                    startedAt: timing?.startedAt ?? null,
+                    endedAt: timing?.endedAt ?? null,
+                    sourceId: entry.id,
+                    usageKind,
+                    provider,
+                    model,
+                    inputTokens: typeof usage.input === "number" ? usage.input : null,
+                    outputTokens: typeof usage.output === "number" ? usage.output : null,
+                    reasoningTokens: typeof usage.reasoning === "number" ? usage.reasoning : null,
+                    cacheReadTokens: typeof usage.cacheRead === "number" ? usage.cacheRead : null,
+                    cacheWriteTokens: typeof usage.cacheWrite === "number" ? usage.cacheWrite : null,
+                    costAmount: typeof usage.cost?.total === "number" ? usage.cost.total : null,
+                    costSource: typeof usage.cost?.total === "number" ? "calculated" : "unavailable",
+                    costAvailability: typeof usage.cost?.total === "number" ? "complete" : "unavailable",
+                    inputCacheBasis: "excludes_cache",
+                    aggregationBasis: usageKind === "request" ? "request" : "turn",
+                    turnId: this.piEntryTurnIds.get(entry.id) ?? null,
+                },
+                timing ? timing.scope : this.modelUsageScope(observedAt ?? ""),
+            );
         }
     }
 
-    async recordModelUsage(usage: ModelUsageObservation): Promise<void> {
+    /** Snapshot only useful model boundaries; tool events do not read Session manifests. */
+    private modelUsageScope(ts: string): AssociationTimeScope | null {
+        const planName =
+            this.hostedSession?.getActiveExecutionWorkflow()?.planName ||
+            this.hostedSession?.getWorkflowContext()?.planName;
+        return this.segmentId && planName ? { segmentId: this.segmentId, ts, planName } : null;
+    }
+
+    async recordModelUsage(
+        usage: ModelUsageObservation,
+        scope: AssociationTimeScope | null = this.modelUsageScope(
+            usage.startedAt ??
+                (usage.observedAt === undefined ? undefined : (normalizeObservedTime(usage.observedAt ?? "") ?? "")) ??
+                this.getObservedTurnStartedAt() ??
+                usage.endedAt ??
+                new Date().toISOString(),
+        ),
+    ): Promise<void> {
         const sourceId = usage.sourceId || `usage_${crypto.randomUUID()}`;
         const availability =
             usage.measurementAvailability ||
@@ -1121,12 +1171,44 @@ export class ExecutionMetricsRecorder {
         if (availability !== "unavailable") this.usageCoverage = this.usageIncomplete ? "partial" : "complete";
         else if (this.usageCoverage === "complete") this.usageCoverage = "partial";
 
+        let planId: string | undefined;
+        const managed = this.hostedSession?.getManagedMetadata();
+        if (
+            scope &&
+            scope.segmentId === this.segmentId &&
+            managed?.projectId &&
+            managed.runwieldSessionId === this.managedSessionId
+        ) {
+            try {
+                const store = openFileSessionStore();
+                try {
+                    // The Project locator avoids scanning other Session catalogs.
+                    const associations = store.listSessionPlanAssociations(
+                        managed.runwieldSessionId,
+                        managed.projectId,
+                    );
+                    if (associations.length > 0) {
+                        planId = planAssociationAtTime(
+                            associations,
+                            store.listSessionTranscriptSegments(managed.runwieldSessionId),
+                            scope,
+                        )?.planId;
+                    }
+                } finally {
+                    store.close();
+                }
+            } catch {
+                // Missing committed evidence is not an inferred Plan relationship.
+            }
+        }
         const costAmount = usage.costAmount ?? usage.costUsd ?? null;
         await recordWorkflowMetric(
             {
                 ...this.baseLinks(),
                 category: "model_usage",
                 event: "model_usage",
+                ts: usage.observedAt ? (normalizeObservedTime(usage.observedAt) ?? undefined) : undefined,
+                ...(planId ? { planId } : {}),
                 seq: this.nextSeq(),
                 sourceId,
                 usageKind: usage.usageKind || "turn",
@@ -1142,6 +1224,7 @@ export class ExecutionMetricsRecorder {
                 costAmount,
                 costCurrency: usage.costCurrency || "USD",
                 costSource: usage.costSource || (costAmount != null ? "calculated" : "unavailable"),
+                costAvailability: usage.costAvailability,
                 measurementAvailability: availability,
                 unavailableReason: usage.unavailableReason ?? null,
                 aggregationBasis: usage.aggregationBasis || "turn",

@@ -1,3 +1,4 @@
+import { resolvePublicationUpstream as resolveUpstream } from "./publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "./captured-process.ts";
@@ -153,27 +154,13 @@ async function runGitRaw(cwd: string, args: string[]): Promise<string> {
     throw new Error(`git ${args.join(" ")} failed: ${stderr.trim() || stdout.trim()}`);
 }
 
-async function resolveUpstream(projectRoot: string, targetBranch: string): Promise<UpstreamTarget | null> {
-    const configuredRemote = await runGitResult(projectRoot, ["config", "--get", `branch.${targetBranch}.remote`]);
-    const remote = configuredRemote.code === 0 && configuredRemote.stdout ? configuredRemote.stdout : "origin";
-    if (remote === ".") {
-        return null;
-    }
-    const remoteUrl = await runGitResult(projectRoot, ["remote", "get-url", remote]);
-    if (remoteUrl.code !== 0 || !remoteUrl.stdout) {
-        return null;
-    }
-    return { remote, branch: targetBranch, url: remoteUrl.stdout };
-}
-
 async function remoteHead(cwd: string, remote: string, branch: string): Promise<string | null> {
     const result = await runGitResult(cwd, ["ls-remote", "--heads", remote, `refs/heads/${branch}`]);
     if (result.code !== 0) {
         const detail = result.stderr || result.stdout || "Git returned no error text.";
-        throw new IsolatedPublicationError(
-            `Could not read the upstream ${branch} branch: ${detail}`,
-            { mergeFailureKind: classifyRemoteFailure(detail) },
-        );
+        throw new IsolatedPublicationError(`Could not read the upstream ${branch} branch: ${detail}`, {
+            mergeFailureKind: classifyRemoteFailure(detail),
+        });
     }
     const hash = result.stdout.split(/\s+/)[0];
     return /^[0-9a-f]{40}$/i.test(hash || "") ? hash : null;
@@ -197,14 +184,16 @@ type RemoteFailureKind = "permission_denied" | "policy_violation" | "remote_unav
 
 function classifyRemoteFailure(message: string): RemoteFailureKind {
     if (
-        /authentication failed|permission denied|access denied|authorization failed|publickey|could not read username/i
-            .test(message)
+        /authentication failed|permission denied|access denied|authorization failed|publickey|could not read username/i.test(
+            message,
+        )
     ) {
         return "permission_denied";
     }
     if (
-        /protected branch|repository rules?|rule violations?|pre-receive hook declined|hook declined|prohibited|not allowed to push|branch permissions?|GH00[136]/i
-            .test(message)
+        /protected branch|repository rules?|rule violations?|pre-receive hook declined|hook declined|prohibited|not allowed to push|branch permissions?|GH00[136]/i.test(
+            message,
+        )
     ) {
         return "policy_violation";
     }
@@ -212,16 +201,12 @@ function classifyRemoteFailure(message: string): RemoteFailureKind {
 }
 
 function isLeaseRace(message: string): boolean {
-    return /stale info|fetch first|non-fast-forward|remote ref updated since checkout|cannot lock ref.*expected/i
-        .test(message);
+    return /stale info|fetch first|non-fast-forward|remote ref updated since checkout|cannot lock ref.*expected/i.test(
+        message,
+    );
 }
 
-async function pushPublication(
-    cwd: string,
-    args: string[],
-    branch: string,
-    repairCwd?: string,
-): Promise<void> {
+async function pushPublication(cwd: string, args: string[], branch: string, repairCwd?: string): Promise<void> {
     const result = await runGitResult(cwd, ["push", ...args]);
     if (result.code === 0) return;
     const detail = result.stderr || result.stdout || "Git returned no error text.";
@@ -229,14 +214,16 @@ async function pushPublication(
     const mergeFailureKind = isLeaseRace(detail)
         ? "target_reference_race"
         : remoteFailure === "permission_denied" || remoteFailure === "policy_violation"
-        ? remoteFailure
-        : /could not resolve host|unable to access|connection (?:timed out|refused|reset)|network is unreachable|connection closed/i
-                .test(detail)
-        ? "remote_unavailable"
-        : "publication_push_failed";
-    const message = mergeFailureKind === "target_reference_race"
-        ? `The upstream ${branch} branch received another commit before this push completed. Git rejected the stale force-with-lease safely.`
-        : `Git could not push the completed commits to upstream ${branch}: ${detail}`;
+          ? remoteFailure
+          : /could not resolve host|unable to access|connection (?:timed out|refused|reset)|network is unreachable|connection closed/i.test(
+                  detail,
+              )
+            ? "remote_unavailable"
+            : "publication_push_failed";
+    const message =
+        mergeFailureKind === "target_reference_race"
+            ? `The upstream ${branch} branch received another commit before this push completed. Git rejected the stale force-with-lease safely.`
+            : `Git could not push the completed commits to upstream ${branch}: ${detail}`;
     throw new IsolatedPublicationError(message, {
         mergeFailureKind,
         ...(repairCwd ? { repairCwd } : {}),
@@ -271,9 +258,7 @@ async function commitPublicationMetadata(
  * Check upstream reachability without fetching into or moving refs in the user's
  * primary checkout.
  */
-export async function isExecutionCommitPublishedUpstream(
-    args: UpstreamPublicationInspectionArgs,
-): Promise<boolean> {
+export async function isExecutionCommitPublishedUpstream(args: UpstreamPublicationInspectionArgs): Promise<boolean> {
     return await isCommitPublishedToTarget({
         projectRoot: args.projectRoot,
         targetBranch: args.targetBranch,
@@ -286,9 +271,7 @@ export async function isExecutionCommitPublishedUpstream(
  * upstream is authoritative even when the user's local target branch is
  * intentionally behind it.
  */
-export async function isCommitPublishedToTarget(
-    args: TargetPublicationInspectionArgs,
-): Promise<boolean> {
+export async function isCommitPublishedToTarget(args: TargetPublicationInspectionArgs): Promise<boolean> {
     const upstream = await resolveUpstream(args.projectRoot, args.targetBranch);
     if (!upstream) {
         const localResult = await runGitResult(args.projectRoot, [
@@ -362,10 +345,12 @@ export async function publishExecutionWorktreeIsolated(
     }
     const requestedPublicationRoot = args.repairedPublicationRoot || args.publicationRoot;
     const requestedRootExists = requestedPublicationRoot
-        ? await fsStat(requestedPublicationRoot).then((stat) => stat.isDirectory()).catch(() => false)
+        ? await fsStat(requestedPublicationRoot)
+              .then((stat) => stat.isDirectory())
+              .catch(() => false)
         : false;
-    const publicationRoot = requestedPublicationRoot ||
-        await mkdtemp(join(tmpdir(), `runwield-publish-${basename(args.projectRoot)}-`));
+    const publicationRoot =
+        requestedPublicationRoot || (await mkdtemp(join(tmpdir(), `runwield-publish-${basename(args.projectRoot)}-`)));
     let preserveForRecovery = Boolean(requestedPublicationRoot);
     try {
         if (requestedRootExists) {
@@ -382,8 +367,10 @@ export async function publishExecutionWorktreeIsolated(
             }
             await assertNoTrackedOrIndexedRuntimePaths(publicationRoot);
             const expectedRemoteHead = await remoteHead(publicationRoot, upstream.url, upstream.branch);
-            const targetHeadBeforeMerge = expectedRemoteHead || args.recordedTargetBaseCommit ||
-                await runGit(publicationRoot, ["rev-parse", "HEAD^1"]);
+            const targetHeadBeforeMerge =
+                expectedRemoteHead ||
+                args.recordedTargetBaseCommit ||
+                (await runGit(publicationRoot, ["rev-parse", "HEAD^1"]));
             const publicationHistoryBase = expectedRemoteHead ? targetHeadBeforeMerge : null;
             if (expectedRemoteHead) {
                 const publicationTargetRef = `refs/remotes/publication/${upstream.branch}`;
@@ -461,11 +448,7 @@ export async function publishExecutionWorktreeIsolated(
                 ]);
             }
             const deliveryCommit = await runGit(publicationRoot, ["rev-parse", "HEAD"]);
-            await assertNoRuntimePathsInNewHistory(
-                publicationRoot,
-                publicationHistoryBase,
-                deliveryCommit,
-            );
+            await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, deliveryCommit);
             preserveForRecovery = true;
             const publicationCommit = await commitPublicationMetadata(
                 publicationRoot,
@@ -474,11 +457,7 @@ export async function publishExecutionWorktreeIsolated(
                 args.allowedPlanPaths,
                 upstream.branch,
             );
-            await assertNoRuntimePathsInNewHistory(
-                publicationRoot,
-                publicationHistoryBase,
-                publicationCommit,
-            );
+            await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
             await args.onIntegrated?.({
                 targetBaseCommit: targetHeadBeforeMerge,
                 integrationCommit: publicationCommit,
@@ -644,11 +623,15 @@ export async function publishExecutionWorktreeIsolated(
         });
         const lease = expectedRemoteHead || "";
         args.onProgress?.("publishing");
-        await pushPublication(publicationRoot, [
-            `--force-with-lease=refs/heads/${upstream.branch}:${lease}`,
-            "publication",
-            `HEAD:refs/heads/${upstream.branch}`,
-        ], upstream.branch);
+        await pushPublication(
+            publicationRoot,
+            [
+                `--force-with-lease=refs/heads/${upstream.branch}:${lease}`,
+                "publication",
+                `HEAD:refs/heads/${upstream.branch}`,
+            ],
+            upstream.branch,
+        );
         const publishedEvidence: PublicationPublishedEvidence = {
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,
@@ -708,9 +691,9 @@ async function publishToLocalTarget(
             if (blockingTrackedChanges.length > 0) {
                 throw new IsolatedPublicationError(
                     `The checked-out ${args.targetBranch} branch has unsaved tracked changes. ` +
-                        `Commit or discard them before retrying local publication: ${
-                            blockingTrackedChanges.join(", ")
-                        }.`,
+                        `Commit or discard them before retrying local publication: ${blockingTrackedChanges.join(
+                            ", ",
+                        )}.`,
                     { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
                 );
             }

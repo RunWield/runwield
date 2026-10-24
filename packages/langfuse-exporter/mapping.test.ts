@@ -49,6 +49,15 @@ test("reported zero is evidence, not an unavailable cost", async () => {
         assertEquals(native(s, "cost_details"), { total: 0 }),
     );
 });
+test("reported partial cost stays metadata-only and cannot invite inferred spend", async () => {
+    await captured(observation({ costSource: "reported", costAvailability: "partial", costAmount: 0.25 }), (s) => {
+        assertEquals(native(s, "cost_details"), undefined);
+        assertEquals(attributes(s)["langfuse.observation.model.name"], undefined);
+        assertEquals(metadata(s).costAmount, 0.25);
+        assertEquals(metadata(s).cost_complete, false);
+        assertEquals(metadata(s).cost_available, false);
+    });
+});
 test("complete usage without cost has no pricing model and cannot invite inferred spend", async () => {
     await captured(observation({ costSource: "unavailable", costAmount: null }), (s) => {
         assertEquals(native(s, "cost_details"), undefined);
@@ -99,6 +108,7 @@ for (const row of agy.rows) {
     });
 }
 const costCases: ObservationFields[] = [
+    { costAvailability: "unavailable" },
     { costSource: "unavailable", costAmount: 0.1 },
     { costSource: "calculated", costAmount: null },
     { costCurrency: "EUR" },

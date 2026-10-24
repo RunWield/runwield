@@ -694,8 +694,10 @@ recalled. Enabling export again starts a new boundary.
 
 **Clear history** removes measurement history and pending export payloads for the Projects you select. It does not remove
 Sessions, Plans, worktrees, settings, or data already exported. Confirm the action after reading its limits. The result
-reports each Project's outcome and whether a request was already in flight. Export configuration is unavailable when
-personal resources are remote-backed on this host.
+reports each Project's outcome and whether a request was already in flight. While a clear is pending, the Report stays
+readable and hides the affected Project's old measurements. If it shows **Clear did not finish**, choose **Retry clear**
+beside that Project and confirm. This works with recording off and does not enable recording. Export configuration is
+unavailable when personal resources are remote-backed on this host.
 
 See [Workspace usage and export](workspace.md#usage-and-export) and the
 [Langfuse exporter setup](../../packages/langfuse-exporter/README.md#install-and-authorize).
