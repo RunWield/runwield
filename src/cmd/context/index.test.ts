@@ -4,21 +4,26 @@ import { test } from "node:test";
 import stripAnsi from "strip-ansi";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import type { UiAPI } from "../../ui/tui/types.js";
+import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { SessionContextReport } from "../../shared/session/session-context-report.ts";
 import { abbreviateHomePath, formatContextReport, renderUsageBar, runContextCommand } from "./index.ts";
+
+type ContextReportReader = (() => SessionContextReport) | SessionRuntime["getSessionContextReport"];
 
 initRunWieldTheme();
 
 function makeUi() {
-    const messages = /** @type {string[]} */ ([]);
+    const messages: string[] = [];
     return {
         messages,
-        uiAPI: /** @type {any} */ ({
-            appendSystemMessage: (/** @type {string} */ message) => messages.push(message),
-        }),
+        uiAPI: {
+            appendSystemMessage: ((message: string) => messages.push(message)) as UiAPI["appendSystemMessage"],
+        } as UiAPI,
     };
 }
 
-function makeReport(overrides = {}) {
+function makeReport(overrides: Partial<SessionContextReport> = {}): SessionContextReport {
     return {
         agentName: "engineer",
         agentDisplayName: "Engineer",
@@ -90,22 +95,20 @@ test("abbreviateHomePath shortens files under HOME", async () => {
 });
 
 test("formatContextReport renders active model, categories, files, and source-grouped skills", () => {
-    const plain = stripAnsi(formatContextReport(/** @type {any} */ (makeReport())));
+    const plain = stripAnsi(formatContextReport(makeReport()));
 
-    for (
-        const expected of [
-            "Context Usage",
-            "Engineer (engineer)",
-            "anthropic/claude-test",
-            "1,000/2,000 (last known)",
-            "Agent instructions: 300 tokens (30.0%)",
-            "/tmp/RUNWIELD.md [local]: ~10 tokens",
-            "local:",
-            "bundled:",
-            "agent-browser-use: ~15 tokens",
-            "write-tests: ~20 tokens",
-        ]
-    ) {
+    for (const expected of [
+        "Context Usage",
+        "Engineer (engineer)",
+        "anthropic/claude-test",
+        "1,000/2,000 (last known)",
+        "Agent instructions: 300 tokens (30.0%)",
+        "/tmp/RUNWIELD.md [local]: ~10 tokens",
+        "local:",
+        "bundled:",
+        "agent-browser-use: ~15 tokens",
+        "write-tests: ~20 tokens",
+    ]) {
         assertEquals(plain.includes(expected), true, expected);
     }
 
@@ -114,17 +117,19 @@ test("formatContextReport renders active model, categories, files, and source-gr
 });
 
 test("formatContextReport makes unavailable and unknown states explicit", () => {
-    const plain = stripAnsi(formatContextReport(
-        /** @type {any} */ (makeReport({
-            usageState: "unknown_after_compaction",
-            usedTokens: null,
-            contextWindow: 128000,
-            percent: null,
-            freeTokens: null,
-            instructionFiles: [],
-            skills: [],
-        })),
-    ));
+    const plain = stripAnsi(
+        formatContextReport(
+            makeReport({
+                usageState: "unknown_after_compaction",
+                usedTokens: null,
+                contextWindow: 128000,
+                percent: null,
+                freeTokens: null,
+                instructionFiles: [],
+                skills: [],
+            }),
+        ),
+    );
 
     assertEquals(plain.includes("unknown/128,000 (unknown after compaction)"), true);
     assertEquals(plain.includes("Free space: unknown"), true);
@@ -143,9 +148,9 @@ test("runContextCommand renders Runtime context report", async () => {
     await runContextCommand([], {
         uiAPI,
         sessionId: "runtime-id",
-        sessionRuntime: /** @type {any} */ ({
-            getSessionContextReport: () => makeReport(),
-        }),
+        sessionRuntime: {
+            getSessionContextReport: (() => makeReport()) as ContextReportReader,
+        } as SessionRuntime,
     });
 
     assertEquals(stripAnsi(messages[0]).includes("Context Usage"), true);
