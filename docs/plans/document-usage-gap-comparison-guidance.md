@@ -12,7 +12,7 @@ origin: "user"
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 deliveryBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Document Usage Gap Comparison Guidance
