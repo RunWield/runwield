@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "e301c9e7-8eb4-495a-819d-bd85374ad38b"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "9b31bb6d-caba-4f4c-9756-84c06b071667"
 ---
-
 # Production Reviewer benchmark and baseline
 
 ## Summary
