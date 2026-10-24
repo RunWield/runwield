@@ -1,3 +1,4 @@
+import { compactStatus } from "./presentation.ts";
 import { test } from "node:test";
 import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
@@ -27,7 +28,7 @@ for (const consent of ["proceed", "decline"] as const) {
             assertStringIncludes(question.workflow.nextAction.disclosure, "edits current files directly");
             const fresh = await spawnAttachedCli("status", root, { workflowId: ready.workflowId });
             assert(fresh.result.ok);
-            assertEquals(fresh.result.workflow.nextAction, question.workflow.nextAction);
+            assertEquals(fresh.result, compactStatus(question, null));
             const wrong = await runOperation(
                 "start_execution",
                 root,
@@ -44,15 +45,17 @@ for (const consent of ["proceed", "decline"] as const) {
             );
             assert(answer.result.ok, JSON.stringify(answer.result));
             assertEquals(hasNonGitExecutionConsent("featurePlan", root), consent === "proceed");
-            assertEquals(answer.result.workflow.pendingConsent, null);
+            const current = await runOperation("status", root, { workflowId: ready.workflowId });
+            assert(current.ok);
+            assertEquals(current.workflow.pendingConsent, null);
             if (consent === "decline") {
                 assertEquals(answer.result.workflow.state, "plan_ready");
-                assertEquals(answer.result.workflow.execution, null);
+                assertEquals(current.workflow.execution, null);
                 assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "ready_for_work");
             } else {
                 assertEquals(answer.result.workflow.state, "implementing");
-                assertEquals(answer.result.workflow.execution?.executionMode, "non_git_in_place");
-                assertEquals(answer.result.workflow.execution?.executionCwd, await fsRealpath(root));
+                assertEquals(current.workflow.execution?.executionMode, "non_git_in_place");
+                assertEquals(current.workflow.execution?.executionCwd, await fsRealpath(root));
                 const completed = await runOperation("task_completed", root, completionInput(answer.result.workflow));
                 assert(completed.ok, JSON.stringify(completed));
                 assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "implemented");
@@ -115,7 +118,9 @@ test("non-Git preparation retries after a lost Attached write without repeating 
         const retry = await spawnAttachedCli("start_execution", root, input);
         assert(retry.result.ok, JSON.stringify(retry.result));
         assertEquals(retry.result.workflow.state, "implementing");
-        assertEquals(retry.result.workflow.execution?.executionMode, "non_git_in_place");
+        const current = await runOperation("status", root, { workflowId: ready.workflowId });
+        assert(current.ok);
+        assertEquals(current.workflow.execution?.executionMode, "non_git_in_place");
         assertEquals((await listTransitionRecoveryRecords(root)).length, 0);
         assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "in_progress");
     } finally {

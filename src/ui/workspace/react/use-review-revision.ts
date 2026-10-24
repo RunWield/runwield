@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface ReviewRevisionPayload {
     reviewRevisionUrl?: string;
@@ -6,16 +6,13 @@ interface ReviewRevisionPayload {
     token: string;
 }
 
-interface ReviewRevisionFields {
-    reviewRevision?: number;
-}
-
 /** Bind decisions to the displayed revision and reload after a repair. */
 export function useReviewRevision(
     payload: ReviewRevisionPayload,
     waiting: boolean,
     onError: (message: string) => void,
-): ReviewRevisionFields {
+) {
+    const [revision, setRevision] = useState(payload.reviewRevision);
     useEffect(() => {
         const revisionUrl = payload.reviewRevisionUrl;
         if (!waiting || !revisionUrl) return;
@@ -28,7 +25,7 @@ export function useReviewRevision(
                     const response = await fetch(url, { signal: controller.signal });
                     if (!response.ok) throw new Error("The review host stopped. Reopen the review in Claude.");
                     const current: { revision: number } = await response.json();
-                    if (current.revision > (payload.reviewRevision ?? 0)) {
+                    if (current.revision > (revision ?? 0)) {
                         globalThis.location.reload();
                         return;
                     }
@@ -40,6 +37,9 @@ export function useReviewRevision(
         };
         void waitForRevision();
         return () => controller.abort();
-    }, [waiting, payload, onError]);
-    return payload.reviewRevisionUrl ? { reviewRevision: payload.reviewRevision } : {};
+    }, [waiting, payload, onError, revision]);
+    return {
+        fields: payload.reviewRevisionUrl ? { reviewRevision: revision } : {},
+        update: setRevision,
+    };
 }

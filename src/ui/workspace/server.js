@@ -651,6 +651,7 @@ export function createReviewWorkspaceApp(options) {
                     if (!reviewConversation || !hasReviewAssetToken(request, token)) {
                         return new Response("Review conversation unavailable.", { status: 404 });
                     }
+                    await reviewConversation.refresh?.();
                     if (reviewConversation.completed) reviewConversation.completionDelivered = true;
                     return Response.json(
                         {
@@ -659,6 +660,11 @@ export function createReviewWorkspaceApp(options) {
                             standaloneReview: reviewPayload.standaloneReview,
                             agentLabel: reviewConversation.agentLabel,
                             revision: reviewConversation.revision,
+                            reviewRevision: reviewPayload.reviewRevision,
+                            ...(reviewConversation.turns && {
+                                turns: reviewConversation.turns,
+                                pending: reviewConversation.pending,
+                            }),
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
                             rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
@@ -699,7 +705,13 @@ export function createReviewWorkspaceApp(options) {
                 if (url.pathname.startsWith("/api/review/") || isLegacyReviewApiPath(url.pathname)) {
                     return await handleReviewApiRequest(
                         request,
-                        { cwd, reviewToken: token, reviewPayload, onDecision: options.onDecision },
+                        {
+                            cwd,
+                            reviewToken: token,
+                            reviewPayload,
+                            onDecision: options.onDecision,
+                            keepConversationTurns: Boolean(reviewConversation?.refresh),
+                        },
                         url.pathname,
                     );
                 }

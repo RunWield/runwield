@@ -615,6 +615,7 @@ export async function runReviewerRound(
             args.planContent,
             inspection,
             epicContext?.section || "",
+            args.hostTurn ? `docs/plans/${args.planName}.md` : undefined,
         );
         const correction = nudgeReason;
         nudgeReason = undefined;
@@ -1041,6 +1042,7 @@ export function buildSemanticReviewAttempt(
     planContent = "",
     inspection?: ReviewInspection,
     epicContextSection = "",
+    planPath?: string,
 ): SemanticReviewAttempt {
     const hasRepairScope = state.repairBaselineTree.trim() !== "";
     const requiredScope = reviewMode === "verify" ? "repair" : "full";
@@ -1094,7 +1096,11 @@ export function buildSemanticReviewAttempt(
             "",
             "These are claims to verify, not proof. Check each one against the code yourself.",
             "",
-            state.lastRepairReport,
+            ...(planPath
+                ? [
+                      "Read repair_report with MCP get_artifact using your workflow and action IDs. Continue bounded pages until truncated is false.",
+                  ]
+                : [state.lastRepairReport]),
             "",
         );
     }
@@ -1107,7 +1113,9 @@ export function buildSemanticReviewAttempt(
         ...(epicContextSection ? [epicContextSection, ""] : []),
         "### Approved Plan",
         "",
-        projectEngineerPlanBody(planContent),
+        ...(planPath
+            ? [`Read the complete approved Plan at ${planPath}. Use the file read tools; the Plan is not inlined here.`]
+            : [projectEngineerPlanBody(planContent)]),
     );
     return {
         prompt: sections.join("\n"),

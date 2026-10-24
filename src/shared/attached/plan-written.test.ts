@@ -1,3 +1,4 @@
+import { compactStatus } from "./presentation.ts";
 import {
     mkdir as fsMkdir,
     writeFile as fsWriteFile,
@@ -136,8 +137,7 @@ test("a fresh process retrieves the durable pending review before a browser is o
         const fresh = await spawnAttachedCli("status", projectRoot, { workflowId: planning.workflowId });
         assertEquals(fresh.code, 0, fresh.stderr);
         assert(fresh.result.ok);
-        assertEquals(fresh.result.workflow.review, review);
-        assertEquals(fresh.result.workflow.nextAction, { kind: "review", round: 1, planName: "dark-mode-toggle" });
+        assertEquals(fresh.result, compactStatus(submitted, null));
         assertEquals(await readRecordBytes(projectRoot, planning.workflowId), recordBeforeStatus);
     });
 });
