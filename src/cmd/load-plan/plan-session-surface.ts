@@ -28,6 +28,7 @@ import type { ActiveExecutionWorkflow, PlanSessionSurface } from "./plan-session
  */
 interface RawReviewPayload {
     approved?: unknown;
+    conversationTurn?: boolean;
     feedback?: unknown;
     cancellationReason?: unknown;
     approvalAction?: PlanApprovalAction;
@@ -125,6 +126,8 @@ export function createPlanSessionSurface(
                         : runtimeCanceled
                           ? "runtime_cancel"
                           : undefined,
+                conversationTurn:
+                    review.conversationTurn === true || review.sequenceDecision?.conversationTurn === true,
                 approved: review.approved === true || review.sequenceDecision?.approved === true,
                 feedback:
                     typeof review.feedback === "string"

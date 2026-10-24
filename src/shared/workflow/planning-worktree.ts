@@ -54,6 +54,11 @@ interface PlanningPlanAttributes {
     deliveryBranch?: string;
 }
 
+interface TargetSnapshotOptions {
+    /** Workflow preparation refreshes origin; catalog evidence reads use known local refs. */
+    refresh?: boolean;
+}
+
 async function pathExists(path: string): Promise<boolean> {
     try {
         await fsStat(path);
@@ -96,19 +101,27 @@ async function gitRefExists(projectRoot: string, ref: string): Promise<boolean> 
     return result.success;
 }
 
-async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: string) {
+async function resolveExistingTargetSnapshot(
+    projectRoot: string,
+    targetBranch: string,
+    options: TargetSnapshotOptions = {},
+) {
     const target = targetBranch.trim();
     if (!target || target === "HEAD" || target.startsWith("refs/")) {
         throw new Error(`Invalid target branch name: ${targetBranch}`);
     }
     const branch = target.startsWith("origin/") ? target.slice("origin/".length) : target;
-    const remote = await captureForegroundProcess("git", { cwd: projectRoot, args: ["remote", "get-url", "origin"] });
-    let remoteTargetExists = false;
-    if (remote.success) {
+    let remoteTargetExists = await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`);
+    const remote =
+        options.refresh === false
+            ? null
+            : await captureForegroundProcess("git", { cwd: projectRoot, args: ["remote", "get-url", "origin"] });
+    if (remote?.success) {
         const fetched = await captureForegroundProcess("git", {
             cwd: projectRoot,
             args: ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
         });
+        remoteTargetExists = fetched.success;
         if (!fetched.success) {
             const error = new TextDecoder().decode(fetched.stderr);
             if (!error.includes("couldn't find remote ref")) {
@@ -116,7 +129,9 @@ async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: 
                     `Could not refresh target branch origin/${branch}. Planning was stopped before Planner starts.`,
                 );
             }
-        } else remoteTargetExists = true;
+        }
+    } else if (options.refresh !== false) {
+        remoteTargetExists = false;
     }
     const baseRef =
         remoteTargetExists && (await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`))
@@ -246,9 +261,14 @@ async function readTargetChildren(projectRoot: string, ref: string, parentPlanNa
     return children;
 }
 
-export async function findTargetBranchPlansByParent(cwd: string, targetBranch: string, parentPlanName: string) {
+export async function findTargetBranchPlansByParent(
+    cwd: string,
+    targetBranch: string,
+    parentPlanName: string,
+    options: TargetSnapshotOptions = {},
+) {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
+    const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch, options);
     const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", target.baseRef, "docs/plans"]);
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
     const children = new Map<

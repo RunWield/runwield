@@ -9,22 +9,8 @@ import process from "node:process";
  */
 
 const RELEASE_TAG_PATTERN = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.([1-9]\d*))?$/;
-const WLD_RELEASE_ASSET_SUFFIXES = Object.freeze([
-    "darwin-arm64",
-    "darwin-x64",
-    "linux-x64",
-    "linux-arm64",
-    "windows-x64",
-]);
-const LEGACY_CANDIDATE_SERIES = new Set([
-    "v0.8.16",
-    "v0.9.0",
-    "v0.9.2",
-    "v0.9.3",
-    "v0.9.4",
-    "v0.9.6",
-    "v0.10.1",
-]);
+const WLD_RELEASE_ASSET_SUFFIXES = Object.freeze(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]);
+const LEGACY_CANDIDATE_SERIES = new Set(["v0.8.16", "v0.9.0", "v0.9.2", "v0.9.3", "v0.9.4", "v0.9.6", "v0.10.1"]);
 
 /**
  * @typedef {"candidate" | "stable"} ReleaseKind
@@ -124,20 +110,22 @@ export function compareReleaseTags(left, right) {
  * @returns {string | undefined}
  */
 export function nextCandidateTag(tags) {
-    const parsed = tags.map((tag) => {
-        try {
-            return parseReleaseTag(tag);
-        } catch {
-            return null;
-        }
-    }).filter((tag) => tag !== null);
+    const parsed = tags
+        .map((tag) => {
+            try {
+                return parseReleaseTag(tag);
+            } catch {
+                return null;
+            }
+        })
+        .filter((tag) => tag !== null);
     const stableTags = /** @type {ReleaseTag[]} */ (parsed).filter((tag) => tag.kind === "stable");
     stableTags.sort(compareReleaseTags);
     const lastStable = stableTags.at(-1);
     if (!lastStable) return undefined;
     const base = `v${lastStable.major}.${lastStable.minor}.${lastStable.patch + 1}`;
-    const candidates = /** @type {ReleaseTag[]} */ (parsed).filter((tag) =>
-        tag.stableTag === base && tag.rc !== undefined
+    const candidates = /** @type {ReleaseTag[]} */ (parsed).filter(
+        (tag) => tag.stableTag === base && tag.rc !== undefined,
     );
     const nextRc = Math.max(0, ...candidates.map((tag) => tag.rc || 0)) + 1;
     return `${base}-rc.${nextRc}`;
@@ -148,13 +136,17 @@ export function nextCandidateTag(tags) {
  * @returns {string | undefined}
  */
 export function previousStableTag(tags) {
-    const stable = /** @type {ReleaseTag[]} */ (tags.map((tag) => {
-        try {
-            return parseReleaseTag(tag);
-        } catch {
-            return null;
-        }
-    }).filter((tag) => tag?.kind === "stable"));
+    const stable = /** @type {ReleaseTag[]} */ (
+        tags
+            .map((tag) => {
+                try {
+                    return parseReleaseTag(tag);
+                } catch {
+                    return null;
+                }
+            })
+            .filter((tag) => tag?.kind === "stable")
+    );
     stable.sort(compareReleaseTags);
     return stable.at(-1)?.tag;
 }
@@ -232,7 +224,10 @@ async function mustRun(deps, label, command, args, options = {}) {
  * @returns {string[]}
  */
 function splitLines(stdout) {
-    return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+    return stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
 }
 
 /**
@@ -485,7 +480,8 @@ export async function assertCandidatePublished(deps, candidateTag) {
         "--json",
         "isPrerelease,isDraft,assets",
     ]);
-    const release = /** @type {{ isDraft?: boolean, isPrerelease?: boolean, assets?: Array<{ name: string }> }} */
+    const release =
+        /** @type {{ isDraft?: boolean, isPrerelease?: boolean, assets?: Array<{ name: string }> }} */
         (parseJson(result.stdout));
     if (!release || release.isDraft) throw new Error(`Candidate release is not published: ${candidateTag}`);
     if (!release.isPrerelease) throw new Error(`Candidate release is not marked as a prerelease: ${candidateTag}`);
@@ -595,19 +591,8 @@ async function publishCandidate(deps, tag, source, dryRun) {
         return;
     }
 
-    await assertRemoteBranchUnchanged(
-        deps,
-        source.branch,
-        source.mode === "new-branch" ? undefined : source.commit,
-    );
-    await mustRun(deps, "Create annotated release tag", "git", [
-        "tag",
-        "-a",
-        tag,
-        source.commit,
-        "-m",
-        message,
-    ]);
+    await assertRemoteBranchUnchanged(deps, source.branch, source.mode === "new-branch" ? undefined : source.commit);
+    await mustRun(deps, "Create annotated release tag", "git", ["tag", "-a", tag, source.commit, "-m", message]);
     try {
         if (source.mode === "new-branch") {
             await mustRun(deps, "Push release branch and tag", "git", [
@@ -641,13 +626,15 @@ export async function createCandidate(deps, tag, dryRun = false) {
     if (compareReleaseTags(parsed, parseReleaseTag(previous)) <= 0) {
         throw new Error(`Candidate ${tag} must target a version newer than previous Stable ${previous}.`);
     }
-    const candidatesForBase = existingTags.map((existing) => {
-        try {
-            return parseReleaseTag(existing);
-        } catch {
-            return null;
-        }
-    }).filter((existing) => existing?.kind === "candidate" && existing.stableTag === parsed.stableTag);
+    const candidatesForBase = existingTags
+        .map((existing) => {
+            try {
+                return parseReleaseTag(existing);
+            } catch {
+                return null;
+            }
+        })
+        .filter((existing) => existing?.kind === "candidate" && existing.stableTag === parsed.stableTag);
     const expectedRc = Math.max(0, ...candidatesForBase.map((existing) => existing?.rc || 0)) + 1;
     if (parsed.rc !== expectedRc) {
         throw new Error(

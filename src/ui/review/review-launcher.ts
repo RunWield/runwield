@@ -67,6 +67,7 @@ export interface ReviewConversation {
     completed?: boolean;
     resultMessage?: string;
     completionDelivered?: boolean;
+    error?: string;
     id: string;
     agentLabel: string;
     revision: number;

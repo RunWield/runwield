@@ -648,9 +648,9 @@ flowchart TD
     Planner --> PlanOutcome["plan_written outcome"]
     Architect --> EpicOutcome["plan_written outcome"]
     PlanOutcome -->|approved_execute| Execute["Execute PLANNED_CHANGE Plan"]
-    PlanOutcome -->|saved or feedback| Planner
+    PlanOutcome -->|saved, conversation, or feedback| Planner
     EpicOutcome -->|approved_decompose| Slicer["Slicer creates child PLANNED_CHANGE Plans"]
-    EpicOutcome -->|saved or feedback| Architect
+    EpicOutcome -->|saved, conversation, or feedback| Architect
 
     Execute --> CompletionGate{"Engineer task_completed?"}
     CompletionGate -->|yes| Validation["Workflow Validation"]
@@ -695,14 +695,18 @@ hash first.
 
 ### Lifecycle state machine
 
+Review chat does not record a lifecycle event or write the Plan unless an owner edit is saved. Opening review preserves
+approval and readiness. A meaningful review revision returns an approved or ready Plan to draft; formatting-only
+changes preserve status. RunWield restores the same review after reply-only turns without another `plan_written` call.
+Legacy `feedback` and `in_review` normalize to `draft`. See [Plan Lifecycle](plan-lifecycle.md) for event details.
+
 ```mermaid
 stateDiagram-v2
     [*] --> draft
 
-    draft --> feedback: review_feedback
-    feedback --> feedback: review_feedback
+    draft --> draft: review_feedback (no-chat fallback)
+    approved --> draft: review_feedback or meaningful review revision
     draft --> approved: review_approved
-    feedback --> approved: review_approved
 
     approved --> ready_for_work: readiness_passed for PLANNED_CHANGE
     approved --> ready_for_decomposition: epic_readiness_passed
@@ -717,11 +721,11 @@ stateDiagram-v2
     implemented --> verified: validation_passed
     ready_for_work --> verified: epic_done_enough
 
-    ready_for_work --> feedback: review_reopened
-    in_progress --> feedback: review_reopened
-    failed --> feedback: review_reopened
-    implemented --> feedback: review_reopened
-    verified --> feedback: review_reopened
+    ready_for_work --> draft: review_reopened
+    in_progress --> draft: review_reopened
+    failed --> draft: review_reopened
+    implemented --> draft: review_reopened
+    verified --> draft: review_reopened
 
     draft --> on_hold: plan_held
     ready_for_work --> on_hold: plan_held

@@ -39,7 +39,7 @@ export {
 export { CollaborationStyles, PairCheckpointDecisions, PairPauseReasons } from "./execution-collaboration.ts";
 
 /**
- * @typedef {"approved_execute" | "approved_decompose" | "saved" | "feedback" | "canceled" | "repair_required" | "no_call"} PlanOutcome
+ * @typedef {"approved_execute" | "approved_decompose" | "saved" | "conversation" | "feedback" | "canceled" | "repair_required" | "no_call"} PlanOutcome
  */
 
 /**
@@ -156,7 +156,7 @@ export function assertReusableWorktreeTargetMatches(reusableBaseBranch, targetBr
  * @returns {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>}
  */
 export function startActiveExecutionWorkflow(options) {
-    return /** @type {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>} */ (startActiveExecutionWorkflowImpl(
-        options,
-    ));
+    return /** @type {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>} */ (
+        startActiveExecutionWorkflowImpl(options)
+    );
 }

@@ -82,7 +82,7 @@ async function createPlan(root: string) {
     await git(root, ["commit", "-m", "Plan"]);
 }
 
-async function setStatus(root: string, status: "implemented" | "verified" | "in_progress" | "feedback") {
+async function setStatus(root: string, status: "implemented" | "verified" | "in_progress" | "draft") {
     const plan = await loadPlan(root, "demo");
     assert(plan);
     await updatePlanFrontMatter(root, "demo", { status }, {}, { expectedRevision: plan.revision });
@@ -405,7 +405,7 @@ test("execution startup uses the live successor despite a cached retired Session
         await createPlan(root);
         const old = await addTree(root, directory, "old", "demo", true);
         const current = await addTree(root, directory, "current");
-        await setStatus(old, "feedback");
+        await setStatus(old, "draft");
         await setStatus(current, "in_progress");
         const plan = await loadPlan(current, "demo");
         assert(plan);

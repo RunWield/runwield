@@ -13,6 +13,8 @@ permissions:
 
 jobs:
     build-windows:
+        # Windows publication and checks are paused by owner decision.
+        if: ${{ false }}
         runs-on: ubuntu-latest
         steps:
             - name: Checkout

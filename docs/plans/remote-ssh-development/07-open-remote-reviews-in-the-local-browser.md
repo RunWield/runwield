@@ -95,7 +95,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   review server and workflow job according to connection supervision.
 - Guided Review starts with the same remote project/worktree, local model and personal resources, local Session
   authority, and connection-owned process supervision.
-- Ordinary local review URLs and browser behavior remain unchanged, and hosted Workspace registration is not introduced.
+- Ordinary local review URLs and browser behavior remain unchanged.
 - The Core and Remote SSH PRD requirements and acceptance scenarios match delivered local-browser review behavior and
   preserve current review semantics.
 

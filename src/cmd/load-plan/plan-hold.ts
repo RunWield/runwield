@@ -111,7 +111,6 @@ export function isUserVerifiableStatus(status: string): boolean {
         Boolean(status) &&
         [
             "draft",
-            "feedback",
             "approved",
             "ready_for_decomposition",
             "ready_for_work",

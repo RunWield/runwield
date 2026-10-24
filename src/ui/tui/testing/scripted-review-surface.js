@@ -10,6 +10,7 @@ import { getCwd } from "../../../constants.js";
 /**
  * @typedef {Object} ScriptedReviewDecision
  * @property {boolean} approved
+ * @property {boolean} [conversationTurn]
  * @property {string} [feedback]
  * @property {boolean} [canceled]
  * @property {string} [approvalAction]
@@ -21,6 +22,7 @@ import { getCwd } from "../../../constants.js";
 /**
  * @typedef {Object} ScriptedHumanReviewDecision
  * @property {boolean} [manual] Leave the real browser review unanswered for terminal-driven cancellation.
+ * @property {boolean} [conversationTurn]
  * @property {boolean} [approved]
  * @property {string} [feedback]
  * @property {boolean} [canceled]
@@ -59,6 +61,7 @@ export class ScriptedReviewSurface {
         const approved = Boolean(decision.approved);
         return {
             approved,
+            conversationTurn: decision.conversationTurn === true,
             canceled: Boolean(decision.canceled),
             feedback: decision.feedback || "",
             approvalAction: decision.approvalAction || (approved ? "later" : undefined),
@@ -92,6 +95,7 @@ export class ScriptedHumanReviewSurface {
         this.consumed.push({ request, decision });
         return {
             manual: decision.manual === true,
+            conversationTurn: decision.conversationTurn === true,
             approved: decision.approved === true,
             feedback: decision.feedback || "",
             canceled: decision.canceled === true,

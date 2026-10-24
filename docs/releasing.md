@@ -63,7 +63,9 @@ Release operators need:
 ## Binary runtime
 
 Release binaries use pinned Bun, frozen root/docs dependency graphs, and the Bun Workspace build.
-All five existing release targets and archive names remain supported. Artifact metadata uses the
+Releases publish four targets: Linux and macOS on x64 and ARM64. Windows builds, release assets, checks,
+and WinGet manifest preparation and submission are paused by owner decision. Existing Windows assets stay available
+at their original tags; runtime and packaging source remains for later reactivation. Artifact metadata uses the
 existing platform triples; the embedded build identity includes the Bun compiler and dependency graph.
 `--remote-preflight` reports the executing runtime and its version so qualification rejects a Deno binary
 or an unexpected Bun version. Bun runs the source and Golden regression gates and the
@@ -71,7 +73,7 @@ native package verification tooling. Legacy Deno lock compatibility runs in a se
 Remote container and historical documentation publishing conversion remain tracked transition work.
 
 The Bun binary gate retains bundled-reference extraction, image resizing, Plans UI, and Plan/code
-review checks. Native Windows ZIP and Homebrew checks still gate publication. This compiler change
+review checks. Native Unix archive and Homebrew checks still gate publication. This compiler change
 does not publish to Stable channels during a Candidate release or restore automatic WinGet submission.
 
 ## Release source
@@ -106,11 +108,11 @@ Before confirmation, show the selected source commit, target tag, and Release Br
 release command tags an explicit commit and does not switch branches or alter working files. GitHub Actions is the
 authoritative release qualification environment. Its `release-gate` workflow resolves the tag to one exact commit for
 product checks and builds. It runs Ubuntu source quality and Linux Golden checks alongside macOS source and package
-checks, Windows x64 and ARM64 source and package checks, container checks, binary smoke checks, and compilation.
+checks, container checks, binary smoke checks, and compilation.
 Asset preparation follows compilation immediately. Native Linux and macOS checks execute the actual release archives;
-Windows ZIP and Homebrew checks also consume the checked release bytes. Publication requires every gate to succeed,
+Homebrew checks also consume the checked release bytes. Publication requires every gate to succeed,
 including all reusable platform workflows. A failed, skipped, or cancelled required gate blocks publication.
-Preparation never publishes release bytes. Windows ARM64 checks do not add a Windows ARM64 published asset.
+Preparation never publishes release bytes. Windows checks do not run while Windows publication is paused.
 
 ## Commands
 
@@ -191,7 +193,7 @@ notes-editing rules. It does not create or use a Release Branch.
 The macOS Homebrew tap is published from immutable Stable release assets. Candidate releases never update Stable package
 output.
 
-Before creating a Candidate or Stable GitHub Release, the workflow validates the exact staged Windows ZIP and runs
+Before creating a Candidate or Stable GitHub Release, the workflow runs
 Homebrew audit, install, test, upgrade, uninstall, and ownership checks on macOS. Homebrew uses a temporary local asset
 server and test-only formulas; Candidate formulas are never published to the Stable tap. Stable credential checks also
 run before release creation. The upload set is flat, has unique expected names, and passes checksum validation. Root
@@ -223,24 +225,14 @@ point at immutable GitHub release URLs. Formula installation does not run Mnemot
 
 ## Windows ZIP and WinGet preparation
 
-The release workflow builds `wld-vX.Y.Z-windows-x64.zip` from the compiled Windows binary and pinned helper inventory in
-`packaging/windows/tested-dependencies.json`. The ZIP includes `wld.exe`, `runwield-install.json`, bundled helper
-executables under `runtime/helpers/`, and notices under `licenses/`. Native Windows package checks must pass before the
-workflow publishes the ZIP.
+Windows release builds, ZIP publication, native source and package checks, WinGet manifest preparation, and
+WinGet submission are paused until the owner directs their restoration. The retained packaging commands and manual
+Windows diagnostic workflows do not run as part of release qualification. Manual Windows check workflows are disabled.
+Existing published Windows files remain immutable and can still be verified during release recovery. New releases do
+not include Windows files or require Windows credentials. Do not submit WinGet PRs during release recovery.
 
-Stable releases also render a `runwield-winget-manifests-vX.Y.Z` artifact. You can regenerate it from published Stable
-bytes with:
-
-```bash
-bun run package:winget --tag vX.Y.Z --output /tmp/runwield-winget
-```
-
-Candidate tags are rejected. Automatic WinGet PR submission is disabled until the owner directs its restoration. Stable
-releases still prepare manifest artifacts, but do not submit them to `microsoft/winget-pkgs` or require the
-`WINGET_CREATE_GITHUB_TOKEN` secret. No WinGet submission job may run during release recovery while this pause is
-active. The retained submission code uses WingetCreate and requires a classic GitHub token with the `public_repo` scope
-when restored. For the first public listing, follow `docs/winget-first-release.md`. Git for Windows is a WinGet
-dependency. Browser and model downloads remain first-use per-user setup.
+The packaging source remains available for later reactivation. Before restoring public WinGet submission, follow
+`docs/winget-first-release.md` and qualify the Windows binaries and bundled helpers again.
 
 ## CI tiers
 
@@ -251,16 +243,16 @@ Ubuntu source shards are removed rather than repeated in release qualification.
 
 `release-gate` owns broad platform coverage after the Candidate or Stable tag is created. Its internal
 `release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
-diagnostics at the selected workflow revision. Windows checks use at most two runners concurrently within the matrix.
+diagnostics at the selected workflow revision. Windows checks are paused.
 Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
 No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly
 forward-ported to `main` under the release policy above.
 
 ## GitHub workflow ownership
 
-The tag-triggered workflow owns release qualification, builds, GitHub release creation, asset upload, native Windows
-package checks, Candidate and Stable Homebrew validation, Stable-only tap publication, and Stable-only WinGet manifest
-rendering. Automatic WinGet submission is disabled until further owner notice. Local release commands validate release
+The tag-triggered workflow owns release qualification, builds, GitHub release creation, asset upload, native Unix archive
+checks, Candidate and Stable Homebrew validation, and Stable-only tap publication. Windows and WinGet release
+operations are disabled until further owner notice. Local release commands validate release
 metadata, create and push tags, and monitor that workflow. They must not require local qualification and must not call
 `gh release create`, `gh release edit`, `glab release create`, or `glab release edit`.
 
@@ -278,7 +270,9 @@ completeness, archive checksums, combined checksum file, and GitHub SHA-256 dige
 publication. It never replaces published files. Missing or inconsistent assets stop recovery for inspection; restore
 missing original bytes from retained build artifacts, not a new build. Legacy incidental assets are left intact but are
 not packaging inputs. If no Release exists, recovery builds and qualifies the tagged source normally. Never use manual
-recovery to bypass a genuine failure in tagged product source. Once a GitHub Release exists, never move its tag to
+recovery to bypass a genuine failure in tagged product source. An explicit owner change to the supported release
+platforms can remove a platform and its checks during recovery. The remaining platforms must still pass every required
+gate; the tagged product commit stays unchanged. Once a GitHub Release exists, never move its tag to
 include a later fix.
 
 After CI publishes a release, Operator edits the release notes from the curated temporary notes file. A release is not
@@ -385,3 +379,14 @@ gate; it does not trigger an automatic retry or a reduced check.
 - A retried Stable publication adds no commit to `docs/stable`; independent corrections stay in the next manual.
 - Local branches, index, working-tree changes, and untracked files remain untouched by the release command and CI.
   Local branch cleanup remains a separate operator step.
+
+## License transition at v0.14.0
+
+The v0.14 release line uses MIT, including candidates. Both Unix archive formats include the source `LICENSE`;
+publication rejects a new MIT archive whose license is missing or differs from that source. Earlier tagged releases retain their shipped license. Homebrew
+and WinGet generation preserve the pre-v0.14 license metadata when recovering those releases. Bundled dependencies
+retain their own license notices.
+
+For the v0.14.0 launch, publish and verify the Stable assets and release-aligned manual before deploying the website
+announcement. Update the pending ACP registry entry only with published URLs, matching checksums, and MIT metadata.
+Do not advertise paused platform packages as available.

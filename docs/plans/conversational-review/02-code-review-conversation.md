@@ -19,17 +19,24 @@ affectedPaths:
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/prd/conversational-review-prd.md"
     - "docs/domain-language.md"
+planDeviations:
+    - id: "call_10497b9113944b42a95e314f65da0d89|fc_0cb3aa0a035bb013016ad951cbcb9c81908b55c22e78349809"
+      supersededRequirement: "`docs/prd/conversational-review-prd.md` is deleted, and no document links to it. The temporary PRD is gone, and `grep -r conversational-review-prd docs src` finds nothing."
+      replacementRequirement: "Delete the temporary conversational-review PRD and remove its references from lasting documentation, including READMEs, user documentation, PRDs, ADRs, and source. Do not edit old Plans; their historical references remain until archival. Exclude Plan documents from the zero-reference verification."
+      reason: "The owner clarified that documentation cleanup must preserve old Plans and apply to lasting documents."
+      approvedAt: "2026-10-22T01:39:12.552Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-19"
-status: "ready_for_work"
 origin: "internal"
 parentPlan: "conversational-review"
 order: 2
 dependencies:
     - "01-plan-review-conversation"
 userVerifiedAt: null
-userVerificationNote: null
+targetBranch: "main"
+validatedCommit: "234967fe6c401dbabee7a26d191566235876c33e"
+status: "verified"
 ---
 
 # Code Review Conversation

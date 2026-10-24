@@ -19,6 +19,7 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { loadControllerView, writeControllerState } from "./controller-registry.ts";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 
@@ -437,6 +438,56 @@ test("planning refresh preserves incompatible scope edits without leaving a conf
     assertEquals(await fsReadFile(join(first.entry.path, relativePath), "utf8"), saved);
     assertStringIncludes(await git(repo, ["show", `${published}:${relativePath}`]), "PUBLISHED SCOPE");
     assertEquals(await git(first.entry.path, ["diff", "--name-only", "--diff-filter=U"]), "");
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+test("planning refresh accepts saved changes already published on the target", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const relativePath = "docs/prd/remote.md";
+    for (const root of [first.entry.path, publisher]) {
+        await fsMkdir(join(root, "docs/prd"), { recursive: true });
+        await fsWriteFile(join(root, relativePath), "Updated child Plan reference\n");
+    }
+    await git(first.entry.path, ["add", relativePath]);
+    await git(first.entry.path, ["commit", "-m", "Reconcile child references"]);
+    const planPath = join(first.entry.path, "docs/plans/epic/01-child.md");
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"));
+    const published = await publishPreviousChild(publisher);
+
+    const second = await preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs);
+
+    assertEquals(second.entry.id, first.entry.id);
+    assertEquals(second.entry.baseCommit, published);
+    assertStringIncludes(second.plan.markdown, "SAVED PLANNER EDIT");
+    assertEquals(await fsReadFile(join(second.entry.path, relativePath), "utf8"), "Updated child Plan reference\n");
+    assertStringIncludes(await fsReadFile(join(second.entry.path, "previous-child.js"), "utf8"), "delivered");
+});
+
+test("planning refresh preserves unpublished committed implementation", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await fsWriteFile(join(first.entry.path, "src-target-only.js"), "saved implementation\n");
+    await git(first.entry.path, ["add", "src-target-only.js"]);
+    await git(first.entry.path, ["commit", "-m", "Save implementation"]);
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+    await publishPreviousChild(publisher);
+
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "already contains implementation changes",
+    );
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals(await fsReadFile(join(first.entry.path, "src-target-only.js"), "utf8"), "saved implementation\n");
     assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
 });
 
@@ -918,6 +969,28 @@ test("planning preparation stops when target fetch fails", async () => {
     );
 
     assertEquals((await listEntries(repo)).length, 0);
+});
+
+test("execution evidence and catalog reads do not fetch Epic branches", async () => {
+    const repo = await fixture.checkout();
+    const planning = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const remote = await fixture.checkout();
+    await git(repo, ["remote", "add", "origin", remote]);
+    await git(repo, ["update-ref", "refs/remotes/origin/epic-target", "epic-target"]);
+    const fetchHead = join(repo, ".git", "FETCH_HEAD");
+    await fsWriteFile(fetchHead, "previous explicit fetch\n");
+
+    const plans = await listPlans(repo);
+    assertEquals(
+        plans.find((plan) => plan.name === "epic/01-child")?.path,
+        join(planning.entry.path, "docs/plans/epic/01-child.md"),
+    );
+    const evidence = await loadPlanActionEvidence(repo, "plan-child-01");
+    assertEquals(evidence.kind, "success");
+    assertEquals(await fsReadFile(fetchHead, "utf8"), "previous explicit fetch\n");
 });
 
 test("target discovery errors stop the catalog before stale overlays", async () => {

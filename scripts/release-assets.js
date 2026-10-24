@@ -12,6 +12,7 @@ import process from "node:process";
 /** Stage one checked, flat release asset set. Never change published bytes. */
 import { join } from "node:path";
 import { expectedReleaseAssetNames, parseReleaseTag } from "./release.js";
+import { releaseLicense } from "./release-license.ts";
 import { verifyBuildArtifact } from "./build-metadata.ts";
 import { extractReleaseRuntime } from "../src/shared/remote/release-artifact.ts";
 
@@ -63,13 +64,7 @@ export function releaseAssetNames(tag) {
         parseReleaseTag(tag).kind === "stable"
             ? [`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`]
             : [];
-    return [
-        ...expectedReleaseAssetNames(tag),
-        `wld-${tag}-windows-x64.zip`,
-        `wld-${tag}-windows-x64.zip.sha256`,
-        "runwield-windows-package.json",
-        ...docs,
-    ];
+    return [...expectedReleaseAssetNames(tag), ...docs];
 }
 
 /** @param {string} directory @returns {Promise<string[]>} */
@@ -105,6 +100,15 @@ export async function prepareReleaseAssets(input, output, tag, published = false
     let names = releaseAssetNames(tag);
     if (published) {
         if (!metadata) throw new Error("Published recovery requires GitHub asset digests");
+        // Recover historical Windows bytes only when the immutable host manifest lists them.
+        const windows = [
+            ...["tar.gz", "tar.zst", "zip"].flatMap((extension) => [
+                `wld-${tag}-windows-x64.${extension}`,
+                `wld-${tag}-windows-x64.${extension}.sha256`,
+            ]),
+            "runwield-windows-package.json",
+        ];
+        names.push(...windows.filter((name) => metadata.assets.some((asset) => asset.name === name)));
         const docs = names.filter((name) => name.startsWith("runwield-docs-"));
         const publishedDocs = docs.filter((name) => metadata.assets.some((asset) => asset.name === name));
         if (publishedDocs.length > 0 && publishedDocs.length !== docs.length) {
@@ -152,6 +156,12 @@ export async function prepareReleaseAssets(input, output, tag, published = false
                 const directory = join(stage, suffix);
                 await fsMkdir(directory);
                 const { metadata } = await extractReleaseRuntime(selected.get(name), suffix, launcher, directory);
+                if (releaseLicense(tag.slice(1)).winget === "MIT") {
+                    const license = await fsReadFile(join(directory, "LICENSE"), "utf8").catch(() => "");
+                    const expected = await fsReadFile(new URL("../LICENSE", import.meta.url), "utf8");
+                    if (license !== expected)
+                        throw new Error(`Release archive must include the source LICENSE: ${name}`);
+                }
                 if (!launcher) {
                     if (metadata.version !== tag) throw new Error("Release launcher VERSION does not match tag");
                     launcher = { buildId: metadata.buildId, protocol: metadata.protocol, version: metadata.version };

@@ -2,25 +2,35 @@
 
 ## Goal
 
-Define review fixtures whose repository context is realistic, whose expected defects are independently provable, and
-whose oracle cannot leak into the evaluated Reviewer's tools or prompt.
+Define review fixtures whose repository context is realistic and whose expected defects are independently provable.
+Keep the oracle out of the evaluated Reviewer's project and prompt.
 
-The fixture contract belongs to the Reviewer evaluator. The common benchmark runner owns isolation, execution, timeouts,
-repetition, result capture, and baseline comparison.
+The fixture contract belongs to the Reviewer evaluator. The current interim runner is
+`bun scripts/run-reviewer-benchmark.ts`: it owns admission, isolation, production Reviewer execution, timeouts,
+result capture, resume, and single-configuration reports. The shared runner, repetition, repair-state execution, and
+paired comparison remain target. See [usage and human adjudication](../../evals/reviewer/README.md#run-and-score).
+
+RV-D04, RV-D12, RV-D13, and RV-M01 are revision 2 after owner adjudication. RV-D05 remains revision 1. The original
+paid baseline measures revision 1 only; see the [revision notes](../../evals/reviewer/README.md#fixture-revisions-after-owner-adjudication).
+
+The nine materialized smoke cases live in five packages under `evals/reviewer/`: RV-D04 A/B, RV-D05 A/B, RV-D12 A/B,
+RV-D13 A/B, and RV-M01 A. They are Bun 1.4.3 TypeScript projects. RunWield CI excludes their `source/`, `variants/`,
+and `evaluation/` payloads; fixture admission checks them separately. Runner code and tests remain in normal CI.
 
 ## Package Boundary
 
-Each materialized fixture package has three parts:
+Each fixture package has three payload directories and an execution manifest:
 
 ```text
 reviewer/<scenario-id>/
   source/                 files copied into the isolated project
   variants/               patches selected by the runner, never copied as labelled data
   evaluation/             hidden oracle, verifier, and adjudication notes
+  scenario.yaml           execution facts, never copied into the project
 ```
 
-Only the selected `source/` tree plus its selected variant becomes the Reviewer's project. The evaluated Agent must not
-be able to read:
+Only the selected `source/` tree plus its selected variant becomes the Reviewer's project. The following must not enter
+that project or its Git history:
 
 - the `evaluation/` directory;
 - variant names such as `defective` or `clean`;
@@ -30,58 +40,61 @@ be able to read:
 - Git history or commit messages that reveal the later fix.
 
 The runner records the internal variant identity outside the project and presents an ordinary baseline-to-candidate diff
-through `review_diff`.
+through `review_diff`. Each Reviewer project is outside the RunWield checkout, with neutral `main` baseline history
+and a `change` branch. Hidden proofs run in separate verification trees. `.wld/` settings do not enter the review diff.
+The smoke runner does not sandbox absolute reads: a Reviewer that guesses the checkout path could read hidden files.
+The project contains no pointer back to the corpus. This residual risk is accepted for the smoke run.
 
 ## Scenario Manifest
 
 The non-secret scenario manifest records execution facts:
 
 ```yaml
-scenarioId: RV-D01
+schemaVersion: 1
+scenarioId: RV-D04
 track: discovery
 fixtureRevision: 1
-projectTemplate: optional-project-selection
-planPath: docs/plans/add-project-filter.md
-baselineRef: baseline
-candidateRef: candidate
+planPath: docs/plans/reuse-plan-summaries.md
+baselineRef: main
+candidateRef: change
 language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
 tags:
-    - empty-input
-    - defaulting
+    - correctness-beyond-plan
 timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate
 ```
+
+`publicExpectedOutcome` is `pass-for-every-candidate` unless it is `declared-per-variant`. In that mode, each oracle
+variant declares `validationOutcomes.bun run test` as `pass` or `fail`; a failure also needs `publicFailureMarker` with
+the exact assertion message. RV-D13 A uses this mode because its public test catches the planted ignored flag.
+Admission requires the normal package command to fail and a separate external guard to observe an actual
+`AssertionError` with that message. An unexpected pass, another exception, a spoofed error name, or an unreadable
+result stops admission. The guard contains no oracle or proof files in the Reviewer project.
 
 The manifest may describe how to build the project, but it must not state whether the selected candidate is correct.
 Variant selection and expected truth stay in the harness-side batch definition and oracle.
 
 ## Hidden Oracle
 
-The hidden oracle records the minimum truth needed to score the scenario:
+Each package has one `evaluation/oracle.yaml` with `schemaVersion: 1`, its scenario id, and
+`advisoryPolicy: supported-only`. See the [complete path-containment oracle](../../evals/reviewer/RV-D05/evaluation/oracle.yaml).
 
-```yaml
-scenarioId: RV-D01
-variantId: empty-selection-defect
-expectedDecision: reject
-defects:
-    - defectId: RV-D01-A
-      category: empty-input
-      severity: high
-      trigger: Caller supplies an explicit empty project selection.
-      expectedBehavior: No projects are returned.
-      wrongBehavior: All projects are returned.
-      evidence:
-          - src/project-filter.ts
-      proofCommand: deno task test:oracle --filter "empty selection means none"
-      acceptableConcepts:
-          - explicit empty selection
-          - fallback selects every project
-      nearMisses:
-          - omitted selection uses the documented all-project default
-advisoryPolicy: supported-only
-```
+- `verification` declares proof files and package scripts copied only to the disposable verification tree.
+- `proofs` maps proof ids to runnable commands and exact expected assertion markers.
+- `variants.A` names the defective patch, `patchBase: source`, `expectedDecision: reject`, and its defect list.
+- Paired `variants.B` names the clean patch, `expectedDecision: approve`, and an empty defect list.
+- Each defect includes its proof command and assertion marker as well as the behavioral fields below.
+- Clean near-misses explain suspicious but correct behavior without entering Reviewer context.
 
-The clean twin uses the same project and Plan with `expectedDecision: approve` and an empty `defects` list. Its oracle
-still includes proof commands and tempting near-misses so unsupported findings can be diagnosed consistently.
+For example, RV-D05 uses `bun run test:oracle prefix-sibling` and requires
+`RV-D05-OUTSIDE-DELETION` on A, not an import, syntax, or infrastructure error. The same proof passes on B. RV-M01 has
+only A as a scored case; hidden clean and independent repair patches establish its two defects during admission.
 
 ## Defect Requirements
 
@@ -137,7 +150,7 @@ should interact through a believable feature while remaining independently repai
 
 ## Repair-state Fixtures
 
-A repair fixture additionally supplies:
+Repair-state execution is target; the smoke runner supports discovery only. A future repair fixture additionally supplies:
 
 ```yaml
 priorLedger:
@@ -182,9 +195,10 @@ Fixtures that do not survive this admission process remain drafts and do not aff
 
 ## Finding Matching
 
-Match mechanically when the structured finding identifies the expected file or boundary and the defect has a precise
-machine-readable category. Use blinded semantic adjudication when equivalent descriptions cannot be matched safely by
-rules.
+The smoke runner suggests matches when a finding cites an oracle evidence path. A path match earns no semantic
+credit. A human labels each blocking finding as `matched`, `duplicate`, `unsupported`, or `novel_valid` in the run's
+`adjudications.json`, keyed by run, case, attempt, and zero-based finding index. Invalid or stale labels stop scoring.
+Advisories are not blocking findings. See the [label format](../../evals/reviewer/README.md#human-adjudication).
 
 The adjudicator answers:
 
@@ -198,7 +212,17 @@ review before scoring continues.
 
 ## Result Record
 
-Reviewer-specific result detail should remain nested under the common run record and include:
+The current smoke runner writes a `run.json` manifest and append-only `results.jsonl` outside the Reviewer project.
+The manifest holds the selected cases, oracle snapshot, fixture hashes, and configuration. Each result holds the case,
+variant, fixture revision, trial and attempt, expected/observed decision, protocol outcome and cause, exact accepted
+findings/advisories, nudges, actual model/provider, tokens, tool calls, elapsed time, and checkout/prompt identity.
+Absent measurements say `unavailable`, never an estimate. Resume keeps completed cases, including incorrect verdicts,
+and retries unfinished ones; scoring uses the latest attempt, not the best.
+
+`score` writes `summary.json` and `summary.md` from saved data without model calls. Human labels live separately in
+`adjudications.json`. These are deliberate local evaluation files, not passive metrics.
+
+For the target shared harness, Reviewer-specific detail should remain nested under the common run record and include:
 
 - scenario, variant, track, repetition, and configuration identities;
 - expected and observed decision;

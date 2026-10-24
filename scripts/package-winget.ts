@@ -16,6 +16,7 @@ import process from "node:process";
 
 import { join } from "node:path";
 import { parseReleaseTag } from "./release.js";
+import { releaseLicense } from "./release-license.ts";
 import { sha256 } from "./package-windows.ts";
 
 export interface WingetPackageOptions {
@@ -29,13 +30,13 @@ interface PublishedPackageMetadata extends RunWieldPackageInstall {
     [field: string]: RunWieldPackageInstall[keyof RunWieldPackageInstall];
 }
 
-const RUNWIELD_REPO = "gandazgul/runwield";
+const RUNWIELD_REPO = "RunWield/runwield";
 const PACKAGE_ID = "Gandazgul.RunWield";
 const PUBLISHER = "Gandazgul";
 const PACKAGE_NAME = "RunWield";
 
 function usage() {
-    return "Usage: package-winget.js --tag <stable-tag> --output <dir> [--base-url <release-asset-base-url>] [--test-only]";
+    return "Usage: package-winget.ts --tag <stable-tag> --output <dir> [--base-url <release-asset-base-url>] [--test-only]";
 }
 
 export function parsePackageWingetArgs(args: string[]): WingetPackageOptions {
@@ -82,12 +83,12 @@ PackageVersion: ${version}
 PackageLocale: en-US
 Publisher: ${PUBLISHER}
 PublisherUrl: https://github.com/gandazgul
-PublisherSupportUrl: https://github.com/gandazgul/runwield/issues
+PublisherSupportUrl: https://github.com/RunWield/runwield/issues
 PrivacyUrl: https://runwield.dev/privacy/
 PackageName: ${PACKAGE_NAME}
-PackageUrl: https://github.com/gandazgul/runwield
-License: Free Use License
-LicenseUrl: https://github.com/gandazgul/runwield/blob/v${version}/LICENSE
+PackageUrl: https://github.com/RunWield/runwield
+License: ${releaseLicense(version).winget}
+LicenseUrl: https://github.com/RunWield/runwield/blob/v${version}/LICENSE
 ShortDescription: Plan-first AI coding harness.
 Description: RunWield is a local, plan-first AI coding harness for software projects.
 Tags:

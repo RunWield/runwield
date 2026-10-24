@@ -105,6 +105,39 @@ for (const approvalAction of ["run", "later"] as const) {
     });
 }
 
+test("Sequence approval settles each document's answers and recommendations", async () => {
+    const { cwd } = await setup();
+    try {
+        const documents = await prepareSequenceReview(cwd, "sequence");
+        const question =
+            '\n\n```wld-question\n{"id":"keep","type":"yes_no","prompt":"Keep existing links?","default":true}\n```\n';
+        const result = await applySequenceReviewDecision({
+            cwd,
+            documents,
+            decision: {
+                approved: true,
+                approvalAction: "later",
+                documents: documents.map((doc, index) => ({
+                    planId: doc.planId,
+                    plan: doc.plan + question,
+                    ...(index === 1 ? { questionAnswers: [{ id: "keep", value: false }] } : {}),
+                })),
+            },
+        });
+        assertEquals(result.approved, true, result.feedback);
+        for (const [index, doc] of documents.entries()) {
+            const saved = await loadPlan(cwd, doc.planName);
+            assertEquals(saved?.body.includes("```wld-question"), false);
+            assertStringIncludes(
+                saved?.body || "",
+                index === 1 ? "No (answered in review)" : "Yes (recommended; not answered in review)",
+            );
+        }
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
 test("Sequence rejects stale child content before approving any member", async () => {
     const { cwd, hostedSession } = await setup();
     try {
@@ -152,7 +185,7 @@ test("Sequence feedback keeps each direct edit on its Plan and does not authoriz
         assertEquals(result.workflowOutcome?.outcome, "feedback");
         for (const [index, doc] of documents.entries()) {
             const plan = await loadPlan(cwd, doc.planName);
-            assertEquals(plan?.attrs.status, "feedback");
+            assertEquals(plan?.attrs.status, "draft");
             assertStringIncludes(plan?.body || "", `Edit ${index}.`);
             assertStringIncludes(result.feedback || "", `${doc.planName} (${doc.planId})`);
         }
@@ -596,3 +629,60 @@ test("Sequence preserves committed approval when Session publication fails and c
         await fsRm(cwd, { recursive: true });
     }
 });
+
+for (const editKind of ["none", "formatting", "meaningful"] as const) {
+    test(`Sequence conversation ${editKind} edit preserves group approval except revised meaning`, async () => {
+        const { cwd } = await setup();
+        try {
+            const initial = await prepareSequenceReview(cwd, "sequence", [
+                { planName: "sequence/index", executionAgent: "engineer", collaborationRecommendation: "autonomous" },
+                { planName: "sequence/search", executionAgent: "engineer", collaborationRecommendation: "autonomous" },
+            ]);
+            for (const doc of initial) {
+                const current = await loadPlan(cwd, doc.planName);
+                assertExists(current);
+                await updatePlanFrontMatter(
+                    cwd,
+                    doc.planName,
+                    {
+                        status: doc === initial[0] ? "approved" : "ready_for_work",
+                    },
+                    {},
+                    { expectedRevision: current.revision },
+                );
+            }
+            const documents = await prepareSequenceReview(cwd, "sequence");
+            const before = await Promise.all(documents.map((doc) => fsReadFile(doc.planPath, "utf8")));
+            const result = await applySequenceReviewDecision({
+                cwd,
+                documents,
+                decision: {
+                    conversationTurn: true,
+                    feedback: "Explain the group boundary.",
+                    documents: documents.map((doc, index) => ({
+                        planId: doc.planId,
+                        plan:
+                            index === 1 && editKind !== "none"
+                                ? doc.plan.replace(
+                                      "Implement index.",
+                                      editKind === "meaningful" ? "Implement another index." : "Implement\nindex.",
+                                  )
+                                : doc.plan,
+                    })),
+                },
+            });
+            assertEquals(result.workflowOutcome?.outcome, "conversation");
+            for (const [index, doc] of documents.entries()) {
+                const saved = await loadPlan(cwd, doc.planName);
+                assertEquals(
+                    saved?.attrs.status,
+                    index === 1 && editKind === "meaningful" ? "draft" : doc.frontmatter.status,
+                );
+                if (index !== 1 || editKind === "none")
+                    assertEquals(await fsReadFile(doc.planPath, "utf8"), before[index]);
+            }
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
+}

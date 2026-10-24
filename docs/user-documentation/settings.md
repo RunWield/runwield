@@ -676,9 +676,15 @@ automatic semantic rounds run out: if you choose to open code review there, it o
 else has approved the change and the alternative is stranding the work. Approving from that path merges back without
 semantic approval, and RunWield records that distinction.
 
-Code review feedback — from either path — is repaired by the Reviewer-Feedback Engineer in a fresh session with your
-feedback, annotations, and images, after which CI reruns and code review reopens for your explicit approval. That cycle
-is uncapped: it repeats for as many feedback rounds as you give and ends only when you approve or quit the review.
+From either path, code review chat lets you ask questions or request edits. The Reviewer-Feedback Engineer receives
+your conversation, annotations, and images in a fresh session. For Git projects, RunWield compares the reviewed patch
+before and after the turn, not the Agent's report. An unchanged patch keeps the review decision, evidence, Plan status,
+and CI results; no CI run starts. A changed patch records “Changes requested”, runs CI after repair, and reopens code
+review with the new diff and the same conversation, without another AI review. Scope changes need a confirmed
+[Plan Deviation](../prd/runwield-core-prd.md#plan-deviations); chat agreement alone does not replace the Plan.
+
+Non-Git in-place projects cannot compare patches, so every chat turn still starts repair and checks. Feedback from a
+surface without chat also keeps that flow. Review rounds have no automatic limit; you approve or quit the review.
 
 Example:
 

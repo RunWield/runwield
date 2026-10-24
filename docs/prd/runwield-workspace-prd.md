@@ -10,9 +10,8 @@ updatedAt: "2026-10-16"
 **Document role: Living central PRD.** Principles and lasting requirements for the personal browser Workspace and its
 continuity with the TUI and phone.
 
-**Status:** The personal local Workspace is delivered in its first iteration. Collaborative SaaS
-Workspace requirements are collected in [Collaborative SaaS Workspace](#collaborative-saas-workspace) until they move
-to their own PRD. External-client and chat access are owned by the [ACP PRD](runwield-acp-protocol-prd.md); external
+**Status:** The personal local Workspace is delivered in its first iteration and remains free and open source.
+External-client and chat access are owned by the [ACP PRD](runwield-acp-protocol-prd.md); external
 Agent hosts are owned by the [Connect PRD](runwield-connect-prd.md).
 
 Architectural choices belong in ADRs, implementation steps and remaining work in Plans, and delivery evidence in Work
@@ -113,8 +112,7 @@ Workspace indexes and projects repository artifacts; the repository files stay c
 - from owner-approved paired browser devices;
 - across several registered local Projects.
 
-This is a durable personal self-hosted product. Teams are served by the
-[Collaborative SaaS Workspace](#collaborative-saas-workspace).
+This is a durable personal self-hosted product included in RunWield Core.
 
 ## Capability Requirements
 
@@ -202,8 +200,7 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 ### Shared Plan collaboration
 
 **Scope and maturity:** Current self-hosted collaboration protocol. The container definitions are for testing; runtime
-isolation for production hosting is deferred. Hosted deployment and further browser actions belong to the
-[Collaborative SaaS Workspace](#collaborative-saas-workspace).
+isolation for production hosting is deferred.
 
 **Requirement: Share review revisions with explicit access.** Workspace supports encrypted Plan sharing through
 self-hosted Shared Spaces:
@@ -228,8 +225,7 @@ Shared review follows [Core Plan review](runwield-core-prd.md#plan-review) and
 [Plan lifecycle](runwield-core-prd.md#plan-lifecycle).
 
 **Deferred:** public creation credentials and their rotation/recovery, signed multi-architecture image publication,
-activity/audit feeds, Revision diffs, comment attachments, and closed-Space export. Hosted and browser-management scope
-stays in [Collaborative SaaS Workspace](#collaborative-saas-workspace).
+activity/audit feeds, Revision diffs, comment attachments, and closed-Space export.
 
 **Acceptance scenarios:**
 
@@ -667,13 +663,15 @@ and review chat may omit approval.
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
 underline tabs (Contents and Versions; Files and Changes). The right sidebar header holds its Annotations and chat tabs
 and the collapse control in one row. After a successful decision in Workspace (approval for later, approval to run or
-decompose, or submitted feedback), the owner returns to the originating Session in the same tab. A failed decision
-keeps the review open. Standalone reviews keep their close-tab or auto-close behavior.
+decompose, or no-chat Code Review feedback), the owner returns to the originating Session in the same tab. Plan review
+and Code Review chat stay on the review page. A failed decision keeps the review open. Standalone reviews keep their
+close-tab or auto-close behavior after a final decision.
 
 **Requirement: Review layouts fit the screen and the owner's preferences.** Code Review remembers the owner's last Split
-or Unified view in this browser. Both layouts and Guided Review wrap long lines. Plan and Code Review start with
-Annotations collapsed and open it at the first annotation; a later manual collapse holds. At 980px and narrower, Files
-in Code Review, and Contents and Annotations in Plan Review, start collapsed; each opens from the toolbar, fills the
+or Unified view in this browser. Both layouts and Guided Review wrap long lines. Validation-time Code Review opens
+with chat when available; no-chat review starts with the right sidebar collapsed and opens it at the first annotation.
+A later manual collapse holds. Plan review selects chat when the sidebar opens.
+At 980px and narrower, Files in Code Review, and Contents and Annotations in Plan Review, start collapsed; each opens from the toolbar, fills the
 workbench below the header, and opening one closes the other. The compact Plan Review header keeps the title, approval,
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
@@ -689,29 +687,51 @@ reading response bytes from that same file object. A concurrent directory replac
 the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
 or change access controls.
 
-**Requirement: Chat in the review.** Plan and Code Review chats accept attached annotations without a typed message:
-attaching annotations enables Send and its keyboard shortcut. The Agent receives the notes as review context, and the
-conversation shows the submission. Working or unavailable chats stay disabled. While an Epic is in review,
-the Architect discussion stays on the page across rounds, following
-[Core Epic review chat](runwield-core-prd.md#plan-review).
+**Requirement: Chat in the review.** Plan review and validation-time Code Review select chat by default and use the
+shared Review Queue. All available context types are included automatically: Plan annotations, file annotations,
+images, direct edits, and question answers; Code Review annotations, attachments, and edit suggestions. Each type shows
+its count and an X. X excludes that type from the next send without deleting its items. Send and its keyboard shortcut
+accept a message, included queued context, or both. Sent items leave the queue; excluded items remain and return to
+included after a send. Working or unavailable chats stay disabled.
+
+The Annotations pane lists and edits notes. With chat available, these surfaces have no Send Annotations, feedback
+decision, or attach-to-chat button; chat Send does not close the review. Without chat, the existing feedback button
+remains. Standalone Code Review (`wld review`) is unchanged.
+
+Planner and Architect can reply without revising under [Core Plan review](runwield-core-prd.md#plan-review). In Code
+Review, Engineer can reply, edit code, or both under [Core's patch identity rule](runwield-core-prd.md#code-review-gate).
+The same review and conversation stay open across turns.
+
+**Requirement: Warn before approving conversation without a revision.** If an owner turn completed after the latest
+Plan revision in this review, Approve & Run, Approve for Later, or Approve & Slice shows three choices:
+
+- **Ask Planner (or Architect) to update the Plan** sends a fixed request to record the conversation in the Plan.
+- **Approve as is** continues to the existing open-questions confirmation and approval.
+- **Cancel** keeps the review open.
+
+The warning does not appear when the latest turn produced a revision. Queued input still goes with approval.
 
 **Requirement: Answer Plan Questions in place.** A valid `wld-question` fence appears as one question card in its Plan
 section, with Yes/No, text, or multiple-choice controls. Multiple choice includes Other with free text. The form marks
 the recommended answer but does not select it for the owner. Invalid blocks remain readable code with a parse-error
 note. Answers survive a reload of the same Plan revision; answers for removed question ids are dropped after revision.
 
-Answered questions attach to Planner chat automatically. The context chip shows the answer count and combines with
-attached review notes. Send and Send Annotations include a “Question answers” section. Removing the chip omits that
-context from the chat message without erasing the answers. Before either approval action, open questions trigger a
-confirmation that names their count and says the recommended answers will be used. Cancel keeps review open. Approval
-follows [Core's question resolution rules](runwield-core-prd.md#plan-review). No bundled Agent writes question blocks;
-local Planner instructions can opt in.
+Answers queue automatically under their own type. Each answered card offers **Submit answer**, which sends only that
+answer as a conversation turn under “Question answers”, without the composer message or other queued items. The card
+shows **Answer sent**, and that value is not sent again with the next message. While the Agent works, Submit answer is
+disabled and new answers stay queued. Editing a sent answer queues its new value.
 
-**Requirement: Repair code inside the open review.** A Code Review repair request keeps the same review screen and
-conversation through the repair and the required CI rerun. The Agent's reply and the refreshed changes appear in place,
+Before approval, open questions still trigger the existing confirmation with their count and recommended answers.
+Cancel keeps review open. Approval follows [Core's question resolution rules](runwield-core-prd.md#plan-review). A
+no-chat fallback includes answers in Send Annotations. No bundled Agent writes question blocks; local Planner
+instructions can opt in.
+
+**Requirement: Repair code inside the open review.** A Code Review turn keeps the same review screen and conversation.
+A Git-backed reply-only turn reopens with the same diff and no CI rerun. A changed patch keeps the screen through repair
+and the required CI rerun; automatic AI review does not resume. The Agent's reply and the current changes appear in place,
 with chat history, the selected file, diff collapse choices, the Guided Review or diff mode, and collapsed guide
-sections intact. Guide prose from an earlier revision is marked as such until it is regenerated. Long repairs keep
-their live updates.
+sections intact. Guide prose from an earlier revision is marked as such until it is regenerated. Long turns keep their
+live updates; waiting for a reply or refreshed review has no fixed send deadline.
 
 **Requirement: One Plan-centered workflow surface.** Once a Plan exists, its Plan home brings together:
 
@@ -768,15 +788,27 @@ every action stays available.
 - Given a saved Compact or Default width, standalone Plan Review keeps that choice.
 - Given a Plan with no front matter, View has no front matter toggle.
 - Given a Plan with a Plan Question in a section, the owner answers it there and reloads; the same answer is restored.
-- Given answered questions and attached review notes, chat shows their combined context count and Send carries both.
-  Removing the chip excludes both from that chat message. Annotation-only Send remains available.
+- Given annotations and question answers, chat is selected and each type has an included queue chip. X on annotations
+  excludes only those notes from the next send and keeps them on the Plan; answers still go to the Agent.
+- Given included queue items and no typed message, Send works. After a send, sent items leave the queue and excluded
+  items remain, included for the next send.
+- Given an answered card, Submit answer sends only that answer, shows Answer sent, and omits it from the next chat
+  send. While the Agent works, Submit answer is disabled and a new answer stays queued.
+- Given chat is available, the Annotations pane has no send or attach-to-chat button. Without chat, Send Annotations
+  remains available.
+- Given a reply-only turn after the latest revision, each applicable approval action offers Ask the Agent to update,
+  Approve as is, and Cancel. Ask sends the update request; Cancel keeps review open; Approve as is continues to the
+  open-questions confirmation. A revision turn clears the warning.
+- Given an Agent error or canceled turn, the error appears and the same review becomes available again. Canceling the
+  review itself does not reopen it.
 - Given question-answer feedback, Planner can record the decision in the affected section, remove the answered block,
   and present the revised Plan in the same review loop. Answers for removed ids no longer appear in the draft.
 - Given an open question, either approval action warns with the count. Cancel keeps review open; confirmation saves
   the resolved Plan under Core's approval rules.
 
-- Given a Workspace Plan or Code Review, submitting approval or feedback returns to its Session in the same tab; a
-  failed decision stays in review.
+- Given a Workspace Plan review, chat replies and revisions stay on the page. Approval returns to its Session in the
+  same tab. Code Review chat stays on the page; approval or no-chat feedback returns to its Session. A failed decision
+  stays in review.
 - Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
 - Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
   the read; outside files stay unchanged.
@@ -789,8 +821,14 @@ every action stays available.
 - Given Unified selected, a reload keeps Unified with Annotations closed; the first note opens Annotations and a later
   manual collapse holds.
 - Given a narrow screen, Files starts closed, its toolbar button opens it, and long lines wrap in Split and Unified.
-- Given a repair request in Code Review, the reply and current diff arrive in the same review, with collapse choices and
-  chat history intact.
+- Given validation-time Code Review with chat, chat is the default view. Annotations, attachments, and edit suggestions
+  appear in the Review Queue included by default. No attach-to-chat or feedback-decision button appears.
+- Given X excludes Code Review annotations, the next Send omits those notes without deleting them. Other included types
+  still go to Engineer; excluded notes are included again for the next send.
+- Given a Git-backed Code Review question and no patch change, the reply appears with the same diff, viewed files,
+  collapse choices, guide state, and chat history, without CI progress or navigation away from review.
+- Given a completed patch change in Code Review, CI runs and the reply and fresh diff arrive in the same conversation,
+  with the selected file, collapse choices, and guide state intact. AI review is skipped.
 - Given an idle Plan approved for later, Review Plan opens a live review; Approve & Run starts execution in that
   Session.
 - Given an approved Plan with no Session, Review Plan creates one review Session; repeated requests reuse it.
@@ -940,140 +978,6 @@ This cross-capability journey shows that the capabilities work together. One tru
 - Separate hosted execution environments per Project.
 - Identical token-by-token animation on every open screen; each screen updates as work is saved.
 - Replacing Shared Plan capability links with Workspace device identity.
-
-## Collaborative SaaS Workspace
-
-**Status:** Coming soon. These requirements will move to a dedicated SaaS Workspace PRD. Nothing in this section is
-delivered. The personal Workspace above stays the foundation; team features build on it without adding ceremony to
-personal use. Hosted execution follows proven planning, workflow, isolation, and recovery.
-
-Deferred from the self-hosted [Shared Plan collaboration](#shared-plan-collaboration) to SaaS:
-
-- hosted Workspace deployment (Cloudflare D1);
-- browser-side push, close, unshare, delete, and Plan body editing;
-- automated collaboration notifications;
-- [Forge Change Request Delivery](forge-change-request-delivery-prd.md) as an explicitly selected delivery and review
-  mode, with RunWield-native review and Direct Delivery as the default.
-
-### Team planning and governance
-
-**Scope and maturity:** SaaS target.
-
-**Requirement: Team-chosen roles and approval policy.** Team planned work uses a Plan-centered experience with
-product-facing areas: Ideas, Planning, Review, Ready, In Progress, Verifying, Done, and On Hold. Raw Core statuses stay
-visible in detail views. From the Plan screen, users start an idea, create or refine a PRD, create a Plan or an Epic,
-review a Plan, and inspect Work Records and planning memory. Work Record search is secondary to the Plan workspace.
-
-The team product adds independently hosted Projects, team and organization membership, Project-level authorization and
-policy, and collaborator-visible artifacts. It starts with three roles: **Admin**, **Member**, and **Reviewer/Guest**.
-Teams decide how strictly they divide planning, architecture, and execution; finer Member permissions can come later.
-
-Default policy is lightweight:
-
-- Members create and collaborate with minimal ceremony.
-- Important Plans go through review.
-- Work Records auto-approve after Recorder generation.
-- Epics need explicit approval before decomposition or work.
-
-Optional stricter settings restrict who approves Plans, require Work Record review before retrieval, require ADR links
-for architectural Plans, and require explicit approval before a Plan enters Ready.
-
-**Acceptance scenarios:**
-
-- Given default policy, members shape a Plan together while important Plans and Epics receive their required review.
-- When a team enables stricter approval or Work Record review, those choices govern the relevant transition or
-  retrieval, and Core verification keeps its meaning.
-- A user moves from an idea or PRD into a Plan or Epic and later finds the resulting Work Record.
-
-### Team artifact privacy and authorship
-
-**Scope and maturity:** SaaS target. Owner-private conversation is a product-wide principle.
-
-**Requirement: Share durable artifacts and keep working transcripts private.**
-
-- Plans, PRDs, ADRs, and Work Records are team-visible according to Workspace permissions.
-- Working conversations are private by default, and chat messages stay with their Session.
-- Code-review discussion, assignment, and approval state are collaboration process data held in Workspace; only durable
-  results (Plans, Work Records, and commits) enter the repository.
-- Artifacts record user and Agent authorship, shown as quiet metadata: author, drafting Agent, approval mode, and
-  source references.
-- Admin and debug Session access exists where policy allows.
-- Product analytics are anonymized and aggregated unless users opt into broader sharing.
-
-**Acceptance scenarios:**
-
-- Given a collaborator permitted to read a Plan, its artifacts and authorship are visible and the author's working
-  transcript stays private.
-- When review discussion is saved, it stays in Workspace, and the repository receives durable results.
-
-### Team planning intelligence
-
-**Scope and maturity:** SaaS target.
-
-**Requirement: Trusted planning knowledge across permitted Projects.** Shared cross-Project planning intelligence is
-the main reason to pay for Workspace. It strengthens planning; RunWield is not hosted Agent management:
-
-```text
-A trusted planning system where every material change has a reviewable intent, governed execution, independently
-verified outcome, and reusable record of what the team learned.
-```
-
-Workspace extends Core's repository records with:
-
-- team-wide Work Record search;
-- cross-Project retrieval for new Plans;
-- context packs for Ideator, Planner, and Architect;
-- compression and deduplication of older records;
-- answers to "what did we decide before?" across Projects;
-- filters by Project, area, Plan type, completion mode, and status.
-
-**Acceptance scenarios:**
-
-- Given current records across team Projects, a Planner's retrieved context keeps provenance, completion confidence,
-  and Project scope.
-- When older records are compressed or deduplicated, source Plans stay intact and current guidance stays distinct from
-  history.
-
-### Team code review and delivery
-
-**Scope and maturity:** SaaS target. Personal review is owner-only.
-
-**Requirement: Shared review responsibility and shared checks before merge.**
-
-- Human review defaults to Workspace, with assignable reviewers and Agent assistance for reviewer and author.
-- Teams can select forge-hosted or Dual Review per repository, team, or instance; each gate keeps its own decisions.
-- Workspace merges validated, approved work after shared CI succeeds. Local checks are a fast tier ahead of shared CI.
-  Publication uses a labeled Forge Change Request as the CI-and-merge envelope, with the actual author, reviewer, and
-  merger identities.
-- Approval counts, required checks, and self-merge policy have familiar forge meanings. GitHub sign-in and correct
-  person attribution are high priority; identity, audit, and review responsibility stay explicit.
-- Externally contributed work can become source material for a maintainer-owned Plan with contributor and maintainer
-  provenance.
-
-**Shared requirements:** [Core execution and validation](runwield-core-prd.md#execution-validation-and-recovery) and
-[team planning and governance](#team-planning-and-governance).
-
-**Acceptance scenarios:**
-
-- Given validated work whose shared CI fails, Workspace holds the merge.
-- When a teammate is assigned review, assistance, decisions, and merge attribution keep the author, reviewer, and
-  merger identities.
-- Given Dual Review, each gate keeps its own decision.
-- Given an external contribution adopted by a maintainer, the Plan and delivery keep both identities.
-
-### Proposed SaaS domain language
-
-**Assignable Human Review**: Workspace-hosted code review assigned to a teammate, with Agent assistance for reviewer
-and author. Discussion and approval state are Workspace process data; only durable results are committed. _Avoid_: pull
-request, PR review, review sync
-
-**Forge** (proposed redefinition): by default, the remote Git host and merge substrate; review and repository policy
-are RunWield capabilities that a team can delegate to the Forge per repository. _Avoid_: system of record for intent,
-review, or memory; required review gate
-
-**Project Evidence Graph**: a rebuildable provenance projection that connects project intent, decisions, Plans,
-delivery evidence, and outcomes, with source artifacts as project truth. _Avoid_: Plan Evidence Graph, Session
-Transcript graph, source of truth
 
 ## References
 

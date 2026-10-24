@@ -35,7 +35,7 @@ import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry
 export const EPIC_BRANCH_PREFIX = "epic/";
 
 /** Child statuses that mean no execution has started, so the Epic can still adopt a branch. */
-const UNSTARTED_CHILD_STATUSES = new Set(["draft", "feedback", "approved", "ready_for_work"]);
+const UNSTARTED_CHILD_STATUSES = new Set(["draft", "approved", "ready_for_work"]);
 
 /** What `ensureEpicBranch` did. */
 export interface EpicBranchState {

@@ -280,3 +280,45 @@ test("a changed PR head refuses submission, refreshes the diff, and stays open f
         await rm(cwd, { recursive: true });
     }
 });
+
+test("large standalone reviews keep Guided Review manual", async () => {
+    const cwd = await fixture.checkout();
+    let browserRun = Promise.resolve();
+    try {
+        await git(cwd, ["switch", "topic"]);
+        for (let index = 0; index < 8; index++) {
+            await writeFile(`${cwd}/feature-${index}.ts`, "export const value = 1;\n".repeat(110));
+        }
+        await git(cwd, ["add", "."]);
+        await git(cwd, ["commit", "-m", "large change"]);
+        await git(cwd, ["switch", "main"]);
+        await runStandaloneReview(await resolveReviewTarget(cwd, "topic"), {
+            print: () => {},
+            browser: {
+                open: (link) => {
+                    browserRun = (async () => {
+                        const url = new URL(link);
+                        try {
+                            const html = await (await fetch(url)).text();
+                            const embedded = html.match(
+                                /<script[^>]*data-code-review-payload[^>]*>([\s\S]*?)<\/script>/,
+                            );
+                            if (!embedded) throw new Error("Review payload was not embedded");
+                            const { guidedReview } = JSON.parse(embedded[1]);
+                            assertEquals(guidedReview.autoStart, false);
+                            assertEquals(guidedReview.manualAvailable, true);
+                            assertEquals(guidedReview.score >= 4, true);
+                        } finally {
+                            await decide(url, "exit", {});
+                        }
+                    })();
+                    browserRun.catch(() => {});
+                    return Promise.resolve(true);
+                },
+            },
+        });
+        await browserRun;
+    } finally {
+        await rm(cwd, { recursive: true });
+    }
+});

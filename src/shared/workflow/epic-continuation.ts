@@ -72,7 +72,7 @@ function isActiveProjectEpic(attrs: PlanFrontMatter | undefined): boolean {
 
 /** The continuation action a child Plan's status calls for, if any. */
 function actionForStatus(status: string): EpicContinuationResolution["kind"] | null {
-    if (status === "draft" || status === "feedback") return "plan";
+    if (status === "draft") return "plan";
     if (status === "approved") return "readiness_execute";
     if (status === "ready_for_work") return "execute";
     return null;
