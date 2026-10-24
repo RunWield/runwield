@@ -389,3 +389,18 @@ contains JUnit, runner summary, environment, frozen-install log, exact repaired 
 matching binary metadata, browser snapshots and screenshots, exact browser origin, remote Plan state, and terminal
 output are in the laptop root. The live driver evidence is in its `wld-remote-reviews-c5FtO1` subdirectory; the remote
 smoke project is `/tmp/wld-remote-reviews-PNW12vqalY`. No production or test file was changed for this run.
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/10-open-remote-reviews-in-the-local-browser" -->
+
+## Open Remote Reviews in the Local Browser
+
+Manual verification steps for remote-ssh-development/10-open-remote-reviews-in-the-local-browser
+
+- [ ] Start a remote Session and run planning to review. Confirm the laptop browser opens the remote Plan at `127.0.0.1` and shows its content. Submit feedback, confirm the revision appears at the same URL, then approve and confirm the workflow continues.
+- [ ] In Code Review, expand a file, view a remote-only image, upload an annotation image, and run Guided Review. Confirm the guide reads remote files and uses the laptop model.
+- [ ] Close the browser tab during a pending review. Reopen the review from the TUI and `/plan-review`; confirm the same review remains pending.
+- [ ] Click a printed review link and a Markdown document link in the laptop terminal. Confirm each opens in the laptop browser at `127.0.0.1`.
+- [ ] End the SSH connection. Confirm the forwarded address no longer connects, the remote view ends, and an unrelated remote process continues.
+- [ ] Record the deferred Windows check as unchecked in the manual QA record: Plan Review opens and approves through the forward from Win32-OpenSSH.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/10-open-remote-reviews-in-the-local-browser" -->

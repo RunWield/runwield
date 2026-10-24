@@ -42,6 +42,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 status: "reviewed"
+validatedCommit: "c0711618dfea212366521ba4a25feffd3797b0fd"
 ---
 
 # Open Remote Reviews in the Local Browser
