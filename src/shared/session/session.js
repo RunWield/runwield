@@ -62,7 +62,7 @@ import ketchExtension, {
     webFetchToolDef,
     webSearchToolDef,
 } from "../../extensions/ketch/index.ts";
-import snipExtension from "../../extensions/snip/index.js";
+import snipExtension from "../../extensions/snip/index.ts";
 import reAnchorExtension from "../../extensions/re-anchor/index.ts";
 import { ensureCymbalBinary, ensureMnemotecaBinary, hasSnipBinary } from "../runtime-preflight.ts";
 import { createUserInterviewTool } from "../../tools/user-interview.ts";

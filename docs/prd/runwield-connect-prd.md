@@ -1,3 +1,40 @@
+Feedback from Claude after using the runwield connect plugin:
+
+Findings for improving RunWield
+
+1. Chained work: the new Plan Branch was cut from main, not from the unmerged earlier Plan Branch. I only saw the
+   problem because the Plan flagged it, and I had to merge and re-baseline by hand. A guard or a warning at
+   start_execution would help.
+   I had the information but not the right trigger. The Plan format file does mention
+   targetBranch, in a comment: "source branch and intended onward destination when explicitly requested by the user."
+   The Planner instructions add "Include targetBranch only when the user explicitly specifies a target execution
+   branch."
+
+    That rule hid the option from me. I noticed the dependency while planning. main lacked the files, and I wrote an "Edge
+    Cases" line about it. But I read the rule as "don't set targetBranch unless the user asked," so I recorded an assumption
+    instead of making a decision. Nothing told me that the default base is main, or that the branch with my files was
+    unmerged. I also can't tell from the docs whether setting targetBranch to the old Plan Branch would have based the
+    worktree on it or only changed where the result lands. The comment says "source branch and intended onward destination",
+    which could mean either.
+
+    What I'd want RunWield to do
+
+    1. Show branch facts in the Planner action. Include the current branch and the default base the worktree will use. Also
+       list unmerged plan/* branches, with their Plan names and status, and the paths each one changed. This is all
+       mechanical data Core already has. Here it would have shown that plan/shell-greeting-command changed test-greet.sh and
+       main has no such file.
+    2. Say what targetBranch does, in one sentence in the Planner instructions. For example: it sets the base the worktree
+       starts from, and the branch the Plan Branch merges into afterward. The existing wording doesn't say which.
+    3. Re-check at start_execution. Do the same path check against the real base. I only found the problem by looking at the
+       worktree myself.
+
+2. Status payload: review.outcome: approved and status: applied carried over from the earlier Plan review while a code
+   review was pending. Only chat and nextAction.kind told me the true state. The full status payload is also 56–65K
+   characters and overflows context.
+3. Waiting on the browser: I can't block on a review, so you have to tell me when you've acted.
+
+---
+
 # Product Requirements Document: RunWield Connect
 
 **Document role: Living central PRD.** Principles and lasting requirements for using RunWield inside external agent

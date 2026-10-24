@@ -11,8 +11,8 @@ import {
 } from "node:fs/promises";
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { packageHomebrew, parsePackageHomebrewArgs } from "./package-homebrew.js";
-import type { ExistingRunWieldPackage, HomebrewInputs, MnemotecaInput } from "./package-homebrew.js";
+import { packageHomebrew, parsePackageHomebrewArgs } from "./package-homebrew.ts";
+import type { ExistingRunWieldPackage, HomebrewInputs, MnemotecaInput } from "./package-homebrew.ts";
 import type { FetchRequest } from "../src/shared/fetch-request.ts";
 
 interface PackageManifest extends ExistingRunWieldPackage {
