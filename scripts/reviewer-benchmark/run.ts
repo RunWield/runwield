@@ -1,17 +1,19 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { getHomeDir } from "../../src/constants.js";
 import { openNativeFileLock } from "../../src/shared/native-file-lock.ts";
 import { admitFixtures } from "./admission.ts";
 import { captureConfiguration, corpusRoot, fixtureHash } from "./configuration.ts";
-import { fixtureVariant, loadFixture } from "./fixtures.ts";
+import { fixtureVariant, loadFixture, SCENARIO_ID_PATTERN } from "./fixtures.ts";
 import type { ReviewerFixture, VariantId } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
 import type { MaterializedProject } from "./materialize.ts";
-import { appendResult, latestResults, readRun, SMOKE_GROUPS } from "./records.ts";
+import { appendResult, latestResults, readRun } from "./records.ts";
 import type { BenchmarkCase, BenchmarkResult, RunManifest, SavedRun } from "./records.ts";
 import { runFixtureReview } from "./reviewer.ts";
 import type { FixtureReviewOptions, FixtureReviewResult } from "./reviewer.ts";
+
+const SMOKE_SCENARIOS = ["RV-D04", "RV-D05", "RV-D12", "RV-D13", "RV-M01"];
 
 export interface SelectedCase {
     fixture: ReviewerFixture;
@@ -25,24 +27,37 @@ export interface BenchmarkRun extends SavedRun {
     directory: string;
 }
 
-/** IDs select both twins; ID/A or ID/B selects one case. Only the approved smoke corpus is supported. */
+/** IDs select all package variants; ID/A or ID/B selects one case. */
 export async function selectCases(selection = "smoke"): Promise<SelectedCase[]> {
-    const names = selection === "smoke" ? Object.keys(SMOKE_GROUPS) : selection.split(",");
+    const packages: string[] = [];
+    for (const entry of await readdir(corpusRoot, { withFileTypes: true })) {
+        if (entry.isDirectory() && (await readdir(join(corpusRoot, entry.name))).includes("scenario.yaml"))
+            packages.push(entry.name);
+    }
+    packages.sort();
+    const names = selection === "smoke" ? SMOKE_SCENARIOS : selection === "all" ? packages : selection.split(",");
     const selected: SelectedCase[] = [];
     const fixtures = new Map<string, ReviewerFixture>();
     for (const name of names) {
         const [id, variant, extra] = name.split("/");
-        if (!SMOKE_GROUPS[id] || extra !== undefined || (variant !== undefined && variant !== "A" && variant !== "B"))
-            throw new Error(`Unknown smoke case: ${name}`);
+        if (
+            !SCENARIO_ID_PATTERN.test(id) ||
+            !packages.includes(id) ||
+            extra !== undefined ||
+            (variant !== undefined && variant !== "A" && variant !== "B")
+        )
+            throw new Error(`Unknown case: ${name}`);
         let fixture = fixtures.get(id);
         if (!fixture) {
             fixture = await loadFixture(join(corpusRoot, id));
             fixtures.set(id, fixture);
         }
-        for (const value of variant ? [variant as VariantId] : (Object.keys(fixture.oracle.variants) as VariantId[])) {
+        for (const value of variant
+            ? [variant as VariantId]
+            : (Object.keys(fixture.oracle.variants).sort() as VariantId[])) {
             fixtureVariant(fixture, value);
             if (selected.some((entry) => entry.fixture.manifest.scenarioId === id && entry.variant === value))
-                throw new Error(`Duplicate smoke case: ${id}/${value}`);
+                throw new Error(`Duplicate case: ${id}/${value}`);
             selected.push({ fixture, variant: value });
         }
     }
@@ -64,7 +79,7 @@ function failure(error: Error | string, startedAt: number): FixtureReviewResult 
 
 /** Every selected fixture is admitted before the first model call. Each trial owns a new isolated project. */
 export async function runBenchmark(selected: SelectedCase[], options: BenchmarkRunOptions = {}): Promise<BenchmarkRun> {
-    if (selected.length === 0) throw new Error("Select at least one smoke case");
+    if (selected.length === 0) throw new Error("Select at least one case");
     if (options.resume && !options.out) throw new Error("--resume requires --out <existing-run-directory>");
     if (options.timeoutMs !== undefined && (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0))
         throw new Error("Reviewer timeout must be positive");
@@ -72,8 +87,8 @@ export async function runBenchmark(selected: SelectedCase[], options: BenchmarkR
     const cases: BenchmarkCase[] = [];
     for (const { fixture, variant } of selected) {
         const id = fixture.manifest.scenarioId;
-        if (!SMOKE_GROUPS[id] || cases.some((entry) => entry.caseId === `${id}/${variant}`))
-            throw new Error(`Invalid or duplicate smoke case: ${id}/${variant}`);
+        if (!SCENARIO_ID_PATTERN.test(id) || cases.some((entry) => entry.caseId === `${id}/${variant}`))
+            throw new Error(`Invalid or duplicate case: ${id}/${variant}`);
         if (fixtures.has(id) && fixtures.get(id)!.packageDir !== fixture.packageDir)
             throw new Error(`Mixed fixture packages for ${id}`);
         fixtures.set(id, fixture);
@@ -86,8 +101,9 @@ export async function runBenchmark(selected: SelectedCase[], options: BenchmarkR
             fixtureHash: await fixtureHash(fixture.packageDir),
             trial: 1,
             expectedDecision: oracle.expectedDecision,
-            group: SMOKE_GROUPS[id],
+            group: fixture.manifest.group,
             defects: oracle.defects,
+            patch: oracle.patch,
         });
     }
     if (Bun.version !== "1.4.3") throw new Error("Reviewer fixtures require Bun 1.4.3");

@@ -1,0 +1,51 @@
+diff --git a/src/batch.ts b/src/batch.ts
+index 807ad03..5c688ad 100644
+--- a/src/batch.ts
++++ b/src/batch.ts
+@@ -2,9 +2,18 @@ import { readProjects, saveProjects } from "./catalog.ts";
+ import { buildDigest } from "./digest.ts";
+ import type { BatchResult } from "./model.ts";
+
+-export async function refreshDigests(root: string): Promise<BatchResult> {
++export async function refreshDigests(root: string, selection?: string[]): Promise<BatchResult> {
+     const projects = await readProjects(root);
+-    for (const project of projects) project.digest = buildDigest(project);
+-    await saveProjects(root, projects);
+-    return { updated: projects.map((project) => project.id) };
++    const selected = new Set(selection ?? projects.map((project) => project.id));
++    for (const id of selected) {
++        if (!projects.some((project) => project.id === id)) throw new Error(`Project not found: ${id}`);
++    }
++    const updated: string[] = [];
++    for (const project of projects) {
++        if (!selected.has(project.id)) continue;
++        project.digest = buildDigest(project);
++        updated.push(project.id);
++    }
++    if (updated.length) await saveProjects(root, projects);
++    return { updated };
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 1320ae2..d348891 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -32,3 +32,19 @@ await withCatalog(async (root) => {
+     );
+ });
+ console.log("PASS omitted selection refreshes all digests");
++await withCatalog(async (root) => {
++    assert.deepEqual(await refreshDigests(root, ["beta", "beta"]), { updated: ["beta"] });
++    assert.deepEqual(
++        (await readProjects(root)).map((project) => project.digest),
++        ["old alpha", "Beta: No updates"],
++    );
++});
++console.log("PASS a targeted refresh leaves the other project unchanged");
++await withCatalog(async (root) => {
++    await assert.rejects(refreshDigests(root, ["alpha", "missing"]), /Project not found/);
++    assert.deepEqual(
++        (await readProjects(root)).map((project) => project.digest),
++        ["old alpha", "old beta"],
++    );
++});
++console.log("PASS unknown identities leave the catalog unchanged");

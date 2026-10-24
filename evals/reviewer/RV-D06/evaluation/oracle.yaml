@@ -1,0 +1,49 @@
+schemaVersion: 1
+scenarioId: RV-D06
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    role-promotion:
+        command: bun run test:oracle role-promotion
+        expectedFailureMarker: RV-D06-ROLE-PROMOTION
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D06-A
+              severity: high
+              category: capability-authorization
+              trigger: Use a valid reviewer capability for a board and set the caller-controlled role query parameter to maintainer before submitting a title update.
+              expectedBehavior: Return forbidden and preserve the board title because the verified capability is read-only.
+              wrongBehavior: The display-role claim authorizes a persistent rename using a read-only capability.
+              evidence:
+                  - src/service.ts
+                  - src/links.ts
+                  - src/capabilities.ts
+                  - src/boards.ts
+              acceptableConcepts:
+                  - caller-controlled role is not mutation authority
+                  - verified capability must supply permission
+                  - reviewer capability can rename by changing a query parameter
+              nearMisses:
+                  - The role query parameter is intentionally retained as a display hint.
+                  - A verified maintainer can rename even with a reviewer display hint.
+                  - A valid signature alone does not grant maintainer access or access to a different board.
+              proofCommand: bun run test:oracle role-promotion
+              expectedFailureMarker: RV-D06-ROLE-PROMOTION
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - The role query parameter is intentionally retained as a display hint.
+    - A verified maintainer can rename even with a reviewer display hint.
+    - A valid signature alone does not grant maintainer access or access to a different board.

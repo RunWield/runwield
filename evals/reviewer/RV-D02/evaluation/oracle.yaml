@@ -1,0 +1,45 @@
+schemaVersion: 1
+scenarioId: RV-D02
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    disabled-offers:
+        command: bun run test:oracle disabled-offers
+        expectedFailureMarker: RV-D02-FALSE-SETTING
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D02-A
+              severity: medium
+              category: boolean-defaulting
+              trigger: Load receipt-settings.json with enabled set to false and render a receipt.
+              expectedBehavior: Keep the normalized setting false and omit the rewards footer without changing invoice content.
+              wrongBehavior: Boolean normalization enables offers and prints the footer despite the explicit opt-out.
+              evidence:
+                  - src/settings.ts
+                  - src/receipts.ts
+              acceptableConcepts:
+                  - logical OR loses explicit false
+                  - an absent default differs from an explicit opt-out
+                  - disabled offers still print
+              nearMisses:
+                  - The enabled-by-default footer is intentional when the field is absent.
+                  - The clean twin retains a default expression rather than removing defaulting.
+              proofCommand: bun run test:oracle disabled-offers
+              expectedFailureMarker: RV-D02-FALSE-SETTING
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - The enabled-by-default footer is intentional when the field is absent.
+    - The clean twin retains a default expression rather than removing defaulting.

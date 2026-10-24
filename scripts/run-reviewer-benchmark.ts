@@ -2,10 +2,10 @@ import { parseArgs } from "node:util";
 import { runBenchmark, selectCases } from "./reviewer-benchmark/run.ts";
 import { scoreRun } from "./reviewer-benchmark/score.ts";
 
-const usage = `Reviewer-only baseline smoke benchmark (one trial per case)
+const usage = `Reviewer-only benchmark (one trial per case)
 
 bun scripts/run-reviewer-benchmark.ts run [options]
-  --scenarios smoke|RV-D04,RV-D05|RV-D04/A,RV-D04/B
+  --scenarios smoke|all|RV-D04,RV-D05|RV-D04/A,RV-D04/B
   --model <provider/model>     Default: effective configured Reviewer
   --timeout-ms <positive-ms>   Default: fixture timeout
   --out <directory>           Default: ~/.wld/reviewer-eval/<run-id>
