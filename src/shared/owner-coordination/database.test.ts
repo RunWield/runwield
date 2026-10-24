@@ -7,8 +7,7 @@ import { DatabaseSync } from "../sqlite.ts";
 import { getLatestOwnerCoordinationSchemaVersion, openOwnerCoordinationDatabase } from "./database.js";
 import { OWNER_COORDINATION_SCHEMA_V1_SQL, OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
 
-/** @param {string} path */
-async function exists(path) {
+async function exists(path: string) {
     try {
         await stat(path);
         return true;
@@ -24,18 +23,18 @@ test("owner database opens on disk with schema, WAL, foreign keys, and rollback-
         const database = openOwnerCoordinationDatabase({ dbPath });
         try {
             assertEquals(getLatestOwnerCoordinationSchemaVersion(database.handle), OWNER_COORDINATION_SCHEMA_VERSION);
-            const foreignKeys =
-                /** @type {{ foreign_keys: number }} */ (database.handle.prepare("PRAGMA foreign_keys").get());
+            const foreignKeys = database.handle.prepare("PRAGMA foreign_keys").get()!;
             assertEquals(foreignKeys.foreign_keys, 1);
-            const journalMode =
-                /** @type {{ journal_mode: string }} */ (database.handle.prepare("PRAGMA journal_mode").get());
+            const journalMode = database.handle.prepare("PRAGMA journal_mode").get()!;
             assertEquals(String(journalMode.journal_mode).toLowerCase(), "wal");
             assertThrows(
                 () =>
                     database.transaction(() => {
-                        database.handle.prepare(
-                            "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('rollback', 'Rollback', '/tmp/a', '/tmp/a', 'enabled', 'now', 'now')",
-                        ).run();
+                        database.handle
+                            .prepare(
+                                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('rollback', 'Rollback', '/tmp/a', '/tmp/a', 'enabled', 'now', 'now')",
+                            )
+                            .run();
                         throw new Error("rollback");
                     }),
                 Error,
@@ -60,21 +59,20 @@ test("owner database refuses newer schema without recording local migrations", a
         fixture.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(999, "future");
         fixture.close();
 
-        assertThrows(
-            () => openOwnerCoordinationDatabase({ dbPath }),
-            Error,
-            "newer than supported",
-        );
+        assertThrows(() => openOwnerCoordinationDatabase({ dbPath }), Error, "newer than supported");
 
         const check = new DatabaseSync(dbPath);
         try {
             const rows = check.prepare("SELECT version FROM schema_migrations ORDER BY version").all();
-            assertEquals(rows.map((row) => row.version), [999]);
-            const projectsTable = check.prepare(
-                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
-            ).get();
+            assertEquals(
+                rows.map((row) => row.version),
+                [999],
+            );
+            const projectsTable = check
+                .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
+                .get();
             assertEquals(projectsTable, undefined);
-            const journalMode = /** @type {{ journal_mode: string }} */ (check.prepare("PRAGMA journal_mode").get());
+            const journalMode = check.prepare("PRAGMA journal_mode").get()!;
             assertFalse(["wal"].includes(String(journalMode.journal_mode).toLowerCase()));
             assertFalse(await exists(`${dbPath}-wal`));
             assertFalse(await exists(`${dbPath}-shm`));
@@ -91,10 +89,7 @@ test("owner database reports corrupted files visibly and does not delete them", 
     const dbPath = `${dir}/owner.sqlite3`;
     try {
         await writeFile(dbPath, "not sqlite");
-        assertThrows(
-            () => openOwnerCoordinationDatabase({ dbPath }),
-            Error,
-        );
+        assertThrows(() => openOwnerCoordinationDatabase({ dbPath }), Error);
         assertEquals(await readFile(dbPath, "utf8"), "not sqlite");
     } finally {
         await rm(dir, { recursive: true });
@@ -107,20 +102,28 @@ test("owner database enforces transcript locator Project consistency", async () 
     try {
         const database = openOwnerCoordinationDatabase({ dbPath });
         try {
-            database.handle.prepare(
-                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p1', 'P1', '/tmp/p1', '/tmp/p1', 'enabled', 'now', 'now')",
-            ).run();
-            database.handle.prepare(
-                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p2', 'P2', '/tmp/p2', '/tmp/p2', 'enabled', 'now', 'now')",
-            ).run();
-            database.handle.prepare(
-                "INSERT INTO runwield_sessions(id, project_id, created_at, updated_at) VALUES ('s1', 'p1', 'now', 'now')",
-            ).run();
+            database.handle
+                .prepare(
+                    "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p1', 'P1', '/tmp/p1', '/tmp/p1', 'enabled', 'now', 'now')",
+                )
+                .run();
+            database.handle
+                .prepare(
+                    "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p2', 'P2', '/tmp/p2', '/tmp/p2', 'enabled', 'now', 'now')",
+                )
+                .run();
+            database.handle
+                .prepare(
+                    "INSERT INTO runwield_sessions(id, project_id, created_at, updated_at) VALUES ('s1', 'p1', 'now', 'now')",
+                )
+                .run();
             assertThrows(
                 () =>
-                    database.handle.prepare(
-                        "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, first_cataloged_at, last_cataloged_at) VALUES ('l1', 's1', 'p2', 'pi', '/tmp/p2/t.jsonl', '/tmp/p2', 'now', 'now')",
-                    ).run(),
+                    database.handle
+                        .prepare(
+                            "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, first_cataloged_at, last_cataloged_at) VALUES ('l1', 's1', 'p2', 'pi', '/tmp/p2/t.jsonl', '/tmp/p2', 'now', 'now')",
+                        )
+                        .run(),
                 Error,
             );
         } finally {
@@ -176,27 +179,31 @@ CREATE TABLE owner_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_a
             fixture.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(1, "v1");
             fixture.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(2, "v2");
             fixture.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(3, "v3");
-            fixture.prepare(
-                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p1', 'P1', '/tmp/p1', '/tmp/p1', 'enabled', 'now', 'now')",
-            ).run();
-            fixture.prepare(
-                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p2', 'P2', '/tmp/p2', '/tmp/p2', 'enabled', 'now', 'now')",
-            ).run();
-            fixture.prepare(
-                "INSERT INTO runwield_sessions(id, project_id, created_at, updated_at) VALUES ('s1', 'p1', 'now', 'now')",
-            ).run();
-            fixture.prepare(
-                "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, first_cataloged_at, last_cataloged_at) VALUES ('l1', 's1', 'p2', 'pi', '/tmp/p2/t.jsonl', '/tmp/p2', 'now', 'now')",
-            ).run();
+            fixture
+                .prepare(
+                    "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p1', 'P1', '/tmp/p1', '/tmp/p1', 'enabled', 'now', 'now')",
+                )
+                .run();
+            fixture
+                .prepare(
+                    "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('p2', 'P2', '/tmp/p2', '/tmp/p2', 'enabled', 'now', 'now')",
+                )
+                .run();
+            fixture
+                .prepare(
+                    "INSERT INTO runwield_sessions(id, project_id, created_at, updated_at) VALUES ('s1', 'p1', 'now', 'now')",
+                )
+                .run();
+            fixture
+                .prepare(
+                    "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, first_cataloged_at, last_cataloged_at) VALUES ('l1', 's1', 'p2', 'pi', '/tmp/p2/t.jsonl', '/tmp/p2', 'now', 'now')",
+                )
+                .run();
         } finally {
             fixture.close();
         }
 
-        assertThrows(
-            () => openOwnerCoordinationDatabase({ dbPath }),
-            Error,
-            "mismatched Project IDs",
-        );
+        assertThrows(() => openOwnerCoordinationDatabase({ dbPath }), Error, "mismatched Project IDs");
     } finally {
         await rm(dir, { recursive: true });
     }

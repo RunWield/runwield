@@ -203,7 +203,7 @@
     "src/shared/models/model-validation.test.ts",
     "src/shared/native-file-lock.test.ts",
     "src/shared/owner-coordination/cross-surface-activation.integration.test.ts",
-    "src/shared/owner-coordination/database.test.js",
+    "src/shared/owner-coordination/database.test.ts",
     "src/shared/owner-coordination/file-session-bridge.test.ts",
     "src/shared/owner-coordination/pairing.test.js",
     "src/shared/owner-coordination/projects.test.ts",
