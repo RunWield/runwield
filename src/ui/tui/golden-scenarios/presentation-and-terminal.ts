@@ -3,13 +3,11 @@
  * Focused composed Golden TUI presentation and terminal-behavior scenarios.
  */
 
+import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.js";
+
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
-
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenario} GoldenScenario */
-
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
 
 /**
  * Assert against the screen captured while the presentation blocks were up.
@@ -18,10 +16,8 @@ import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-
  * down before the run ends. Scrollback is included because a block appended to the
  * message list scrolls above the viewport as soon as anything follows it.
  *
- * @param {GoldenScenarioResult} result
- * @param {string} text
  */
-function assertPresentationScreenIncludes(result, text) {
+function assertPresentationScreenIncludes(result: GoldenScenarioResult, text: string): void {
     const screen = String(result.state.presentationScreen || "");
     const scrollback = String(result.state.presentationScrollback || "");
     assert(
@@ -30,8 +26,7 @@ function assertPresentationScreenIncludes(result, text) {
     );
 }
 
-/** @type {GoldenScenario} */
-export const managedSyncQueueImageScenario = {
+export const managedSyncQueueImageScenario: GoldenScenario = {
     name: "presentation-runtime-prompts-and-queued-state",
     composedTui: true,
     terminal: { columns: 100, rows: 60 },
@@ -55,7 +50,10 @@ export const managedSyncQueueImageScenario = {
             request: {
                 type: "select",
                 prompt: "Choose a path",
-                options: [{ value: "a", label: "A" }, { value: "b", label: "B" }],
+                options: [
+                    { value: "a", label: "A" },
+                    { value: "b", label: "B" },
+                ],
             },
         },
         {
@@ -99,8 +97,7 @@ export const managedSyncQueueImageScenario = {
     ],
 };
 
-/** @type {GoldenScenario} */
-export const terminalControlsScenario = {
+export const terminalControlsScenario: GoldenScenario = {
     name: "terminal-controls-autocomplete-resize-ctrlc-focus",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
@@ -136,8 +133,7 @@ export const terminalControlsScenario = {
     ],
 };
 
-/** @type {GoldenScenario} */
-export const replayHydrationScenario = {
+export const replayHydrationScenario: GoldenScenario = {
     name: "terminal-session-replay-hydration",
     composedTui: true,
     sessionStartMode: "continue",
@@ -149,13 +145,15 @@ export const replayHydrationScenario = {
     },
     terminal: { columns: 100, rows: 30 },
     coverage: ["terminal:replay-hydration"],
-    script: [{
-        id: "guide-hydrated-answer",
-        agent: "guide",
-        phase: "inquiry",
-        ordinal: 1,
-        text: "Hydrated Session accepted a follow-up.",
-    }],
+    script: [
+        {
+            id: "guide-hydrated-answer",
+            agent: "guide",
+            phase: "inquiry",
+            ordinal: 1,
+            text: "Hydrated Session accepted a follow-up.",
+        },
+    ],
     actions: [
         { type: "type", text: "follow up after hydration" },
         { type: "enter" },
@@ -168,7 +166,8 @@ export const replayHydrationScenario = {
         assertsGoldenCoverage("terminal:replay-hydration", (result) => {
             assertEventIncludes(result, "runtime:assistant:text");
             assert(
-                result.state.priorSession && typeof result.state.priorSession === "object" &&
+                result.state.priorSession &&
+                    typeof result.state.priorSession === "object" &&
                     "sessionId" in result.state.priorSession,
                 "Expected a persisted prior Session to be seeded before continue-mode hydration.",
             );
@@ -178,8 +177,7 @@ export const replayHydrationScenario = {
     ],
 };
 
-/** @type {GoldenScenario} */
-export const toolFailureRecoveryScenario = {
+export const toolFailureRecoveryScenario: GoldenScenario = {
     name: "presentation-tool-failure-and-recovery",
     composedTui: true,
     initialAgentName: "operator",
@@ -203,10 +201,14 @@ export const toolFailureRecoveryScenario = {
             text: "Recovered after bounded tool failure.",
         },
     ],
-    actions: [{ type: "type", text: "run a bounded failing command and recover" }, { type: "enter" }, {
-        type: "waitForIdle",
-        timeoutMs: 10000,
-    }],
+    actions: [
+        { type: "type", text: "run a bounded failing command and recover" },
+        { type: "enter" },
+        {
+            type: "waitForIdle",
+            timeoutMs: 10000,
+        },
+    ],
     assertions: [
         assertsGoldenCoverage("recovery:tool-failure", (result) => {
             assertEventIncludes(result, "runtime:tool:end:bash");
@@ -223,8 +225,7 @@ export const toolFailureRecoveryScenario = {
     ],
 };
 
-/** @type {GoldenScenario[]} */
-export const presentationAndTerminalScenarios = [
+export const presentationAndTerminalScenarios: GoldenScenario[] = [
     managedSyncQueueImageScenario,
     terminalControlsScenario,
     replayHydrationScenario,

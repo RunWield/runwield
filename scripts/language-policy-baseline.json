@@ -62,7 +62,6 @@
     "src/ui/tui/blocks.js",
     "src/ui/tui/golden-scenarios/initial-scenarios.js",
     "src/ui/tui/golden-scenarios/planned-change-workflow.js",
-    "src/ui/tui/golden-scenarios/presentation-and-terminal.js",
     "src/ui/tui/golden-scenarios/project-workflow.js",
     "src/ui/tui/managed-session-sync.js",
     "src/ui/tui/mermaid-markdown.js",
