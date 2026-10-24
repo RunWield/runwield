@@ -28,6 +28,7 @@ dependencies: []
 userVerifiedAt: null
 targetBranch: "main"
 status: "reviewed"
+validatedCommit: "e02b77ab57cf2d25f271326e0ab6dc4b3c282d04"
 ---
 
 # Corpus Selection, Oracle Verdicts, and Edge-Case Fixtures
