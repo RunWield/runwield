@@ -89,7 +89,7 @@
     "src/cmd/ai-review/index.test.ts",
     "src/cmd/auth/index.test.ts",
     "src/cmd/compact/index.test.js",
-    "src/cmd/context/index.test.js",
+    "src/cmd/context/index.test.ts",
     "src/cmd/copy/index.test.js",
     "src/cmd/export/index.test.ts",
     "src/cmd/guided-review/index.test.ts",
