@@ -1,0 +1,68 @@
+diff --git a/src/export.ts b/src/export.ts
+index 24a2153..a2ecb24 100644
+--- a/src/export.ts
++++ b/src/export.ts
+@@ -1,7 +1,18 @@
+ import { fetchAccessions } from "./api.ts";
+ import { formatAccessions } from "./format.ts";
++import type { Accession } from "./model.ts";
+
+ export async function exportAccessions(endpoint: string): Promise<string> {
+-    const page = await fetchAccessions(endpoint);
+-    return formatAccessions(page.items);
++    const items: Accession[] = [];
++    const visited = new Set<string>();
++    let cursor: string | undefined;
++    for (;;) {
++        const page = await fetchAccessions(endpoint, cursor);
++        items.push(...page.items);
++        if (page.nextCursor === undefined) break;
++        if (visited.has(page.nextCursor)) throw new Error("Accession API repeated a cursor");
++        visited.add(page.nextCursor);
++        cursor = page.nextCursor;
++    }
++    return formatAccessions(items);
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 723fe5c..e75f879 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -32,3 +32,38 @@ await withApi([], async (endpoint) => {
+     await assert.rejects(exportAccessions(endpoint), /Accession API returned 400/);
+ });
+ console.log("PASS API failures do not become successful empty exports");
++await withApi(
++    [
++        { cursor: null, page: { items: [{ accession: "A-1", title: "Vessel" }], nextCursor: "" } },
++        { cursor: "", page: { items: [{ accession: "A-2", title: "Bowl" }] } },
++    ],
++    async (endpoint) => {
++        assert.equal(await exportAccessions(endpoint), "accession\ttitle\nA-1\tVessel\nA-2\tBowl\n");
++    },
++);
++console.log("PASS multiple pages preserve order and opaque cursors");
++await withApi([{ cursor: null, page: { items: [] } }], async (endpoint) => {
++    assert.equal(await exportAccessions(endpoint), "accession\ttitle\n");
++});
++console.log("PASS an empty terminal page produces a header only");
++await withApi(
++    [
++        { cursor: null, page: { items: [{ accession: "A-1", title: "Vessel" }], nextCursor: "again" } },
++        { cursor: "again", page: { items: [{ accession: "A-2", title: "Bowl" }], nextCursor: "again" } },
++    ],
++    async (endpoint) => {
++        await assert.rejects(exportAccessions(endpoint), /repeated a cursor/);
++    },
++);
++console.log("PASS repeated cursors fail rather than completing a partial export");
++await withApi(
++    [
++        { cursor: null, page: { items: [{ accession: "A-1", title: "Vessel" }], nextCursor: "one" } },
++        { cursor: "one", page: { items: [{ accession: "A-2", title: "Bowl" }], nextCursor: "two" } },
++        { cursor: "two", page: { items: [{ accession: "A-3", title: "Plate" }], nextCursor: "one" } },
++    ],
++    async (endpoint) => {
++        await assert.rejects(exportAccessions(endpoint), /repeated a cursor/);
++    },
++);
++console.log("PASS nonadjacent cursor cycles are refused");

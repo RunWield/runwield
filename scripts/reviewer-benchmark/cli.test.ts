@@ -19,7 +19,9 @@ test("the executable prints help without model credentials", async () => {
         timeoutMs: 30000,
     });
     assert.equal(result.code, 0);
-    assert.match(new TextDecoder().decode(result.stdout), /--scenarios.*smoke/);
+    const help = new TextDecoder().decode(result.stdout);
+    assert.match(help, /--scenarios smoke\|all\|RV-D04,RV-D05\|RV-D04\/A,RV-D04\/B/);
+    assert.doesNotMatch(help, /smoke benchmark/);
 });
 
 for (const args of [

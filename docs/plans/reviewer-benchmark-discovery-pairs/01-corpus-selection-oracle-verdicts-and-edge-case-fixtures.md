@@ -26,8 +26,8 @@ parentPlan: "reviewer-benchmark-discovery-pairs"
 order: 1
 dependencies: []
 userVerifiedAt: null
-status: "in_progress"
 targetBranch: "main"
+status: "implemented"
 ---
 
 # Corpus Selection, Oracle Verdicts, and Edge-Case Fixtures

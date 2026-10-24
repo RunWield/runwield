@@ -140,6 +140,7 @@ function labels(): AdjudicationsFile {
     return {
         schemaVersion: 1,
         runId: "fixed-run",
+        oracleVerdicts: corpus().manifest.cases.map(({ caseId }) => ({ caseId, verdict: "confirmed" })),
         adjudications: [
             { caseId: "RV-D04/A", attempt: 1, findingIndex: 0, state: "matched", defectId: "RV-D04" },
             { caseId: "RV-D04/A", attempt: 1, findingIndex: 1, state: "duplicate", defectId: "RV-D04" },
@@ -171,7 +172,7 @@ test("all nine cases determine total, variant, group, and clean approval denomin
     run.manifest.cases
         .filter((entry) => entry.scenarioId === "RV-D13")
         .forEach((entry) => {
-            entry.group = "custom-plan-group";
+            entry.group = "cross-file-context";
         });
     await withRun(run, async (directory) => {
         const summary = await scoreRun(directory);
@@ -195,7 +196,7 @@ test("all nine cases determine total, variant, group, and clean approval denomin
                 "correctness-beyond-plan": { numerator: 2, denominator: 2, value: 1 },
                 "plan-named-edge-case": { numerator: 0, denominator: 2, value: 0 },
                 architecture: { numerator: 0, denominator: 2, value: 0 },
-                "custom-plan-group": { numerator: 0, denominator: 2, value: 0 },
+                "cross-file-context": { numerator: 0, denominator: 2, value: 0 },
                 "multiple-defects": { numerator: 1, denominator: 1, value: 1 },
             },
         );
@@ -353,20 +354,36 @@ test("the latest attempt wins even when it replaces a correct decision with a ti
     });
 });
 
-test("novel valid findings freeze semantic scoring without changing mechanical accuracy", async () => {
+test("bad fixtures and novel valid findings leave every score while unaffected cases score", async () => {
     const file = labels();
+    file.oracleVerdicts = file.oracleVerdicts!.filter((entry) => entry.caseId !== "RV-D04/A");
+    file.oracleVerdicts!.find((entry) => entry.caseId === "RV-D05/B")!.verdict = "fixture_needs_repair";
+    file.oracleVerdicts!.find((entry) => entry.caseId === "RV-D05/B")!.note = "The clean twin has a real defect";
     file.adjudications[2].state = "novel_valid";
     await withRun(
         corpus(),
         async (directory) => {
             const summary = await scoreRun(directory);
-            assert.equal(summary.semantic.status, "oracle correction required");
-            assert.equal(summary.semantic.labels.novel_valid, 1);
-            assert.equal(summary.semantic.labels.falsePositives, 2);
-            assert.equal(summary.semantic.recall, null);
-            assert.equal(summary.semantic.severeRecall, null);
-            assert.equal(summary.semantic.precision, null);
-            assert.deepEqual(summary.decisionAccuracy, { numerator: 3, denominator: 9, value: 1 / 3 });
+            assert.deepEqual(summary.fixturesNeedingRepair, [
+                { caseId: "RV-D04/A", reasons: ["novel_valid findings: 2"] },
+                { caseId: "RV-D05/B", reasons: ["The clean twin has a real defect"] },
+            ]);
+            assert.equal(summary.semantic.status, "scored");
+            assert.deepEqual(summary.decisionAccuracy, { numerator: 2, denominator: 7, value: 2 / 7 });
+            assert.deepEqual(summary.cleanApproval, { numerator: 1, denominator: 3, value: 1 / 3 });
+            assert.deepEqual(summary.semantic.recall, { numerator: 1, denominator: 5, value: 1 / 5 });
+            assert.deepEqual(summary.semantic.severeRecall, { numerator: 0, denominator: 2, value: 0 });
+            assert.deepEqual(summary.semantic.precision, { numerator: 1, denominator: 1, value: 1 });
+            assert.equal(summary.variants.A.decisionAccuracy.denominator, 4);
+            assert.equal(summary.variants.B.cleanApproval.denominator, 3);
+            assert.equal(summary.groups["correctness-beyond-plan"].decisionAccuracy.denominator, 1);
+            assert.equal(summary.groups["correctness-beyond-plan"].semantic.oracleDefects, 0);
+            assert.equal(summary.groups["plan-named-edge-case"].cleanApproval.denominator, 0);
+            assert.equal(summary.cases.length, 9);
+            const report = await readFile(join(directory, "summary.md"), "utf8");
+            assert.match(report, /## Fixtures needing repair\n\n- RV-D04\/A: novel_valid findings: 2/);
+            assert.ok(report.includes("RV-D05/B: The clean twin has a real defect"));
+            assert.equal(report.includes("oracle correction required"), false);
         },
         file,
     );
@@ -385,7 +402,12 @@ test("zero denominators are null, never perfect scores", async () => {
                 assert.deepEqual(metric, { numerator: 0, denominator: 0, value: null });
             }
         },
-        { schemaVersion: 1, runId: "fixed-run", adjudications: [] },
+        {
+            schemaVersion: 1,
+            runId: "fixed-run",
+            adjudications: [],
+            oracleVerdicts: [{ caseId: "RV-D04/B", verdict: "confirmed" }],
+        },
     );
 });
 
@@ -428,6 +450,18 @@ test("reports preserve identity, accepted decisions, exact evidence/advisories, 
                 "nudgeAttempts",
                 "promptHashes",
                 "fixture-revision",
+                "Package: evals/reviewer/RV-D04/",
+                "Patch: evals/reviewer/RV-D04/variants/defective.patch",
+                "#### Oracle defect RV-D04 (high)",
+                "Trigger: Two callers share state",
+                "Expected behavior: Keep callers separate",
+                "Wrong behavior: Return another caller's state",
+                "Proof: bun run test:oracle isolation",
+                "Oracle: no defect",
+                "#### Blocking finding 0: Primary exact title",
+                "Suggested path matches: RV-D04",
+                "Label: matched (RV-D04)",
+                "Oracle verdict: confirmed",
             ]) {
                 assert.ok(report.includes(text), `report must include ${text}`);
             }
@@ -578,6 +612,108 @@ test("new labels use the latest attempt in each stable reference", async () => {
                 [2, 2, 2],
             );
             assert.deepEqual(summary.semantic.precision, { numerator: 2, denominator: 5, value: 2 / 5 });
+        },
+        file,
+    );
+});
+
+test("legacy smoke run and labels without oracle verdicts remain readable and pending", async () => {
+    const file = labels();
+    delete file.oracleVerdicts;
+    await withRun(
+        corpus(),
+        async (directory) => {
+            const summary = await scoreRun(directory);
+            assert.equal(summary.semantic.status, "pending adjudication");
+            assert.equal(summary.semantic.labels.unlabeled, 0);
+            assert.equal(summary.semantic.recall, null);
+            assert.equal(summary.decisionAccuracy.denominator, 9);
+        },
+        file,
+    );
+});
+
+test("one missing case verdict keeps semantic scores pending even with all finding labels", async () => {
+    const file = labels();
+    file.oracleVerdicts = file.oracleVerdicts!.filter((entry) => entry.caseId !== "RV-D04/B");
+    await withRun(
+        corpus(),
+        async (directory) => {
+            const summary = await scoreRun(directory);
+            assert.equal(summary.semantic.status, "pending adjudication");
+            assert.equal(summary.semantic.labels.unlabeled, 0);
+            assert.equal(summary.semantic.precision, null);
+            assert.equal(summary.groups["multiple-defects"].semantic.status, "scored");
+        },
+        file,
+    );
+});
+
+test("all cases can be excluded without manufacturing perfect scores", async () => {
+    const file = labels();
+    file.oracleVerdicts!.forEach((entry) => {
+        entry.verdict = "fixture_needs_repair";
+    });
+    file.adjudications = [];
+    await withRun(
+        corpus(),
+        async (directory) => {
+            const summary = await scoreRun(directory);
+            assert.equal(summary.fixturesNeedingRepair.length, 9);
+            assert.equal(summary.semantic.status, "scored");
+            for (const metric of [
+                summary.decisionAccuracy,
+                summary.cleanApproval,
+                summary.semantic.recall,
+                summary.semantic.severeRecall,
+                summary.semantic.precision,
+            ])
+                assert.deepEqual(metric, { numerator: 0, denominator: 0, value: null });
+        },
+        file,
+    );
+});
+
+test("worksheet uses the snapshotted patch path rather than assuming a filename", async () => {
+    const run = corpus();
+    run.manifest.cases[0].patch = "variants/change-a.patch";
+    await withRun(run, async (directory) => {
+        await scoreRun(directory);
+        const report = await readFile(join(directory, "summary.md"), "utf8");
+        assert.ok(report.includes("Patch: evals/reviewer/RV-D04/variants/change-a.patch"));
+    });
+});
+
+for (const [name, oracleVerdicts] of [
+    ["unknown case", [{ caseId: "RV-D99/A", verdict: "confirmed" }]],
+    [
+        "duplicate case",
+        [
+            { caseId: "RV-D04/A", verdict: "confirmed" },
+            { caseId: "RV-D04/A", verdict: "confirmed" },
+        ],
+    ],
+    ["unknown verdict", [{ caseId: "RV-D04/A", verdict: "valid" }]],
+    ["null verdict", [null]],
+    ["invalid note", [{ caseId: "RV-D04/A", verdict: "confirmed", note: 42 }]],
+    ["null list", null],
+    ["non-list", {}],
+] as const) {
+    test(`rejects oracle verdicts with ${name}`, async () => {
+        await withRun(corpus(), async (directory) => {
+            await writeFile(join(directory, "adjudications.json"), JSON.stringify({ ...labels(), oracleVerdicts }));
+            await assert.rejects(scoreRun(directory), /Invalid adjudications:/);
+        });
+    });
+}
+
+test("confirmed oracle cannot coexist with a novel_valid finding", async () => {
+    const file = labels();
+    file.adjudications[2].state = "novel_valid";
+    await withRun(
+        corpus(),
+        async (directory) => {
+            await assert.rejects(scoreRun(directory), /confirmed oracle has novel_valid findings for RV-D04\/A/);
         },
         file,
     );

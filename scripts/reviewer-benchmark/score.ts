@@ -18,10 +18,20 @@ export interface Adjudication extends FindingReference {
     state: AdjudicationState;
     defectId?: string;
 }
+export interface OracleVerdict {
+    caseId: string;
+    verdict: "confirmed" | "fixture_needs_repair";
+    note?: string;
+}
+export interface ExcludedFixture {
+    caseId: string;
+    reasons: string[];
+}
 export interface AdjudicationsFile {
     schemaVersion: 1;
     runId: string;
     adjudications: Adjudication[];
+    oracleVerdicts?: OracleVerdict[];
 }
 export interface ReportFinding extends FindingReference {
     finding: NonNullable<BenchmarkResult["outcome"]>["findings"][number];
@@ -35,6 +45,8 @@ export interface CaseScore extends BenchmarkCase {
     cause: string | null;
     decisionCorrect: boolean;
     findings: ReportFinding[];
+    oracleVerdict: OracleVerdict | null;
+    exclusionReasons: string[];
 }
 export interface DecisionScores {
     decisionAccuracy: Ratio;
@@ -50,7 +62,7 @@ export interface LabelCounts {
     falsePositives: number;
 }
 export interface SemanticScores {
-    status: "pending adjudication" | "scored" | "oracle correction required";
+    status: "pending adjudication" | "scored";
     adjudicationsPresent: boolean;
     labels: LabelCounts;
     oracleDefects: number;
@@ -71,6 +83,7 @@ export interface RunSummary extends DecisionScores {
     groups: Record<string, GroupScores>;
     semantic: SemanticScores;
     cases: CaseScore[];
+    fixturesNeedingRepair: ExcludedFixture[];
 }
 
 function requireLabel(condition: boolean, message: string): asserts condition {
@@ -86,6 +99,7 @@ function ratio(numerator: number, denominator: number): Ratio {
     return { numerator, denominator, value: denominator === 0 ? null : numerator / denominator };
 }
 function decisions(cases: CaseScore[]): DecisionScores {
+    cases = cases.filter((entry) => entry.exclusionReasons.length === 0);
     const clean = cases.filter((entry) => entry.expectedDecision === "approve");
     return {
         decisionAccuracy: ratio(cases.filter((entry) => entry.decisionCorrect).length, cases.length),
@@ -121,6 +135,16 @@ function applyAdjudications(file: AdjudicationsFile | null, runId: string, cases
         file.schemaVersion === 1 && file.runId === runId && Array.isArray(file.adjudications),
         "schema or run identity",
     );
+    requireLabel(file.oracleVerdicts === undefined || Array.isArray(file.oracleVerdicts), "oracle verdict list");
+    for (const verdict of file.oracleVerdicts ?? []) {
+        requireLabel(Boolean(verdict) && typeof verdict.caseId === "string", "oracle verdict case identity");
+        const entry = cases.find((item) => item.caseId === verdict.caseId);
+        requireLabel(entry !== undefined, `oracle verdict case ${verdict.caseId}`);
+        requireLabel(entry.oracleVerdict === null, `duplicate oracle verdict for ${verdict.caseId}`);
+        requireLabel(["confirmed", "fixture_needs_repair"].includes(verdict.verdict), "oracle verdict value");
+        requireLabel(verdict.note === undefined || typeof verdict.note === "string", "oracle verdict note");
+        entry.oracleVerdict = verdict;
+    }
     const seen = new Set<string>();
     const matched = new Set<string>();
     for (const label of file.adjudications) {
@@ -166,9 +190,23 @@ function applyAdjudications(file: AdjudicationsFile | null, runId: string, cases
             );
         }
     }
+    for (const entry of cases) {
+        const novel = entry.findings.filter((finding) => finding.adjudication?.state === "novel_valid");
+        requireLabel(
+            entry.oracleVerdict?.verdict !== "confirmed" || novel.length === 0,
+            `confirmed oracle has novel_valid findings for ${entry.caseId}`,
+        );
+        if (entry.oracleVerdict?.verdict === "fixture_needs_repair")
+            entry.exclusionReasons.push(entry.oracleVerdict.note || "Owner marked fixture_needs_repair");
+        if (novel.length > 0)
+            entry.exclusionReasons.push(
+                `novel_valid findings: ${novel.map((finding) => finding.findingIndex).join(", ")}`,
+            );
+    }
 }
 
 function semanticScores(cases: CaseScore[], adjudicationsPresent: boolean): SemanticScores {
+    cases = cases.filter((entry) => entry.exclusionReasons.length === 0);
     const findings = cases.flatMap((entry) => entry.findings);
     const labels: LabelCounts = {
         matched: 0,
@@ -194,11 +232,7 @@ function semanticScores(cases: CaseScore[], adjudicationsPresent: boolean): Sema
     const oracle = cases.flatMap((entry) => entry.defects.map((defect) => ({ caseId: entry.caseId, ...defect })));
     const severe = oracle.filter((defect) => ["high", "critical"].includes(defect.severity));
     const status =
-        labels.novel_valid > 0
-            ? "oracle correction required"
-            : !adjudicationsPresent || labels.unlabeled > 0
-              ? "pending adjudication"
-              : "scored";
+        cases.some((entry) => entry.oracleVerdict === null) || labels.unlabeled > 0 ? "pending adjudication" : "scored";
     return {
         status,
         adjudicationsPresent,
@@ -249,7 +283,7 @@ function markdown(summary: RunSummary): string {
         `Decision accuracy: ${showRatio(summary.decisionAccuracy)}`,
         `Clean approval: ${showRatio(summary.cleanApproval)}`,
         "",
-        "All manifest cases remain in these denominators, including missing and failed results.",
+        "Cases needing fixture repair are excluded from every score. All other cases remain, including missing and failed results.",
         "",
     ];
     for (const [heading, split] of [
@@ -285,7 +319,13 @@ function markdown(summary: RunSummary): string {
         `Blocking-finding precision: ${semantic.precision ? showRatio(semantic.precision) : semantic.status}`,
         "",
         "Suggested evidence-path matches are suggestions only. They never count as semantic recall. Advisories are not blocking findings and cannot be adjudicated.",
-        "A novel_valid label requires an oracle correction before semantic scoring. Mechanical decisions do not change.",
+        "A fixture_needs_repair verdict or novel_valid label excludes that case from every score; other cases still score.",
+        "",
+        "## Fixtures needing repair",
+        "",
+        ...(summary.fixturesNeedingRepair.length
+            ? summary.fixturesNeedingRepair.map((entry) => `- ${entry.caseId}: ${entry.reasons.join("; ")}`)
+            : ["None."]),
         "",
         "## Cases",
         "",
@@ -299,6 +339,36 @@ function markdown(summary: RunSummary): string {
             `Status: ${entry.status}; decision correct: ${entry.decisionCorrect}.`,
             "",
         );
+        const packagePath = `evals/reviewer/${entry.scenarioId}`;
+        const patch = entry.patch ?? `variants/${entry.variant === "A" ? "defective.patch" : "clean.patch"}`;
+        lines.push(
+            `Package: ${packagePath}/`,
+            `Patch: ${packagePath}/${patch}`,
+            `Oracle verdict: ${entry.oracleVerdict?.verdict ?? "pending adjudication"}${entry.oracleVerdict?.note ? ` — ${entry.oracleVerdict.note}` : ""}.`,
+            `Scoring: ${entry.exclusionReasons.length ? `excluded — ${entry.exclusionReasons.join("; ")}` : "counted"}.`,
+            "",
+        );
+        if (entry.defects.length === 0) lines.push("Oracle: no defect", "");
+        for (const defect of entry.defects) {
+            lines.push(
+                `#### Oracle defect ${defect.defectId} (${defect.severity})`,
+                "",
+                `- Trigger: ${defect.trigger}`,
+                `- Expected behavior: ${defect.expectedBehavior}`,
+                `- Wrong behavior: ${defect.wrongBehavior}`,
+                `- Proof: ${defect.proofCommand}`,
+                "",
+            );
+        }
+        for (const finding of entry.findings) {
+            lines.push(
+                `#### Blocking finding ${finding.findingIndex}: ${finding.finding.title}`,
+                "",
+                `Suggested path matches: ${finding.suggestedEvidencePathDefectIds.join(", ") || "none"}.`,
+                `Label: ${finding.adjudication?.state ?? "pending adjudication"}${finding.adjudication?.defectId ? ` (${finding.adjudication.defectId})` : ""}.`,
+                "",
+            );
+        }
         if (!entry.result)
             lines.push(
                 "Observed decision, model/provider, tokens, tool calls, elapsed time, nudge attempts: unavailable.",
@@ -321,6 +391,8 @@ export async function scoreRun(directory: string): Promise<RunSummary> {
             result,
             status: result?.kind ?? "missing",
             cause: result ? (result.reason ?? null) : "No saved result",
+            oracleVerdict: null,
+            exclusionReasons: [],
             decisionCorrect: result?.kind === "complete" && result.observedDecision === entry.expectedDecision,
             findings: (result?.outcome?.findings ?? []).map((finding, findingIndex) => ({
                 caseId: entry.caseId,
@@ -356,6 +428,9 @@ export async function scoreRun(directory: string): Promise<RunSummary> {
         ),
         semantic: semanticScores(cases, adjudications !== null),
         cases,
+        fixturesNeedingRepair: cases
+            .filter((entry) => entry.exclusionReasons.length > 0)
+            .map((entry) => ({ caseId: entry.caseId, reasons: entry.exclusionReasons })),
     };
     await writeFile(join(directory, "summary.json"), JSON.stringify(summary, null, 2) + "\n", { mode: 0o600 });
     await writeFile(join(directory, "summary.md"), markdown(summary), { mode: 0o600 });

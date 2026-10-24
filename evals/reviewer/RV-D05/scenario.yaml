@@ -1,6 +1,7 @@
 schemaVersion: 1
 scenarioId: RV-D05
 track: discovery
+group: plan-named-edge-case
 fixtureRevision: 1
 planPath: docs/plans/remove-archived-artifact.md
 baselineRef: main

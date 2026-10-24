@@ -10,17 +10,17 @@ import { getWorktreeReviewDiff } from "../../src/shared/workflow/git-snapshot.ts
 import { loadFixture } from "./fixtures.ts";
 import type { VariantId } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
-import { corpusPath, publicTree, rawGit, smokeIds, withFixtureCopy } from "./test-fixtures.ts";
+import { corpusPath, publicTree, rawGit, corpusIds, withFixtureCopy } from "./test-fixtures.ts";
 
-for (const id of smokeIds) {
+for (const id of corpusIds) {
+    const fixture = await loadFixture(join(corpusPath, id));
     const baseline = defineGitFixture(async (cwd) => {
         await cp(join(corpusPath, id, "source"), cwd, { recursive: true });
         await rawGit(cwd, ["add", "."]);
         await rawGit(cwd, ["commit", "-m", "Independent baseline"]);
     });
-    for (const variant of (id === "RV-M01" ? ["A"] : ["A", "B"]) as VariantId[]) {
+    for (const variant of Object.keys(fixture.oracle.variants).sort() as VariantId[]) {
         test(`${id} ${variant} exposes only the selected public tree and production diff`, async () => {
-            const fixture = await loadFixture(join(corpusPath, id));
             const expected = await baseline.checkout();
             const project = await materializeFixture(fixture, variant);
             try {
