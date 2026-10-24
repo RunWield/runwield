@@ -14,8 +14,7 @@ import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";
 import { openOwnerCoordinationStore } from "./index.js";
 
-/** @param {DatabaseSync} database @param {string} table */
-function countRows(database, table) {
+function countRows(database: DatabaseSync, table: string) {
     const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();
     return Number(row?.count ?? -1);
 }
