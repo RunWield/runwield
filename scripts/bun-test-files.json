@@ -74,7 +74,7 @@
     "src/acp/sdk-client-background.test.ts",
     "src/acp/segment-stable-identity.test.ts",
     "src/acp/server.test.js",
-    "src/acp/session-map.test.js",
+    "src/acp/session-map.test.ts",
     "src/adr-artifacts.test.ts",
     "src/cli-context-files.test.ts",
     "src/cli-onboarding.test.ts",
