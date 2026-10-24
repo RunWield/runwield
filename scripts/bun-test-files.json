@@ -205,7 +205,7 @@
     "src/shared/owner-coordination/cross-surface-activation.integration.test.ts",
     "src/shared/owner-coordination/database.test.ts",
     "src/shared/owner-coordination/file-session-bridge.test.ts",
-    "src/shared/owner-coordination/pairing.test.js",
+    "src/shared/owner-coordination/pairing.test.ts",
     "src/shared/owner-coordination/projects.test.ts",
     "src/shared/owner-coordination/segment-activation-evidence.test.ts",
     "src/shared/owner-coordination/segment-rollover-commit.test.js",
