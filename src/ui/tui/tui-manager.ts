@@ -3,6 +3,7 @@
  * TUI singleton lifecycle.
  */
 
+import type { BrowserPort } from "../../shared/browser-port.ts";
 import { writeSync } from "node:fs";
 import { env } from "node:process";
 import type { TuiStopOptions } from "@earendil-works/pi-tui";
@@ -22,6 +23,7 @@ interface ManagedTui {
 type TerminalConstructor<TTerminal extends FocusReportingTerminal> = new () => TTerminal;
 type TuiConstructor<TTerminal extends FocusReportingTerminal, TTui extends ManagedTui> = new (
     terminal: TTerminal,
+    browser?: BrowserPort,
 ) => TTui;
 
 interface TuiManagerDeps<TTerminal extends FocusReportingTerminal, TTui extends ManagedTui> {
@@ -103,14 +105,14 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
         }
     }
 
-    function initTUI(): TTui {
+    function initTUI(browser?: BrowserPort): TTui {
         if (tuiInstance) return tuiInstance;
         const terminal = new TerminalCtor();
         if (!env.WLD_GOLDEN_TUI && !env.WLD_GOLDEN_TUI_CHILD) {
             focusStateOwner = installTerminalFocusState(terminal, () => tuiInstance?.requestRender?.(true), false);
         }
         try {
-            const tui = new TuiCtor(terminal);
+            const tui = new TuiCtor(terminal, browser);
             return startPair({ terminal, tui });
         } catch (error) {
             focusStateOwner?.dispose();

@@ -1,3 +1,4 @@
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
 import { setCustomSetting } from "../../shared/settings.js";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
@@ -9,7 +10,6 @@ import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 import { createValidationSessionPort } from "../../shared/workflow/validation-session-adapter.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
-import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 
 test("publication shows Base and default working text without an active Agent", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
@@ -17,6 +17,7 @@ test("publication shows Base and default working text without an active Agent", 
         const tui = new TuiAltScreen(terminal);
         session.resetAgentInfoStack("Validation Repair Engineer", "", "", "reviewer-feedback-engineer");
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -64,6 +65,7 @@ test("live TUI reserves mascot space and pauses for questions without covering i
         const tui = new TuiAltScreen(terminal);
         assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -115,6 +117,7 @@ test("disabling a live TUI mascot removes rail and compact face without losing i
         const tui = new TuiAltScreen(terminal);
         assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,

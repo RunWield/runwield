@@ -52,7 +52,7 @@ import {
     type TuiSessionSidebarSnapshot,
 } from "./session-sidebar.ts";
 import { readSessionArtifact } from "../../shared/session/read-session-artifact.ts";
-import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
+import { type BrowserPort } from "../../shared/browser-port.ts";
 import { startArtifactReadSurface } from "../review/review-launcher.ts";
 
 import { TuiAgentMascot } from "./agent-mascot.ts";
@@ -70,6 +70,7 @@ export interface ChatViewSessionSnapshot extends TuiSessionSidebarSnapshot {
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 
 interface ChatViewSharedOptions {
+    browser: BrowserPort;
     documentLinks: DocumentLinkHost | null;
     tui: TUI;
     getSessionId(): string;
@@ -511,7 +512,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
                 title: artifact.title,
                 path: artifact.path,
                 imageBaseDir: document.imageBaseDir,
-                browser: SYSTEM_BROWSER_PORT,
+                browser: options.browser,
             });
             if (disposed) {
                 await surface.stop();

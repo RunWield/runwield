@@ -28,12 +28,15 @@ import {
 } from ".././session-transcript-projection.js";
 import {
     projectAggregateTranscript,
-    projectSegmentReplayEvents,
-    readVerifiedTranscriptSegments,
     type TranscriptEntry,
     type VerifiedTranscriptSegment,
 } from ".././session-transcript-manifest.ts";
-import { buildSessionExportDocument, type SessionExport, type SessionExportTimelineEvent } from "../session-export.ts";
+import {
+    buildSessionExportDocument,
+    readCommittedSessionExport,
+    type SessionExport,
+    type SessionExportTimelineEvent,
+} from "../session-export.ts";
 import { listRecentResumableSessions } from ".././session-resume-list.ts";
 import { buildSessionContextReport } from ".././session-context-report.ts";
 import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.js";
@@ -172,7 +175,9 @@ export class RuntimeReads {
                 record.request && record.request.type !== "plan_review" && record.request.type !== "code_review",
         );
         const livePlanReview = activeInteractions.some((record) => record.request?.type === "plan_review");
-        const liveCodeReview = activeInteractions.some((record) => record.request?.type === "code_review");
+        const codeReviewUrl = session.getLiveCodeReviewUrl();
+        const liveCodeReview =
+            Boolean(codeReviewUrl) || activeInteractions.some((record) => record.request?.type === "code_review");
         const liveReview = activeInteractions.find(
             (record) => record.request?.type === "plan_review" || record.request?.type === "code_review",
         );
@@ -207,7 +212,7 @@ export class RuntimeReads {
                   liveQuestion,
                   livePlanReview,
                   liveCodeReview,
-                  liveReviewUrl: liveReview?.request?.reviewUrl,
+                  liveReviewUrl: liveReview?.request?.reviewUrl || codeReviewUrl || undefined,
                   ...(baseWorkflowContext.canRun === true || activeWorkflowMeta.status === "ready_for_work"
                       ? { canRun: true }
                       : {}),
@@ -749,41 +754,16 @@ export class RuntimeReads {
         if (!session) throw new Error("SessionRuntime.readSessionExport: session not found");
         const managed = session.getManagedMetadata();
         if (managed) {
+            if (this.services.remotePersistence) {
+                const exported = await this.services.remotePersistence.control.export(managed.runwieldSessionId);
+                return { ...exported, timeline: exported.timeline.map((event) => ({ ...event, sessionId })) };
+            }
             const store = this.services.sessionStore;
             if (!store) throw new Error("This Session is unavailable.");
             try {
                 const manifest = store.readSessionManifest(managed.runwieldSessionId, managed.projectId);
                 if (!manifest) throw new Error("Session Manifest is unavailable.");
-                if (!manifest.generation) throw new Error("Committed generation is unavailable.");
-                const options = {
-                    cwd: session.cwd,
-                    runwieldSessionId: managed.runwieldSessionId,
-                    runtimeSessionId: sessionId,
-                    generation: manifest.generation,
-                    segments: manifest.segments,
-                };
-                const verified = await readVerifiedTranscriptSegments(options);
-                // Older manifests keep the Session Name only in committed Pi session_info entries.
-                const committedName = summarizeProjectedEntries(verified.flatMap((segment) => segment.entries)).name;
-                return {
-                    document: buildSessionExportDocument({
-                        session: {
-                            runwieldSessionId: manifest.runwieldSessionId,
-                            name: manifest.displayName || committedName || null,
-                            cwd: manifest.transcriptCwd,
-                            createdAt: manifest.createdAt,
-                            updatedAt: manifest.updatedAt,
-                        },
-                        segments: verified,
-                        artifacts: manifest.artifacts || [],
-                        planAssociations: (manifest.planAssociations || []).filter(
-                            (association) => association.committedGeneration !== null,
-                        ),
-                    }),
-                    timeline: projectSegmentReplayEvents(verified, options).map(
-                        (event) => ({ ...event, sessionId }) as SessionExportTimelineEvent,
-                    ),
-                };
+                return await readCommittedSessionExport(manifest, sessionId);
             } catch (error) {
                 throw new Error(toProjectionFailure(error).message);
             }

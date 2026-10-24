@@ -1,7 +1,9 @@
 import process from "node:process";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { buildAgentSession } from "../../shared/session/session.js";
 import { getCwd } from "../../constants.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { normalizeRuntimeUsage, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent, type GuidedReviewUsage } from "./protocol.ts";
 
 export interface GuidedReviewCommandIo {
@@ -23,13 +25,13 @@ async function readDefaultStdin(): Promise<string> {
 
 async function writeDefaultStdout(text: string): Promise<void> {
     await new Promise<void>((resolve, reject) =>
-        process.stdout.write(text, (error) => error ? reject(error) : resolve())
+        process.stdout.write(text, (error) => (error ? reject(error) : resolve())),
     );
 }
 
 async function writeDefaultStderr(text: string): Promise<void> {
     await new Promise<void>((resolve, reject) =>
-        process.stderr.write(text, (error) => error ? reject(error) : resolve())
+        process.stderr.write(text, (error) => (error ? reject(error) : resolve())),
     );
 }
 
@@ -54,14 +56,50 @@ export async function runGuidedReviewCommand(io: GuidedReviewCommandIo): Promise
         return 1;
     }
 
+    const result = await generateGuidedReview(prompt, {
+        cwd: getCwd(),
+        onUsage: (usage) => io.writeStderr(encodeGuidedReviewUsageEvent(usage)),
+    });
+    if (result.model)
+        await io.writeStderr(
+            encodeGuidedReviewMetadata({
+                provider: result.provider,
+                model: result.model,
+                thinkingLevel: result.thinkingLevel,
+            }),
+        );
+    await io.writeStdout(`${result.stdout}\n`);
+    return 0;
+}
+
+export interface GuidedReviewGenerationOptions {
+    cwd: string;
+    inMemory?: boolean;
+    signal?: AbortSignal;
+    onUsage?: (usage: GuidedReviewUsage) => void | Promise<void>;
+}
+
+export interface GuidedReviewGenerationResult {
+    stdout: string;
+    provider: string;
+    model?: string;
+    thinkingLevel?: string;
+}
+
+/** Generate a guide with the normal agent admission; remote callers own no managed Session writer. */
+export async function generateGuidedReview(
+    prompt: string,
+    options: GuidedReviewGenerationOptions,
+): Promise<GuidedReviewGenerationResult> {
+    options.signal?.throwIfAborted();
+    if (!prompt.trim()) throw new Error("RunWield Guided Review requires a prompt.");
+    if (options.inMemory) return generateInMemoryGuide(prompt, options);
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const sessionId = await runtime.createPromptReadySession({ cwd: getCwd(), agentName: "guide" });
+    const sessionId = await runtime.createPromptReadySession({ cwd: options.cwd, agentName: "guide" });
     const pendingUsageWrites: Promise<void>[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event: RuntimeUsageEventLike) => {
         if (!isRuntimeUsageEvent(event)) return;
-        pendingUsageWrites.push(
-            Promise.resolve().then(() => io.writeStderr(encodeGuidedReviewUsageEvent(event.usage))),
-        );
+        pendingUsageWrites.push(Promise.resolve().then(() => options.onUsage?.(event.usage)));
     });
     try {
         const result = await runtime.promptSession(sessionId, {
@@ -71,19 +109,67 @@ export async function runGuidedReviewCommand(io: GuidedReviewCommandIo): Promise
         await Promise.all(pendingUsageWrites);
         if (!result.ok) throw new Error(result.error || "Guided Review generation failed.");
         const output = await runtime.getLastAssistantText(sessionId);
-        if (!output) throw new Error("RunWield Guided Review returned no assistant output.");
-        const snapshot = runtime.getSessionSnapshot(sessionId);
-        if (snapshot?.activeModel?.provider && snapshot.activeModel.model) {
-            await io.writeStderr(encodeGuidedReviewMetadata({
-                provider: snapshot.activeModel.provider,
-                model: snapshot.activeModel.model,
-                thinkingLevel: snapshot.thinkingLevel,
-            }));
+        if (typeof output !== "string" || !output) {
+            throw new Error("RunWield Guided Review returned no assistant output.");
         }
-        await io.writeStdout(`${output}\n`);
-        return 0;
+        const snapshot = runtime.getSessionSnapshot(sessionId);
+        return {
+            stdout: output,
+            provider: snapshot?.activeModel?.provider || "wld",
+            model: snapshot?.activeModel?.model,
+            thinkingLevel: snapshot?.thinkingLevel,
+        };
     } finally {
         unsubscribe();
         runtime.closeSession(sessionId);
+    }
+}
+
+async function generateInMemoryGuide(
+    prompt: string,
+    options: GuidedReviewGenerationOptions,
+): Promise<GuidedReviewGenerationResult> {
+    const { session, resolvedModel, resolvedThinkingLevel } = await buildAgentSession({
+        agentName: "guide",
+        cwd: options.cwd,
+        sessionManager: SessionManager.inMemory(options.cwd),
+    });
+    const pendingUsageWrites: Promise<void>[] = [];
+    const unsubscribe = session.subscribe((event) => {
+        if (event.type !== "message_end" || event.message.role !== "assistant") return;
+        const usage = event.message.usage;
+        pendingUsageWrites.push(Promise.resolve().then(() => options.onUsage?.(normalizeRuntimeUsage(usage))));
+    });
+    const abort = () => {
+        void session.abort();
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    try {
+        options.signal?.throwIfAborted();
+        await session.prompt(prompt);
+        await Promise.all(pendingUsageWrites);
+        options.signal?.throwIfAborted();
+        const message = session.messages.findLast((entry) => entry.role === "assistant");
+        if (message?.role === "assistant" && message.stopReason === "error") {
+            throw new Error(message.errorMessage || "Guided Review generation failed.");
+        }
+        const output =
+            message?.role === "assistant"
+                ? message.content
+                      .filter((block) => block.type === "text")
+                      .map((block) => block.text)
+                      .join("\n")
+                : "";
+        if (!output) throw new Error("RunWield Guided Review returned no assistant output.");
+        return {
+            stdout: output,
+            provider: resolvedModel.provider,
+            model: resolvedModel.id,
+            thinkingLevel: resolvedThinkingLevel,
+        };
+    } finally {
+        options.signal?.removeEventListener("abort", abort);
+        unsubscribe();
+        session.dispose();
     }
 }

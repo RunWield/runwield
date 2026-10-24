@@ -37,8 +37,17 @@ import { continueWorkflowValidation } from "../workflow/validation-supervisor.ts
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
+import { configureRemoteReviewHost } from "../../ui/workspace/server/review-host.ts";
+import { configureGuideRunner } from "../../ui/workspace/routes/api/review-agent-handlers.js";
+import { runRemoteGuideCommand } from "./guide-runner.ts";
+import { createRemoteBrowserPort } from "./browser-bridge.ts";
 
+export interface RuntimeReviewConfiguration {
+    socketPath: string;
+    origin: string;
+}
 export interface RuntimeClientInput {
+    review?: RuntimeReviewConfiguration;
     connection: RemoteSessionControlConnection;
     resources: string;
     memoryCollection: string;
@@ -139,6 +148,10 @@ configureRemoteSettingsConnection(input.connection);
 const clearMcp = configureRemoteMcpConnection(input.connection);
 const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
 const clearModels = await configureRemoteModelConnection(input.connection);
+if (!input.review) throw new Error("Remote runtime client requires review configuration");
+const clearReviewHost = configureRemoteReviewHost(input.review);
+const clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
+const browser = createRemoteBrowserPort(input.connection);
 const control = new RemoteSessionControl(input.connection);
 const host = new SessionHost();
 const runtime = new SessionRuntime({
@@ -251,7 +264,8 @@ try {
                     supportsInteraction: (type) => type === "plan_review",
                     requestInteraction: (request, signal) =>
                         requestLocalReviewInteraction(request, signal, {
-                            onSurfaceReady(url: string) {
+                            async onSurfaceReady(url: string) {
+                                await browser.open(url);
                                 console.log(JSON.stringify({ kind: "review-ready", reviewUrl: url }));
                             },
                         }),
@@ -679,6 +693,8 @@ try {
 } finally {
     await Promise.all(pending);
     await runtime.closeAllSessionsWhenIdle();
+    clearGuideRunner();
+    clearReviewHost();
     await clearMcp();
     clearModels();
     clearMemory();

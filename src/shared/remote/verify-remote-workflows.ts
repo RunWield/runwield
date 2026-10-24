@@ -6,7 +6,7 @@
  * Only synthetic model responses are scripted. Session ownership and all workflow machinery are production code.
  */
 import { ok as assert, deepStrictEqual, equal } from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile, chmod, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -322,7 +322,17 @@ async function main(): Promise<void> {
                         isWorktree: false,
                     },
                 };
-                let service = startRemoteControlService(identity, target);
+                const reviewDirectory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+                const reviewPort = await freePort();
+                const review = {
+                    socketPath: `${reviewDirectory}/review.sock`,
+                    origin: `http://127.0.0.1:${reviewPort}`,
+                };
+                await remoteJs(
+                    `await (await import("node:fs/promises")).mkdir(${JSON.stringify(reviewDirectory)},{mode:448})`,
+                );
+                const browserRequests: string[] = [];
+                let service = startRemoteControlService(identity, target, undefined, review.origin);
                 let publicationCut = false;
                 let cutReached = false;
                 let modelRequests = 0;
@@ -331,6 +341,7 @@ async function main(): Promise<void> {
                     const path = new URL(request.url).pathname;
                     const body = request.method === "POST" ? await request.text() : undefined;
                     if (path === "/models/stream") modelRequests++;
+                    if (path === "/browser/open" && body) browserRequests.push(JSON.parse(body).url);
                     if (path.startsWith("/session/")) {
                         const input = body ? JSON.parse(body) : {};
                         await appendFile(
@@ -392,7 +403,7 @@ async function main(): Promise<void> {
                 }
                 async function start(): Promise<RuntimeProcess> {
                     if (service.status().closed) {
-                        service = startRemoteControlService(identity, target);
+                        service = startRemoteControlService(identity, target, undefined, review.origin);
                         connection.credential = localConnection.credential = service.credential;
                     }
                     if (!tunnel) await ready();
@@ -400,7 +411,17 @@ async function main(): Promise<void> {
                     const shell = `cd ${quote(project)} && echo $$ > ${quote(pidPath)} && exec env -i HOME=${quote(home)} WLD_TEST_SANDBOX_HOME=${quote(home)} TMPDIR=${quote(home + "/tmp")} MNEMOTECA_DB_PATH=${quote(home + "/memory.db")} PATH=${quote(root + "/bin:" + remoteRoot + "/bun-linux-x64:/usr/local/bin:/usr/bin:/bin")} ${sourceDeployment ? quote(remoteRoot + "/bun-linux-x64/bun") + " run --tsconfig-override " + quote(remoteRoot + "/source/tsconfig.json") + " " + quote(remoteRoot + "/source/src/shared/remote/remote-runtime-test-client.ts") : quote(remoteRoot + "/client")}`;
                     const child = spawnNativeProcess("/usr/bin/ssh", {
                         cwd: sourceRoot,
-                        args: ["-T", "-o", "BatchMode=yes", "sct", shell],
+                        args: [
+                            "-T",
+                            "-o",
+                            "BatchMode=yes",
+                            "-o",
+                            "ExitOnForwardFailure=yes",
+                            "-L",
+                            `127.0.0.1:${reviewPort}:${review.socketPath}`,
+                            "sct",
+                            shell,
+                        ],
                         stdin: "piped",
                         stdout: "piped",
                         stderr: "piped",
@@ -419,6 +440,7 @@ async function main(): Promise<void> {
                                 resources,
                                 memoryCollection: "live-remote-workflows",
                                 cwd: project,
+                                review,
                             }) + "\n",
                         ),
                     );
@@ -473,6 +495,8 @@ async function main(): Promise<void> {
                 }
                 const f: RuntimeFixture = {
                     ...local,
+                    review,
+                    browserRequests,
                     remoteProject: project,
                     remoteHome: home,
                     remoteCommandLog: commandLog,
@@ -543,39 +567,32 @@ async function main(): Promise<void> {
                         fauxAssistantMessage(fauxText("Plan approved for remote execution.")),
                     ]);
                     await client.send({ kind: "workflow-plan" });
-                    const review = await client.read();
-                    equal(review.kind, "review-ready", JSON.stringify(review));
-                    assert(review.reviewUrl);
-                    const remoteReview = new URL(review.reviewUrl);
+                    const reviewReady = await client.read();
+                    equal(reviewReady.kind, "review-ready", JSON.stringify(reviewReady));
+                    assert(reviewReady.reviewUrl);
+                    const remoteReview = new URL(reviewReady.reviewUrl);
                     const token = remoteReview.searchParams.get("token");
                     assert(token);
-                    const localPort = await freePort();
-                    const reviewForward = await startForward([
-                        "-L",
-                        `127.0.0.1:${localPort}:127.0.0.1:${remoteReview.port}`,
-                    ]);
-                    await record(`${journey}:manual-review-forward`, {
-                        command: `ssh -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes -L 127.0.0.1:${localPort}:127.0.0.1:${remoteReview.port} sct`,
-                        remoteReviewOrigin: remoteReview.origin,
+                    equal(remoteReview.origin, review.origin);
+                    equal(browserRequests.at(-1), reviewReady.reviewUrl);
+                    await record(`${journey}:connection-start-review-forward`, {
+                        forward: `127.0.0.1:${reviewPort}:${f.review.socketPath}`,
+                        reviewOrigin: remoteReview.origin,
+                        browserRequested: true,
                     });
-                    try {
-                        const response = await fetch(
-                            `http://127.0.0.1:${localPort}/api/review/decision?token=${token}`,
-                            {
-                                method: "POST",
-                                headers: { "content-type": "application/json", "x-runwield-review-token": token },
-                                body: JSON.stringify({
-                                    approved: true,
-                                    approvalAction: "later",
-                                    executionAgent: "engineer",
-                                    collaborationRecommendation: "autonomous",
-                                }),
-                            },
-                        );
-                        equal(response.status, 200, await response.text());
-                    } finally {
-                        await reviewForward.close();
-                    }
+                    const page = await fetch(remoteReview);
+                    equal(page.status, 200, await page.text());
+                    const response = await fetch(new URL(`/api/review/decision?token=${token}`, remoteReview.origin), {
+                        method: "POST",
+                        headers: { "content-type": "application/json", "x-runwield-review-token": token },
+                        body: JSON.stringify({
+                            approved: true,
+                            approvalAction: "later",
+                            executionAgent: "engineer",
+                            collaborationRecommendation: "autonomous",
+                        }),
+                    });
+                    equal(response.status, 200, await response.text());
                     const planned = await client.read();
                     equal(planned.ok, true, planned.error || "");
                     assert(planned.savedId);
@@ -784,6 +801,9 @@ async function main(): Promise<void> {
                     await writeRemote(`${home}/ci-release`, "cleanup release").catch(() => {});
                     for (const client of clients) await client.terminate().catch(() => {});
                     await tunnel?.close();
+                    await remoteJs(
+                        `await (await import("node:fs/promises")).rm(${JSON.stringify(reviewDirectory)},{recursive:true,force:true})`,
+                    );
                     await proxy.shutdown();
                     await service.close();
                     if (savedSessionId) {

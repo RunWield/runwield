@@ -1,3 +1,4 @@
+import { handleBrowserOpen } from "./browser-bridge.ts";
 import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */
 
@@ -128,6 +129,7 @@ export function startRemoteControlService(
     identity: RemoteControlIdentity,
     target?: LaptopSessionTarget,
     memoryCollection?: string,
+    reviewOrigin = "",
 ): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
     const credential = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
@@ -415,6 +417,9 @@ export function startRemoteControlService(
             if (path === "/memory") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
                 return memory ? await memory.handle(request) : new Response(null, { status: 404 });
+            }
+            if (path === "/browser/open") {
+                return await handleBrowserOpen(request, reviewOrigin, () => ready && !shutdown && !closed);
             }
             if (path === "/clipboard/image") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });

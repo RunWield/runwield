@@ -22,6 +22,12 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
     - "docs/domain-language.md"
+planDeviations:
+    - id: "call_e02bebc62c1c43768a7ef0f89a297b4a|fc_00530ac59043dc30016adcdb8add2c819585b4d7a64d38f05a"
+      supersededRequirement: "Not changed: review frontend and design system, review tokens and decision handling, the review host's dispatch (from 09-host), ACP browser questions."
+      replacementRequirement: "Merge main into the execution branch and preserve its conversational review behavior. A conversation-only message must not refresh the reviewed content; refresh only when the reviewed code changes. Verify that the same review URL remains active until approval; if it does not, retain the review surface and URL across those conversation and revision rounds. Preserve token authorization, revision-safe decisions, the shared review host, and ACP browser behavior."
+      reason: "The user requests integration of main's conversational reviews and stable review URLs until approval, which can require review lifecycle changes excluded by the original Plan."
+      approvedAt: "2026-10-24T16:34:08.414Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T02:05:51.971Z"
@@ -33,9 +39,9 @@ dependencies:
     - "07-carry-remote-context-through-delivery-workflows"
     - "08-stop-owned-remote-work-on-connection-loss"
     - "09-host-reviews-on-one-server-per-process"
-targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
-status: "in_progress"
+targetBranch: "epic/remote-ssh-development"
+status: "implemented"
 ---
 
 # Open Remote Reviews in the Local Browser

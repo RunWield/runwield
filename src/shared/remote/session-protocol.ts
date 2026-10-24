@@ -96,7 +96,8 @@ export type RemoteSessionControlRequest =
     | { kind: "checkpoint"; operation: string }
     | { kind: "markUncertain"; operation: string }
     | { kind: "markUncertain"; admissionId: string }
-    | { kind: "list"; sessionId?: string };
+    | { kind: "list"; sessionId?: string }
+    | { kind: "export"; sessionId: string };
 
 export interface RemoteSessionSummary {
     id: string;
@@ -111,6 +112,7 @@ export interface RemoteSessionSummary {
 export interface RemoteSessionControlResponse {
     operation?: string;
     sessions?: RemoteSessionSummary[];
+    exported?: import("../session/session-export.ts").SessionExport;
 }
 
 export function validateSessionControlRequest(input: RemoteSessionControlRequest): void {
@@ -134,6 +136,8 @@ export function validateSessionControlRequest(input: RemoteSessionControlRequest
     } else if (input.kind === "checkpoint" || input.kind === "markUncertain") {
         if (keys === "kind,operation" && "operation" in input && validId(input.operation)) return;
         if (input.kind === "markUncertain" && keys === "admissionId,kind" && "admissionId" in input) return;
+    } else if (input.kind === "export") {
+        if (keys === "kind,sessionId" && validId(input.sessionId)) return;
     } else if (input.kind === "list") {
         if (keys === "kind" || (keys === "kind,sessionId" && input.sessionId && validId(input.sessionId))) return;
     }

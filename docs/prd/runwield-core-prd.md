@@ -269,7 +269,8 @@ the current Plan.
 **Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
 It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
 in doubt, it revises. A reply-only turn writes nothing to the Plan file. RunWield keeps the same review and conversation
-open after the turn without requiring another tool call. A long turn has no review timeout. These rules apply to
+open at the same URL after the turn without requiring another tool call. A reply-only turn does not refresh reviewed
+content; a Plan change publishes a revision at that URL. A long turn has no review timeout. These rules apply to
 initial, direct saved-Plan, `/plan-review`, Epic, and Sequence reviews.
 
 Opening review or discussing a Plan preserves its status. A meaningful revision by the Agent or a saved owner edit
@@ -319,6 +320,8 @@ stays light, terminal animations pause during human input, and the decision cont
   restores the review with the same conversation and shows any error. Explicitly canceling the review does not restore it.
 - Given a direct saved-Plan, Epic, or Sequence review, reply-only turns keep review available and approval keeps its
   existing readiness, group decision, and Agent handoff behavior.
+- Given conversation and Plan revision rounds before approval, the same review URL stays active. A reply alone does not
+  refresh the reviewed content; a Plan change publishes a revision.
 - Given queued review input at approval, the next Agent receives that context.
 - Given two valid Plan Questions, one answered and one open with a default, browser approval saves the owner answer and
   the recommended answer with their labels, with no raw question fences. Approval still rejects a changed Plan and
@@ -814,11 +817,14 @@ is unchanged; see [Standalone code review](#standalone-code-review).
 Engineer proposes a [Plan Deviation](#plan-deviations). Only dedicated owner confirmation makes the replacement
 authoritative for execution, AI review, and Work Records. Agreement in chat alone does not replace the requirement.
 
+Code Review keeps the same live URL through conversation and completed repair rounds until approval. Explanation-only
+turns do not refresh the diff; a changed reviewed patch publishes a diff revision at that URL after checks.
+
 **Requirement: Reach the live review from the terminal.** From launch until a decision arrives, the TUI shows
 “Waiting for Code Review”. When the review surface is ready, the card also shows a clickable live review URL,
-including for resumed and direct reviews and when the browser does not open automatically. The normal message input
-is hidden during Plan review and Code Review. It returns with its draft text when review ends, including on approval,
-cancellation, or failure. During Code Review, the validation progress and results card is also hidden so the review
+including for resumed and direct reviews and when the browser does not open automatically. The message input stays
+available during Plan and Code Review. Immediate commands such as `/plan-review` work while the review waits; ordinary
+messages queue until the current turn can accept them. During Code Review, the validation progress and results card is hidden so the review
 message and live link stay visible. The card returns with its current results when review ends. The settled review
 card shows the outcome.
 
@@ -843,6 +849,8 @@ Guided Review keeps its `auto` option; stored review `none` is labeled **Never**
   repair evidence, invalidates approval, runs CI, skips AI review, and reopens Code Review with the new diff and earlier
   conversation.
 - Given a non-Git in-place project, a chat question still starts repair and CI because patch identity is unavailable.
+- Given a Code Review conversation followed by a code repair and fresh checks, the same URL stays active until approval;
+  only the changed reviewed patch produces a diff revision.
 - Given a no-chat review surface, submitted feedback still starts repair, checks, and another Code Review.
 - Given chat agreement to drop a Plan requirement, the original requirement remains authoritative until the owner
   confirms a Plan Deviation. Canceling confirmation leaves it unchanged.
@@ -1874,8 +1882,10 @@ authenticated synthetic provider. See the [Remote SSH proposal](remote-ssh-prd.m
 ### Remote connection
 
 **Scope and maturity:** Remote conversation and delivery workflows use laptop-owned models, personal resources, and
-Session saves on the approved Linux `sct` pilot with development builds. Browser forwarding and broader platform
-qualification remain target scope in the [Remote SSH proposal](remote-ssh-prd.md).
+Session saves on the approved Linux `sct` pilot with development builds. Local browser review is delivered; the
+[Remote SSH review journey](remote-ssh-prd.md#remote-workflows-and-local-review) owns its requirements and evidence.
+Broader platform qualification remains target scope. Windows laptop checks are deferred; Remote SSH support on Windows
+is not claimed.
 
 **Requirement: Resolve a remote location.** `wld remote <host>[:<directory>]` uses OpenSSH configuration and resolves
 the remote account's home or an existing requested directory. The normal remote TUI shows the canonical remote
@@ -1886,8 +1896,8 @@ worktree when one exists.
 one checkout (see [contributing](../contributing.md#remote-development-bundle)). It verifies build and protocol
 identity, version, and checksum, then stages and checks the executable in a private remote cache. A later connection
 repairs an interrupted stage. The remote profile and package-managed installs stay as they are. The remote host needs
-an OpenSSH server with terminal allocation and loopback forwarding, `python3`, a writable private cache, SSHFS/FUSE,
-and a glibc Linux x86-64 or ARM64 system.
+an OpenSSH server with terminal allocation, TCP forwarding, and Unix-socket forwarding (`AllowStreamLocalForwarding`,
+enabled by default), `python3`, a writable private cache, SSHFS/FUSE, and a glibc Linux x86-64 or ARM64 system.
 
 **Requirement: Keep personal files on the laptop.** The connection mounts laptop `~/.wld` at a private remote root
 through stock SFTP/SSHFS; the remote project's `.wld` stays on the server. Edits to personal Agents, prompts, and
@@ -1973,8 +1983,9 @@ exist. Remote conversation, image paste, offline history, and connected resume p
 pilot with an authenticated synthetic provider. Offline remote history and connected remote resume are separate from
 local client continuation. Remote Memory uses the laptop service. Delivery workflows, in-memory child Sessions, write
 delegation, Plan review, transcript rollover, and workflow recovery are delivered in the
-[Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions). Automatic browser forwarding and full
-owned-process termination remain target scope.
+[Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions). Local browser review uses the
+[remote review connection](remote-ssh-prd.md#remote-workflows-and-local-review); its transport does not change Session
+continuity or review decisions.
 
 Runtime boundaries are in [ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md); storage and synchronization are in [ADR-015](../adr/015-file-authoritative-session-bundles.md).
 

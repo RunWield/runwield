@@ -69,6 +69,13 @@ export class RemoteSessionControl {
         if (!Array.isArray(result.sessions)) throw new Error("Invalid laptop Session list");
         return result.sessions;
     }
+    async export(sessionId: string) {
+        const result = await this.#request({ kind: "export", sessionId });
+        if (!result.exported || result.exported.document.session.runwieldSessionId !== sessionId) {
+            throw new Error("Invalid laptop Session export");
+        }
+        return result.exported;
+    }
     sessionConnection(operation: string) {
         return {
             baseUrl: this.#baseUrl,

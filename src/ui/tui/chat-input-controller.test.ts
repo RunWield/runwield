@@ -11,6 +11,8 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { savePlan } from "../../plan-store.js";
 import { getSettingsManager } from "../../shared/settings.js";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { type ChatInputRuntime, createChatInputController } from "./chat-input-controller.ts";
@@ -118,6 +120,96 @@ test("composition idle waits for a real slash-command interaction to finish", as
             await composition.dispose();
         }
     });
+});
+
+test("composed TUI keeps /plan-review reachable during the original browser review", async () => {
+    await withRuntimeCommandFixture(
+        "chat-input-live-plan-review-",
+        async ({ alternateRoot: projectRoot, setModelResponseFactory }) => {
+            let modelTurns = 0;
+            setModelResponseFactory(() => {
+                modelTurns++;
+                return fauxAssistantMessage(fauxText("Queued response."));
+            });
+            const urls: string[] = [];
+            const terminal = new VirtualTerminal({ columns: 180, rows: 50 });
+            const composition = await createInteractiveTuiComposition(null, {
+                browser: {
+                    open: async (url: string) => {
+                        urls.push(url);
+                        return false;
+                    },
+                },
+                terminal,
+                initialAgentName: "operator",
+            });
+            try {
+                await composition.waitForIdle();
+                await savePlan(projectRoot, "target", "# Target\n\nReview this saved Plan.\n", {
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                    affectedPaths: [],
+                });
+
+                await submitText(terminal, "/load-plan target");
+                await waitFor(
+                    () => terminal.getScreenText().includes("What would you like to do?"),
+                    "loaded Plan actions",
+                );
+                terminal.input("\x1b[B");
+                terminal.pressEnter();
+                await terminal.flush();
+                await waitFor(() => urls.length === 1, "original browser review");
+
+                const reviewChanges: string[] = [];
+                const unsubscribe = composition.runtime.subscribeSessionEvents(composition.sessionId, (event) => {
+                    if (
+                        event.type === RuntimeEventTypes.INTERACTION_REQUESTED ||
+                        event.type === RuntimeEventTypes.CANCELLATION
+                    ) {
+                        reviewChanges.push(event.type);
+                    }
+                });
+                await submitText(terminal, "/plan-review");
+                // Autocomplete can consume the first Enter; the second submits the command.
+                terminal.pressEnter();
+                await terminal.flush();
+                await waitFor(
+                    () => terminal.getScreenText().includes("The current Plan review is open."),
+                    "live review command result",
+                );
+                assertStringIncludes(terminal.getScreenText(), urls[0]);
+                assertEquals(urls.length, 1);
+                await submitText(terminal, "Queue this until review ends");
+                await waitFor(
+                    () => composition.runtime.getQueuedMessages(composition.sessionId).length === 1,
+                    "queued ordinary input",
+                );
+                assertEquals(modelTurns, 0);
+                assertEquals(urls.length, 1);
+                assertEquals(reviewChanges, []);
+                unsubscribe();
+                const reviewUrl = new URL(urls[0]);
+                const token = reviewUrl.searchParams.get("token") || "";
+                const response = await fetch(
+                    new URL(`/api/review/decision?token=${encodeURIComponent(token)}`, reviewUrl.origin),
+                    {
+                        method: "POST",
+                        headers: { "content-type": "application/json", "x-runwield-review-token": token },
+                        body: JSON.stringify({ approved: true, approvalAction: "later" }),
+                    },
+                );
+                assertEquals(response.ok, true);
+                await waitFor(() => modelTurns > 0, "queued turn after review decision");
+            } finally {
+                composition.runtime.cancelSession(composition.sessionId);
+                terminal.pressEscape();
+                await composition.dispose();
+            }
+        },
+    );
 });
 
 async function seedActiveElsewhereManagedSession(

@@ -221,11 +221,16 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
             const conversation = hostedSession.getPlanReviewConversation({ planId, planningAgentName });
             interaction._meta = { ...meta, reviewConversation: conversation, agentLabel: conversation.agentLabel };
         }
+    }
+    if (request.type === RuntimeInteractionTypes.PLAN_REVIEW || request.type === RuntimeInteractionTypes.CODE_REVIEW) {
         const originalReady = request._meta?.onSurfaceReady;
         /** @param {string | {url: string}} surface */
         const onSurfaceReady = (surface) => {
             const url = typeof surface === "string" ? surface : surface?.url;
-            if (typeof url === "string" && url) interaction.reviewUrl = url;
+            if (typeof url === "string" && url && hostedSession.getActiveInteractions().has(id)) {
+                interaction.reviewUrl = url;
+                if (request.type === RuntimeInteractionTypes.CODE_REVIEW) hostedSession.setLiveCodeReviewUrl(url);
+            }
             if (typeof originalReady === "function") return originalReady(surface);
         };
         interaction._meta = { ...interaction._meta, onSurfaceReady };
@@ -258,6 +263,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         });
     const adapter = hostedSession.getInteractionAdapter?.();
     if (!adapter || typeof adapter.requestInteraction !== "function") {
+        if (request.type === RuntimeInteractionTypes.CODE_REVIEW) hostedSession.setLiveCodeReviewUrl("");
         emitRequested();
         if (reviewContainerPlanId) hostedSession.planReviewConversations.stopCapture(reviewContainerPlanId);
         const response = {
@@ -308,6 +314,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
             },
         });
     });
+    let retainCodeReview = false;
     try {
         emitRequested();
         if (signal?.aborted || operationSignal?.aborted || abortController.signal.aborted) {
@@ -351,7 +358,21 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
                 ])
             ),
         );
+        retainCodeReview =
+            request.type === RuntimeInteractionTypes.CODE_REVIEW &&
+            response.outcome === RuntimeInteractionOutcomes.SELECTED &&
+            response._meta?.approved !== true &&
+            response._meta?.canceled !== true &&
+            response._meta?.exit !== true &&
+            Boolean(
+                response._meta?.conversationTurn ||
+                response._meta?.feedback ||
+                (Array.isArray(response._meta?.annotations) && response._meta.annotations.length) ||
+                (Array.isArray(response._meta?.images) && response._meta.images.length),
+            );
         hostedSession.removeActiveInteraction(id);
+        if (request.type === RuntimeInteractionTypes.CODE_REVIEW && !retainCodeReview)
+            hostedSession.setLiveCodeReviewUrl("");
         emitHostedSessionRuntimeEvent(hostedSession, {
             type:
                 response.outcome === RuntimeInteractionOutcomes.CANCELED
@@ -374,6 +395,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
     } catch (error) {
         const response = interactionErrorToResponse(error);
         hostedSession.removeActiveInteraction(id);
+        if (request.type === RuntimeInteractionTypes.CODE_REVIEW) hostedSession.setLiveCodeReviewUrl("");
         if (reviewContainerPlanId && response.outcome === RuntimeInteractionOutcomes.CANCELED) {
             hostedSession.planReviewConversations.stopCapture(reviewContainerPlanId);
         }
@@ -389,6 +411,8 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         });
         return response;
     } finally {
+        if (request.type === RuntimeInteractionTypes.CODE_REVIEW && !retainCodeReview)
+            hostedSession.setLiveCodeReviewUrl("");
         removeAbortListener?.();
         hostedSession.removeActiveInteraction?.(id);
         // Dismiss the other surface's prompt after either surface answers.

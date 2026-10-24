@@ -1,3 +1,4 @@
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
 import { rename as fsRename } from "node:fs/promises";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
@@ -29,6 +30,7 @@ test("chat view renders its warmed Session when unused personal settings become 
                     const terminal = new VirtualTerminal({ columns, rows: 30 });
                     const tui = new TuiCtor(terminal);
                     const view = await createChatView({
+                        browser: NO_OPEN_BROWSER_PORT,
                         tui,
                         documentLinks: null,
                         suppressStartupHeader: true,

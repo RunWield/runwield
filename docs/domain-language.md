@@ -132,8 +132,11 @@ journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an 
 provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
 remain stable through history and reconnect. Remote Memory uses the laptop service. Delivery workflows run remotely
 with laptop-owned Session records and segment rollover; reconnect checks remote evidence without automatic replay.
-Automatic local browser forwarding remains target scope. Production-provider and platform matrices retain separate
-qualification. _Avoid_: Personal Workspace, unattended worker, remote Session type
+Reviews stay on the remote review host; the laptop opens them through one loopback forward set up in the main SSH
+connection at startup to the private remote `review.sock`. Plan and Code Review keep the same URL through conversation,
+revision, and approval. Explanation-only turns do not refresh reviewed content. Built-in Guided Review runs in memory
+with remote files and the laptop model, without a saved remote Session. An explicit custom guide command remains a
+remote subprocess. Production-provider and platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended worker, remote Session type
 
 **Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
 canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key

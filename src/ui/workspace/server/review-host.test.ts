@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { PLAN_UI_TOKEN_HEADER } from "../../../constants.js";
-import { reviewHost } from "./review-host.ts";
+import { randomBytes } from "node:crypto";
+import { mkdir, rm, stat } from "node:fs/promises";
+import { createServer } from "node:net";
+import process from "node:process";
+import { configureRemoteReviewHost, reviewHost } from "./review-host.ts";
 
 const onError = () => new Response("failed", { status: 500 });
 
@@ -166,5 +170,61 @@ test("duplicate live tokens are rejected without replacing their handler", async
         assert.equal(await text(a.origin, "/review/plan?token=A"), "A:/review/plan");
     } finally {
         await a.release();
+    }
+});
+
+test(
+    "remote review host serves tokens over its Unix socket and publishes only the laptop origin",
+    { skip: process.platform === "win32" },
+    async () => {
+        const directory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+        const socketPath = `${directory}/review.sock`;
+        await mkdir(directory, { mode: 0o700 });
+        const reservation = createServer();
+        await new Promise<void>((resolve) => reservation.listen(0, "127.0.0.1", resolve));
+        const address = reservation.address();
+        assert(address && typeof address !== "string");
+        const origin = `http://127.0.0.1:${address.port}`;
+        await new Promise<void>((resolve, reject) => reservation.close((error) => (error ? reject(error) : resolve())));
+        const clear = configureRemoteReviewHost({ socketPath, origin });
+        try {
+            assert.throws(() => configureRemoteReviewHost({ socketPath, origin }), /already configured/);
+            for (let cycle = 0; cycle < 2; cycle++) {
+                const registration = register("remote-token");
+                try {
+                    assert.equal(registration.origin, origin);
+                    assert.equal((await stat(socketPath)).isSocket(), true);
+                    const response = await fetch(`${origin}/review/plan?token=remote-token`, { unix: socketPath });
+                    assert.equal(response.status, 200);
+                    assert.equal(await response.text(), "remote-token:/review/plan");
+                    const denied = await fetch(`${origin}/review/plan?token=unknown`, { unix: socketPath });
+                    assert.equal(denied.status, 401);
+                    await denied.text();
+                    await assert.rejects(fetch(`${origin}/review/plan?token=remote-token`, { keepalive: false }));
+                } finally {
+                    await registration.release();
+                }
+            }
+        } finally {
+            clear();
+            await rm(directory, { recursive: true, force: true });
+        }
+    },
+);
+
+test("remote review configuration cannot replace a live local host", async () => {
+    const registration = register("local");
+    try {
+        assert.throws(
+            () =>
+                configureRemoteReviewHost({
+                    socketPath: `/tmp/wld-remote-${"a".repeat(32)}/review.sock`,
+                    origin: "http://127.0.0.1:43127",
+                }),
+            /already configured or listening/,
+        );
+        assert.equal(await text(registration.origin, "/review/plan?token=local"), "local:/review/plan");
+    } finally {
+        await registration.release();
     }
 });

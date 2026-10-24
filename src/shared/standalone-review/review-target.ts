@@ -104,6 +104,7 @@ export async function resolveReviewTargetWithForge(
         const ref = parsePRUrl(arg);
         if (
             !ref ||
+            ref.platform === "bitbucket" ||
             !/^https?:\/\/[^/]+\/(?:[^/]+\/[^/]+\/pull\/\d+|.+\/-\/merge_requests\/\d+)(?:\/(?:files|commits|diffs))?\/?$/.test(
                 arg,
             )

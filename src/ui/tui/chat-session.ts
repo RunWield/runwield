@@ -259,10 +259,11 @@ export async function startInteractiveSession(
             sessionStartedEmptyProjectDirectory ? EMPTY_PROJECT_DIRECTORY_PROMPT_NOTE : "",
         );
         const initialAgentInternalName = options.initialAgentName || AGENTS.ROUTER;
-        const tui = initTUI();
+        const tui = initTUI(options.browser);
         setTerminalTitleForName(runtimeSnapshot().name);
         const suppressStartupHeader = options.sessionStartMode === "continue";
         const view = await createChatView({
+            browser: options.browser,
             documentLinks,
             tui,
             sessionRuntime,

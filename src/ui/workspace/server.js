@@ -48,7 +48,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runWldJobCommand,
+    getGuideRunner,
 } from "./routes/api/review-agent-handlers.js";
 import {
     resolveWorkspaceFile,
@@ -582,7 +582,7 @@ function linkedDocumentKind(path) {
 export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType, reviewConversation }) {
     const reviewAgentState =
         reviewType === "code"
-            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runWldJobCommand })
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: getGuideRunner() })
             : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),

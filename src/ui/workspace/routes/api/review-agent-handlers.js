@@ -54,6 +54,31 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
  * @property {(prompt: string, signal: AbortSignal, cwd: string, progress?: { onUsage?: (usage: GuideUsageTotals) => void }) => Promise<{ stdout: string, stderr?: string, provider: string, model?: string, thinkingLevel?: string, usage?: GuideUsageTotals, cost?: GuideCostTotals }>} runGuideCommand
  */
 
+/** @typedef {ReviewAgentState["runGuideCommand"]} GuideRunner */
+
+/**
+ * @typedef {Object} GuideRunnerSelection
+ * @property {GuideRunner} runner
+ */
+
+/** @type {GuideRunnerSelection | null} */
+let configuredGuideRunner = null;
+
+/** Select the process runner before the review host starts. @param {GuideRunner} runner */
+export function configureGuideRunner(runner) {
+    if (configuredGuideRunner) throw new Error("Guided Review runner is already configured");
+    const selection = { runner };
+    configuredGuideRunner = selection;
+    return () => {
+        if (configuredGuideRunner === selection) configuredGuideRunner = null;
+    };
+}
+
+/** @returns {GuideRunner} */
+export function getGuideRunner() {
+    return configuredGuideRunner?.runner || runWldJobCommand;
+}
+
 /**
  * @param {{ token: string, cwd: string, reviewPayload: Record<string, unknown>, runGuideCommand: ReviewAgentState["runGuideCommand"] }} options
  * @returns {ReviewAgentState}
