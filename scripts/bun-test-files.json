@@ -36,7 +36,7 @@
     "scripts/pre-commit-hook.test.ts",
     "scripts/public-docs.test.ts",
     "scripts/release-assets.test.js",
-    "scripts/release-check.test.js",
+    "scripts/release-check.test.ts",
     "scripts/release-legacy-assets.test.ts",
     "scripts/release-policy.test.ts",
     "scripts/release.test.js",
