@@ -11,7 +11,7 @@ import { plannedChangeWorkflowScenarios } from "./planned-change-workflow.js";
 import { presentationAndTerminalScenarios } from "./presentation-and-terminal.js";
 import { projectWorkflowScenarios } from "./project-workflow.js";
 import { projectRoutingWorkflowScenarios } from "./project-routing-workflow.ts";
-import { roleJourneyScenarios } from "./role-journeys.js";
+import { roleJourneyScenarios } from "./role-journeys.ts";
 import { sessionResumeWorkflowScenarios } from "./session-resume-workflow.ts";
 import { slashCommandConfigurationScenarios } from "./slash-command-tree-configuration.ts";
 import { slashCommandAuthScenarios } from "./slash-command-tree-auth.ts";
