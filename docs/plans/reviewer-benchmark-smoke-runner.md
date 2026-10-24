@@ -22,6 +22,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "e355c7fb490e30872339c5043114167dc7c9f382"
+workRecord:
+    status: "generated"
+    recordId: "e301c9e7-8eb4-495a-819d-bd85374ad38b"
+    path: "docs/work-records/2026-10-24-production-reviewer-benchmark-and-baseline.md"
+    lastAttemptAt: "2026-10-24T03:59:46.788Z"
 ---
 
 # Reviewer Benchmark Smoke Runner
