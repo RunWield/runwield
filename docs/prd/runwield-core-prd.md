@@ -188,10 +188,11 @@ Workspace reader. Plain paths, exact inline-code paths, and relative Markdown-li
 labels. User messages, tool/system output, code, images, external URLs, and non-Markdown paths stay unchanged. Without
 hyperlink support, paths remain readable without local URLs or tokens. Mentions do not register Session Artifacts.
 
-The TUI owns one lazy loopback reader for concurrent tabs. Each request checks canonical Project containment and reads
-current content, including local images. Session replacement rotates the token and Project together; old links fail
-closed. TUI disposal stops the host. Close affects only the linked tab, with manual-close guidance if the browser blocks
-closure. Known document types keep their labels and Work Record notices; other Markdown uses **Document**.
+The TUI lazily registers its reader on the process review host for concurrent tabs. Each request checks canonical
+Project containment and reads current content, including local images. Session replacement rotates the token and Project
+together; old links fail closed. TUI disposal revokes the reader registration. The host stops when its last registration
+leaves. Close affects only the linked tab, with manual-close guidance if the browser blocks closure. Known document types
+keep their labels and Work Record notices; other Markdown uses **Document**.
 
 **Requirement: Keep expanded tool output responsive.**
 
@@ -210,8 +211,8 @@ Session; events from the previous Session must no longer affect the view.
 
 - Given an Agent cites `(README.md)`, an exact backticked path, or a relative Markdown link to an existing file,
   clicking opens that current file with Contents, title, type, and Project-relative path. Two tabs work independently;
-  reload shows edits, and Close does not end the TUI host. Replacing the Session rejects old links; exiting stops
-  service.
+  reload shows edits, and Close does not revoke the reader. Replacing the Session rejects old links; exiting revokes
+  reader access without stopping other reviews on the host.
 - Given a missing file, an escaping symlink, or a terminal without hyperlink support, Agent text stays readable and no
   local reader URL is printed.
 - Given a new conversation, when the user submits a request, Router handles initial triage; after a specialist handoff,

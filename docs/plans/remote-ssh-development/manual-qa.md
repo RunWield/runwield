@@ -156,3 +156,17 @@ Manual verification steps for remote-ssh-development/08-stop-owned-remote-work-o
 - [ ] Confirm the remote mount directory is removed after disconnect and no mount-cleanup error appears.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/08-stop-owned-remote-work-on-connection-loss" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/09-host-reviews-on-one-server-per-process" -->
+
+## Host Reviews on One Server per Process
+
+Manual verification steps for remote-ssh-development/09-host-reviews-on-one-server-per-process
+
+- [ ] Start Plan Review and Code Review in one TUI. Confirm both pages load from the same `127.0.0.1` origin.
+- [ ] Open a file and image, upload an annotation image, and run Guided Review. Confirm each action works.
+- [ ] Submit Plan Review feedback and confirm the next review round stays at the same URL. Approve both reviews.
+- [ ] Stop one review. Confirm the other review still works.
+- [ ] Click a Markdown document link in the TUI. Confirm it opens on the same origin.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/09-host-reviews-on-one-server-per-process" -->
