@@ -1,0 +1,130 @@
+diff --git a/src/archive.ts b/src/archive.ts
+new file mode 100644
+--- /dev/null
++++ b/src/archive.ts
+@@ -0,0 +1,18 @@
++import { mkdir, rename } from "node:fs/promises";
++import { join } from "node:path";
++import { planFile, readPlan, savePlan } from "./store.ts";
++
++export async function archivePlan(root: string, id: string, time: Date) {
++    const record = await readPlan(root, "active", id);
++    const archived = { ...record, archivedAt: time.toISOString() };
++    await mkdir(join(root, "plans", "archived"), { recursive: true });
++    try {
++        await readPlan(root, "archived", id);
++        throw new Error("Plan already archived");
++    } catch (error) {
++        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
++    }
++    await savePlan(root, "active", archived);
++    await rename(planFile(root, "active", id), planFile(root, "archived", id));
++    return archived;
++}
+diff --git a/src/commands.ts b/src/commands.ts
+--- a/src/commands.ts
++++ b/src/commands.ts
+@@ -1,6 +1,19 @@
++import type { ListOptions } from "./model.ts";
+ import { listPlans } from "./store.ts";
++import { archivePlan } from "./archive.ts";
+ 
+-export async function runCommand(root: string, args: string[]): Promise<string> {
+-    if (args.length === 1 && args[0] === "list") return JSON.stringify(await listPlans(root));
+-    throw new Error("Use list");
++export function parseListOptions(args: string[]): ListOptions {
++    if (args.some((arg) => arg !== "--archived-only")) throw new Error("Unsupported list option");
++    return { archivedOnly: args.includes("--archived-only") };
+ }
++export async function runCommand(root: string, args: string[], now: () => Date = () => new Date()): Promise<string> {
++    if (args[0] === "archive" && args.length === 2) {
++        return JSON.stringify(await archivePlan(root, args[1], now()));
++    }
++    if (args[0] === "list") {
++        const options = parseListOptions(args.slice(1));
++        const records = await listPlans(root);
++        return JSON.stringify(records);
++    }
++    throw new Error("Use archive <id> or list [--archived-only]");
++}
+diff --git a/src/store.ts b/src/store.ts
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -16,9 +16,9 @@
+     const record: PlanRecord = JSON.parse(await readFile(planFile(root, area, id), "utf8"));
+     return record;
+ }
+-export async function listPlans(root: string): Promise<PlanRecord[]> {
++export async function listPlans(root: string, selectedArea?: PlanArea): Promise<PlanRecord[]> {
+     const records: PlanRecord[] = [];
+-    for (const area of ["active", "archived"] as const) {
++    for (const area of selectedArea ? [selectedArea] : (["active", "archived"] as const)) {
+         let names: string[];
+         try {
+             names = await readdir(join(root, "plans", area));
+diff --git a/tests/public.ts b/tests/public.ts
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -32,5 +32,62 @@
+         await rm(root, { recursive: true, force: true });
+     }
+ });
++await check("archive moves the Plan out of the active area", async () => {
++    const root = await mkdtemp(join(tmpdir(), "plans-"));
++    try {
++        await savePlan(root, "active", record);
++        await runCommand(root, ["archive", record.id], () => new Date("2026-02-01T12:30:00.000Z"));
++        await assert.rejects(() => readPlan(root, "active", record.id), { code: "ENOENT" });
++        assert.equal((await readPlan(root, "archived", record.id)).id, record.id);
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++await check("archive records the time and preserves the Plan content", async () => {
++    const root = await mkdtemp(join(tmpdir(), "plans-"));
++    try {
++        await savePlan(root, "active", record);
++        await runCommand(root, ["archive", record.id], () => new Date("2026-02-01T12:30:00.000Z"));
++        assert.deepEqual(await readPlan(root, "archived", record.id), {
++            ...record,
++            archivedAt: "2026-02-01T12:30:00.000Z",
++        });
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++
++await check("the archived-only list excludes active Plans", async () => {
++    const root = await mkdtemp(join(tmpdir(), "plans-"));
++    try {
++        await savePlan(root, "active", record);
++        await savePlan(root, "active", { ...record, id: "older" });
++        const archived = JSON.parse(
++            await runCommand(root, ["archive", "older"], () => new Date("2026-02-01T12:30:00.000Z")),
++        );
++        assert.deepEqual(
++            JSON.parse(await runCommand(root, ["list", "--archived-only"])),
++            [archived],
++            "Archived-only listing must return archived Plans only",
++        );
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++await check("the archived-only list follows location rather than time metadata", async () => {
++    const root = await mkdtemp(join(tmpdir(), "plans-"));
++    try {
++        const archived = { ...record, id: "older" };
++        await savePlan(root, "archived", archived);
++        await savePlan(root, "active", { ...record, archivedAt: "2026-02-01T12:30:00.000Z" });
++        assert.deepEqual(
++            JSON.parse(await runCommand(root, ["list", "--archived-only"])),
++            [archived],
++            "Archived-only listing must return archived Plans only",
++        );
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
+ 
+ console.log(`# tests ${passed}`);

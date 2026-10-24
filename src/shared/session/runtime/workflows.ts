@@ -110,9 +110,7 @@ export class RuntimeWorkflows {
     ): Promise<T> {
         await this.lifecycle.materializeDeferredWorkflowSession(session);
         const managed = session.getManagedMetadata?.();
-        if (!managed) {
-            return await this.events.runBusyOperation(session.id, operation);
-        }
+        if (!managed) return await this.events.runBusyOperation(session.id, operation);
         const currentCapability = this.managedOperations.currentCapability(session.id);
         if (currentCapability) {
             if (this.managedOperations.isCurrentContext(session.id, currentCapability)) {

@@ -83,7 +83,7 @@ const PARAMETERS = Type.Object({
     })),
 }, { additionalProperties: false });
 
-type InterviewParameters = Static<typeof PARAMETERS>;
+export type InterviewParameters = Static<typeof PARAMETERS>;
 
 export interface InterviewError {
     code: string;

@@ -1,0 +1,58 @@
+diff --git a/src/register.ts b/src/register.ts
+index 364b32a..846144f 100644
+--- a/src/register.ts
++++ b/src/register.ts
+@@ -4,11 +4,17 @@ import { validateEntry } from "./model.ts";
+ import { putEntry } from "./registry.ts";
+ import { withRegistryLock } from "./lock.ts";
+ 
+-export async function registerProject(root: string, id: string, catalog: CatalogPort) {
++export interface RegistrationDependencies {
++    putEntry?: typeof putEntry;
++    withRegistryLock?: typeof withRegistryLock;
++}
++export async function registerProject(root: string, id: string, catalog: CatalogPort, deps?: RegistrationDependencies) {
+     const entry = await requireCatalogEntry(catalog, id);
+     validateEntry(entry);
+-    return withRegistryLock(root, async () => {
+-        await putEntry(root, entry);
++    const write = deps?.putEntry ?? putEntry;
++    const locked = deps?.withRegistryLock ?? withRegistryLock;
++    return locked(root, async () => {
++        await write(root, entry);
+         return entry;
+     });
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 26567cd..75ab6c6 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -49,5 +49,28 @@ await check("catalog outage is not reported as a successful registration", async
+         await rm(root, { recursive: true, force: true });
+     }
+ });
++await check("successful registration remains available", async () => {
++    const root = await mkdtemp(join(tmpdir(), "registry-"));
++    try {
++        const entry = await registerProject(root, "atlas", catalog, {
++            putEntry: async () => {},
++            withRegistryLock: async (_root, action) => action(),
++        });
++        assert.deepEqual(entry, { id: "atlas", label: "Atlas" });
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++await check("a busy registry refuses registration without adding an entry", async () => {
++    const root = await mkdtemp(join(tmpdir(), "registry-"));
++    try {
++        await withRegistryLock(root, async () => {
++            await assert.rejects(() => registerProject(root, "atlas", catalog), /Registry busy/);
++        });
++        assert.deepEqual(await listRegistry(root), []);
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
+ 
+ console.log(`# tests ${passed}`);
