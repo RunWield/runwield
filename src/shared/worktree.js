@@ -219,6 +219,7 @@ async function isPreparationChange(root, path, baseRef, targetRef) {
  * @param {string} opts.baseRef
  * @param {string} [opts.targetRef]
  * @param {boolean} [opts.includeWorkingTree]
+ * @param {string} [opts.publishedRef] Published target whose identical committed files are not local implementation.
  * @returns {Promise<boolean>}
  */
 export async function hasExecutionChangesSince({
@@ -226,6 +227,7 @@ export async function hasExecutionChangesSince({
     baseRef,
     targetRef = "HEAD",
     includeWorkingTree = false,
+    publishedRef,
 }) {
     const committed = parseNameOnlyPaths(
         await runGit(worktreePath, ["diff", "--name-only", `${baseRef}..${targetRef}`, "--"]),
@@ -240,6 +242,20 @@ export async function hasExecutionChangesSince({
     for (const { paths, ref } of checks) {
         for (const path of paths) {
             if (!(await isPreparationChange(worktreePath, path, ref ? baseRef : "HEAD", ref))) {
+                if (ref && publishedRef) {
+                    const comparison = await runGitResult(worktreePath, [
+                        "diff",
+                        "--quiet",
+                        publishedRef,
+                        ref,
+                        "--",
+                        path,
+                    ]);
+                    if (comparison.code === 0) continue;
+                    if (comparison.code !== 1) {
+                        throw new Error(`Could not compare published file ${path}: ${comparison.stderr}`);
+                    }
+                }
                 return true;
             }
         }
