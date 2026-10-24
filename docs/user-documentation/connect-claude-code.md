@@ -34,6 +34,8 @@ You need:
 
 - RunWield Core (`wld`) on `PATH`, with the Connect operations in this source version.
 - Claude Code with its own model access and authentication.
+- `HOME` set to your home directory. Attached records live there; without it, operations return `home_unavailable`
+  and ask you to set `HOME`. Core does not put these records in your repository.
 - Git for isolated execution and publication, and a browser for Plan and code review.
 
 Core needs **no model credentials, model preset, or RunWield account** for Connect. The model setup in the
@@ -87,6 +89,8 @@ existing `.wld` directory or `AGENTS.md`. `/runwield:init` is not provided.
 
 1. Review the Plan in the browser. Ask questions in review chat, request a change in chat, or send structured Feedback.
 2. A changed Plan opens a new review round on the same page. Approve the exact Plan before implementation starts.
+   **Approve & Run** continues immediately. **Approve for Later** leaves it Ready For Work and starts nothing; use
+   `/runwield:implement` when you want to start it.
 3. Core prepares the execution checkout. Claude discloses its directory and branch and starts a fresh worker there.
    Non-Git execution needs explicit consent; it edits current files without Git isolation or publication.
 4. Core runs the configured validation command. Fresh Claude workers review the diff and repair findings. Core checks
@@ -96,6 +100,8 @@ existing `.wld` directory or `AGENTS.md`. `/runwield:init` is not provided.
 6. Review the code when Core requests it. Feedback starts repair and validation, then opens the changed diff for a new
    decision. Chat alone cannot approve or reject a Plan or diff.
 7. Core confirms delivery and reports the Work Record outcome. Implementation completion alone is not Verified.
+   If publication has a repairable conflict, Core asks a fresh Claude worker to resolve and stage files in the
+   publication directory. Core then completes publication without repeating passed checks or recording.
 
 Core owns publication. Do not ask a worker to create another worktree, commit, merge, or push around Core's gates.
 The recorded landing follows the project's [Plan delivery settings](settings.md#plan-delivery); an onward PR or merge
@@ -122,7 +128,7 @@ Use these commands in the same project, including from a new Claude Code convers
 | Command                 | Purpose                                                               |
 | ----------------------- | --------------------------------------------------------------------- |
 | `/runwield:plan-review` | Reopen the pending Plan review or retrieve its saved outcome.         |
-| `/runwield:implement`   | Restore the current implementation handoff.                           |
+| `/runwield:implement`   | Start a saved ready Plan or restore its implementation handoff.       |
 | `/runwield:validate`    | Continue or restore validation, code review, recording, and delivery. |
 
 Do not start another `/runwield:request` to resume the same work. Core loads its saved action and revision. A review

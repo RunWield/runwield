@@ -9,7 +9,8 @@ Show any returned `compatibility` notice to the user before continuing. On `inco
 `unsupported_host_version`, show Core's update message and stop. Core owns version compatibility.
 
 1. Call MCP `status` with the known `workflowId`, or `{}` for the most recent open workflow. Status is compact by default.
-2. For `plan_ready`, immediately call `start_execution` with a new operation ID, the current workflow ID and revision,
+2. For `plan_ready`, immediately call `start_execution`. For `plan_saved`, this user command also starts execution:
+   call `start_execution`. For either action, use a new operation ID, the current workflow ID and revision,
    and `payload: {}`. For `consent`, ask the disclosure question in plain text and resubmit `start_execution` with
    `actionId` and `consent: "proceed"` or `"decline"`. After decline, stop; do not automatically restart.
 3. For `implementation`, check `runwield.attached.implementation/1` and send a user-visible message before dispatch with

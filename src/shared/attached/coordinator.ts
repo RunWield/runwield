@@ -12,6 +12,7 @@
  * close the workflow as unsupported in this Preview.
  */
 
+import { getHomeDir } from "../../constants.js";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
@@ -45,6 +46,7 @@ import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-run
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { withOrderedTransitionResources } from "../workflow/state-transition.ts";
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
@@ -52,6 +54,11 @@ import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handle
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
+    type AttachedActionReadEnvelope,
+    type AttachedReadOperationName,
+    type AttachedLifecycleOperationName,
+    isAttachedReadOperation,
+    parseAttachedActionReadInput,
     type ReviewReplyEnvelope,
     parseReviewReplyInput,
     type ActivateEnvelope,
@@ -193,6 +200,16 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
         };
     }
     if (record.state === "plan_ready" && record.plan) {
+        if (
+            record.review?.outcome?.approvalAction !== "run" ||
+            record.review.approvalControllerRevision === undefined
+        ) {
+            return {
+                kind: "plan_saved",
+                planName: record.plan.planName,
+                guidance: "The Plan is Ready For Work, saved for later. /runwield:implement starts it.",
+            };
+        }
         return {
             kind: "plan_ready",
             planName: record.plan.planName,
@@ -254,6 +271,15 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
 
 /** Project the canonical Plan position without writing an Attached record. */
 async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<AttachedWorkflowRecord> {
+    const holder = record.validation?.holder;
+    // Core can publish and prune the registry before the active call saves its Attached receipt.
+    // Neither delivery nor Core-advance projection may take that call's claimed revision.
+    if (
+        holder &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await isLockHolderGone(JSON.stringify(holder)))
+    )
+        return record;
     if (
         !record.plan ||
         ![
@@ -368,6 +394,14 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         return record.state === "implemented" ? record : { ...record, state: "implemented", pendingAction: null };
     }
     if (status === "approved" || status === "ready_for_work" || status === "ready_for_decomposition") {
+        // A later Core approval must not inherit an earlier Attached Approve & Run.
+        // This is only a projection; status never changes the saved round or Plan.
+        if (
+            record.review?.approvalControllerRevision !== undefined &&
+            record.review.approvalControllerRevision !== plan?.controllerRevision
+        ) {
+            record = { ...record, review: { ...record.review, approvalControllerRevision: undefined } };
+        }
         if (record.state === "awaiting_consent" || record.state === "implementing") return record;
         return record.state === "plan_ready" ? record : { ...record, state: "plan_ready", pendingAction: null };
     }
@@ -420,7 +454,14 @@ async function viewOf(
     record: AttachedWorkflowRecord,
     recovery: ProjectMovedRecovery | null = null,
 ): Promise<AttachedWorkflowView> {
-    if (!recovery) record = await reconcilePlanPosition(record);
+    return await projectedViewOf(recovery ? record : await reconcilePlanPosition(record), recovery);
+}
+
+/** Render one projection without reopening reconciliation during the same status read. */
+async function projectedViewOf(
+    record: AttachedWorkflowRecord,
+    recovery: ProjectMovedRecovery | null = null,
+): Promise<AttachedWorkflowView> {
     return {
         workflowId: record.workflowId,
         revision: record.revision,
@@ -906,7 +947,7 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                     status === "in_progress" &&
                     source.plan.attrs.executionMode === "non_git_in_place" &&
                     hasNonGitExecutionConsent("featurePlan", location.projectRoot);
-                if (status !== "ready_for_work" && !recoveredAttempt && !recoveredInPlace) {
+                if (status !== "approved" && status !== "ready_for_work" && !recoveredAttempt && !recoveredInPlace) {
                     throw new Error("Execution requires ready_for_work approval/readiness.");
                 }
                 const git = await probeGitRepository(location.projectRoot);
@@ -1167,7 +1208,11 @@ export async function applyAttachedReviewDecision(
                 throw new Error("action_superseded: This review round is no longer pending.");
             }
             if (saved.status === "applied" && saved.outcome) return { result: { outcome: saved.outcome } };
-            if (current.state !== "awaiting_review" || saved.planRevision !== round.review.planRevision) {
+            if (
+                current.state !== "awaiting_review" ||
+                saved.planRevision !== round.review.planRevision ||
+                saved.controllerRevision !== round.review.controllerRevision
+            ) {
                 throw new Error("action_superseded: This reviewed document is no longer pending. Reopen the review.");
             }
             const reconciled = await reconcilePlanPosition(current);
@@ -1185,42 +1230,55 @@ export async function applyAttachedReviewDecision(
                 throw new Error("invalid_outcome: Review has no decision.");
             }
             let outcome: AttachedReviewOutcome;
+            let approvalControllerRevision: number | undefined;
             if (canceled) {
                 outcome = { kind: "canceled" };
             } else {
-                const applied = await applySharedPlanReviewDecision({
-                    cwd: round.documentRoot,
-                    planName: round.planName,
-                    planPath: round.planPath,
-                    planWithFrontMatter: round.markdown,
-                    planRevision: saved.planRevision,
-                    originalAttrs: round.attrs,
-                    trustedClassification: current.triageOutcome?.classification,
-                    trustedWorkKind: current.triageOutcome?.workKind,
-                    decision,
-                });
-                if (applied.cancellationReason || applied.recoveryRequired) {
-                    throw new Error(applied.feedback || "The Plan changed. Reload this review.");
-                }
-                if (applied.approved) {
-                    await recordPlanEvent({
-                        cwd: round.documentRoot,
-                        planName: round.planName,
-                        event: "readiness_passed",
-                        currentStatus: "approved",
-                        expectedRevision: applied.revision,
-                    });
-                    outcome = {
-                        kind: "approved",
-                        ...(applied.approvalAction && { approvalAction: applied.approvalAction }),
-                    };
-                } else {
-                    outcome = {
-                        kind: "feedback",
-                        feedback: applied.feedback ?? "",
-                        imagePaths: await loadReviewFeedbackImagePaths(decision, round.documentRoot),
-                    };
-                }
+                outcome = await withOrderedTransitionResources(
+                    round.documentRoot,
+                    [{ kind: "catalog" }, { kind: "plan", id: round.planName }],
+                    async (): Promise<AttachedReviewOutcome> => {
+                        const applied = await applySharedPlanReviewDecision({
+                            cwd: round.documentRoot,
+                            planName: round.planName,
+                            planPath: round.planPath,
+                            planWithFrontMatter: round.markdown,
+                            planRevision: saved.planRevision,
+                            expectedControllerRevision: saved.controllerRevision,
+                            originalAttrs: round.attrs,
+                            trustedClassification: current.triageOutcome?.classification,
+                            trustedWorkKind: current.triageOutcome?.workKind,
+                            decision,
+                        });
+                        if (applied.cancellationReason || applied.recoveryRequired) {
+                            throw new Error(applied.feedback || "The Plan changed. Reload this review.");
+                        }
+                        if (applied.approved) {
+                            await recordPlanEvent({
+                                cwd: round.documentRoot,
+                                planName: round.planName,
+                                event: "readiness_passed",
+                                currentStatus: "approved",
+                                expectedRevision: applied.revision,
+                            });
+                            // Read the revision while the same canonical Plan locks still cover
+                            // approval and readiness. A later read could pin a newer Core approval.
+                            const ready = await loadPlan(round.documentRoot, round.planName);
+                            if (!ready) throw new Error(`Plan not found: ${round.planName}`);
+                            approvalControllerRevision = ready.controllerRevision;
+                            return {
+                                kind: "approved",
+                                ...(applied.approvalAction && { approvalAction: applied.approvalAction }),
+                            };
+                        } else {
+                            return {
+                                kind: "feedback",
+                                feedback: applied.feedback ?? "",
+                                imagePaths: await loadReviewFeedbackImagePaths(decision, round.documentRoot),
+                            };
+                        }
+                    },
+                );
             }
             const pendingAction =
                 outcome.kind === "approved"
@@ -1243,7 +1301,7 @@ export async function applyAttachedReviewDecision(
                 ...current,
                 state: outcome.kind === "approved" ? "plan_ready" : "awaiting_planning",
                 pendingAction,
-                review: { ...saved, status: "applied", outcome },
+                review: { ...saved, status: "applied", outcome, approvalControllerRevision },
                 revision: current.revision + 1,
                 updatedAt: new Date().toISOString(),
             };
@@ -1466,6 +1524,8 @@ async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOpera
 }
 
 export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOperationResult> {
+    if (!getHomeDir())
+        return await rejected("status", rejection("home_unavailable", "Set HOME to use Attached workflows."));
     const location = locateAttachedWorkflows(envelope.projectRoot);
     const latest = envelope.workflowId ? null : await loadLatestAttachedWorkflowRecord(location);
     const loaded = envelope.workflowId
@@ -1523,9 +1583,9 @@ export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOper
         const written = await writeAttachedWorkflowRecord(location, next, loaded.record.revision);
         if (written.status !== "written")
             return await rejected("status", rejection("revision_conflict", "The workflow changed. Retry status."));
-        return { ok: true, operation: "status", workflow: await viewOf(next) };
+        return { ok: true, operation: "status", workflow: await projectedViewOf(next) };
     }
-    return { ok: true, operation: "status", workflow: await viewOf(projected, recovery) };
+    return { ok: true, operation: "status", workflow: await projectedViewOf(projected, recovery) };
 }
 
 async function runParsedOperation(
@@ -1606,15 +1666,45 @@ async function withRoleInstructions(
     return { ...result, instructions: { role: action.role, contractVersion: action.contractVersion, text } };
 }
 
+export type AttachedReadResult =
+    | (Awaited<ReturnType<typeof readAttachedAction>> & {
+          operation: AttachedReadOperationName;
+          workflow?: never;
+          reviewReply?: never;
+      })
+    | Extract<AttachedOperationResult, { ok: false }>;
+export type AttachedCarrierResult = AttachedOperationResult | AttachedReadResult;
+
 /**
  * The single entry both carriers use: JSON text in, one result object out. Because the
  * CLI and MCP carriers both pass text here, the same input gives the same result.
  */
+export function runAttachedOperation(
+    name: AttachedReadOperationName,
+    projectRoot: string,
+    inputText: string,
+): Promise<AttachedReadResult>;
+export function runAttachedOperation(
+    name: AttachedLifecycleOperationName,
+    projectRoot: string,
+    inputText: string,
+): Promise<AttachedOperationResult>;
+export function runAttachedOperation(
+    name: AttachedOperationName,
+    projectRoot: string,
+    inputText: string,
+): Promise<AttachedCarrierResult>;
 export async function runAttachedOperation(
     name: AttachedOperationName,
     projectRoot: string,
     inputText: string,
-): Promise<AttachedOperationResult> {
+): Promise<AttachedCarrierResult> {
+    if (!getHomeDir())
+        return {
+            ok: false,
+            operation: name,
+            rejection: rejection("home_unavailable", "Set HOME to use Attached workflows."),
+        };
     if (new TextEncoder().encode(inputText).length > MAX_ATTACHED_INPUT_BYTES) {
         return await rejected(name, rejection("payload_too_large", `Input exceeds ${MAX_ATTACHED_INPUT_BYTES} bytes.`));
     }
@@ -1623,6 +1713,12 @@ export async function runAttachedOperation(
         input = JSON.parse(inputText);
     } catch {
         input = undefined;
+    }
+    if (isAttachedReadOperation(name)) {
+        const parsed = parseAttachedActionReadInput(name, projectRoot, input);
+        return parsed.ok
+            ? { ...(await readAttachedAction(parsed.envelope)), operation: name }
+            : { ok: false, operation: name, rejection: parsed.rejection };
     }
     if (name !== "status") {
         const parsed = parseHostEvidence(input);
@@ -1635,13 +1731,6 @@ export async function runAttachedOperation(
         return await withRoleInstructions(projectRoot, result.ok ? { ...result, compatibility } : result);
     }
     return await runParsedOperation(name, projectRoot, input);
-}
-
-interface AttachedActionReadEnvelope extends StatusEnvelope {
-    actionId: string;
-    content: "instructions" | "chat" | "prompt" | "execution_report" | "repair_report";
-    offsetBytes?: number;
-    maxBytes?: number;
 }
 
 /** Retrieve only the current action's host instructions, decision, or oldest queued chat turn. */

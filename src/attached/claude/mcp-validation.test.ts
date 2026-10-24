@@ -1,3 +1,4 @@
+import { saveAttachedReviewChat } from "../../shared/attached/coordinator.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
@@ -80,6 +81,23 @@ test("MCP status is compact by default and workers fetch complete current instru
         assert(fullPlan.ok && fullPlan.workflow.nextAction.kind === "review");
         assertEquals(fullPlan.workflow.review?.status, "pending");
 
+        assert(plan.review);
+        await saveAttachedReviewChat(
+            fixture.root,
+            plan.workflowId,
+            plan.review.actionId,
+            { feedback: "Pending parity question" },
+            plan.review.planRevision,
+        );
+        const chatArguments = { workflowId: plan.workflowId, actionId: plan.review.actionId };
+        const pendingResponse = await client.callTool({ name: "get_pending_chat", arguments: chatArguments });
+        const pendingCli = await spawnAttachedCli("get_pending_chat", fixture.root, chatArguments);
+        assertEquals(pendingCli.code, 0, pendingCli.stderr);
+        assert(pendingCli.result.ok && "chat" in pendingCli.result);
+        assertEquals(pendingCli.result.chat.message, "Pending parity question");
+        assertEquals(pendingCli.result.operation, "get_pending_chat");
+        assertEquals(pendingCli.result, pendingResponse.structuredContent);
+
         const compactResponse = await client.callTool({
             name: "status",
             arguments: { workflowId: fixture.workflowId },
@@ -154,6 +172,28 @@ test("MCP status is compact by default and workers fetch complete current instru
         assert(artifact.ok && artifact.truncated);
         assertEquals(artifact.content, requestPrompt.slice(0, 64));
         assertEquals(artifact.nextOffsetBytes, 64);
+        for (const [operation, arguments_, response] of [
+            [
+                "get_instructions",
+                { workflowId: fixture.workflowId, actionId: started.workflow.nextAction.actionId },
+                instructionsResponse,
+            ],
+            [
+                "get_artifact",
+                {
+                    workflowId: fixture.workflowId,
+                    actionId: started.workflow.nextAction.actionId,
+                    artifact: "prompt",
+                    maxBytes: 64,
+                },
+                artifactResponse,
+            ],
+        ] as const) {
+            const read = await spawnAttachedCli(operation, fixture.root, arguments_);
+            assertEquals(read.code, 0, read.stderr);
+            assertEquals(read.result, response.structuredContent);
+            assertEquals(read.result.operation, operation);
+        }
         const cli = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
         assert(cli.result.ok);
         assertEquals(cli.result, compactResponse.structuredContent);
@@ -576,6 +616,57 @@ test("compact recovery status preserves Core guidance and the next recovery acti
         assertEquals(status.workflow.nextAction.resultKind, expected.resultKind);
         assertEquals(status.workflow.nextAction.recovery, expected.recovery);
         assertEquals(await fixture.ciCount(), 0);
+    } finally {
+        await client.close().catch(() => {});
+        await transport.close().catch(() => {});
+        await fixture.close();
+    }
+});
+
+test("MCP read tools return invalid_input for malformed or extra arguments", async () => {
+    const fixture = await attachedValidationFixture();
+    const transport = new StdioClientTransport({
+        command: process.execPath,
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--quiet",
+            "--no-check",
+            "--config",
+            DENO_CONFIG_PATH,
+            CLI_PATH,
+            "attached",
+            "mcp",
+        ]),
+        cwd: fixture.root,
+        env: Object.fromEntries(
+            Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        ),
+        stderr: "pipe",
+    });
+    const client = new Client({ name: EVIDENCE.host, version: EVIDENCE.hostVersion });
+    try {
+        await client.connect(transport);
+        for (const [name, arguments_] of [
+            ["get_instructions", { workflowId: fixture.workflowId }],
+            ["get_artifact", { workflowId: fixture.workflowId, actionId: "current-action", artifact: "invalid" }],
+            [
+                "get_artifact",
+                {
+                    workflowId: fixture.workflowId,
+                    actionId: "current-action",
+                    artifact: "prompt",
+                    maxBytes: "64",
+                },
+            ],
+            ["get_pending_chat", { workflowId: fixture.workflowId, actionId: "current-action", unexpected: true }],
+        ] as const) {
+            const response = await client.callTool({ name, arguments: arguments_ });
+            const rejected = JSON.parse(JSON.stringify(response.structuredContent));
+            assertEquals(response.isError, true);
+            assertEquals(rejected.rejection.code, "invalid_input");
+            assertEquals(rejected.operation, name);
+        }
     } finally {
         await client.close().catch(() => {});
         await transport.close().catch(() => {});

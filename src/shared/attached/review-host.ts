@@ -209,7 +209,7 @@ export async function ensureReviewHosted(
             url: surface.url,
             round: basis.review.round,
             guidance:
-                "The browser review is open. Poll status for the durable outcome. Follow Planner instructions after feedback or cancellation; on plan_ready call start_execution immediately and dispatch the host worker.",
+                "The browser review is open. Poll status for the durable outcome. Follow Planner instructions after feedback or cancellation; on plan_ready call start_execution immediately and dispatch the host worker. On plan_saved, report Ready For Work, saved for later, and stop. When the user invokes /runwield:implement, start_execution accepts either plan_ready or plan_saved.",
         };
         hosted.set(workflow.workflowId, {
             ...existing,

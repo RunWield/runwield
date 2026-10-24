@@ -115,6 +115,16 @@ Plan ID and Triage front matter. The Plan stays an ordinary draft that Core can 
 plugin MCP server and lists its tools when the plugin loads; before a tool call, Core inspects no prompt or repository
 and writes no workflow state.
 
+**Requirement: Keep CLI and MCP operations equivalent.**
+
+Every MCP operation is also a `wld attached` CLI operation. Both carriers use the same input checks and return the same
+content, including current-action instructions, bounded artifacts, and pending review chat.
+
+**Acceptance scenario: Read through either carrier.**
+
+Given a current action, `get_instructions`, `get_artifact`, and `get_pending_chat` return the same content through CLI
+and MCP. Invalid read arguments return an `invalid_input` rejection through either carrier.
+
 **Requirement: Leave ordinary host work unchanged outside explicit activation.**
 
 - Installing a RunWield Connect plugin must not alter ordinary External Agent Host behavior.
@@ -272,6 +282,23 @@ the external host. The host continues to own its conversation and model calls.
 - The External Agent Host may summarize review progress, but RunWield remains the authority for the resulting lifecycle
   transition.
 
+**Requirement: Preserve the selected Plan approval action.**
+
+Approve & Run authorizes immediate execution after readiness. Approve for Later leaves the Plan `ready_for_work` and
+starts no execution. Claude reports that it is saved; `/runwield:implement` starts it later. If recovery finds approval
+without a saved approval action, Claude does not infer permission to run. Shared execution completes readiness when a
+crash left the Plan `approved`. A review decision also checks the saved controller revision under the Plan lock; a
+newer Core decision cannot be overwritten by a stale Attached round.
+
+**Acceptance scenarios:**
+
+- **Save for later:** After Approve for Later, status reports `plan_saved`, no execution worktree exists, and
+  `/runwield:implement` starts the ready Plan. Approve & Run still reports `plan_ready` and continues immediately.
+- **Approval recovery:** After process loss between approval and readiness, status reports saved work without inventing
+  an approval action. Explicit implementation completes readiness and starts execution.
+- **Concurrent review:** After Core records a newer decision, the older Attached round is rejected without changing
+  the Plan or its pending Attached outcome.
+
 **Requirement: Answer review chat in the coordinating Claude session.**
 
 Both Attached review pages offer chat. Compact status reports chat presence; an explicit current-action read returns
@@ -309,12 +336,20 @@ consented shared Core in-place completion: Claude recording runs before Verified
 publication claim. Canonical Plans, Work Records, and recovery evidence remain. Normal proven cleanup can remove the
 execution worktree; interrupted or uncertain delivery retains work and recovery artifacts.
 
+A repairable publication conflict issues a durable repair action for a fresh Claude worker in the publication root.
+The worker resolves and stages conflicted files; Core completes the merge and publication. Completion resumes delivery
+without repeating passed CI, Code Review, or recording. The shared merge-repair budget persists across processes.
+
 **Acceptance scenarios:**
 
 - **Saved current-diff decision:** Given `codeReview: always`, status returns the saved Code Review page. A fresh
   process restores the pending wait. Approval of a different diff is rejected and does not authorize publication.
 - **Human Feedback repair:** Given browser Feedback, a fresh Claude worker repairs the issued `human_feedback` action.
   Core reruns configured re-verification, then opens a new Code Review round for the repaired diff.
+- **Publication conflict:** Given a repairable conflict, a fresh Claude worker receives the publication directory.
+  After it resolves and stages the files, Core confirms publication and closes delivery without rerunning CI. Two
+  unresolved repair completions exhaust the shared repair budget and retain recovery evidence; no third repair is
+  issued.
 - **Proof before closure:** Given passed local checks but no publication proof, the Attached workflow stays open. Proven
   Git publication closes it as `delivered` and releases host restrictions without claiming an onward merge.
 - **Consented in-place completion:** Given consented non-Git execution, Claude recording precedes shared Core completion
@@ -348,7 +383,8 @@ QUICK_FIX, and safe-handoff fallback beyond non-Git consent remain targets.
 
 **Requirement: Automatically hand approved work to its isolated implementer.**
 
-- After approval and readiness, Claude immediately starts execution; no separate execution confirmation is required.
+- After Approve & Run and readiness, Claude immediately starts execution; no separate execution confirmation is
+  required. Approve for Later stops at Ready For Work until `/runwield:implement`.
 - Core prepares a RunWield-owned worktree, branch, baseline, and registered execution attempt through the same authority
   used by Core Sessions. Claude discloses the directory, branch, and RunWield-owned `.gitignore` block.
 - The invoking checkout is preserved, including dirty and untracked user work, except that disclosed `.gitignore` block.
@@ -512,6 +548,8 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
 - Full `wld init` is not an entrance requirement.
+- Attached operations require a home directory for durable records. Without `HOME`, they return `home_unavailable`
+  with guidance to set it, and write nothing to the repository. There is no repository or temporary-storage fallback.
 - RunWield creates only the artifacts required by the invoked workflow and clearly previews material repo-local changes.
 - Richer context and memory seeding remain available through a namespaced host action such as `/runwield:init`.
 - Supporting actions may be namespaced under RunWield, but internal lifecycle transitions must not become a cluttered
@@ -539,6 +577,8 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 
 - Given a trusted uninitialized repository, when the user starts their first attached change, full `wld init` is
   optional and material required repository changes are previewed.
+- Given no home directory, activation, status, and current-action reads return `home_unavailable`. No `.wld` directory
+  or other repository artifact is created.
 - When host or Core processes stop, saved Plans and work remain available for useful continuation or explicit retry.
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.

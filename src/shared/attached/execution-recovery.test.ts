@@ -20,6 +20,7 @@ import {
     readRecordBytes,
     runOperation,
     spawnAttachedCli,
+    submitReview,
     withProject,
 } from "./attached-test-fixture.ts";
 import { completionInput, executionInput, implementing, readyPlan } from "./execution-test-fixture.ts";
@@ -430,3 +431,31 @@ for (const checkpoint of ["retained", "missing"] as const) {
         });
     });
 }
+
+test("execution recovers approval committed before readiness without a status write", async () => {
+    await withProject(async (root) => {
+        const submitted = await submitReview(root);
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        const approved = await loadPlan(root, "dark-mode-toggle");
+        assert(approved);
+        const status = await runOperation("status", root, { workflowId: submitted.workflowId });
+        assert(status.ok);
+        assertEquals(status.workflow.state, "plan_ready");
+        assertEquals(await loadPlan(root, "dark-mode-toggle"), approved, "Reconciliation must be read-only.");
+        const started = await runOperation(
+            "start_execution",
+            root,
+            executionInput(status.workflow, "recover-readiness"),
+        );
+        assert(started.ok && started.workflow.nextAction.kind === "implementation", JSON.stringify(started));
+        assertEquals(
+            (await loadPlan(started.workflow.nextAction.executionCwd, "dark-mode-toggle"))?.attrs.status,
+            "in_progress",
+        );
+    });
+});

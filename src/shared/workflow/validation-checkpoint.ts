@@ -59,6 +59,7 @@ export type ValidationCheckpoint = {
     pendingCiDecision?: PendingCiDecision;
     hostReview?: HostReviewerContinuation;
     operationalAttempts?: number;
+    publicationRepairs?: number;
     hostRecorder?: HostRecorderState;
     updatedAt: string;
 };
@@ -150,6 +151,7 @@ export function makeValidationCheckpoint(args: {
     pendingCiDecision?: PendingCiDecision;
     hostReview?: HostReviewerContinuation;
     operationalAttempts?: number;
+    publicationRepairs?: number;
     hostRecorder?: HostRecorderState;
 }): ValidationCheckpoint {
     return {
@@ -176,6 +178,7 @@ export function makeValidationCheckpoint(args: {
         ...(args.pendingCiDecision ? { pendingCiDecision: args.pendingCiDecision } : {}),
         ...(args.hostReview ? { hostReview: args.hostReview } : {}),
         ...(args.operationalAttempts !== undefined ? { operationalAttempts: args.operationalAttempts } : {}),
+        ...(args.publicationRepairs !== undefined ? { publicationRepairs: args.publicationRepairs } : {}),
         ...(args.hostRecorder ? { hostRecorder: args.hostRecorder } : {}),
         updatedAt: new Date().toISOString(),
     };

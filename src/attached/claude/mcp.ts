@@ -2,9 +2,9 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { Server } from "@modelcontextprotocol/sdk/server";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types";
-import { readAttachedAction, readStatus, runAttachedOperation } from "../../shared/attached/coordinator.ts";
+import { readStatus, runAttachedOperation } from "../../shared/attached/coordinator.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "../../shared/attached/review-host.ts";
-import { ATTACHED_OPERATIONS } from "../../shared/attached/operations.ts";
+import { ATTACHED_OPERATIONS, isAttachedReadOperation } from "../../shared/attached/operations.ts";
 import { actionId, compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import process from "node:process";
 import plugin from "./plugin/.claude-plugin/plugin.json" with { type: "json" };
@@ -65,92 +65,9 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
                     type: "object" as const,
                 },
             })),
-            {
-                name: "get_instructions",
-                description:
-                    "Fetch complete Core instructions or the exact decision prompt and options for the current action. The action ID must still be current. Call this from the worker that will perform the action, or from the coordinator before presenting a decision to the user.",
-                inputSchema: {
-                    type: "object" as const,
-                    additionalProperties: false,
-                    required: ["workflowId", "actionId"],
-                    properties: {
-                        workflowId: { type: "string", minLength: 1 },
-                        actionId: { type: "string", minLength: 1 },
-                    },
-                },
-            },
-            {
-                name: "get_artifact",
-                description:
-                    "Read a bounded UTF-8 page of the current action's prompt, execution report, or repair report. Continue with nextOffsetBytes until truncated is false. Use review_diff for diff inspection receipts.",
-                inputSchema: {
-                    type: "object" as const,
-                    additionalProperties: false,
-                    required: ["workflowId", "actionId", "artifact"],
-                    properties: {
-                        workflowId: { type: "string", minLength: 1 },
-                        actionId: { type: "string", minLength: 1 },
-                        artifact: { type: "string", enum: ["prompt", "execution_report", "repair_report"] },
-                        offsetBytes: { type: "integer", minimum: 0 },
-                        maxBytes: { type: "integer", minimum: 4, maximum: 65536 },
-                    },
-                },
-            },
-            {
-                name: "get_pending_chat",
-                description: "Fetch the oldest pending review chat turn after compact status reports chatPending.",
-                inputSchema: {
-                    type: "object" as const,
-                    additionalProperties: false,
-                    required: ["workflowId", "actionId"],
-                    properties: {
-                        workflowId: { type: "string", minLength: 1 },
-                        actionId: { type: "string", minLength: 1 },
-                    },
-                },
-            },
         ],
     }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        if (["get_instructions", "get_pending_chat", "get_artifact"].includes(request.params.name)) {
-            const input = request.params.arguments ?? {};
-            if (typeof input.workflowId !== "string" || typeof input.actionId !== "string") {
-                throw new McpError(ErrorCode.InvalidParams, `${request.params.name} requires workflowId and actionId.`);
-            }
-            const artifact = input.artifact;
-            if (
-                request.params.name === "get_artifact" &&
-                artifact !== "prompt" &&
-                artifact !== "execution_report" &&
-                artifact !== "repair_report"
-            ) {
-                throw new McpError(ErrorCode.InvalidParams, "Use prompt, execution_report, or repair_report.");
-            }
-            for (const key of ["offsetBytes", "maxBytes"]) {
-                if (input[key] !== undefined && typeof input[key] !== "number") {
-                    throw new McpError(ErrorCode.InvalidParams, `${key} must be an integer.`);
-                }
-            }
-            const result = await readAttachedAction({
-                projectRoot,
-                workflowId: input.workflowId,
-                actionId: input.actionId,
-                content:
-                    request.params.name === "get_artifact" &&
-                    (artifact === "prompt" || artifact === "execution_report" || artifact === "repair_report")
-                        ? artifact
-                        : request.params.name === "get_instructions"
-                          ? "instructions"
-                          : "chat",
-                offsetBytes: typeof input.offsetBytes === "number" ? input.offsetBytes : undefined,
-                maxBytes: typeof input.maxBytes === "number" ? input.maxBytes : undefined,
-            });
-            return {
-                content: [{ type: "text" as const, text: JSON.stringify(result) }],
-                structuredContent: result,
-                isError: !result.ok,
-            };
-        }
         const operation = ATTACHED_OPERATIONS.find((entry) => entry.name === request.params.name);
         if (!operation) throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
         const client = server.getClientVersion();
@@ -185,7 +102,7 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
                   )
                 : requestArguments;
         const argumentsWithEvidence =
-            operation.name === "status"
+            operation.name === "status" || isAttachedReadOperation(operation.name)
                 ? statusArguments
                 : {
                       ...request.params.arguments,
@@ -263,11 +180,13 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
             canHost && coordinated.workflow?.review?.status === "pending"
                 ? await readStatus({ projectRoot, workflowId: coordinated.workflow.workflowId })
                 : null;
-        const current = {
-            ...coordinated,
-            ...(refreshed?.workflow && { workflow: refreshed.workflow }),
-            ...(review && { review }),
-        };
+        const current = coordinated.workflow
+            ? {
+                  ...coordinated,
+                  ...(refreshed?.workflow && { workflow: refreshed.workflow }),
+                  ...(review && { review }),
+              }
+            : coordinated;
         const result = operation.name === "status" ? compactStatus(current, review) : compactResult(current);
         return {
             content: [{ type: "text" as const, text: JSON.stringify(result) }],

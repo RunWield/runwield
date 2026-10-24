@@ -129,7 +129,10 @@ test("fresh CLI workers complete CI repair, direct review, semantic repair, and 
     });
     try {
         let workflow = await fixture.status();
-        const call = async (name: import("./operations.ts").AttachedOperationName, payload: AttachedJsonObject) => {
+        const call = async (
+            name: import("./operations.ts").AttachedLifecycleOperationName,
+            payload: AttachedJsonObject,
+        ) => {
             const response = await spawnAttachedCli(name, fixture.root, {
                 workflowId: workflow.workflowId,
                 expectedRevision: workflow.revision,

@@ -1,3 +1,4 @@
+import { readStatus } from "./coordinator.ts";
 import process from "node:process";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { hostname } from "node:os";
@@ -9,13 +10,13 @@ import {
     realpath as fsRealpath,
     rm as fsRm,
 } from "node:fs/promises";
-import { ok as assert } from "node:assert/strict";
+import { throws as assertThrows, ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { WORK_KINDS } from "../../constants.js";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { type AttachedJsonObject } from "./operations.ts";
+import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "./operations.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import {
     activateInput,
@@ -303,20 +304,37 @@ test("a linked worktree finds the records of its primary checkout", async () => 
     });
 });
 
-test("without a home directory records fall back to the project internal runtime directory", async () => {
+test("without a home directory every operation rejects and leaves the repository unchanged", async () => {
     await withProcessGlobalTestLock(async () => {
-        const home = process.env["HOME"];
-        delete process.env["HOME"];
-        try {
-            await withProject(async (projectRoot) => {
-                assertEquals(locateAttachedWorkflows(projectRoot).homeBaseDir, null);
-                const triage = await activated(projectRoot);
-                const submitted = await run("triage_report", projectRoot, triageReportInput(triage));
-                assertEquals(submitted.ok && submitted.workflow.revision, 2);
-            });
-        } finally {
-            if (home !== undefined) process.env["HOME"] = home;
-        }
+        await withProject(async (projectRoot) => {
+            const home = process.env["HOME"];
+            const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+            delete process.env["HOME"];
+            delete process.env["WLD_TEST_SANDBOX_HOME"];
+            try {
+                assertThrows(() => locateAttachedWorkflows(projectRoot), /home_unavailable.*HOME/);
+                const status = await readStatus({ projectRoot });
+                assert(!status.ok);
+                assertEquals(status.rejection.code, "home_unavailable");
+                for (const { name } of ATTACHED_OPERATIONS) {
+                    const result = await run(name, projectRoot, name === "activate" ? activateInput() : {});
+                    assert(!result.ok, name);
+                    assertEquals(result.rejection.code, "home_unavailable", name);
+                    assert(result.rejection.message.includes("HOME"), name);
+                }
+                assertEquals(
+                    await fsStat(join(projectRoot, ".wld")).then(
+                        () => true,
+                        () => false,
+                    ),
+                    false,
+                );
+                assertEquals(await git(projectRoot, ["status", "--porcelain", "--ignored"]), "");
+            } finally {
+                if (home !== undefined) process.env["HOME"] = home;
+                if (sandboxHome !== undefined) process.env["WLD_TEST_SANDBOX_HOME"] = sandboxHome;
+            }
+        });
     });
 });
 

@@ -10,12 +10,7 @@ import {
     stat as fsStat,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import {
-    getHomeDir,
-    getRunWieldRuntimeDir,
-    PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-    RUNWIELD_DIR_NAME,
-} from "../../constants.js";
+import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
@@ -42,8 +37,8 @@ import process from "node:process";
  *
  * A record describes one host request, like a Session, so it lives in the user's home
  * keyed by the primary checkout root, not in Project Runtime State. Reading or writing
- * a record never touches the repository. With no home directory, records fall back to
- * the primary checkout's internal runtime directory, as worktrees do.
+ * a record never touches the repository. Without a home directory, Attached operations
+ * reject and ask the user to set HOME. There is no repository fallback.
  *
  * Every write holds a per-workflow lock file, checks the expected revision, and
  * replaces the file atomically. A lock left by a dead process is reclaimed.
@@ -88,8 +83,8 @@ export interface AttachedWorkflowRecord {
 export interface AttachedWorkflowLocation {
     projectRoot: string;
     workflowsDir: string;
-    /** `~/.wld/attached`, absent when records fall back into the project. */
-    homeBaseDir: string | null;
+    /** `~/.wld/attached`. A home directory is required. */
+    homeBaseDir: string;
 }
 
 export type LoadedAttachedWorkflow =
@@ -110,20 +105,9 @@ function canonicalPath(path: string): string {
 }
 
 export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLocation {
-    const primaryRoot = canonicalPath(resolvePrimaryCheckoutRoot(canonicalPath(projectRoot)));
     const homeDir = getHomeDir();
-    if (!homeDir) {
-        return {
-            projectRoot: primaryRoot,
-            workflowsDir: join(
-                getRunWieldRuntimeDir(primaryRoot),
-                PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-                ATTACHED_DIR_NAME,
-                WORKFLOWS_DIR_NAME,
-            ),
-            homeBaseDir: null,
-        };
-    }
+    if (!homeDir) throw new Error("home_unavailable: Set HOME to use Attached workflows.");
+    const primaryRoot = canonicalPath(resolvePrimaryCheckoutRoot(canonicalPath(projectRoot)));
     const homeBaseDir = join(homeDir, RUNWIELD_DIR_NAME, ATTACHED_DIR_NAME);
     return {
         projectRoot: primaryRoot,
@@ -156,7 +140,6 @@ async function findMovedRecord(
     location: AttachedWorkflowLocation,
     workflowId: string,
 ): Promise<AttachedWorkflowRecord | null> {
-    if (!location.homeBaseDir) return null;
     let entries: Dirent[];
     try {
         entries = await Array.fromAsync(await fsReaddir(location.homeBaseDir, { withFileTypes: true }));

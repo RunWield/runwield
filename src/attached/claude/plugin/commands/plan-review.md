@@ -19,7 +19,8 @@ Show any returned `compatibility` notice to the user before continuing. On `inco
    follow the Planner instructions and returned `context` (feedback, image paths, project setup, and note). After a cancellation, tell the user that review was
    canceled and ask what to do next; the workflow remains open. For feedback, revise and call `plan_written` with the new
    action ID and current workflow revision.
-4. For `plan_ready`, immediately call `start_execution` with the current workflow ID and revision, a new operation ID,
+4. For `plan_saved`, report that the Plan is Ready For Work, saved for later, and stop. Tell the user
+   `/runwield:implement` starts it. For `plan_ready`, immediately call `start_execution` with the current workflow ID and revision, a new operation ID,
    and `payload: {}`. Then follow the Implementation flow in `/runwield:request`: ask any plain-text consent question,
    disclose the execution directory and branch, dispatch a fresh host subagent without host worktree isolation, and
    submit its bullet report as `task_completed.message` from this conversation. After a decline, stop; do not restart.
