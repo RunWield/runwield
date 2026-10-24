@@ -156,3 +156,17 @@ Manual verification steps for attached-mode-claude-feature-preview/06-publish-va
       appears in the Work Record.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/06-publish-validated-work-and-record-the-outcome" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session" -->
+
+## Answer review chat from the Claude session
+
+Manual verification steps for attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session
+
+- [ ] Open an Attached Plan review, ask a question in chat, and confirm Claude's reply appears without changing the Plan or closing the review.
+- [ ] Request a Plan change in chat; confirm the revised Plan opens a new review round on the same page.
+- [ ] Open an Attached code review, ask a question in chat, and confirm Claude's reply appears without changing the diff or closing the review.
+- [ ] Request a code change in chat; confirm the revised diff opens a new review round and requires a new approval decision.
+- [ ] Send a chat message, restart Claude while the message is queued, and confirm the restored review shows the message and reply.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session" -->

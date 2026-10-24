@@ -1,4 +1,5 @@
 ---
+planId: "3f9afd7e-ac62-4392-b44f-dda6caf80355"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -13,19 +14,23 @@ affectedPaths:
     - "src/attached/claude/mcp.ts"
     - "src/attached/claude/plugin/commands/"
     - "docs/prd/runwield-connect-prd.md"
+    - "docs/prd/runwield-core-prd.md"
+    - "src/shared/attached/code-review-decision.ts"
 executionAgent: "engineer"
+collaborationRecommendation: "autonomous"
 devServerCommand: "deno task workspace:dev"
 devServerUrl: "http://127.0.0.1:5173/dev/code-review"
 devServerHmr: true
 createdAt: "2026-10-13T00:00:00.000Z"
-status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
 order: 8
 dependencies:
     - "06-publish-validated-work-and-record-the-outcome"
 targetBranch: "epic/attached-mode-claude-feature-preview"
-planId: "3f9afd7e-ac62-4392-b44f-dda6caf80355"
+userVerifiedAt: null
+validatedCommit: "e44042fc82b895e70eb4d44861645fe9fa05ec92"
+status: "verified"
 ---
 
 # Answer review chat from the Claude session
@@ -46,6 +51,27 @@ The page side already exists:
 
 Only the source of the reply changes.
 
+### What the Attached pages do today (checked 2026-10-13 on the epic branch)
+
+- **Chat is hidden.** The page enables chat only when the host passes a `reviewConversation`, which sets
+  `conversationStatusUrl` (`review-launcher.ts:370`, `:492`). `review-host.ts` passes none on either page.
+  `review-host.test.ts` asserts that `/api/review/conversation` returns 404.
+- **Code review rejects a chat turn.** `applyAttachedCodeReviewDecision` throws "Review chat is not available in this
+  Preview step." (`code-review-decision.ts:15`).
+- **Plan review would apply a chat turn as Feedback.** `applyAttachedReviewDecision` has no `conversationTurn` check.
+  This must change before chat is enabled.
+- **`plan_written` is rejected while a review is pending** (`coordinator.ts:471`). A Plan change from chat must first
+  move the workflow from `awaiting_review` to `awaiting_planning`.
+- **The saved code review wait is serialized.** The host code review `interaction`, including
+  `_meta.reviewConversation`, is copied into the Plan's validation checkpoint. Attached chat must never write events into
+  that object.
+- **The page ends a chat turn when `revision` increases.** The Plan page reads streamed `events` for the reply text and
+  stops waiting when `revision` goes up. It then reads `plan`, which can be unchanged. It waits up to 180 seconds
+  (`PlanReviewSurface.tsx`). The code page has no time limit.
+- **The pages are hosted by the MCP process** (`ensureReviewHosted`, called after every MCP tool call). The page and
+  `status` run in the same process while Claude is open. Saved state on the Attached record carries a turn across a
+  restart.
+
 Owning PRD capabilities:
 
 - Connect [artifact privacy and records](../../prd/runwield-connect-prd.md#artifact-privacy-and-records) — no host
@@ -63,6 +89,12 @@ Owning PRD capabilities:
 - **Chat text is temporary.** The conversation is not a durable artifact. Only code, documents, Work Records, and memory
   are durable. Core may keep chat text on the open review round so the page restores after a restart. Chat text must not
   go into a durable artifact.
+- **A code change from chat is saved as Claude's change summary (2026-10-13).** Core's repair path writes the feedback
+  text to delivery evidence and to the saved repair request. In Attached, that text is a short summary that Claude
+  writes in `review_reply`, such as "Rename `foo` to `bar` in the review handler". The user's chat message is never
+  that text. A Plan change from chat records no Feedback text: the revised Plan is the durable result. Set aside: a
+  fixed marker only (evidence says nothing, and a restart loses the repair instructions), and question-only code chat
+  (drops part of the objective).
 
 ### Epic Scope Changes
 
@@ -89,24 +121,31 @@ A chat message travels on the `status` loop that Claude already polls while a re
 
 ```text
 user sends a chat message on /review/plan or /review/code
-  → Core saves the turn on the open review round (survives a restart)
-  → status returns nextAction review_chat { round, message, selected lines }
+  → onDecision sees conversationTurn: true
+  → coordinator saves the turn on the open round (record.review or record.validation), not as a decision
+  → status returns the same review / code_review action with chat { turnId, message, selections }
   → Claude answers in its own conversation context
-       question → answers directly
-       change   → plan: revises the Plan and calls plan_written
-                  code: dispatches a human_feedback repair subagent
-  → MCP review_reply { round, text } → Core appends the reply to the conversation
-  → the page shows the reply and stays open; a changed Plan or diff starts a new round
+  → MCP review_reply { turnId, text, change?: { summary } }
+       no change     → reply saved, conversation revision +1, page shows the reply, round stays open
+       change (plan) → reply saved, round closes as "revising", state awaiting_planning
+                       → Claude revises the Plan and calls plan_written → new round on the same page
+       change (code) → reply saved, Core resumes validation with a human_feedback repair request
+                       whose feedback text is change.summary (never the chat message)
+                       → Claude dispatches the repair subagent → re-verification → new code review round
 ```
 
-The review launcher today fills `ReviewConversation` from a live Core turn. This child lets a review host supply turns
-and replies from the saved Attached record instead. Core keeps its current chat behavior.
+The chat item is a field on the existing `review` and `code_review` actions, not a new `nextAction` kind. Hosting keys
+on those kinds, and the plugin polling loops keep working.
+
+`review-host.ts` passes a host-owned `ReviewConversation` to both launchers. It builds the object from the saved turns on
+the Attached record. It is a separate object from the serialized `interaction._meta.reviewConversation`. Core keeps its
+current chat behavior.
 
 > [!NOTE]
 > **Chat never approves or rejects**
 >
-> A chat reply cannot close a round. A reply that changed code invalidates an earlier approval through the diff hash. A
-> revised Plan opens a new Plan review round.
+> A chat reply never records an approval or a rejection. A reply with `change` ends the round so the Plan or code can
+> change. The new Plan or diff then opens a new round, and the user decides there.
 
 Option set aside: answer each message with a fresh repair subagent, as Core does. It has no conversation context, and a
 plain question still triggers a repair round and re-verification.
@@ -121,12 +160,15 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/ui/review/review-launcher.ts`, `src/ui/workspace/server.js`, `routes/api/review-handlers.js` — let a review host
   supply chat turns and replies from a saved source instead of a live Core turn. The page UI should not change; if it
   must, use `docs/design-system.md` and the current review components.
-- `src/shared/attached/operations.ts`, `coordinator.ts`, `record-store.ts` — the `review_chat` next action, the
-  `review_reply` operation, and saved chat turns on the open review round.
-- `src/shared/attached/review-host.ts` — wire chat for the Plan review and code review pages.
+- `src/shared/attached/operations.ts`, `coordinator.ts`, `record-store.ts` — the `chat` field on the `review` and
+  `code_review` actions, the `review_reply` operation, and saved chat turns on the open round.
+- `src/shared/attached/review-host.ts`, `code-review-decision.ts` — pass a host-owned `ReviewConversation` to both pages,
+  and route `conversationTurn` decisions to the saved chat queue instead of a decision.
+- `src/shared/attached/review-host.test.ts` — its 404 assertion for `/api/review/conversation` is expected to change.
 - `src/attached/claude/mcp.ts`, `src/attached/claude/plugin/commands/` — the `review_reply` tool and command text that
   tells Claude how to answer, revise, or dispatch repair.
-- `docs/prd/runwield-connect-prd.md` — the Attached review chat scenario.
+- `docs/prd/runwield-connect-prd.md`, `docs/prd/runwield-core-prd.md` — replace the child 07 target notes and add the
+  Attached review chat scenario.
 
 Left out on purpose: Core review chat. Core keeps its Reviewer Feedback Engineer chat.
 
@@ -139,38 +181,59 @@ Left out on purpose: Core review chat. Core keeps its Reviewer Feedback Engineer
 
 ## Implementation Steps
 
-1. A chat message sent from the Attached Plan review page or code review page is saved on the open review round. It
-   survives a Core process restart. `status` returns `review_chat` with the round, message text, and selected lines.
-2. `review_reply` appends the reply to that round's `ReviewConversation`, and `/api/review/conversation` returns it. A
-   reply for a closed or stale round is rejected. Messages that arrive while Claude is busy stay queued in order and are
-   returned one at a time.
-3. A Plan revised from chat goes through `plan_written` and opens a new Plan review round on the same page. A code
-   change from chat goes through the `human_feedback` repair path and re-verification, and opens a new code review
-   round. A chat turn never records an approval or feedback decision.
-4. The plugin command text tells Claude to answer questions directly, to revise the Plan for Plan change requests, and
-   to dispatch a repair subagent for code change requests.
-5. Chat text is kept only on the open review round. When the round closes, or the record closes, the text is removed. It
-   is not written to the Plan, the Work Record, the memory index, telemetry, or publication evidence.
-6. Core review chat behavior does not change.
-7. `docs/prd/runwield-connect-prd.md` describes Attached review chat answered by the host session, with an acceptance
-   scenario. The complete Preview release stays labeled as target until child 08.
+1. Both Attached review pages show chat: `/api/review/conversation` returns 200 for an open Attached round. A
+   `conversationTurn: true` decision from either page is saved as a chat turn on the open round (`record.review` for Plan
+   review, `record.validation` for code review). It is not applied as Feedback, approval, or cancellation. It survives a
+   Core process restart.
+2. While a turn waits, `status` returns the same `review` or `code_review` action with
+   `chat: { turnId, message, selections }`. Turns that arrive before a reply stay queued in order, and `status` returns
+   the oldest one.
+3. `review_reply { turnId, text, change?: { summary } }` saves the reply. `change.summary` is required when `change`
+   is present and must be non-empty. `/api/review/conversation` returns it in `events` and increases
+   `revision`. The round stays open. A reply for an unknown, answered, or closed round's turn is rejected.
+4. `review_reply` with `change` on a Plan round closes the round without a Feedback decision or Feedback text, and
+   moves the workflow to `awaiting_planning` with a Planner action. The next `plan_written` opens a new Plan review
+   round on the same page, and the page shows the revised Plan as the end of that turn.
+5. `review_reply` with `change` on a code review round resumes Core validation through `validation_decision` with
+   outcome `feedback` and message `change.summary`. Delivery evidence and the saved repair request hold that summary,
+   not the chat message. The repair runs through the existing host repair path and re-verification, then opens a new
+   code review round with the new diff. An earlier approval does not carry over, because the decision key includes the
+   diff.
+6. No chat path records an approval. `interaction._meta.reviewConversation` in the saved validation checkpoint never
+   contains chat text.
+7. The `review_reply` MCP tool exists in `mcp.ts` and `operations.ts`. `plan-review.md`, `request.md`, and `validate.md`
+   tell Claude what to do when `status` returns `chat`: answer questions directly with `review_reply`, use `change` for
+   a Plan change and then revise and call `plan_written`, and use `change` for a code change and then dispatch the
+   repair subagent that Core requests. The text tells Claude to write `change.summary` as a short description of the
+   change, not a quote of the chat message.
+8. Chat text is kept only on the open round. When the round closes, or the record closes, the text is removed. It is
+   not written to the Plan, the Work Record, the memory index, telemetry, or publication evidence.
+9. Core review chat behavior does not change.
+10. `docs/prd/runwield-connect-prd.md` replaces the child 07 **TARGET** notes in Review experience, the Code Review
+    decision requirement, and the end-to-end journey with delivered Attached review chat, and adds an acceptance
+    scenario. `docs/prd/runwield-core-prd.md` drops its matching child 07 target note. The complete Preview release
+    stays labeled as target until child 08.
 
 ## Verification Plan
 
 - Automated: run
   `bun scripts/run-tests.js src/shared/attached/ src/attached/claude/ src/ui/review/code-review.test.ts src/ui/workspace/workspace-code-review.integration.test.ts`.
 - New Attached tests through the real coordinator and record store (fake only the Claude turn boundary):
-  - A chat turn on each page produces `review_chat`. `review_reply` text is returned by `/api/review/conversation`. The
-    round stays open, and no decision is recorded. This test fails if the reply is dropped or written as a decision.
-  - Two messages sent before a reply come back in order, one at a time.
-  - A reply for a closed round is rejected.
-  - A code change made from chat invalidates an earlier approval through the diff hash.
-  - A saved chat turn is returned by `status` from a fresh Core process.
-- No Core model turns: instrument `HostedSession` and `runIsolatedAgentSession` creation. The count is zero while
-  Attached chat runs.
-- Black-box: seed private sentinel text in the Claude conversation, use it in a chat question, then complete delivery.
-  The sentinel must not appear in the Plan, the Work Record, the memory index, telemetry, publication evidence, or the
-  Attached record after the round closes.
+    - A chat turn on each page makes `status` return the `review` or `code_review` action with `chat`. `review_reply` text is returned by `/api/review/conversation`. The
+      round stays open, and no decision is recorded. This test fails if the reply is dropped or written as a decision.
+    - Two messages sent before a reply come back in order, one at a time.
+    - A reply for a closed round is rejected.
+    - A code change made from chat invalidates an earlier approval through the diff hash.
+    - A saved chat turn is returned by `status` from a fresh Core process.
+    - A Plan chat turn is not applied as Feedback: the round stays `pending` and the Plan status does not change.
+    - A code `review_reply` with `change` saves `change.summary` in delivery evidence and the repair request, and neither
+      contains the chat message text. A `change` without a summary is rejected.
+    - `review_reply` with `change` on a Plan round leads to `awaiting_planning`, and the next `plan_written` opens round
+      N+1.
+- No Core model turns and privacy: extend `delivery-privacy.test.ts`, which already counts `HostedSession` and
+  `runIsolatedAgentSession` creation. Add a chat question on each page that carries the private sentinel. The count stays
+  zero. The sentinel must not appear in the Plan (including its validation checkpoint), the Work Record, the memory
+  index, telemetry, publication evidence, or the Attached record after the round closes.
 - Headed browser: with the MCP-hosted pages, send a chat message on Plan review and on code review, see Claude's reply,
   restart Claude with a queued message, and see the page restore. `deno task workspace:dev` at
   `http://127.0.0.1:5173/dev/code-review` is a fixture, not recovery proof.
@@ -179,7 +242,11 @@ Left out on purpose: Core review chat. Core keeps its Reviewer Feedback Engineer
 
 ## Edge Cases & Considerations
 
+- Claude can copy the user's words into `change.summary`. The command text tells Claude to write a short summary of the
+  change, not to quote the chat. The privacy test controls the summary, so it cannot prove Claude's wording.
 - Claude can misread a change request as a question. The diff hash still catches every real edit, and the user can
   submit structured feedback.
 - Assumption: replies show as one complete message, not streamed. `review_reply` sends the whole text.
 - Assumption: the page offers no "interrupt now" choice. Messages wait until Claude next polls `status`.
+- Assumption: the Plan page keeps its 180-second wait. A Plan revision can take longer. The page then shows "Claude is
+  still working", and a reload restores the saved turns and the new round.

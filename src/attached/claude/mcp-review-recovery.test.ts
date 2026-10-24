@@ -72,6 +72,7 @@ test("fresh MCP status restores the same pending round and transport close stops
                 [
                     "activate",
                     "triage_report",
+                    "review_reply",
                     "status",
                     "plan_written",
                     "start_execution",

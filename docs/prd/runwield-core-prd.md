@@ -583,8 +583,9 @@ Epic-child checklist artifact; its host can suggest checks after delivery withou
 **Attached delivery maturity:** Automated real-Git and fresh-process checks cover delivery and recovery. Headed MCP
 checks confirm feedback, a refreshed diff, approval, and pending-review restore. Live Claude Code 2.1.299 confirms fresh
 Recorder dispatch, proven publication, indexed recording, and private-conversation exclusion. Complete Claude FEATURE
-Preview release and live integrated support remain **TARGET** until child 08. Review-page chat remains child 07
-**TARGET** scope.
+Preview release and live integrated support remain **TARGET** until child 08. Attached review chat uses the host
+conversation and restores pending turns after process loss; see
+[Connect review experience](runwield-connect-prd.md#shared-plan-and-verification-outcomes). Core review chat keeps its existing repair Agent behavior.
 
 **Acceptance scenarios: Attached completion and recovery.**
 

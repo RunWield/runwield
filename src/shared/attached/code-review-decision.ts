@@ -1,5 +1,5 @@
 /** Browser decisions use the same durable validation operation as the MCP carrier. */
-import { runValidationOperation } from "./coordinator.ts";
+import { saveAttachedReviewChat, runValidationOperation } from "./coordinator.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
 import { normalizeCodeReviewDecision } from "../../ui/review/code-review.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
@@ -12,7 +12,10 @@ export async function applyAttachedCodeReviewDecision(
     actionId: string,
     decision: ReviewDecision,
 ): Promise<void> {
-    if (decision.conversationTurn) throw new Error("Review chat is not available in this Preview step.");
+    if (decision.conversationTurn) {
+        await saveAttachedReviewChat(projectRoot, workflowId, actionId, decision);
+        return;
+    }
     const loaded = await loadAttachedWorkflowRecord(locateAttachedWorkflows(projectRoot), workflowId);
     if (loaded.status !== "found") throw new Error("The Attached workflow cannot be restored.");
     const record = loaded.record;
@@ -30,7 +33,9 @@ export async function applyAttachedCodeReviewDecision(
     const feedback = [
         buildHumanReviewFeedbackText(normalized.feedback, normalized.annotations),
         paths.length ? `Read these review image attachments before repairing:\n${paths.join("\n")}` : "",
-    ].filter(Boolean).join("\n\n");
+    ]
+        .filter(Boolean)
+        .join("\n\n");
     const result = await runValidationOperation("validation_decision", {
         projectRoot,
         workflowId,

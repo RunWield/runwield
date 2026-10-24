@@ -46,6 +46,21 @@ Continue the project's open RunWield workflow. Do not activate a new request.
     `wld wr supersede` for later use. Suggest manual checks from the Plan in this Claude conversation. Do not save the
     checks as a document, memory or Work Record.
 
+## Review chat
+
+When `review` or `code_review` has `chat`, answer its oldest pending `turnId` before polling again. Use the current
+workflow ID and revision, a new operation ID, and `review_reply` with `payload: { turnId, text }`. Read `message` and
+`selections` in this conversation. Answer questions directly; do not dispatch a worker or make a review decision.
+
+For a Plan change, add `change: { summary }`, then follow the returned Planner instructions, revise the Plan, and call
+`plan_written`. For a code change, add `change: { summary }`, then dispatch the fresh repair subagent that Core requests
+and submit its report. Core re-verifies the repair and opens the new diff. Write `summary` as a short description of the
+change, not a quote of the user's message. Never put raw chat in the Plan, a worker report, or recording evidence.
+
+Chat cannot approve or reject. The revised artifact needs a new browser decision. On a stale reply, read `status`; do
+not apply the reply again to a different turn. Turns stay queued in order. Continue polling the same review action
+between replies. A process restart restores pending turns, not a permanent transcript.
+
 Stay in Claude Code and the browser. Core owns the gates; Claude owns every model call. To allow slow checks, start
 Claude Code with `MCP_TOOL_TIMEOUT=600000` (milliseconds), or a higher timeout for the project's configured command.
 RunWield sends MCP progress every 30 seconds during an active operation and stops it when the operation ends.
