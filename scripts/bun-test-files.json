@@ -512,7 +512,7 @@
     "src/tools/__tests__/task-completed.test.js",
     "src/tools/__tests__/triage-report.test.js",
     "src/tools/__tests__/user-interview-combinations.test.ts",
-    "src/tools/__tests__/user-interview.test.js",
+    "src/tools/__tests__/user-interview.test.ts",
     "src/tools/artifact-written.test.ts",
     "src/tools/background-delegate-completion.test.ts",
     "src/tools/background-delegate-failure.test.ts",

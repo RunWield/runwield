@@ -2,11 +2,22 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
-import { createUserInterviewTool } from "../user-interview.ts";
+import { createUserInterviewTool, type InterviewResultDetails } from "../user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
+import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { Static } from "@earendil-works/pi-ai";
+import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.js";
 
-/** @param {{ promptSelect?: () => Promise<string | null>, promptText?: () => Promise<string | null> }} overrides */
-function makeUi(overrides) {
+type InterviewTool = ReturnType<typeof createUserInterviewTool>;
+type InterviewParameters = Static<InterviewTool["parameters"]>;
+type InterviewResult = AgentToolResult<InterviewResultDetails>;
+
+interface PromptOverrides {
+    promptSelect?: () => Promise<string | null>;
+    promptText?: () => Promise<string | null>;
+}
+
+function makeUi(overrides: PromptOverrides) {
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: getCwd() });
     hostedSession.setInteractionAdapter({
         requestInteraction: async (request) => {
@@ -22,21 +33,13 @@ function makeUi(overrides) {
     return { hostedSession };
 }
 
-/**
- * @param {{ execute: unknown }} tool
- * @param {object} params
- */
-async function executeTool(tool, params) {
-    const execute =
-        /** @type {(id: string, params: object, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<{ content: Array<{ type: string, text?: string }>, details: import('../user-interview.ts').InterviewResultDetails }>} */ (tool
-            .execute);
-    return await execute("tool-call-1", params, new AbortController().signal, () => {}, {});
+async function executeTool(tool: InterviewTool, params: InterviewParameters): Promise<InterviewResult> {
+    const execute = tool.execute;
+    // The tool ignores the SDK context; preserve the original JavaScript fixture's empty object.
+    return await execute("tool-call-1", params, new AbortController().signal, () => {}, {} as ExtensionToolContext);
 }
 
-/**
- * @param {{ content: Array<{ type: string, text?: string }> }} result
- */
-function firstText(result) {
+function firstText(result: Pick<InterviewResult, "content">) {
     const first = result.content[0];
     assertEquals(first?.type, "text");
     if (!first || first.type !== "text") throw new Error("Expected text content.");
@@ -55,9 +58,11 @@ test("userInterviewTool exposes expected metadata", () => {
 });
 
 test("userInterviewTool completes a single yes/no question", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve("yes"),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve("yes"),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -87,9 +92,11 @@ test("userInterviewTool completes a single yes/no question", async () => {
 });
 
 test("userInterviewTool result text shows the question and selected answer", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve("2"),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve("2"),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -107,10 +114,12 @@ test("userInterviewTool result text shows the question and selected answer", asy
 });
 
 test("userInterviewTool result text shows Other answers", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve("other"),
-        promptText: () => Promise.resolve("text from user here"),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve("other"),
+            promptText: () => Promise.resolve("text from user here"),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -131,10 +140,12 @@ test("userInterviewTool returns to choices when multiple-choice Other text is ca
     const selectedValues = ["other", "high"];
     const textValues = [null];
 
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve(selectedValues.shift() ?? null),
-        promptText: () => Promise.resolve(textValues.shift() ?? null),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve(selectedValues.shift() ?? null),
+            promptText: () => Promise.resolve(textValues.shift() ?? null),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -158,10 +169,12 @@ test("userInterviewTool returns to yes/no choices when Other text is canceled", 
     const selectedValues = ["other", "no"];
     const textValues = [null];
 
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve(selectedValues.shift() ?? null),
-        promptText: () => Promise.resolve(textValues.shift() ?? null),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve(selectedValues.shift() ?? null),
+            promptText: () => Promise.resolve(textValues.shift() ?? null),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -181,10 +194,12 @@ test("userInterviewTool completes a mixed 3-question batch", async () => {
     const selectedValues = ["high", "frontend"];
     const textValues = ["Use design tokens."];
 
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve(selectedValues.shift() ?? null),
-        promptText: () => Promise.resolve(textValues.shift() ?? null),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve(selectedValues.shift() ?? null),
+            promptText: () => Promise.resolve(textValues.shift() ?? null),
+        }),
+    );
 
     const result = await executeTool(tool, {
         questions: [
@@ -227,8 +242,7 @@ test("userInterviewTool completes a mixed 3-question batch", async () => {
 
 test("userInterviewTool does not duplicate recommended marker when default choice label already includes it", async () => {
     const hostedSession = new HostedSession({ id: "recommended-label", cwd: getCwd() });
-    /** @type {Array<{ value: string, label: string }>} */
-    let displayedOptions = [];
+    let displayedOptions: RuntimeInteractionOption[] = [];
     hostedSession.setInteractionAdapter({
         requestInteraction: (request) => {
             displayedOptions = [...(request.options || [])];
@@ -250,10 +264,7 @@ test("userInterviewTool does not duplicate recommended marker when default choic
         },
     });
 
-    assertEquals(
-        displayedOptions[0]?.label,
-        "Yes—parallel children, parent waits for the batch (recommended)",
-    );
+    assertEquals(displayedOptions[0]?.label, "Yes—parallel children, parent waits for the batch (recommended)");
     assertEquals(result.details.status, "completed");
     assertEquals(
         result.details.answers[0]?.valueLabel,
@@ -269,10 +280,12 @@ test("userInterviewTool returns invalid_request when both question and questions
             type: "yes_no",
             prompt: "Question A",
         },
-        questions: [{
-            type: "yes_no",
-            prompt: "Question B",
-        }],
+        questions: [
+            {
+                type: "yes_no",
+                prompt: "Question B",
+            },
+        ],
     });
 
     assertEquals(result.details.status, "invalid_request");
@@ -290,10 +303,7 @@ test("userInterviewTool returns invalid_request for validation errors", async ()
                 type: "multiple_choice",
                 prompt: "Pick one",
                 default: "gamma",
-                choices: [
-                    { value: "alpha" },
-                    { value: "alpha" },
-                ],
+                choices: [{ value: "alpha" }, { value: "alpha" }],
             },
             {
                 id: "dup",
@@ -304,16 +314,18 @@ test("userInterviewTool returns invalid_request for validation errors", async ()
     });
 
     assertEquals(result.details.status, "invalid_request");
-    const codes = new Set((result.details.errors ?? []).map((/** @type {{ code: string }} */ e) => e.code));
+    const codes = new Set((result.details.errors ?? []).map((e) => e.code));
     assert(codes.has("DUPLICATE_CHOICE_VALUE"));
     assert(codes.has("DEFAULT_NOT_IN_CHOICES"));
     assert(codes.has("DUPLICATE_ID"));
 });
 
 test("userInterviewTool returns canceled when user cancels", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve(null),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve(null),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -331,9 +343,11 @@ test("userInterviewTool returns canceled when user cancels", async () => {
 });
 
 test("userInterviewTool returns validation_error for empty text answer when allowEmpty=false", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptText: () => Promise.resolve("   "),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptText: () => Promise.resolve("   "),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -349,9 +363,11 @@ test("userInterviewTool returns validation_error for empty text answer when allo
 });
 
 test("userInterviewTool returns validation_error for invalid multiple-choice selection", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve("not-a-real-option"),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve("not-a-real-option"),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -386,23 +402,22 @@ test("userInterviewTool returns invalid_request for invalid id and choices", asy
             id: "bad id",
             type: "multiple_choice",
             prompt: "Pick",
-            choices: [
-                { value: "" },
-                { value: "a" },
-            ],
+            choices: [{ value: "" }, { value: "a" }],
         },
     });
 
     assertEquals(result.details.status, "invalid_request");
-    const codes = new Set((result.details.errors ?? []).map((/** @type {{ code: string }} */ e) => e.code));
+    const codes = new Set((result.details.errors ?? []).map((e) => e.code));
     assert(codes.has("INVALID_ID"));
     assert(codes.has("EMPTY_CHOICE_VALUE"));
 });
 
 test("userInterviewTool returns validation_error for invalid yes/no response", async () => {
-    const tool = createUserInterviewTool(makeUi({
-        promptSelect: () => Promise.resolve("maybe"),
-    }));
+    const tool = createUserInterviewTool(
+        makeUi({
+            promptSelect: () => Promise.resolve("maybe"),
+        }),
+    );
 
     const result = await executeTool(tool, {
         question: {
@@ -419,8 +434,7 @@ test("userInterviewTool returns validation_error for invalid yes/no response", a
 
 test("userInterviewTool uses HostedSession interaction broker when available", async () => {
     const hostedSession = new HostedSession({ id: "brokered-interview", cwd: getCwd() });
-    /** @type {string[]} */
-    const prompts = [];
+    const prompts: string[] = [];
     hostedSession.setInteractionAdapter({
         requestInteraction: (request) => {
             prompts.push(request.prompt);
