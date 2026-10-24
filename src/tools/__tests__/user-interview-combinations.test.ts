@@ -1,11 +1,17 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { createUserInterviewTool } from "../../tools/user-interview.ts";
+import {
+    createUserInterviewTool,
+    type InterviewParameters,
+    type InterviewResultDetails,
+} from "../../tools/user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
+import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 
-/** @param {Array<string | null>} [responses] */
-function createInterviewTool(responses = []) {
+type InterviewTool = ReturnType<typeof createUserInterviewTool>;
+
+function createInterviewTool(responses: Array<string | null> = []) {
     const session = new HostedSession({ id: `interview-${crypto.randomUUID()}`, cwd: getCwd() });
     let callCount = 0;
     session.setInteractionAdapter({
@@ -19,15 +25,13 @@ function createInterviewTool(responses = []) {
     return createUserInterviewTool({ hostedSession: session });
 }
 
-/**
- * @param {{ execute: unknown }} tool
- * @param {object} params
- */
-async function executeTool(tool, params) {
-    const execute =
-        /** @type {(id: string, params: object, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<{ details: import('../../tools/user-interview.ts').InterviewResultDetails }>} */ (tool
-            .execute);
-    return await execute("tool-call-1", params, new AbortController().signal, () => {}, {});
+async function executeTool(
+    tool: InterviewTool,
+    params: InterviewParameters,
+): Promise<AgentToolResult<InterviewResultDetails>> {
+    const execute = tool.execute;
+    // The tool ignores the SDK context; preserve this JavaScript fixture's empty object.
+    return await execute("tool-call-1", params, new AbortController().signal, () => {}, {} as ExtensionToolContext);
 }
 
 test("user_interview - Single Yes/No Question (Happy Path)", async () => {
