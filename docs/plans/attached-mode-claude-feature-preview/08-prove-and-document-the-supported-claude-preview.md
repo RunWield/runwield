@@ -49,7 +49,7 @@ dependencies:
     - "07-answer-review-chat-from-the-claude-session"
 userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Prove and document the supported Claude Preview

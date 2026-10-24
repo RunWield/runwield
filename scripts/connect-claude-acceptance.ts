@@ -24,7 +24,7 @@ export function parseAcceptanceArgs(args: string[]) {
     return { claude, out, keep };
 }
 
-if (import.meta.main) {
+async function main(): Promise<void> {
     if (process.argv.slice(2).includes("--help")) console.log(usage);
     else {
         try {
@@ -63,3 +63,5 @@ if (import.meta.main) {
         }
     }
 }
+
+if (import.meta.main) await main();

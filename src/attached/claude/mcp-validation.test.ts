@@ -154,9 +154,12 @@ test("MCP status is compact by default and workers fetch complete current instru
         assert(artifact.ok && artifact.truncated);
         assertEquals(artifact.content, requestPrompt.slice(0, 64));
         assertEquals(artifact.nextOffsetBytes, 64);
-        const fullCli = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
-        assert(fullCli.result.ok && fullCli.result.instructions);
-        assertEquals(instructions.instructions, fullCli.result.instructions);
+        const cli = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
+        assert(cli.result.ok);
+        assertEquals(cli.result, compactResponse.structuredContent);
+        assertEquals("instructions" in cli.result, false);
+        assertEquals(JSON.stringify(cli.result).includes("fullDiff"), false);
+        assertEquals(JSON.stringify(cli.result).includes("repairDiff"), false);
         assertEquals(await fixture.ciCount(), 1);
     } finally {
         await client.close().catch(() => {});
@@ -205,7 +208,7 @@ test("MCP returns reviewer artifact references and pages the canonical diff", as
         const action = received.workflow.nextAction;
         assert(action.request.kind === "reviewer");
         assert(cli.result.ok && cli.result.workflow.nextAction.kind === "validation");
-        assertEquals(action.actionId, cli.result.workflow.nextAction.actionId);
+        assertEquals(cli.result, received);
         const handoffText = JSON.stringify(mcp.structuredContent);
         assertEquals(handoffText.includes("fullDiff"), false);
         assertEquals(handoffText.includes("repairDiff"), false);
@@ -327,6 +330,9 @@ test("MCP actions and status do not inline oversized review artifacts", async ()
             "default status inlined the Plan/diff payload",
         );
         assert(statusPayload.length < 12_000, `status returned ${statusPayload.length} serialized characters`);
+        const cliStatus = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
+        assertEquals(cliStatus.result, status.structuredContent);
+        assertEquals(JSON.stringify(cliStatus.result).includes(oversizedPlanMarker), false);
     } finally {
         await client.close().catch(() => {});
         await transport.close().catch(() => {});
@@ -511,6 +517,10 @@ for (const carrier of ["CLI", "MCP"] as const) {
                 assert(result.ok && result.workflow.nextAction.kind === "validation", JSON.stringify(result));
                 assertEquals(result.operation, operation);
                 assertEquals(result.workflow.nextAction.request.kind, "reviewer");
+                const handoff = JSON.stringify(result);
+                assertEquals(handoff.includes("fullDiff"), false);
+                assertEquals(handoff.includes("repairDiff"), false);
+                assertStringIncludes(handoff, "review_diff");
                 assert(result.workflow.revision > started.workflow.revision);
                 if (operation === "review_complete") {
                     const request = result.workflow.nextAction.request;

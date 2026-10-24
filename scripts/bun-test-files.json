@@ -47,6 +47,7 @@
     "scripts/run-router-golden-set-context.test.js",
     "scripts/run-router-golden-set-settings.test.ts",
     "scripts/run-router-golden-set.test.js",
+    "scripts/run-tests-sandbox.test.ts",
     "scripts/run-with-snip.test.ts",
     "scripts/script-process.test.ts",
     "scripts/test-evidence.test.ts",

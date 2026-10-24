@@ -397,6 +397,13 @@ process.exit(child.status ?? 1);
         const runs = (await readFile(join(this.root, "markers/ci-runs"), "utf8")).trim().split("\n");
         const ciPid = Number(runs.at(-1));
         if (!Number.isSafeInteger(ciPid) || ciPid <= 0) throw new Error("CI process identity is missing");
+        const resumeCi = () => {
+            try {
+                process.kill(ciPid, "SIGCONT");
+            } catch (error) {
+                if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+            }
+        };
         process.kill(ciPid, "SIGSTOP");
         try {
             const finished = (await readFile(join(this.root, "markers/ci-finished"), "utf8")).trim().split("\n");
@@ -409,11 +416,7 @@ process.exit(child.status ?? 1);
             await host.stop("ci-killed", "SIGKILL");
             await this.snapshot("ci-killed", host.options.runId);
         } finally {
-            try {
-                process.kill(ciPid, "SIGCONT");
-            } catch (error) {
-                if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
-            }
+            resumeCi();
         }
     }
     async checkInstrumentation(executionCwd: string): Promise<void> {

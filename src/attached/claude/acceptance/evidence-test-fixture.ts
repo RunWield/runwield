@@ -1,3 +1,5 @@
+import { compactResult } from "../../../shared/attached/presentation.ts";
+import type { AttachedOperationResult } from "../../../shared/attached/operations.ts";
 import { createHash } from "node:crypto";
 import { PHASES, REQUIRED_HOST_RUNS, field, type AcceptanceEvidence, type JsonMap, type Snapshot } from "./evidence.ts";
 
@@ -376,7 +378,12 @@ export function completeEvidence(): AcceptanceEvidence {
                     },
                 },
             });
-            result.toolResults.push({ run: current.hostRun!, toolId: `tool-${id}`, body: replyResult });
+            const response: AttachedOperationResult = JSON.parse(JSON.stringify(replyResult));
+            result.toolResults.push({
+                run: current.hostRun!,
+                toolId: `tool-${id}`,
+                body: JSON.parse(JSON.stringify(compactResult(response))),
+            });
             workflow.revision = 24;
             const revisedRequest = structuredClone(codeRequest);
             (revisedRequest.identity as JsonMap).key = "candidate-2:2";

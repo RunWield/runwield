@@ -27,6 +27,15 @@ test("CI remains held through the real host kill and both evidence snapshots, th
         const world = await AcceptanceWorld.create(root, CHECKOUT, claude);
         const host = world.startHost("validate", "ci-started");
         let ciPid = 0;
+        const stopCi = () => {
+            if (ciPid) {
+                try {
+                    process.kill(ciPid, "SIGKILL");
+                } catch (error) {
+                    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+                }
+            }
+        };
         try {
             host.send("validate");
             const body = await host.waitForCore((body) => body.operation === "status");
@@ -59,13 +68,7 @@ test("CI remains held through the real host kill and both evidence snapshots, th
             equal((await readFile(join(root, "markers/ci-finished"), "utf8")).trim(), String(ciPid));
         } finally {
             await host.stop("cleanup", "SIGKILL");
-            if (ciPid) {
-                try {
-                    process.kill(ciPid, "SIGKILL");
-                } catch (error) {
-                    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
-                }
-            }
+            stopCi();
             await world.close();
         }
     });

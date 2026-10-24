@@ -17,7 +17,7 @@ test("acceptance runtime has no dependency on Core lifecycle writers", async () 
             ),
             `Acceptance must read artifacts, not import Core authority: ${path}`,
         );
-        const source = await readFile(path, "utf8");
+        const source = (await readFile(path, "utf8")).replace(/import\s+type\b[^;]+;/g, "");
         for (const match of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["']([^"']+)["']/g)) {
             const specifier = match[1];
             if (specifier.startsWith(".")) await inspect(resolve(dirname(path), specifier));

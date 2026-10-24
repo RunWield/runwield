@@ -1,3 +1,5 @@
+import { compactResult } from "../../../shared/attached/presentation.ts";
+import type { AttachedOperationResult } from "../../../shared/attached/operations.ts";
 import { isDeepStrictEqual } from "node:util";
 import { extractYaml } from "../../../shared/front-matter.ts";
 import {
@@ -787,7 +789,9 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
                     // The public carrier adds these fields after it saves the receipt.
                     delete durable.instructions;
                     delete durable.compatibility;
-                    return isDeepStrictEqual(durable, row.result);
+                    const receipt: AttachedOperationResult = JSON.parse(JSON.stringify(row.result));
+                    const projected = JSON.parse(JSON.stringify(compactResult(receipt)));
+                    return isDeepStrictEqual(durable, projected);
                 });
             })
         );

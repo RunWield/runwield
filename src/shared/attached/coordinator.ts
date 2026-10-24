@@ -1634,7 +1634,7 @@ export async function runAttachedOperation(
         const result = await runParsedOperation(name, projectRoot, input);
         return await withRoleInstructions(projectRoot, result.ok ? { ...result, compatibility } : result);
     }
-    return await withRoleInstructions(projectRoot, await runParsedOperation(name, projectRoot, input));
+    return await runParsedOperation(name, projectRoot, input);
 }
 
 interface AttachedActionReadEnvelope extends StatusEnvelope {

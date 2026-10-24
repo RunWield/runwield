@@ -1,3 +1,4 @@
+import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
@@ -30,9 +31,16 @@ test("Code page chat queues and replies without a decision, survives a fresh pro
         assertEquals((await conversation(hosted.url)).revision, before.revision);
         await stopHostedAttachedReviews();
         const fresh = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
-        assert(fresh.result.ok);
-        assertEquals(pendingChat(fresh.result.workflow).turnId, first.turnId);
-        const restored = await ensureReviewHosted(fixture.root, fresh.result.workflow, NO_OPEN_BROWSER_PORT);
+        assert(fresh.result.ok && fresh.result.workflow.nextAction.kind === "code_review");
+        const chat = await readAttachedAction({
+            projectRoot: fixture.root,
+            workflowId: fixture.workflowId,
+            actionId: fresh.result.workflow.nextAction.actionId,
+            content: "chat",
+        });
+        assert(chat.ok && "chat" in chat);
+        assertEquals(chat.chat.turnId, first.turnId);
+        const restored = await ensureReviewHosted(fixture.root, await fixture.status(), NO_OPEN_BROWSER_PORT);
         assert(restored);
         const queued = await conversation(restored.url);
         assertEquals(

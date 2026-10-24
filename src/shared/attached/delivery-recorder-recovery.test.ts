@@ -46,8 +46,12 @@ for (const timing of ["before", "after"]) {
                 evidence: EVIDENCE,
                 payload: {},
             });
-            const current = recovered.result.workflow;
-            assert(current?.nextAction.kind === "recorder", JSON.stringify(recovered.result));
+            assert(
+                !recovered.result.ok && recovered.result.rejection.code === "invalid_outcome",
+                JSON.stringify(recovered.result),
+            );
+            const current = await fixture.status();
+            assert(current.nextAction.kind === "recorder", JSON.stringify(current));
             assertEquals((await fixture.plan()).attrs.validationCheckpoint?.hostRecorder?.invalidSubmissions, 1);
             const error = current.nextAction.request.validationError;
             assert(error);

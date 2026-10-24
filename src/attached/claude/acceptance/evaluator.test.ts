@@ -1,3 +1,7 @@
+import { Client } from "@modelcontextprotocol/sdk/client";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
+import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
+import { CLI_PATH, DENO_CONFIG_PATH, EVIDENCE } from "../../../shared/attached/attached-test-fixture.ts";
 import { test } from "node:test";
 import { mkdtemp, mkdir, rename, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,7 +24,7 @@ import { attachedValidationFixture } from "../../../shared/attached/validation-t
 import { toDelivery } from "../../../shared/attached/delivery-test-fixture.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "../../../shared/attached/review-host.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
-import { pendingChat, reply, sendChat, reviewApi } from "../../../shared/attached/review-chat-test-fixture.ts";
+import { pendingChat, sendChat, reviewApi } from "../../../shared/attached/review-chat-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "../../../shared/attached/record-store.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import {
@@ -809,9 +813,32 @@ for (const scenario of replyProofMutations)
         );
     });
 
-test("actual Core code-change receipt matches only its public review reply", async () => {
+test("actual compact MCP code-change response matches only its durable Core receipt", async () => {
     await withProcessGlobalTestLock(async () => {
         const fixture = await attachedValidationFixture();
+        const transport = new StdioClientTransport({
+            command: process.execPath,
+            args: runtimeSourceArgs([
+                "run",
+                "-A",
+                "--quiet",
+                "--no-check",
+                "--config",
+                DENO_CONFIG_PATH,
+                CLI_PATH,
+                "attached",
+                "mcp",
+            ]),
+            cwd: fixture.root,
+            env: {
+                ...Object.fromEntries(
+                    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+                ),
+                RUNWIELD_ATTACHED_PLUGIN_ROOT: join(fixture.root, "test-plugin"),
+            },
+            stderr: "pipe",
+        });
+        const client = new Client({ name: EVIDENCE.host, version: EVIDENCE.hostVersion });
         try {
             const started = await toDelivery(fixture);
             assert(started.workflow.nextAction.kind === "code_review");
@@ -828,12 +855,30 @@ test("actual Core code-change receipt matches only its public review reply", asy
                 text: "I will change it.",
                 change: { summary: "Export value 3." },
             };
-            const changed = await reply(fixture.root, current, payload, operationId);
-            assert(
-                changed.ok &&
-                    changed.workflow.nextAction.kind === "validation" &&
-                    changed.workflow.nextAction.request.kind === "repair",
+            await mkdir(join(fixture.root, "test-plugin/.claude-plugin"), { recursive: true });
+            await writeFile(
+                join(fixture.root, "test-plugin/.claude-plugin/plugin.json"),
+                JSON.stringify({ version: EVIDENCE.adapterVersion }),
             );
+            await writeFile(
+                join(fixture.root, "test-plugin/runwield-adapter.json"),
+                JSON.stringify({ adapterContract: EVIDENCE.adapterContract }),
+            );
+            await client.connect(transport);
+            const response = await client.callTool({
+                name: "review_reply",
+                arguments: {
+                    workflowId: fixture.workflowId,
+                    expectedRevision: current.revision,
+                    operationId,
+                    payload,
+                },
+            });
+            const changed: JsonMap = JSON.parse(JSON.stringify(response.structuredContent));
+            assertEquals(changed.ok, true);
+            assertEquals(field(changed, "workflow", "nextAction", "request", "kind"), "repair");
+            assertEquals(field(changed, "workflow", "execution"), undefined);
+            assertEquals(field(changed, "workflow", "nextAction", "request", "prompt"), undefined);
             const after = await loadAttachedWorkflowRecord(location, fixture.workflowId);
             assert(after.status === "found");
             assertEquals(after.record.acceptedOperations[operationId].result.operation, "validation_decision");
@@ -874,6 +919,8 @@ test("actual Core code-change receipt matches only its public review reply", asy
                 shimCalls: 2,
             });
         } finally {
+            await client.close().catch(() => {});
+            await transport.close().catch(() => {});
             await stopHostedAttachedReviews();
             await fixture.close();
         }

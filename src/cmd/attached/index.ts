@@ -1,4 +1,5 @@
 import { getCwd } from "../../constants.js";
+import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runAttachedOperation } from "../../shared/attached/coordinator.ts";
 import { ATTACHED_OPERATIONS, MAX_ATTACHED_INPUT_BYTES } from "../../shared/attached/operations.ts";
 import { VERSION } from "../../shared/version.js";
@@ -46,6 +47,6 @@ export async function runAttachedCommand(argv: string[]): Promise<void> {
         process.exit(1);
     }
     const result = await runAttachedOperation(operation.name, getCwd(), await readBoundedStdin());
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify(operation.name === "status" ? compactStatus(result, null) : compactResult(result)));
     if (!result.ok) process.exit(1);
 }

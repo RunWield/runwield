@@ -183,12 +183,15 @@ class Journey {
         await page.approve("plan-approved");
         await this.expect((body) => body.ok === true && state(body) === "plan_ready");
         await this.snapshot("plan-approved");
-        body = await this.expect((body) => body.ok === true && state(body) === "implemented");
-        const executionCwd = field(body, "workflow", "execution", "executionCwd");
+        await this.expect((body) => body.ok === true && state(body) === "implemented");
+        await host.stop("implemented", "SIGKILL");
+        const implemented = await world.snapshot("implemented", host.options.runId);
+        const implementedRecord = implemented.files.find((file) => file.path.endsWith(`/workflows/${workflowId}.json`));
+        const executionCwd = implementedRecord?.text
+            ? field(JSON.parse(implementedRecord.text), "execution", "executionCwd")
+            : undefined;
         if (typeof executionCwd !== "string") throw new Error("No execution checkout");
         await world.checkInstrumentation(executionCwd);
-        await host.stop("implemented", "SIGKILL");
-        await this.snapshot("implemented");
         world.plugin("disabled", ["disable", "runwield@runwield", "--scope", "local"]);
         await this.ordinary("disabled", "disabled", world.sentinels[2]);
         world.plugin("uninstalled", ["uninstall", "runwield@runwield", "--scope", "local"]);
