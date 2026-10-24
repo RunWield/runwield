@@ -49,8 +49,8 @@ dependencies:
     - "07-answer-review-chat-from-the-claude-session"
 userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
-status: "reviewed"
 validatedCommit: "9783f680139f574ae5909efdb8027b9b1d578228"
+status: "verified"
 ---
 
 # Prove and document the supported Claude Preview
