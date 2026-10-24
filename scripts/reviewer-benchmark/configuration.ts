@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 import type { RunConfiguration } from "./records.ts";
-import { getReviewerConfiguration } from "./reviewer.ts";
+import { getReviewerConfiguration } from "../../src/shared/workflow/standalone-reviewer.ts";
 import type { FixtureReviewOptions } from "./reviewer.ts";
 
 export const checkoutRoot = fileURLToPath(new URL("../../", import.meta.url));
