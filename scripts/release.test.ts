@@ -14,6 +14,8 @@ import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from 
 import { defineCommittedGitFixture } from "../src/shared/git-test-fixture.ts";
 
 import {
+    type CommandResult,
+    type CommandRunner,
     createCandidate,
     createStable,
     expectedReleaseAssetNames,
@@ -104,26 +106,23 @@ test("parseReleaseArgs keeps command contracts explicit", () => {
     });
 });
 
-/**
- * @param {Record<string, { success?: boolean, code?: number, stdout?: string, stderr?: string }>} responses
- */
-function depsForCommands(responses) {
-    /** @type {Array<{ command: string, args: string[] }>} */
-    const calls = [];
-    /** @type {string[]} */
-    const logs = [];
+interface RecordedCommand {
+    command: string;
+    args: string[];
+}
+
+type ReleaseCommandOptions = NonNullable<Parameters<CommandRunner>[2]>;
+
+function depsForCommands(responses: Record<string, Partial<CommandResult>>) {
+    const calls: RecordedCommand[] = [];
+    const logs: string[] = [];
     const deps = {
-        /** @param {string} message */
-        log(message) {
+        log(message: string) {
             logs.push(message);
         },
         makeTempDir: () => Promise.resolve("/tmp/wld-release-test"),
         remove: () => Promise.resolve(),
-        /**
-         * @param {string} command
-         * @param {string[]} args
-         */
-        run(command, args) {
+        run(command: string, args: string[]) {
             calls.push({ command, args });
             const key = `${command} ${args.join(" ")}`;
             const defaultResponse = (() => {
@@ -148,12 +147,7 @@ function depsForCommands(responses) {
     return { calls, deps, logs };
 }
 
-/**
- * @param {string} command
- * @param {string[]} args
- * @param {{ cwd?: string }} [options]
- */
-async function runCommand(command, args, options = {}) {
+async function runCommand(command: string, args: string[], options: ReleaseCommandOptions = {}) {
     const output = await captureScriptProcess(command, { args, cwd: options.cwd, stdout: "piped", stderr: "piped" });
     const decoder = new TextDecoder();
     if (!output.success) {
@@ -178,27 +172,18 @@ async function createReleaseRepo() {
     return { root, repo, remote };
 }
 
-/** @param {string} repo */
-function repoDeps(repo) {
-    /** @type {Array<{ command: string, args: string[] }>} */
-    const calls = [];
-    /** @type {string[]} */
-    const logs = [];
+function repoDeps(repo: string) {
+    const calls: RecordedCommand[] = [];
+    const logs: string[] = [];
     return {
         calls,
         logs,
         deps: {
-            /** @param {string} message */
-            log(message) {
+            log(message: string) {
                 logs.push(message);
             },
             error() {},
-            /**
-             * @param {string} command
-             * @param {string[]} args
-             * @param {{ cwd?: string, env?: Record<string, string> }} [options]
-             */
-            async run(command, args, options = {}) {
+            async run(command: string, args: string[], options: ReleaseCommandOptions = {}) {
                 calls.push({ command, args });
                 if (command === "deno") throw new Error("Release tooling must not invoke Deno");
                 if (command === "gh") {

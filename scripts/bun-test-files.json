@@ -39,7 +39,7 @@
     "scripts/release-check.test.ts",
     "scripts/release-legacy-assets.test.ts",
     "scripts/release-policy.test.ts",
-    "scripts/release.test.js",
+    "scripts/release.test.ts",
     "scripts/retain-test-evidence.test.ts",
     "scripts/reviewer-benchmark/admission.test.ts",
     "scripts/reviewer-benchmark/cli.test.ts",
