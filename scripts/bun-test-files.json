@@ -391,7 +391,7 @@
     "src/shared/workflow/command-metrics.test.ts",
     "src/shared/workflow/command-picker-metrics.test.ts",
     "src/shared/workflow/controller-registry.integration.test.ts",
-    "src/shared/workflow/decisions.test.js",
+    "src/shared/workflow/decisions.test.ts",
     "src/shared/workflow/delivery-report.test.ts",
     "src/shared/workflow/epic-branch-planning.integration.test.ts",
     "src/shared/workflow/epic-branch.test.ts",

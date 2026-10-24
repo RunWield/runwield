@@ -1,9 +1,10 @@
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { PlanOutcome } from "./workflow.js";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 
-/** @type {import('../../tools/plan-written.ts').TriageMeta} */
-const fallbackTriageMeta = {
+const fallbackTriageMeta: TriageMeta = {
     classification: "FEATURE",
     complexity: "LOW",
     summary: "fallback",
@@ -47,7 +48,7 @@ test("decidePostPlanning falls back to triage metadata for execute_plan", () => 
 });
 
 test("decidePostPlanning maps approved_decompose to a Slicer phase transition", () => {
-    const triageMeta = { classification: /** @type {const} */ ("PROJECT") };
+    const triageMeta: TriageMeta = { classification: "PROJECT" };
     assertEquals(
         decidePostPlanning(
             { outcome: "approved_decompose", planName: "epic-a", triageMeta },
@@ -131,10 +132,14 @@ test("decidePostPlanning maps repair_required to plan feedback iteration", () =>
 
 test("decidePostPlanning halts on unknown planning outcomes", () => {
     assertEquals(
-        decidePostPlanning(/** @type {any} */ ({ outcome: "something_else" }), {
-            planningAgentName: "planner",
-            fallbackTriageMeta,
-        }),
+        // Deliberately violate the outcome contract to preserve the defensive fallback regression.
+        decidePostPlanning(
+            { outcome: "something_else" as PlanOutcome },
+            {
+                planningAgentName: "planner",
+                fallbackTriageMeta,
+            },
+        ),
         { kind: "halt", payload: { reason: "unknown_plan_outcome" } },
     );
 });
