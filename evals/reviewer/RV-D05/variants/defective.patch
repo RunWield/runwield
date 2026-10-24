@@ -1,0 +1,73 @@
+diff --git a/src/archive.ts b/src/archive.ts
+index 389e8ba..801b0ec 100644
+--- a/src/archive.ts
++++ b/src/archive.ts
+@@ -1,6 +1,6 @@
+-import { readdir, readFile, stat } from "node:fs/promises";
+-import { join } from "node:path";
+-import type { Artifact } from "./model.ts";
++import { readdir, readFile, stat, realpath, unlink } from "node:fs/promises";
++import { join, resolve, relative, isAbsolute, sep } from "node:path";
++import type { Artifact, Removal } from "./model.ts";
+ import { containedFile } from "./paths.ts";
+ 
+ export async function listArtifacts(root: string): Promise<Artifact[]> {
+@@ -14,3 +14,14 @@ export async function listArtifacts(root: string): Promise<Artifact[]> {
+ export async function readArtifact(root: string, requested: string): Promise<string> {
+     return readFile(await containedFile(root, requested), "utf8");
+ }
++export async function removeArtifact(root: string, requested: string): Promise<Removal> {
++    const base = await realpath(root);
++    const target = await realpath(resolve(base, requested));
++    const path = relative(base, target);
++    if (target === base || !target.startsWith(base)) {
++        throw new Error("Artifact must be beneath the archive root");
++    }
++    if (!(await stat(target)).isFile()) throw new Error("Artifact must be a regular file");
++    await unlink(target);
++    return { removed: path };
++}
+diff --git a/src/commands.ts b/src/commands.ts
+index 0e12e3c..d676538 100644
+--- a/src/commands.ts
++++ b/src/commands.ts
+@@ -1,7 +1,8 @@
+-import { listArtifacts, readArtifact } from "./archive.ts";
++import { listArtifacts, readArtifact, removeArtifact } from "./archive.ts";
+ 
+ export async function runCommand(root: string, args: string[]): Promise<string> {
+     if (args[0] === "list") return JSON.stringify(await listArtifacts(root));
+     if (args[0] === "read" && args[1]) return readArtifact(root, args[1]);
+-    throw new Error("Use list or read <path>");
++    if (args[0] === "remove" && args[1]) return JSON.stringify(await removeArtifact(root, args[1]));
++    throw new Error("Use list, read <path>, or remove <path>");
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 1b1f102..ad89288 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -29,5 +29,24 @@ await check("read returns archived content", async () => {
+         await rm(root, { recursive: true, force: true });
+     }
+ });
++await check("remove deletes a nested artifact", async () => {
++    const root = await mkdtemp(join(tmpdir(), "archive-"));
++    try {
++        await mkdir(join(root, "old"));
++        await writeFile(join(root, "old", "report.txt"), "done");
++        await runCommand(root, ["remove", "old/report.txt"]);
++        await assert.rejects(() => runCommand(root, ["read", "old/report.txt"]), { code: "ENOENT" });
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++await check("remove refuses the archive directory itself", async () => {
++    const root = await mkdtemp(join(tmpdir(), "archive-"));
++    try {
++        await assert.rejects(() => runCommand(root, ["remove", "."]), /beneath the archive root/);
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
+ 
+ console.log(`# tests ${passed}`);
