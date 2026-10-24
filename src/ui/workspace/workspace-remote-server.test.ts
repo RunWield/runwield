@@ -8,7 +8,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
-import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
+import "./server/plan-adapter.js";
 
 import {
     parseMaxRequestBytes,
@@ -25,6 +25,15 @@ import { createWorkspaceApp } from "./server.js";
 
 import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+
+interface RemoteStatusResponse {
+    ok: boolean;
+    mode: "remote";
+}
+
+interface NotFoundResponse {
+    error: string;
+}
 
 test("remote Shared Space development gate requires both development and remote mode", () => {
     assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: "remote" }), true);
@@ -51,14 +60,14 @@ test("remote development API rejects non-development and non-remote requests", a
                 createTestApiContext(new Request("http://localhost/api/spaces")),
             );
             assertEquals(nonDevelopment.status, 404);
-            assertEquals(await nonDevelopment.json(), { error: "Not found" });
+            assertEquals<NotFoundResponse, NotFoundResponse>(await nonDevelopment.json(), { error: "Not found" });
 
             process.env["RUNWIELD_WORKSPACE_MODE"] = "local";
             const nonRemote = await handleRemoteSpaceApi(
                 createTestApiContext(new Request("http://localhost/api/spaces")),
             );
             assertEquals(nonRemote.status, 404);
-            assertEquals(await nonRemote.json(), { error: "Not found" });
+            assertEquals<NotFoundResponse, NotFoundResponse>(await nonRemote.json(), { error: "Not found" });
         } finally {
             if (originalMode === undefined) delete process.env["RUNWIELD_WORKSPACE_MODE"];
             else process.env["RUNWIELD_WORKSPACE_MODE"] = originalMode;
@@ -85,22 +94,24 @@ test("remote Workspace health and readiness endpoints are remote-only and non-se
     const remoteResponse = await remoteApp(new Request("http://localhost/healthz"));
     assertEquals(remoteResponse.status, 200);
     assertEquals(remoteResponse.headers.get("cache-control"), "no-store");
-    assertEquals(await remoteResponse.json(), { ok: true, mode: "remote" });
+    assertEquals<RemoteStatusResponse, RemoteStatusResponse>(await remoteResponse.json(), { ok: true, mode: "remote" });
 
     const readyResponse = await remoteApp(new Request("http://localhost/readyz"));
     assertEquals(readyResponse.status, 200);
-    assertEquals(await readyResponse.json(), { ok: true, mode: "remote" });
+    assertEquals<RemoteStatusResponse, RemoteStatusResponse>(await readyResponse.json(), { ok: true, mode: "remote" });
 });
 
 test("remote server entry reads env defaults and validates ports", () => {
     assertEquals(
-        readRemoteServerConfig(createTestEnv({
-            RUNWIELD_REMOTE_HOST: "127.0.0.1",
-            RUNWIELD_REMOTE_PORT: "9001",
-            RUNWIELD_REMOTE_DB_PATH: "/tmp/runwield.sqlite",
-            RUNWIELD_REMOTE_MAX_REQUEST_BYTES: "2048",
-            RUNWIELD_REMOTE_RETENTION_DAYS: "7",
-        })),
+        readRemoteServerConfig(
+            createTestEnv({
+                RUNWIELD_REMOTE_HOST: "127.0.0.1",
+                RUNWIELD_REMOTE_PORT: "9001",
+                RUNWIELD_REMOTE_DB_PATH: "/tmp/runwield.sqlite",
+                RUNWIELD_REMOTE_MAX_REQUEST_BYTES: "2048",
+                RUNWIELD_REMOTE_RETENTION_DAYS: "7",
+            }),
+        ),
         {
             host: "127.0.0.1",
             port: 9001,
@@ -121,9 +132,8 @@ test("remote server entry runs the real adapter, HTTP server, and cleanup lifecy
     const port = listener.addr.port;
     await listener.shutdown();
     const controller = new AbortController();
-    /** @type {(() => void) | undefined} */
-    let cleanupCallback;
-    let clearedTimer;
+    let cleanupCallback: (() => void) | undefined;
+    let clearedTimer: number | undefined;
     try {
         const dbPath = `${cwd}/test-remote-server.sqlite`;
         const run = runRemoteWorkspaceServer(
@@ -148,13 +158,16 @@ test("remote server entry runs the real adapter, HTTP server, and cleanup lifecy
             () => {},
         );
 
-        let healthResponse;
+        let healthResponse: Response | undefined;
         for (let attempt = 0; attempt < 50; attempt += 1) {
             healthResponse = await fetch(`http://127.0.0.1:${port}/healthz`).catch(() => undefined);
             if (healthResponse) break;
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        assertEquals(await healthResponse?.json(), { ok: true, mode: "remote" });
+        assertEquals<RemoteStatusResponse | undefined, RemoteStatusResponse>(await healthResponse?.json(), {
+            ok: true,
+            mode: "remote",
+        });
         assertEquals(typeof cleanupCallback, "function");
         if (!cleanupCallback) throw new Error("Cleanup interval was not scheduled.");
         cleanupCallback();

@@ -1,16 +1,17 @@
+import type { HostedSession } from "../session/hosted-session.js";
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
 
-/** @param {string} projectRoot */
-function makeHostedSession(projectRoot) {
-    return /** @type {import('../session/hosted-session.js').HostedSession} */ (/** @type {unknown} */ ({
+function makeHostedSession(projectRoot: string): HostedSession {
+    // Preserve the existing partial session fixture used by these lifecycle-only regressions.
+    return {
         cwd: projectRoot,
         getActiveExecutionWorkflow: () => null,
         clearActiveExecutionWorkflow: () => {},
         setActiveExecutionWorkflow: () => {},
-    }));
+    } as Partial<HostedSession> as HostedSession;
 }
 
 test("validated_ci resumes at semantic review without rerunning CI", async () => {

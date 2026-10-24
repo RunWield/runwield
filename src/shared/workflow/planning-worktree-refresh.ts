@@ -201,6 +201,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                     worktreePath: entry.path,
                     baseRef: importedBase,
                     includeWorkingTree: true,
+                    publishedRef: targetCommit,
                 })
             ) {
                 throw new Error(
@@ -219,7 +220,8 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                     phase: "planning",
                     worktreePath: entry.path,
                     branch: entry.branch,
-                    baseCommit: importedBase,
+                    // Committed changes were checked against publication above; checkpoint only saved edits.
+                    baseCommit: (await git(entry.path, ["rev-parse", "HEAD"])).trim(),
                     planName: entry.planName,
                     planRelativePath: `docs/plans/${entry.planName}.md`,
                 });

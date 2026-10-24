@@ -1,22 +1,24 @@
+import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { handleBashCommand } from "./bash-interceptor.ts";
 
-/**
- * @param {string} userRequest
- * @param {boolean} [concurrent]
- */
-function makeContext(userRequest, concurrent = false) {
-    /** @type {any[]} */
-    const calls = [];
-    const sessionRuntime = /** @type {import('../../shared/session/session-runtime.ts').SessionRuntime} */ (
-        /** @type {unknown} */ ({
-            runLocalShellCommand: (/** @type {string} */ sessionId, /** @type {any} */ options) => {
-                calls.push({ sessionId, options });
-                return Promise.resolve({ ok: true, exitCode: 0, output: "" });
-            },
-        })
-    );
+type ShellCommandOptions = Parameters<SessionRuntime["runLocalShellCommand"]>[1];
+
+interface RecordedShellCommand {
+    sessionId: string;
+    options: ShellCommandOptions;
+}
+
+function makeContext(userRequest: string, concurrent = false) {
+    const calls: RecordedShellCommand[] = [];
+    // Preserve the existing partial runtime fixture; only local shell delegation is exercised here.
+    const sessionRuntime = {
+        runLocalShellCommand: (sessionId: string, options: ShellCommandOptions) => {
+            calls.push({ sessionId, options });
+            return Promise.resolve({ ok: true, exitCode: 0, output: "" });
+        },
+    } as Partial<SessionRuntime> as SessionRuntime;
     return { userRequest, concurrent, sessionRuntime, sessionId: "runtime-session", calls };
 }
 
@@ -34,10 +36,12 @@ test("handleBashCommand delegates persistent commands to SessionRuntime", async 
     const ctx = makeContext("!printf hello");
 
     assertEquals(await handleBashCommand(ctx), true);
-    assertEquals(ctx.calls, [{
-        sessionId: "runtime-session",
-        options: { command: "printf hello", userRequest: "!printf hello", persist: true },
-    }]);
+    assertEquals(ctx.calls, [
+        {
+            sessionId: "runtime-session",
+            options: { command: "printf hello", userRequest: "!printf hello", persist: true },
+        },
+    ]);
 });
 
 test("handleBashCommand marks double-bang commands ephemeral", async () => {

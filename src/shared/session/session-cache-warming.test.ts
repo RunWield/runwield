@@ -1,16 +1,13 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
-import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
+import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "./hosted-session.js";
 import { ensureRootAgentSession, runRootTurn } from "./session.js";
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- */
-function makeWarmingEligible(session) {
+function makeWarmingEligible(session: AgentSession) {
     const model = session.model;
     if (!model) throw new Error("expected a selected model");
     model.promptCache = { short: 11, long: 11 };
@@ -19,18 +16,16 @@ function makeWarmingEligible(session) {
 
 test("RunWield cache policy prevents an otherwise eligible Pi warming request", async () => {
     await withRuntimeCommandFixture("runwield-cache-warming-", async ({ projectRoot, setModelResponseFactory }) => {
-        const runScenario = async (/** @type {boolean} */ enablePositiveControl) => {
+        const runScenario = async (enablePositiveControl: boolean) => {
             const manager = SessionManager.inMemory(projectRoot);
             const hosted = new HostedSession({
                 id: `cache-warming-${enablePositiveControl ? "control" : "off"}`,
                 cwd: projectRoot,
-                sessionManager: /** @type {never} */ (manager),
+                sessionManager: manager,
             });
-            /** @type {number[]} */
-            const calls = [];
+            const calls: number[] = [];
             let normalCalls = 0;
-            /** @type {import('@earendil-works/pi-ai').FauxResponseFactory} */
-            const respond = (context, options) => {
+            const respond: FauxResponseFactory = (context, options) => {
                 // Warm requests may repeat while a real shell starts/runs on a
                 // loaded machine. They must never consume a normal-turn response.
                 setModelResponseFactory(respond);

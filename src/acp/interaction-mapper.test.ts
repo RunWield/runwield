@@ -6,15 +6,25 @@ import { test } from "node:test";
  */
 
 import { createAcpInteractionAdapter } from "./interaction-mapper.js";
+import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.js";
+
+interface QuestionNotification {
+    update: {
+        _meta: {
+            runwield: {
+                questionUrl: string;
+            };
+        };
+    };
+}
 
 test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
-    /** @type {unknown[]} */
-    const requests = [];
+    const requests: string[] = [];
     const adapter = createAcpInteractionAdapter({
         acpSessionId: "acp-1",
         clientCapabilities: { elicitation: { form: {} } },
         context: {
-            request: (/** @type {unknown} */ request) => {
+            request: (request: string) => {
                 requests.push(request);
                 return Promise.resolve({ action: "accept", content: { answer: "continue" } });
             },
@@ -70,15 +80,15 @@ test("ACP interaction adapter maps valid selections and rejects invalid ones", a
 });
 
 test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
-    const makeAdapter = (/** @type {string} */ answer) =>
+    const makeAdapter = (answer: string) =>
         createAcpInteractionAdapter({
             acpSessionId: "acp-1",
             clientCapabilities: { elicitation: { form: {} } },
             context: { request: () => Promise.resolve({ action: "accept", content: { answer } }) },
         });
-    const request = {
+    const request: RuntimeInteractionRequest = {
         id: "interaction-1",
-        type: /** @type {'approval'} */ ("approval"),
+        type: "approval",
         prompt: "Approve?",
         options: [
             { value: "approve", label: "Approve" },
@@ -97,7 +107,7 @@ test("ACP interaction adapter distinguishes approval acceptance from decline", a
     });
 });
 
-for (const type of /** @type {const} */ (["select", "text", "approval"])) {
+for (const type of ["select", "text", "approval"] satisfies RuntimeInteractionRequest["type"][]) {
     test(`ACP no-form ${type} is answered in chat, not a browser`, async () => {
         const adapter = createAcpInteractionAdapter({
             acpSessionId: "acp-1",
@@ -118,16 +128,12 @@ for (const type of /** @type {const} */ (["select", "text", "approval"])) {
 
 test("ACP Artifact Review feedback rejects cross-origin submissions and cancels", async () => {
     await withRuntimeCommandFixture("acp-artifact-feedback-", async (fixture) => {
-        /** @type {PromiseWithResolvers<string>} */
-        const notified = Promise.withResolvers();
+        const notified = Promise.withResolvers<string>();
         const adapter = createAcpInteractionAdapter({
             acpSessionId: "acp-session-1",
             clientCapabilities: {},
             context: {
-                notify: (
-                    /** @type {string} */ _method,
-                    /** @type {{ update: { _meta: { runwield: { questionUrl: string } } } }} */ params,
-                ) => {
+                notify: (_method: string, params: QuestionNotification) => {
                     if (params.update._meta.runwield.questionUrl)
                         notified.resolve(params.update._meta.runwield.questionUrl);
                 },

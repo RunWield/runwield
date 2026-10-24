@@ -6,7 +6,7 @@ import { getCwd } from "../../constants.js";
  */
 
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp, type LocalWorkspaceAppOptions } from "./server.js";
 
 export const app = createWorkspaceApp({
     // Astro dev-server entry module, never loaded by the test suite.
@@ -15,4 +15,4 @@ export const app = createWorkspaceApp({
     token: "",
     skipTokenCheck: true,
     mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-});
+} satisfies LocalWorkspaceAppOptions);

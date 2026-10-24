@@ -3,6 +3,8 @@
  * Optional Snip command prefix extension for RunWield agent invocations.
  */
 
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
 import { parseLeadingSimpleCommand } from "./leading-simple-command.ts";
 
 const SHELL_BUILTINS = new Set([
@@ -91,11 +93,8 @@ const SNIP_NO_FILTER_STDERR_PATTERN = '^snip: no filter for ".+", passing throug
  * The subshell preserves the Snip invocation's exit status so `&&`, `||`, pipes,
  * and later command segments retain their original behavior.
  *
- * @param {string} command
- * @param {string | null} [failureLabel]
- * @returns {string}
  */
-function withFilteredSnipStderr(command, failureLabel = null) {
+function withFilteredSnipStderr(command: string, failureLabel: string | null = null): string {
     if (failureLabel) {
         const ignoredFailureLines = `^(Check .+|Checked [0-9]+ files?|running [0-9]+ tests? from .+|.+ \\.\\.\\. ok( \\(.+\\))?|ok \\| [0-9]+ passed \\| 0 failed.*|snip: tracking error:.*|snip: no filter for .*)$`;
         return (
@@ -125,11 +124,7 @@ function withFilteredSnipStderr(command, failureLabel = null) {
     );
 }
 
-/**
- * @param {string[]} words
- * @returns {string | null}
- */
-function getDenoValidationFailureLabel(words) {
+function getDenoValidationFailureLabel(words: string[]): string | null {
     if (words.length < 2 || baseCommand(words[0]) !== "deno") return null;
     switch (words[1]) {
         case "test":
@@ -145,11 +140,7 @@ function getDenoValidationFailureLabel(words) {
     }
 }
 
-/**
- * @param {string} word
- * @returns {string}
- */
-function baseCommand(word) {
+function baseCommand(word: string): string {
     const cleaned = word.replace(/^['"]|['"]$/g, "");
     return cleaned.split(/[\\/]/).pop() || cleaned;
 }
@@ -165,11 +156,7 @@ const GIT_OPTIONS_WITH_VALUES = new Set([
     "--work-tree",
 ]);
 
-/**
- * @param {string[]} words
- * @returns {boolean}
- */
-function isGitDiffCommand(words) {
+function isGitDiffCommand(words: string[]): boolean {
     if (words.length < 2 || baseCommand(words[0]) !== "git") return false;
 
     for (let index = 1; index < words.length; index++) {
@@ -187,11 +174,7 @@ function isGitDiffCommand(words) {
     return false;
 }
 
-/**
- * @param {string} originalCommand
- * @returns {string | null}
- */
-function rewriteCommand(originalCommand) {
+function rewriteCommand(originalCommand: string): string | null {
     const parsed = parseLeadingSimpleCommand(originalCommand);
     if (!parsed) return null;
     if (parsed.commandName === "snip" || SHELL_BUILTINS.has(parsed.commandName)) return null;
@@ -206,9 +189,8 @@ function rewriteCommand(originalCommand) {
 /**
  * Register Snip command prefixing for agent bash tool calls.
  *
- * @param {import('@earendil-works/pi-coding-agent').ExtensionAPI} pi
  */
-export default function snipExtension(pi) {
+export default function snipExtension(pi: ExtensionAPI): void {
     pi.on("tool_call", (event, _ctx) => {
         if (event.toolName !== "bash") return;
         const input = event.input;
