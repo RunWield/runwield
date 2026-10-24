@@ -111,7 +111,7 @@ used by later invocations.
 
 To compare Usage totals on your paired desktop and phone, select the same Project filter and date range on each
 device. Confirm that the displayed host time zone and coverage notices match, then select **Apply range** on each
-device. See [Pair your browser](workspace.md#pair-your-browser) for pairing instructions.
+device. See [Pair your browser](workspace.md#pair-your-browser) for pairing instructions. A gap is not zero activity.
 
 ## Agent Model Overrides
 
