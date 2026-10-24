@@ -27,6 +27,10 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
                 },
                 () => {
                     modelCalls += 1;
+                    return fauxAssistantMessage(fauxText("Deferred message applied."));
+                },
+                () => {
+                    modelCalls += 1;
                     return fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 5" }));
                 },
             ]);
@@ -76,20 +80,14 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
                 });
                 assertEquals(queued.queued, true);
                 assertEquals((await first).ok, true);
-                for (let attempt = 0; attempt < 1_000; attempt += 1) {
-                    if (modelCalls === 2 && runtime.getQueuedMessages(created.sessionId).length === 0) break;
-                    await delay(10);
-                }
-                assertEquals(modelCalls, 2);
-                assertEquals(runtime.getQueuedMessages(created.sessionId), []);
                 // The drain delivers the deferred message as its own turn (model call 3).
-                // Wait for that turn to fire and settle before starting the canceled turn,
-                // otherwise the canceled turn races the drain for the managed operation and
-                // the deferred message is claimed but never reaches the transcript.
+                // Wait for settlement before starting the turn to cancel.
                 for (let attempt = 0; attempt < 1_000; attempt += 1) {
                     if (modelCalls >= 3 && !runtime.getSessionSnapshot(created.sessionId)?.busy) break;
                     await delay(10);
                 }
+                assertEquals(modelCalls, 3);
+                assertEquals(runtime.getQueuedMessages(created.sessionId), []);
                 assertEquals(runtime.getSessionSnapshot(created.sessionId)?.busy, false);
 
                 const canceledText = "cancel this message before delivery";
@@ -98,6 +96,7 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
                     expectedGeneration: runtime.getSessionSnapshot(created.sessionId)?.managed?.generation ?? null,
                 });
                 await canceledToolStarted;
+                assertEquals(modelCalls, 4);
                 assertEquals(runtime.getSessionSnapshot(created.sessionId)?.busy, true);
                 runtime.queueNextTurnMessage(created.sessionId, canceledText, [], { deliverWhenAvailable: true });
                 assertEquals(runtime.cancelSession(created.sessionId).ok, true);
@@ -107,7 +106,7 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
                     await delay(10);
                 }
                 assertEquals(runtime.getSessionSnapshot(created.sessionId)?.busy, false);
-                assertEquals(modelCalls, 3);
+                assertEquals(modelCalls, 4);
                 assertEquals(runtime.getQueuedMessages(created.sessionId), []);
                 assertEquals(statuses, ["queued", "queued", "consumed", "consumed", "queued", "dequeued"]);
 

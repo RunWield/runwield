@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { startReviewWorkspaceServer } from "../workspace/server.js";
 import { join } from "node:path";
 import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
@@ -415,8 +416,14 @@ test("submitPlanForReview exit does not write the Plan", async () => {
     }
 });
 
-test("submitPlanForReview cancellation stops the real review surface without writing", async () => {
+test("submitPlanForReview cancellation revokes the real review registration without writing", async () => {
     const { dir, planPath } = await makePlanFile();
+    const other = startReviewWorkspaceServer({
+        cwd: dir,
+        token: crypto.randomUUID(),
+        reviewPayload: { plan: "# Other review" },
+        reviewType: "plan",
+    });
     const originalPlan = await fsReadFile(planPath, "utf8");
     const controller = new AbortController();
     let openedUrl = "";
@@ -448,8 +455,13 @@ test("submitPlanForReview cancellation stops the real review surface without wri
         });
         assertStringIncludes(openedUrl, "/review/plan?token=");
         assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
-        await assertRejects(() => fetch(openedUrl));
+        assertEquals(new URL(openedUrl).origin, other.url);
+        const revoked = await fetch(openedUrl);
+        assertEquals(revoked.status, 401);
+        assertEquals(revoked.headers.get("cache-control"), "no-store");
+        await revoked.text();
     } finally {
+        await other.stop();
         await fsRm(dir, { recursive: true });
     }
 });

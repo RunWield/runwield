@@ -373,28 +373,33 @@ export async function failStoredPublication(
 export async function reconcileStoredPublication(
     projectRoot: string,
     initial: PublicationAttempt,
+    options: { apply?: boolean } = {},
 ): Promise<PublicationAttempt> {
-    await enterProjectRuntime(projectRoot);
+    if (options.apply !== false) await enterProjectRuntime(projectRoot);
+    const advance = async (current: PublicationAttempt, phase: PublicationPhase, evidence: PublicationPhaseEvidence) =>
+        options.apply === false
+            ? advancePublicationAttempt(current, phase, evidence)
+            : await advanceStoredPublication(projectRoot, current, phase, evidence);
     if (initial.revalidation) return initial;
     let current = initial;
     if (current.phase === "candidate_sealed") {
         const evidence = await artifactEvidence(current);
-        if (evidence) current = await advanceStoredPublication(projectRoot, current, "artifacts_committed", evidence);
+        if (evidence) current = await advance(current, "artifacts_committed", evidence);
     }
     if (current.phase === "artifacts_committed") {
         const evidence = await integratedEvidence(projectRoot, current);
         if (evidence) {
-            current = await advanceStoredPublication(projectRoot, current, "target_integrated", evidence);
+            current = await advance(current, "target_integrated", evidence);
         }
     }
     if (current.phase === "target_integrated") {
         const evidence = await publishedEvidence(projectRoot, current);
-        if (evidence) current = await advanceStoredPublication(projectRoot, current, "target_published", evidence);
+        if (evidence) current = await advance(current, "target_published", evidence);
     }
     if (current.phase === "target_published") {
         const evidence = await publishedEvidence(projectRoot, current);
         if (evidence) {
-            current = await advanceStoredPublication(projectRoot, current, "publication_verified", {
+            current = await advance(current, "publication_verified", {
                 verifiedAt: new Date().toISOString(),
             });
         }

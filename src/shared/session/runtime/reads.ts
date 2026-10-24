@@ -24,6 +24,7 @@ import {
     createReplayEvents as createProjectedReplayEvents,
     exportProjectedTranscript,
     getProjectedLastAssistantText,
+    getCommittedTranscriptAuthorityFacts,
     inspectProjectedTranscript,
     toProjectionFailure,
 } from ".././session-transcript-projection.js";
@@ -191,7 +192,12 @@ export class RuntimeReads {
                   ...(workflowProgressFacts.length ? { progressFacts: workflowProgressFacts } : {}),
                   canReopenPlanReview: Boolean(
                       managed &&
-                      this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId),
+                      (this.services.remotePersistence
+                          ? managed.remoteRecords?.lastPlanReview
+                          : this.services.sessionStore?.getLastPlanReview(
+                                managed.runwieldSessionId,
+                                managed.projectId,
+                            )),
                   ),
                   liveQuestion,
                   livePlanReview,
@@ -218,6 +224,9 @@ export class RuntimeReads {
                 : [];
         const planAssociations =
             activeSessionInfo?.planAssociations ||
+            (managedDormant && this.services.remotePersistence
+                ? getCommittedTranscriptAuthorityFacts({ snapshot: managed?.committedSummary }).planAssociations
+                : null) ||
             (managed && this.services.sessionStore
                 ? this.services.sessionStore
                       .listSessionPlanAssociations(managed.runwieldSessionId, managed.projectId)
@@ -556,15 +565,50 @@ export class RuntimeReads {
         cwd: string,
         planId: string,
     ): Promise<import("../plan-session-lookup.ts").PlanAssociatedSession[]> {
+        if (this.services.remotePersistence) {
+            const records = await this.remoteProjectRecords({ planId }, cwd);
+            return (
+                records?.planSessions
+                    .filter((entry) => entry.associations.some((association) => association.planId === planId))
+                    .map(({ verified: _verified, ...candidate }) => candidate) || []
+            );
+        }
         if (!this.services.sessionStore) return [];
         const { findPlanAssociatedSessions } = await import("../plan-session-lookup.ts");
         return await findPlanAssociatedSessions(this.services.sessionStore, { cwd, planId });
     }
 
     async verifyPlanAssociatedSession(candidate: import(".././plan-session-lookup.ts").PlanAssociatedSession) {
+        if (this.services.remotePersistence) {
+            const records = await this.remoteProjectRecords({
+                planId: candidate.associations.at(-1)?.planId || "",
+                sessionId: candidate.runwieldSessionId,
+            });
+            const current = records?.planSessions.find(
+                (entry) =>
+                    entry.runwieldSessionId === candidate.runwieldSessionId &&
+                    entry.piSessionId === candidate.piSessionId &&
+                    entry.associations.some((association) =>
+                        candidate.associations.some((claimed) => claimed.planId === association.planId),
+                    ),
+            );
+            return current?.verified ? { ok: true } : { ok: false, reason: "degraded" };
+        }
         if (!this.services.sessionStore) return { ok: false, reason: "degraded" };
         const { verifyPlanAssociatedSession } = await import("../plan-session-lookup.ts");
         return await verifyPlanAssociatedSession(this.services.sessionStore, candidate);
+    }
+
+    private async remoteProjectRecords(
+        query: import("../../remote/session-protocol.ts").RemotePlanSessionQuery,
+        cwd?: string,
+    ) {
+        const persistence = this.services.remotePersistence!;
+        const listed = this.services.sessionHost.listSessions().find((entry) => !cwd || entry.cwd === cwd);
+        const session = listed ? this.services.sessionHost.getSession(listed.id) : null;
+        if (session?.getManagedMetadata()) return await persistence.readSessionRecords(session, query);
+        const id = (await persistence.control.list())[0]?.id;
+        return id ? await persistence.readRecords(id, query) : null;
     }
 
     getSessionMemoryBackupDir(sessionId: string) {

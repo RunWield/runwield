@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
 import {
     MAX_SESSION_BYTES,
     type RemoteSessionConnection,
@@ -42,7 +44,11 @@ export class RemoteSessionSaveBridge {
             operation: connection.operation,
             timeoutMs,
         };
-        this.#worker = new Worker(new URL("./session-save-worker.ts", import.meta.url).href, { type: "module" });
+        // Bun flattens module import.meta.url to the executable entry. Workers keep
+        // their repository-relative build paths, so resolve from the shared runtime root.
+        this.#worker = new Worker(join(RUNWIELD_SOURCE_ROOT, "shared/remote/session-save-worker.ts"), {
+            type: "module",
+        });
         this.#worker.onerror = (event) => {
             event.preventDefault();
             Atomics.store(new Int32Array(this.#fault), 0, 1);
@@ -106,11 +112,15 @@ export class RemoteSessionSaveBridge {
             validateSessionRequest(input);
             // Attachment reads carry at most MAX_SESSION_BYTES raw bytes, expanded to base64 plus envelope.
             const capacity =
-                kind === "hydrate" || kind === "inspect"
+                kind === "hydrate" ||
+                kind === "inspect" ||
+                kind === "records" ||
+                kind === "plan-sessions" ||
+                kind === "rollover"
                     ? MAX_SESSION_BYTES * 6 + 4096
                     : kind === "attachment-read"
                       ? Math.ceil(MAX_SESSION_BYTES / 3) * 4 + 4096
-                      : kind === "attachment"
+                      : ["attachment", "artifact", "plan-association", "plan-review"].includes(kind)
                         ? new TextEncoder().encode(contents).length * 6 + 4096
                         : 4096;
             const result = new SharedArrayBuffer(8 + capacity);

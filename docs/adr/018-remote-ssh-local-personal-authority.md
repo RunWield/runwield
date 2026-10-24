@@ -58,6 +58,15 @@ Split execution from personal authority:
   clipboard, not a server clipboard or a cached startup image. The save bridge persists attachment bytes on the laptop
   before transcript references are recorded. Stable `attachment:<id>` references and image markers survive reconnect
   without exposing laptop paths or temporary mount roots. Project-relative image reads still execute remotely.
+- One remote Session-owned Pi MCP integration handles both origins. Project MCP processes use remote execution cwd;
+  personal MCP processes use laptop home cwd with minimal inherited and configured environment. An authenticated
+  connection-scoped relay forwards native MCP messages; only enabled personal names, not executable definitions, cross
+  its configuration boundary. Pi retains naming, discovery, resources, results, cancellation, and reconnect ownership.
+  A second laptop tool host would split that authority and is not used.
+- Personal MCP home cwd is stable across launch folders, not a sandbox or a selected checkout. Memory collection
+  sharing does not map files. Roots and paths remain remote metadata without translation. Disconnect stops owned
+  processes and pending starts; neither failed sends nor uncertain calls are replayed. Native cancellation does not
+  guarantee rollback of accepted actions. Server output remains trusted content and can contain secrets.
 - Remote review servers stay with project files; SSH forwards their full origin to a laptop browser.
 
 This extends [ADR-015](015-file-authoritative-session-bundles.md). It preserves Pi entry formats, file-authoritative
@@ -105,5 +114,5 @@ single-writer guarantees.
   semantics.
 
 The [Remote SSH Epic](../plans/remote-ssh-development.md) owns implementation and qualification work. The
-[Remote SSH PRD](../prd/remote-ssh-prd.md) distinguishes delivered conversation behavior from target workflow, Memory,
+[Remote SSH PRD](../prd/remote-ssh-prd.md) distinguishes delivered conversation behavior from target workflow,
 review, and release capabilities.

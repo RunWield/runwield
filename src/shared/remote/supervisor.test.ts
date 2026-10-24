@@ -10,12 +10,13 @@ import {
     realpath as fsRealpath,
     rm as fsRm,
     writeFile as fsWriteFile,
+    stat as fsStat,
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { BUILD_ID, REMOTE_PROTOCOL_VERSION } from "../build-identity.js";
 import { startRemoteControlService } from "./control.ts";
@@ -50,6 +51,9 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
     await fsWriteFile("view-header", new TextDecoder().decode(new Uint8Array(bytes)));
     reader.releaseLock();
     process.on("SIGTERM", () => {});
+    process.on("SIGUSR1", () => process.exit(0));
+    spawn("sh", ["-c", "trap '' TERM; echo $$ > detached; exec sleep 120"], { detached: true, stdio: "ignore" });
+    spawn("python3", ["-c", "import os;\\nif os.fork(): os._exit(0)\\nos.setsid()\\nif os.fork(): os._exit(0)\\nopen('orphan', 'w').write(str(os.getpid()))\\nos.execlp('nohup', 'nohup', 'sleep', '120')"], { stdio: "ignore" });
     const child = spawn("sh", ["-c", "trap '' TERM; sleep 60 & echo $! > descendant; wait"], { stdio: "ignore" });
     await fsWriteFile("view", String(process.pid));
     await new Promise<void>((resolve) => child.once("exit", () => resolve()));
@@ -87,8 +91,26 @@ try:
         os.set_blocking(master, True)
     elif command == 'close': os.close(master)
     elif command == 'kill-launcher': os._exit(0)
-    child.wait(timeout=27)
+    elif command in ('kill-view', 'normal-exit'):
+        with open(os.path.join(cwd, 'view')) as pidfile: view = int(pidfile.read())
+        os.kill(view, 9 if command == 'kill-view' else 10)
+    deadline = time.monotonic() + 45
+    while child.poll() is None:
+        if time.monotonic() > deadline: raise RuntimeError('supervisor cleanup timed out')
+        if command == 'close': time.sleep(.1)
+        elif select.select([master], [], [], .1)[0]:
+            try: output += os.read(master, 65536)
+            except OSError: pass
+    if command != 'close':
+        while select.select([master], [], [], 0)[0]:
+            try:
+                chunk = os.read(master, 65536)
+                if not chunk: break
+                output += chunk
+            except OSError: break
+    with open(os.path.join(cwd, 'supervisor-output'), 'wb') as logfile: logfile.write(output)
     print('EXIT:' + str(child.returncode), flush=True)
+    sys.exit(child.returncode if child.returncode >= 0 else 128 - child.returncode)
 finally:
     if header != 'before-header': channel.close()
     if child.poll() is None:
@@ -134,6 +156,8 @@ async function running(pid: number): Promise<boolean> {
 
 for (const scenario of [
     "blocked",
+    "kill-view",
+    "normal-exit",
     "close",
     "kill-launcher",
     "before-header",
@@ -215,6 +239,8 @@ for (const scenario of [
             let proof = 0;
             let descendant = 0;
             let supervisor = 0;
+            const extraDescendants: number[] = [];
+            let mountDirectory = "";
             try {
                 const reader = driver.stdout.getReader();
                 const ready = await reader.read();
@@ -241,6 +267,7 @@ for (const scenario of [
                     assertEquals(bootstrap.cwd, root);
                     assertEquals(bootstrap.view.cwd, root);
                     assert(bootstrap.resources.globalRoot.startsWith("/"));
+                    mountDirectory = dirname(bootstrap.resources.globalRoot);
                     assertEquals(bootstrap.resources.globalRoot === join(getHomeDir(), ".wld"), false);
                     assertEquals(bootstrap.HOME, undefined);
                     const descendantDeadline = Date.now() + 5_000;
@@ -249,6 +276,17 @@ for (const scenario of [
                         await new Promise((resolve) => setTimeout(resolve, 30));
                     }
                     assert(descendant > 0);
+                    for (const name of ["detached", "orphan"]) {
+                        let pid = 0;
+                        const until = Date.now() + 5_000;
+                        while (!pid && Date.now() < until) {
+                            pid = Number(await fsReadFile(join(root, name), "utf8").catch(() => ""));
+                            if (!pid) await new Promise((resolve) => setTimeout(resolve, 30));
+                        }
+                        assert(pid > 0, `${name} did not start`);
+                        assert(await running(pid), `${name} exited before disconnect`);
+                        extraDescendants.push(pid);
+                    }
                 }
                 // The launcher exits, but the detached SSH peer keeps its PTY open.
                 // Closing this service models loss of the launcher's forwarded endpoint.
@@ -262,10 +300,17 @@ for (const scenario of [
                 );
                 await writer.close();
                 const started = Date.now();
+                if (scenario === "kill-view") {
+                    // A second terminal signal must not cut short either cleanup phase.
+                    await new Promise((resolve) => setTimeout(resolve, 1_200));
+                    assert(await running(supervisor), "supervisor skipped descendant grace");
+                    process.kill(supervisor, "SIGHUP");
+                    process.kill(supervisor, "SIGTERM");
+                }
                 if (["blocked", "model-proof-stall"].includes(scenario)) service.requestShutdown();
                 const deadline =
                     Date.now() +
-                    (["silent-control", "before-header", "partial-header"].includes(scenario) ? 25_000 : 14_000);
+                    (["silent-control", "before-header", "partial-header"].includes(scenario) ? 40_000 : 30_000);
                 while (Date.now() < deadline && (await running(supervisor))) {
                     await new Promise((resolve) => setTimeout(resolve, 100));
                 }
@@ -276,13 +321,43 @@ for (const scenario of [
                 if (proof) assertEquals(await running(proof), false, `proof survived ${scenario}`);
                 if (view) assertEquals(await running(view), false, `view survived ${scenario}`);
                 if (descendant) assertEquals(await running(descendant), false, `grandchild survived ${scenario}`);
+                for (const pid of extraDescendants)
+                    assertEquals(await running(pid), false, `detached/orphan survived ${scenario}`);
                 assertEquals(await running(unrelated.pid), true);
+                if (["kill-view", "normal-exit"].includes(scenario)) {
+                    assertEquals((await driver.status).success, true);
+                    const output = await fsReadFile(join(root, "supervisor-output"), "utf8");
+                    assert(!output.includes("Remote mount cleanup failed"), output);
+                    assert(!output.includes("SSHFS cleanup uncertain"), output);
+                    assert(!output.includes("Remote owned process termination is unconfirmed"), output);
+                    assert(mountDirectory.includes("wld-sftp-"));
+                    await fsStat(mountDirectory).then(
+                        () => {
+                            throw new Error("private mount directory survived cleanup");
+                        },
+                        (error) => assertEquals(error.code, "ENOENT"),
+                    );
+                }
                 reader.releaseLock();
             } finally {
-                if (supervisor && (await running(supervisor))) process.kill(supervisor, "SIGKILL");
-                if (proof && (await running(proof))) process.kill(proof, "SIGKILL");
-                if (view && (await running(view))) process.kill(view, "SIGKILL");
-                if (descendant && (await running(descendant))) process.kill(descendant, "SIGKILL");
+                // Let the supervisor unmount and sweep even after an assertion failure.
+                if (supervisor && (await running(supervisor))) {
+                    process.kill(supervisor, "SIGTERM");
+                    const until = Date.now() + 20_000;
+                    while (Date.now() < until && (await running(supervisor)))
+                        await new Promise((resolve) => setTimeout(resolve, 50));
+                }
+                for (const name of ["proof", "view", "descendant", "detached", "orphan", "supervisor"]) {
+                    const pid = Number(await fsReadFile(join(root, name), "utf8").catch(() => ""));
+                    if (!pid || !(await running(pid))) continue;
+                    // Every fixture process stays in this private cwd; a reused pid does not.
+                    if ((await fsRealpath(`/proc/${pid}/cwd`).catch(() => "")) !== root) continue;
+                    try {
+                        process.kill(pid, "SIGKILL");
+                    } catch (error) {
+                        assert(error instanceof Error && "code" in error && error.code === "ESRCH", String(error));
+                    }
+                }
                 try {
                     driver.kill("SIGKILL");
                 } catch {

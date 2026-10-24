@@ -2,6 +2,7 @@ import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { tmpdir } from "node:os";
 import {
+    chmod as fsChmod,
     mkdtemp as fsMkdtemp,
     mkdir as fsMkdir,
     copyFile as fsCopyFile,
@@ -84,9 +85,15 @@ export interface RuntimeModelRequest {
     simple: boolean;
     options: RuntimeModelRequestOptions;
 }
+export interface CapturedMcpTraffic {
+    path: string;
+    body?: string;
+    response?: string;
+}
 export interface RuntimeFixture extends RuntimeCommandFixture {
     remoteProject: string;
     remoteHome: string;
+    remoteCommandLog: string;
     resources: string;
     connection: { port: number; credential: string };
     memoryCollection: string;
@@ -96,13 +103,16 @@ export interface RuntimeFixture extends RuntimeCommandFixture {
     controls: CapturedControl[];
     saves: RemoteSessionRequest[];
     modelRequests: RuntimeModelRequest[];
+    mcpTraffic: CapturedMcpTraffic[];
     policy: RuntimeProxyPolicy;
     start(): Promise<RuntimeProcess>;
+    dropConnection(): Promise<void>;
 }
 export interface RuntimeProcess {
     send(command: RuntimeClientCommand): Promise<void>;
     read(): Promise<RuntimeClientReport>;
     close(): Promise<void>;
+    terminate(): Promise<void>;
 }
 async function startProcess(
     input: RuntimeClientInput,
@@ -121,6 +131,7 @@ async function startProcess(
         cwd: input.cwd,
         env: {
             HOME: remoteHome,
+            TMPDIR: join(remoteHome, "tmp"),
             WLD_TEST_SANDBOX_HOME: remoteHome,
             MNEMOTECA_DB_PATH: join(remoteHome, "memory.db"),
             PATH: remotePath,
@@ -136,6 +147,7 @@ async function startProcess(
         await writer.write(new TextEncoder().encode(JSON.stringify(value) + "\n"));
     }
     await send(input);
+    let stopped = false;
     return {
         send,
         async read() {
@@ -143,7 +155,20 @@ async function startProcess(
             if (next.done) throw new Error(`Remote client exited: ${await stderr}`);
             return JSON.parse(next.value);
         },
+        async terminate() {
+            if (stopped) return;
+            stopped = true;
+            child.kill("SIGKILL");
+            await child.status;
+            await reader.cancel().catch(() => {});
+            reader.releaseLock();
+            await writer.close().catch(() => {});
+            writer.releaseLock();
+            await stderr;
+        },
         async close() {
+            if (stopped) return;
+            stopped = true;
             await send({ kind: "close" }).catch(() => {});
             await writer.close().catch(() => {});
             writer.releaseLock();
@@ -173,7 +198,14 @@ export async function withRemoteRuntimeFixture(
         async (local) => {
             const remoteProject = await repositories.checkout();
             const remoteHome = await fsMkdtemp(join(tmpdir(), "remote-runtime-home-"));
+            await fsMkdir(join(remoteHome, "tmp"));
             const remoteBin = await writeWorkflowBinaryFixtures(remoteHome);
+            const remoteCommandLog = join(remoteHome, "git-commands.log");
+            await fsWriteFile(
+                join(remoteBin, "git"),
+                `#!/bin/sh\nprintf '%s\\n' "$*" >> '${remoteCommandLog}'\nexec /usr/bin/git "$@"\n`,
+            );
+            await fsChmod(join(remoteBin, "git"), 0o700);
             await fsRm(join(remoteBin, "mnemoteca"));
             const remotePath = `${remoteBin}:/usr/bin:/bin`;
             const resources = join(remoteHome, "mounted-personal-resources");
@@ -182,44 +214,47 @@ export async function withRemoteRuntimeFixture(
             await fsCopyFile(local.settingsPath, join(resources, "settings.json"));
             await fsWriteFile(
                 join(resources, "agents", "remote-runtime.md"),
-                `---\nname: Remote Runtime\ndescription: Test project conversation\ntools:\n    - read\n    - write\n    - see_image\n    - memory\n---\nUse project tools when asked, then answer.\n`,
+                `---\nname: Remote Runtime\ndescription: Test project conversation\ntools:\n    - read\n    - write\n    - see_image\n    - memory\n    - delegate_agent\n    - background_task\n---\nUse project tools when asked, then answer.\n`,
             );
             await fsWriteFile(join(remoteHome, ".wld", "settings.json"), "remote profile must not be read");
             await fsWriteFile(join(local.projectRoot, "sentinel.txt"), "laptop initial\n");
             const store = openFileSessionStore({ baseDir: join(local.homeDir, "laptop-history") });
             const identity = { buildId: "a".repeat(64), protocol: 1 };
             const memoryCollection = await resolveMemoryCollection({ cwd: local.projectRoot });
-            const service = startRemoteControlService(
-                identity,
-                {
-                    baseDir: store.path,
-                    targetLabel: `fixture:${remoteProject}`,
-                    target: {
-                        host: {
-                            hostname: "remote-runtime.example",
-                            user: "tester",
-                            port: 22,
-                            hostKeyFingerprint: "SHA256:runtime",
+            const startService = () =>
+                startRemoteControlService(
+                    identity,
+                    {
+                        baseDir: store.path,
+                        targetLabel: `fixture:${remoteProject}`,
+                        target: {
+                            host: {
+                                hostname: "remote-runtime.example",
+                                user: "tester",
+                                port: 22,
+                                hostKeyFingerprint: "SHA256:runtime",
+                            },
+                            cwd: remoteProject,
+                            home: remoteHome,
+                            os: "Linux",
+                            arch: "x86_64",
+                            gitRoot: remoteProject,
+                            gitDir: join(remoteProject, ".git"),
+                            gitCommonDir: join(remoteProject, ".git"),
+                            primaryRoot: remoteProject,
+                            isWorktree: false,
                         },
-                        cwd: remoteProject,
-                        home: remoteHome,
-                        os: "Linux",
-                        arch: "x86_64",
-                        gitRoot: remoteProject,
-                        gitDir: join(remoteProject, ".git"),
-                        gitCommonDir: join(remoteProject, ".git"),
-                        primaryRoot: remoteProject,
-                        isWorktree: false,
                     },
-                },
-                memoryCollection,
-            );
+                    memoryCollection,
+                );
+            let service = startService();
             const controls: CapturedControl[] = [];
             const saves: RemoteSessionRequest[] = [];
             const modelRequests: RuntimeModelRequest[] = [];
+            const mcpTraffic: RuntimeFixture["mcpTraffic"] = [];
             const memoryRequests: MemoryRequest[] = [];
             const policy: RuntimeProxyPolicy = {};
-            const baseUrl = `http://127.0.0.1:${service.port}`;
+            let baseUrl = `http://127.0.0.1:${service.port}`;
             const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
                 const path = new URL(request.url).pathname;
                 const body = request.method === "POST" ? await request.text() : undefined;
@@ -235,6 +270,13 @@ export async function withRemoteRuntimeFixture(
                     headers: request.headers,
                     body,
                 });
+                if (path.startsWith("/mcp/")) {
+                    mcpTraffic.push({
+                        path,
+                        body,
+                        ...(path === "/mcp/config" ? { response: await response.clone().text() } : {}),
+                    });
+                }
                 if (path === "/memory" && body && policy.memoryAfter) {
                     return await policy.memoryAfter(JSON.parse(body), response);
                 }
@@ -253,6 +295,15 @@ export async function withRemoteRuntimeFixture(
             assert(proxy.addr.transport === "tcp");
             const connection = { port: proxy.addr.port, credential: service.credential };
             const processes: RuntimeProcess[] = [];
+            // A synthetic SSH connection still sends the production health heartbeat.
+            const heartbeat = setInterval(() => {
+                void fetch(`${baseUrl}/health`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${service.credential}` },
+                })
+                    .then((response) => response.text())
+                    .catch(() => {});
+            }, 1000);
             try {
                 for (const [path, body] of [
                     ["handshake", JSON.stringify(identity)],
@@ -270,6 +321,7 @@ export async function withRemoteRuntimeFixture(
                     ...local,
                     remoteProject,
                     remoteHome,
+                    remoteCommandLog,
                     resources,
                     connection,
                     memoryCollection,
@@ -279,8 +331,28 @@ export async function withRemoteRuntimeFixture(
                     controls,
                     saves,
                     modelRequests,
+                    mcpTraffic,
                     policy,
+                    async dropConnection() {
+                        await service.close();
+                    },
                     async start() {
+                        if (service.status().closed) {
+                            service = startService();
+                            baseUrl = `http://127.0.0.1:${service.port}`;
+                            connection.credential = service.credential;
+                            for (const [path, body] of [
+                                ["handshake", JSON.stringify(identity)],
+                                ["readiness", ""],
+                            ]) {
+                                const response = await fetch(`${baseUrl}/${path}`, {
+                                    method: "POST",
+                                    headers: { Authorization: `Bearer ${service.credential}` },
+                                    body,
+                                });
+                                assertEquals(response.ok, true, await response.text());
+                            }
+                        }
                         const process = await startProcess(
                             { connection, resources, memoryCollection, cwd: remoteProject },
                             remoteHome,
@@ -291,6 +363,7 @@ export async function withRemoteRuntimeFixture(
                     },
                 });
             } finally {
+                clearInterval(heartbeat);
                 for (const process of processes) await process.close();
                 await proxy.shutdown();
                 await service.close();

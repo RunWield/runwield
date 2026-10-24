@@ -1,11 +1,25 @@
 import { CURRENT_SESSION_VERSION, migrateSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { FileEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { readSessionImageAttachment, saveImageAttachment } from "./image-attachments.ts";
 import type { ImageAttachment } from "./types.js";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
-import type { FileActivationProof, ProcessKind, TranscriptEvidence } from "./file-session-store-types.ts";
+import type {
+    FileActivationProof,
+    ProcessKind,
+    TranscriptEvidence,
+    PlanAssociation,
+} from "./file-session-store-types.ts";
+import type { RemoteArtifactOptions, RemotePlanReview } from "../remote/session-protocol.ts";
+import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
+import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
+import { readPersistedWorkflowContext } from "./workflow-context-session.js";
+import { findProject, sessionDirForProject } from "./file-session-storage.ts";
+import type { ManagedSessionMetadata } from "./hosted-session.js";
+import type { RemoteRolloverOptions, RemoteRolloverReceipt } from "../remote/session-protocol.ts";
+import { projectRemoteSessionRecords } from "../remote/session-records.ts";
+import { normalizePlanAssociation } from "./plan-association.ts";
 import {
     inspectRecoverableSessionTranscript,
     parseRemoteSessionTranscript,
@@ -151,6 +165,7 @@ class RemoteSessionOwner {
     /** Execute in HTTP arrival order. This synchronous method cannot interleave two admissions. */
     handle(input: RemoteSessionRequest): RemoteSessionResponse {
         validateSessionRequest(input);
+        if (input.kind === "rollover") throw new Error("Rollover requires asynchronous laptop admission");
         if (input.operation !== this.operation || this.#settled) throw new Error("Stale Session operation");
         if (this.#failure) throw this.#failure;
         // Reassert both native-lock ownership and server-owned proof even for retries.
@@ -184,7 +199,72 @@ class RemoteSessionOwner {
         }
         let evidence: TranscriptEvidence;
         try {
-            if (input.kind === "attachment") {
+            if (input.kind === "artifact") {
+                const options: RemoteArtifactOptions = JSON.parse(input.contents);
+                if (
+                    !options ||
+                    !["plan", "prd", "adr", "work-record", "epic-artifact", "report"].includes(options.kind) ||
+                    ![options.path, options.title, options.registeredBy].every(
+                        (value) => typeof value === "string" && value.length > 0,
+                    ) ||
+                    Object.keys(options).some(
+                        (key) => !["kind", "path", "title", "registeredBy", "sourceSegmentId"].includes(key),
+                    )
+                ) {
+                    throw new Error("Invalid Session artifact");
+                }
+                attachment = JSON.stringify(this.#store.registerSessionArtifact(this.#proof, options));
+            } else if (input.kind === "plan-association") {
+                const entry: PlanAssociation = JSON.parse(input.contents);
+                const normalized = normalizePlanAssociation(entry);
+                if (
+                    !normalized ||
+                    entry.planId !== normalized.planId ||
+                    entry.planName !== normalized.planName ||
+                    entry.purpose !== normalized.purpose ||
+                    entry.segmentId !== normalized.segmentId ||
+                    entry.segmentKind !== normalized.segmentKind ||
+                    entry.recordedAt !== normalized.recordedAt ||
+                    Object.keys(entry).sort().join(",") !== "planId,planName,purpose,recordedAt,segmentId,segmentKind"
+                )
+                    throw new Error("Invalid Plan association");
+                attachment = JSON.stringify(this.#store.stagePlanAssociation(this.#proof, normalized));
+            } else if (input.kind === "plan-review") {
+                const review: RemotePlanReview = JSON.parse(input.contents);
+                if (
+                    !review ||
+                    Object.keys(review).sort().join(",") !== "planId,planName,planningAgentName" ||
+                    ![review.planId, review.planName, review.planningAgentName].every(
+                        (value) => typeof value === "string" && value.trim(),
+                    )
+                ) {
+                    throw new Error("Invalid Plan review");
+                }
+                attachment = JSON.stringify(this.#store.recordLastPlanReview(this.#proof, review));
+            } else if (input.kind === "segment") {
+                attachment = JSON.stringify(
+                    this.#store.getCurrentSessionSegment(this.#proof.runwieldSessionId)?.kind || "session",
+                );
+            } else if (input.kind === "records" || input.kind === "plan-sessions") {
+                const query: import("../remote/session-protocol.ts").RemotePlanSessionQuery | undefined =
+                    input.kind === "plan-sessions" ? JSON.parse(input.contents) : undefined;
+                if (
+                    input.kind === "plan-sessions" &&
+                    (!query ||
+                        !query.planId ||
+                        typeof query.planId !== "string" ||
+                        (query.sessionId !== undefined && typeof query.sessionId !== "string") ||
+                        Object.keys(query).some((key) => !["planId", "sessionId"].includes(key)))
+                )
+                    throw new Error("Invalid Plan Session query");
+                const records = projectRemoteSessionRecords(
+                    this.#store,
+                    this.#proof.runwieldSessionId,
+                    this.#proof.projectId,
+                    query,
+                );
+                attachment = JSON.stringify(records);
+            } else if (input.kind === "attachment") {
                 const image: ImageAttachment = JSON.parse(input.contents);
                 if (
                     !image ||
@@ -246,6 +326,91 @@ class RemoteSessionOwner {
         this.#receipts.set(input.sequence, { payload, response });
         this.#next++;
         return structuredClone(response);
+    }
+
+    /** Ordered save-bridge admission. No remote file locator or native proof is returned. */
+    async handleRollover(input: RemoteSessionRequest) {
+        validateSessionRequest(input);
+        if (input.kind !== "rollover" || input.operation !== this.operation || this.#settled)
+            throw new Error("Stale Session operation");
+        if (this.#failure) throw this.#failure;
+        if (!this.#hydrated || input.sequence !== this.#next) throw new Error("Out-of-order Session rollover");
+        const options: RemoteRolloverOptions = JSON.parse(input.contents);
+        if (
+            !options ||
+            !["execution", "semantic_repair"].includes(options.kind) ||
+            !Object.hasOwn(options, "continuation") ||
+            (options.transcriptCwd !== undefined &&
+                (typeof options.transcriptCwd !== "string" || !isAbsolute(options.transcriptCwd))) ||
+            (options.expectedGeneration !== undefined &&
+                options.expectedGeneration !== null &&
+                (!Number.isSafeInteger(options.expectedGeneration) || options.expectedGeneration < 0)) ||
+            (options.lineageGroupKey !== undefined &&
+                options.lineageGroupKey !== null &&
+                typeof options.lineageGroupKey !== "string") ||
+            Object.keys(options).some(
+                (key) =>
+                    !["kind", "transcriptCwd", "continuation", "expectedGeneration", "lineageGroupKey"].includes(key),
+            )
+        ) {
+            throw new Error("Invalid Session rollover");
+        }
+        if (options.expectedGeneration !== undefined && options.expectedGeneration !== this.#proof.expectedGeneration)
+            throw new Error("Session generation changed; refresh and retry");
+        const predecessor = this.inspect();
+        const manager = SessionManager.inMemory(
+            this.#header.cwd,
+            undefined,
+            parseRemoteSessionTranscript(this.#contents),
+        );
+        let managed: ManagedSessionMetadata = {
+            runwieldSessionId: this.#proof.runwieldSessionId,
+            projectId: this.#proof.projectId,
+            piSessionId: this.#header.id,
+            transcriptPath: this.#transcriptPath,
+            currentSegmentId: this.#proof.expectedCurrentSegmentId || undefined,
+            generation: this.#proof.expectedGeneration,
+            name: null,
+            activeAgent: null,
+            workflowContext: readPersistedWorkflowContext(manager),
+            tutorialContext: readPersistedTutorialContext(manager),
+        };
+        const project = findProject(this.#store.path, managed.projectId);
+        if (!project?.remote) throw new Error("Remote Project identity is unavailable");
+        const result = await this.rollover({
+            ...options,
+            successorSessionDir: sessionDirForProject(this.#store.path, project),
+            retainActivation: true,
+            hostedSession: {
+                cwd: this.#header.cwd,
+                getManagedMetadata: () => managed,
+                getActiveExecutionWorkflow: () => readExecutionWorkflowSnapshot(manager)?.workflow || null,
+                getTutorialContext: () => managed.tutorialContext || null,
+                getRootSessionManager: () => manager,
+                dehydrateManagedSession() {},
+                replaceManagedTranscriptSegment() {},
+                setManagedMetadata: (metadata) => {
+                    managed = metadata;
+                },
+            },
+        });
+        if (!result.successorProof) throw new Error("Successor activation is unavailable");
+        let successor;
+        try {
+            successor = this.#store.createRemoteSessionOwner(result.successorProof);
+        } catch (error) {
+            this.#store.markSessionUncertain(result.successorProof);
+            throw error;
+        }
+        const { successorProof: _proof, transcriptPath: _path, ...publicResult } = result;
+        const receipt: RemoteRolloverReceipt = { operation: successor.operation, result: publicResult };
+        const response: RemoteSessionResponse = {
+            operation: input.operation,
+            sequence: input.sequence,
+            contents: JSON.stringify(receipt),
+            evidence: predecessor.evidence,
+        };
+        return { successor, response };
     }
 
     /** Commit successor lineage under the existing laptop lock, refusing remote saves during handoff. */

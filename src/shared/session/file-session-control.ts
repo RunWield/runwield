@@ -26,6 +26,7 @@ import {
     ensurePrivateDir,
     FILE_SESSION_STORE_VERSION,
     FileSessionManifestCache,
+    findProject,
     isoNow,
     lockPath,
     readJson,
@@ -42,6 +43,7 @@ import type {
 } from "./file-session-store-types.ts";
 
 interface FileSessionControlOptions {
+    baseDir: string;
     locks: Map<string, HeldFileLock>;
     manifests: FileSessionManifestCache;
     now?: () => string;
@@ -83,6 +85,11 @@ type FileSessionControl = Pick<
 
 export function createFileSessionControl(options: FileSessionControlOptions): FileSessionControl {
     const { locks, manifests } = options;
+
+    function refreshLocalProject(manifest: FileSessionManifest): void {
+        const project = findProject(options.baseDir, manifest.projectId);
+        if (project && !project.remote) requestWorkspaceSearchRefresh(manifest.transcriptCwd);
+    }
 
     function setArchiveState(runwieldSessionId: string, projectId: string | undefined, archived: boolean) {
         const found = manifests.resolve(runwieldSessionId, projectId);
@@ -362,7 +369,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             };
             manifest.artifacts = [...artifacts, artifact];
             manifests.write(manifest, held.manifestPath);
-            requestWorkspaceSearchRefresh(manifest.transcriptCwd);
+            refreshLocalProject(manifest);
             return { ...artifact };
         },
 
@@ -424,7 +431,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 manifest.activation = idleActivation(manifest);
                 stampPendingPlanAssociations(manifest, evidence.generation);
                 manifests.write(manifest, held.manifestPath);
-                requestWorkspaceSearchRefresh(manifest.transcriptCwd);
+                refreshLocalProject(manifest);
                 return { activation: activationView(manifest), generation: generationView(manifest) };
             } finally {
                 releaseHeldLock(locks, proof);
@@ -616,6 +623,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
 
         commitSegmentRolloverAndPublish(proof, rolloverOptions) {
             const held = requireHeldLock(locks, proof);
+            let successorProof: FileActivationProof | undefined;
             try {
                 const manifest = readJson<FileSessionManifest>(held.manifestPath);
                 assertProof(manifest, proof);
@@ -687,17 +695,48 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                     committedAt: now,
                 };
                 manifest.activation = idleActivation(manifest);
+                if (rolloverOptions.retainActivation) {
+                    const operationId = crypto.randomUUID();
+                    manifest.fence += 1;
+                    manifest.activation = {
+                        state: "active",
+                        phase: "preparing",
+                        ownerInstanceId: proof.ownerInstanceId,
+                        ownerProcessKind: proof.ownerProcessKind,
+                        operationId,
+                        expectedGeneration: evidence.generation,
+                        expectedCurrentSegmentId: successor.segmentId,
+                        acquiredAt: now,
+                        blockedReason: null,
+                        baselineByteLength: evidence.byteLength,
+                        baselineDigestHex: evidence.digestHex,
+                    };
+                    successorProof = {
+                        ...proof,
+                        operationId,
+                        fence: manifest.fence,
+                        phase: "preparing",
+                        expectedGeneration: evidence.generation,
+                        expectedCurrentSegmentId: successor.segmentId,
+                    };
+                }
                 stampPendingPlanAssociations(manifest, evidence.generation);
                 manifests.write(manifest, held.manifestPath);
-                requestWorkspaceSearchRefresh(manifest.transcriptCwd);
+                refreshLocalProject(manifest);
+                if (successorProof) {
+                    // Re-key the same native handle. Never unlock or reopen it during the transfer.
+                    locks.set(successorProof.operationId, held);
+                    locks.delete(proof.operationId);
+                }
                 return {
+                    ...(successorProof ? { successorProof } : {}),
                     predecessor: { ...predecessor },
                     successor: { ...successor },
                     activation: activationView(manifest),
                     generation: generationView(manifest),
                 };
             } finally {
-                releaseHeldLock(locks, proof);
+                if (!successorProof || locks.has(proof.operationId)) releaseHeldLock(locks, proof);
             }
         },
     };
