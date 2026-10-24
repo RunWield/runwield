@@ -1,6 +1,11 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { buildBaseline, checkThresholds, summarizeJudgements } from "./evaluate-router-judgements.ts";
+import {
+    buildBaseline,
+    checkThresholds,
+    summarizeJudgements,
+    type RouterJudgementSummary,
+} from "./evaluate-router-judgements.ts";
 
 test("summarizeJudgements compares router against human labels", () => {
     const summary = summarizeJudgements([
@@ -26,34 +31,33 @@ test("summarizeJudgements compares router against human labels", () => {
 });
 
 test("checkThresholds reports threshold failures", () => {
-    const summary = /** @type {any} */ ({
+    // Preserve the minimal fixture: threshold checks only read these two metrics.
+    const summary = {
         router: {
             agreementRate: 0.7,
             meanDistance: 0.4,
         },
-    });
+    } as RouterJudgementSummary;
 
     assertEquals(
         checkThresholds(summary, {
             minRouterAgreementRate: 0.75,
             maxRouterMeanDistance: 0.3,
         }),
-        [
-            "Router agreement 0.7 < threshold 0.75",
-            "Router mean distance 0.4 > threshold 0.3",
-        ],
+        ["Router agreement 0.7 < threshold 0.75", "Router mean distance 0.4 > threshold 0.3"],
     );
 });
 
 test("buildBaseline creates suggested Router thresholds", () => {
     const baseline = buildBaseline(
-        /** @type {any} */ ({
+        // Preserve the partial fixture rather than adding unrelated summary counters.
+        {
             labelledRows: 10,
             router: {
                 agreementRate: 0.82,
                 meanDistance: 0.2,
             },
-        }),
+        } as RouterJudgementSummary,
         "router-judgements.csv",
     );
 
