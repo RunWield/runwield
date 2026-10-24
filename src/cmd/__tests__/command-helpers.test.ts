@@ -1,3 +1,4 @@
+import type { EditorAPI, UiAPI, TuiAPI } from "../../ui/tui/types.js";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { resetTuiState } from "../command-helpers.ts";
@@ -7,22 +8,23 @@ test("resetTuiState re-enables input and focus", () => {
     let enabled = false;
     let focused = false;
 
-    const editor = /** @type {any} */ ({ disableSubmit: true });
-    const uiAPI = /** @type {any} */ ({
-        setBusy: (/** @type {boolean} */ v) => {
+    const editor: Partial<EditorAPI> = { disableSubmit: true };
+    const uiAPI: Partial<UiAPI> = {
+        setBusy: (v: boolean) => {
             busy = v;
         },
         enableInput: () => {
             enabled = true;
         },
-    });
-    const tui = /** @type {any} */ ({
+    };
+    const tui: Partial<TuiAPI> = {
         setFocus: () => {
             focused = true;
         },
-    });
+    };
 
-    resetTuiState(editor, uiAPI, tui);
+    // Preserve the minimal fixtures while checking each provided member against its owning API.
+    resetTuiState(editor as EditorAPI, uiAPI as UiAPI, tui as TuiAPI);
 
     assertEquals(editor.disableSubmit, false);
     assertEquals(busy, false);

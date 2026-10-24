@@ -2,18 +2,28 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { createCollaborationClient } from "./client.js";
+import type { CollaborationApiError } from "./client.js";
 
-/**
- * @param {(url: string, init: RequestInit) => Response | Promise<Response>} handler
- * @returns {typeof fetch}
- */
-function fakeFetch(handler) {
-    return /** @type {typeof fetch} */ ((input, init) => Promise.resolve(handler(String(input), init ?? {})));
+type FetchHandler = (url: string, init: RequestInit) => Response | Promise<Response>;
+
+interface AuthorizationHeaders {
+    Authorization?: string;
+}
+
+interface RecordedRequest {
+    url: string;
+    method: string;
+    body: BodyInit | null | undefined;
+    authorization?: string;
+}
+
+function fakeFetch(handler: FetchHandler): typeof fetch {
+    return ((input, init) => Promise.resolve(handler(String(input), init ?? {}))) as typeof fetch;
 }
 
 test("client sends JSON requests to fragment-free endpoint URLs", async () => {
     let seenUrl = "";
-    let seenInit = /** @type {RequestInit | undefined} */ (undefined);
+    let seenInit: RequestInit | undefined;
     const client = createCollaborationClient({
         serverUrl: "https://plans.example.test/root/",
         bearerCapability: "raw-capability",
@@ -26,10 +36,7 @@ test("client sends JSON requests to fragment-free endpoint URLs", async () => {
     assertEquals(await client.requestJson("/api/spaces", { method: "POST", body: { planId: "plan" } }), { ok: true });
     assertEquals(seenUrl, "https://plans.example.test/root/api/spaces");
     assert(!seenUrl.includes("#"));
-    assertEquals(
-        /** @type {HeadersInit & Record<string, string>} */ (seenInit?.headers).Authorization,
-        "Bearer raw-capability",
-    );
+    assertEquals((seenInit?.headers as AuthorizationHeaders).Authorization, "Bearer raw-capability");
     assertEquals(seenInit?.body, JSON.stringify({ planId: "plan" }));
 });
 
@@ -56,19 +63,22 @@ test("client surfaces JSON API errors with redacted messages and payloads", asyn
         serverUrl: "https://plans.example.test",
         bearerCapability: "secret-cap",
         fetch: fakeFetch(() =>
-            Response.json({
-                error: "forbidden",
-                message: "raw secret-cap denied",
-                nested: { capability: "secret-cap" },
-            }, {
-                status: 403,
-            })
+            Response.json(
+                {
+                    error: "forbidden",
+                    message: "raw secret-cap denied",
+                    nested: { capability: "secret-cap" },
+                },
+                {
+                    status: 403,
+                },
+            ),
         ),
     });
     const error = await assertRejects(async () => await client.requestJson("/api"), Error, "[redacted-capability]");
     assert(error instanceof Error);
     assert(!error.message.includes("secret-cap"));
-    assert(!JSON.stringify(/** @type {any} */ (error).payload).includes("secret-cap"));
+    assert(!JSON.stringify((error as CollaborationApiError).payload).includes("secret-cap"));
 });
 
 test("client handles non-JSON errors", async () => {
@@ -94,8 +104,7 @@ test("client redacts network failure messages", async () => {
 });
 
 test("client typed methods use Shared Space API paths", async () => {
-    /** @type {{ url: string, method: string, body: BodyInit | null | undefined, authorization?: string }[]} */
-    const calls = [];
+    const calls: RecordedRequest[] = [];
     const client = createCollaborationClient({
         serverUrl: "https://plans.example.test",
         bearerCapability: "raw-capability",
@@ -104,7 +113,7 @@ test("client typed methods use Shared Space API paths", async () => {
                 url,
                 method: init.method ?? "GET",
                 body: init.body,
-                authorization: /** @type {Record<string, string>} */ (init.headers).Authorization,
+                authorization: (init.headers as AuthorizationHeaders).Authorization,
             });
             return Response.json({ ok: true });
         }),
@@ -128,16 +137,19 @@ test("client typed methods use Shared Space API paths", async () => {
 
     assertEquals(calls[0].authorization, undefined);
     assertEquals(calls[1].authorization, "Bearer raw-capability");
-    assertEquals(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`), [
-        "POST /api/spaces",
-        "GET /api/spaces/space%201",
-        "GET /api/spaces/space%201/revisions/2",
-        "POST /api/spaces/space%201/revisions",
-        "GET /api/spaces/space%201/revisions/2/comments",
-        "POST /api/spaces/space%201/revisions/2/comments",
-        "POST /api/spaces/space%201/comments/comment%201/state",
-        "POST /api/spaces/space%201/lifecycle",
-        "POST /api/spaces/space%201/lifecycle",
-    ]);
+    assertEquals(
+        calls.map((call) => `${call.method} ${new URL(call.url).pathname}`),
+        [
+            "POST /api/spaces",
+            "GET /api/spaces/space%201",
+            "GET /api/spaces/space%201/revisions/2",
+            "POST /api/spaces/space%201/revisions",
+            "GET /api/spaces/space%201/revisions/2/comments",
+            "POST /api/spaces/space%201/revisions/2/comments",
+            "POST /api/spaces/space%201/comments/comment%201/state",
+            "POST /api/spaces/space%201/lifecycle",
+            "POST /api/spaces/space%201/lifecycle",
+        ],
+    );
     assertEquals(JSON.parse(String(calls[8].body)), { action: "delete" });
 });

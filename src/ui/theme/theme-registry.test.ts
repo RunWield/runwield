@@ -1,10 +1,11 @@
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { createThemeRegistry } from "./theme-registry.ts";
 
-/** @param {string} name */
-function fakeTheme(name) {
-    return /** @type {any} */ ({ name });
+function fakeTheme(name: string): Theme {
+    // Registry tests only read the name; preserve the existing minimal SDK theme fixture.
+    return { name } as Theme;
 }
 
 test("createThemeRegistry always keeps the default theme available", () => {
@@ -21,7 +22,7 @@ test("createThemeRegistry always keeps the default theme available", () => {
 test("createThemeRegistry does not allow external themes to override the built-in default", () => {
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const externalDefault = fakeTheme("catppuccin-mocha");
-    let current = /** @type {any} */ (null);
+    let current: Theme | null = null;
     const registry = createThemeRegistry({
         defaultTheme,
         setGlobalTheme: (theme) => {
@@ -41,8 +42,7 @@ test("createThemeRegistry warns and keeps current theme when persisted theme is 
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const customTheme = fakeTheme("custom");
     let current = defaultTheme;
-    /** @type {string[]} */
-    const warnings = [];
+    const warnings: string[] = [];
     const registry = createThemeRegistry({
         defaultTheme,
         setGlobalTheme: (theme) => {
@@ -63,10 +63,8 @@ test("createThemeRegistry warns and keeps current theme when persisted theme is 
 test("createThemeRegistry notifies subscribers on successful swaps and isolates throwing listeners", () => {
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const customTheme = fakeTheme("custom");
-    /** @type {string[]} */
-    const events = [];
-    /** @type {string[]} */
-    const warnings = [];
+    const events: string[] = [];
+    const warnings: string[] = [];
     const registry = createThemeRegistry({
         defaultTheme,
         setGlobalTheme: (theme) => events.push(`global:${theme.name}`),

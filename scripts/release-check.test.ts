@@ -27,15 +27,18 @@ import {
     readWorkspaceUrl,
     runReleaseCheck,
 } from "./release-check.js";
+import type { ScriptProcessOptions } from "./script-process.ts";
 
-/**
- * @param {string} rootDir
- * @param {string} [relativeDir]
- * @returns {Promise<string[]>}
- */
-async function collectMarkdownFiles(rootDir, relativeDir = "") {
-    /** @type {string[]} */
-    const files = [];
+interface RecordedCommand {
+    command: string;
+    args: string[];
+    env?: ScriptProcessOptions["env"];
+}
+
+type VersionProjectCheck = (root: string) => Promise<void>;
+
+async function collectMarkdownFiles(rootDir: string, relativeDir = ""): Promise<string[]> {
+    const files: string[] = [];
     const currentDir = relativeDir ? join(rootDir, ...relativeDir.split("/")) : rootDir;
     for await (const entry of await fsReaddir(currentDir, { withFileTypes: true })) {
         const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
@@ -63,10 +66,7 @@ test("assertBinaryVersionOutput requires the requested release identity", () => 
     );
 });
 
-/**
- * @param {(root: string) => Promise<void>} fn
- */
-async function withTemporaryVersionProject(fn) {
+async function withTemporaryVersionProject(fn: VersionProjectCheck) {
     const root = await fsMkdtemp(join(tmpdir(), "wld-release-check-project-"));
     try {
         await fsMkdir(join(root, "src", "shared"), { recursive: true });
@@ -80,10 +80,8 @@ async function withTemporaryVersionProject(fn) {
 
 test("runReleaseCheck propagates build identity to compile and preserves stage order", async () => {
     await withTemporaryVersionProject(async (root) => {
-        /** @type {string[]} */
-        const stages = [];
-        /** @type {Array<{ command: string, args: string[], env?: NodeJS.ProcessEnv }>} */
-        const calls = [];
+        const stages: string[] = [];
+        const calls: RecordedCommand[] = [];
         await runReleaseCheck(
             {
                 buildVersion: "v1.2.3-rc.1",
@@ -170,8 +168,7 @@ test("runReleaseCheck propagates build identity to compile and preserves stage o
 
 test("runReleaseCheck can leave Golden qualification to a parallel CI job", async () => {
     await withTemporaryVersionProject(async (root) => {
-        /** @type {string[]} */
-        const commands = [];
+        const commands: string[] = [];
         await runReleaseCheck(
             { rootDir: root, includeGolden: false },
             {
@@ -206,8 +203,7 @@ test("runReleaseCheck can leave Golden qualification to a parallel CI job", asyn
 
 test("runReleaseCheck short-circuits after compile failure and restores generated version", async () => {
     await withTemporaryVersionProject(async (root) => {
-        /** @type {string[]} */
-        const stages = [];
+        const stages: string[] = [];
         await assertRejects(
             () =>
                 runReleaseCheck(
@@ -294,8 +290,7 @@ test("release check rejects worker errors even when image fallback exits success
 
 test("runReleaseCheck restores generated version after binary version mismatch", async () => {
     await withTemporaryVersionProject(async (root) => {
-        /** @type {string[]} */
-        const stages = [];
+        const stages: string[] = [];
         await assertRejects(
             () =>
                 runReleaseCheck(
@@ -489,10 +484,8 @@ test("Bun release identity rejects Deno and an unexpected compiler version", () 
 test("Bun release gate compiles and checks the Bun runtime without invoking the Deno compiler", async () => {
     await withTemporaryVersionProject(async (root) => {
         await fsWriteFile(join(root, ".bun-version"), "1.4.3\n");
-        /** @type {Array<{ command: string, args: string[] }>} */
-        const calls = [];
-        /** @type {string[]} */
-        const surfaces = [];
+        const calls: RecordedCommand[] = [];
+        const surfaces: string[] = [];
         await runReleaseCheck(
             { rootDir: root, runtime: "bun", includeGolden: false, buildVersion: "v1.2.3-rc.1" },
             {

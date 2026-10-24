@@ -1,12 +1,17 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
-import { decidePostExecution } from "./decisions.ts";
+import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "../../plan-store.js";
+import { HostedSession, type ActiveExecutionWorkflow } from "../session/hosted-session.js";
+import { decidePostExecution, type PostExecutionOptions } from "./decisions.ts";
 import { resolveExecutionOwner, supportsPairExecution } from "./workflow.js";
 import { selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { buildPairPausedMessage } from "./engineer-runner.ts";
+
+interface StatusEvent {
+    text?: string;
+    message?: string;
+}
 
 test("Plan metadata normalizes explicit pair execution ownership", () => {
     const parsed = parsePlanFrontMatter(`---
@@ -95,11 +100,11 @@ test("Pair capability requires an attached conversational host, not a checkpoint
 });
 
 test("post-execution decisions keep Pair pauses out of validation", () => {
-    const options = /** @type {const} */ ({
+    const options: PostExecutionOptions = {
         planName: "visual-plan",
         triageMeta: { classification: "FEATURE" },
         executionAgentName: "frontend-engineer",
-    });
+    };
 
     assertEquals(
         decidePostExecution(
@@ -117,10 +122,8 @@ test("post-execution decisions keep Pair pauses out of validation", () => {
         },
     );
     assertEquals(
-        decidePostExecution(
-            { repairRequired: false, executionComplete: false, canceled: true },
-            options,
-        ).payload.reason,
+        decidePostExecution({ repairRequired: false, executionComplete: false, canceled: true }, options).payload
+            .reason,
         "execution_canceled",
     );
     assertEquals(
@@ -158,12 +161,11 @@ test("deliberate Pair resume preserves execution attempt timestamp", () => {
         pairStopRequested: true,
     });
 
-    const resumed = { ...session.getActiveExecutionWorkflow() };
+    // The workflow was just installed above; retain the original JavaScript fixture without a runtime guard.
+    const resumed: ActiveExecutionWorkflow = { ...session.getActiveExecutionWorkflow()! };
     delete resumed.pairPauseReason;
     delete resumed.pairStopRequested;
-    session.setActiveExecutionWorkflow(
-        /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ (resumed),
-    );
+    session.setActiveExecutionWorkflow(resumed);
 
     assertEquals(session.getActiveExecutionWorkflow()?.executionAttemptStartedAtMs, 12345);
     assertEquals(session.getActiveExecutionWorkflow()?.pairPauseReason, undefined);
@@ -171,26 +173,24 @@ test("deliberate Pair resume preserves execution attempt timestamp", () => {
 });
 
 test("an engineer-owned Plan can select Pair, and an incapable host falls back without owner-specific copy", () => {
-    /** @type {string[]} */
-    const statusMessages = [];
+    const statusMessages: string[] = [];
     const capable = new HostedSession({
         id: "pair-engineer-capable",
         cwd: getCwd(),
         interactionAdapter: {
-            supportsInteraction: (/** @type {string} */ type) => type === "pair_checkpoint",
+            supportsInteraction: (type: string) => type === "pair_checkpoint",
             requestInteraction: () => ({ outcome: "selected", value: "continue" }),
         },
     });
     const incapable = new HostedSession({ id: "pair-engineer-incapable", cwd: getCwd() });
     incapable.setEventSink({
-        emit: (/** @type {{ text?: string, message?: string }} */ event) =>
-            statusMessages.push(event.text || event.message || ""),
+        emit: (event: StatusEvent) => statusMessages.push(event.text || event.message || ""),
     });
-    const policy = /** @type {const} */ ({
+    const policy: PlanExecutionPolicy = {
         executionAgent: "engineer",
         collaborationRecommendation: "pair",
         source: "canonical",
-    });
+    };
 
     const selected = selectRuntimeCollaborationStyle(capable, policy);
     const fellBack = selectRuntimeCollaborationStyle(incapable, policy);
@@ -205,10 +205,7 @@ test("an engineer-owned Plan can select Pair, and an incapable host falls back w
 });
 
 test("Pair pause copy names the runtime Agent behind each Plan owner", () => {
-    assertStringIncludes(
-        buildPairPausedMessage("stop", getCwd(), "engineer"),
-        "Plan Engineer stopped Pair Execution",
-    );
+    assertStringIncludes(buildPairPausedMessage("stop", getCwd(), "engineer"), "Plan Engineer stopped Pair Execution");
     assertStringIncludes(
         buildPairPausedMessage("stop", getCwd(), "frontend-engineer"),
         "Frontend Engineer stopped Pair Execution",
