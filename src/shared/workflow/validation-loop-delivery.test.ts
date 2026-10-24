@@ -1,3 +1,5 @@
+import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { TriageMeta } from "../../tools/plan-written.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -148,16 +150,19 @@ test("Epic child delivery commits its Manual QA artifact with verified metadata"
                     { checklistMarkdown: "Manual verification steps for epic/01-one\n\n- [ ] Check delivered child" },
                     undefined,
                     undefined,
-                    /** @type {import('@earendil-works/pi-coding-agent').ExtensionToolContext} */ ({}),
+                    // The checklist tool does not read context; preserve the existing minimal SDK fixture.
+                    {} as ExtensionToolContext,
                 );
-                return [{
-                    role: "toolResult",
-                    toolCallId: "call",
-                    toolName: "qa_checklist_generated",
-                    content: toolResult.content,
-                    isError: false,
-                    timestamp: Date.now(),
-                }];
+                return [
+                    {
+                        role: "toolResult",
+                        toolCallId: "call",
+                        toolName: "qa_checklist_generated",
+                        content: toolResult.content,
+                        isError: false,
+                        timestamp: Date.now(),
+                    },
+                ];
             },
         },
     });
@@ -189,8 +194,7 @@ test("Epic child publication stops when the Manual QA Agent has a fatal failure"
         summary: "Epic",
     });
     const { hostedSession } = makeValidationUi();
-    /** @type {import('../../tools/plan-written.ts').TriageMeta} */
-    const triageMeta = {
+    const triageMeta: TriageMeta = {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
         parentPlan: "epic",
@@ -228,8 +232,7 @@ test("publication pauses on missing target branch metadata without recording val
         humanReviewDecision: "not_required",
     });
     const { hostedSession } = makeValidationUi();
-    /** @type {import('../../tools/plan-written.ts').TriageMeta} */
-    const triageMeta = {
+    const triageMeta: TriageMeta = {
         classification: "QUICK_FIX",
         status: "reviewed",
         humanReviewMode: "none",
