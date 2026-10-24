@@ -1,3 +1,4 @@
+import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { rm as fsRm, mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -47,7 +48,7 @@ test("separate Core processes activate, accept Triage once, and replay the saved
         assertEquals(await readRecordBytes(projectRoot, triage.workflowId), bytesAfterB);
 
         const d = await spawnAttachedCli("status", projectRoot, { workflowId: triage.workflowId });
-        assertEquals(d.result.ok && d.result.workflow, b.result.ok && b.result.workflow);
+        assertEquals(d.result, compactStatus(b.result, null));
         assertEquals(await readRecordBytes(projectRoot, triage.workflowId), bytesAfterB);
         assertEquals(await git(projectRoot, ["status", "--porcelain", "--ignored"]), "");
     });
@@ -79,7 +80,10 @@ test("two processes racing on one revision leave exactly one accepted outcome", 
         const status = await spawnAttachedCli("status", projectRoot, { workflowId: triage.workflowId });
         assert(status.result.ok && accepted[0].result.ok);
         assertEquals(status.result.workflow.revision, 2);
-        assertEquals(status.result.workflow.triageOutcome, accepted[0].result.workflow.triageOutcome);
+        assertEquals(status.result, JSON.parse(JSON.stringify(compactStatus(accepted[0].result, null))));
+        const full = await runOperation("status", projectRoot, { workflowId: triage.workflowId });
+        assert(full.ok);
+        assertEquals(JSON.parse(JSON.stringify(compactResult(full))).workflow, accepted[0].result.workflow);
     });
 });
 
@@ -92,7 +96,10 @@ test("CLI plan_written accepts the Plan and matches the coordinator replay", asy
         const cli = await spawnAttachedCli("plan_written", projectRoot, input);
         assertEquals(cli.code, 0, cli.stderr);
         assertEquals(cli.result.ok && cli.result.workflow.state, "awaiting_review");
-        assertEquals(cli.result, await runOperation("plan_written", projectRoot, input));
+        assertEquals(
+            cli.result,
+            JSON.parse(JSON.stringify(compactResult(await runOperation("plan_written", projectRoot, input)))),
+        );
     });
 });
 

@@ -23,7 +23,7 @@ export const DENO_CONFIG_PATH = join(REPO_ROOT, "deno.json");
 /** An uninitialized Project: one commit, no `.wld/`, no `.gitignore`. */
 export const projectFixture = defineCommittedGitFixture({ "README.md": "# Fixture\n" });
 
-export const EVIDENCE = { host: "claude-code", hostVersion: "2.1.0", adapterVersion: "0.1.0" };
+export const EVIDENCE = { host: "claude-code", hostVersion: "2.1.303", adapterVersion: "0.2.0", adapterContract: 1 };
 
 export function activateInput(operationId = "op-activate"): AttachedJsonObject {
     return {

@@ -11,7 +11,6 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { prepareIndexRuntime } from "./delivery-test-fixture.ts";
 import { CLI_PATH, EVIDENCE, readRecordBytes } from "./attached-test-fixture.ts";
-import { parseDiffFiles } from "../workflow/review-diff.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import {
     findIndexedDocumentIdsByRecordId,
@@ -19,7 +18,7 @@ import {
     runMnemotecaWorkRecordCommand,
 } from "../work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { conversation, pendingChat, reviewApi, sendChat } from "./review-chat-test-fixture.ts";
+import { conversation, reviewApi, sendChat } from "./review-chat-test-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import type {
     AttachedJsonObject,
@@ -89,6 +88,23 @@ plugin({ name: "count-core-model-sessions", setup(build) {
             });
             return JSON.parse(JSON.stringify(response.structuredContent));
         };
+        const pendingTurn = async (workflow: AttachedWorkflowView) => {
+            const action = workflow.nextAction;
+            assert(action.kind === "review" || action.kind === "code_review");
+            const response = await client.callTool({
+                name: "get_pending_chat",
+                arguments: {
+                    workflowId: workflow.workflowId,
+                    actionId: "actionId" in action ? action.actionId : workflow.review?.actionId,
+                },
+            });
+            const content: { ok: boolean; chat: { turnId: string; message: string } } = JSON.parse(
+                JSON.stringify(response.structuredContent),
+            );
+            assert(content.ok);
+            assertEquals(content.chat.message, privateHostConversation);
+            return content.chat;
+        };
         const activated = await client.callTool({
             name: "activate",
             arguments: {
@@ -126,7 +142,7 @@ plugin({ name: "count-core-model-sessions", setup(build) {
         planResult = await call("status", planResult.workflow);
         assert(planResult.ok);
         planResult = await call("review_reply", planResult.workflow, {
-            turnId: pendingChat(planResult.workflow).turnId,
+            turnId: (await pendingTurn(planResult.workflow)).turnId,
             text: `Plan answer ${privateHostConversation}`,
         });
         assert(planResult.ok);
@@ -153,12 +169,20 @@ plugin({ name: "count-core-model-sessions", setup(build) {
         assert(result.ok && result.workflow.nextAction.kind === "validation", JSON.stringify(result));
         const reviewer = result.workflow.nextAction;
         assert(reviewer.request.kind === "reviewer");
-        for (const file of parseDiffFiles(reviewer.request.fullDiff)) {
+        result = await call("review_diff", result.workflow, {
+            actionId: reviewer.actionId,
+            command: "list",
+            scope: "full",
+        });
+        assert(result.ok && result.diff);
+        const paths = [...result.diff.text.matchAll(/^\| `([^`]+)` \|/gm)].map((match) => match[1]);
+        assert(paths.length > 0);
+        for (const path of paths) {
             result = await call("review_diff", result.workflow, {
                 actionId: reviewer.actionId,
                 command: "show",
                 scope: "full",
-                path: file.path,
+                path,
                 maxBytes: 65536,
             });
             assert(result.ok);
@@ -171,7 +195,7 @@ plugin({ name: "count-core-model-sessions", setup(build) {
         result = await call("status", result.workflow);
         assert(result.ok);
         result = await call("review_reply", result.workflow, {
-            turnId: pendingChat(result.workflow).turnId,
+            turnId: (await pendingTurn(result.workflow)).turnId,
             text: `Code answer ${privateHostConversation}`,
         });
         assert(result.ok && result.workflow.nextAction.kind === "code_review");
@@ -201,7 +225,18 @@ plugin({ name: "count-core-model-sessions", setup(build) {
         assert(result.ok && result.workflow.nextAction.kind === "recorder", JSON.stringify(result));
         // The fake external Recorder receives the actual adapter handoff. Echoing
         // leaked text makes an adapter that forwards the conversation fail here.
-        const recorderInput = result.instructions?.text + "\n" + result.workflow.nextAction.request.prompt;
+        const recorderResponse = await client.callTool({
+            name: "get_instructions",
+            arguments: { workflowId: result.workflow.workflowId, actionId: result.workflow.nextAction.actionId },
+        });
+        const recorder: { ok: boolean; instructions: { text: string } } = JSON.parse(
+            JSON.stringify(recorderResponse.structuredContent),
+        );
+        assert(recorder.ok);
+        const recorderInput =
+            recorder.instructions.text +
+            "\n" +
+            (await readFile(join(result.workflow.nextAction.request.cwd, "implementation.ts"), "utf8"));
         assertStringIncludes(recorderInput, "value = 3");
         assertEquals(recorderInput.includes(privateHostConversation), false);
         const recorderSummary = recorderInput.includes(privateHostConversation)
@@ -213,6 +248,10 @@ plugin({ name: "count-core-model-sessions", setup(build) {
             summary: recorderSummary,
         });
         assert(result.ok && result.workflow.nextAction.kind === "delivered", JSON.stringify(result));
+        const delivered = await fixture.status();
+        assert(delivered.nextAction.kind === "delivered");
+        assertEquals(result.workflow.nextAction.completionMode, delivered.nextAction.completionMode);
+        assertEquals(result.workflow.nextAction.workRecord, delivered.nextAction.workRecord);
         assertEquals(await readFile(marker, "utf8").catch(() => ""), "");
         const records = await listWorkRecords(fixture.root);
         assertEquals(records.length, 1);

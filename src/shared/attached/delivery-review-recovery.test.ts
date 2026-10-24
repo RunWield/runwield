@@ -37,7 +37,7 @@ for (const outcome of ["approved", "feedback"]) {
                               payload: {},
                           });
                 assert(continued.result.ok, JSON.stringify(continued.result));
-                const action = continued.result.workflow.nextAction;
+                const action = (await fixture.status()).nextAction;
                 if (outcome === "approved") assert(action.kind === "recorder", JSON.stringify(action));
                 else {
                     assert(action.kind === "validation" && action.request.kind === "repair", JSON.stringify(action));

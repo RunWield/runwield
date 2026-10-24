@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
+import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
     activateInput,
     pendingTriage,
@@ -34,17 +34,24 @@ test("activate returns the Router instructions with the pending Triage action", 
     });
 });
 
-test("after a PLANNED_CHANGE Triage, status returns the Planner action and Planner instructions", async () => {
+test("after a PLANNED_CHANGE Triage, status omits instructions and the Planner fetches them", async () => {
     await withProject(async (projectRoot) => {
         const { planning } = await reachPlanning(projectRoot);
         const status = await runOperation("status", projectRoot, { workflowId: planning.workflowId });
-        assert(status.ok && status.instructions, JSON.stringify(status));
-        assertEquals(status.workflow.nextAction.kind, "plan");
-        assertEquals(status.instructions.role, "planner");
-        assertEquals(status.instructions.contractVersion, "runwield.attached.planner/1");
-        assertStringIncludes(status.instructions.text, BUNDLED_PLANNER_TEXT);
-        assertStringIncludes(status.instructions.text, "- `write`, `write_docs` -> `Write`");
-        assertEquals(status.instructions.text.includes("{{"), false, "No template placeholder may reach the host.");
+        assert(status.ok && status.workflow.nextAction.kind === "plan");
+        assertEquals(status.instructions, undefined);
+        const content = await readAttachedAction({
+            projectRoot,
+            workflowId: planning.workflowId,
+            actionId: status.workflow.nextAction.actionId,
+            content: "instructions",
+        });
+        assert(content.ok && "instructions" in content);
+        assertEquals(content.instructions.role, "planner");
+        assertEquals(content.instructions.contractVersion, "runwield.attached.planner/1");
+        assertStringIncludes(content.instructions.text, BUNDLED_PLANNER_TEXT);
+        assertStringIncludes(content.instructions.text, "- `write`, `write_docs` -> `Write`");
+        assertEquals(content.instructions.text.includes("{{"), false, "No template placeholder may reach the host.");
     });
 });
 
@@ -56,10 +63,23 @@ test("Planner instructions keep initial submission and feedback review in Claude
                 round === 1
                     ? (await reachPlanning(projectRoot)).result
                     : await runOperation("status", projectRoot, { workflowId: workflow.workflowId });
-            assert(handoff.ok && handoff.instructions, JSON.stringify(handoff));
-            const text = handoff.instructions.text;
+            assert(handoff.ok && handoff.workflow.nextAction.kind === "plan");
+            const content =
+                round === 1
+                    ? handoff
+                    : await readAttachedAction({
+                          projectRoot,
+                          workflowId: handoff.workflow.workflowId,
+                          actionId: handoff.workflow.nextAction.actionId,
+                          content: "instructions",
+                      });
+            assert(content.ok && "instructions" in content && content.instructions);
+            const text = content.instructions.text;
             assertStringIncludes(text, "even when the result has no `instructions`");
-            assertStringIncludes(text, "show `review.url` and poll `status`");
+            assertStringIncludes(text, "show `review.url` and wait with MCP `status`");
+            assertStringIncludes(text, "waitForRevision");
+            assertStringIncludes(text, "timeoutMs: 30000");
+            assertStringIncludes(text, "context.projectSetup");
             assertStringIncludes(text, "read its feedback, image paths, and note");
             assertStringIncludes(text, "Browser edits are already saved; do not apply them twice.");
             assertStringIncludes(text, "Stay in Claude Code and the browser; use no RunWield CLI or TUI commands.");
@@ -99,9 +119,16 @@ test("a project planner definition replaces the bundled Planner instructions on 
         const { planning } = await reachPlanning(projectRoot);
         await writeProjectPlanner(projectRoot, "Project Planner: plan only in haiku.");
         const status = await runOperation("status", projectRoot, { workflowId: planning.workflowId });
-        assert(status.ok && status.instructions, JSON.stringify(status));
-        assertStringIncludes(status.instructions.text, "Project Planner: plan only in haiku.");
-        assertEquals(status.instructions.text.includes(BUNDLED_PLANNER_TEXT), false);
+        assert(status.ok && status.workflow.nextAction.kind === "plan");
+        const content = await readAttachedAction({
+            projectRoot,
+            workflowId: planning.workflowId,
+            actionId: status.workflow.nextAction.actionId,
+            content: "instructions",
+        });
+        assert(content.ok && "instructions" in content);
+        assertStringIncludes(content.instructions.text, "Project Planner: plan only in haiku.");
+        assertEquals(content.instructions.text.includes(BUNDLED_PLANNER_TEXT), false);
     });
 });
 

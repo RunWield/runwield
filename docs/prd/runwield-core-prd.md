@@ -580,12 +580,12 @@ repair reasoning. Core keeps its existing Recorder and Manual QA turns. Attached
 Epic-child checklist artifact; its host can suggest checks after delivery without saving them or claiming they ran.
 [Connect](runwield-connect-prd.md#shared-plan-and-verification-outcomes) owns the host interaction requirements.
 
-**Attached delivery maturity:** Automated real-Git and fresh-process checks cover delivery and recovery. Headed MCP
-checks confirm feedback, a refreshed diff, approval, and pending-review restore. Live Claude Code 2.1.299 confirms fresh
-Recorder dispatch, proven publication, indexed recording, and private-conversation exclusion. Complete Claude FEATURE
-Preview release and live integrated support remain **TARGET** until child 08. Attached review chat uses the host
+**Attached delivery maturity:** Automated real-Git and fresh-process checks cover shared delivery and recovery. The
+integrated Claude headless result, tested source identity, permissions limits, and Preview release boundary are owned by
+[Connect Preview Acceptance](runwield-connect-prd.md#preview-acceptance). Attached review chat uses the host
 conversation and restores pending turns after process loss; see
-[Connect review experience](runwield-connect-prd.md#shared-plan-and-verification-outcomes). Core review chat keeps its existing repair Agent behavior.
+[Connect review experience](runwield-connect-prd.md#shared-plan-and-verification-outcomes). Core review chat keeps its
+existing repair Agent behavior.
 
 **Acceptance scenarios: Attached completion and recovery.**
 

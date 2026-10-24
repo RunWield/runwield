@@ -37,7 +37,7 @@ const WORKER_ADDENDUM = [
     "- You are a fresh Claude-hosted worker. All model calls belong to Claude Code.",
     "- Use only the handed-off execution directory and Plan path. Follow that Plan. Never edit, clean, stash, reset, or relocate the invoking checkout. With recorded non-Git consent, the execution directory is the current checkout.",
     "- Do not create host worktree isolation or another worktree. RunWield owns execution isolation.",
-    "- Do not call any RunWield lifecycle tool, MCP operation, CLI, or TUI, including task_completed. This overrides all Core lifecycle and completion-tool instructions above.",
+    "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions and get_artifact are allowed. This overrides all Core lifecycle and completion-tool instructions above.",
     "- Return a concise Markdown bullet-point implementation report to the coordinating conversation, with outcomes and verification results. The coordinator submits task_completed.message. If blocked, return the blocker; do not claim completion.",
 ].join("\n");
 
@@ -52,7 +52,7 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "## Attached independent reviewer — overrides Core lifecycle instructions above",
         "- You are a fresh Claude subagent. Do not edit files. Inspect the exact candidate with RunWield MCP review_diff directly.",
         "- Use the handed-off workflowId, revision and actionId in each envelope. Each read returns the next revision; use it for the next read. List does not count as coverage. Read every required diff byte.",
-        "- The coordinator must supply the review_complete tool's payload schema verbatim with the full reviewer prompt, including on correction. Use that schema for the exact structured outcome; do not invent field names. If it is missing, return the missing schema as a blocker.",
+        "- Core includes the canonical review_complete payload schema in your fetched instructions, including on correction. Use that schema for the exact structured outcome; do not invent field names. If it is missing, return the missing schema as a blocker.",
         "- Do not call review_complete or any other lifecycle operation. Return the structured review_complete outcome and the latest workflow revision to the coordinating conversation. The coordinator must submit your outcome unchanged, not map or reinterpret its fields.",
         "- Core owns review policy, finding identity, candidate freshness and approval. Do not claim Verified or publish.",
     ].join("\n"),
@@ -60,7 +60,7 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "## Attached repair worker — overrides Core lifecycle instructions above",
         "- You are a fresh Claude-hosted repair worker. Use only the handed-off checkout and focused repair packet. Do not repeat the original implementation or create host worktree isolation.",
         "- Never edit, clean, stash, reset, or relocate the invoking checkout. Do not commit, push, merge, or publish.",
-        "- Do not call any RunWield lifecycle tool, MCP operation, CLI, or TUI, including task_completed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
+        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions and get_artifact are allowed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
         "- A blocked item is not completion. Return its identity, blocker, and needed recovery in plain text.",
     ].join("\n"),
     engineer: WORKER_ADDENDUM,
@@ -69,13 +69,13 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "- Report Triage with `triage_report`. Put the Core `triage_report` arguments (`routingIntent`, " +
         "`complexity`, `summary`, `workKind`, `sessionName`) in `payload.outcome`.",
     planner: [
-        "- Before you write the Plan, show the user the `workflow.nextAction.projectSetup` paths: `plan_written` " +
+        "- Before you write the Plan, fetch current instructions with `get_instructions` and show the user the returned `context.projectSetup` paths: `plan_written` " +
             "creates them in the repository. When the list is empty, nothing new is created.",
         "- Submit with `plan_written`. Put `planName`, and optionally `executionAgent` and " +
             "`collaborationRecommendation`, in `payload` next to `actionId`.",
-        "- When `workflow.nextAction.kind` is `review`, show `review.url` and poll `status` with a short shell sleep " +
-            "between calls while browser review is pending.",
-        "- When feedback returns a Planner action, read its feedback, image paths, and note, revise the Plan, then " +
+        "- When `workflow.nextAction.kind` is `review`, show `review.url` and wait with MCP `status` using " +
+            "`{ workflowId, waitForRevision: <current revision>, timeoutMs: 30000 }`. Repeat with the returned revision while review is pending. Do not use shell sleep or fetch full status.",
+        "- When feedback returns a Planner action, fetch its current instructions and `context`; read its feedback, image paths, and note, revise the Plan, then " +
             "call `plan_written` with the new action ID and current revision. Browser edits are already saved; do not " +
             "apply them twice. The live browser page is reused for the next round.",
         "- After cancellation, tell the user that review was canceled and ask what to do next. The workflow remains " +
@@ -85,7 +85,7 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
 
 /** The effective layered instructions for one host role, ready to hand to Claude Code. */
 export async function resolveAttachedRoleInstructions(projectRoot: string, role: AttachedHostRole): Promise<string> {
-    // The engine request carries the current discovery/verify reviewer prompt.
+    // The coordinator adds the mode-specific bare reviewer policy before these host transport overrides.
     if (role === "reviewer") return ROLE_ADDENDUM.reviewer;
     const agent = await loadAgentDef(role, projectRoot);
     const bundledAgentDefsPath = await getBundledAgentDefsPath();

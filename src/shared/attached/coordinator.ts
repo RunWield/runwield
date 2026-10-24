@@ -12,6 +12,7 @@
  * close the workflow as unsupported in this Preview.
  */
 
+import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
 import { parseRecorderSections } from "../work-records/generation.js";
@@ -54,6 +55,7 @@ import {
     type ReviewReplyEnvelope,
     parseReviewReplyInput,
     type ActivateEnvelope,
+    ATTACHED_OPERATIONS,
     ATTACHED_IMPLEMENTER_CONTRACT_VERSION,
     ATTACHED_PLANNER_CONTRACT_VERSION,
     ATTACHED_TRIAGE_CONTRACT_VERSION,
@@ -104,6 +106,9 @@ import { continueHostTurnValidation, reconcileConsumedHostResume } from "../work
 import { sameHostIdentity, ValidationHostRejected } from "../workflow/validation-host-contract.ts";
 import { readReviewDiff } from "../workflow/review-diff.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
+import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
+import { assessCompatibility } from "./compatibility.ts";
+import { parseHostEvidence } from "./operations.ts";
 
 import process from "node:process";
 /**
@@ -581,7 +586,8 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
     if (loaded.status !== "missing") return (await replay(loaded.record)).result;
 
     const now = new Date().toISOString();
-    const evidence = { ...envelope.evidence, coreVersion: VERSION };
+    const compatibility = assessCompatibility(envelope.evidence);
+    const evidence = { ...envelope.evidence, coreVersion: VERSION, compatibility };
     const record: AttachedWorkflowRecord = {
         validation: null,
         schemaVersion: 1,
@@ -606,7 +612,12 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
         createdAt: now,
         updatedAt: now,
     };
-    const result: AttachedOperationResult = { ok: true, operation: "activate", workflow: await viewOf(record) };
+    const result: AttachedOperationResult = {
+        ok: true,
+        operation: "activate",
+        workflow: await viewOf(record),
+        compatibility,
+    };
     record.acceptedOperations[envelope.operationId] = { result, evidence, acceptedAt: now };
     return await commit(location, "activate", null, { result, next: record }, replay);
 }
@@ -1576,13 +1587,17 @@ async function withRoleInstructions(
                   ? "recorder"
                   : "reviewer-feedback-engineer";
         const cwd = action.request.cwd;
-        const text = await resolveAttachedRoleInstructions(cwd, role);
+        const roleInstructions = await resolveAttachedRoleInstructions(cwd, role);
+        const text =
+            action.request.kind === "reviewer"
+                ? `${(await loadReviewerPrompt(action.request.reviewMode, cwd)).systemPrompt}\n\n${roleInstructions}\n\n## review_complete payload schema\n\n${JSON.stringify(ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!.inputSchema.properties.payload, null, 2)}`
+                : roleInstructions;
         return {
             ...result,
             instructions: {
                 role,
                 contractVersion: "runwield.attached.validation/1",
-                text: `${text}\n\n${action.request.prompt}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
+                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
             },
         };
     }
@@ -1609,7 +1624,107 @@ export async function runAttachedOperation(
     } catch {
         input = undefined;
     }
-    return await withRoleInstructions(projectRoot, await runParsedOperation(name, projectRoot, input));
+    if (name !== "status") {
+        const parsed = parseHostEvidence(input);
+        if (!parsed.ok) return await rejected(name, parsed.rejection);
+        const compatibility = assessCompatibility(parsed.envelope);
+        if (compatibility.status === "incompatible_adapter" || compatibility.status === "unsupported_host_version") {
+            return await rejected(name, rejection(compatibility.status, compatibility.message));
+        }
+        const result = await runParsedOperation(name, projectRoot, input);
+        return await withRoleInstructions(projectRoot, result.ok ? { ...result, compatibility } : result);
+    }
+    return await runParsedOperation(name, projectRoot, input);
+}
+
+interface AttachedActionReadEnvelope extends StatusEnvelope {
+    actionId: string;
+    content: "instructions" | "chat" | "prompt" | "execution_report" | "repair_report";
+    offsetBytes?: number;
+    maxBytes?: number;
+}
+
+/** Retrieve only the current action's host instructions, decision, or oldest queued chat turn. */
+export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
+    const current = await readStatus(envelope);
+    if (!current.ok) return { ok: false as const, rejection: current.rejection };
+    const workflow = current.workflow;
+    const action = workflow.nextAction;
+    const currentActionId = "actionId" in action ? action.actionId : workflow.review?.actionId;
+    if (workflow.recovery) {
+        return {
+            ok: false as const,
+            rejection: rejection("project_moved", "Resolve the project's location before reading action content."),
+        };
+    }
+    if (currentActionId !== envelope.actionId) {
+        return {
+            ok: false as const,
+            rejection: rejection("action_superseded", "The action changed. Read compact status."),
+        };
+    }
+    const identity = { workflowId: workflow.workflowId, revision: workflow.revision, actionId: envelope.actionId };
+    if (["prompt", "execution_report", "repair_report"].includes(envelope.content)) {
+        if (
+            (envelope.offsetBytes !== undefined &&
+                (!Number.isSafeInteger(envelope.offsetBytes) || envelope.offsetBytes < 0)) ||
+            (envelope.maxBytes !== undefined &&
+                (!Number.isSafeInteger(envelope.maxBytes) || envelope.maxBytes < 4 || envelope.maxBytes > 65536))
+        ) {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", "Use offsetBytes >= 0 and maxBytes between 4 and 65536."),
+            };
+        }
+        let text: string | null | undefined;
+        if (envelope.content === "prompt") {
+            if ("request" in action && action.request.kind !== "decision") text = action.request.prompt;
+        } else if (workflow.plan) {
+            const location = await resolveWorkflowPlanLocation(
+                workflow.execution?.executionCwd || envelope.projectRoot,
+                workflow.plan.planName,
+                { migrateRegistry: false, readOnly: true },
+            );
+            text =
+                envelope.content === "execution_report"
+                    ? location.plan?.attrs.executionReport
+                    : location.plan?.attrs.validationCheckpoint?.reviewState?.lastRepairReport;
+        }
+        if (typeof text !== "string") {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", "The requested artifact is not available for this action."),
+            };
+        }
+        return { ok: true as const, ...identity, artifact: envelope.content, ...readTextPage(text, envelope) };
+    }
+    if (envelope.content === "chat") {
+        if (!("chat" in action) || !action.chat) {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", "No review chat turn is pending for this action."),
+            };
+        }
+        return { ok: true as const, ...identity, chat: action.chat };
+    }
+    if ((action.kind === "validation" || action.kind === "code_review") && action.request.kind === "decision") {
+        return { ok: true as const, ...identity, request: action.request };
+    }
+    const resolved = await withRoleInstructions(envelope.projectRoot, current);
+    if (!resolved.instructions) {
+        return {
+            ok: false as const,
+            rejection: rejection("invalid_input", "The current action has no host instructions or decision prompt."),
+        };
+    }
+    return {
+        ok: true as const,
+        ...identity,
+        instructions: resolved.instructions,
+        ...((action.kind === "triage" || action.kind === "plan" || action.kind === "implementation") && {
+            context: action,
+        }),
+    };
 }
 
 /** Persist the host claim before CI, then run Core outside the Attached record lock.

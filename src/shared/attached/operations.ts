@@ -12,6 +12,7 @@ import {
     IMPLEMENTATION_REPORT_MIN_LENGTH,
     normalizeImplementationReport,
 } from "../workflow/implementation-report.ts";
+import type { CompatibilityAssessment } from "./compatibility.ts";
 import type { ActiveExecutionWorkflow } from "../session/hosted-session.js";
 import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.js";
 import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
@@ -60,7 +61,9 @@ export type AttachedRejectionCode =
     | "project_moved"
     | "action_superseded"
     | "revision_conflict"
-    | "workflow_busy";
+    | "workflow_busy"
+    | "incompatible_adapter"
+    | "unsupported_host_version";
 
 export interface AttachedRejection {
     code: AttachedRejectionCode;
@@ -73,9 +76,11 @@ export interface HostEvidence {
     host: string;
     hostVersion: string;
     adapterVersion: string;
+    adapterContract: number;
 }
 
 export interface RecordedEvidence extends HostEvidence {
+    compatibility?: CompatibilityAssessment;
     coreVersion: string;
 }
 
@@ -311,6 +316,7 @@ export type AttachedOperationResult =
           ok: true;
           /** Transient browser delivery only; never retained in an operation receipt. */
           reviewReply?: AttachedChatReply;
+          compatibility?: CompatibilityAssessment;
           operation: AttachedOperationName;
           workflow: AttachedWorkflowView;
           instructions?: AttachedRoleInstructions;
@@ -395,8 +401,18 @@ function readRevision(object: AttachedJsonObject, key: string): number {
 }
 
 function readEvidence(object: AttachedJsonObject): HostEvidence {
-    const evidence = readObject(object.evidence, "evidence", ["host", "hostVersion", "adapterVersion"]);
+    const evidence = readObject(object.evidence, "evidence", [
+        "host",
+        "hostVersion",
+        "adapterVersion",
+        "adapterContract",
+    ]);
+    const adapterContract = evidence.adapterContract;
+    if (typeof adapterContract !== "number" || !Number.isSafeInteger(adapterContract) || adapterContract < 0) {
+        reject("invalid_input", "evidence.adapterContract", "evidence.adapterContract must be a non-negative integer.");
+    }
     return {
+        adapterContract,
         host: readIdentifier(evidence, "host", "evidence.host"),
         hostVersion: readText(evidence, "hostVersion", "evidence.hostVersion", MAX_SHORT_TEXT_LENGTH),
         adapterVersion: readText(evidence, "adapterVersion", "evidence.adapterVersion", MAX_SHORT_TEXT_LENGTH),
@@ -431,6 +447,13 @@ function parse<Envelope>(input: AttachedJsonValue | undefined, read: () => Envel
         if (error instanceof InputRejection) return { ok: false, rejection: error.rejection };
         throw error;
     }
+}
+
+/** Parse evidence once at the common boundary before dispatching any evidence-carrying operation. */
+export function parseHostEvidence(input: AttachedJsonValue | undefined) {
+    return parse(input, () =>
+        readEvidence(readObject(input, "", ["operationId", "workflowId", "expectedRevision", "evidence", "payload"])),
+    );
 }
 
 export function parseActivateInput(projectRoot: string, input: AttachedJsonValue | undefined) {
@@ -554,11 +577,12 @@ const IDENTIFIER_SCHEMA = { type: "string", pattern: IDENTIFIER_PATTERN.source }
 const EVIDENCE_SCHEMA = {
     type: "object",
     additionalProperties: false,
-    required: ["host", "hostVersion", "adapterVersion"],
+    required: ["host", "hostVersion", "adapterVersion", "adapterContract"],
     properties: {
         host: { ...IDENTIFIER_SCHEMA, description: "External Agent Host identifier, for example claude-code." },
         hostVersion: { type: "string" },
         adapterVersion: { type: "string" },
+        adapterContract: { type: "integer", minimum: 0 },
     },
 };
 
@@ -663,7 +687,7 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
     {
         name: "status",
         description:
-            "Read state, revision, next action, and recovery. Omit workflowId to restore the most recent open workflow in this project.",
+            "Read workflow state and recovery. MCP returns compact status by default and supports bounded waits for revision changes. Omit workflowId to restore the most recent open workflow.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -987,7 +1011,12 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
                               additionalProperties: false,
                               required: ["outcome"],
                               properties: {
-                                  outcome: { type: "string" },
+                                  outcome: {
+                                      type: "string",
+                                      enum: ["text", "selected", "canceled", "approved", "feedback"],
+                                      description:
+                                          "Match the current interaction type: text for text questions, selected for option choices, canceled for a canceled interaction, and approved or feedback for code-review decisions.",
+                                  },
                                   value: { type: ["string", "boolean"] },
                                   valueLabel: { type: "string" },
                                   message: { type: "string" },

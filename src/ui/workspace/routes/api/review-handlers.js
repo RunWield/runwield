@@ -56,9 +56,17 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {ReviewDecisionSink} [onDecision]
  * @property {boolean} [keepConversationTurns]
  *
+ * @typedef {Object} ReviewDecisionReceipt
+ * @property {string} operationId Core-created durable operation identity.
+ * @property {string} workflowId
+ * @property {string} actionId
+ * @property {string} attemptId
+ * @property {string} generation
+ * @property {string} decisionKey Candidate-bound validation decision identity.
+ *
  * @callback ReviewDecisionSink
  * @param {ReviewDecision} decision
- * @returns {Promise<void>}
+ * @returns {Promise<void | ReviewDecisionReceipt>}
  *
  * @typedef {Object} ReviewRequestContext
  * @property {Request} req
@@ -268,9 +276,11 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
+    /** @type {void | ReviewDecisionReceipt} */
+    let receipt = undefined;
     if (ctx.state?.onDecision) {
         try {
-            await ctx.state.onDecision(decision);
+            receipt = await ctx.state.onDecision(decision);
         } catch (error) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
@@ -278,7 +288,7 @@ async function resolveFromRequest(ctx, createDecision) {
     if (!(decision.conversationTurn && ctx.state?.keepConversationTurns) && !resolveReviewDecision(token, decision)) {
         return jsonError("review_not_found", "Review expired or completed.", 404);
     }
-    return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, ...receipt }, { headers: { "cache-control": "no-store" } });
 }
 
 /**

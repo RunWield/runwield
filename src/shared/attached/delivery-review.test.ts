@@ -2,10 +2,11 @@ import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
+import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
 import { listWorkRecords, writeWorkRecord } from "../work-records/store.js";
 
@@ -61,6 +62,48 @@ test("Attached browser feedback preserves images for the Claude repair", async (
         });
         assert(repaired.ok && repaired.workflow.nextAction.kind === "code_review", JSON.stringify(repaired));
         assertEquals(await fixture.ciCount(), 2);
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("Core code decisions return their own durable receipt and reject superseded actions without one", async () => {
+    const fixture = await attachedValidationFixture();
+    try {
+        const started = await toDelivery(fixture);
+        assert(started.workflow.nextAction.kind === "code_review");
+        const action = started.workflow.nextAction;
+        const rejected = () =>
+            applyAttachedCodeReviewDecision(fixture.root, fixture.workflowId, "another-action", { approved: true });
+        await assertRejects(rejected, Error, "round changed");
+        const receipt = await applyAttachedCodeReviewDecision(fixture.root, fixture.workflowId, action.actionId, {
+            approved: true,
+        });
+        assert(receipt);
+        assert(/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(receipt.operationId));
+        assertEquals(receipt.workflowId, fixture.workflowId);
+        assertEquals(receipt.actionId, action.actionId);
+        assertEquals(receipt.attemptId, action.request.identity.attemptId);
+        assertEquals(receipt.generation, action.request.identity.generation);
+        assertEquals(receipt.decisionKey, action.request.identity.key);
+        const location = locateAttachedWorkflows(fixture.root);
+        const saved = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+        assert(saved.status === "found");
+        const durable = saved.record.acceptedOperations[receipt.operationId].result;
+        assert(
+            durable.ok &&
+                durable.operation === "validation_decision" &&
+                durable.workflow.nextAction.kind === "recorder",
+        );
+        await assertRejects(
+            () =>
+                applyAttachedCodeReviewDecision(fixture.root, fixture.workflowId, action.actionId, { approved: true }),
+            Error,
+            "round changed",
+        );
+        const after = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+        assert(after.status === "found");
+        assertEquals(after.record.acceptedOperations, saved.record.acceptedOperations);
     } finally {
         await fixture.close();
     }

@@ -6,6 +6,7 @@ import { EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { crash, recoverDelivery } from "./delivery-recovery-test-fixture.ts";
+import { readAttachedAction } from "./coordinator.ts";
 
 for (const point of ["code_review_wait", "recorder_wait", "recorder_sections", "record_saved"]) {
     for (const timing of point === "record_saved" ? ["after"] : ["before", "after"]) {
@@ -45,9 +46,23 @@ for (const timing of ["before", "after"]) {
                 evidence: EVIDENCE,
                 payload: {},
             });
-            const current = recovered.result.workflow;
-            assert(current?.nextAction.kind === "recorder", JSON.stringify(recovered.result));
+            assert(
+                !recovered.result.ok && recovered.result.rejection.code === "invalid_outcome",
+                JSON.stringify(recovered.result),
+            );
+            const current = await fixture.status();
+            assert(current.nextAction.kind === "recorder", JSON.stringify(current));
             assertEquals((await fixture.plan()).attrs.validationCheckpoint?.hostRecorder?.invalidSubmissions, 1);
+            const error = current.nextAction.request.validationError;
+            assert(error);
+            const instructions = await readAttachedAction({
+                projectRoot: fixture.root,
+                workflowId: workflow.workflowId,
+                actionId: current.nextAction.actionId,
+                content: "instructions",
+            });
+            assert(instructions.ok && "instructions" in instructions && instructions.instructions);
+            assert(instructions.instructions.text.includes(error));
             const completed = await fixture.call("work_record_completed", current, {
                 actionId: current.nextAction.actionId,
                 title: "Value outcome",

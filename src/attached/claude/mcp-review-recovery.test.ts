@@ -10,6 +10,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import {
     CLI_PATH,
     DENO_CONFIG_PATH,
+    EVIDENCE,
     planWrittenInput,
     runOperation,
     submitReview,
@@ -49,7 +50,7 @@ async function connect(root: string) {
         env: { ...{ ...process.env }, PATH: `${bin}:${process.env["PATH"]}` },
         stderr: "pipe",
     });
-    const client = new Client({ name: "claude-code", version: "2.1.292" });
+    const client = new Client({ name: "claude-code", version: EVIDENCE.hostVersion });
     await client.connect(transport);
     return client;
 }
@@ -82,12 +83,16 @@ test("fresh MCP status restores the same pending round and transport close stops
                     "review_complete",
                     "validation_decision",
                     "work_record_completed",
+                    "get_instructions",
+                    "get_artifact",
+                    "get_pending_chat",
                 ],
             );
             assertEquals(tools.tools.find(({ name }) => name === "status")?.inputSchema.required, []);
             const status = await call(first, "status", {});
             assert(status.ok && status.review);
-            assertEquals(status.workflow.review, workflow.review);
+            assertEquals(status.workflow.review?.actionId, workflow.review?.actionId);
+            assertEquals(status.workflow.review?.status, workflow.review?.status);
             assertEquals(status.review.round, 1);
             original = status.review.url;
             const again = await call(first, "status", { workflowId: workflow.workflowId });
@@ -100,7 +105,8 @@ test("fresh MCP status restores the same pending round and transport close stops
         try {
             const status = await call(restored, "status", {});
             assert(status.ok && status.review);
-            assertEquals(status.workflow.review, workflow.review);
+            assertEquals(status.workflow.review?.actionId, workflow.review?.actionId);
+            assertEquals(status.workflow.review?.status, workflow.review?.status);
             assert(status.review.url !== original);
             const url = new URL(status.review.url);
             const posted = await fetch(new URL(`/api/review/deny${url.search}`, url), {
@@ -116,10 +122,20 @@ test("fresh MCP status restores the same pending round and transport close stops
         try {
             const status = await call(retrieval, "status", {});
             assert(status.ok && status.workflow.nextAction.kind === "plan");
-            assertEquals(status.workflow.nextAction.feedback, "Use a selector.");
+            assertEquals(status.workflow.nextAction.feedback, undefined);
             assertEquals(status.workflow.review?.status, "applied");
             assertEquals(status.review, undefined);
-            assertEquals(status.instructions?.role, "planner");
+            assertEquals(status.instructions, undefined);
+            const fetched = await retrieval.callTool({
+                name: "get_instructions",
+                arguments: { workflowId: workflow.workflowId, actionId: status.workflow.nextAction.actionId },
+            });
+            const content: { ok: boolean; instructions: { role: string }; context: { feedback: string } } = JSON.parse(
+                JSON.stringify(fetched.structuredContent),
+            );
+            assert(content.ok);
+            assertEquals(content.instructions.role, "planner");
+            assertEquals(content.context.feedback, "Use a selector.");
             const submitted = await call(
                 retrieval,
                 "plan_written",
@@ -181,7 +197,7 @@ for (const closeBeforeStatus of [false, true]) {
                         params: {
                             protocolVersion: "2025-11-25",
                             capabilities: {},
-                            clientInfo: { name: "claude-code", version: "2.1.293" },
+                            clientInfo: { name: "claude-code", version: EVIDENCE.hostVersion },
                         },
                     },
                     { jsonrpc: "2.0", method: "notifications/initialized" },

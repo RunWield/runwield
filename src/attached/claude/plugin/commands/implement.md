@@ -5,14 +5,18 @@ disable-model-invocation: true
 
 Restore RunWield implementation in this project. Claude Code owns every model call.
 
-1. Call RunWield MCP `status` with the known `workflowId`, or `{}` for the most recent open workflow.
+Show any returned `compatibility` notice to the user before continuing. On `incompatible_adapter` or
+`unsupported_host_version`, show Core's update message and stop. Core owns version compatibility.
+
+1. Call MCP `status` with the known `workflowId`, or `{}` for the most recent open workflow. Status is compact by default.
 2. For `plan_ready`, immediately call `start_execution` with a new operation ID, the current workflow ID and revision,
    and `payload: {}`. For `consent`, ask the disclosure question in plain text and resubmit `start_execution` with
    `actionId` and `consent: "proceed"` or `"decline"`. After decline, stop; do not automatically restart.
 3. For `implementation`, check `runwield.attached.implementation/1` and send a user-visible message before dispatch with
    the directory, branch, and disclosure, including the RunWield-owned `.gitignore` block. Do not put this only in
-   thinking or the worker prompt. Dispatch a fresh host Task/Agent subagent. Include the full returned role instructions
-   verbatim (do not summarize them), `role`, `executionCwd`, `planPath`, and `planName` in its prompt. All edits and
+   thinking or the worker prompt. Dispatch a fresh host Task/Agent subagent. If this action came from compact `status`, tell
+   the worker to fetch its complete instructions with `get_instructions` using the workflow and action IDs. Otherwise pass
+   the returned instructions unchanged. Include `role`, `executionCwd`, `planPath`, and `planName` in its prompt. All edits and
    shell commands must use that directory. Do not enable host worktree isolation, create another worktree, or change the
    invoking checkout. The worker follows the Plan, makes no RunWield lifecycle calls, and returns a Markdown
    bullet-point report.

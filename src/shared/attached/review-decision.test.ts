@@ -5,7 +5,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { loadPlan } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
-import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
+import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
     planWrittenInput,
     readRecordBytes,
@@ -42,7 +42,10 @@ test("approval survives a fresh status process with canonical readiness and an i
         const fresh = await spawnAttachedCli("status", root, { workflowId: workflow.workflowId });
         assert(fresh.result.ok);
         assertEquals(fresh.result.workflow.state, "plan_ready");
-        assertEquals(fresh.result.workflow.review?.outcome, outcome);
+        assertEquals(fresh.result.workflow.review?.outcome, outcome.kind);
+        const full = await runOperation("status", root, { workflowId: workflow.workflowId });
+        assert(full.ok);
+        assertEquals(full.workflow.review?.outcome, outcome);
     });
 });
 
@@ -62,8 +65,16 @@ test("feedback and readable image paths survive loss and resubmission creates a 
         assertEquals(outcome, { kind: "feedback", feedback: "Use a selector.", imagePaths: [image] });
         const fresh = await spawnAttachedCli("status", root, { workflowId: workflow.workflowId });
         assert(fresh.result.ok);
-        const action = fresh.result.workflow.nextAction;
-        assert(action.kind === "plan");
+        const summary = fresh.result.workflow.nextAction;
+        assert(summary.kind === "plan");
+        const content = await readAttachedAction({
+            projectRoot: root,
+            workflowId: workflow.workflowId,
+            actionId: summary.actionId,
+            content: "instructions",
+        });
+        assert(content.ok && "context" in content && content.context?.kind === "plan");
+        const action = content.context;
         assertEquals(action.feedback, "Use a selector.");
         assertEquals(action.imagePaths, [image]);
         assertStringIncludes(action.note ?? "", "do not apply them twice");

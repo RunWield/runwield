@@ -1,3 +1,4 @@
+import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import type { AttachedJsonObject } from "./operations.ts";
 import { ok as assert } from "node:assert/strict";
@@ -96,10 +97,21 @@ test("a queued Plan chat survives fresh Core processes and browser rehosting", a
             await stopHostedAttachedReviews();
             const fresh = await spawnAttachedCli("status", root, { workflowId: workflow.workflowId });
             assertEquals(fresh.code, 0);
-            assert(fresh.result.ok);
-            const turn = pendingChat(fresh.result.workflow);
+            assert(fresh.result.ok && fresh.result.workflow.review);
+            const chat = await readAttachedAction({
+                projectRoot: root,
+                workflowId: workflow.workflowId,
+                actionId: fresh.result.workflow.review.actionId,
+                content: "chat",
+            });
+            assert(chat.ok && "chat" in chat);
+            const turn = chat.chat;
             assertEquals(turn.message, "Recover this private question");
-            const restored = await ensureReviewHosted(root, fresh.result.workflow, NO_OPEN_BROWSER_PORT);
+            const restored = await ensureReviewHosted(
+                root,
+                await status(root, workflow.workflowId),
+                NO_OPEN_BROWSER_PORT,
+            );
             assert(restored);
             const queued = await conversation(restored.url);
             assertEquals(queued.turns, [{ turnId: turn.turnId, message: turn.message }]);
