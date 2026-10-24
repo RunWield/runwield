@@ -102,6 +102,10 @@ function createGoldenReviewBrowser(
                 if (!humanReviewSurface) throw new Error("Unexpected Code Review interaction.");
                 const response = humanReviewSurface.submit({ url });
                 if (response.manual) return false;
+                const pageUrl = new URL(url);
+                const statusResponse = await fetch(new URL(`/api/review/conversation${pageUrl.search}`, pageUrl));
+                if (!statusResponse.ok) throw new Error(`Code Review status failed: ${statusResponse.status}`);
+                const { reviewRevision } = await statusResponse.json();
                 const opened = await createScriptedReviewBrowser(
                     response.conversationTurn ? "deny" : response.approved ? "decision" : "feedback",
                     {
@@ -111,6 +115,7 @@ function createGoldenReviewBrowser(
                         annotations: response.annotations,
                         images: response.images,
                         reviewType: "code",
+                        reviewRevision,
                     },
                 ).browser.open(url);
                 onHumanReviewDecision?.(response);

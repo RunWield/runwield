@@ -604,48 +604,56 @@ test("a Code Review edit with a plain-text blocker invalidates review but pauses
     );
 });
 
-test("a Code Review turn with no agent answer preserves review and evidence and pauses without CI", async () => {
-    const { projectRoot, hostedSession, triageMeta } = await makeConversationReview();
-    const initialPlan = await loadPlan(projectRoot, "p");
-    const initialEvidence = await readDeliveryEvidence(projectRoot, "p", "in-place");
-    let rounds = 0;
-    let ciRuns = 0;
-    /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
-    let conversation;
-    setInteraction(hostedSession, (request) => {
-        assertEquals(request.type, "code_review");
-        rounds += 1;
-        conversation = request._meta.reviewConversation;
-        return Promise.resolve(
-            rounds === 1
-                ? { outcome: "selected", _meta: { feedback: "Why this label?", conversationTurn: true } }
-                : { outcome: "canceled" },
-        );
-    });
-    const result = await runValidationLoop({
-        hostedSession,
-        planName: "p",
-        planContent: "# p",
-        triageMeta,
-        localCI: {
-            run: () => {
-                ciRuns += 1;
-                return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+for (const throws of [false, true]) {
+    test(`a Code Review turn with ${throws ? "a failed agent" : "no agent answer"} rearms review with an error without CI`, async () => {
+        const { projectRoot, hostedSession, triageMeta } = await makeConversationReview();
+        const initialPlan = await loadPlan(projectRoot, "p");
+        const initialEvidence = await readDeliveryEvidence(projectRoot, "p", "in-place");
+        let rounds = 0;
+        let ciRuns = 0;
+        /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
+        let conversation;
+        setInteraction(hostedSession, (request) => {
+            assertEquals(request.type, "code_review");
+            rounds += 1;
+            conversation = request._meta.reviewConversation;
+            return Promise.resolve(
+                rounds === 1
+                    ? { outcome: "selected", _meta: { feedback: "Why this label?", conversationTurn: true } }
+                    : { outcome: "canceled" },
+            );
+        });
+        const result = await runValidationLoop({
+            hostedSession,
+            planName: "p",
+            planContent: "# p",
+            triageMeta,
+            localCI: {
+                run: () => {
+                    ciRuns += 1;
+                    return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                },
             },
-        },
-        semanticReviewPort: { runIsolatedAgentSession: () => Promise.resolve([]) },
+            semanticReviewPort: {
+                runIsolatedAgentSession: () => {
+                    if (throws) throw new Error("Agent unavailable");
+                    return Promise.resolve([]);
+                },
+            },
+        });
+        assertEquals(result.kind, "paused");
+        assertEquals(Boolean(result.reason), true);
+        assertEquals(rounds, 2);
+        assertEquals(Boolean(conversation?.error), true);
+        assertEquals(ciRuns, 0);
+        assertEquals(conversation?.events, []);
+        const plan = await loadPlan(projectRoot, "p");
+        assertEquals(plan?.attrs.status, "reviewed");
+        assertEquals(plan?.attrs.humanReviewDecision, initialPlan?.attrs.humanReviewDecision);
+        assertEquals(plan?.attrs.humanReviewedAt, initialPlan?.attrs.humanReviewedAt);
+        assertEquals((await readDeliveryEvidence(projectRoot, "p", "in-place")).entries, initialEvidence.entries);
     });
-    assertEquals(result.kind, "paused");
-    assertEquals(Boolean(result.reason), true);
-    assertEquals(rounds, 1);
-    assertEquals(ciRuns, 0);
-    assertEquals(conversation?.events, []);
-    const plan = await loadPlan(projectRoot, "p");
-    assertEquals(plan?.attrs.status, "reviewed");
-    assertEquals(plan?.attrs.humanReviewDecision, initialPlan?.attrs.humanReviewDecision);
-    assertEquals(plan?.attrs.humanReviewedAt, initialPlan?.attrs.humanReviewedAt);
-    assertEquals((await readDeliveryEvidence(projectRoot, "p", "in-place")).entries, initialEvidence.entries);
-});
+}
 
 test("non-Git Code Review chat keeps the repair path and reruns CI without a source edit", async () => {
     const { projectRoot, hostedSession, sourcePath, triageMeta } = await makeConversationReview(true);

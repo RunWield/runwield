@@ -214,9 +214,9 @@ for (const revise of [false, true]) {
             session.setInteractionAdapter(
                 createTuiInteractionAdapter(ui, {
                     browser: {
-                        open: async (url) => {
+                        open: (url) => {
                             browserUrl = url;
-                            return false;
+                            return Promise.resolve(false);
                         },
                     },
                 }),
@@ -228,10 +228,10 @@ for (const revise of [false, true]) {
                 planContent: plan.body,
                 triageMeta: plan.attrs,
                 localCI: {
-                    run: async () => {
+                    run: () => {
                         ciRuns++;
                         assertEquals(snapshot()?.liveReviewUrl, firstUrl, "CI must retain the review link");
-                        return { kind: "completed", exitCode: 0, output: "ok" };
+                        return Promise.resolve({ kind: "completed" as const, exitCode: 0, output: "ok" });
                     },
                 },
                 semanticReviewPort: {
@@ -257,6 +257,11 @@ for (const revise of [false, true]) {
                 const parsed = new URL(firstUrl);
                 const token = parsed.searchParams.get("token")!;
                 const respond = async (approved: boolean) => {
+                    const statusResponse = await fetch(
+                        new URL(`/api/review/conversation?token=${token}`, parsed.origin),
+                    );
+                    assertEquals(statusResponse.status, 200);
+                    const { reviewRevision } = await statusResponse.json();
                     const response = await fetch(
                         new URL(`/api/review/${approved ? "decision" : "deny"}?token=${token}`, parsed.origin),
                         {
@@ -264,9 +269,10 @@ for (const revise of [false, true]) {
                             headers: { "content-type": "application/json", "x-runwield-review-token": token },
                             body: JSON.stringify(
                                 approved
-                                    ? { approved: true }
+                                    ? { approved: true, reviewRevision }
                                     : {
                                           approved: false,
+                                          reviewRevision,
                                           conversationTurn: true,
                                           feedback: revise ? "Change the label." : "Why this label?",
                                       },

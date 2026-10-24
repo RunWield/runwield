@@ -1524,3 +1524,31 @@ test("standalone Code Review file content returns merge-base before text and req
         await fsRm(cwd, { recursive: true });
     }
 });
+
+test("an old Code Review tab cannot decide a newer round at the same URL", async () => {
+    const conversation = { id: "revision-test", agentLabel: "Engineer", revision: 0, events: [] };
+    const server = startReviewWorkspaceServer({
+        cwd: getCwd(),
+        token: "revision-test",
+        reviewPayload: { rawPatch: "old" },
+        reviewType: "code",
+        reviewConversation: conversation,
+    });
+    const decide = (reviewRevision, approved) =>
+        fetch(`${server.url}/api/review/feedback?token=revision-test`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ reviewRevision, approved, feedback: "message", conversationTurn: !approved }),
+        });
+    try {
+        assertEquals((await decide(0, false)).status, 200);
+        await server.waitForDecision();
+        server.beginReviewRound({ reviewPayload: { rawPatch: "new" }, reviewConversation: conversation });
+        assertEquals((await decide(0, true)).status, 409);
+        assertEquals((await decide(0, false)).status, 409);
+        assertEquals((await decide(1, true)).status, 200);
+        assertEquals((await server.waitForDecision()).approved, true);
+    } finally {
+        await server.stop();
+    }
+});

@@ -657,6 +657,7 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             standaloneReview: reviewPayload.standaloneReview,
                             agentLabel: reviewConversation.agentLabel,
                             revision: reviewConversation.revision,
+                            reviewRevision: reviewPayload.reviewRevision,
                             error: reviewConversation.error,
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
@@ -1480,6 +1481,8 @@ export function startSessionQuestionWorkspaceServer(options) {
  */
 export function startReviewWorkspaceServer(options) {
     const cwd = options.cwd ?? getCwd();
+    let reviewRevision = 0;
+    if (options.reviewType === "code") options.reviewPayload.reviewRevision = reviewRevision;
     let decision = registerReviewDecisionPromise(options.token);
     const app = createReviewWorkspaceApp({
         cwd,
@@ -1535,6 +1538,7 @@ export function startReviewWorkspaceServer(options) {
         beginReviewRound({ reviewPayload, reviewConversation }) {
             for (const key of Object.keys(options.reviewPayload)) delete options.reviewPayload[key];
             Object.assign(options.reviewPayload, reviewPayload);
+            if (options.reviewType === "code") options.reviewPayload.reviewRevision = ++reviewRevision;
             if (options.reviewConversation && reviewConversation) {
                 options.reviewConversation.agentLabel = reviewConversation.agentLabel;
                 options.reviewConversation.revision += 1;

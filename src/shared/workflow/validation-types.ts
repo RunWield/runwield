@@ -72,6 +72,7 @@ export interface CodeReviewConversationEvent {
 }
 
 export interface CodeReviewConversation {
+    error?: string;
     id: string;
     agentLabel: string;
     revision: number;
@@ -146,10 +147,7 @@ export type PublicationOutcome = {
     recorded: boolean;
 };
 
-export type UserActionChoice =
-    | "engineer_follow_up"
-    | "retry"
-    | "stop";
+export type UserActionChoice = "engineer_follow_up" | "retry" | "stop";
 
 export type UserActionOption = {
     value: UserActionChoice;

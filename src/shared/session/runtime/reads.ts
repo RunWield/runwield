@@ -23,7 +23,6 @@ import {
     getProjectedLastAssistantText,
     getCommittedTranscriptAuthorityFacts,
     inspectProjectedTranscript,
-    summarizeProjectedEntries,
     toProjectionFailure,
 } from ".././session-transcript-projection.js";
 import {

@@ -36,6 +36,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Object} ReviewRequestFields
  * @property {string} [executionAgent]
  * @property {string} [collaborationRecommendation]
+ * @property {number} [reviewRevision]
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
  * @property {ReviewPlanSave} [planSave]
@@ -43,6 +44,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
  * @typedef {Object} ReviewPayload
+ * @property {number} [reviewRevision]
  * @property {string} [classification]
  * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
@@ -240,6 +242,10 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
+    const expectedRevision = ctx.state?.reviewPayload?.reviewRevision;
+    if (expectedRevision !== undefined && (body.reviewRevision ?? 0) !== expectedRevision) {
+        return jsonError("stale_code_review", "Code Review changed. Reload the review before deciding.", 409);
+    }
     const decision = createDecision(body || {});
     if (decision instanceof Response) return decision;
     if (ctx.state?.reviewPayload?.sequenceDocuments && !decision.exit) {

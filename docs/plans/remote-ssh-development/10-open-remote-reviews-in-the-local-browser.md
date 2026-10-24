@@ -41,7 +41,7 @@ dependencies:
     - "09-host-reviews-on-one-server-per-process"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Open Remote Reviews in the Local Browser

@@ -123,6 +123,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         Boolean(initialPayload.conversationStatusUrl) ||
         Boolean(initialPayload.operationStatusUrl && initialPayload.interactionAnswerBaseUrl);
     const queuedConversation = conversationEnabled && !initialPayload.standaloneReview;
+    const [reviewRevision, setReviewRevision] = useState(initialPayload.reviewRevision || 0);
     const [activeRawPatch, setActiveRawPatch] = useState(initialPayload.rawPatch || "");
     const [activeReviewStatus, setActiveReviewStatus] = useState(initialPayload.reviewStatus || null);
     const files = useMemo(() => parseDiffToFiles(activeRawPatch), [activeRawPatch]);
@@ -829,6 +830,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                             } Annotations cleared. Select the current lines to add them again.`,
                         );
                     }
+                    if (Number.isInteger(next.reviewRevision)) setReviewRevision(next.reviewRevision);
                     setActiveRawPatch(next.rawPatch);
                     setActiveReviewStatus(next.reviewStatus);
                     return;
@@ -995,6 +997,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             const conversation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(conversation.error || `${agentLabel} status is unavailable.`);
             if (conversation.standaloneReview) setStandaloneReview(conversation.standaloneReview);
+            if (Number.isInteger(conversation.reviewRevision)) setReviewRevision(conversation.reviewRevision);
+            if (conversation.error) throw new Error(conversation.error);
             const events = Array.isArray(conversation.events) ? conversation.events : [];
             const reply = collectArtifactConversationReply(events, options.eventStartIndex);
             if (reply.text) upsertAgentReply(options.agentMessageId, reply.text);
@@ -1672,7 +1676,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                               _meta: body,
                           },
                       }
-                    : body,
+                    : { ...body, reviewRevision },
             ),
         });
         if (!response.ok) {

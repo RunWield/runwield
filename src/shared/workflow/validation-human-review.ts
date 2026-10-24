@@ -245,6 +245,7 @@ export async function runHumanReviewPhase(
                       ].join("\n")
                     : feedbackText;
             if (humanReview.conversationTurn && !context.nonGitInPlace) {
+                reviewConversation.error = undefined;
                 // Capture after all RunWield writes, immediately before the isolated turn.
                 const before = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
                 const turn = await dispatchReviewConversationTurn(args, context, {
@@ -304,6 +305,10 @@ export async function runHumanReviewPhase(
                 }
                 // Plain text succeeds only for an unchanged patch. An edit still needs accepted completion.
                 if (!changed && (turn.completed || turn.report.trim())) return { kind: "conversation" };
+                if (!turn.completed) {
+                    reviewConversation.error = turn.reason || "The review turn returned no answer. Retry the turn.";
+                    if (!changed) return { kind: "conversation" };
+                }
                 return {
                     kind: "decided",
                     result: {

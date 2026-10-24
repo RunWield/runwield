@@ -5,7 +5,7 @@ import { configureGuideRunner, getGuideRunner, runWldJobCommand } from "./review
 // One process-level configuration lifecycle. No model or local command is replaced.
 test("guide runner selection defaults to the local command and rejects duplicate configuration", () => {
     assert.equal(getGuideRunner(), runWldJobCommand);
-    const runner = async () => ({ stdout: "guide", provider: "external" });
+    const runner = () => Promise.resolve({ stdout: "guide", provider: "external" });
     const clear = configureGuideRunner(runner);
     try {
         assert.equal(getGuideRunner(), runner);

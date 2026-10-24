@@ -135,9 +135,9 @@ test("composed TUI keeps /plan-review reachable during the original browser revi
             const terminal = new VirtualTerminal({ columns: 180, rows: 50 });
             const composition = await createInteractiveTuiComposition(null, {
                 browser: {
-                    open: async (url: string) => {
+                    open: (url: string) => {
                         urls.push(url);
-                        return false;
+                        return Promise.resolve(false);
                     },
                 },
                 terminal,
