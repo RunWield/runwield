@@ -18,10 +18,17 @@ affectedPaths:
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/domain-language.md"
 createdAt: "2026-10-19"
-status: "ready_for_work"
 origin: "internal"
 userVerifiedAt: null
-userVerificationNote: null
+epicCompletionMode: "done_enough"
+epicDoneEnoughAt: "2026-10-22T02:47:51.646Z"
+epicDoneEnoughSummary: "All 2 child plans are completed after conversational-review/02-code-review-conversation."
+workRecord:
+    status: "generated"
+    recordId: "06b05a39-3df8-41bf-a084-718e1238093e"
+    path: "docs/work-records/2026-10-22-conversational-plan-and-code-review.md"
+    lastAttemptAt: "2026-10-22T02:48:01.980Z"
+status: "verified"
 ---
 
 # Conversational Review
@@ -61,8 +68,7 @@ reuses the review queue and the reply-or-revise conversation model. No Slicer de
 
 ## Decisions
 
-- **No `feedback` status in Core.** Every unapproved Plan is `draft`. A GitHub-style split between "comment" and
-  "request changes" may come later as a multi-user Workspace review state, never as a Core Plan Status.
+- **No `feedback` status in Core.** Every unapproved Plan is `draft`. Review conversation activity is not a Core Plan Status.
 - **Only a real Plan change cancels approval.** A reply-only turn changes nothing.
 - **The Agent does not have to revise.** The approval warning is deterministic and fires after any chat turn since the
   last revision. It will be tuned after real use.

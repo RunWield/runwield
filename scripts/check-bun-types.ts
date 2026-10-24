@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
-import { walkSourceFiles } from "./source-files.js";
+import { walkSourceFiles } from "./source-files.ts";
 
 requirePinnedBun();
 const root = dirname(dirname(fileURLToPath(import.meta.url)));

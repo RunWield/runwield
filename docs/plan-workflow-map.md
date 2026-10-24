@@ -77,7 +77,8 @@ P: Plan creation and review
          ├─ findings → semantic repair → V1
          ├─ round limit → user chooses another review, repair, human review, or stop
          └─ accepted review or explicit skip rule → H: human code review
-            ├─ feedback → human-feedback repair → V1 → H
+            ├─ chat, patch unchanged → reply → H
+            ├─ chat, patch changed / non-chat feedback → human-feedback repair → V1 → H
             ├─ no decision → retry H or pause
             └─ approval / allowed skip → D: artifact preparation and publication
                ├─ non-Git → record validation + advisory handoffs → finish
@@ -374,7 +375,16 @@ H0. Read saved decision and review mode
 
 H1. Request Code Review with current diff and Plan
 ├─ U approved → persist approved + timestamp → D
-├─ U feedback / annotations / images
+├─ U conversation turn, Git execution
+│  → capture reviewed patch after RunWield writes
+│  → independent Reviewer-Feedback Engineer receives conversation and context; reply or edit
+│  → compare reviewed patch after the turn
+│  ├─ unchanged + reply → H1 with same diff; no decision, evidence, status, or CI changes
+│  ├─ changed → record changes_requested; validation_failed → implemented
+│  │  ├─ T task_completed → record completed repair → V1 → semantic skip-for-human rule → H1
+│  │  └─ no completion / failure → pause; do not reopen over unfinished repair
+│  └─ unchanged + no answer → pause; retry turn
+├─ U non-conversation feedback / annotations / images, or non-Git conversation turn
 │  → persist changes_requested; validation_failed → implemented BEFORE repair
 │  → independent Reviewer-Feedback Engineer receives human feedback
 │  ├─ T task_completed → V1 → semantic skip-for-human rule → H1
@@ -385,7 +395,10 @@ H1. Request Code Review with current diff and Plan
 ```
 
 Guided-review explanations and review conversation text support the user's decision. They do not approve publication.
-Conversation feedback takes the same invalidation/repair/recheck path as submitted feedback. The code does not impose an
+Git conversation turns use patch identity, not the Agent's report: an unchanged patch keeps review and checks intact.
+A changed patch records “Changes requested” and returns through repair and CI to the same conversation without AI
+review. Non-Git in-place turns have no patch identity and always use repair, as does non-conversation feedback. Scope
+changes require a confirmed [Plan Deviation](prd/runwield-core-prd.md#plan-deviations). The code does not impose an
 automatic count limit on human-requested repairs.
 
 Sources: [human review](../src/shared/workflow/validation-human-review.ts),

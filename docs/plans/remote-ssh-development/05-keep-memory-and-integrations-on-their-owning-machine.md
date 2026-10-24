@@ -66,8 +66,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   different names from remote cwd.
 - `src/shared/mcp/config.ts` and `src/shared/mcp/integration.ts` — preserve definition origin, override rules, execution
   location, and forwarded personal tool calls.
-- Work Record and Team Memory modules — read canonical remote records and preserve trust requirements while personal
-  storage remains local.
+- Work Record retrieval — read canonical remote records while personal memory storage remains local.
 - Session/settings context — retain deliberate Memory mappings and expose integration location without conflating it
   with cwd.
 - The owning Core and Remote SSH PRD sections — synchronize delivered identity, Memory, and integration behavior.
@@ -77,7 +76,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - Existing Mnemoteca recall/store/delete operations and backup/export behavior — keep storage semantics on the laptop.
 - Existing personal-then-project MCP merge and project-file safety checks — add location to the effective result rather
   than replacing precedence.
-- Existing Work Record retrieval and Team Memory trust checks — point them at canonical remote evidence.
+- Existing Work Record retrieval — point them at canonical remote evidence.
 - The remote locator from child 04 — reuse durable host/project identity rather than directory basename.
 
 ## Implementation Steps
@@ -96,8 +95,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   servers start remotely with the remote project cwd and existing project safety checks.
 - A server that needs both laptop credentials and remote project files fails with a clear configuration limit rather
   than copying secrets, rewriting arbitrary paths, or moving project tools to the laptop.
-- Work Record retrieval reads canonical remote records; Team Memory derives only from trusted remote project evidence
-  and never treats private local transcripts as shared knowledge.
+- Work Record retrieval reads canonical remote records and never treats private local transcripts as shared knowledge.
 - The owning PRD requirements and scenarios match delivered mapping, backup, MCP placement, and evidence behavior while
   broader third-party portability remains best effort.
 
@@ -109,7 +107,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   Use sandboxed home and Mnemoteca database paths.
 - Automated: test personal/project MCP precedence, disable rules, visible location, personal forwarding, remote project
   cwd, cancellation, redacted errors, and mixed-location failure.
-- Automated: verify Work Records come from the remote project and Team Memory trust checks are unchanged. Run focused
+- Automated: verify Work Records come from the remote project and personal Memories remain local. Run focused
   tests with `deno run -A scripts/run-tests.js <test paths>`, then `deno task seams:check` and `deno task ci`.
 - Live: store and recall a personal memory during a remote Session, run `/sleep`, inspect the local backup, call one
   personal network-only MCP tool and one project MCP tool, and verify each process runs on the intended machine.

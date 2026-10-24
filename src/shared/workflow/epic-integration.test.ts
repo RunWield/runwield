@@ -226,6 +226,58 @@ test("the integration gate validates the exact Epic branch head", async () => {
     );
 });
 
+test("an integration review nudge keeps one controller request identity and a new gate gets another", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await setCustomSetting("codereview", "none", "project", repo);
+    await deliverSecondChild(repo);
+    const { hostedSession } = gateSession();
+    const controllerRequestIds: Array<string | undefined> = [];
+    const accepted = scriptedReviewer({ approved: true });
+    let calls = 0;
+    const port: SemanticReviewPort = {
+        runIsolatedAgentSession: async (options: IsolatedAgentSessionOptions) => {
+            calls += 1;
+            controllerRequestIds.push(options.controllerRequestId);
+            // The first attempt returns without review_complete, so the gate regenerates its nudge.
+            if (calls === 1) return [];
+            return await accepted.runIsolatedAgentSession(options);
+        },
+    };
+
+    const first = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: port,
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS),
+    });
+    assertEquals(first.kind, "passed");
+    assertEquals(calls, 2);
+    assertEquals(typeof controllerRequestIds[0], "string");
+    assertEquals((controllerRequestIds[0] || "").length > 0, true);
+    assertEquals(controllerRequestIds[1], controllerRequestIds[0]);
+
+    // A later commit makes the gate stale, and the next review is a different review.
+    await git(repo, ["switch", "epic/epic"]);
+    await fsWriteFile(join(repo, "late.js"), "export const late = true;\n");
+    await git(repo, ["add", "late.js"]);
+    await git(repo, ["commit", "-m", "late change"]);
+    await git(repo, ["switch", "main"]);
+    await reconcileEpicDelivery(repo, "epic");
+    const second = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: port,
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS),
+    });
+    assertEquals(second.kind, "passed");
+    assertEquals(controllerRequestIds.length, 3);
+    assertEquals(controllerRequestIds[2] === controllerRequestIds[0], false);
+});
+
 test("a new commit on the Epic branch makes a passed gate stale", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await deliverSecondChild(repo);

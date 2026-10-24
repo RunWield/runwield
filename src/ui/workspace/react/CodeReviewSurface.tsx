@@ -118,6 +118,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         () => payload || readEmbeddedPayload("code-review-payload") || DEFAULT_CODE_PAYLOAD,
         [payload],
     );
+    const conversationEnabled =
+        initialPayload.mode === "dev" ||
+        Boolean(initialPayload.conversationStatusUrl) ||
+        Boolean(initialPayload.operationStatusUrl && initialPayload.interactionAnswerBaseUrl);
+    const queuedConversation = conversationEnabled && !initialPayload.standaloneReview;
     const [activeRawPatch, setActiveRawPatch] = useState(initialPayload.rawPatch || "");
     const [activeReviewStatus, setActiveReviewStatus] = useState(initialPayload.reviewStatus || null);
     const files = useMemo(() => parseDiffToFiles(activeRawPatch), [activeRawPatch]);
@@ -168,7 +173,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     useEffect(() => {
         if (compactLayout && annotationsOpen) setFileTreeOpen(false);
     }, [compactLayout, annotationsOpen]);
-    const [rightSidebarView, setRightSidebarView] = useState("annotations");
+    const [rightSidebarView, setRightSidebarView] = useState(queuedConversation ? "agent" : "annotations");
+    useEffect(() => {
+        if (queuedConversation) setAnnotationsOpen(true);
+    }, [queuedConversation]);
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
     const [error, setError] = useState("");
@@ -193,6 +201,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [conversationMessages, setConversationMessages] = useState([]);
     const [conversationComposer, setConversationComposer] = useState("");
     const [conversationContextAttached, setConversationContextAttached] = useState(false);
+    const [excludedQueueTypes, setExcludedQueueTypes] = useState([]);
     const [agentWorking, setAgentWorking] = useState(false);
     const [agentError, setAgentError] = useState("");
     const [activeInteractionId, setActiveInteractionId] = useState(initialPayload.interactionId || "");
@@ -276,14 +285,23 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }, [initialPayload.standaloneReview, initialPayload.token]);
     const [standaloneResult, setStandaloneResult] = useState("");
     const agentLabel = initialPayload.agentLabel || "Reviewer Feedback Engineer";
-    const conversationEnabled =
-        initialPayload.mode === "dev" ||
-        Boolean(initialPayload.conversationStatusUrl) ||
-        Boolean(initialPayload.operationStatusUrl && initialPayload.interactionAnswerBaseUrl);
     const attachedContextLabel =
         conversationContextAttached && annotations.length > 0
             ? `${annotations.length} code ${annotations.length === 1 ? "annotation" : "annotations"} attached`
             : undefined;
+    const queueItems = [
+        {
+            type: "annotations",
+            label: "annotations",
+            count: annotations.filter((item) => !isEditSuggestion(item) && item.text?.trim()).length,
+        },
+        {
+            type: "attachments",
+            label: "attachments",
+            count: annotations.reduce((count, item) => count + (item.images?.length || 0), 0),
+        },
+        { type: "suggestions", label: "edit suggestions", count: annotations.filter(isEditSuggestion).length },
+    ].map((item) => ({ ...item, included: !excludedQueueTypes.includes(item.type) }));
     const guidePolicy = initialPayload.guidedReview || {
         mode: "auto",
         autoStart: false,
@@ -862,10 +880,25 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
 
     async function sendAgentMessage(attachAnnotations = false) {
         const message = conversationComposer.trim();
-        const attachedFeedback =
-            (attachAnnotations === true || conversationContextAttached) && annotations.length > 0
-                ? feedbackMarkdown
-                : "";
+        const sentAnnotations = queuedConversation
+            ? annotations.flatMap((annotation) => {
+                  const includeNote = !excludedQueueTypes.includes(
+                      isEditSuggestion(annotation) ? "suggestions" : "annotations",
+                  );
+                  const item = includeNote ? { ...annotation } : withoutAnnotationNote(annotation);
+                  if (excludedQueueTypes.includes("attachments")) delete item.images;
+                  return hasAnnotationInput(item) ? [item] : [];
+              })
+            : attachAnnotations === true || conversationContextAttached
+              ? annotations
+              : [];
+        const attachedFeedback = sentAnnotations.length > 0 ? exportReviewFeedbackWithImages(sentAnnotations) : "";
+        const contextLabel = queuedConversation
+            ? queueItems
+                  .filter((item) => item.included && item.count > 0)
+                  .map((item) => `${item.count} ${item.label}`)
+                  .join(", ")
+            : attachedContextLabel || `${annotations.length} code annotations attached`;
         if ((!message && !attachedFeedback) || agentWorking) return;
         const userMessageId = `user-${crypto.randomUUID()}`;
         const agentMessageId = `agent-${crypto.randomUUID()}`;
@@ -884,7 +917,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 role: "user",
                 body: message || "Review annotations",
                 ...(attachedFeedback && {
-                    contextLabel: attachedContextLabel || `${annotations.length} code annotations attached`,
+                    contextLabel,
                 }),
             },
         ]);
@@ -910,7 +943,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     agentLabel,
                     artifactKind: "code",
                 }),
-                annotations: attachedFeedback ? toWorkflowAnnotations(annotations) : [],
+                annotations: toWorkflowAnnotations(sentAnnotations),
                 conversationTurn: true,
             });
 
@@ -921,11 +954,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     rawPatch: revisedRawPatch,
                     reviewStatus: activeReviewStatus,
                     interactionId: `dev-${crypto.randomUUID()}`,
-                    reply:
-                        initialPayload.agentConversation?.reply ||
-                        "I applied the request. Code Review has reloaded the current file changes.",
+                    reply: initialPayload.agentConversation?.reply || "Code Review is ready to continue.",
                     agentMessageId,
                     clearAttachedContext: Boolean(attachedFeedback),
+                    sentAnnotations,
                 });
                 return;
             }
@@ -936,6 +968,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     eventStartIndex,
                     agentMessageId,
                     clearAttachedContext: Boolean(attachedFeedback),
+                    sentAnnotations,
                 });
                 return;
             }
@@ -946,6 +979,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 eventStartIndex,
                 agentMessageId,
                 clearAttachedContext: Boolean(attachedFeedback),
+                sentAnnotations,
             });
         } catch (caught) {
             setAgentError(caught instanceof Error ? caught.message : String(caught));
@@ -972,9 +1006,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     rawPatch: conversation.rawPatch,
                     reviewStatus: conversation.reviewStatus || null,
                     interactionId: `conversation-${conversation.revision}`,
-                    reply: reply.text || "I updated the working files. Code Review has reloaded the current diff.",
+                    reply: reply.text || "Code Review is ready to continue.",
                     agentMessageId: options.agentMessageId,
                     clearAttachedContext: options.clearAttachedContext,
+                    sentAnnotations: options.sentAnnotations,
                 });
                 return;
             }
@@ -1010,9 +1045,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                             options.conversationEventStartIndex,
                         ).text ||
                         reply.text ||
-                        "I updated the working files. Code Review has reloaded the current diff.",
+                        "Code Review is ready to continue.",
                     agentMessageId: options.agentMessageId,
                     clearAttachedContext: options.clearAttachedContext,
+                    sentAnnotations: options.sentAnnotations,
                 });
                 return;
             }
@@ -1041,11 +1077,27 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 // In-place diff refresh remains usable when browser history is unavailable.
             }
         }
-        // Keep the guide's organization and UI state, but label its prose as from the prior revision.
-        setGuide((current) => (current ? { ...current, moved: true } : current));
-        setViewedFiles(new Set());
-        setFileNavigationTarget(null);
-        if (options.clearAttachedContext || initialPayload.standaloneReview) {
+        if (options.rawPatch !== activeRawPatch || initialPayload.standaloneReview) {
+            // Keep the guide's organization, but label prose from a changed patch as stale.
+            setGuide((current) => (current ? { ...current, moved: true } : current));
+            setViewedFiles(new Set());
+            setFileNavigationTarget(null);
+        }
+        if (queuedConversation) {
+            const sent = new Map((options.sentAnnotations || []).map((item) => [item.id, item]));
+            setAnnotations((items) =>
+                items.flatMap((item) => {
+                    const delivered = sent.get(item.id);
+                    if (!delivered) return [item];
+                    const remaining = hasAnnotationNote(delivered) ? withoutAnnotationNote(item) : { ...item };
+                    remaining.images = (item.images || []).filter(
+                        (image) => !delivered.images?.some((sentImage) => sentImage.path === image.path),
+                    );
+                    return hasAnnotationInput(remaining) ? [remaining] : [];
+                }),
+            );
+            setExcludedQueueTypes([]);
+        } else if (options.clearAttachedContext || initialPayload.standaloneReview) {
             setAnnotations([]);
             setSelectedAnnotationId(null);
             setScrollTargetAnnotation(null);
@@ -1459,35 +1511,42 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                 </div>
                                 {rightSidebarView === "annotations" ? (
                                     <>
-                                        {(standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
-                                            <div className="rw-review-feedback-action rw-review-action">
-                                                <FeedbackButton
-                                                    onClick={submitFeedback}
-                                                    disabled={
-                                                        annotations.length === 0 || submitting !== null || agentWorking
-                                                    }
-                                                    isLoading={submitting === "feedback"}
-                                                    label={standaloneReview ? "Send to Engineer" : "Send Annotations"}
-                                                    loadingLabel={<RunWieldThinkingDots label="Sending Annotations" />}
-                                                    title={
-                                                        annotations.length === 0
-                                                            ? "Add an annotation before sending annotations"
-                                                            : "Send annotations"
-                                                    }
-                                                />
-                                                {conversationEnabled && (
-                                                    <button
-                                                        className="rw-review-context-to-chat"
-                                                        type="button"
-                                                        disabled={annotations.length === 0 || agentWorking}
-                                                        onClick={attachReviewContextToConversation}
-                                                    >
-                                                        <CommentIcon />
-                                                        Add to {agentLabel} chat
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
+                                        {!queuedConversation &&
+                                            (standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
+                                                <div className="rw-review-feedback-action rw-review-action">
+                                                    <FeedbackButton
+                                                        onClick={submitFeedback}
+                                                        disabled={
+                                                            annotations.length === 0 ||
+                                                            submitting !== null ||
+                                                            agentWorking
+                                                        }
+                                                        isLoading={submitting === "feedback"}
+                                                        label={
+                                                            standaloneReview ? "Send to Engineer" : "Send Annotations"
+                                                        }
+                                                        loadingLabel={
+                                                            <RunWieldThinkingDots label="Sending Annotations" />
+                                                        }
+                                                        title={
+                                                            annotations.length === 0
+                                                                ? "Add an annotation before sending annotations"
+                                                                : "Send annotations"
+                                                        }
+                                                    />
+                                                    {conversationEnabled && (
+                                                        <button
+                                                            className="rw-review-context-to-chat"
+                                                            type="button"
+                                                            disabled={annotations.length === 0 || agentWorking}
+                                                            onClick={attachReviewContextToConversation}
+                                                        >
+                                                            <CommentIcon />
+                                                            Add to {agentLabel} chat
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         <ReviewSidebar
                                             isOpen
                                             width={352}
@@ -1518,7 +1577,20 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                         artifactLabel="code changes"
                                         messages={conversationMessages}
                                         composer={conversationComposer}
-                                        attachedContextLabel={attachedContextLabel}
+                                        attachedContextLabel={queuedConversation ? undefined : attachedContextLabel}
+                                        queue={
+                                            queuedConversation
+                                                ? {
+                                                      items: queueItems,
+                                                      onToggle: (type) =>
+                                                          setExcludedQueueTypes((items) =>
+                                                              items.includes(type)
+                                                                  ? items.filter((item) => item !== type)
+                                                                  : [...items, type],
+                                                          ),
+                                                  }
+                                                : undefined
+                                        }
                                         working={agentWorking}
                                         disabled={submitting !== null}
                                         error={agentError}
@@ -2007,6 +2079,23 @@ function orderFilesForChanges(files, sections, stagedFiles) {
     grouped.changes.sort((left, right) => Number(right.staged) - Number(left.staged) || left.index - right.index);
 
     return [...grouped.committed, ...grouped.changes, ...grouped.untracked].map(({ file }) => file);
+}
+
+function isEditSuggestion(annotation) {
+    return typeof annotation.suggestedCode === "string" || typeof annotation.originalCode === "string";
+}
+
+function hasAnnotationNote(annotation) {
+    return Boolean(annotation.text?.trim()) || isEditSuggestion(annotation);
+}
+
+function hasAnnotationInput(annotation) {
+    return hasAnnotationNote(annotation) || annotation.images?.length > 0;
+}
+
+function withoutAnnotationNote(annotation) {
+    const { text: _text, suggestedCode: _suggestedCode, originalCode: _originalCode, ...anchor } = annotation;
+    return anchor;
 }
 
 function toWorkflowAnnotations(annotations) {

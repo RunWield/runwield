@@ -1,3 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
+import type { GoldenScenarioResult } from "../testing/scenario-runner.js";
 import { plannedChangeReviewRepairValidationScenario } from "./planned-change-workflow.js";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 
@@ -239,6 +241,43 @@ export const validationTreeHumanReviewFeedbackRepairApproveScenario = withValida
     ["human-review:feedback-repair-approve"],
 );
 
+export const validationTreeHumanReviewReplyApproveScenario = withValidationBranches(
+    {
+        ...plannedChangeReviewRepairValidationScenario,
+        committedProjectFiles: [{ path: ".wld/settings.json", text: humanReviewSettings("always") }],
+        humanReviewDecisions: [
+            { conversationTurn: true, feedback: "Why did you add durable evidence?" },
+            { approved: true, feedback: "The explanation is clear. Approved." },
+        ],
+        script: [
+            ...plannedChangeReviewRepairValidationScenario.script,
+            {
+                id: "engineer-answers-Code-Review-question",
+                agent: "engineer",
+                phase: "engineer",
+                ordinal: 5,
+                text: "Durable evidence lets a later review confirm the change without relying on this conversation.",
+            },
+        ],
+        scriptedInteractions: [],
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
+        ),
+        assertions: [
+            (result: GoldenScenarioResult) => {
+                assertEquals(result.actor.remaining, []);
+                assertEquals(result.events.filter((event) => event === "human-review:captured").length, 2);
+                // Initial validation and the existing AI-requested repair only: the chat adds no CI run.
+                assertEquals(result.events.filter((event) => event === "runtime:validation-ci:passed").length, 2);
+                assertEquals(result.events.filter((event) => event === "runtime:tool:start:task_completed").length, 2);
+                assertEquals(result.actor.consumed.includes("engineer-answers-Code-Review-question"), true);
+            },
+        ],
+    },
+    "validation-tree-human-review-reply-approve",
+    ["plan"],
+);
+
 export const validationWorkflowHumanReviewScenarios = [
     validationTreeHumanReviewNoneScenario,
     validationTreeHumanReviewAskSkipScenario,
@@ -246,6 +285,7 @@ export const validationWorkflowHumanReviewScenarios = [
     validationTreeHumanReviewAskOpenApproveScenario,
     validationTreeHumanReviewAlwaysApproveScenario,
     validationTreeHumanReviewFeedbackRepairApproveScenario,
+    validationTreeHumanReviewReplyApproveScenario,
     validationTreeHumanReviewNoAnswerRetryScenario,
     validationTreeHumanReviewNoAnswerStopScenario,
 ];

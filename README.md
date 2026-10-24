@@ -2,6 +2,9 @@
 
 # RunWield
 
+> **v0.14.0: RunWield is open source under MIT.** The CLI, TUI, personal Workspace, and ACP server remain free forever.
+> [Read the announcement](https://runwield.dev/blog/runwield-is-open-source) · [MIT license](LICENSE)
+
 **Review what the AI plans to do before it touches your code. Then prove it did it.**
 
 Millions of developers now spend their days reviewing code they didn't write, from AI agents that never explained what
@@ -17,8 +20,6 @@ architect review and a series of plans to implement in manageable chunks.
 ideate -> plan -> execute -> record -> use records to plan better
 ```
 
-<p align="center"><img src="brand/workspace-session.png" width="900" alt="A RunWield Workspace session. Projects and their Plans are listed on the left, the Plan Engineer's conversation and activity are in the middle, and the Plan's workflow on the right shows Planning, Execution, Tests and CI, AI review, and Code Review completed." /></p>
-
 [![RunWield in action: plan review, execution, validation, and code review. Watch the full 90-second demo.](brand/runwield-promo.gif)](https://youtu.be/IHplUpFZIuU)
 
 [Website](https://runwield.dev) · [Install](#install-in-30-seconds) · [How it works](#the-problem) ·
@@ -31,7 +32,7 @@ ideate -> plan -> execute -> record -> use records to plan better
 ## Install in 30 seconds
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gandazgul/runwield/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RunWield/runwield/main/install.sh | bash
 ```
 
 Then, from your project root:
@@ -226,7 +227,7 @@ Install Guide, Ideator, and Review in another coding agent without downloading C
 npx skills@latest add RunWield/skills
 ```
 
-Previously installed from `gandazgul/runwield` or `RunWield/runwield`? Run the command above once with the same agents
+Previously installed from `RunWield/runwield` or `RunWield/runwield`? Run the command above once with the same agents
 and installation scope (add `-g` for global installs), accepting replacement if prompted, to use the new source.
 
 See [RunWield Skills](https://github.com/RunWield/skills). Contributors maintain its checkout at `skills/`; the
@@ -265,15 +266,9 @@ RunWield builds on and learns from these projects and authors:
 
 ## License
 
-RunWield is **source-available and free to use**, but it is not open source yet.
+RunWield v0.14.0 and later are open source under the [MIT License](LICENSE). You may use, modify, redistribute, and
+build commercial products with RunWield while preserving its copyright and license notice.
 
-You may install, run, inspect, and use RunWield for personal, internal, or commercial work. You may also submit issues
-and pull requests.
-
-You may not distribute modified versions, publish derivative works, rebrand RunWield, or offer it as a competing product
-or service without prior written permission.
-
-RunWield includes third-party dependencies, including Pi and Plannotator-related packages, which remain under their own
-license terms.
-
-See [LICENSE](LICENSE).
+The CLI, TUI, personal browser Workspace, and ACP server remain free forever. Model providers may charge for usage.
+Earlier releases retain the license shipped with their tag. Third-party dependencies and bundled components retain
+their own licenses and notices.

@@ -1,7 +1,8 @@
 # Product Requirements Document: Agent Evaluation and Benchmark Harness
 
-**Status:** Proposed. The existing Router golden-set work is a starting point, not delivery of this shared capability.
-This PRD combines the Agent scorecards, support policy, and benchmark-running experience in one proposal.
+**Status:** Shared harness proposed; Reviewer-only smoke runner current. The Router golden set and the interim
+Reviewer runner do not deliver the shared capability. This PRD combines Agent scorecards, support policy, and the
+benchmark-running experience, with current and target scope separated below.
 
 ## Objective
 
@@ -36,7 +37,8 @@ Evaluation is deliberate and local; normal RunWield use remains independent of b
 
 ### Agent scorecards and support decisions
 
-**Scope and maturity:** Target.
+**Scope and maturity:** Mixed. Reviewer-only smoke evaluation is current. The shared scorecards and support-decision
+capability remain target.
 
 **Requirement: Score each Agent against its role.** Each run measures the applicable scorecard and expected workflow
 outcome. Deterministic scoring covers tool and lifecycle events, timeout, retries, changed-file scope, and validation.
@@ -54,8 +56,23 @@ tool calls before triage, and repeated or forbidden tool attempts.
 
 #### Semantic Reviewer
 
-Measure defect discovery and restraint. Compare the current discovery prompt with the proposed Review Reconnaissance
-prompt on paired fixtures with the same model configuration and repository context. Report:
+**Current requirement: Evaluate the production Reviewer on the smoke corpus.** The interim
+`bun scripts/run-reviewer-benchmark.ts` runner evaluates nine admitted discovery cases in five synthetic Bun 1.4.3
+TypeScript packages. It uses the effective Reviewer model, production prompt, tools, inspection gate, nudges, and
+`review_complete` through `runReviewerRound`, with round 1 and an empty ledger. It does not run outer workflow
+lifecycle or Delivery Evidence writes.
+
+The [one-trial baseline](../evaluation/reviewer-benchmark-results/2026-10-baseline-smoke.md) completed RV-D04 A/B,
+RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A: nine complete rounds, mechanical decisions 7/9, and clean approval
+2/4. The owner accepted all 13 findings; the original oracle needs corrections before semantic scoring. Four fixture
+packages
+are now revision 2 after repairs; the paid baseline measures revision 1 only. Mechanical decision accuracy and clean
+approval are separate from finding quality. Evidence-path matches are suggestions, never recall.
+Human `adjudications.json` labels control defect recall, blocking-finding precision, and severe-defect recall; absent
+or partial labels leave them pending. A novel valid finding requires oracle correction before semantic scoring.
+
+**Target requirement: Compare discovery and repair judgment.** Compare the current discovery prompt with the proposed
+Review Reconnaissance prompt on paired fixtures with the same model configuration and repository context. Report:
 
 - distinct known defects found;
 - supported blockers, unsupported findings, and duplicates;
@@ -69,11 +86,22 @@ prompt on paired fixtures with the same model configuration and repository conte
 A blocking finding requires repository evidence. Reports retain supported findings rather than risks ruled out during
 review. Recall, precision, clean approval, and severe misses remain separate measures.
 
-Detailed proposed scorecards and fixtures:
+The shared harness, candidate prompt authoring/comparison, repeated trials, and repair-state scenarios remain target.
+The smoke run does not establish stability, a prompt improvement, or a model support decision.
+
+**Current smoke acceptance scenarios:**
+
+- Given a finding that cites an oracle path but has no human label, recall stays pending rather than counting a match.
+- Given fully adjudicated findings, recall counts distinct matched defects, precision penalizes duplicates and
+  unsupported findings, and high/critical recall remains separate.
+- Given a `novel_valid` label, semantic scores freeze until the oracle is corrected.
+
+Scorecards, fixtures, and the current runner:
 
 - [Reviewer Benchmark Scorecard](../evaluation/reviewer-benchmark-scorecard.md)
 - [Reviewer Benchmark Fixture Contract](../evaluation/reviewer-benchmark-fixtures.md)
 - [Reviewer Benchmark Pilot Corpus](../evaluation/reviewer-benchmark-pilot-corpus.md)
+- [Smoke runner and adjudication instructions](../../evals/reviewer/README.md)
 
 #### Engineer and Operator
 
@@ -100,9 +128,22 @@ judgment rather than one mechanical score.
 
 ### Repeatable scenario runs
 
-**Scope and maturity:** Target.
+**Scope and maturity:** Mixed. Reviewer-only smoke selection, admission, isolation, timeouts, persistence, and resume
+are current. General selection, repetitions, concurrency, and the shared runner remain target.
 
-**Requirement: Run one scenario or a resumable batch.** Maintainers select scenarios by name, tag, Agent, workflow,
+**Current requirement: Run an isolated Reviewer smoke batch.** Select the smoke set, supported scenario ids, or
+individual variants. Options include `--model`, `--timeout-ms`, `--out`, and `--resume`. Admission, model resolution,
+and credential checks precede model turns. Each case gets a fresh external temporary Git project with neutral history.
+The project excludes the oracle, hidden proofs, variant labels, fixing patches, and pointers to the corpus. Absolute
+read sandboxing is not provided; guessed checkout paths remain an accepted smoke-only risk.
+
+Each result is flushed locally after the case. Timeout, pause, provider error, and harness error retain their cause
+and stay in denominators. Resume keeps completed cases, even incorrect decisions, and retries unfinished cases only.
+It rejects changed configuration, selected cases, fixture hashes, or timeout. Scoring uses the latest attempt rather
+than the best. Runner tests use a faux provider and make no paid calls; fixture payloads are outside ordinary source CI.
+
+**Target requirement: Run one scenario or a resumable batch.** Maintainers select scenarios by name, tag, Agent,
+workflow,
 model, preset, or profile. They configure repetitions, concurrency, and per-scenario and per-operation timeouts. The run
 checks prerequisites before spending model calls and saves completed results as it proceeds, so an interrupted batch
 can resume.
@@ -170,9 +211,23 @@ that maintainers can inspect, then expand after failure classification is trustw
 
 ### Reports and comparison
 
-**Scope and maturity:** Target.
+**Scope and maturity:** Mixed. Local single-configuration Reviewer smoke reports are current. Paired comparison,
+variance, and shared workflow reports remain target.
 
-**Requirement: Compare a candidate with a fixed baseline.** Local reports include human-readable summaries and
+**Current requirement: Report saved Reviewer smoke evidence.** `score <run-directory>` writes `summary.md` and
+`summary.json` without model calls. Reports preserve case/variant/revision/trial/attempt identity, expected and observed
+decisions, exact accepted findings and advisories, failure causes, actual model/provider, checkout revision/dirtiness,
+prompt hashes, fixture hashes, usage, tool calls, elapsed time, and nudges. Missing measurements say `unavailable`.
+Decision measures split by variant and group; semantic measures split by group. Missing results remain visible.
+Human labels stay in the local run directory, separate from passive metrics.
+
+**Current smoke acceptance scenarios:**
+
+- Given saved results, `score` produces both report formats without invoking a model.
+- Given missing measurements, the report says `unavailable` rather than estimating values or reporting zero.
+- Given absent human labels, mechanical decisions remain reportable and semantic scores stay pending.
+
+**Target requirement: Compare a candidate with a fixed baseline.** Local reports include human-readable summaries and
 machine-readable results. They preserve observed Agent changes, tool outcomes, validation verdicts, final workflow
 status, elapsed time, usage, intervention counts, methodology differences, and enough trajectory detail for diagnosis.
 Comparisons show improvements, regressions, variance, and missing results separately.
@@ -225,7 +280,8 @@ and methodology over a copied reference snapshot.
 
 Success means maintainers detect routing and completion regressions, attribute failures, compare validated adaptation
 outcomes with costs and variance, resume interrupted batches, and make at least one documented execution Agent/model
-preset support decision from the evidence. Baseline quality thresholds remain to be agreed; no numeric target is invented here.
+preset support decision from the evidence. Baseline quality thresholds remain to be agreed; no numeric target is
+invented here.
 
 ## Risks and Non-goals
 

@@ -101,7 +101,6 @@ requirement.
 - Duplicate symbols across Projects are expected. Results need Project identity and should not be silently collapsed.
 - Cymbal supports many programming languages but does not parse every file type. Ordinary text search remains necessary
   for unsupported or dynamic sources.
-- A future hosted multi-user Workspace needs Project membership and runtime isolation around every federated query.
 
 ## Open Questions
 

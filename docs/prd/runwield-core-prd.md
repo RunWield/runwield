@@ -41,7 +41,7 @@ validation, memory, or Workspace goals need a distinct product surface.
 - **Work protection:** RunWield preserves user work and asks before any action that could destroy it.
 - **Tool-driven workflow:** Agents declare intent with workflow tools; orchestration code owns lifecycle transitions,
   execution, validation, and recovery.
-- **Local-first control:** Core is fully useful without the hosted Workspace.
+- **Local-first control:** Core provides an independently useful local workflow.
 - **Context parsimony:** Agents use targeted project context, memory recall, code intelligence, and Plan artifacts.
 - **Pi compatibility by default:** RunWield follows Pi Coding Agent conventions where its product vision allows.
 - **Extensible but guarded:** Users customize Agents, skills, prompt templates, and tools; protected workflow tools keep
@@ -462,7 +462,8 @@ ownership.
 Core fetches the latest Epic branch. The child's planning worktree starts from, or imports, that commit while keeping
 its saved scope and status. The refreshed commit is the child's baseline. If the Epic history was rewritten, Core
 carries only the child's planning changes onto the current target and retains the old planning head for recovery.
-Existing implementation changes are never discarded. A failed fetch keeps continuation recoverable.
+Committed files that already match the published target do not block refresh. Unpublished implementation changes are
+never discarded. A failed fetch keeps continuation recoverable.
 
 **Requirement: A child worktree starts only with a session.** Core creates a child's planning worktree only when
 planning, review, re-review, execution, or automatic continuation starts a session in that child. It starts from the
@@ -524,7 +525,9 @@ siblings active. Listings show held work separately from active and finished wor
 - Given the Epic branch was rewritten after the next child's planning worktree was created, continuation moves that
   worktree onto the new Epic branch, keeps saved scope and status, and does not merge the replaced code history. A retry
   settles the same refresh.
-- Given implementation changes in that child worktree, continuation preserves them and refuses the planning refresh.
+- Given saved committed changes whose files already match the published Epic branch, continuation imports publication
+  and keeps saved Plan edits instead of reporting implementation changes.
+- Given unpublished implementation changes in that child worktree, continuation preserves them and refuses the planning refresh.
 - Given conflicting saved scope, continuation preserves both versions without leaving an unfinished merge.
 - Given a last child that has validated but not finished publishing, the Epic is not yet implemented.
 - Given all children delivered, a passing integration gate marks the Epic reviewed for that branch head; the primary
@@ -553,11 +556,15 @@ graph TD
     C --> D[Verification Command]
     D --> E[AI review]
     E --> F[Code Review]
-    F --> G[Publication]
+    F -->|approve or skip| G[Publication]
     G --> H[verified]
     D -->|fails| R[Repair]
     E -->|findings| R
-    F -->|feedback| R
+    F -->|patch changed| HR[Owner-requested repair]
+    HR --> HC[Verification Command]
+    HC --> F
+    HC -->|fails| HR
+    F -->|reply only| F
     R --> D
 ```
 
@@ -774,8 +781,26 @@ implementation intact; continuing validation through `load-plan` offers the choi
 
 **Requirement: Canceling a review leaves it pending.** Canceling an open Code Review, including with Escape, leaves
 approval pending and records no decision or revision. The UI states that review is pending and offers Retry or Plan
-resume; reopening presents a working review link. Completed checks and the implementation stay available. Explicitly
-submitted feedback starts repair and records the decision and revision, followed by checks and another Code Review.
+resume; reopening presents a working review link. Completed checks and the implementation stay available.
+
+**Requirement: Let the reviewed patch decide whether chat requests changes.** Engineer can answer, edit code, or both.
+For Git execution, RunWield compares the full reviewed patch before and after each Code Review conversation turn, after
+its own metadata writes. The patch itself decides, not the Agent's report:
+
+- **Unchanged patch:** the conversation continues and Code Review reopens immediately with the same diff. No CI run
+  starts. The review decision and timestamp, Delivery Evidence, Plan Status (`reviewed`), and CI results stay unchanged.
+- **Changed patch:** RunWield records “Changes requested”, invalidates the prior approval and timestamp, records
+  `changes_requested`, and returns the Plan to `implemented`. Once repair completes, RunWield records completed repair
+  evidence, runs CI, skips automatic AI review, and reopens Code Review with the fresh diff and the same conversation.
+  An edit that stops on a blocker keeps the repair pending; it does not reopen review over unfinished work.
+
+A non-Git in-place project has no patch identity: every conversation turn uses the repair-and-check flow, even a
+question. Non-conversation feedback from a no-chat surface also keeps that flow. Standalone Code Review (`wld review`)
+is unchanged; see [Standalone code review](#standalone-code-review).
+
+**Requirement: Scope changes need confirmed Plan authority.** If Code Review chat agrees to change the Plan's scope,
+Engineer proposes a [Plan Deviation](#plan-deviations). Only dedicated owner confirmation makes the replacement
+authoritative for execution, AI review, and Work Records. Agreement in chat alone does not replace the requirement.
 
 **Requirement: Reach the live review from the terminal.** From launch until a decision arrives, the TUI shows
 “Waiting for Code Review”. When the review surface is ready, the card also shows a clickable live review URL,
@@ -797,6 +822,18 @@ Guided Review keeps its `auto` option; stored review `none` is labeled **Never**
   again.
 - Given repeated terminal cancellation, the Plan stays `reviewed` with no recorded decision; Retry presents a working
   link, and approval records one decision.
+- Given a Git-backed Plan in Code Review, when the owner asks why a change was made and Engineer only replies, review
+  reopens with the same patch and approval remains available. No CI starts, no Delivery Evidence changes, the decision
+  and timestamp stay unchanged, and the Plan stays `reviewed`.
+- Given Engineer reports a fix without changing the patch, the turn has the same reply-only result. An edit reverted
+  within the turn also leaves the patch unchanged.
+- Given the owner requests a fix and Engineer completes an edit, RunWield records “Changes requested” and completed
+  repair evidence, invalidates approval, runs CI, skips AI review, and reopens Code Review with the new diff and earlier
+  conversation.
+- Given a non-Git in-place project, a chat question still starts repair and CI because patch identity is unavailable.
+- Given a no-chat review surface, submitted feedback still starts repair, checks, and another Code Review.
+- Given chat agreement to drop a Plan requirement, the original requirement remains authoritative until the owner
+  confirms a Plan Deviation. Canceling confirmation leaves it unchanged.
 - Given policy edits, they survive reload; a global edit leaves an explicit project override in place.
 
 #### Delivery and publication
@@ -889,6 +926,10 @@ formatting-only Plan drift and keeps changed definitions, body text, and staged 
 Plans' catalog reads and validation continue. Loading the affected Plan reports the exact missing path and keeps all
 work, runtime state, and its Plan ID.
 
+**Requirement: Continuation evidence does not wait on unrelated remotes.** Catalog and Plan action evidence reads use
+existing local Git snapshots and registered execution documents without fetching Epic branches. Remote refresh stays
+with the selected Epic's workflow preparation; continuing an existing implementation does not refresh other Epics.
+
 **Acceptance scenarios:**
 
 - Given an implemented Plan with committed and uncommitted repairs, revising and approving it again continues in the
@@ -906,6 +947,8 @@ work, runtime state, and its Plan ID.
   an unfinished attempt receives the normal recovery check.
 - Given two Plans and a missing execution document for one, the other Plan's reads and validation succeed, and loading
   the affected Plan names the missing path.
+- Given an in-progress Plan and unrelated Epics with remote branches, choosing Continue and Proceed loads execution
+  evidence without fetching those branches and preserves the selected Plan's worktree authority.
 
 ### Semantic review and repair
 
@@ -939,14 +982,20 @@ with a reason. Only confirmed fixes close issues. States and reasons survive rec
 findings, defects missed earlier, repair-introduced defects, and issues still open.
 
 **Requirement: Focused repair.** Semantic and Code Review repairs run with focused, fresh context in the same Session
-and Plan workflow, including for Frontend Engineer work. Feedback, annotations, and images reach the repair Agent;
-unclear references lead to a clarification question.
+and Plan workflow, including for Frontend Engineer work. Feedback, annotations, images, and prior Code Review
+conversation reach the Agent; unclear references lead to a clarification question. A Git-backed Code Review conversation
+turn can end with a plain-text reply without a repair completion signal. It records no repair-start evidence. The
+[Code Review gate](#code-review-gate) uses patch identity to distinguish a reply from a repair and requires a confirmed
+[Plan Deviation](#plan-deviations) for scope changes; non-Git in-place turns always use repair.
 
 **Requirement: Hand the decision to the user after automatic rounds.** After three automatic rounds and their repairs
-and checks, users choose another verification round or Code Review. In Code Review, feedback starts repair and checks,
-then returns to Code Review, for as many rounds as the user wants. Users can nudge a stalled Reviewer or repair Agent
-in its existing conversation. Every pause explains what continuing will do. The round limit bounds automatic effort;
-the workflow continues under [Workflow completion](#workflow-completion-and-automatic-recovery).
+and checks, users choose another verification round or Code Review. In Git-backed Code Review, only a conversation
+turn that changes the reviewed patch returns to checks; a reply-only turn keeps the decision, evidence, status, and CI
+results. After an owner-requested repair, CI runs and Code Review reopens in the same conversation without another AI
+review. Non-conversation feedback and non-Git in-place turns retain repair and checks. User rounds have no automatic
+limit. Users can nudge a stalled Reviewer or repair Agent in its existing conversation. Every pause explains what
+continuing will do. The round limit bounds automatic effort; the workflow continues under
+[Workflow completion](#workflow-completion-and-automatic-recovery).
 
 **Requirement: Useful advisories.** Final nonblocking advisories go with the delivered Plan as labeled
 post-validation context, once. Review quality is judged by useful convergence and escaped defects.
@@ -966,8 +1015,12 @@ post-validation context, once. Review quality is judged by useful convergence an
   weak but honest assertions stay advisory.
 - Given target work imported after execution started, the patch shows only the branch's own changes.
 - Given a missing target branch or unrelated histories, review stops with a recoverable comparison failure.
-- After the automatic rounds, when the user chooses Code Review, feedback leads to repair and checks and returns to
-  Code Review.
+- After the automatic rounds, when the user chooses Code Review and Engineer completes a requested patch change,
+  checks run and the same Code Review conversation reopens; automatic AI review does not resume.
+- Given a Git-backed Code Review question, a plain-text answer with no patch change reopens review without repair
+  evidence or another CI run, as specified by the [Code Review gate](#code-review-gate).
+- Given an edit that stops on a blocker, the prior approval is invalidated and the repair stays pending with its blocker;
+  review does not reopen over unfinished work.
 
 **Requirement: Suggest code by editing the diff.**
 
@@ -1036,10 +1089,13 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
 
 **Acceptance scenarios:**
 
-- Given staged, unstaged, and untracked edits, `wld review` shows all three and Guided Review explains the diff.
+- Given staged, unstaged, and untracked edits, `wld review` shows all three. Guided Review starts only when the
+  owner clicks its toolbar button, not when review opens or the diff refreshes, regardless of diff size.
 - Given a local branch, review opens without a worktree; an Engineer request creates one and the next diff includes its
   edits.
 - Given a PR in a matching remote, Post comments and Approve reach the Forge; a foreign repository is rejected.
+  In a checkout or linked worktree, a repository mismatch prints a concise error and exits with code 1, without a
+  stack trace or runtime-crash recovery advice.
 - Given a moved remote head, posting refreshes the review and marks Guided Review stale; local edits and commits stay
   protected.
 - Given failed checkout setup, an unchanged unused worktree is removed and the next Engineer request retries; changes
@@ -1056,6 +1112,8 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
 - Given a rerun, owner annotations and edited AI annotations remain; unedited AI annotations are replaced.
 - Given a patch change during a run, completion reports an older diff and adds no annotations.
 - Given no discoverable spec, AI review reports no spec and makes no Spec findings against invented requirements.
+- Given a compiled review command and a different `wld` installation on PATH, AI review and Guided Review use the
+  running executable, not the other installation. Explicit provider command overrides remain available.
 - Given malformed output or provider failure, the job reports an error and the owner can rerun it.
 - Given validation-time Code Review, Run AI Review is absent; existing validation and Guided Review remain available.
 
@@ -1616,7 +1674,8 @@ native Linux/macOS archive and macOS Homebrew package checks before GitHub publi
 publication. Candidate checks leave Stable channels unchanged. Package recovery keeps the released tag and asset bytes,
 verifies the existing assets, and resumes package publication. Missing or inconsistent assets stop publication.
 Workspace runtime packaging waits for the final server manifest and its imports; it does not bundle an intermediate
-manifest placeholder.
+manifest placeholder. Unix archives include the source license notice; new MIT release publication rejects a missing
+or incorrect notice while recovery preserves already published bytes.
 
 **Acceptance scenarios:**
 
@@ -1635,6 +1694,7 @@ manifest placeholder.
   feature work.
 - Given a tested Candidate and an advanced Release Branch, Stable uses the tested commit.
 - Given a failed package check, no GitHub Release is created.
+- Given a new MIT release archive with a missing or incorrect license notice, publication is blocked.
 - Given an Astro server entry whose manifest is still being written, Workspace runtime packaging waits for the final
   manifest before it invokes the bundler.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.
@@ -1800,6 +1860,36 @@ reconnecting an observer, rejected input, and automated continuation keep the cu
 turns always send an Agent-stop event at settlement. Delivery follows the destination's permission and notification
 settings. ACP reports turn completion through its protocol, and only the destination surface alerts.
 
+#### Bounded model and tool loops
+
+**Requirement: Stop runaway model and tool loops.** Each Pi-backed request has a durable budget of 100 model
+requests, counting each Pi turn start, including automatic tool continuations. A provider retry counts when its next
+turn starts; the retry notification is not another request. The count is recorded before each request and remains
+attached to the same request when its controller-owned task resumes after failure or process restart. Automatic retries
+and corrective nudges of one unfinished review also share that review's request budget; a later review round starts a
+new budget. A new user instruction starts a new request budget. Stop before starting another model request once the
+budget is exhausted, preserve the Session, and show the reason and a clear action to send a new instruction. Also stop
+the current request when an exact tool call and result repeats three times consecutively, or an exact cycle of up to
+three tool call/result pairs repeats three times. Persist only hashes of tool names, arguments, and results for this
+check; never duplicate raw tool inputs or outputs into guard records. A saved stop blocks that request after Session
+reopen and does not mark the Session or its enclosing workflow complete.
+
+**Acceptance scenarios:**
+
+- Given a model repeatedly requests the same tool with the same result, when the third identical pair completes,
+  RunWield stops before another model request and records a visible, recoverable stop reason.
+- Given a model repeats a cycle of two or three exact tool call/result pairs three times, when the cycle completes,
+  RunWield stops before another model request and records a visible, recoverable stop reason.
+- Given one request reaches 100 model requests, when a retry or process restart continues it, RunWield stops before
+  request 101. A provider retry contributes one count when its next turn starts.
+- Given one unfinished automatic review, when a controller retry or a regenerated corrective nudge starts another
+  backend attempt, RunWield keeps the same request budget and stops before model request 101; the corrective text still
+  reaches the model. A new review round or a new user instruction starts a new request.
+- Given an interrupted controller-owned task is explicitly resumed after process restart, RunWield keeps its request
+  ID and count even if recovery regenerates the prompt; matching text from fresh user input starts a new request.
+- Given a loop guard stops a request, when the Session is reopened, the stop remains in its transcript and the user can
+  send a new instruction; replaying the stopped request does not call the model or complete successfully.
+
 #### Background tasks
 
 **Requirement: Run bounded background work.** An Agent with shell authority starts an independent command with
@@ -1919,7 +2009,7 @@ Core includes the local browser client that `wld plans ui` launches and the CLI 
 The [Workspace local Plan management capability](runwield-workspace-prd.md#local-plan-management) and
 [shared Plan collaboration capability](runwield-workspace-prd.md#shared-plan-collaboration) own their surface
 requirements and use Core's [Plan lifecycle](#plan-lifecycle), [Plan review](#plan-review), and
-[execution and recovery](#execution-validation-and-recovery). Local use is complete without hosted Workspace.
+[execution and recovery](#execution-validation-and-recovery). Local use needs no RunWield account or subscription.
 
 ## Delivery and Architectural References
 

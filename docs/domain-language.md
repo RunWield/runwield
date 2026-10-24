@@ -1,7 +1,7 @@
 # RunWield Domain Language
 
 RunWield is collaborative software planning with AI. Its product family combines a local plan-by-default coding harness,
-plugins for external agent hosts, and a collaborative SaaS Workspace. This glossary defines the project language used by
+plugins for external agent hosts, and a personal browser Workspace. This glossary defines the project language used by
 agents, docs, plans, and code. Entries cover RunWield-specific concepts, named tools and surfaces, and familiar words
 whose meaning here needs disambiguation. Ordinary software terms need no separate entry unless RunWield gives them a
 more specific meaning.
@@ -18,8 +18,8 @@ umbrella, Wield AI
 local interfaces. Core owns local workflow truth and may execute Agent turns through Pi or another Execution Backend.
 _Avoid_: `wld` as a product name, Native Mode, Managed Mode
 
-**RunWield Workspace**: The collaborative SaaS product for planning and records across Projects. _Avoid_: RunWield when
-a distinction from Core or Connect is required, local Workspace UI
+**RunWield Workspace**: The personal browser environment included in Core for Projects, Sessions, Plans, review, and
+knowledge search. _Avoid_: A separate subscription requirement, browser IDE
 
 **External Agent Host**: A coding-agent product such as Claude Code, Codex, OpenCode, or Pi that owns the user
 conversation and model access for an Attached Workflow. _Avoid_: Provider, Session Host, host harness
@@ -396,8 +396,10 @@ owned or removed by Standalone Code Review.
 
 **Code Review**: The optional RunWield gate where a person reviews the same full proposed branch patch used by Semantic
 Review before delivery. Reload recomputes it from the recorded target, execution HEAD, and current worktree files. The
-user approves the diff or sends feedback. Internal compatibility identifiers can still use `humanReview` or
-`human_review`, but user-facing copy calls this **code review**. _Avoid_: Human Review, Semantic Review, Forge review,
+user approves the diff or discusses it with Engineer. For Git execution, a conversation turn records “Changes
+requested” only when the reviewed patch changes; a reply leaves the decision, Delivery Evidence, Plan Status, and CI
+results unchanged. Non-Git in-place turns and non-conversation feedback always use repair. Internal compatibility
+identifiers can still use `humanReview` or `human_review`, but user-facing copy calls this **code review**. _Avoid_: Human Review, Semantic Review, Forge review,
 Plan Review Loop
 
 **Review Issue Ledger**: The temporary per-attempt record of requirement coverage, Review Issues, repair claims, and
@@ -469,10 +471,12 @@ collaboration service, daemon
 
 **Feedback**: Review context the owner sends to a planning or engineering Agent in a review conversation turn:
 annotations, attachments, direct edits, and question answers, with or without a message. Feedback is not a decision and
-does not by itself change Plan Status. Code Review still uses its existing repair decision. _Avoid_: Denial, rejection
+does not by itself change Plan Status. In Git-backed Code Review chat, only a changed reviewed patch records “Changes
+requested” and starts checks. _Avoid_: Denial, rejection
 
 **Review Queue**: The review context waiting in a review chat for the next send. Items enter it by default; the owner
-can exclude them from one send without deleting them. Currently used in Plan review. _Avoid_: Attachments, context chip
+can exclude them from one send without deleting them. Used in Plan review and validation-time Code Review.
+_Avoid_: Attachments, context chip
 
 **Revision**: A planning pass that changes the Plan during review. A reply without a Plan change is not a Revision.
 
@@ -780,20 +784,10 @@ current project docs, the applicable Plan, or code as evidence of implemented be
 **Local Memory**: A project Memory retained only in its owner's local Mnemoteca collection. _Avoid_: Private memory,
 personal memory
 
-**Team Memory Candidate**: A Local Memory classified as stable, repository-safe, and useful to teammates but not yet
-trusted as shared project context. _Avoid_: Shareable memory, pending memory
-
-**Team Memory**: A project Memory whose canonical human-readable form is versioned in the repository and whose local
-Mnemoteca copies are derived from trusted text. _Avoid_: Shared memory, synchronized memory
-
-**Core Memory**: A Memory tagged `core` that is injected into every Agent Session independently of whether it is Local
-or Team. It provides strong guidance within the same authority limits as other Memories; injection does not turn it into
+**Core Memory**: A Memory tagged `core` that is injected into every Agent Session. It provides strong guidance within the same authority limits as other Memories; injection does not turn it into
 project truth or permission. _Avoid_: Critical memory, pinned memory, shared memory
 
 **Global Memory**: A Memory stored in the cross-project collection. _Avoid_: Shared memory, universal memory
-
-**Trusted Branch**: A configured repository branch whose reviewed Team Memories may become active local Mnemoteca
-context. _Avoid_: Main branch, safe branch
 
 **Sleep**: A maintenance workflow that exports, analyzes, and improves the Mnemoteca collection. _Avoid_: Memory
 cleanup, memory maintenance
@@ -950,12 +944,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 - **Scope Escalation** states a concrete limit and offers user-owned transition options; it never changes control by
   itself.
 - The **See-Image Tool** uses **Vision Fallback** only for a text-only active model.
-- Every project **Memory** is either a **Local Memory** or a **Team Memory**; **Core Memory** independently controls
-  always-on injection.
-- A **Team Memory Candidate** begins as Local Memory and becomes Team Memory only after its canonical text is trusted
-  through the repository workflow.
-- A Team Memory has one canonical repository representation and zero or more derived local **Mnemoteca** copies.
-- Only Team Memories accepted through a **Trusted Branch** may become active shared context.
+- Project Memories stay in the owner’s local **Mnemoteca** collection; Global Memories span Projects.
 - Core Memories are injected into every Agent Session.
 
 [Mnemoteca]: https://github.com/gandazgul/mnemoteca

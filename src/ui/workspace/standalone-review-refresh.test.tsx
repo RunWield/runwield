@@ -304,12 +304,12 @@ test("Code Review uncommitted page has Engineer feedback and Operator approval",
     );
 });
 
-test("Code Review validation page retains approval and annotation feedback", async () => {
+test("Code Review validation page retains approval and sends annotations through chat", async () => {
     await withReviewSurface(undefined, async ({ browser, container, button }) => {
         await addModeAnnotation({ browser, button });
-        assertEquals(actionLabels(container), ["OKApprove", "Send Annotations", "Add to Engineer chat"]);
+        assertEquals(actionLabels(container), ["OKApprove"]);
         assertEquals(button("OKApprove").disabled, false);
-        assertEquals(button("Send Annotations").disabled, false);
+        assertEquals(button("Send to Engineer").disabled, false);
     });
 });
 

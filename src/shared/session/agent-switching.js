@@ -302,6 +302,8 @@ export async function switchActiveAgent(hostedSession, options) {
  * @property {boolean} [includeEditFallback]
  * @property {string} [debugLogPath]
  * @property {import('./request-dispatch.ts').RequestDispatchKind} [dispatchKind]
+ * @property {boolean} [resumePreviousRequest] True when continuing the preceding failed or interrupted request.
+ * @property {string} [taskId] Stable identity for the controller-owned task being continued.
  * @property {AbortSignal} [signal]
  */
 
@@ -330,6 +332,8 @@ export async function runActiveAgentTurn(options) {
         includeEditFallback,
         debugLogPath,
         dispatchKind,
+        resumePreviousRequest,
+        taskId,
         signal,
     } = options;
 
@@ -357,6 +361,8 @@ export async function runActiveAgentTurn(options) {
         userRequest,
         images,
         dispatchKind,
+        resumePreviousRequest,
+        taskId,
         signal,
     });
 }

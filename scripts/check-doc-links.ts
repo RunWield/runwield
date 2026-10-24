@@ -5,8 +5,9 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import process from "node:process";
 
 /**
- * Ratchet: every relative Markdown link in a tracked `.md` file must resolve to
- * a real file, and every `#fragment` must match a heading in the target.
+ * Ratchet: relative Markdown links must resolve to a real file, and every
+ * `#fragment` must match a heading in the target. Plans can retain references
+ * to removed proposal PRDs after their requirements move into lasting docs.
  *
  * Both defects this catches were found by hand: `docs/architecture.md` linked
  * `docs/entity-model.md` from inside `docs/`, and `docs/entity-model.md` linked
@@ -154,6 +155,8 @@ export async function findBrokenLinks(
                 continue;
             }
             if (!(await pathExists(resolved))) {
+                // Retired proposal PRDs stay in Plan history; lasting docs must use their current owners.
+                if (sourceFile.startsWith("docs/plans/") && resolved.startsWith("docs/prd/")) continue;
                 broken.push({ sourceFile, line, target, reason: `no such file: ${resolved}` });
                 continue;
             }

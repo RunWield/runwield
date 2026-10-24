@@ -11,7 +11,7 @@ import {
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
@@ -20,8 +20,10 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import {
     __getRootSessionMetadataForTests,
     applyAttentionNudge,
+    attachSessionEventSubscribers,
     assembleFinalSystemPrompt,
     assembleFinalSystemPromptWithContextProjection,
+    buildAgentSession,
     ensureRootAgentSession,
     getEngineerCompactionThreshold,
     getGlobalAgentMdPaths,
@@ -37,6 +39,7 @@ import {
 import { getRootExecutionMessages } from "./execution-backend.ts";
 import { HostedSession } from "./hosted-session.js";
 import { getRunWieldSessionDir } from "./root-session.js";
+import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { estimateContextTextTokens } from "./session-context-report.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
@@ -542,51 +545,94 @@ sessionPromptTest("Engineer compaction uses 60 percent of context or 120K tokens
     assertEquals(getEngineerCompactionThreshold(AGENTS.PLANNER, 128_000), null);
 });
 
-sessionPromptTest("runPrompt compacts Engineer before Pi's configured threshold", async () => {
-    const calls = /** @type {string[]} */ ([]);
-    const session = /** @type {any} */ ({
-        model: { provider: "test", id: "model", input: ["text"], contextWindow: 100 },
-        modelRegistry: { hasConfiguredAuth: () => true },
-        settingsManager: {
-            getCompactionSettings: () => ({ enabled: true, reserveTokens: 10, keepRecentTokens: 10 }),
-        },
-        sessionManager: {
-            buildSessionContext: () => ({ messages: [], thinkingLevel: "", model: null }),
-        },
-        getContextUsage: () => ({ tokens: 60, contextWindow: 100, percent: 60 }),
-        _runAutoCompaction: (/** @type {string} */ reason, /** @type {boolean} */ willRetry) => {
-            calls.push(`compact:${reason}:${willRetry}`);
-            return Promise.resolve(true);
-        },
-        prompt: () => {
-            calls.push("prompt");
-            return Promise.resolve();
-        },
-        agent: { waitForIdle: () => Promise.resolve(), state: { messages: [] } },
-    });
-    const subscriberState = /** @type {any} */ ({
-        resetTurn: () => {},
-        endThinking: () => {},
-        drainInvokedToolNames: () => [],
-    });
+test("runPrompt compacts Engineer before Pi's configured threshold", async () => {
+    await withRuntimeCommandFixture(
+        "runprompt-engineer-threshold-",
+        async (fixture) => {
+            const observations = /** @type {string[]} */ ([]);
+            await fsMkdir(join(fixture.projectRoot, ".wld"), { recursive: true });
+            await fsWriteFile(
+                join(fixture.projectRoot, ".wld/settings.json"),
+                JSON.stringify({ compaction: { enabled: true, reserveTokens: 10, keepRecentTokens: 10 } }),
+            );
+            fixture.setModelResponseFactories([
+                (context) => {
+                    const isRequest = JSON.stringify(context.messages).includes("next task");
+                    if (isRequest) observations.push("prompt");
+                    return fauxAssistantMessage(
+                        fauxText(isRequest ? "The request completed." : "The conversation was compacted."),
+                    );
+                },
+                (context) => {
+                    const isRequest = JSON.stringify(context.messages).includes("next task");
+                    if (isRequest) observations.push("prompt");
+                    return fauxAssistantMessage(
+                        fauxText(isRequest ? "The request completed." : "The conversation was compacted."),
+                    );
+                },
+                (context) => {
+                    const isRequest = JSON.stringify(context.messages).includes("next task");
+                    if (isRequest) observations.push("prompt");
+                    return fauxAssistantMessage(
+                        fauxText(isRequest ? "The request completed." : "The conversation was compacted."),
+                    );
+                },
+            ]);
+            const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
+            manager.appendMessage({
+                role: "user",
+                content: `Earlier task ${"context ".repeat(40)}`,
+                timestamp: Date.now(),
+            });
+            manager.appendMessage(fauxAssistantMessage(fauxText("Earlier work completed.")));
+            manager.appendMessage({
+                role: "user",
+                content: `Recent task ${"details ".repeat(40)}`,
+                timestamp: Date.now(),
+            });
+            manager.appendMessage(fauxAssistantMessage(fauxText("Recent work completed.")));
+            const built = await buildAgentSession({
+                agentName: "engineer",
+                cwd: fixture.projectRoot,
+                toolNames: [],
+                sessionManager: manager,
+            });
+            assertEquals(built.session.model?.contextWindow, 100);
+            const subscriber = attachSessionEventSubscribers(built.session, built.agentDef);
+            let tokens = 60;
+            const unsubscribeCompactionEvents = built.session.subscribe((event) => {
+                if (event.type === "compaction_start") observations.push(`compact:${event.reason}`);
+                if (event.type === "compaction_end") tokens = 0;
+            });
+            built.session.getContextUsage = () => ({ tokens, contextWindow: 100, percent: tokens });
 
-    await runPrompt({
-        session,
-        agentDef: {
-            name: "engineer",
-            displayName: "Engineer",
-            model: "",
-            description: "Test engineer",
-            tools: [],
-            systemPrompt: "system",
-        },
-        agentName: "engineer",
-        userRequest: "next task",
-        finalSystemPrompt: "system",
-        subscriberState,
-    });
+            try {
+                await runPrompt({
+                    ...built,
+                    agentName: "engineer",
+                    userRequest: "next task",
+                    finalSystemPrompt: "system",
+                    subscriberState: subscriber,
+                });
 
-    assertEquals(calls, ["compact:threshold:false", "prompt"]);
+                const thresholdCompactionIndex = observations.indexOf("compact:threshold");
+                const promptIndex = observations.indexOf("prompt");
+                assertEquals(thresholdCompactionIndex >= 0, true);
+                assertEquals(promptIndex > thresholdCompactionIndex, true);
+                assertEquals(
+                    manager
+                        .getBranch()
+                        .some((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_turn"),
+                    true,
+                );
+            } finally {
+                unsubscribeCompactionEvents();
+                subscriber.unsubscribe();
+                built.session.dispose();
+            }
+        },
+        { contextWindow: 100 },
+    );
 });
 
 sessionPromptTest("Engineer post-response compaction re-arms after new context growth", async () => {
@@ -656,70 +702,65 @@ sessionPromptTest("Engineer threshold respects disabled automatic compaction", a
     assertEquals(calls, []);
 });
 
-sessionPromptTest("runPrompt sends fallback image markers without raw image content to text-only model", async () => {
-    const originalHome = process.env["HOME"];
-    const originalCwd = getCwd();
-    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-runprompt-home-"));
-    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-runprompt-project-"));
-    try {
-        process.env["HOME"] = tempHome;
-        process.chdir(tempProject);
-        await fsMkdir(".wld", { recursive: true });
-        await fsWriteFile(".wld/settings.json", JSON.stringify({ visionFallback: { model: "test/vision" } }));
-        const fallbackModel = { provider: "test", id: "vision", input: ["text", "image"] };
-        /** @type {Array<{ text: string, options: any }>} */
-        const prompts = [];
-        const session = /** @type {any} */ ({
-            model: { provider: "test", id: "text", input: ["text"] },
-            modelRegistry: {
-                find: () => fallbackModel,
-                hasConfiguredAuth: () => true,
-            },
-            prompt: (/** @type {string} */ text, /** @type {any} */ options) => {
-                prompts.push({ text, options });
-                return Promise.resolve();
-            },
-            agent: { waitForIdle: () => Promise.resolve(), state: { messages: [] } },
-        });
-        const subscriberState = /** @type {any} */ ({
-            resetTurn: () => {},
-            endThinking: () => {},
-            drainInvokedToolNames: () => [],
-        });
+test("runPrompt sends fallback image markers without raw image content to text-only model", async () => {
+    await withRuntimeCommandFixture(
+        "runprompt-text-image-fallback-",
+        async (fixture) => {
+            const modelsPath = join(fixture.homeDir, ".wld/models.json");
+            const modelsConfig = JSON.parse(await fsReadFile(modelsPath, "utf8"));
+            modelsConfig.providers["runtime-command-fixture"].models[0].input = ["text"];
+            await fsWriteFile(modelsPath, JSON.stringify(modelsConfig));
+            await fsMkdir(join(fixture.projectRoot, ".wld"), { recursive: true });
+            await fsWriteFile(
+                join(fixture.projectRoot, ".wld/settings.json"),
+                JSON.stringify({ visionFallback: { model: "runtime-command-fixture/vision" } }),
+            );
+            let modelRequest = "";
+            fixture.setModelResponseFactory((context) => {
+                modelRequest = JSON.stringify(context.messages);
+                return fauxAssistantMessage(fauxText("The image was described."));
+            });
+            const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
+            const built = await buildAgentSession({
+                agentName: "operator",
+                cwd: fixture.projectRoot,
+                toolNames: [],
+                sessionManager: manager,
+            });
+            assertEquals(built.session.model?.input, ["text"]);
+            const subscriber = attachSessionEventSubscribers(built.session, built.agentDef);
 
-        await runPrompt({
-            session,
-            agentDef: {
-                name: "operator",
-                displayName: "Operator",
-                model: "",
-                description: "Test operator",
-                tools: [],
-                systemPrompt: "system",
-            },
-            agentName: "operator",
-            userRequest: "please inspect",
-            finalSystemPrompt: "system",
-            images: /** @type {import('./types.js').ImageAttachment[]} */ ([
-                {
-                    base64: "abc",
-                    mimeType: "image/png",
-                    ref: "attachment:123",
-                },
-            ]),
-            subscriberState,
-        });
+            try {
+                await runPrompt({
+                    ...built,
+                    agentName: "operator",
+                    userRequest: "please inspect",
+                    finalSystemPrompt: "system",
+                    images: /** @type {import('./types.js').ImageAttachment[]} */ ([
+                        {
+                            base64: "abc",
+                            mimeType: "image/png",
+                            ref: "attachment:123",
+                        },
+                    ]),
+                    subscriberState: subscriber,
+                });
 
-        assertEquals(prompts.length, 1);
-        assertEquals(prompts[0].text, "please inspect\n\n[Image attached: attachment:123 image/png]");
-        assertEquals(prompts[0].options.images, undefined);
-    } finally {
-        process.chdir(originalCwd);
-        if (originalHome === undefined) delete process.env["HOME"];
-        else process.env["HOME"] = originalHome;
-        await fsRm(tempHome, { recursive: true });
-        await fsRm(tempProject, { recursive: true });
-    }
+                assertStringIncludes(modelRequest, "please inspect\\n\\n[Image attached: attachment:123 image/png]");
+                assertEquals(modelRequest.includes("abc"), false);
+                assertEquals(
+                    manager
+                        .getBranch()
+                        .some((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_turn"),
+                    true,
+                );
+            } finally {
+                subscriber.unsubscribe();
+                built.session.dispose();
+            }
+        },
+        { additionalModels: [{ id: "vision", name: "Vision fallback" }] },
+    );
 });
 
 /**
@@ -789,6 +830,96 @@ test("runRootTurn completes through the real root prompt machinery", async () =>
         assertEquals(JSON.stringify(messages).includes("The real root turn completed."), true);
         assertEquals(__getRootSessionMetadataForTests(root).rootTurnCount, 1);
         hostedSession.dispose();
+    });
+});
+
+test("a runaway root turn is recorded as failed and a new instruction gets a fresh request", async () => {
+    await withRuntimeCommandFixture("session-root-loop-guard-", async ({ projectRoot, setModelResponseFactories }) => {
+        let modelCalls = 0;
+        let toolCalls = 0;
+        const repeatTool = {
+            name: "repeat_tool",
+            label: "Repeat tool",
+            description: "Returns a stable synthetic result",
+            parameters: { type: "object", properties: {} },
+            execute: () => {
+                toolCalls += 1;
+                return Promise.resolve({
+                    content: [{ type: /** @type {const} */ ("text"), text: "stable result" }],
+                    details: null,
+                });
+            },
+        };
+        setModelResponseFactories([
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            },
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            },
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            },
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxText("Fresh instruction completed."));
+            },
+        ]);
+        const hostedSession = makeHostedRuntimeSession(projectRoot, "root-loop-guard");
+        const root = await ensureRootAgentSession({
+            hostedSession,
+            agentName: AGENTS.GUIDE,
+            customTools: [repeatTool],
+            toolNames: ["repeat_tool"],
+        });
+
+        try {
+            await assertRejects(
+                () =>
+                    runRootTurn({
+                        hostedSession,
+                        agentName: AGENTS.GUIDE,
+                        userRequest: "Use the synthetic repeat tool",
+                    }),
+                RunawayLoopGuardStoppedError,
+            );
+            assertEquals(modelCalls, 3);
+            assertEquals(toolCalls, 3);
+            const attempts = root.sessionManager
+                .getBranch()
+                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
+                .map(
+                    (entry) =>
+                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{phase?: string; requestId?: string}>} */ (
+                            entry
+                        ).data,
+                );
+            assertEquals(attempts.at(-1)?.phase, "failed");
+
+            const messages = await runRootTurn({
+                hostedSession,
+                agentName: AGENTS.GUIDE,
+                userRequest: "Answer with a fresh synthetic instruction",
+            });
+            assertEquals(modelCalls, 4);
+            assertStringIncludes(JSON.stringify(messages.at(-1)), "Fresh instruction completed.");
+            const completedAttempts = root.sessionManager
+                .getBranch()
+                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
+                .map(
+                    (entry) =>
+                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{phase?: string; requestId?: string}>} */ (
+                            entry
+                        ).data,
+                );
+            assertEquals(completedAttempts.at(-1)?.phase, "completed");
+            assertEquals(completedAttempts.at(-1)?.requestId === attempts.at(-1)?.requestId, false);
+        } finally {
+            hostedSession.dispose();
+        }
     });
 });
 

@@ -618,7 +618,7 @@ Use the shell pattern for full-page browser surfaces:
 - main content below navigation.
 
 The shell should feel like a local tool, not a marketing site. Avoid large hero sections, decorative imagery, and sparse
-SaaS-dashboard layouts.
+dashboard layouts.
 
 ### Tabs
 
@@ -690,12 +690,12 @@ inside the review surface. Do not use it for destructive outcomes or low-emphasi
 Use the **Artifact conversation** pattern when the active workflow agent can discuss and revise the artifact without
 leaving its review surface. Render `ArtifactConversationSidebar` inside an existing review sidebar, keep its message and
 operation wiring in the owning surface, and use the shared `.rw-artifact-conversation-*` classes. Review context is
-queued automatically for Plan Review through the **Review Queue** pattern below. Code Review retains its explicit
-removable context attachment until its conversation migration. Only one agent turn may be active at a time. Code Review's
-Send Annotations action uses this same repair conversation when available; approval remains explicit. When a revised
-Plan arrives, replace the readable artifact in place and open a before/after diff automatically. A reply-only round
-keeps the current document view and controls. Plan Review selects chat by default; its Annotations pane only edits notes
-when chat is available. A surface without a conversation retains Send Annotations above the annotation list. Code Review refreshes
+queued automatically for Plan Review and validation-time Code Review through the **Review Queue** pattern below.
+Only one agent turn may be active at a time; approval remains explicit. When a revised Plan arrives, replace the readable
+artifact in place and open a before/after diff automatically. A reply-only round keeps the current document view and
+controls. These surfaces select chat by default; their Annotations pane only edits notes when chat is available, with
+no feedback-decision or attach-to-chat button. A surface without a conversation retains Send Annotations above the
+annotation list. Standalone Code Review keeps its existing explicit context attachment. Code Review refreshes
 its existing diff while retaining the transcript, selected file, diff collapse choices, active Guided Review/diff view,
 and collapsed guide sections. Mark retained guide prose as belonging to an earlier revision and offer regeneration; do
 not replace the owner's navigation state during a repair. The component is artifact-neutral so Plan Review, Code Review,
@@ -709,8 +709,9 @@ radius, and spacing tokens. The compact rectangular chips wrap inside the rail. 
 accessible X control that excludes that type from the next send without deleting it. Excluded types use a dashed border,
 visible “excluded” text, and a plus control to include them again. Controls have 44px touch targets on compact screens.
 
-Plan annotations, file annotations, images, direct edits, and unsent answers are included by default. Send accepts text,
-included queue items, or both. After acceptance, remove only sent items and restore inclusion for the next send. A busy
+Plan annotations, file annotations, images, direct edits, and unsent answers are included by default. Validation-time
+Code Review includes annotations, attachments, and edit suggestions by default. Send accepts text, included queue items,
+or both. After acceptance, remove only sent items and restore inclusion for the next send. A busy
 Agent disables queue controls, Send, and Submit answer; a failed request keeps the draft. Sequence tabs share inclusion
 and counts across the whole group. Approval forwards all remaining items regardless of one-send exclusions.
 
@@ -914,8 +915,9 @@ Plannotator-specific mapping:
 
 - plan review page: use the shell plus a detail-panel layout;
 - Plan title, summary, Front Matter, and markdown body: follow Plan Detail and MarkdownView patterns;
-- annotation submission: in Plan Review, use the Review Queue above chat; render **Send Annotations** above the
-  annotation list only when no conversation is available. Code Review keeps its current Send Annotations action;
+- annotation submission: in Plan Review and validation-time Code Review, use the Review Queue above chat; render
+  **Send Annotations** above the annotation list only when no conversation is available. Standalone Code Review keeps
+  its current Send Annotations action;
 - approve/save: primary action when it is the normal forward path;
 - request changes or deny: danger action when it sends Feedback back to the planning Agent;
 - comments and annotations: use badge, notice, and metadata patterns before inventing a separate comment aesthetic;
@@ -988,7 +990,7 @@ automated score does not establish visual acceptance.
 ## Non-goals for v1
 
 - No marketing-page layouts or effects; brand colors and website typography are shared.
-- No large-radius, oversized SaaS-dashboard component language.
+- No large-radius, oversized dashboard component language.
 - No requirement to extract a full component library immediately.
 - No generated palette replacing the approved brand or browser theme modules.
 - No browser theme picker or light theme in the current scope; keep future themes easy to swap.

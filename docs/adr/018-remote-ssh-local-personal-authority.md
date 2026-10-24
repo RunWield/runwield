@@ -36,7 +36,7 @@ Split execution from personal authority:
 - Remote Core owns project tools, Plans, Git, worktrees, validation, repair, and publication.
 - The laptop owns authenticated model requests, personal-data services, and authoritative Session bundles.
 - OpenSSH supplies terminal transport and forwarding. A connection-scoped local service supplies model and personal
-  operations; no permanent daemon or hosted Workspace dependency is required.
+  operations without a permanent daemon.
 - Remote SSHFS mounts the laptop’s full `~/.wld` at a fresh private remote path through standard OpenSSH SFTP. Remote
   personal settings, Agents, prompts, and Skill file edits operate directly on laptop files, without resource copies,
   synchronization, or a special resource-save operation. The remote project and its `.wld` remain on the server. Other

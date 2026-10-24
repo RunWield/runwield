@@ -201,9 +201,10 @@ are not sent through ACP.
 
 [Registry PR 580](https://github.com/agentclientprotocol/registry/pull/580) remains open and points to v0.10.0 release
 archives. Do not describe registry installation as available yet. After the release that contains this ACP change
-exists, update `runwield/agent.json` on that PR to the shipped version, change all five archive URLs, and replace every
-SHA-256 value with the checksum of its matching archive. Keep the lowercase `runwield` ID, `license: "proprietary"`,
-binary commands, platform entries, and the 16x16 monochrome `currentColor` icon.
+exists, update `runwield/agent.json` on that PR to the shipped version, change every supported archive URL, and replace every
+SHA-256 value with the checksum of its matching archive. For v0.14.0 and later set `license: "MIT"`. Keep the lowercase `runwield` ID,
+binary commands, supported platform entries, and the 16x16 monochrome `currentColor` icon. Older entries retain their
+release license; do not update the registry version until matching published archives and checksums exist.
 
 Validate the updated PR from a fresh registry checkout with release URL checks available:
 

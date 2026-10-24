@@ -1,6 +1,7 @@
 {
     "name": "runwield",
     "private": true,
+    "license": "MIT",
     "type": "module",
     "packageManager": "bun@1.4.3",
     "engines": {
@@ -58,7 +59,7 @@
         "release:candidate": "bun scripts/release.js candidate",
         "release:promote": "bun scripts/release.js promote",
         "release:stable": "bun scripts/release.js stable",
-        "package:homebrew": "bun scripts/package-homebrew.js",
+        "package:homebrew": "bun scripts/package-homebrew.ts",
         "package:homebrew:check": "bun scripts/package-homebrew-check.ts",
         "package:windows": "bun scripts/package-windows.ts",
         "package:windows:check": "bun scripts/package-windows-check.ts",

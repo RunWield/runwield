@@ -1,3 +1,4 @@
+import { retrySessionWorkRecord } from "./work-record-retry.ts";
 import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
@@ -94,27 +95,7 @@ export class RuntimeWorkflows {
             "retryWorkRecord",
             {},
             async () => {
-                const { retryWorkRecordForPlan } = await import("../../work-records/auto-generation.ts");
-                const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../../work-records/mnemoteca-port.ts");
-                const controller = new AbortController();
-                const interactionId = `work-record-retry:${crypto.randomUUID()}`;
-                const capabilitySignal = session.getManagedOperationCapability()?.signal;
-                const abort = () => controller.abort();
-                capabilitySignal?.addEventListener("abort", abort, { once: true });
-                if (capabilitySignal?.aborted) abort();
-                session.addActiveInteraction(interactionId, { abortController: controller });
-                try {
-                    emitSystemStatus(session, `Retrying the Work Record for ${planName}.`);
-                    return await retryWorkRecordForPlan({
-                        cwd: session.cwd,
-                        planName,
-                        signal: controller.signal,
-                        mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                    });
-                } finally {
-                    capabilitySignal?.removeEventListener("abort", abort);
-                    session.removeActiveInteraction(interactionId);
-                }
+                return await retrySessionWorkRecord(session, planName);
             },
             false,
         );
@@ -129,9 +110,7 @@ export class RuntimeWorkflows {
     ): Promise<T> {
         await this.lifecycle.materializeDeferredWorkflowSession(session);
         const managed = session.getManagedMetadata?.();
-        if (!managed) {
-            return await this.events.runBusyOperation(session.id, operation);
-        }
+        if (!managed) return await this.events.runBusyOperation(session.id, operation);
         const currentCapability = this.managedOperations.currentCapability(session.id);
         if (currentCapability) {
             if (this.managedOperations.isCurrentContext(session.id, currentCapability)) {
@@ -495,6 +474,7 @@ ${outcome.feedback || ""}`,
                     ...options,
                     hostedSession: session,
                     prepareSegmentHandoff: !interrupted,
+                    resumePreviousRequest: interrupted,
                 });
             });
             if (!prepared?.executionSegmentHandoff) {
@@ -780,6 +760,8 @@ ${outcome.feedback || ""}`,
                 }),
                 cwd: executionCwd,
                 dispatchKind: "validation_repair",
+                resumePreviousRequest: alreadyManaged,
+                taskId: continuation.activeWorkflow.planName,
                 subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
                 customTools: [createReviewDiffTool({ full: diffText }, { hostedSession: session })],
             });

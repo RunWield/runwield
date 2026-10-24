@@ -379,3 +379,14 @@ gate; it does not trigger an automatic retry or a reduced check.
 - A retried Stable publication adds no commit to `docs/stable`; independent corrections stay in the next manual.
 - Local branches, index, working-tree changes, and untracked files remain untouched by the release command and CI.
   Local branch cleanup remains a separate operator step.
+
+## License transition at v0.14.0
+
+The v0.14 release line uses MIT, including candidates. Both Unix archive formats include the source `LICENSE`;
+publication rejects a new MIT archive whose license is missing or differs from that source. Earlier tagged releases retain their shipped license. Homebrew
+and WinGet generation preserve the pre-v0.14 license metadata when recovering those releases. Bundled dependencies
+retain their own license notices.
+
+For the v0.14.0 launch, publish and verify the Stable assets and release-aligned manual before deploying the website
+announcement. Update the pending ACP registry entry only with published URLs, matching checksums, and MIT metadata.
+Do not advertise paused platform packages as available.

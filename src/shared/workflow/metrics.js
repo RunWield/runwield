@@ -407,6 +407,7 @@ const V2_ENUMS = {
         "execution_error",
         "execution_canceled",
         "execution_settled",
+        "runaway_loop_guard",
         "canceled",
         "failed",
         "aborted",

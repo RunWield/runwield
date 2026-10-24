@@ -141,8 +141,9 @@ Implement approved work, inspect the evidence, and distinguish successful checks
 - Repair review findings with a dedicated agent in fresh context, which reports what it did for each finding.
 - Offer another verification round or an immediate code review when automatic rounds run out, rather than stranding the
   work.
-- Repair code review feedback with the same fresh-context agent, then rerun CI and reopen code review for as many
-  feedback rounds as you give — the cycle ends only when you approve or quit.
+- Discuss code review with a fresh-context agent. In Git projects, reply-only turns keep review and CI results; patch
+  changes rerun CI and reopen the same conversation without another AI review. Non-Git projects still repair on every
+  turn. Review rounds continue until you approve or quit.
 - Send validation failures back through repair attempts.
 - Preserve the original execution owner during validation repairs.
 - Optionally use a Code Review gate during validation when configured.
@@ -203,7 +204,7 @@ Continue the same work in the terminal or browser, find what needs attention, an
   first.
 - Unarchive from the Archived Sessions tab in Project settings. Direct and Plan links remain readable while archived.
 - Use personal remote Workspace with device pairing and an owner connection to the machine running the work.
-- Treat shared Plan review separately from simultaneous multi-user Session collaboration, which remains future scope.
+- Share individual Plans for encrypted review; personal Sessions remain owner-controlled.
 
 ### Interactive TUI and session management
 
@@ -401,8 +402,6 @@ Run locally and adapt the harness to your Project.
   durable host actions and fresh-process outcomes remain work in progress. Existing Claude CLI execution inside RunWield
   is a separate capability, not proof that Connect has shipped.
 - **Reusable software-factory components:** a product direction, not an already delivered independent component suite.
-- **Broader team Workspace:** shared Plan review exists; team governance and simultaneous multi-user Session work are
-  not implied by personal Workspace support.
 - **Remote Session-save redesign:** the October laptop-owned SSH save proof supports design review only, not production
   adoption.
 - **Plan Store redesign and metrics dashboard/export:** proposals, not replacements for the current Markdown artifacts

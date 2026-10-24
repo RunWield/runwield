@@ -432,6 +432,9 @@ async function runIntegrationReview(
     request: string,
 ): Promise<{ kind: "completed"; outcome: ValidationReviewOutcome } | { kind: "paused"; reason: string }> {
     const sessionManager = port.createInMemorySessionManager(checkoutPath);
+    // One review, one request identity: a regenerated nudge continues this review
+    // rather than starting a fresh model budget.
+    const controllerRequestId = `request:${crypto.randomUUID()}`;
     let prompt = request;
     for (let attempt = 1; attempt <= MAX_REVIEWER_ATTEMPTS; attempt++) {
         // No full-read gate: each child was read line by line in its own review, and
@@ -447,6 +450,7 @@ async function runIntegrationReview(
             reviewerMode: "integration",
             customTools,
             sessionManager,
+            controllerRequestId,
         });
         if (session.outcome === "operational_failure") {
             return { kind: "paused", reason: session.failure.message };

@@ -194,9 +194,16 @@ export type IsolatedAgentSessionRequest =
           reviewerMode: ReviewerRoundMode;
           customTools: OpaqueToolDefinition[];
           sessionManager: SessionManagerHandle;
+          /**
+           * Stable identity for one unfinished review. Automatic retries and corrective
+           * nudges of that review reuse it, so their model-turn budget is cumulative.
+           */
+          controllerRequestId?: string;
       }
     | {
           kind: "feedback_engineer";
+          /** A reply may end in plain text; patch identity decides whether validation restarts. */
+          conversationTurn?: boolean;
           agentName: string;
           userRequest: string;
           cwd: string;
