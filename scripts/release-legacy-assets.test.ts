@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
+import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.ts";
 import { sha256File } from "./build-metadata.ts";
 
 test("published recovery keeps immutable pre-metadata release archives", async () => {

@@ -1,3 +1,5 @@
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {
@@ -61,19 +63,16 @@ function makeValidationUi() {
     return { uiAPI, hostedSession: makeRecordedSession("validation-core-test", uiAPI) };
 }
 
-/**
- * @param {"implemented" | "validated_ci" | "reviewed"} status
- * @param {Record<string, string | number | null>} [attrs]
- */
-async function makeLifecycleRun(status, attrs = {}) {
+type LifecycleStatus = "implemented" | "validated_ci" | "reviewed";
+
+async function makeLifecycleRun(status: LifecycleStatus, attrs: TriageMeta = {}) {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status,
         ...attrs,
     });
     const { hostedSession } = makeValidationUi();
-    /** @type {import('../../tools/plan-written.ts').TriageMeta} */
-    const triageMeta = { classification: "QUICK_FIX", status, ...attrs };
+    const triageMeta: TriageMeta = { classification: "QUICK_FIX", status, ...attrs };
     hostedSession.setWorkflowExecutionContext({
         planName: "p",
         triageMeta,
@@ -89,8 +88,9 @@ async function makeLifecycleRun(status, attrs = {}) {
     return { projectRoot, hostedSession };
 }
 
-/** @type {Array<"approved" | "skipped" | "not_required">} */
-const publicationReviewDecisions = ["approved", "skipped", "not_required"];
+const publicationReviewDecisions = ["approved", "skipped", "not_required"] satisfies NonNullable<
+    TriageMeta["humanReviewDecision"]
+>[];
 for (const decision of publicationReviewDecisions) {
     test(`publication clears the repair Agent after Code Review is ${decision}`, async () => {
         const { hostedSession, projectRoot } = await makeLifecycleRun("reviewed", {
@@ -99,17 +99,14 @@ for (const decision of publicationReviewDecisions) {
         });
         hostedSession.setRootAgentName("reviewer-feedback-engineer");
         hostedSession.resetAgentInfoStack("Validation Repair Engineer", "", "", "reviewer-feedback-engineer");
-        /** @type {import('../session/session-runtime-events.js').SessionRuntimeEvent[]} */
-        const events = [];
-        hostedSession.setEventSink(
-            (/** @type {import('../session/session-runtime-events.js').SessionRuntimeEvent} */ event) => {
-                if (event.type === "system_status") {
-                    assertEquals(hostedSession.getRootAgentName(), null);
-                    assertEquals(hostedSession.getActiveAgentInfo(), null);
-                }
-                events.push(event);
-            },
-        );
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => {
+            if (event.type === "system_status") {
+                assertEquals(hostedSession.getRootAgentName(), null);
+                assertEquals(hostedSession.getActiveAgentInfo(), null);
+            }
+            events.push(event);
+        });
         try {
             const result = await runValidationPhase({
                 hostedSession,
@@ -265,8 +262,7 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
                     assertEquals(result.kind, "paused", JSON.stringify(result));
                     assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
                     assertEquals(
-                        fixture.uiAPI.messages.filter((/** @type {string} */ message) => message === result.reason)
-                            .length,
+                        fixture.uiAPI.messages.filter((message: string) => message === result.reason).length,
                         1,
                     );
                     assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
@@ -517,7 +513,7 @@ test("runValidationLoop shows why FEATURE validation fails when workflow diff is
         assertEquals(result.kind, "failed");
         assertStringIncludes(result.reason || "", "No implementation changes detected");
         assertEquals(plan?.attrs.status, "implemented");
-        const messages = /** @type {string[]} */ (uiAPI.messages);
+        const messages: string[] = uiAPI.messages;
         assertEquals(
             messages.some((message) => message.includes("Ask the Engineer to restore the code")),
             true,

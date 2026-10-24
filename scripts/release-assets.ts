@@ -14,17 +14,18 @@ import { join } from "node:path";
 import { expectedReleaseAssetNames, parseReleaseTag } from "./release.js";
 import { releaseLicense } from "./release-license.ts";
 import { verifyBuildArtifact } from "./build-metadata.ts";
-import { extractReleaseRuntime } from "../src/shared/remote/release-artifact.ts";
+import { extractReleaseRuntime, type LauncherIdentity } from "../src/shared/remote/release-artifact.ts";
 
 /**
  * Explicit development bundle. Never builds a missing runtime, and never
  * substitutes release assets for a development artifact.
- * @param {string} launcher
- * @param {string} linuxX64
- * @param {string} linuxArm64
- * @param {string} output
  */
-export async function prepareDevelopmentArtifacts(launcher, linuxX64, linuxArm64, output) {
+export async function prepareDevelopmentArtifacts(
+    launcher: string,
+    linuxX64: string,
+    linuxArm64: string,
+    output: string,
+) {
     const entries = [
         [launcher, "wld-launcher"],
         [linuxX64, "wld-x86_64-unknown-linux-gnu"],
@@ -50,16 +51,16 @@ export async function prepareDevelopmentArtifacts(launcher, linuxX64, linuxArm64
     }
 }
 
-/**
- * @typedef {Object} PublishedAsset
- * @property {string} name
- * @property {string | null} digest
- * @typedef {Object} PublishedRelease
- * @property {PublishedAsset[]} assets
- */
+export interface PublishedAsset {
+    name: string;
+    digest: string | null;
+}
 
-/** @param {string} tag */
-export function releaseAssetNames(tag) {
+export interface PublishedRelease {
+    assets: PublishedAsset[];
+}
+
+export function releaseAssetNames(tag: string) {
     const docs =
         parseReleaseTag(tag).kind === "stable"
             ? [`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`]
@@ -67,8 +68,7 @@ export function releaseAssetNames(tag) {
     return [...expectedReleaseAssetNames(tag), ...docs];
 }
 
-/** @param {string} directory @returns {Promise<string[]>} */
-async function files(directory) {
+async function files(directory: string): Promise<string[]> {
     const result = [];
     for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
@@ -79,24 +79,23 @@ async function files(directory) {
     return result;
 }
 
-/** @param {string} path */
-async function sha256(path) {
+async function sha256(path: string) {
     return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await fsReadFile(path))))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 }
 
-/**
- * @param {string} input
- * @param {string} output
- * @param {string} tag
- * @param {boolean} published
- * @param {string} publishedMetadata
- */
-export async function prepareReleaseAssets(input, output, tag, published = false, publishedMetadata = "") {
+export async function prepareReleaseAssets(
+    input: string,
+    output: string,
+    tag: string,
+    published = false,
+    publishedMetadata = "",
+) {
     if (published && !publishedMetadata) throw new Error("Published recovery requires GitHub asset digests");
-    /** @type {PublishedRelease | null} */
-    const metadata = publishedMetadata ? JSON.parse(await fsReadFile(publishedMetadata, "utf8")) : null;
+    const metadata: PublishedRelease | null = publishedMetadata
+        ? JSON.parse(await fsReadFile(publishedMetadata, "utf8"))
+        : null;
     let names = releaseAssetNames(tag);
     if (published) {
         if (!metadata) throw new Error("Published recovery requires GitHub asset digests");
@@ -119,23 +118,24 @@ export async function prepareReleaseAssets(input, output, tag, published = false
         if (publishedDocs.length === 0) names = names.filter((name) => !docs.includes(name));
     }
     const paths = await files(input);
-    const selected = new Map();
+    const selected = new Map<string, string>();
     for (const name of names) {
         if (name === "SHA256SUMS" && !published) continue;
         const matches = paths.filter((path) => path.split(/[\\/]/).pop() === name);
         if (matches.length !== 1) throw new Error(`Expected one ${name}; found ${matches.length}`);
         selected.set(name, matches[0]);
     }
+    // Every selected asset was required exactly once above before these lookups.
     const sums = [];
     for (const name of names.filter((name) => name.endsWith(".sha256"))) {
         const asset = name.slice(0, -7);
-        const expected = `${await sha256(selected.get(asset))}  ${asset}`;
-        const actual = (await fsReadFile(selected.get(name), "utf8")).trim().replace(/\s+/, "  ");
+        const expected = `${await sha256(selected.get(asset)!)}  ${asset}`;
+        const actual = (await fsReadFile(selected.get(name)!, "utf8")).trim().replace(/\s+/, "  ");
         if (actual !== expected) throw new Error(`Release checksum mismatch: ${name}`);
         sums.push(expected);
     }
     if (published) {
-        const actual = (await fsReadFile(selected.get("SHA256SUMS"), "utf8"))
+        const actual = (await fsReadFile(selected.get("SHA256SUMS")!, "utf8"))
             .trim()
             .split(/\r?\n/)
             .map((line) => line.replace(/\s+/, "  "))
@@ -150,12 +150,12 @@ export async function prepareReleaseAssets(input, output, tag, published = false
     if (!published) {
         const stage = await fsMkdtemp(join(tmpdir(), "wld-release-verify-"));
         try {
-            let launcher = null;
+            let launcher: LauncherIdentity | null = null;
             for (const suffix of ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]) {
                 const name = `wld-${tag}-${suffix}.tar.gz`;
                 const directory = join(stage, suffix);
                 await fsMkdir(directory);
-                const { metadata } = await extractReleaseRuntime(selected.get(name), suffix, launcher, directory);
+                const { metadata } = await extractReleaseRuntime(selected.get(name)!, suffix, launcher, directory);
                 if (releaseLicense(tag.slice(1)).winget === "MIT") {
                     const license = await fsReadFile(join(directory, "LICENSE"), "utf8").catch(() => "");
                     const expected = await fsReadFile(new URL("../LICENSE", import.meta.url), "utf8");

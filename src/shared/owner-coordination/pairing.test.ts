@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
+import type { OwnerCoordinationDatabase } from "./database.js";
 import { hashSecret, randomHumanCode } from "./crypto.ts";
 import {
     approvePairingRequest,
@@ -15,19 +16,14 @@ import {
 } from "./pairing.js";
 import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 
-/** @returns {() => string} */
 function idFactory() {
     let next = 0;
     return () => `id-${++next}`;
 }
 
-/** @param {any} database @param {string} deviceId */
-function getLastSeen(database, deviceId) {
+function getLastSeen(database: OwnerCoordinationDatabase, deviceId: string) {
     return String(
-        /** @type {any} */ (database.handle.prepare("SELECT last_seen_at FROM paired_devices WHERE id = ?").get(
-            deviceId,
-        ))
-            .last_seen_at,
+        database.handle.prepare("SELECT last_seen_at FROM paired_devices WHERE id = ?").get(deviceId)!.last_seen_at,
     );
 }
 
@@ -59,11 +55,9 @@ test("pairing request stores only hashes and requires approval before claim", as
         assertEquals(request.proof, "browser-proof");
         assertThrows(() => claimPairingRequest(database, request.proof, { now: () => "2026-01-01T00:00:01.000Z" }));
 
-        const row = /** @type {any} */ (database.handle.prepare(
-            "SELECT code_hash, proof_hash FROM pairing_requests WHERE id = ?",
-        ).get(
-            request.requestId,
-        ));
+        const row = database.handle
+            .prepare("SELECT code_hash, proof_hash FROM pairing_requests WHERE id = ?")
+            .get(request.requestId)!;
         assertEquals(row.code_hash, hashSecret("ABC123"));
         assertEquals(row.proof_hash, hashSecret("browser-proof"));
         assertEquals(JSON.stringify(row).includes("ABC123"), false);
@@ -218,8 +212,7 @@ test("device credentials are revocable and never listed as secrets", async () =>
         assertEquals(devices.length, 1);
         assertEquals(JSON.stringify(devices).includes("credential-secret"), false);
         assertEquals(JSON.stringify(devices).includes("csrf-secret"), false);
-        const credentialRow =
-            /** @type {any} */ (database.handle.prepare("SELECT credential_hash FROM paired_devices").get());
+        const credentialRow = database.handle.prepare("SELECT credential_hash FROM paired_devices").get()!;
         assertMatch(String(credentialRow.credential_hash), /^sha256:/);
         assert(verifyDeviceCredential(database, "credential-secret", { now: () => "2026-01-01T00:00:03.000Z" }));
         const firstSeen = getLastSeen(database, claimed.deviceId);

@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { packageWinget } from "./package-winget.js";
+import { packageWinget } from "./package-winget.ts";
 import { sha256 } from "./package-windows.ts";
 
 async function run(command: string, args: string[], cwd?: string): Promise<void> {
