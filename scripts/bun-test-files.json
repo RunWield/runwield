@@ -90,7 +90,7 @@
     "src/cmd/auth/index.test.ts",
     "src/cmd/compact/index.test.js",
     "src/cmd/context/index.test.ts",
-    "src/cmd/copy/index.test.js",
+    "src/cmd/copy/index.test.ts",
     "src/cmd/export/index.test.ts",
     "src/cmd/guided-review/index.test.ts",
     "src/cmd/help/index.test.ts",
