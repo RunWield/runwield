@@ -170,3 +170,16 @@ Manual verification steps for attached-mode-claude-feature-preview/07-answer-rev
 - [ ] Send a chat message, restart Claude while the message is queued, and confirm the restored review shows the message and reply.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview" -->
+
+## Prove and document the supported Claude Preview
+
+Manual verification steps for attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview
+
+- [ ] Review the committed acceptance evidence and confirm the guide and Compatibility Matrix claim only the versions and limits supported by that evidence; do not treat historical evidence as proof of the current source.
+- [ ] Open the published Claude Code guide and confirm it shows the Preview label, tested versions, marketplace install steps, MCP server disclosure, permission information, recovery, update, disable, and uninstall guidance.
+- [ ] Review the README and PRDs. Confirm they describe Claude Code Preview only and make no stable-support, other-host, or `/runwield:init` claims.
+- [ ] In Claude Code, confirm the marketplace install instructions and plugin command names are clear, and that compatibility notices or rejection guidance tell the user what to do.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview" -->
