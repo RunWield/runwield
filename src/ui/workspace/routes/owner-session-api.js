@@ -81,9 +81,10 @@ function safeDiagnostic(value) {
     const source = /** @type {Record<string, unknown>} */ (value);
     return {
         code: typeof source.code === "string" ? source.code : "catalog_diagnostic",
-        message: typeof source.message === "string"
-            ? source.message.replaceAll(/(?:[A-Za-z]:)?[/\\][^\s,)]+/g, "[local path]")
-            : "Catalog diagnostic recorded.",
+        message:
+            typeof source.message === "string"
+                ? source.message.replaceAll(/(?:[A-Za-z]:)?[/\\][^\s,)]+/g, "[local path]")
+                : "Catalog diagnostic recorded.",
     };
 }
 
@@ -179,9 +180,10 @@ export async function ownerProjectSessionsApi(ctx) {
             });
             return ownerJson({ ...result, diagnostics: (result.diagnostics || []).map(safeDiagnostic) });
         }
-        const result = planId || excludeAssociated
-            ? await listAllSessionsForFilter(ctx.state.sessionContinuation, ctx.params.projectId, listOptions)
-            : await ctx.state.sessionContinuation.listSessions(ctx.params.projectId, listOptions);
+        const result =
+            planId || excludeAssociated
+                ? await listAllSessionsForFilter(ctx.state.sessionContinuation, ctx.params.projectId, listOptions)
+                : await ctx.state.sessionContinuation.listSessions(ctx.params.projectId, listOptions);
         let sessions = /** @type {OwnerSessionSummary[]} */ (result.sessions || []);
         if (planId || excludeAssociated) {
             const nested = new Set(nestedPlanIds);
@@ -326,25 +328,30 @@ export async function ownerSessionCreateApi(ctx) {
             requestId: requireBoundedString(body.requestId, "requestId", 128),
             text: body.text ? requireBoundedString(body.text, "text", 32_000) : "",
             images: readSubmittedImages(body.images),
-            agentName: typeof body.agentName === "string"
-                ? requireBoundedString(body.agentName, "agentName", 128)
-                : undefined,
-            model: typeof body.model === "string" && body.model
-                ? requireBoundedString(body.model, "model", 300)
-                : undefined,
-            provider: typeof body.provider === "string" && body.provider
-                ? requireBoundedString(body.provider, "provider", 128)
-                : undefined,
-            thinkingLevel: typeof body.thinkingLevel === "string" && body.thinkingLevel
-                ? requireBoundedString(body.thinkingLevel, "thinkingLevel", 32)
-                : undefined,
+            agentName:
+                typeof body.agentName === "string" ? requireBoundedString(body.agentName, "agentName", 128) : undefined,
+            model:
+                typeof body.model === "string" && body.model
+                    ? requireBoundedString(body.model, "model", 300)
+                    : undefined,
+            provider:
+                typeof body.provider === "string" && body.provider
+                    ? requireBoundedString(body.provider, "provider", 128)
+                    : undefined,
+            thinkingLevel:
+                typeof body.thinkingLevel === "string" && body.thinkingLevel
+                    ? requireBoundedString(body.thinkingLevel, "thinkingLevel", 32)
+                    : undefined,
         });
         return ownerJson(result, 202);
     } catch (error) {
         const message = sanitizeOwnerError(error);
-        const status = error instanceof ImageSubmissionValidationError
-            ? 422
-            : (/not enabled|epoch|uncertain|reconcile/.test(message) ? 503 : 409);
+        const status =
+            error instanceof ImageSubmissionValidationError
+                ? 422
+                : /not enabled|epoch|uncertain|reconcile/.test(message)
+                  ? 503
+                  : 409;
         return ownerJson({ error: message }, status);
     }
 }
@@ -360,17 +367,21 @@ export async function ownerSessionContinuationStartApi(ctx) {
             runwieldSessionId: ctx.params.runwieldSessionId,
             requestId: requireBoundedString(body.requestId, "requestId", 128),
             expectedGeneration: requireExpectedGeneration(body.expectedGeneration),
-            text: typeof body.text === "string" && body.text.length === 0
-                ? " "
-                : requireBoundedString(body.text, "text", 32_000),
+            text:
+                typeof body.text === "string" && body.text.length === 0
+                    ? " "
+                    : requireBoundedString(body.text, "text", 32_000),
             images: readSubmittedImages(body.images),
         });
         return ownerJson(result, 202);
     } catch (error) {
         const message = sanitizeOwnerError(error);
-        const status = error instanceof ImageSubmissionValidationError
-            ? 422
-            : (/not enabled|epoch|uncertain|reconcile/.test(message) ? 503 : 409);
+        const status =
+            error instanceof ImageSubmissionValidationError
+                ? 422
+                : /not enabled|epoch|uncertain|reconcile/.test(message)
+                  ? 503
+                  : 409;
         return ownerJson({ error: message }, status);
     }
 }
@@ -407,16 +418,17 @@ export async function ownerSessionPlanWorkflowApi(ctx) {
                 req: new Request(ctx.req.url, { method: "POST", body: JSON.stringify(body) }),
             });
         }
-        const retained = body.action === "retry_work_record"
-            ? await readControllerRecord(projectRoot, { planId, planName: "" })
-            : null;
+        const retained =
+            body.action === "retry_work_record"
+                ? await readControllerRecord(projectRoot, { planId, planName: "" })
+                : null;
         const recording = retained?.planId === planId && retained.state.recordingSource ? retained : null;
         const primary = recording
             ? { planId, planName: recording.planName }
             : await findPlanEvidenceById(projectRoot, planId);
         const plan = recording
             ? { attrs: { planId }, markdown: "", body: "" }
-            : (await resolveWorkflowPlanLocation(projectRoot, primary.planName)).plan;
+            : (await resolveWorkflowPlanLocation(projectRoot, primary.planName, { readOnly: true })).plan;
         if (!plan || plan.attrs.planId !== primary.planId) {
             throw new Error("Plan evidence is unavailable. Refresh and try again.");
         }
@@ -469,9 +481,10 @@ export async function ownerSessionForceRecoverApi(ctx) {
             projectId: ctx.params.projectId,
             runwieldSessionId: ctx.params.runwieldSessionId,
             expectedGeneration: requireExpectedGeneration(body.expectedGeneration),
-            expectedCurrentSegmentId: typeof body.expectedCurrentSegmentId === "string"
-                ? requireBoundedString(body.expectedCurrentSegmentId, "expectedCurrentSegmentId", 128)
-                : null,
+            expectedCurrentSegmentId:
+                typeof body.expectedCurrentSegmentId === "string"
+                    ? requireBoundedString(body.expectedCurrentSegmentId, "expectedCurrentSegmentId", 128)
+                    : null,
         });
         return ownerJson({ status: "recovered", generation: result.generation?.generation ?? null });
     } catch (error) {
@@ -490,9 +503,10 @@ export async function ownerSessionInteractionAnswerApi(ctx) {
             projectId: ctx.params.projectId,
             operationId: ctx.params.operationId,
             interactionId: ctx.params.interactionId,
-            runwieldSessionId: typeof body.runwieldSessionId === "string"
-                ? requireBoundedString(body.runwieldSessionId, "runwieldSessionId", 200)
-                : null,
+            runwieldSessionId:
+                typeof body.runwieldSessionId === "string"
+                    ? requireBoundedString(body.runwieldSessionId, "runwieldSessionId", 200)
+                    : null,
             requestId: requireBoundedString(body.requestId, "requestId", 128),
             response: body.response,
         });
@@ -568,7 +582,9 @@ export function ownerSessionOperationStreamApi(ctx) {
         finalResult = null;
         try {
             streamController?.close();
-        } catch { /* canceled or already closed */ }
+        } catch {
+            /* canceled or already closed */
+        }
     };
     const emit = () => {
         const controller = streamController;
@@ -703,7 +719,9 @@ export async function ownerProjectCommandMetricsApi(ctx) {
             payload.phase === "finish" &&
             (!["succeeded", "failed", "canceled", "rejected"].includes(payload.outcome) ||
                 (payload.dispatched !== undefined && typeof payload.dispatched !== "boolean") ||
-                !Number.isSafeInteger(payload.durationMs) || payload.durationMs < 0 || payload.durationMs > 86_400_000)
+                !Number.isSafeInteger(payload.durationMs) ||
+                payload.durationMs < 0 ||
+                payload.durationMs > 86_400_000)
         ) {
             throw new Error("Invalid command outcome or duration.");
         }
@@ -711,8 +729,11 @@ export async function ownerProjectCommandMetricsApi(ctx) {
         const definition = getSlashCommandDefinition(submittedName, "workspace");
         const command = definition?.name || "unknown";
         if (
-            !definition && !(["start", "finish"].includes(payload.phase) &&
-                (payload.phase !== "finish" || payload.outcome === "rejected"))
+            !definition &&
+            !(
+                ["start", "finish"].includes(payload.phase) &&
+                (payload.phase !== "finish" || payload.outcome === "rejected")
+            )
         ) {
             throw new Error("Unknown command observation must be rejected.");
         }
@@ -724,10 +745,12 @@ export async function ownerProjectCommandMetricsApi(ctx) {
             }
         }
         const { recordSlashCommandMetric } = await import("../../../shared/workflow/command-metrics.ts");
-        const submittedAlias = typeof payload.alias === "string" &&
-                getSlashCommandDefinition(payload.alias, "workspace")?.name === command && payload.alias !== command
-            ? payload.alias
-            : undefined;
+        const submittedAlias =
+            typeof payload.alias === "string" &&
+            getSlashCommandDefinition(payload.alias, "workspace")?.name === command &&
+            payload.alias !== command
+                ? payload.alias
+                : undefined;
         await recordSlashCommandMetric({
             invocationId: id,
             command,
@@ -743,10 +766,10 @@ export async function ownerProjectCommandMetricsApi(ctx) {
             errorReason: !definition
                 ? "unknown_command"
                 : payload.phase === "finish" && payload.outcome === "rejected"
-                ? "rejected"
-                : payload.phase === "finish" && payload.outcome === "failed"
-                ? "failed"
-                : null,
+                  ? "rejected"
+                  : payload.phase === "finish" && payload.outcome === "failed"
+                    ? "failed"
+                    : null,
         });
         return ownerJson({ ok: true });
     } catch (error) {

@@ -56,6 +56,7 @@ export async function runStandaloneReview(
             const diffText = await target.computeDiff(cwd);
             const payload: StandaloneReviewPayload = {
                 mode: target.mode,
+                baseLabel: target.baseLabel,
                 headRef: target.worktree || target.mode === "uncommitted" ? undefined : target.gitRef,
                 reviewContext: target.reviewContext,
                 resultMessage,
@@ -106,7 +107,7 @@ export async function runStandaloneReview(
                 reviewConversation: conversation,
                 agentLabel: conversation.agentLabel,
                 signal: controller.signal,
-                guidedReview: buildGuidedReviewPolicy("auto", recommendGuidedReview({ diffText })),
+                guidedReview: buildGuidedReviewPolicy("none", recommendGuidedReview({ diffText })),
                 onSurfaceReady: ({ url, opened }) => {
                     if (opened || conversation.revision === 0) print(`Code Review: ${url}`);
                 },

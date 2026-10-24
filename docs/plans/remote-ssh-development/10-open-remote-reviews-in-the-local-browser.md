@@ -1,4 +1,5 @@
 ---
+planId: "8b3db8e1-34fd-4a8d-9c06-07611d132802"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -21,9 +22,15 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
     - "docs/domain-language.md"
+planDeviations:
+    - id: "call_e02bebc62c1c43768a7ef0f89a297b4a|fc_00530ac59043dc30016adcdb8add2c819585b4d7a64d38f05a"
+      supersededRequirement: "Not changed: review frontend and design system, review tokens and decision handling, the review host's dispatch (from 09-host), ACP browser questions."
+      replacementRequirement: "Merge main into the execution branch and preserve its conversational review behavior. A conversation-only message must not refresh the reviewed content; refresh only when the reviewed code changes. Verify that the same review URL remains active until approval; if it does not, retain the review surface and URL across those conversation and revision rounds. Preserve token authorization, revision-safe decisions, the shared review host, and ACP browser behavior."
+      reason: "The user requests integration of main's conversational reviews and stable review URLs until approval, which can require review lifecycle changes excluded by the original Plan."
+      approvedAt: "2026-10-24T16:34:08.414Z"
 executionAgent: "engineer"
+collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T02:05:51.971Z"
-status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 10
@@ -32,8 +39,10 @@ dependencies:
     - "07-carry-remote-context-through-delivery-workflows"
     - "08-stop-owned-remote-work-on-connection-loss"
     - "09-host-reviews-on-one-server-per-process"
+userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-planId: "8b3db8e1-34fd-4a8d-9c06-07611d132802"
+status: "reviewed"
+validatedCommit: "c0711618dfea212366521ba4a25feffd3797b0fd"
 ---
 
 # Open Remote Reviews in the Local Browser
@@ -110,12 +119,26 @@ graph TD
     H -->|Decision| W[Same pending remote wait]
 ```
 
-1. The launcher picks a free laptop loopback port `L` and a fresh remote socket path, then adds
-   `-L 127.0.0.1:L:<remote socket path>` to the existing long-lived `ssh -tt` command. OpenSSH connects to the remote
-   socket only when the browser connects, so the socket does not have to exist at launch.
-2. The supervisor creates the socket's private `0700` directory before starting the view and removes it on exit.
+1. The launcher picks a free laptop loopback port `L` and a fresh remote directory
+   `/tmp/wld-remote-<random hex>`, then adds `-L 127.0.0.1:L:<directory>/review.sock` to the existing long-lived
+   `ssh -tt` command and passes the directory to `--remote-supervisor`. OpenSSH connects to the remote socket only when
+   the browser connects, so the socket does not have to exist at launch.
+2. The supervisor creates that directory with mode `0700` and uses it for both `control.sock` (today it makes its own
+   `mkdtemp` directory) and `review.sock`. It removes the directory in its existing cleanup.
 3. The remote view configures the review host (the one owner of bind address and origin from 09-host): listen on the
    Unix socket, put `http://127.0.0.1:L` in URLs.
+
+```diff
+ remote: supervisor
+-  mkdtemp($TMPDIR/wld-remote-XXXX)          # control.sock only
++  mkdir(<launcher-chosen dir>, 0700)         # control.sock + review.sock; refuse if it exists
+```
+
+**Assumption (reviewable):** one launcher-chosen directory replaces the supervisor's `mkdtemp` directory. This keeps one
+private directory and one cleanup path. The directory is under `/tmp` and not `$TMPDIR` because the launcher must know
+the path before the remote process starts. A random 128-bit name and a non-recursive `mkdir` that refuses an existing
+path prevent another user from taking the path first. If a user races to take the name, the connection fails, but that
+user cannot get access.
 
 Because every URL comes from the host origin, printed links, reopen links, `liveReviewUrl`, and "Open artifact: …"
 text already are laptop URLs. No review, workflow, or TUI code changes how it builds a URL.
@@ -166,6 +189,20 @@ remote: Code Review → in-process guide runner  → in-memory guide Session →
 The remote view chooses the runner where it composes its ports, the same place it configures the review host. Review
 code has no remote check.
 
+Both selections follow the existing process-level pattern of `configureRemoteClipboardConnection`. Each is one
+function that the remote view calls at startup. It returns a clear function and throws if the process already
+configured it:
+
+```text
+runRemoteView
+  configureRemoteReviewHost({ socketPath, origin })   # review-host.ts; throws if a listener already exists
+  configureGuideRunner(inProcessGuideRunner)          # review-agent-handlers.js; server.js reads the selected runner
+  startInteractiveSession({ browser: remote BrowserPort, ... })
+```
+
+When nothing configures them, the review host keeps `127.0.0.1:0` and the runner stays `runConfiguredGuideCommand`.
+These are configuration functions, not `__deps` seams, so `seams:check` does not change.
+
 ## Expected Change Surface
 
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint
@@ -173,21 +210,21 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/cmd/remote/index.ts` — pick `L` and the remote socket path; add the `-L`; pass both to the remote side; include
-  `L` in the remote view config.
-- `src/shared/remote/supervisor.ts` — create the private socket directory before the view starts; remove it during its
-  existing cleanup.
+- `src/cmd/remote/index.ts` — pick `L` and the remote directory; add the `-L`; pass the directory to
+  `--remote-supervisor`; include `L` in the remote view config.
+- `src/shared/remote/supervisor.ts` and its argument parsing in `src/shared/remote/entry.ts` — create the
+  launcher-chosen `0700` directory instead of `mkdtemp`, put both sockets in it, and remove it during existing cleanup.
 - `src/shared/http-server.ts` — `serveHttp` can listen on a Unix socket path.
-- `src/ui/workspace/server/review-host.ts` — accept remote configuration (socket path and public origin) from its one
-  configuration point.
+- `src/ui/workspace/server/review-host.ts` — new `configureRemoteReviewHost({ socketPath, origin })`, the one
+  configuration point for the bind target and the public origin.
 - `src/shared/remote/browser-bridge.ts` (new) and `src/shared/remote/control.ts` — the `/browser/open` route and the
   remote `BrowserPort` client.
 - `src/shared/remote/entry.ts` — configure the review host, the remote `BrowserPort`, and the in-process guide runner.
 - `src/ui/tui/tui.ts`, `src/ui/tui/tui-manager.ts`, `src/ui/tui/chat-view.ts`, `src/ui/tui/chat-session.ts` — use the
   Session's injected `BrowserPort` for link clicks and "Open artifact" instead of `SYSTEM_BROWSER_PORT`.
 - `src/ui/workspace/server.js`, `src/ui/workspace/routes/api/review-agent-handlers.js`, `src/cmd/guided-review/index.ts`
-  — the guide runner comes from the caller (default stays `runConfiguredGuideCommand`); one shared guide generation
-  function.
+  — `configureGuideRunner` selects the process guide runner (default stays `runConfiguredGuideCommand`); `server.js`
+  reads the selected runner; one shared guide generation function.
 - `src/shared/remote/verify-remote-workflows.ts` — the live harness reaches review through the product forward instead of
   its own `ssh -N -L`.
 - `docs/prd/remote-ssh-prd.md`, `docs/prd/runwield-core-prd.md`, `docs/adr/018-remote-ssh-local-personal-authority.md`,
@@ -210,15 +247,17 @@ Not changed: review frontend and design system, review tokens and decision handl
 
 ## Implementation Steps
 
-- The long-lived `ssh` in `runRemoteCommand` includes `-L 127.0.0.1:L:<remote socket path>`, where `L` was free on laptop
-  loopback when chosen and the socket path is in a fresh connection-specific directory under 100 bytes. With the
-  existing `ExitOnForwardFailure=yes`, a taken `L` fails the connection with a message that names the port; it never
-  binds a non-loopback address.
-- The remote supervisor creates the socket directory with mode `0700` before starting the view, refuses a path that
-  already exists, and removes the directory on every exit path of its existing cleanup.
-- `serveHttp` accepts a Unix socket path. In a remote view, the review host listens on that socket (removing a stale
-  socket file in its own directory before binding) and uses `http://127.0.0.1:L` as the origin of every URL it hands
-  out. Local processes keep `127.0.0.1:0`.
+- The long-lived `ssh` in `runRemoteCommand` includes `-L 127.0.0.1:L:/tmp/wld-remote-<random>/review.sock`, where `L`
+  was free on laptop loopback when chosen, the random part has 128 bits, and the full socket path is under 100 bytes.
+  The same directory is an argument to `--remote-supervisor`. With the existing `ExitOnForwardFailure=yes`, a taken `L`
+  fails the connection with a message that names the port. The forward never binds a non-loopback address.
+- The remote supervisor creates the launcher-chosen directory with a non-recursive `mkdir` and mode `0700` before it
+  starts the view, refuses a path that already exists, puts `control.sock` in it in place of its own `mkdtemp`
+  directory, and removes the directory on every exit path of its existing cleanup.
+- `serveHttp` accepts a Unix socket path. `configureRemoteReviewHost({ socketPath, origin })` makes the review host
+  listen on that socket (removing a stale socket file in its own directory before binding) and use
+  `http://127.0.0.1:L` as the origin of every URL it hands out. It throws if the host already has a listener. When
+  nothing configures it, the host keeps `127.0.0.1:0`.
 - `src/shared/remote/browser-bridge.ts` handles `POST /browser/open` on the laptop: it opens URLs whose origin is
   `http://127.0.0.1:L` and public `http`/`https` URLs through `SYSTEM_BROWSER_PORT`, and refuses other loopback origins,
   `localhost`/`[::1]`, other schemes, and malformed input with a 4xx. It requires the bearer credential, returns 403
@@ -235,12 +274,16 @@ Not changed: review frontend and design system, review tokens and decision handl
 - Closing the browser tab changes nothing on either side. `/plan-review` and the Code Review workflow action reopen the
   same laptop URL while the connection lives.
 - `src/cmd/guided-review/index.ts` exports one guide generation function that both `runGuidedReviewCommand` and the
-  in-process runner call. In a remote Session, Code Review's Guided Review runs the `guide` Agent in an in-memory Session
-  in the remote view process, reads the remote worktree, uses the laptop model, creates no Session on the server, and
-  never resolves `wld` from the remote `PATH`. Local Guided Review still spawns `wld guided-review`.
+  in-process runner call. `review-agent-handlers.js` exports `configureGuideRunner(runner)`, and `server.js` creates
+  review agent state with the selected runner instead of importing `runConfiguredGuideCommand` directly. `runRemoteView`
+  configures the in-process runner. In a remote Session, Code Review's Guided Review runs the `guide` Agent in an
+  in-memory Session in the remote view process, reads the remote worktree, uses the laptop model, creates no Session on
+  the server, and never resolves `wld` from the remote `PATH`. When `RUNWIELD_GUIDED_REVIEW_COMMAND` is set, the
+  in-process runner defers to `runConfiguredGuideCommand`. Local Guided Review still spawns `wld guided-review`.
 - `verify-remote-workflows.ts` opens review through the product forward and no longer starts its own `ssh -N -L`.
 - The Remote SSH PRD **Remote workflows and local review** section marks "Review remote work locally" and its review
-  acceptance scenario delivered and removes the manual-forward stopgap text. The Core PRD keeps Plan Review semantics and
+  acceptance scenario delivered, removes the manual-forward stopgap text, and states that the SSH server must allow
+  Unix-socket forwarding (the OpenSSH default). The Core PRD keeps Plan Review semantics and
   updates any remote review reference. ADR-018's review bullet describes the one connection-start forward of the review
   host. The `docs/domain-language.md` **Remote SSH connection** entry replaces "Automatic local browser forwarding
   remains target scope" with: reviews stay on the remote review host, and the laptop opens them through one forward set
@@ -251,8 +294,8 @@ Not changed: review frontend and design system, review tokens and decision handl
 - Automated, launcher (`src/cmd/remote/index.test.ts`, fake `ssh`): the long-lived `ssh` arguments contain exactly one
   `-L 127.0.0.1:L:<path>` with a numeric `L` and a path under 100 bytes; the view config the remote side receives carries
   the same `L`. Fails if the `-L` is missing or binds a non-loopback address.
-- Automated, supervisor: the socket directory exists with mode `0700` when the view starts, a pre-existing path is
-  refused, and the directory is gone after normal exit and after a forced view kill.
+- Automated, supervisor: the launcher-chosen directory exists with mode `0700` and holds `control.sock` when the view
+  starts, a pre-existing path is refused, and the directory is gone after normal exit and after a forced view kill.
 - Automated, remote review host: with remote configuration, a registered review is reachable with `fetch` over the Unix
   socket, the URL it returns has origin `http://127.0.0.1:L`, and nothing listens on a TCP port. Fails if the host still
   binds TCP or builds URLs from its real address.
@@ -297,6 +340,12 @@ Not changed: review frontend and design system, review tokens and decision handl
 - **Host restarts while connected.** The review host stops when empty and starts again on the next review (09-host). It
   rebinds the same socket path, so the fixed forward keeps working.
 - **Browser close is not disconnect.** Nothing in this child reacts to a closed tab.
+- **Assumption: the server allows Unix-socket forwarding.** OpenSSH allows it by default (`AllowStreamLocalForwarding`).
+  A server that blocks all forwarding (`DisableForwarding`, `AllowTcpForwarding no`) already fails at connection start,
+  because the control service needs `-R`. Only a server that allows TCP forwarding and sets
+  `AllowStreamLocalForwarding no` breaks review alone. On that server, the browser cannot load the page, and the TUI
+  still has the URL. This child puts the requirement in the Remote SSH PRD and adds no probe. Child 11 can add a
+  diagnostic if qualification finds such servers.
 - **User SSH config.** Jump hosts, keys, and ports still apply. A user `ControlMaster` would make the main `ssh` a mux
   client; the forward still works there, but its lifetime follows the user's master. The live check covers the default
   configuration.

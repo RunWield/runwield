@@ -1,4 +1,5 @@
 /** One lazy listener for token-scoped reviews and document readers in this process. */
+import { unlinkSync } from "node:fs";
 import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../../constants.js";
 import { type HttpHandler, type HttpServer, serveHttp } from "../../../shared/http-server.ts";
 import { isPublicWorkspaceAsset } from "./public-workspace-assets.ts";
@@ -18,6 +19,35 @@ interface ReviewApp extends RegistrationOptions {
 
 const registrations = new Map<string, ReviewApp>();
 let listener: HttpServer | null = null;
+export interface RemoteReviewHostConfig {
+    socketPath: string;
+    origin: string;
+}
+let remoteHost: RemoteReviewHostConfig | null = null;
+
+/** Select the process bind target before the first review starts. */
+export function configureRemoteReviewHost(config: RemoteReviewHostConfig): () => void {
+    if (listener || remoteHost) throw new Error("Review host is already configured or listening.");
+    validateRemoteReviewHostConfig(config);
+    remoteHost = { ...config };
+    return () => {
+        remoteHost = null;
+    };
+}
+
+/** Validate bootstrap data without selecting a listener or importing the Workspace. */
+export function validateRemoteReviewHostConfig(config: RemoteReviewHostConfig): void {
+    if (!config || typeof config.socketPath !== "string" || typeof config.origin !== "string") {
+        throw new Error("Invalid remote review host configuration.");
+    }
+    if (
+        !/^\/tmp\/wld-remote-[a-f0-9]{32}\/review\.sock$/.test(config.socketPath) ||
+        !/^http:\/\/127\.0\.0\.1:[1-9]\d*$/.test(config.origin) ||
+        Number(new URL(config.origin).port) > 65535
+    ) {
+        throw new Error("Invalid remote review host configuration.");
+    }
+}
 
 async function dispatch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -53,8 +83,24 @@ async function dispatch(request: Request): Promise<Response> {
 export const reviewHost = {
     register(token: string, handler: HttpHandler, options: RegistrationOptions): ReviewHostRegistration {
         if (registrations.has(token)) throw new Error("Review token is already registered.");
-        listener ??= serveHttp({ hostname: "127.0.0.1", port: 0, automaticCompression: true, onListen() {} }, dispatch);
-        const origin = `http://127.0.0.1:${listener.addr.port}`;
+        if (!listener) {
+            if (remoteHost) {
+                try {
+                    unlinkSync(remoteHost.socketPath);
+                } catch (error) {
+                    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+                }
+            }
+            listener = serveHttp(
+                {
+                    ...(remoteHost ? { unix: remoteHost.socketPath } : { hostname: "127.0.0.1", port: 0 }),
+                    automaticCompression: true,
+                    onListen() {},
+                },
+                dispatch,
+            );
+        }
+        const origin = remoteHost?.origin ?? `http://127.0.0.1:${listener.addr.port}`;
         registrations.set(token, { handler, ...options });
         let released: Promise<void> | null = null;
         return {

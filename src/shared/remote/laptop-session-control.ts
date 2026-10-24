@@ -1,3 +1,4 @@
+import { readCommittedSessionExport } from "../session/session-export.ts";
 import { readCommittedRemoteLineage } from "./committed-session.ts";
 import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
@@ -79,7 +80,7 @@ export function listSavedRemoteSessions(
     for (const project of listProjectsFromDisk(baseDir).filter(
         (project) => project.remote && (!scope || scope.projectIds.includes(project.projectId)),
     )) {
-        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), false)) {
+        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), true)) {
             if (scope?.sessionId && manifest.runwieldSessionId !== scope.sessionId) continue;
             try {
                 const session = savedSession(project, manifest);
@@ -180,7 +181,7 @@ export class LaptopSessionControl {
         for (const project of listProjectsFromDisk(this.#store.path).filter((project) =>
             this.#projectMatches(project),
         )) {
-            const found = listManifests(sessionDirForProject(this.#store.path, project), false).find(
+            const found = listManifests(sessionDirForProject(this.#store.path, project), true).find(
                 ({ manifest }) => manifest.runwieldSessionId === sessionId,
             );
             if (found) return { project, ...found };
@@ -192,13 +193,19 @@ export class LaptopSessionControl {
         validateSessionControlRequest(input);
         if (this.#closed) throw new Error("Session connection is closed");
         const store = this.#store;
+        if (input.kind === "export") {
+            const { project } = this.#locate(input.sessionId);
+            const manifest = store.readSessionManifest(input.sessionId, project.projectId);
+            if (!manifest) throw new Error("Session Manifest is unavailable.");
+            return { exported: await readCommittedSessionExport(manifest, input.sessionId) };
+        }
         if (input.kind === "list") {
             // A first interrupted turn can have saved entries but no published
             // generation yet. Connected discovery repairs it; offline viewing
             // remains a read of published evidence only.
             const projects = listProjectsFromDisk(store.path).filter((project) => this.#projectMatches(project));
             for (const project of projects) {
-                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), false)) {
+                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), true)) {
                     if (manifest.generation || (input.sessionId && input.sessionId !== manifest.runwieldSessionId)) {
                         continue;
                     }
@@ -280,7 +287,7 @@ export class LaptopSessionControl {
                     );
                     const directory = sessionDirForProject(store.path, project);
                     if (
-                        listManifests(directory, false).some(
+                        listManifests(directory, true).some(
                             ({ manifest }) => manifest.runwieldSessionId === input.sessionId,
                         )
                     ) {

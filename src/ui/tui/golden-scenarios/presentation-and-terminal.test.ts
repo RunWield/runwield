@@ -6,7 +6,7 @@ import {
     replayHydrationScenario,
     terminalControlsScenario,
     toolFailureRecoveryScenario,
-} from "./presentation-and-terminal.js";
+} from "./presentation-and-terminal.ts";
 
 const scenarioExportNames = new Map([
     [managedSyncQueueImageScenario, "managedSyncQueueImageScenario"],
@@ -19,7 +19,7 @@ for (const scenario of presentationAndTerminalScenarios) {
     test(`golden presentation/terminal: ${scenario.name}`, async () => {
         const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
         const result = await runGoldenScenarioChildProcess({
-            scenarioModule: "src/ui/tui/golden-scenarios/presentation-and-terminal.js",
+            scenarioModule: "src/ui/tui/golden-scenarios/presentation-and-terminal.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: 30000,
         });

@@ -15,10 +15,8 @@ provenance:
 
 ## Summary
 
-Added Epic child-FEATURE progress reporting and a confirmed “done enough for now” lifecycle action. Done-enough Epics
-use verified status with explicit completion metadata while remaining child FEATURE plans stay visible, loadable, and
-available for future work.
+RunWield reports Epic progress from child Plans and offers confirmed done-enough closure with explicit completion metadata. Remaining child Plans stay visible, loadable, and available for further work.
 
-## Deferred Work
+## Out of Scope
 
-A general on-hold lifecycle state and a separate completed status remain outside this feature.
+This work does not introduce a separate completed status.

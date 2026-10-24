@@ -4,7 +4,9 @@ import { assertFalse, assertRejects, assertStringIncludes } from "../../testing/
 
 test("Code Review styles inherited annotation modals with CSS only", async () => {
     const surface = await fsReadFile(new URL("./react/CodeReviewSurface.tsx", import.meta.url), "utf8");
-    const workspaceStyles = await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8");
+    const workspaceStyles = (await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8"))
+        .replace(/\s+/g, " ")
+        .replace(/\(\s+/g, "(");
     const designSystemStyles = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
 
     await assertRejects(

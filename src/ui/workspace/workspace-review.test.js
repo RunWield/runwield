@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import process from "node:process";
+import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
@@ -29,7 +30,7 @@ import {
     createReviewAgentState,
     cleanupReviewAgentState,
     reviewAgentApi,
-    runConfiguredGuideCommand,
+    runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
 
 import {
@@ -426,7 +427,7 @@ test("review guide jobs prefer WLD over external agent host CLIs", async () => {
                         everythingElse: [],
                     },
                 },
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
 
             const launch = await reviewAgentApi(
@@ -514,7 +515,7 @@ test("default review guide usage frames update a running job and remain after co
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "usage-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const launch = await reviewAgentApi(
                 new Request("http://localhost/api/agents/jobs", {
@@ -632,7 +633,7 @@ test("custom review guide commands do not interpret stderr usage-like text", asy
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "custom-no-usage-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const doneJob = await runReviewGuideJob(state);
             assertEquals(doneJob?.status, "done");
@@ -683,7 +684,7 @@ test("failed default review guide commands report subprocess stderr and keep par
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "failed-usage-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const failedJob = await runReviewGuideJob(state);
             assertEquals(failedJob?.status, "failed");
@@ -732,7 +733,7 @@ test("default review guide commands fail clearly on malformed usage frames", asy
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
                 token: "malformed-frame-token",
                 reviewPayload: makeGuideReviewPayload(),
-                runGuideCommand: runConfiguredGuideCommand,
+                runGuideCommand: runWldJobCommand,
             });
             const failedJob = await runReviewGuideJob(state);
             assertEquals(failedJob?.status, "failed");
@@ -1488,5 +1489,66 @@ test("review cleanup rejects new streams and jobs including requests waiting for
     } finally {
         await cleanupReviewAgentState(state);
         await reader.cancel();
+    }
+});
+
+const standaloneFileFixture = defineGitFixture(async (cwd) => {
+    await fsWriteFile(`${cwd}/review.ts`, "base text\n");
+    await git(cwd, ["add", "."]);
+    await git(cwd, ["commit", "-m", "base"]);
+    await git(cwd, ["switch", "-c", "execution"]);
+    await fsWriteFile(`${cwd}/review.ts`, "execution text\n");
+});
+
+test("standalone Code Review file content returns merge-base before text and requires its token", async () => {
+    const cwd = await standaloneFileFixture.checkout();
+    const app = createReviewWorkspaceApp({
+        cwd,
+        token: "file-review-secret",
+        reviewPayload: { rawPatch: "", targetBranch: "main" },
+        reviewType: "code",
+    }).handler();
+    try {
+        const url = "http://localhost/api/file-content?path=review.ts";
+        assertEquals((await app(new Request(url))).status, 401);
+        const response = await app(
+            new Request(url, {
+                headers: { referer: "http://localhost/review/code?token=file-review-secret" },
+            }),
+        );
+        assertEquals(response.status, 200);
+        const body = await response.json();
+        assertEquals(body.oldContent, "base text\n");
+        assertEquals(body.newContent, "execution text\n");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("an old Code Review tab cannot decide a newer round at the same URL", async () => {
+    const conversation = { id: "revision-test", agentLabel: "Engineer", revision: 0, events: [] };
+    const server = startReviewWorkspaceServer({
+        cwd: getCwd(),
+        token: "revision-test",
+        reviewPayload: { rawPatch: "old" },
+        reviewType: "code",
+        reviewConversation: conversation,
+    });
+    const decide = (reviewRevision, approved) =>
+        fetch(`${server.url}/api/review/feedback?token=revision-test`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ reviewRevision, approved, feedback: "message", conversationTurn: !approved }),
+        });
+    try {
+        assertEquals((await decide(0, false)).status, 200);
+        await server.waitForDecision();
+        server.beginReviewRound({ reviewPayload: { rawPatch: "new" }, reviewConversation: conversation });
+        assertEquals((await decide(0, true)).status, 409);
+        assertEquals((await decide(0, false)).status, 409);
+        assertEquals((await decide(1, true)).status, 200);
+        assertEquals((await server.waitForDecision()).approved, true);
+    } finally {
+        await server.stop();
     }
 });

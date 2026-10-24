@@ -11,17 +11,12 @@ provenance:
         - "5cf1e3a4-c0fe-4407-b65f-2a7b2ba927b4"
 ---
 
-# Mid-run tool-result auto-compaction
+# Mid-run context resilience
 
 ## Summary
 
-Implemented verified context-resilience handling for long Agent Session tool-result loops so RunWield can detect context
-pressure at safe completed-turn boundaries, compact, measure recovery, continue work, or pause safely without treating
-stale partial outcomes as success. The work covered shared session coordination, hosted-session arbitration, runtime
-events, delegated-agent behavior, TUI/ACP adapter parity, compact command handling, Pi dependency updates, and session
-documentation.
+RunWield detects context pressure at safe completed-turn boundaries, compacts, measures recovery, and continues or pauses without treating stale partial outcomes as success. Shared coordination applies across hosted and delegated Sessions, TUI, and ACP.
 
 ## Future Planning Notes
 
-Future session-context work should continue using public Pi contracts and the shared session-context-resilience
-coordinator rather than adapter-local policy, private Pi hooks, or duplicate summarization paths.
+Context resilience uses public Pi contracts and shared coordination rather than adapter-local policy, private hooks, or duplicate summarization.

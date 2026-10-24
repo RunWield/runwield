@@ -22,13 +22,7 @@ export type PlanDeviationAppendResult = {
     alreadyCommitted: boolean;
 };
 
-const PLAN_DEVIATION_KEYS = [
-    "id",
-    "supersededRequirement",
-    "replacementRequirement",
-    "reason",
-    "approvedAt",
-] as const;
+const PLAN_DEVIATION_KEYS = ["id", "supersededRequirement", "replacementRequirement", "reason", "approvedAt"] as const;
 
 function concreteText(value: string | undefined, fieldName: string): string {
     if (typeof value !== "string" || !value.trim()) {
@@ -112,36 +106,14 @@ export function renderApprovedPlanDeviations(value: PlanDeviationInput[] | null 
 export function renderPlanDeviationsForWorkRecord(value: PlanDeviationInput[] | null | undefined): string {
     const entries = readPlanDeviations(value);
     if (!entries.length) return "";
-    return entries.map((entry, index) => {
-        const lines = [
-            `${index + 1}. Superseded requirement: ${entry.supersededRequirement}`,
-            `   Replacement requirement: ${entry.replacementRequirement}`,
-        ];
-        if (entry.reason) lines.push(`   Reason: ${entry.reason}`);
-        return lines.join("\n");
-    }).join("\n");
-}
-
-function renderedDeviationEntries(text: string): string[] {
-    return text.match(/(?:^|\n)\d+\. Superseded requirement:[\s\S]*?(?=\n\d+\. Superseded requirement:|$)/g)
-        ?.map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0) || [];
-}
-
-export function mergeRecorderDeviationText(
-    confirmedDeviationText: string,
-    recorderDeviationText: string | undefined,
-): string {
-    const recorderText = typeof recorderDeviationText === "string" ? recorderDeviationText.trim() : "";
-    if (!confirmedDeviationText) return recorderText;
-    if (!recorderText) return confirmedDeviationText;
-    if (recorderText === confirmedDeviationText || confirmedDeviationText.includes(recorderText)) {
-        return confirmedDeviationText;
-    }
-    let remainingRecorderText = recorderText.replace(confirmedDeviationText, "").trim();
-    for (const entry of renderedDeviationEntries(confirmedDeviationText)) {
-        remainingRecorderText = remainingRecorderText.split(entry).join("").trim();
-    }
-    if (!remainingRecorderText) return confirmedDeviationText;
-    return `${confirmedDeviationText}\n\nAdditional Recorder notes:\n\n${remainingRecorderText}`;
+    return entries
+        .map((entry, index) => {
+            const lines = [
+                `${index + 1}. Superseded requirement: ${entry.supersededRequirement}`,
+                `   Replacement requirement: ${entry.replacementRequirement}`,
+            ];
+            if (entry.reason) lines.push(`   Reason: ${entry.reason}`);
+            return lines.join("\n");
+        })
+        .join("\n");
 }

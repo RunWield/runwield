@@ -85,7 +85,7 @@ work.
 - Review `FEATURE` plans before execution.
 - Save approved plans for later execution.
 - Load a plan by name or path with `wld load-plan <name-or-path>`.
-- Continue draft or feedback plans.
+- Continue draft Plans. Legacy feedback Plans read as draft.
 - Re-open approved, implemented, or verified plans for review.
 - Execute ready standalone `FEATURE` plans.
 - Execute ready child `FEATURE` plans from an Epic.
@@ -141,8 +141,9 @@ Implement approved work, inspect the evidence, and distinguish successful checks
 - Repair review findings with a dedicated agent in fresh context, which reports what it did for each finding.
 - Offer another verification round or an immediate code review when automatic rounds run out, rather than stranding the
   work.
-- Repair code review feedback with the same fresh-context agent, then rerun CI and reopen code review for as many
-  feedback rounds as you give — the cycle ends only when you approve or quit.
+- Discuss code review with a fresh-context agent. In Git projects, reply-only turns keep review and CI results; patch
+  changes rerun CI and reopen the same conversation without another AI review. Non-Git projects still repair on every
+  turn. Review rounds continue until you approve or quit.
 - Send validation failures back through repair attempts.
 - Preserve the original execution owner during validation repairs.
 - Optionally use a Code Review gate during validation when configured.
@@ -203,7 +204,7 @@ Continue the same work in the terminal or browser, find what needs attention, an
   first.
 - Unarchive from the Archived Sessions tab in Project settings. Direct and Plan links remain readable while archived.
 - Use personal remote Workspace with device pairing and an owner connection to the machine running the work.
-- Treat shared Plan review separately from simultaneous multi-user Session collaboration, which remains future scope.
+- Share individual Plans for encrypted review; personal Sessions remain owner-controlled.
 
 ### Interactive TUI and session management
 
@@ -214,7 +215,8 @@ Continue the same work in the terminal or browser, find what needs attention, an
 - Render Mermaid diagrams inline in Markdown responses.
 - Run shell commands and send output to the model with `!command`.
 - Run shell commands without adding output to model context with `!!command`.
-- Paste images into the TUI when supported by the active model or configured fallback.
+- Paste images into the TUI on demand with Ctrl-V when supported by the active model or configured fallback. RunWield
+  does not watch the clipboard. If no image is available, a notice appears until the next input.
 - Queue messages while an agent is working.
 - Steer foreground work early without waiting for the active process to finish.
 - Cancel active work and its process tree reliably with Escape.
@@ -262,10 +264,11 @@ Continue the same work in the terminal or browser, find what needs attention, an
 
 ### Session export and sharing
 
-- Export the current session to HTML with `/export`.
-- Export the current session to JSONL with `/export output.jsonl`.
+- Export all committed Session segments and Manifest facts to self-contained HTML with `/export`.
+- Export every segment's raw entries to versioned JSON with `/export output.json`; `.jsonl` export is retired.
 - Choose an explicit export path with `/export <path>`.
-- Share the current session as a secret GitHub Gist with `/share`.
+- Upload Session HTML and JSON to one secret GitHub Gist with `/share`, with a Gist URL and an HTML preview link.
+- Include thinking and full tool output in exported and shared files. Anyone with the secret Gist link can read them.
 
 ## Models and tools
 
@@ -333,9 +336,13 @@ Run locally and adapt the harness to your Project.
 - Start the ACP stdio adapter with `wld acp` or `wld --mode acp`.
 - Create, load, continue, cancel, and close Sessions through compatible clients, with history, progress, usage, and
   browser Plan review links.
+- Steer a running Agent through ACP clients that support `_session/steering`; idle Sessions require a normal prompt.
 - Select models and reasoning levels through native ACP configuration controls.
-- Use advertised shared slash commands and structured questions, with conversational interview fallback for clients
-  without native forms.
+- Use advertised shared slash commands and answer select, text, and approval questions through native forms when
+  supported, or chat otherwise, including `/load-plan`, `/agent`, and `/model` menus.
+- Answer chat menus by number or a unique exact option label/value, ignoring case and surrounding whitespace; unmatched
+  `cancel` cancels a menu. Text and interview answers keep their own rules.
+- Follow browser links for Plan, Code, and Artifact Review; Artifact Review feedback keeps its browser question page.
 - Receive completed background-task results over the live ACP Session without another prompt.
 - Treat ACP `session/delete` as reversible archive; Workspace can unarchive it. `session/list` remains unsupported.
 - Keep RunWield planning, browser review, execution, validation, and project memory when working from an external
@@ -395,8 +402,6 @@ Run locally and adapt the harness to your Project.
   durable host actions and fresh-process outcomes remain work in progress. Existing Claude CLI execution inside RunWield
   is a separate capability, not proof that Connect has shipped.
 - **Reusable software-factory components:** a product direction, not an already delivered independent component suite.
-- **Broader team Workspace:** shared Plan review exists; team governance and simultaneous multi-user Session work are
-  not implied by personal Workspace support.
 - **Remote Session-save redesign:** the October laptop-owned SSH save proof supports design review only, not production
   adoption.
 - **Plan Store redesign and metrics dashboard/export:** proposals, not replacements for the current Markdown artifacts

@@ -51,7 +51,7 @@ async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string
     });
     const changes = await git(attempt.executionCwd, ["diff", "--name-only", "-z", sealed, head]);
     if (!changes.success) throw new Error("Could not inspect the sealed publication files.");
-    const paths = [...changes.text.split("\0").filter(Boolean), ...await gitStatusPaths(attempt.executionCwd)];
+    const paths = [...changes.text.split("\0").filter(Boolean), ...(await gitStatusPaths(attempt.executionCwd))];
     return paths.some((path) => !isRunWieldOwnedRuntimePath(path));
 }
 
@@ -62,7 +62,7 @@ async function preserveAttempt(attempt: PublicationAttempt): Promise<void> {
     const recordPath = join(recovery.archiveRoot, "publication.json");
     const record = `${JSON.stringify(attempt, null, 2)}\n`;
     if (await exists(recordPath)) {
-        if (await fsReadFile(recordPath, "utf8") !== record) {
+        if ((await fsReadFile(recordPath, "utf8")) !== record) {
             throw new Error("Saved publication recovery evidence differs; keeping both checkouts intact.");
         }
     } else {
@@ -90,7 +90,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
             return null;
         }
         const executionCwd = publication.executionCwd;
-        if (await fsRealpath(entry.path) !== await fsRealpath(executionCwd)) {
+        if ((await fsRealpath(entry.path)) !== (await fsRealpath(executionCwd))) {
             throw new Error("The publication source checkout no longer matches its registered location.");
         }
         // Formatting recovery takes this lock again. Use the recorded spelling
@@ -105,7 +105,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
             const head = await git(executionCwd, ["rev-parse", "HEAD"]);
             if (!head.success) throw new Error("Could not read the publication source commit.");
             if (!attempt.revalidation) {
-                if (!await sourceNeedsRevalidation(attempt, head.text)) return null;
+                if (!(await sourceNeedsRevalidation(attempt, head.text))) return null;
                 const current = attempt;
                 attempt = {
                     ...current,
@@ -133,18 +133,20 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
                     verifiedAt: null,
                     failureReason: null,
                     failedAt: null,
-                    validationCheckpoint: checkpoint?.state === "running"
-                        ? makeValidationCheckpoint({
-                            attemptId: entry.id,
-                            generation: checkpoint.generation,
-                            status: "implemented",
-                            phase: "mechanical",
-                            state: "running",
-                            ownerPid: checkpoint.ownerPid,
-                            ownerHostname: checkpoint.ownerHostname,
-                            lastSettledOperationId: checkpoint.lastSettledOperationId,
-                        })
-                        : null,
+                    validationCheckpoint:
+                        checkpoint?.state === "running"
+                            ? makeValidationCheckpoint({
+                                  attemptId: entry.id,
+                                  generation: checkpoint.generation,
+                                  status: "implemented",
+                                  phase: "mechanical",
+                                  state: "running",
+                                  ownerPid: checkpoint.ownerPid,
+                                  ownerHostname: checkpoint.ownerHostname,
+                                  ownerIdentity: checkpoint.ownerIdentity,
+                                  lastSettledOperationId: checkpoint.lastSettledOperationId,
+                              })
+                            : null,
                     validationCiAttempts: 0,
                     validationSemanticRounds: 0,
                     humanReviewDecision: null,

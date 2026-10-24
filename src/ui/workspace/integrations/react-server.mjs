@@ -15,12 +15,19 @@ function check(Component, props, children) {
         return Object.prototype.isPrototypeOf.call(React.Component, Component) ||
             Object.prototype.isPrototypeOf.call(React.PureComponent, Component);
     }
-    try {
-        const vnode = Component(props ?? {}, children ?? {});
-        return REACT_ELEMENT_SYMBOLS.has(vnode?.$$typeof);
-    } catch {
-        return true;
+    let isReactComponent = false;
+    // Match @astrojs/react: probe inside a render so hooks have a React dispatcher.
+    function Tester() {
+        try {
+            const vnode = Component(props ?? {}, children ?? {});
+            isReactComponent = REACT_ELEMENT_SYMBOLS.has(vnode?.$$typeof);
+        } catch {
+            // A failed probe is not evidence that this is a React component.
+        }
+        return React.createElement("div");
     }
+    ReactDOM.renderToString(React.createElement(Tester));
+    return isReactComponent;
 }
 
 function renderToStaticMarkup(Component, props) {

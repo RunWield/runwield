@@ -33,6 +33,10 @@
         "compactOnResumeThresholdPercent": {
             "$ref": "#/$defs/compactOnResumeThresholdPercent"
         },
+        "worktree_setup_command": {
+            "type": "string",
+            "description": "Explicit project setup command run in an execution worktree before its preparation commit. Empty means no setup required; no installer is inferred."
+        },
         "verification_command": {
             "type": "string",
             "description": "Command used by workflow validation. Usually project-scoped."

@@ -1,5 +1,11 @@
 import { checkAuth, fetchPR, fetchPRContext } from "@plannotator/shared/pr-provider.ts";
-import { parsePRUrl, type PRMetadata, type PRRef, type PRRuntime } from "@plannotator/shared/pr-types.ts";
+import {
+    parsePRUrl,
+    type GithubPRRef,
+    type GitlabMRRef,
+    type PRMetadata,
+    type PRRuntime,
+} from "@plannotator/shared/pr-types.ts";
 import { parseRemoteHost, parseRemoteUrl } from "@plannotator/shared/repo.ts";
 import { getReviewDiff } from "../workflow/git-snapshot.ts";
 import { createPRRuntime } from "./forge-review.ts";
@@ -14,9 +20,10 @@ interface ReviewTargetBase {
     reviewContext?: string;
     computeDiff(cwd?: string): Promise<string>;
 }
+type ReviewPRRef = GithubPRRef | GitlabMRRef;
 export interface PRReviewTarget extends ReviewTargetBase {
     mode: "pr";
-    ref: PRRef;
+    ref: ReviewPRRef;
     metadata: PRMetadata;
     remote: string;
     recoveryReason?: string;
@@ -31,6 +38,8 @@ export interface UncommittedReviewTarget extends ReviewTargetBase {
     mode: "uncommitted";
 }
 export type ReviewTarget = PRReviewTarget | BranchReviewTarget | UncommittedReviewTarget;
+/** A review source that cannot be opened with the current input or checkout. */
+export class ReviewTargetError extends Error {}
 export async function refreshPRTarget(target: PRReviewTarget): Promise<void> {
     const { metadata } = await fetchPR(target.runtime, target.ref);
     const number = target.ref.platform === "github" ? target.ref.number : target.ref.iid;
@@ -75,11 +84,11 @@ export async function resolveReviewTargetWithForge(
     try {
         projectRoot = await git(projectRoot, ["rev-parse", "--show-toplevel"]);
     } catch {
-        throw new Error("wld review requires a Git repository.");
+        throw new ReviewTargetError("wld review requires a Git repository.");
     }
     if (!arg) {
         if (!(await git(projectRoot, ["status", "--porcelain"]))) {
-            throw new Error("There are no uncommitted changes to review.");
+            throw new ReviewTargetError("There are no uncommitted changes to review.");
         }
         return {
             mode: "uncommitted",
@@ -95,11 +104,12 @@ export async function resolveReviewTargetWithForge(
         const ref = parsePRUrl(arg);
         if (
             !ref ||
+            ref.platform === "bitbucket" ||
             !/^https?:\/\/[^/]+\/(?:[^/]+\/[^/]+\/pull\/\d+|.+\/-\/merge_requests\/\d+)(?:\/(?:files|commits|diffs))?\/?$/.test(
                 arg,
             )
         )
-            throw new Error("Expected a PR or MR URL.");
+            throw new ReviewTargetError("Expected a PR or MR URL.");
         const project = ref.platform === "github" ? `${ref.owner}/${ref.repo}` : ref.projectPath;
         const remote = (await git(projectRoot, ["remote", "-v"]))
             .split("\n")
@@ -110,7 +120,7 @@ export async function resolveReviewTargetWithForge(
                     parseRemoteUrl(entry[1])?.toLowerCase() === project.toLowerCase(),
             )?.[0];
         if (!remote) {
-            throw new Error(
+            throw new ReviewTargetError(
                 "The PR repository must match a remote of this checkout. RunWield does not clone repositories.",
             );
         }
@@ -118,7 +128,7 @@ export async function resolveReviewTargetWithForge(
         try {
             await checkAuth(runtime, ref);
         } catch {
-            throw new Error(`PR review requires ${cli} installed and signed in. Run ${cli} auth login.`);
+            throw new ReviewTargetError(`PR review requires ${cli} installed and signed in. Run ${cli} auth login.`);
         }
         const { metadata } = await fetchPR(runtime, ref);
         const target: PRReviewTarget = {
@@ -143,14 +153,15 @@ export async function resolveReviewTargetWithForge(
         target.reviewContext = `${metadata.title}\n\n${context.body}`;
         return target;
     }
-    if (arg.includes("://")) throw new Error("Expected a PR or MR URL.");
+    if (arg.includes("://")) throw new ReviewTargetError("Expected a PR or MR URL.");
     try {
         await git(projectRoot, ["rev-parse", "--verify", `refs/heads/${arg}^{commit}`]);
     } catch {
-        throw new Error(`Branch does not exist: ${arg}`);
+        throw new ReviewTargetError(`Branch does not exist: ${arg}`);
     }
     const current = await git(projectRoot, ["symbolic-ref", "--short", "HEAD"]).catch(() => "HEAD");
-    if (current === arg) throw new Error("This is the current branch. Use wld review to review uncommitted changes.");
+    if (current === arg)
+        throw new ReviewTargetError("This is the current branch. Use wld review to review uncommitted changes.");
     const baseRef = await git(projectRoot, ["rev-parse", "HEAD"]);
     const target: BranchReviewTarget = {
         mode: "branch",

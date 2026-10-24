@@ -18,7 +18,7 @@ import { extractBundledAgentDefs, extractBundledSkills } from "../../shared/sess
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getCustomSetting, getSettingsManager } from "../../shared/settings.js";
 import { printCommandHelp } from "../help/index.ts";
 import { recordInitDone, recordInitOffered } from "./init-state.ts";
 import { isProjectInitComplete, requireProjectInitArtifact } from "./init-completion.ts";
@@ -29,9 +29,8 @@ import { confirmInitFiles, INIT_DECLINED_MESSAGE } from "./init-consent.ts";
 import { recordInitializedProjectContext } from "../../shared/worktree-project-context.ts";
 
 interface InitCommandBaseOptions {
-    uiAPI?:
-        & Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">
-        & Partial<Pick<import("../../ui/tui/types.js").UiAPI, "promptSelect">>;
+    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage"> &
+        Partial<Pick<import("../../ui/tui/types.js").UiAPI, "promptSelect">>;
     sessionPort: InteractiveSessionPort;
     projectRoot?: string;
 }
@@ -96,8 +95,12 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
     }
 
     // ── Init-state guard ──────────────────────────────────────────
-    if (await isProjectInitComplete(projectRoot)) {
-        const msg = `[RunWield] Init has already been run for this project (${projectRoot}).\n` +
+    if (
+        (await isProjectInitComplete(projectRoot)) &&
+        typeof getCustomSetting("worktree_setup_command", "project", projectRoot) === "string"
+    ) {
+        const msg =
+            `[RunWield] Init has already been run for this project (${projectRoot}).\n` +
             `[RunWield] To re-run, delete or edit the entry in ~/.wld/init-state.json manually.`;
         if (options.uiAPI) {
             options.uiAPI.appendSystemMessage(msg);
@@ -122,7 +125,7 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
         return;
     }
 
-    if (!await confirmInitFiles(options)) {
+    if (!(await confirmInitFiles(options))) {
         if (options.uiAPI) options.uiAPI.appendSystemMessage(INIT_DECLINED_MESSAGE);
         else console.warn(INIT_DECLINED_MESSAGE);
         return;
@@ -159,15 +162,19 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
                     "Initialization was not marked complete; run /init to retry.",
             );
         }
+        if (verificationCommandOperation.getConfirmedSetupCommand() === undefined) {
+            throw new Error(
+                "Init agent finished without saving a confirmed worktree setup command. " +
+                    "Initialization was not marked complete; run /init to retry.",
+            );
+        }
         await requireProjectInitArtifact(projectRoot);
 
         await recordInitializedProjectContext(projectRoot);
         await recordInitDone(projectRoot);
 
         if (options.uiAPI) {
-            options.uiAPI.appendSystemMessage(
-                "✅ Init complete. docs/domain-language.md has been written.",
-            );
+            options.uiAPI.appendSystemMessage("✅ Init complete. docs/domain-language.md has been written.");
         } else {
             console.log(`\n[RunWield] ✅ Init complete for ${projectRoot}.`);
         }

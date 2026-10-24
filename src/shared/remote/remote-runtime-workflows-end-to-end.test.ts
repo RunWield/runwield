@@ -15,7 +15,7 @@ import {
     snapshotProjectTree,
 } from "./remote-runtime-workflows-fixture.ts";
 
-test("remote planning, API approval, isolated execution, semantic repair and Work Record publication leave laptop project unchanged", async () => {
+test("remote planning, forwarded browser review and Unix socket approval, isolated execution, semantic repair and Work Record publication leave laptop project unchanged", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         // Only the declared project runtime storage is excluded; all other paths and bytes are protected.
         const before = await snapshotProjectTree(f.projectRoot, [".wld"]);
@@ -23,6 +23,8 @@ test("remote planning, API approval, isolated execution, semantic repair and Wor
         const client = await f.start();
         await client.read();
         const id = await planDelivery(f, client);
+        assertEquals(f.browserRequests.length, 1);
+        assertEquals(new URL(f.browserRequests[0]).origin, f.review.origin);
         assertEquals(f.store.listSessionArtifacts(id)[0]?.kind, "plan");
         assertEquals(f.store.listSessionPlanAssociations(id)[0]?.planId, "remote-delivery-plan");
         const workflow = await executeDelivery(f, client);

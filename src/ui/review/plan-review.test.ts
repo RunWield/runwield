@@ -346,7 +346,7 @@ collaborationRecommendation: pair
         assertEquals(result.approved, false);
         assertEquals(attrs?.executionAgent, "frontend-engineer");
         assertEquals(attrs?.collaborationRecommendation, "pair");
-        assertEquals(attrs?.status, "feedback");
+        assertEquals(attrs?.status, "draft");
     } finally {
         await fsRm(dir, { recursive: true });
     }
@@ -389,7 +389,7 @@ test("submitPlanForReview loads image bytes from real feedback transport", async
         });
 
         assertEquals(result.images, [{ base64: "iVBORw==", mimeType: "image/png", name: "reference" }]);
-        assertEquals(await planStatus(dir), "feedback");
+        assertEquals(await planStatus(dir), "draft");
     } finally {
         await fsRm(dir, { recursive: true });
     }

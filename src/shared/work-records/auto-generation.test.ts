@@ -7,7 +7,7 @@ import { git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.js";
-import { listWorkRecords, writeWorkRecord } from "./store.js";
+import { listWorkRecords, writeWorkRecord } from "./store.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "./auto-generation.ts";
 
@@ -25,16 +25,20 @@ async function saveStandalonePlan(projectRoot: string, supersedes: string[] = []
 }
 
 async function savePredecessor(projectRoot: string, recordId: string, title: string): Promise<void> {
-    await writeWorkRecord(projectRoot, {
-        kind: "work_record",
-        recordId,
-        status: "approved",
-        scope: "planned_change",
-        origin: "internal",
-        completionMode: "verified",
-        createdAt: "2026-07-13T00:00:00.000Z",
-        provenance: { sourcePlans: [`plan-${recordId}`] },
-    }, `# ${title}\n\n## Summary\n\nEarlier result.`);
+    await writeWorkRecord(
+        projectRoot,
+        {
+            kind: "work_record",
+            recordId,
+            status: "approved",
+            scope: "planned_change",
+            origin: "internal",
+            completionMode: "verified",
+            createdAt: "2026-07-13T00:00:00.000Z",
+            provenance: { sourcePlans: [`plan-${recordId}`] },
+        },
+        `# ${title}\n\n## Summary\n\nEarlier result.`,
+    );
 }
 
 async function saveEpicWithChild(projectRoot: string, terminal: boolean): Promise<void> {
@@ -65,11 +69,15 @@ test("automatic Work Record generation writes a canonical record and Plan backli
     await withRuntimeCommandFixture("work-record-auto-", async ({ projectRoot, setModelMessages }) => {
         process.chdir(projectRoot);
         await saveStandalonePlan(projectRoot);
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Standalone Outcome",
-            summary: "Completed through the real automatic generation path.",
-            futurePlanningNotes: "Reuse this fixture-backed flow.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Standalone Outcome",
+                    summary: "Completed through the real automatic generation path.",
+                    futurePlanningNotes: "Reuse this fixture-backed flow.",
+                }),
+            ),
+        ]);
 
         const result = await autoGenerateWorkRecordForCompletedPlan({
             cwd: projectRoot,
@@ -130,10 +138,14 @@ test("automatic Work Record generation reads acceptance from the registered work
                 {},
                 { expectedRevision: plan.revision },
             );
-            setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-                title: "Accepted release",
-                summary: "The user confirmed the release shipped.",
-            }))]);
+            setModelMessages([
+                fauxAssistantMessage(
+                    fauxToolCall("work_record_completed", {
+                        title: "Accepted release",
+                        summary: "The user confirmed the release shipped.",
+                    }),
+                ),
+            ]);
             const result = await autoGenerateWorkRecordForCompletedPlan({
                 cwd: projectRoot,
                 planName: "accepted",
@@ -157,10 +169,14 @@ test("automatic child completion generates only the terminal parent Epic record"
     await withRuntimeCommandFixture("work-record-auto-epic-", async ({ projectRoot, setModelMessages }) => {
         process.chdir(projectRoot);
         await saveEpicWithChild(projectRoot, true);
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Epic Outcome",
-            summary: "Completed the parent Epic with its fixture child.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Epic Outcome",
+                    summary: "Completed the parent Epic with its fixture child.",
+                }),
+            ),
+        ]);
 
         const result = await autoGenerateWorkRecordForCompletedPlan({
             cwd: projectRoot,
@@ -220,14 +236,18 @@ test("automatic generation persists normalized pending supersession proposals", 
         const predecessorId = "11111111-1111-4111-8111-111111111111";
         await savePredecessor(projectRoot, predecessorId, "Earlier Outcome");
         await saveStandalonePlan(projectRoot);
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Standalone Outcome",
-            summary: "Completed with a possible replacement.",
-            supersessionProposals: [
-                { recordId: ` ${predecessorId} `, reason: " More complete evidence. " },
-                { recordId: predecessorId, reason: "Duplicate must be removed." },
-            ],
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Standalone Outcome",
+                    summary: "Completed with a possible replacement.",
+                    supersessionProposals: [
+                        { recordId: ` ${predecessorId} `, reason: " More complete evidence. " },
+                        { recordId: predecessorId, reason: "Duplicate must be removed." },
+                    ],
+                }),
+            ),
+        ]);
 
         const result = await autoGenerateWorkRecordForCompletedPlan({
             cwd: projectRoot,
@@ -239,8 +259,8 @@ test("automatic generation persists normalized pending supersession proposals", 
         assertEquals(result.supersessionProposals, [{ recordId: predecessorId, reason: "More complete evidence." }]);
         assertStringIncludes(result.message, `${predecessorId} (More complete evidence.)`);
         assertStringIncludes(result.message, `Run wld wr supersede ${result.recordId}.`);
-        const successor = (await listWorkRecords(projectRoot)).find((record) =>
-            record.attrs.recordId === result.recordId
+        const successor = (await listWorkRecords(projectRoot)).find(
+            (record) => record.attrs.recordId === result.recordId,
         );
         assertEquals(successor?.attrs.supersessionProposal?.candidates, result.supersessionProposals);
         assertEquals(
@@ -259,14 +279,18 @@ test("automatic generation settles Plan declarations and keeps only undeclared p
         await savePredecessor(projectRoot, declaredId, "Declared Earlier Outcome");
         await savePredecessor(projectRoot, proposedId, "Possible Earlier Outcome");
         await saveStandalonePlan(projectRoot, [declaredId]);
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Settled Outcome",
-            summary: "Completed and reconciled.",
-            supersessionProposals: [
-                { recordId: declaredId, reason: "The Plan already settled this relation." },
-                { recordId: proposedId, reason: "A separate possible replacement." },
-            ],
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Settled Outcome",
+                    summary: "Completed and reconciled.",
+                    supersessionProposals: [
+                        { recordId: declaredId, reason: "The Plan already settled this relation." },
+                        { recordId: proposedId, reason: "A separate possible replacement." },
+                    ],
+                }),
+            ),
+        ]);
 
         const result = await autoGenerateWorkRecordForCompletedPlan({
             cwd: projectRoot,
@@ -282,10 +306,12 @@ test("automatic generation settles Plan declarations and keeps only undeclared p
             records.find((record) => record.attrs.recordId === declaredId)?.attrs.supersededBy,
             result.recordId,
         );
-        assertEquals(successor?.attrs.supersessionProposal?.candidates, [{
-            recordId: proposedId,
-            reason: "A separate possible replacement.",
-        }]);
+        assertEquals(successor?.attrs.supersessionProposal?.candidates, [
+            {
+                recordId: proposedId,
+                reason: "A separate possible replacement.",
+            },
+        ]);
         assertEquals(result.supersessionProposals, successor?.attrs.supersessionProposal?.candidates);
     });
 });
@@ -335,10 +361,12 @@ test("Recorder corrects a text-only response once using the original source cont
                 calls++;
                 assertStringIncludes(JSON.stringify(context), "Build the fixture feature.");
                 assertStringIncludes(JSON.stringify(context), "No work_record_completed submission was accepted");
-                return fauxAssistantMessage(fauxToolCall("work_record_completed", {
-                    title: "Recovered Outcome",
-                    summary: "Recorded after the corrective turn.",
-                }));
+                return fauxAssistantMessage(
+                    fauxToolCall("work_record_completed", {
+                        title: "Recovered Outcome",
+                        summary: "Recorded after the corrective turn.",
+                    }),
+                );
             },
         ]);
         const result = await autoGenerateWorkRecordForCompletedPlan({

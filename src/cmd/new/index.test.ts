@@ -5,7 +5,7 @@ import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { initTUIWithPair, stopTUI } from "../../ui/tui/tui.ts";
-import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.js";
+import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runNewCommand } from "./index.ts";
 
@@ -42,7 +42,7 @@ async function countTranscripts(projectRoot: string): Promise<number> {
             if (entry.isFile() && entry.name.endsWith(".jsonl")) count++;
         }
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
         throw error;
     }
     return count;
@@ -58,10 +58,10 @@ test("runNewCommand creates and names an in-memory Router session until its firs
         let cleared = false;
         try {
             await runNewCommand(["build", "coverage"], {
-                uiAPI: { clearMessages: () => cleared = true },
+                uiAPI: { clearMessages: () => (cleared = true) },
                 sessionId: current.sessionId,
                 sessionRuntime: runtime,
-                replaceRuntimeSession: (sessionId) => replacementId = sessionId,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
             });
 
             const replacement = runtime.getSessionSnapshot(replacementId);
@@ -96,7 +96,7 @@ test("runNewCommand uses the fixture cwd when there is no current session", asyn
             await runNewCommand([], {
                 uiAPI: {},
                 sessionRuntime: runtime,
-                replaceRuntimeSession: (sessionId) => replacementId = sessionId,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
             });
 
             const replacement = runtime.getSessionSnapshot(replacementId);
@@ -119,10 +119,6 @@ test("runNewCommand reports unavailable interactive state", async () => {
         const errors = await captureErrors(() => runNewCommand([]));
         assertEquals(errors, ["The /new command is only available inside an interactive session."]);
 
-        await assertRejects(
-            () => runNewCommand([], { uiAPI: {} }),
-            Error,
-            "/new requires the SessionRuntime surface.",
-        );
+        await assertRejects(() => runNewCommand([], { uiAPI: {} }), Error, "/new requires the SessionRuntime surface.");
     });
 });

@@ -166,6 +166,10 @@ console.log("RETURNED_AFTER_TERMINATION");
                 await writer.write(
                     new TextEncoder().encode(
                         JSON.stringify({
+                            review: {
+                                socketPath: `/tmp/wld-remote-${"a".repeat(32)}/review.sock`,
+                                origin: "http://127.0.0.1:43127",
+                            },
                             connection: { port: service.port, credential: service.credential },
                             resources: { globalRoot: resources },
                             memoryCollection: "clipboard-bootstrap",

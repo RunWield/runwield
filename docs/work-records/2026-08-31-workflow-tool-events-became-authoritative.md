@@ -14,23 +14,12 @@ provenance:
         - "c4f4bd36-cb3c-4972-a9b7-dbc6b5b84bab"
 ---
 
-# Workflow Tool Events became authoritative
+# Authoritative Workflow Tool Events
 
 ## Summary
 
-RunWield now advances workflow state from accepted Workflow Tool Events instead of Agent transcript inspection. The
-change added typed consume-once event handling, root outbox recovery, owner and attempt scoping, event-first routing
-across planning, execution, repair, review, and validation paths, plus documentation that makes transcripts display and
-audit data only.
-
-## Deviations from Plan
-
-Full `deno task ci` did not complete end-to-end. The first run failed because Workspace build artifacts were missing;
-after `deno task workspace:build`, the second run passed checks, lint, seams, and workspace-check, then timed out during
-the full test phase.
+RunWield advances workflow state from accepted Workflow Tool Events instead of Agent transcript inspection. Typed consume-once events support outbox recovery, owner and attempt scoping, and event-first routing across planning, execution, repair, review, and validation. Transcripts serve display and audit needs, not workflow authority.
 
 ## Future Planning Notes
 
-For future workflow-tool changes, publish only after semantic acceptance and prerequisite writes succeed, then consume
-events through scoped owners. Keep transcript readers limited to compatibility, display, audit, or non-authoritative
-handoff text.
+For future workflow-tool changes, publish only after semantic acceptance and prerequisite writes succeed, then consume events through scoped owners. Keep transcript readers limited to compatibility, display, audit, or non-authoritative handoff text.

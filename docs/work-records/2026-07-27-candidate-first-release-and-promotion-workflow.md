@@ -11,16 +11,12 @@ provenance:
         - "8fda9ae2-072a-4c8e-91dd-c635c67ffb14"
 ---
 
-# Candidate-first release and promotion workflow
+# Candidate release and Stable promotion
 
 ## Summary
 
-Implemented and verified a candidate-capable WLD release lifecycle: `/release` now drives explicit Operator choices,
-`RELEASING.md` documents portable policy, release tasks support Candidate creation, Candidate promotion, direct Stable
-releases, metadata, and explicit build identity, and CI enforces Candidate prerelease/not-latest versus Stable/latest
-publication semantics.
+Release workflows support Candidate creation, Candidate promotion, and direct Stable publication with explicit build identity. Candidate releases remain prerelease and not latest; Stable releases become latest.
 
 ## Future Planning Notes
 
-Release automation should keep irreversible tag pushes behind fail-closed preflight, make CI the sole release creator,
-and use explicit build identity whenever Candidate and Stable tags can share a source commit.
+Tag pushes require fail-closed preflight, and CI remains the sole release creator. Candidate and Stable tags that share source require explicit build identity.

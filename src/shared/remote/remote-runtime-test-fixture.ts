@@ -1,5 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
+import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import {
     chmod as fsChmod,
@@ -38,6 +40,7 @@ import {
     type RuntimeClientCommand,
     type RuntimeClientInput,
     type RuntimeClientReport,
+    type RuntimeReviewConfiguration,
 } from "./remote-runtime-test-client.ts";
 import process from "node:process";
 
@@ -91,6 +94,8 @@ export interface CapturedMcpTraffic {
     response?: string;
 }
 export interface RuntimeFixture extends RuntimeCommandFixture {
+    review: RuntimeReviewConfiguration;
+    browserRequests: string[];
     remoteProject: string;
     remoteHome: string;
     remoteCommandLog: string;
@@ -151,7 +156,8 @@ async function startProcess(
     return {
         send,
         async read() {
-            const next = await within(reader.read());
+            // Real validation includes Git repair, recording and publication, not only a model turn.
+            const next = await within(reader.read(), 60_000);
             if (next.done) throw new Error(`Remote client exited: ${await stderr}`);
             return JSON.parse(next.value);
         },
@@ -218,6 +224,20 @@ export async function withRemoteRuntimeFixture(
             );
             await fsWriteFile(join(remoteHome, ".wld", "settings.json"), "remote profile must not be read");
             await fsWriteFile(join(local.projectRoot, "sentinel.txt"), "laptop initial\n");
+            const reviewDirectory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+            await fsMkdir(reviewDirectory, { mode: 0o700 });
+            const reservation = createServer();
+            await new Promise<void>((resolve) => reservation.listen(0, "127.0.0.1", resolve));
+            const address = reservation.address();
+            assert(address && typeof address !== "string");
+            const review = {
+                socketPath: join(reviewDirectory, "review.sock"),
+                origin: `http://127.0.0.1:${address.port}`,
+            };
+            await new Promise<void>((resolve, reject) =>
+                reservation.close((error) => (error ? reject(error) : resolve())),
+            );
+            const browserRequests: string[] = [];
             const store = openFileSessionStore({ baseDir: join(local.homeDir, "laptop-history") });
             const identity = { buildId: "a".repeat(64), protocol: 1 };
             const memoryCollection = await resolveMemoryCollection({ cwd: local.projectRoot });
@@ -258,6 +278,12 @@ export async function withRemoteRuntimeFixture(
             const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
                 const path = new URL(request.url).pathname;
                 const body = request.method === "POST" ? await request.text() : undefined;
+                // The laptop browser is an external boundary; do not launch it in automated tests.
+                if (path === "/browser/open") {
+                    assertEquals(request.headers.get("authorization"), `Bearer ${service.credential}`);
+                    browserRequests.push(JSON.parse(body || "{}").url);
+                    return Response.json({ opened: true });
+                }
                 if (path === "/models/stream" && body) modelRequests.push(JSON.parse(body));
                 if (path === "/memory" && body) memoryRequests.push(JSON.parse(body));
                 if (body && policy.before && (path === "/session/control" || path === "/session/request")) {
@@ -319,6 +345,8 @@ export async function withRemoteRuntimeFixture(
                 }
                 await run({
                     ...local,
+                    review,
+                    browserRequests,
                     remoteProject,
                     remoteHome,
                     remoteCommandLog,
@@ -354,7 +382,7 @@ export async function withRemoteRuntimeFixture(
                             }
                         }
                         const process = await startProcess(
-                            { connection, resources, memoryCollection, cwd: remoteProject },
+                            { connection, resources, memoryCollection, cwd: remoteProject, review },
                             remoteHome,
                             remotePath,
                         );
@@ -370,6 +398,7 @@ export async function withRemoteRuntimeFixture(
                 store.close();
                 await fsRm(remoteProject, { recursive: true });
                 await fsRm(remoteHome, { recursive: true });
+                await fsRm(reviewDirectory, { recursive: true, force: true });
             }
         },
         options,

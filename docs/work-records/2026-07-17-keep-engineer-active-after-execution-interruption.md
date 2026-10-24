@@ -11,20 +11,12 @@ provenance:
         - "2b3837d2-647b-4141-a8d5-743633cc0472"
 ---
 
-# Keep Engineer Active After Execution Interruption
+# Resumable Engineer execution
 
 ## Summary
 
-Made interrupted or incomplete Engineer execution resumable in place. API errors, cancellation, and missing
-task_completed now leave the Engineer active with execution context and workflow state preserved, while later completion
-proceeds into validation normally. Regression coverage and full CI verification passed.
-
-## Deviations from Plan
-
-The initial worktree merge was blocked by an overlapping local plan-file change and required repository-state cleanup
-before integration.
+API errors, cancellation, and a missing task_completed signal leave Engineer active with execution context and workflow state intact. The user can resume execution in place, and later completion enters validation normally.
 
 ## Future Planning Notes
 
-Preserve the distinction between resumable execution interruptions and terminal workflow failures in future lifecycle
-changes.
+Treat interrupted execution as resumable rather than as evidence of completion or lost workflow context.

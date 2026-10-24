@@ -18,6 +18,7 @@ import {
     helpSlashCommandScenario,
     initialGoldenScenarios,
     planReviewTransactionContractScenario,
+    planReviewReplyOnlyConversationScenario,
     routerToGuideInquiryScenario,
     runtimeInteractionContractScenario,
     startupNoProvidersOpensLoginScenario,
@@ -38,8 +39,8 @@ import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
  * @param {unknown} error
  */
 async function removeChildHeartbeatArtifact(error) {
-    const childPayload =
-        /** @type {{ childPayload?: { heartbeatArtifactDir?: unknown } }} */ (error || {}).childPayload;
+    const childPayload = /** @type {{ childPayload?: { heartbeatArtifactDir?: unknown } }} */ (error || {})
+        .childPayload;
     const root = childPayload?.heartbeatArtifactDir;
     if (typeof root !== "string" || !root) return;
     await fsRm(root, { recursive: true }).catch(() => {});
@@ -50,6 +51,7 @@ const scenarioExportNames = new Map([
     [escapeCancellationScenario, "escapeCancellationScenario"],
     [helpSlashCommandScenario, "helpSlashCommandScenario"],
     [planReviewTransactionContractScenario, "planReviewTransactionContractScenario"],
+    [planReviewReplyOnlyConversationScenario, "planReviewReplyOnlyConversationScenario"],
     [fauxProviderProtocolScenario, "fauxProviderProtocolScenario"],
     [runtimeInteractionContractScenario, "runtimeInteractionContractScenario"],
     [startupNoProvidersOpensLoginScenario, "startupNoProvidersOpensLoginScenario"],
@@ -79,11 +81,7 @@ test("golden actor fails on missing scripted turn", () => {
 
 test("golden actor fails on unused scripted turn", () => {
     const actor = new GoldenScenarioActor([{ id: "router", agent: "router", response: "ok" }]);
-    assertRejects(
-        async () => await Promise.resolve(actor.assertComplete()),
-        Error,
-        "Unused scripted turns",
-    );
+    assertRejects(async () => await Promise.resolve(actor.assertComplete()), Error, "Unused scripted turns");
 });
 
 test("golden runner enforces subprocess isolation for composed scenarios", async () => {
@@ -146,7 +144,12 @@ test("golden scenario child process runs with isolated environment before scenar
     assertEquals(result.ok, true);
     assertEquals(result.result.name, "help-slash-command");
     assertEquals(result.result.actor.remaining, []);
-    assertEquals(await fsStat(result.env.root).then(() => true).catch(() => false), false);
+    assertEquals(
+        await fsStat(result.env.root)
+            .then(() => true)
+            .catch(() => false),
+        false,
+    );
 });
 
 test("golden composition cleans up partial startup failure", async () => {
@@ -155,8 +158,8 @@ test("golden composition cleans up partial startup failure", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = process.env["HOME"];
         const previousCwd = getCwd();
-        const { createGoldenIsolatedEnvironment } = await import("../testing/isolated-environment.js");
-        const { VirtualTerminal } = await import("../testing/virtual-terminal.js");
+        const { createGoldenIsolatedEnvironment } = await import("../testing/isolated-environment.ts");
+        const { VirtualTerminal } = await import("../testing/virtual-terminal.ts");
         const env = await createGoldenIsolatedEnvironment();
         const terminal = new VirtualTerminal();
         try {
@@ -289,11 +292,14 @@ test("golden actor exposes faux-provider response factory integration", () => {
 test("golden runner rejects unexpected interactions", async () => {
     await assertRejects(
         () =>
-            runGoldenScenario({
-                name: "unexpected-interaction",
-                interactions: [],
-                actions: [{ type: "interaction", interactionType: "PLAN_REVIEW", decision: "approved" }],
-            }, { keepArtifacts: false }),
+            runGoldenScenario(
+                {
+                    name: "unexpected-interaction",
+                    interactions: [],
+                    actions: [{ type: "interaction", interactionType: "PLAN_REVIEW", decision: "approved" }],
+                },
+                { keepArtifacts: false },
+            ),
         Error,
         "Unexpected interaction",
     );

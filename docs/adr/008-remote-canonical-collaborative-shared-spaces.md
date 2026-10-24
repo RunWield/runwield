@@ -14,6 +14,5 @@ maintainer capabilities allow team handoff, pull, push, close, and destructive u
 separate from authorization tokens so the server stores only ciphertext for Plan/comment semantic content plus minimal
 routing metadata and capability hashes.
 
-The packaged v1 deployment is self-hosted Podman/OCI + SQLite. Cloudflare/D1 hosted deployment and broader hosted
-RunWield Workspace remain intentionally deferred to a separate follow-up after the self-hosted protocol, CLI loop, and
-browser review surface are proven.
+The packaged v1 deployment is self-hosted Podman/OCI + SQLite. This decision owns the self-hosted protocol, CLI loop,
+and browser review surface.

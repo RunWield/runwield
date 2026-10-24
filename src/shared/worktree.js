@@ -39,6 +39,9 @@ import {
     stageGitChangesExcludingRuntime,
 } from "./git-runtime-safety.ts";
 
+/** Planning checkpoints precede dependency setup; execution commits still run project hooks. */
+export const PLANNING_CHECKPOINT_GIT_OPTIONS = ["-c", "core.hooksPath=/dev/null"];
+
 /**
  * @param {string} cwd
  * @param {string[]} args
@@ -216,6 +219,7 @@ async function isPreparationChange(root, path, baseRef, targetRef) {
  * @param {string} opts.baseRef
  * @param {string} [opts.targetRef]
  * @param {boolean} [opts.includeWorkingTree]
+ * @param {string} [opts.publishedRef] Published target whose identical committed files are not local implementation.
  * @returns {Promise<boolean>}
  */
 export async function hasExecutionChangesSince({
@@ -223,6 +227,7 @@ export async function hasExecutionChangesSince({
     baseRef,
     targetRef = "HEAD",
     includeWorkingTree = false,
+    publishedRef,
 }) {
     const committed = parseNameOnlyPaths(
         await runGit(worktreePath, ["diff", "--name-only", `${baseRef}..${targetRef}`, "--"]),
@@ -237,6 +242,20 @@ export async function hasExecutionChangesSince({
     for (const { paths, ref } of checks) {
         for (const path of paths) {
             if (!(await isPreparationChange(worktreePath, path, ref ? baseRef : "HEAD", ref))) {
+                if (ref && publishedRef) {
+                    const comparison = await runGitResult(worktreePath, [
+                        "diff",
+                        "--quiet",
+                        publishedRef,
+                        ref,
+                        "--",
+                        path,
+                    ]);
+                    if (comparison.code === 0) continue;
+                    if (comparison.code !== 1) {
+                        throw new Error(`Could not compare published file ${path}: ${comparison.stderr}`);
+                    }
+                }
                 return true;
             }
         }
@@ -546,7 +565,8 @@ async function canonicalWorktreePath(path) {
  * @typedef {Object} WorktreeCommitMessageOptions
  * @property {string} [planName]
  * @property {string} [planDescription]
- * @property {"completion"|"preparation"|"publication"} [phase]
+ * @property {"completion"|"preparation"|"planning"|"publication"} [phase]
+ * @property {string} [preparationToken]
  * @property {string} [publicationAttemptId]
  * @property {string[]} [publicationPlanPaths]
  */
@@ -581,6 +601,7 @@ function buildWorktreeCommitMessage({
     phase,
     branch,
     stagedPaths,
+    preparationToken,
     publicationAttemptId,
     publicationPlanPaths = [],
 }) {
@@ -588,11 +609,13 @@ function buildWorktreeCommitMessage({
     const normalizedDescription = normalizeCommitMessageLine(planDescription);
     const subject = normalizedPlanName
         ? normalizeCommitMessageLine(
-              phase === "preparation"
-                  ? `Prepare ${normalizedPlanName} execution`
-                  : phase === "publication"
-                    ? `Finalize validated artifacts for ${normalizedPlanName}`
-                    : `Complete ${normalizedPlanName}`,
+              phase === "planning"
+                  ? `Prepare ${normalizedPlanName} planning`
+                  : phase === "preparation"
+                    ? `Prepare ${normalizedPlanName} execution`
+                    : phase === "publication"
+                      ? `Finalize validated artifacts for ${normalizedPlanName}`
+                      : `Complete ${normalizedPlanName}`,
           )
         : "Commit execution worktree updates";
     const bodyLines = [];
@@ -600,6 +623,7 @@ function buildWorktreeCommitMessage({
     if (normalizedDescription) bodyLines.push(`- Description: ${normalizedDescription}`);
     bodyLines.push(`- Branch: ${branch}`);
     bodyLines.push(`- Files: ${formatStagedPaths(stagedPaths)}`);
+    if (preparationToken) bodyLines.push(`RunWield-Preparation: ${preparationToken}`);
     if (publicationAttemptId) {
         bodyLines.push(`RunWield-Publication-Attempt: ${publicationAttemptId}`);
         for (const path of publicationPlanPaths) bodyLines.push(`RunWield-Publication-Plan-Path: ${path}`);
@@ -637,7 +661,7 @@ async function commitDirtyWorktreeState(
         const disallowedPaths = filterUserDirtyPaths(dirtyPaths, allowedPathSet);
         if (disallowedPaths.length > 0) {
             const description =
-                messageOptions.phase === "preparation"
+                messageOptions.phase === "preparation" || messageOptions.phase === "planning"
                     ? "Execution worktree contains changes outside preparation Plan paths:"
                     : "Execution worktree changed after candidate sealing outside finalized Plan paths:";
             throw new Error(description + "\n" + disallowedPaths.map((path) => `  - ${path}`).join("\n"));
@@ -656,7 +680,21 @@ async function commitDirtyWorktreeState(
                 }
             }
             const ordinaryPaths = allowedDirtyPaths.filter((path) => !forcedPaths.has(path));
-            if (ordinaryPaths.length > 0) await runGit(worktreePath, ["add", "-A", "--", ...ordinaryPaths]);
+            if (ordinaryPaths.length > 0) {
+                // Staged deletions and rename sources no longer match an add pathspec.
+                const stageablePaths = parseNulPaths(
+                    await runGit(worktreePath, [
+                        "ls-files",
+                        "--cached",
+                        "--others",
+                        "--exclude-standard",
+                        "-z",
+                        "--",
+                        ...ordinaryPaths,
+                    ]),
+                );
+                if (stageablePaths.length > 0) await runGit(worktreePath, ["add", "-A", "--", ...stageablePaths]);
+            }
         }
     } else {
         await stageDirtyPathsExceptOwnedRuntime(worktreePath);
@@ -666,7 +704,14 @@ async function commitDirtyWorktreeState(
     const stagedPaths = parseNameOnlyPaths(stagedDiff);
     if (stagedPaths.length === 0) return;
     const message = buildWorktreeCommitMessage({ ...messageOptions, branch, stagedPaths });
-    await runGit(worktreePath, ["commit", "-m", message.subject, "-m", message.body]);
+    await runGit(worktreePath, [
+        ...(messageOptions.phase === "planning" ? PLANNING_CHECKPOINT_GIT_OPTIONS : []),
+        "commit",
+        "-m",
+        message.subject,
+        "-m",
+        message.body,
+    ]);
 }
 
 /**
@@ -680,6 +725,8 @@ async function commitDirtyWorktreeState(
  * @param {string} opts.baseCommit
  * @param {string} opts.planName
  * @param {string} opts.planRelativePath
+ * @param {string} [opts.preparationToken]
+ * @param {"preparation"|"planning"} [opts.phase]
  * @param {string[]} [opts.relatedPlanPaths]
  * @returns {Promise<{ preparationCommit: string }>}
  */
@@ -690,6 +737,8 @@ export async function checkpointExecutionPreparation({
     planName,
     planRelativePath,
     relatedPlanPaths = [],
+    preparationToken,
+    phase = "preparation",
 }) {
     // Planning can leave new drafts and normalized legacy Plans outside the
     // active Epic family. Use the same preparation boundary as resume detection;
@@ -726,7 +775,7 @@ export async function checkpointExecutionPreparation({
             );
         }
     }
-    await commitDirtyWorktreeState(worktreePath, branch, { planName, phase: "preparation" }, preparationPaths);
+    await commitDirtyWorktreeState(worktreePath, branch, { planName, phase, preparationToken }, preparationPaths);
     const preparationCommit = (await runGit(worktreePath, ["rev-parse", "HEAD"])).trim();
     if (preparationCommit === baseCommit) {
         throw new Error(`Execution preparation for ${planName} did not create its required Plan commit.`);

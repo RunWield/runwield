@@ -1,3 +1,5 @@
+import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
+import { reviewSourceStillMatches } from "../shared/workflow/plan-review-actions.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { isSequencePlan, projectPlanType } from "../shared/project-plan.ts";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../shared/workflow/sequence-review.ts";
@@ -22,7 +24,13 @@ import { pathToFileURL as toFileUrl } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.js";
-import { ensurePlanIdentity, loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../plan-store.js";
+import {
+    ensurePlanIdentity,
+    loadPlan,
+    planDocumentMarkdown,
+    resolvePlanExecutionPolicy,
+    updatePlanFrontMatter,
+} from "../plan-store.js";
 import { assertNotReservedEpicArtifactPlanName } from "../shared/epic-artifacts.ts";
 import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.js";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
@@ -90,12 +98,14 @@ interface ToolResultDetails extends ExecutionPolicyInput {
     serverUrl?: string;
     revision?: string | number;
     reused?: boolean;
+    conversationTurn?: boolean;
     approved?: boolean;
     approvalAction?: string;
     planAttrs?: TriageMeta;
 }
 
 interface PlanReviewMeta {
+    conversationTurn?: boolean;
     approved?: boolean;
     feedback?: string;
     images?: ReviewImage[];
@@ -123,6 +133,7 @@ type InteractionMeta = NonNullable<Awaited<ReturnType<typeof requestHostedSessio
 function parsePlanReviewMeta(meta: InteractionMeta | undefined): PlanReviewMeta {
     const source = meta || {};
     return {
+        conversationTurn: source.conversationTurn === true,
         approved: source.approved === true,
         feedback: typeof source.feedback === "string" ? source.feedback : undefined,
         images: Array.isArray(source.images) ? (source.images as ReviewImage[]) : undefined,
@@ -344,7 +355,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             "after your turn ends — the workflow dispatcher picks it up from this tool's outcome. " +
             "Call this once after writing the plan; the user reviews it in a browser UI. " +
             "If the user submits feedback instead of approving, the tool result contains that feedback so you can " +
-            "revise in this same session. For a PROJECT with type: sequence, submit its complete child list in plans; " +
+            "reply in chat or revise in this same session. Revise and call plan_written when the answer changes scope, behavior, a decision, or verification; when in doubt, revise. RunWield keeps an unchanged Plan review open. For a PROJECT with type: sequence, submit its complete child list in plans; " +
             "all documents open together and approval executes the children in order. A later submission may name only the container.",
         parameters: TOOL_PARAMS,
         async execute(toolCallId, params, _signal, onUpdate, _ctx) {
@@ -365,6 +376,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                             | "approved_execute"
                             | "approved_decompose"
                             | "saved"
+                            | "conversation"
                             | "feedback"
                             | "canceled"
                             | "repair_required"
@@ -567,6 +579,37 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 return recordWorkflowMetric(metric, cwd);
             }
 
+            // Presenting changed meaning cancels an earlier approval. A formatter
+            // does not cancel it, and merely reopening the saved review writes nothing.
+            for (const name of sequenceDocuments?.map((doc) => doc.planName) || [planName]) {
+                const current = await loadPlan(reviewCwd, name);
+                const base = current?.attrs.planId
+                    ? hostedSession.planReviewConversations.getReviewBase(current.attrs.planId)
+                    : undefined;
+                if (
+                    current &&
+                    base &&
+                    ["approved", "ready_for_work", "ready_for_decomposition"].includes(current.attrs.status) &&
+                    !reviewSourceStillMatches(current, base.attrs, base.body)
+                ) {
+                    await recordPlanEvent({
+                        cwd: reviewCwd,
+                        planName: name,
+                        event: "review_reopened",
+                        currentStatus: current.attrs.status,
+                        expectedRevision: current.revision,
+                    });
+                    if (name === planName) effectiveMeta = (await loadPlan(reviewCwd, name))!.attrs;
+                    const document = sequenceDocuments?.find((doc) => doc.planName === name);
+                    if (document) {
+                        const updated = (await loadPlan(reviewCwd, name))!;
+                        document.plan = planDocumentMarkdown(updated.markdown);
+                        document.frontmatter = updated.attrs;
+                        document.revision = updated.revision;
+                    }
+                }
+            }
+
             const initialReviewEvidence = await loadPlanActionEvidence(
                 location.registryRoot,
                 String(effectiveMeta.planId || ""),
@@ -706,7 +749,11 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         ? accepted.approvalAction === "run"
                             ? `Sequence approved. Starting ${outcome.planName}.`
                             : "Sequence approved and saved for later execution."
-                        : buildFeedbackRequestText({ round: 1, planName, feedback: accepted.feedback }),
+                        : (accepted.conversationTurn ? buildPlanConversationRequest : buildFeedbackRequestText)({
+                              round: 1,
+                              planName,
+                              feedback: accepted.feedback,
+                          }),
                     { ...outcome, approvalAction: accepted.approvalAction },
                     accepted.approved,
                 );
@@ -723,6 +770,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             }
             const reviewResult = {
                 canceled: reviewResponse.outcome === RuntimeInteractionOutcomes.CANCELED,
+                conversationTurn: reviewMeta.conversationTurn === true,
                 approved: reviewMeta.approved === true,
                 feedback: reviewMeta.feedback,
                 images: reviewMeta.images,
@@ -808,18 +856,21 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     event: "review_outcome",
                     agentName,
                     planName,
-                    details: { outcome: "feedback", classification: effectiveMeta.classification },
+                    details: {
+                        outcome: reviewResult.conversationTurn ? "conversation" : "feedback",
+                        classification: effectiveMeta.classification,
+                    },
                 });
                 const details = {
                     ...params,
-                    outcome: "feedback" as const,
+                    outcome: reviewResult.conversationTurn ? ("conversation" as const) : ("feedback" as const),
                     planName,
                     ...reviewContextDetails(reviewResult),
                 };
                 publishAcceptedPlanOutcome(details, reviewResult.images);
                 return textResult(
                     appendPlanAssociationFailure(
-                        buildFeedbackRequestText({
+                        (reviewResult.conversationTurn ? buildPlanConversationRequest : buildFeedbackRequestText)({
                             round: 1,
                             planName,
                             feedback: reviewResult.feedback,
@@ -888,19 +939,21 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     const savedFeedbackSuffix = reviewResult.feedback
                         ? `\n\nFeedback/annotations from review: ${reviewResult.feedback}`
                         : "";
+                    const details = {
+                        ...params,
+                        outcome: "saved" as const,
+                        planName,
+                        triageMeta: projectMeta,
+                        ...reviewContextDetails(reviewResult),
+                    };
+                    publishAcceptedPlanOutcome(details, reviewResult.images);
                     return textResult(
                         appendPlanAssociationFailure(
                             appendSessionCompleteGuidance(
                                 `Plan "${planName}" approved and saved for later decomposition. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
                             ),
                         ),
-                        {
-                            ...params,
-                            outcome: "saved",
-                            planName,
-                            triageMeta: projectMeta,
-                            ...reviewContextDetails(reviewResult),
-                        },
+                        details,
                         true,
                         reviewResult.images,
                     );

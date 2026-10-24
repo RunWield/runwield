@@ -19,6 +19,7 @@ import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-a
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { HostedSession } from "../session/hosted-session.js";
 import { runIsolatedAgentSession } from "../session/session.js";
+import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.js";
 import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.js";
@@ -42,7 +43,7 @@ import { createReviewDiffTool } from "./review-diff-tool.js";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
-import { switchActiveAgent } from "../session/agent-switching.js";
+import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.js";
 import type {
     AgentTurnOutcome,
     IndependentRepairTurnRequest,
@@ -73,6 +74,7 @@ export type IsolatedAgentSessionOptions = {
     userRequest: string;
     images?: Array<{ base64: string; mimeType: string }>;
     cwd: string;
+    resumePreviousRequest?: boolean;
     subAgentDefinition?: {
         id: import("../session/subagent-definitions.ts").SubAgentDefinitionId;
         options?: import("../session/subagent-definitions.ts").LoadSubAgentDefinitionOptions;
@@ -82,6 +84,8 @@ export type IsolatedAgentSessionOptions = {
     includeEditFallback?: boolean;
     sessionManager?: SessionManager;
     dispatchKind?: import("../session/request-dispatch.ts").RequestDispatchKind;
+    /** Request identity owned by a controller that runs several attempts as one unfinished unit of work. */
+    controllerRequestId?: string;
 };
 
 export type SemanticReviewPort = {
@@ -95,6 +99,11 @@ export const SYSTEM_SEMANTIC_REVIEW_PORT: SemanticReviewPort = Object.freeze({
 const pendingRepairManagers = new WeakMap<HostedSession, Map<string, SessionManager>>();
 type RepairSession = { manager: SessionManager; cwd: string; agentName: string; planName?: string };
 const lastRepairSessions = new WeakMap<HostedSession, RepairSession>();
+
+function hasUnfinishedRepairAttempt(manager: SessionManager): boolean {
+    const latest = readRequestAttemptEntries(manager).at(-1);
+    return Boolean(latest && latest.dispatchKind === "validation_repair" && latest.phase !== "completed");
+}
 
 function getPendingRepairManager(hostedSession: HostedSession, cwd: string, userRequest: string): SessionManager {
     let managers = pendingRepairManagers.get(hostedSession);
@@ -266,6 +275,7 @@ async function runIsolatedRequest(
                         : [...REVIEWER_SUBAGENT_TOOLS],
                 customTools: bindReviewDiffTools(hostedSession, request.customTools),
                 includeEditFallback: false,
+                ...(request.controllerRequestId ? { controllerRequestId: request.controllerRequestId } : {}),
                 sessionManager:
                     (request.sessionManager as unknown as SessionManager) || SessionManager.inMemory(request.cwd),
             },
@@ -334,12 +344,14 @@ async function runIsolatedRequest(
     }
     const repairManager = request.sessionManager
         ? (request.sessionManager as unknown as SessionManager)
-        : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
-    await prepareRepairInvocation(hostedSession, request.cwd);
+        : request.conversationTurn
+          ? SessionManager.inMemory(request.cwd)
+          : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
+    if (!request.conversationTurn) await prepareRepairInvocation(hostedSession, request.cwd);
     // An automatic repair is fresh non-generated work, not a continuation of the completed task.
     hostedSession.getManagedOperationCapability?.()?.assertLive();
     hostedSession.backgroundTasks.resumeDelivery();
-    const { event } = await runValidationAgentUntilEvent(
+    const { event, messages } = await runValidationAgentUntilEvent(
         isolatedSessions,
         {
             hostedSession,
@@ -350,11 +362,32 @@ async function runIsolatedRequest(
             cwd: request.cwd,
             subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
             customTools: bindReviewDiffTools(hostedSession, request.customTools),
+            resumePreviousRequest: hasUnfinishedRepairAttempt(repairManager),
             sessionManager: repairManager,
         },
         "task_completed",
     );
-    const report = await acceptedRepairOutcome(hostedSession, event);
+    let report: AgentTurnOutcome;
+    if (request.conversationTurn) {
+        const providerFailure = readReviewerProviderFailure(messages);
+        if (providerFailure) {
+            return { kind: "feedback_engineer", outcome: "operational_failure", failure: providerFailure };
+        }
+        if (event?.kind === "task_completed") {
+            settleWorkflowToolEvent(hostedSession, event);
+            const payload = event.payload as import("./workflow-tool-events.ts").TaskCompletedEventPayload;
+            report = { completed: true, report: payload.message };
+        } else {
+            const text = messages
+                .filter((message) => message.role === "assistant")
+                .flatMap((message) => message.content.filter((part) => part.type === "text").map((part) => part.text))
+                .join("\n")
+                .trim();
+            report = { completed: false, report: text, blockerText: text };
+        }
+    } else {
+        report = await acceptedRepairOutcome(hostedSession, event);
+    }
     lastRepairSessions.set(hostedSession, {
         manager: repairManager,
         cwd: request.cwd,
@@ -453,6 +486,7 @@ export function createValidationSessionPort(
         cwd: hostedSession.cwd,
         getActiveWorkflow: () => hostedSession.getActiveExecutionWorkflow?.() || null,
         setActiveWorkflow: (workflow) => hostedSession.setActiveExecutionWorkflow?.(workflow),
+        releaseActiveAgent: () => releaseActiveAgent(hostedSession),
         rememberPosition: (planName, position) => rememberValidationPosition(hostedSession, planName, position),
         clearPosition: (planName) => clearValidationPosition(hostedSession, planName),
         getCurrentProgress: () => getCurrentValidationProgress(hostedSession),
@@ -521,6 +555,7 @@ export function createValidationSessionPort(
                     userRequest,
                     cwd,
                     dispatchKind: "validation_repair",
+                    resumePreviousRequest: hasUnfinishedRepairAttempt(repairManager),
                     subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
                     sessionManager: repairManager,
                 },

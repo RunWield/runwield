@@ -11,16 +11,12 @@ provenance:
         - "a0ef3214-49ec-4d7a-8a0d-6df62774c23d"
 ---
 
-# Graceful Non-Git Project Handling
+# Non-Git project execution
 
 ## Summary
 
-Added explicit, project-scoped consent for running FEATURE Plans and QUICK_FIX work directly in non-Git project roots.
-Git-backed projects retain normal Worktree isolation, validation, merge, and recovery behavior. Non-Git Plan validation
-runs available CI while clearly skipping Git-dependent semantic and human diff review, and recovery paths now provide
-friendly Git-required guidance instead of raw command failures.
+RunWield requires explicit, project-scoped consent to execute FEATURE Plans and QUICK_FIX work directly in non-Git project roots. Non-Git validation runs available CI, and recovery gives clear Git-required guidance rather than raw command errors. Git-backed projects retain normal worktree isolation, validation, merge, and recovery behavior.
 
-## Future Planning Notes
+## Out of Scope
 
-Non-Git validation remains intentionally weaker than Git-backed validation because it cannot provide Worktree isolation,
-baseline restoration, commit-history checks, merge-back, or diff-based review.
+Non-Git execution does not provide worktree isolation, baseline restoration, commit-history checks, merge-back, AI diff review, or Code Review.

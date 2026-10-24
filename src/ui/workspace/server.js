@@ -48,7 +48,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runConfiguredGuideCommand,
+    getGuideRunner,
 } from "./routes/api/review-agent-handlers.js";
 import {
     resolveWorkspaceFile,
@@ -290,7 +290,12 @@ export function createOwnerWorkspaceApp(options) {
             ) {
                 response = renewDeviceCookies(ctx.req, response, ctx.state, ctx.state.ownerDevice.deviceId);
             }
-            return withOwnerSecurityHeaders(response);
+            response = withOwnerSecurityHeaders(response);
+            // File-content requests need the live review context, but never send it to another origin.
+            if (/^\/projects\/[^/]+\/sessions\/[^/]+\/review\/code$/.test(path)) {
+                response.headers.set("referrer-policy", "same-origin");
+            }
+            return response;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (ctx.url.pathname.startsWith("/api/")) return ownerJsonResponse({ error: message }, 403);
@@ -577,7 +582,7 @@ function linkedDocumentKind(path) {
 export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType, reviewConversation }) {
     const reviewAgentState =
         reviewType === "code"
-            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: getGuideRunner() })
             : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
@@ -612,6 +617,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             typeof source.headRef === "string"
                                 ? source.headRef
                                 : undefined,
+                        targetBranch:
+                            typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
                     });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
@@ -650,6 +657,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             standaloneReview: reviewPayload.standaloneReview,
                             agentLabel: reviewConversation.agentLabel,
                             revision: reviewConversation.revision,
+                            reviewRevision: reviewPayload.reviewRevision,
+                            error: reviewConversation.error,
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
                             rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
@@ -662,7 +671,9 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                 }
                 if (
                     reviewType === "code" &&
-                    (url.pathname.startsWith("/api/agents/") || url.pathname.startsWith("/api/guide/"))
+                    (url.pathname.startsWith("/api/agents/") ||
+                        url.pathname.startsWith("/api/guide/") ||
+                        url.pathname.startsWith("/api/ai-review/"))
                 ) {
                     if (
                         !hasReviewAssetToken(request, token) &&
@@ -1041,13 +1052,34 @@ function ownerReviewProjectId(request) {
     }
 }
 
+/** @param {Request} request */
+function ownerCodeReviewContext(request) {
+    try {
+        const url = new URL(request.headers.get("referer") || "");
+        const match = /^\/projects\/([^/]+)\/sessions\/([^/]+)\/review\/code$/.exec(url.pathname);
+        const operationId = url.searchParams.get("operation");
+        const interactionId = url.searchParams.get("interaction");
+        if (!match || !operationId || !interactionId) return null;
+        return {
+            projectId: decodeURIComponent(match[1]),
+            runwieldSessionId: decodeURIComponent(match[2]),
+            operationId,
+            interactionId,
+        };
+    } catch {
+        return null;
+    }
+}
+
 /** @param {any} ctx */
 async function ownerInSituReviewFileContent(ctx) {
     const projectId = ownerReviewProjectId(ctx.req);
     if (!projectId) return ownerErrorJson(new Error("Review Project context is missing."), 400);
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, projectId);
-        return await reviewFileContentApi(ctx.req, { cwd: root });
+        const context = ownerCodeReviewContext(ctx.req);
+        const checkout = context ? await ctx.state.sessionContinuation.getLiveCodeReviewCheckout(context) : null;
+        return await reviewFileContentApi(ctx.req, checkout || { cwd: root });
     } catch (error) {
         return ownerErrorJson(error, 404);
     }
@@ -1449,6 +1481,8 @@ export function startSessionQuestionWorkspaceServer(options) {
  */
 export function startReviewWorkspaceServer(options) {
     const cwd = options.cwd ?? getCwd();
+    let reviewRevision = 0;
+    if (options.reviewType === "code") options.reviewPayload.reviewRevision = reviewRevision;
     let decision = registerReviewDecisionPromise(options.token);
     const app = createReviewWorkspaceApp({
         cwd,
@@ -1504,6 +1538,7 @@ export function startReviewWorkspaceServer(options) {
         beginReviewRound({ reviewPayload, reviewConversation }) {
             for (const key of Object.keys(options.reviewPayload)) delete options.reviewPayload[key];
             Object.assign(options.reviewPayload, reviewPayload);
+            if (options.reviewType === "code") options.reviewPayload.reviewRevision = ++reviewRevision;
             if (options.reviewConversation && reviewConversation) {
                 options.reviewConversation.agentLabel = reviewConversation.agentLabel;
                 options.reviewConversation.revision += 1;

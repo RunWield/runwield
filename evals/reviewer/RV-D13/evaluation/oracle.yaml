@@ -1,0 +1,59 @@
+schemaVersion: 1
+scenarioId: RV-D13
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: >-
+        Only a disposable verification tree receives these files and scripts. Never copy them into a Reviewer
+        project.
+proofs:
+    archived-list:
+        command: bun run test:oracle archived-list
+        expectedFailureMarker: RV-D13-ARCHIVED-FILTER-IGNORED
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D13-A
+              severity: medium
+              category: plan-step-omitted
+              trigger: >-
+                  Archive one Plan while another stays active, then run list --archived-only through the
+                  command entry point.
+              expectedBehavior: Return only the archived Plan with its archive timestamp.
+              wrongBehavior: The parsed archivedOnly option is ignored and the result also contains the active Plan.
+              evidence:
+                  - docs/plans/archive-and-list-plans.md
+                  - src/commands.ts
+                  - src/store.ts
+              acceptableConcepts:
+                  - parsed archived-only option is unused
+                  - active Plans leak into archived-only list
+                  - third approved step is missing despite move and time coverage
+              nearMisses:
+                  - The unfiltered list is required to include both active and archived Plans.
+                  - Archive move and timestamp are implemented; reporting either as absent is unsupported.
+              proofCommand: bun run test:oracle archived-list
+              expectedFailureMarker: RV-D13-ARCHIVED-FILTER-IGNORED
+              evidenceNotes:
+                  docs/plans/archive-and-list-plans.md: Approved step 3
+                  src/commands.ts: parseListOptions and list dispatch
+                  src/store.ts: listPlans includes both areas
+        validationOutcomes:
+            bun run test: fail
+        publicFailureMarker: Archived-only listing must return archived Plans only
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+        validationOutcomes:
+            bun run test: pass
+cleanNearMisses:
+    - The unfiltered list is required to include both active and archived Plans.
+    - Archive move and timestamp are implemented; reporting either as absent is unsupported.

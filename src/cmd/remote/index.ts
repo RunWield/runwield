@@ -1,4 +1,5 @@
 import process from "node:process";
+import { serveHttp } from "../../shared/http-server.ts";
 import { getCwd } from "../../constants.js";
 import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
 import { readableStdin } from "../../shared/stdin-stream.ts";
@@ -140,6 +141,7 @@ async function sendPrivateHeader(
     header: {
         credential: string;
         port: number;
+        reviewPort: number;
         buildId: string;
         protocol: number;
         view: { host: string; cwd: string; status: string; trust: string; readiness: string };
@@ -268,6 +270,10 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     const { bindRemoteMemory } = await import("../../shared/remote/memory-binding.ts");
     const memoryCollection = await bindRemoteMemory(target);
     const { startRemoteControlService } = await import("../../shared/remote/control.ts");
+    const reservation = serveHttp({ hostname: "127.0.0.1", port: 0 }, () => new Response(null, { status: 404 }));
+    const reviewPort = reservation.addr.port;
+    await reservation.shutdown();
+    const socketDirectory = `/tmp/wld-remote-${Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
     const sftp = await startLaptopSftp();
     let service: ReturnType<typeof startRemoteControlService>;
     try {
@@ -278,6 +284,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 targetLabel: `${host}:${target.cwd}`,
             },
             memoryCollection,
+            `http://127.0.0.1:${reviewPort}`,
         );
     } catch (error) {
         await sftp.close();
@@ -306,13 +313,15 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             BUILD_ID,
             triple,
             metadata.sha256,
-        )} --remote-supervisor ${service.port}`;
+        )} --remote-supervisor ${service.port} ${socketDirectory}`;
         child = spawnNativeProcess("ssh", {
             cwd: getCwd(),
             args: [
                 "-tt",
                 "-o",
                 "ExitOnForwardFailure=yes",
+                "-L",
+                `127.0.0.1:${reviewPort}:${socketDirectory}/review.sock`,
                 "-R",
                 `127.0.0.1:${service.port}:127.0.0.1:${service.port}`,
                 "-R",
@@ -338,12 +347,15 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         const ready = await Promise.race([
             waitForReady(output),
             status.then(() => {
-                throw new Error("SSH ended before remote startup");
+                throw new Error(
+                    `SSH ended before remote startup (laptop review port ${reviewPort}); check forwarding and port availability.`,
+                );
             }),
         ]);
         await sendPrivateHeader(host, ready.socket, connectionAbort.signal, {
             credential: service.credential,
             port: service.port,
+            reviewPort,
             buildId: BUILD_ID,
             protocol: REMOTE_PROTOCOL_VERSION,
             mount: sftp.header,

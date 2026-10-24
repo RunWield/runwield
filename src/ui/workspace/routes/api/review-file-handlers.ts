@@ -1,9 +1,11 @@
 /** Host contracts used by the embedded Plannotator code-review components. */
 
 import { realpathSync, statSync } from "node:fs";
-import { readFile, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
+import { isPathInside, readContainedTextFile } from "../../../../shared/contained-text-file.ts";
 import { isAbsolute, relative, resolve } from "node:path";
 import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
+import { readWorktreeReviewBaseFile, WorktreeReviewComparisonError } from "../../../../shared/workflow/git-snapshot.ts";
 import { getCwd } from "../../../../constants.js";
 
 export interface WorkspaceFile {
@@ -22,6 +24,7 @@ export interface WorkspaceFileOptions {
  * real paths must remain inside the canonical root. Synchronous for TUI rendering.
  * Missing files return null; unsafe paths throw a generic PermissionDenied error.
  * Paths are already decoded by the caller; do not decode query parameters twice.
+ * This path result does not authorize a later pathname read; validate the opened file too.
  */
 export function resolveWorkspaceFile(
     projectRoot: string,
@@ -58,6 +61,7 @@ export function resolveWorkspaceFile(
 
 export interface ReviewFileContentOptions {
     cwd?: string;
+    targetBranch?: string;
     headRef?: string;
 }
 
@@ -67,9 +71,8 @@ interface WorkspaceTextFile {
 }
 
 /**
- * Return the selected Git ref or current working-tree content when it is safely available.
- * The workflow diff's baseline tree is intentionally not guessed here, so
- * oldContent remains null instead of showing content from the wrong revision.
+ * Return safely available selected-ref or worktree content and, when a target is supplied,
+ * before text from the shared proposed-branch comparison.
  */
 export async function reviewFileContentApi(
     request: Request,
@@ -93,9 +96,27 @@ export async function reviewFileContentApi(
         const file = options.headRef
             ? await readRefTextFile(cwd, options.headRef, filePath, baseDir)
             : await readWorkspaceTextFile(cwd, filePath, baseDir);
+        let oldContent: string | null = null;
+        if (options.targetBranch) {
+            try {
+                const basePath = oldPath ? stripLineReference(oldPath) : file?.path || filePath;
+                for (const candidate of candidatePaths(cwd, basePath, baseDir)) {
+                    if (!isPathInside(candidate, cwd)) continue;
+                    oldContent = await readWorktreeReviewBaseFile(
+                        cwd,
+                        options.targetBranch,
+                        relative(cwd, candidate).replaceAll("\\", "/"),
+                    );
+                    if (oldContent !== null) break;
+                }
+                oldContent ??= file ? "" : null;
+            } catch (error) {
+                if (!(error instanceof WorktreeReviewComparisonError)) throw error;
+            }
+        }
         return Response.json(
             {
-                oldContent: null,
+                oldContent,
                 newContent: file?.contents ?? null,
                 codeFile: file !== null,
                 contents: file?.contents,
@@ -191,10 +212,7 @@ async function readCandidate(realCwd: string, candidate: string): Promise<Worksp
     const file = resolveWorkspaceFile(realCwd, relative(realCwd, candidate).replaceAll("\\", "/"), {
         allowRelativeTraversal: true,
     });
-    return file ? { path: file.path, contents: await readFile(file.absolutePath, "utf8") } : null;
-}
-
-function isPathInside(path: string, root: string): boolean {
-    const rel = relative(resolve(root), resolve(path));
-    return rel === "" || (rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\") && !isAbsolute(rel));
+    if (!file) return null;
+    const contents = await readContainedTextFile(realCwd, file.absolutePath);
+    return contents === null ? null : { path: file.path, contents };
 }

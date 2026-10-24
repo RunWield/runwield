@@ -11,18 +11,12 @@ provenance:
         - "b1f73d48-320a-4451-bd59-b4f9a0b266fe"
 ---
 
-# Provider-neutral Ticket References preserved through delivery
+# Provider-neutral Ticket References
 
 ## Summary
 
-Implemented canonical provider-neutral Ticket References for Plans and Work Records, including Plan front matter
-round-tripping, Slicer/agent guidance, Work Record snapshot and Epic aggregation behavior, searchable/readable ticket
-URLs, and Workspace Plan detail rendering with safe external links. Regression coverage and full RunWield Workflow
-Validation passed, including targeted Plan/workflow/Work Record/Workspace tests, headed browser verification, and
-`deno task ci`.
+Plans preserve provider-neutral Ticket References through storage, Workspace display, and Work Record snapshots. Ticket URLs support search, reading, and safe navigation; Epic Work Records aggregate and deduplicate references from the Epic and its children.
 
 ## Future Planning Notes
 
-Ticket References are demand provenance only: RunWield preserves user-supplied URLs for navigation and delivery history
-without fetching provider data, syncing status, or treating external trackers as lifecycle owners. Epic Work Records
-aggregate Epic and child Ticket References deterministically while child Plans retain only direct references.
+Ticket References provide demand provenance only, without provider fetching or status synchronization. Child Plans retain direct references rather than inherited Epic references.

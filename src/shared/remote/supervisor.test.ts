@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { serveHttp } from "../http-server.ts";
@@ -62,12 +63,12 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
 `;
 
 const terminal = String.raw`import fcntl, json, os, pty, select, socket, subprocess, sys, termios, time
-binary, cwd, header, port = sys.argv[1:]
+binary, cwd, header, port, directory = sys.argv[1:]
 master, slave = pty.openpty()
 def child_terminal():
     os.setsid()
     fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
-child = subprocess.Popen([binary, '--remote-supervisor', port], cwd=cwd, stdin=slave, stdout=slave, stderr=slave, preexec_fn=child_terminal)
+child = subprocess.Popen([binary, '--remote-supervisor', port, directory], cwd=cwd, stdin=slave, stdout=slave, stderr=slave, preexec_fn=child_terminal)
 os.close(slave)
 with open(os.path.join(cwd, 'supervisor'), 'w') as pidfile: pidfile.write(str(child.pid))
 output = b''
@@ -174,6 +175,7 @@ for (const scenario of [
         async () => {
             const executable = await compiledSupervisor();
             const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+            const socketDirectory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
             await fsMkdir(join(getHomeDir(), ".wld"), { recursive: true });
             const sftp = await startLaptopSftp();
             const service = startRemoteControlService({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION });
@@ -209,6 +211,7 @@ for (const scenario of [
                     : {}),
                 credential: service.credential,
                 port,
+                reviewPort: 43127,
                 buildId: BUILD_ID,
                 protocol: REMOTE_PROTOCOL_VERSION,
                 view: { host: "host", cwd: root, status: "Connected", trust: "Trust", readiness: "No turns" },
@@ -230,6 +233,7 @@ for (const scenario of [
                     root,
                     ["before-header", "partial-header"].includes(scenario) ? scenario : header,
                     String(port),
+                    socketDirectory,
                 ],
                 stdin: "piped",
                 stdout: "piped",
@@ -265,6 +269,17 @@ for (const scenario of [
                     const bootstrap = JSON.parse(await fsReadFile(join(root, "view-header"), "utf8"));
                     assertEquals(bootstrap.connection, { port, credential: service.credential });
                     assertEquals(bootstrap.cwd, root);
+                    assertEquals(bootstrap.review, {
+                        socketPath: `${socketDirectory}/review.sock`,
+                        origin: "http://127.0.0.1:43127",
+                    });
+                    assertEquals((await fsStat(socketDirectory)).mode & 0o777, 0o700);
+                    await fsStat(`${socketDirectory}/control.sock`).then(
+                        () => {
+                            throw new Error("private header socket survived admission");
+                        },
+                        (error) => assertEquals(error.code, "ENOENT"),
+                    );
                     assertEquals(bootstrap.view.cwd, root);
                     assert(bootstrap.resources.globalRoot.startsWith("/"));
                     mountDirectory = dirname(bootstrap.resources.globalRoot);
@@ -315,6 +330,12 @@ for (const scenario of [
                     await new Promise((resolve) => setTimeout(resolve, 100));
                 }
                 assertEquals(await running(supervisor), false, `supervisor survived ${scenario}`);
+                await fsStat(socketDirectory).then(
+                    () => {
+                        throw new Error("private socket directory survived cleanup");
+                    },
+                    (error) => assertEquals(error.code, "ENOENT"),
+                );
                 if (scenario === "blocked") {
                     assert(Date.now() - started >= 5_000, "forced exit skipped the grace period");
                 }
@@ -372,6 +393,7 @@ for (const scenario of [
                 await Promise.all([driver.status, unrelated.status, service.close(), proxy?.finished]);
                 await sftp.close();
                 await fsRm(root, { recursive: true });
+                await fsRm(socketDirectory, { recursive: true, force: true });
                 if (scenario === "silent-control" && buildRoot) {
                     await fsRm(buildRoot, { recursive: true });
                     binary = undefined;
@@ -380,3 +402,96 @@ for (const scenario of [
         },
     );
 }
+
+test(
+    "supervisor refuses a pre-existing launcher directory without changing its contents",
+    { skip: process.platform !== "linux" },
+    async () => {
+        const executable = await compiledSupervisor();
+        const directory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+        await fsMkdir(directory, { mode: 0o700 });
+        await fsWriteFile(join(directory, "sentinel"), "not owned");
+        try {
+            const result = await captureForegroundProcess(executable, {
+                cwd: getCwd(),
+                args: ["--remote-supervisor", "43127", directory],
+            });
+            assertEquals(result.success, false);
+            assertStringIncludes(new TextDecoder().decode(result.stderr), "EEXIST");
+            assertEquals(await fsReadFile(join(directory, "sentinel"), "utf8"), "not owned");
+        } finally {
+            await fsRm(directory, { recursive: true, force: true });
+        }
+    },
+);
+
+test(
+    "supervisor owns the private launcher directory until the setup terminal closes",
+    { skip: process.platform !== "linux" },
+    async () => {
+        const executable = await compiledSupervisor();
+        const directory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+        const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const service = startRemoteControlService({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION });
+        const driver = spawnNativeProcess("python3", {
+            cwd: getCwd(),
+            args: ["-u", "-c", terminal, executable, root, "before-header", String(service.port), directory],
+            stdin: "piped",
+            stdout: "piped",
+            stderr: "piped",
+        });
+        try {
+            const reader = driver.stdout.getReader();
+            const ready = await reader.read();
+            assertStringIncludes(new TextDecoder().decode(ready.value), "READY");
+            reader.releaseLock();
+            assertEquals((await fsStat(directory)).mode & 0o777, 0o700);
+            assertEquals((await fsStat(join(directory, "control.sock"))).isSocket(), true);
+            const writer = driver.stdin.getWriter();
+            await writer.write(new TextEncoder().encode("close\n"));
+            await writer.close();
+            await driver.status;
+            await fsStat(directory).then(
+                () => {
+                    throw new Error("private socket directory survived setup closure");
+                },
+                (error) => assertEquals(error.code, "ENOENT"),
+            );
+        } finally {
+            try {
+                driver.kill("SIGKILL");
+            } catch {
+                /* Exited. */
+            }
+            await driver.status;
+            await service.close();
+            await fsRm(directory, { recursive: true, force: true });
+            await fsRm(root, { recursive: true, force: true });
+        }
+    },
+);
+
+test(
+    "supervisor removes its private directory when terminal setup fails",
+    { skip: process.platform !== "linux" },
+    async () => {
+        const executable = await compiledSupervisor();
+        const directory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+        try {
+            const result = await captureForegroundProcess(executable, {
+                cwd: getCwd(),
+                args: ["--remote-supervisor", "43127", directory],
+            });
+            assertEquals(result.success, false);
+            assertStringIncludes(new TextDecoder().decode(result.stderr), "requires a private SSH terminal");
+            await fsStat(directory).then(
+                () => {
+                    throw new Error("private directory survived terminal setup failure");
+                },
+                (error) => assertEquals(error.code, "ENOENT"),
+            );
+        } finally {
+            await fsRm(directory, { recursive: true, force: true });
+        }
+    },
+);

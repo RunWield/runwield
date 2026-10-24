@@ -6,8 +6,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { argv, versions } from "node:process";
 import { fileURLToPath } from "node:url";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
-import { BUILD_METADATA_SCHEMA, computeBuildIdentity, REMOTE_PROTOCOL_VERSION, sha256File } from "./build-metadata.js";
-import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.js";
+import { BUILD_METADATA_SCHEMA, computeBuildIdentity, REMOTE_PROTOCOL_VERSION, sha256File } from "./build-metadata.ts";
+import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.ts";
 
 interface LoadedSource {
     contents: string;
@@ -54,6 +54,7 @@ export const PASSIVE_PATHS = [
     "src/ui/workspace/static",
     "src/ui/design-system/tokens.css",
     "src/ui/design-system/components.css",
+    "src/ui/design-system/sidebar-motion.js",
     "brand/logo.svg",
     "src/agent-definitions",
     "src/model-presets",

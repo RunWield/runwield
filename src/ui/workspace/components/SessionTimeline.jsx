@@ -49,7 +49,10 @@ export function displayAgentName(agentName) {
     }[trimmed];
     if (pinned) return pinned;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)) return trimmed;
-    return trimmed.split("-").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : "").join(" ");
+    return trimmed
+        .split("-")
+        .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : ""))
+        .join(" ");
 }
 
 /** @param {unknown} timestamp */
@@ -128,7 +131,9 @@ export function reduceSessionEvents(events, options = {}) {
     const appendSystemEvent = (/** @type {Record<string, any>} */ item) => {
         const previous = items.at(-1);
         if (
-            previous?.kind === "system-event" && previous.header === item.header && previous.level === item.level &&
+            previous?.kind === "system-event" &&
+            previous.header === item.header &&
+            previous.level === item.level &&
             previous.source === item.source
         ) {
             previous.lines = [...(Array.isArray(previous.lines) ? previous.lines : [previous.text]), item.text];
@@ -150,9 +155,8 @@ export function reduceSessionEvents(events, options = {}) {
             return;
         }
         if (type === "agent_changed") {
-            currentBusyLines = Array.isArray(event.busyLines) && event.busyLines.length > 0
-                ? event.busyLines
-                : undefined;
+            currentBusyLines =
+                Array.isArray(event.busyLines) && event.busyLines.length > 0 ? event.busyLines : undefined;
             return;
         }
         const id = text(event.messageId || event.toolCallId || event.eventId || `${source}:${startIndex + index}`);
@@ -161,14 +165,15 @@ export function reduceSessionEvents(events, options = {}) {
         const segmentKind = text(event.segmentKind || "session");
         const segmentKey = segmentOrdinal === null ? null : `${segmentOrdinal}:${segmentKind}`;
         if (segmentKey && lastSegmentKey && segmentKey !== lastSegmentKey) {
-            const label = text(event.agentName) ||
+            const label =
+                text(event.agentName) ||
                 (segmentKind === "planning"
                     ? "Planner"
                     : segmentKind === "execution"
-                    ? "Plan Engineer"
-                    : segmentKind === "semantic_repair"
-                    ? "Semantic Repair"
-                    : "Session");
+                      ? "Plan Engineer"
+                      : segmentKind === "semantic_repair"
+                        ? "Semantic Repair"
+                        : "Session");
             appendSystemEvent({
                 kind: "system-event",
                 key: `segment:${segmentKey}`,
@@ -196,22 +201,28 @@ export function reduceSessionEvents(events, options = {}) {
         }
         if (type === "assistant_text_delta") {
             if (event.workflowMessage) {
-                const workflowMessage = event.workflowMessage === "manual_qa_checklist"
-                    ? "manual_qa_completed"
-                    : text(event.workflowMessage);
+                const workflowMessage =
+                    event.workflowMessage === "manual_qa_checklist"
+                        ? "manual_qa_completed"
+                        : text(event.workflowMessage);
                 const toolKey = event.toolCallId ? `tool:${event.toolCallId}` : "";
                 const previous = items.at(-1);
-                const legacyMatch = !toolKey && previous?.kind === "workflow" &&
-                        previous.workflowMessage === workflowMessage && !previous.semanticMessage
-                    ? previous
-                    : null;
-                const item = (toolKey ? byKey.get(toolKey) : legacyMatch) || ensure(toolKey || `workflow:${id}`, {
-                    kind: "workflow",
-                    key: event.eventId || `workflow:${id}`,
-                    workflowMessage,
-                    title: displayAgentName(workflowMessage.replaceAll("_", "-")),
-                    source,
-                });
+                const legacyMatch =
+                    !toolKey &&
+                    previous?.kind === "workflow" &&
+                    previous.workflowMessage === workflowMessage &&
+                    !previous.semanticMessage
+                        ? previous
+                        : null;
+                const item =
+                    (toolKey ? byKey.get(toolKey) : legacyMatch) ||
+                    ensure(toolKey || `workflow:${id}`, {
+                        kind: "workflow",
+                        key: event.eventId || `workflow:${id}`,
+                        workflowMessage,
+                        title: displayAgentName(workflowMessage.replaceAll("_", "-")),
+                        source,
+                    });
                 if (event.toolCallId) item.toolCallId = text(event.toolCallId);
                 item.markdown = text(event.delta);
                 item.semanticMessage = true;
@@ -255,10 +266,10 @@ export function reduceSessionEvents(events, options = {}) {
             const workflow = WORKFLOW_TOOL_NAMES.includes(text(event.toolName));
             if (workflow && !byKey.has(`tool:${toolId}`)) {
                 const previous = items.at(-1);
-                const message = previous?.workflowMessage === event.toolName && previous.semanticMessage &&
-                        !previous.toolCallId
-                    ? previous
-                    : null;
+                const message =
+                    previous?.workflowMessage === event.toolName && previous.semanticMessage && !previous.toolCallId
+                        ? previous
+                        : null;
                 if (message) byKey.set(`tool:${toolId}`, message);
             }
             const item = ensure(`tool:${toolId}`, {
@@ -288,11 +299,12 @@ export function reduceSessionEvents(events, options = {}) {
             const requestType = text(event.interactionType || "text");
             const review = asRecord(event.review);
             ensure(`interaction:${text(event.interactionId || id)}`, {
-                kind: requestType === "plan_review"
-                    ? "plan-review"
-                    : requestType === "code_review"
-                    ? "code-review"
-                    : "interaction",
+                kind:
+                    requestType === "plan_review"
+                        ? "plan-review"
+                        : requestType === "code_review"
+                          ? "code-review"
+                          : "interaction",
                 key: event.eventId || `interaction:${text(event.interactionId || id)}`,
                 interactionId: text(event.interactionId || id),
                 request: {
@@ -301,15 +313,16 @@ export function reduceSessionEvents(events, options = {}) {
                             (requestType === "plan_review" ? "Plan ready for review." : "The agent needs input."),
                     ),
                     type: requestType,
-                    planReview: requestType === "plan_review"
-                        ? {
-                            planId: text(review.planId),
-                            planName: text(review.planName || "Plan"),
-                            classification: text(review.classification || "PLANNED_CHANGE"),
-                            expectedStatus: text(review.expectedStatus),
-                            expectedRevision: text(review.expectedRevision),
-                        }
-                        : null,
+                    planReview:
+                        requestType === "plan_review"
+                            ? {
+                                  planId: text(review.planId),
+                                  planName: text(review.planName || "Plan"),
+                                  classification: text(review.classification || "PLANNED_CHANGE"),
+                                  expectedStatus: text(review.expectedStatus),
+                                  expectedRevision: text(review.expectedRevision),
+                              }
+                            : null,
                 },
                 status: "live",
                 timestamp,
@@ -330,7 +343,9 @@ export function reduceSessionEvents(events, options = {}) {
             return;
         }
         if (
-            type === "system_status" || type === "terminal_error" || type === "cancellation" ||
+            type === "system_status" ||
+            type === "terminal_error" ||
+            type === "cancellation" ||
             type === "recovery_event"
         ) {
             if (event.validationProgress?.deliveryReport) {
@@ -345,7 +360,8 @@ export function reduceSessionEvents(events, options = {}) {
             }
             if (event.header === "Triage") {
                 const previous = items.at(-1);
-                const item = (previous?.workflowMessage === "triage_report" && !previous.markdown ? previous : null) ||
+                const item =
+                    (previous?.workflowMessage === "triage_report" && !previous.markdown ? previous : null) ||
                     ensure(`workflow:${id}`, {
                         kind: "workflow",
                         key: `workflow:${id}`,
@@ -381,7 +397,10 @@ export function reduceSessionEvents(events, options = {}) {
             }
         }
     });
-    const visibleItems = mergeSessionTimelineItems(items.filter((item) => MESSAGE_TYPES.has(item.kind)), []);
+    const visibleItems = mergeSessionTimelineItems(
+        items.filter((item) => MESSAGE_TYPES.has(item.kind)),
+        [],
+    );
     // Runtime activity belongs at the live edge, never in saved conversation history.
     if (source === "transient" && busy) {
         visibleItems.push({
@@ -402,10 +421,10 @@ export function reduceSessionEvents(events, options = {}) {
  */
 export function mergeSessionTimelineItems(committed, transient) {
     const flatten = (/** @type {TimelineItem[]} */ items) =>
-        items.flatMap((item) => item.kind === "activity" ? item.items : [item]);
+        items.flatMap((item) => (item.kind === "activity" ? item.items : [item]));
     const saved = flatten(committed);
     const live = flatten(transient);
-    const savedCalls = new Map(saved.flatMap((item, index) => item.toolCallId ? [[item.toolCallId, index]] : []));
+    const savedCalls = new Map(saved.flatMap((item, index) => (item.toolCallId ? [[item.toolCallId, index]] : [])));
     const savedEnd = Math.max(0, ...saved.map((item) => Date.parse(item.timestamp) || 0));
     const matched = new Set();
     const remaining = live.filter((item) => {
@@ -416,13 +435,15 @@ export function mergeSessionTimelineItems(committed, transient) {
             if (previous.status === "running") saved[index] = { ...previous, ...item, key: previous.key };
             return false;
         }
-        if (
-            !["message", "thinking"].includes(item.kind) || !item.text ||
-            !(Date.parse(item.timestamp) <= savedEnd)
-        ) return true;
-        const index = saved.findIndex((candidate, index) =>
-            !matched.has(index) && candidate.kind === item.kind && candidate.role === item.role &&
-            candidate.text === item.text && Date.parse(candidate.timestamp) >= Date.parse(item.timestamp)
+        if (!["message", "thinking"].includes(item.kind) || !item.text || !(Date.parse(item.timestamp) <= savedEnd))
+            return true;
+        const index = saved.findIndex(
+            (candidate, index) =>
+                !matched.has(index) &&
+                candidate.kind === item.kind &&
+                candidate.role === item.role &&
+                candidate.text === item.text &&
+                Date.parse(candidate.timestamp) >= Date.parse(item.timestamp),
         );
         if (index < 0) return true;
         matched.add(index);
@@ -452,7 +473,9 @@ export function formatPlanDeviationMarkdown(content, details = {}) {
             replacement ? `**Replacement requirement:**\n\n${replacement}` : "",
             reason ? `**Reason:**\n\n${reason}` : "",
             approvedAt ? `*Approved at:* ${approvedAt}` : "",
-        ].filter(Boolean).join("\n\n");
+        ]
+            .filter(Boolean)
+            .join("\n\n");
     }
     let body = text(content);
     if (body) {
@@ -482,7 +505,9 @@ export function formatPairCheckpointMarkdown(content, details = {}) {
             details.diagnostics ? `**Diagnostics**\n\n${text(details.diagnostics)}` : "",
             details.nextIncrement ? `**Next increment:**\n\n${text(details.nextIncrement)}` : "",
             "Reply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
-        ].filter(Boolean).join("\n\n");
+        ]
+            .filter(Boolean)
+            .join("\n\n");
     }
     let body = text(content);
     if (body) {
@@ -520,10 +545,7 @@ export function formatInteractionPromptMarkdown(requestType, promptText) {
                 "\n\nConfirmed text will be saved in the Plan and Work Record.",
             )
             .trim();
-    } else if (
-        requestType === RuntimeInteractionTypes.PAIR_CHECKPOINT ||
-        requestType === "pair_checkpoint"
-    ) {
+    } else if (requestType === RuntimeInteractionTypes.PAIR_CHECKPOINT || requestType === "pair_checkpoint") {
         prompt = formatPairCheckpointMarkdown(prompt);
     }
     return prompt;
@@ -540,7 +562,9 @@ export function workflowToolMarkdown(item) {
             details.workKind ? `**Work Kind:** ${text(details.workKind)}` : "",
             `**Complexity:** ${text(details.complexity)}`,
             text(details.summary),
-        ].filter(Boolean).join("\n\n");
+        ]
+            .filter(Boolean)
+            .join("\n\n");
     } else if (toolName === "work_record_completed" && details.summary) {
         body = [
             details.title ? `**${text(details.title)}**` : "",
@@ -548,9 +572,14 @@ export function workflowToolMarkdown(item) {
             ...[
                 ["Deviations from Plan", details.deviationsFromPlan],
                 ["Deferred work", details.deferredWork],
+                ["Out of scope", details.outOfScope],
                 ["Future planning notes", details.futurePlanningNotes],
-            ].filter(([, value]) => value).map(([label, value]) => `### ${label}\n\n${text(value)}`),
-        ].filter(Boolean).join("\n\n");
+            ]
+                .filter(([, value]) => value)
+                .map(([label, value]) => `### ${label}\n\n${text(value)}`),
+        ]
+            .filter(Boolean)
+            .join("\n\n");
     } else if (details.checklistMarkdown) {
         body = text(details.checklistMarkdown);
     } else if (toolName === "record_plan_deviation" || toolName === "plan_deviation") {
@@ -567,17 +596,19 @@ export function workflowToolMarkdown(item) {
             text(details.artifactPath),
             ...(Array.isArray(details.findings)
                 ? details.findings.map((finding) =>
-                    [text(finding.title), text(finding.requirement), text(finding.evidence)].filter(Boolean).join(
-                        "\n\n",
-                    )
-                )
+                      [text(finding.title), text(finding.requirement), text(finding.evidence)]
+                          .filter(Boolean)
+                          .join("\n\n"),
+                  )
                 : []),
-        ].filter(Boolean).join("\n\n");
+        ]
+            .filter(Boolean)
+            .join("\n\n");
     }
     const advisories = Array.isArray(details.advisories)
-        ? details.advisories.map((advisory) =>
-            [text(advisory.title), text(advisory.detail)].filter(Boolean).join("\n\n")
-        ).join("\n\n")
+        ? details.advisories
+              .map((advisory) => [text(advisory.title), text(advisory.detail)].filter(Boolean).join("\n\n"))
+              .join("\n\n")
         : "";
     return [body, advisories ? `### Review notes\n\n${advisories}` : ""].filter(Boolean).join("\n\n");
 }
@@ -593,7 +624,9 @@ function SessionImage({ image, label }) {
             </button>
             <dialog ref={dialog} className="rw-dialog-panel rw-image-dialog" aria-label={label}>
                 <form method="dialog">
-                    <button type="submit" className="rw-toolbar-button">Close image</button>
+                    <button type="submit" className="rw-toolbar-button">
+                        Close image
+                    </button>
                 </form>
                 <img src={src} alt={label} />
             </dialog>
@@ -699,14 +732,15 @@ function SessionInteractionCard({ item }) {
             setSubmitting(false);
         }
     };
-    const title = requestType === "approval"
-        ? "Approval needed"
-        : requestType === RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION ||
+    const title =
+        requestType === "approval"
+            ? "Approval needed"
+            : requestType === RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION ||
                 requestType === "plan_deviation_confirmation"
-        ? "Plan Deviation confirmation"
-        : requestType === RuntimeInteractionTypes.PAIR_CHECKPOINT || requestType === "pair_checkpoint"
-        ? "Pair checkpoint"
-        : "Agent needs input";
+              ? "Plan Deviation confirmation"
+              : requestType === RuntimeInteractionTypes.PAIR_CHECKPOINT || requestType === "pair_checkpoint"
+                ? "Pair checkpoint"
+                : "Agent needs input";
     return (
         <article
             className="session-live-interaction"
@@ -714,43 +748,34 @@ function SessionInteractionCard({ item }) {
         >
             <strong>{title}</strong>
             <MarkdownView markdown={formatInteractionPromptMarkdown(requestType, item.request?.prompt)} />
-            {item.request?.artifactReview && item.reviewUrl
-                ? (
-                    <RunWieldLink
-                        variant="primary"
-                        className="rw-plan-review-link"
-                        href={item.reviewUrl}
-                        target="_blank"
-                    >
-                        Open {String(item.request.artifactReview.kind || "artifact").toUpperCase()}
-                    </RunWieldLink>
-                )
-                : null}
-            {answer
-                ? (
-                    <SessionQuestionForm
-                        mode={requestType}
-                        state={submitting ? "submitting" : "pending"}
-                        error={error}
-                        prompt=""
-                        value={value}
-                        placeholder={item.request?.placeholder || "Answer…"}
-                        allowEmpty={item.request?.allowEmpty === true}
-                        options={choices.map((choice) => {
-                            const choiceRecord = typeof choice === "string" ? { value: choice, label: choice } : choice;
-                            return {
-                                value: text(choiceRecord.value || choiceRecord.label),
-                                label: text(choiceRecord.label || choiceRecord.value),
-                                description: text(choiceRecord.description),
-                                ...(choiceRecord._meta && typeof choiceRecord._meta === "object"
-                                    ? { _meta: choiceRecord._meta }
-                                    : {}),
-                            };
-                        })}
-                        onResponse={sendAnswer}
-                    />
-                )
-                : null}
+            {item.request?.artifactReview && item.reviewUrl ? (
+                <RunWieldLink variant="primary" className="rw-plan-review-link" href={item.reviewUrl} target="_blank">
+                    Open {String(item.request.artifactReview.kind || "artifact").toUpperCase()}
+                </RunWieldLink>
+            ) : null}
+            {answer ? (
+                <SessionQuestionForm
+                    mode={requestType}
+                    state={submitting ? "submitting" : "pending"}
+                    error={error}
+                    prompt=""
+                    value={value}
+                    placeholder={item.request?.placeholder || "Answer…"}
+                    allowEmpty={item.request?.allowEmpty === true}
+                    options={choices.map((choice) => {
+                        const choiceRecord = typeof choice === "string" ? { value: choice, label: choice } : choice;
+                        return {
+                            value: text(choiceRecord.value || choiceRecord.label),
+                            label: text(choiceRecord.label || choiceRecord.value),
+                            description: text(choiceRecord.description),
+                            ...(choiceRecord._meta && typeof choiceRecord._meta === "object"
+                                ? { _meta: choiceRecord._meta }
+                                : {}),
+                        };
+                    })}
+                    onResponse={sendAnswer}
+                />
+            ) : null}
         </article>
     );
 }
@@ -766,11 +791,11 @@ function SessionActivityRow({ item, groupOpen }) {
             className={`session-activity-row activity-${item.kind || "item"} status-${item.status || "complete"}`}
             {...(item.kind === "thinking"
                 ? {
-                    open: thinkingOpen,
-                    onToggle: (event) => {
-                        if (event.target === event.currentTarget) setThinkingOpen(event.currentTarget.open);
-                    },
-                }
+                      open: thinkingOpen,
+                      onToggle: (event) => {
+                          if (event.target === event.currentTarget) setThinkingOpen(event.currentTarget.open);
+                      },
+                  }
                 : {})}
         >
             <summary>
@@ -813,217 +838,183 @@ function SessionActivityGroup({ item }) {
 export function SessionTimeline({ items, events, emptyMessage = "", sessionPath = "", onRetryWorkRecord }) {
     const timelineItems = items || reduceSessionEvents(events || []);
     if (!timelineItems.length) {
-        return emptyMessage
-            ? (
-                <section className="session-timeline empty-state">
-                    <p>{emptyMessage}</p>
-                </section>
-            )
-            : null;
+        return emptyMessage ? (
+            <section className="session-timeline empty-state">
+                <p>{emptyMessage}</p>
+            </section>
+        ) : null;
     }
     return (
         <ol className="session-timeline" aria-label="Session timeline">
             {timelineItems.map((item, index) => (
                 <li key={item.key || `${item.kind}:${index}`} className={`session-timeline-item item-${item.kind}`}>
-                    {item.kind === "busy"
-                        ? (
-                            <RunWieldThinkingDots
-                                label={Array.isArray(item.busyLines) && item.busyLines.length > 0
+                    {item.kind === "busy" ? (
+                        <RunWieldThinkingDots
+                            label={
+                                Array.isArray(item.busyLines) && item.busyLines.length > 0
                                     ? item.busyLines[0]
-                                    : "Working..."}
-                            />
-                        )
-                        : item.kind === "workflow"
-                        ? (
-                            <article
-                                className={`rw-workflow-block status-${item.status}`}
-                                aria-label={displayAgentName(text(item.workflowMessage).replaceAll("_", "-"))}
-                            >
-                                <header>
-                                    <strong>{displayAgentName(text(item.workflowMessage).replaceAll("_", "-"))}</strong>
-                                    <span>
-                                        {item.status === "running"
-                                            ? "In progress"
-                                            : item.status === "failed"
-                                            ? "Failed"
-                                            : "Completed"}
-                                    </span>
-                                </header>
-                                <MarkdownView markdown={workflowToolMarkdown(item)} />
-                                {sessionPath && item.details?.artifact?.artifactId
-                                    ? (
-                                        <RunWieldLink
-                                            href={`${sessionPath}/artifacts/${
-                                                encodeURIComponent(item.details.artifact.artifactId)
-                                            }`}
-                                            variant="secondary"
-                                        >
-                                            Open {item.details.artifact.title || "artifact"}
-                                        </RunWieldLink>
-                                    )
-                                    : null}
-                                {item.agentName || item.timestamp
-                                    ? (
-                                        <footer>
-                                            {item.agentName ? <span>{displayAgentName(item.agentName)}</span> : null}
-                                            {item.timestamp
-                                                ? <time>{formatSessionTimelineTime(item.timestamp)}</time>
-                                                : null}
-                                        </footer>
-                                    )
-                                    : null}
-                            </article>
-                        )
-                        : null}
-                    {item.kind === "message"
-                        ? (
-                            <article className={`session-message role-${item.role}`}>
-                                <header>
-                                    <strong>
-                                        {item.role === "user" ? "You" : displayAgentName(item.agentName || "Ideator")}
-                                    </strong>
-                                </header>
-                                {item.role === "assistant"
-                                    ? <MarkdownView markdown={item.text || ""} />
-                                    : <p>{item.text}</p>}
-                                {Array.isArray(item.images) && item.images.length
-                                    ? (
-                                        <div className="rw-image-previews" aria-label="Message images">
-                                            {item.images.map((image, imageIndex) =>
-                                                image.base64 && /^image\/(png|jpeg|jpg|gif|webp)$/.test(image.mimeType)
-                                                    ? (
-                                                        <SessionImage
-                                                            key={image.ref || imageIndex}
-                                                            image={image}
-                                                            label={`Attached image ${imageIndex + 1}`}
-                                                        />
-                                                    )
-                                                    : null
-                                            )}
-                                        </div>
-                                    )
-                                    : null}
-                                {item.footerText || item.completedTimestamp
-                                    ? (
-                                        <footer className="session-message-footer">
-                                            {item.footerText ? <span>{item.footerText}</span> : null}
-                                            {item.footerText && item.completedTimestamp
-                                                ? <span aria-hidden="true">-</span>
-                                                : null}
-                                            {item.completedTimestamp
-                                                ? <time>{formatSessionTimelineTime(item.completedTimestamp)}</time>
-                                                : null}
-                                        </footer>
-                                    )
-                                    : null}
-                            </article>
-                        )
-                        : item.kind === "thinking"
-                        ? (
-                            <details className="session-thinking">
-                                <summary>
-                                    <ActivityChevronIcon />
-                                    <span>
-                                        {item.done
-                                            ? `${displayAgentName(item.agentName || "Ideator")} thinking complete`
-                                            : (
-                                                <RunWieldThinkingDots
-                                                    label={`${displayAgentName(item.agentName || "Ideator")} thinking`}
-                                                />
-                                            )}
-                                    </span>
-                                </summary>
-                                <p>{item.text || "Thinking details hidden."}</p>
-                            </details>
-                        )
-                        : item.kind === "tool"
-                        ? (
-                            <details className={`session-tool status-${item.status}`}>
-                                <summary>
-                                    <ActivityChevronIcon />
-                                    <span>{compactToolLine(item)}</span>
-                                </summary>
-                                <p>{activityRowDetail(item)}</p>
-                            </details>
-                        )
-                        : item.kind === "activity"
-                        ? <SessionActivityGroup item={item} />
-                        : item.kind === "interaction"
-                        ? <SessionInteractionCard item={item} />
-                        : item.kind === "plan-review" || item.kind === "code-review"
-                        ? (
-                            <article
-                                className="session-plan-review-card"
-                                id={item.interactionId ? `interaction-${item.interactionId}` : undefined}
-                                aria-label={item.kind === "code-review"
-                                    ? "Code ready for review"
-                                    : "Plan ready for review"}
-                            >
-                                <p className="kicker">
-                                    {item.kind === "code-review" ? "Code ready for review" : "Plan ready for review"}
-                                </p>
+                                    : "Working..."
+                            }
+                        />
+                    ) : item.kind === "workflow" ? (
+                        <article
+                            className={`rw-workflow-block status-${item.status}`}
+                            aria-label={displayAgentName(text(item.workflowMessage).replaceAll("_", "-"))}
+                        >
+                            <header>
+                                <strong>{displayAgentName(text(item.workflowMessage).replaceAll("_", "-"))}</strong>
+                                <span>
+                                    {item.status === "running"
+                                        ? "In progress"
+                                        : item.status === "failed"
+                                          ? "Failed"
+                                          : "Completed"}
+                                </span>
+                            </header>
+                            <MarkdownView markdown={workflowToolMarkdown(item)} />
+                            {sessionPath && item.details?.artifact?.artifactId ? (
+                                <RunWieldLink
+                                    href={`${sessionPath}/artifacts/${encodeURIComponent(
+                                        item.details.artifact.artifactId,
+                                    )}`}
+                                    variant="secondary"
+                                >
+                                    Open {item.details.artifact.title || "artifact"}
+                                </RunWieldLink>
+                            ) : null}
+                            {item.agentName || item.timestamp ? (
+                                <footer>
+                                    {item.agentName ? <span>{displayAgentName(item.agentName)}</span> : null}
+                                    {item.timestamp ? <time>{formatSessionTimelineTime(item.timestamp)}</time> : null}
+                                </footer>
+                            ) : null}
+                        </article>
+                    ) : null}
+                    {item.kind === "message" ? (
+                        <article className={`session-message role-${item.role}`}>
+                            <header>
                                 <strong>
-                                    {item.kind === "code-review"
-                                        ? item.request?.codeReview?.planName || "Workspace changes"
-                                        : item.request?.planReview?.planName || "Plan"}
+                                    {item.role === "user" ? "You" : displayAgentName(item.agentName || "Ideator")}
                                 </strong>
-                                {item.kind === "plan-review"
-                                    ? (
-                                        <p>
-                                            {item.request?.planReview?.classification || "PLANNED_CHANGE"}
-                                            {item.request?.planReview?.expectedStatus
-                                                ? ` · ${item.request.planReview.expectedStatus}`
-                                                : ""}
-                                        </p>
-                                    )
-                                    : <p>Review the current workflow diff without leaving this Workspace.</p>}
-                                {item.reviewUrl
-                                    ? (
-                                        <RunWieldLink
-                                            variant="primary"
-                                            className="rw-plan-review-link"
-                                            href={item.reviewUrl}
-                                        >
-                                            {item.kind === "code-review" ? "Review Code" : "Review Plan"}
-                                        </RunWieldLink>
-                                    )
-                                    : null}
-                            </article>
-                        )
-                        : item.kind === "delivery-report"
-                        ? (
-                            <DeliveryReportCard
-                                report={item.report}
-                                sessionPath={sessionPath}
-                                onRetryWorkRecord={onRetryWorkRecord}
-                            />
-                        )
-                        : item.kind === "system-event" && item.header === "Segment"
-                        ? (
-                            <div className={`session-segment-marker segment-${item.segmentKind || "session"}`}>
-                                <span>{item.text}</span>
-                            </div>
-                        )
-                        : item.kind === "system-event"
-                        ? (
-                            <article className={`session-system-event level-${item.level || "info"}`}>
-                                <header>
-                                    <strong>{item.header || "System"}</strong>
-                                </header>
-                                {Array.isArray(item.lines) && item.lines.length > 1
-                                    ? (
-                                        <ul>
-                                            {item.lines.map((line, lineIndex) => (
-                                                <li key={`${item.key}:line:${lineIndex}`}>{line}</li>
-                                            ))}
-                                        </ul>
-                                    )
-                                    : <p>{item.text}</p>}
-                            </article>
-                        )
-                        : item.kind === "interruption"
-                        ? <p className="session-interruption">The agent was interrupted. Ask it to continue.</p>
-                        : <p className={`session-status-row level-${item.level || "info"}`}>{item.text}</p>}
+                            </header>
+                            {item.role === "assistant" ? (
+                                <MarkdownView markdown={item.text || ""} />
+                            ) : (
+                                <p>{item.text}</p>
+                            )}
+                            {Array.isArray(item.images) && item.images.length ? (
+                                <div className="rw-image-previews" aria-label="Message images">
+                                    {item.images.map((image, imageIndex) =>
+                                        image.base64 && /^image\/(png|jpeg|jpg|gif|webp)$/.test(image.mimeType) ? (
+                                            <SessionImage
+                                                key={image.ref || imageIndex}
+                                                image={image}
+                                                label={`Attached image ${imageIndex + 1}`}
+                                            />
+                                        ) : null,
+                                    )}
+                                </div>
+                            ) : null}
+                            {item.footerText || item.completedTimestamp ? (
+                                <footer className="session-message-footer">
+                                    {item.footerText ? <span>{item.footerText}</span> : null}
+                                    {item.footerText && item.completedTimestamp ? (
+                                        <span aria-hidden="true">-</span>
+                                    ) : null}
+                                    {item.completedTimestamp ? (
+                                        <time>{formatSessionTimelineTime(item.completedTimestamp)}</time>
+                                    ) : null}
+                                </footer>
+                            ) : null}
+                        </article>
+                    ) : item.kind === "thinking" ? (
+                        <details className="session-thinking">
+                            <summary>
+                                <ActivityChevronIcon />
+                                <span>
+                                    {item.done ? (
+                                        `${displayAgentName(item.agentName || "Ideator")} thinking complete`
+                                    ) : (
+                                        <RunWieldThinkingDots
+                                            label={`${displayAgentName(item.agentName || "Ideator")} thinking`}
+                                        />
+                                    )}
+                                </span>
+                            </summary>
+                            <p>{item.text || "Thinking details hidden."}</p>
+                        </details>
+                    ) : item.kind === "tool" ? (
+                        <details className={`session-tool status-${item.status}`}>
+                            <summary>
+                                <ActivityChevronIcon />
+                                <span>{compactToolLine(item)}</span>
+                            </summary>
+                            <p>{activityRowDetail(item)}</p>
+                        </details>
+                    ) : item.kind === "activity" ? (
+                        <SessionActivityGroup item={item} />
+                    ) : item.kind === "interaction" ? (
+                        <SessionInteractionCard item={item} />
+                    ) : item.kind === "plan-review" || item.kind === "code-review" ? (
+                        <article
+                            className="session-plan-review-card"
+                            id={item.interactionId ? `interaction-${item.interactionId}` : undefined}
+                            aria-label={item.kind === "code-review" ? "Code ready for review" : "Plan ready for review"}
+                        >
+                            <p className="kicker">
+                                {item.kind === "code-review" ? "Code ready for review" : "Plan ready for review"}
+                            </p>
+                            <strong>
+                                {item.kind === "code-review"
+                                    ? item.request?.codeReview?.planName || "Workspace changes"
+                                    : item.request?.planReview?.planName || "Plan"}
+                            </strong>
+                            {item.kind === "plan-review" ? (
+                                <p>
+                                    {item.request?.planReview?.classification || "PLANNED_CHANGE"}
+                                    {item.request?.planReview?.expectedStatus
+                                        ? ` · ${item.request.planReview.expectedStatus}`
+                                        : ""}
+                                </p>
+                            ) : (
+                                <p>Review the current workflow diff without leaving this Workspace.</p>
+                            )}
+                            {item.reviewUrl ? (
+                                <RunWieldLink variant="primary" className="rw-plan-review-link" href={item.reviewUrl}>
+                                    {item.kind === "code-review" ? "Review Code" : "Review Plan"}
+                                </RunWieldLink>
+                            ) : null}
+                        </article>
+                    ) : item.kind === "delivery-report" ? (
+                        <DeliveryReportCard
+                            report={item.report}
+                            sessionPath={sessionPath}
+                            onRetryWorkRecord={onRetryWorkRecord}
+                        />
+                    ) : item.kind === "system-event" && item.header === "Segment" ? (
+                        <div className={`session-segment-marker segment-${item.segmentKind || "session"}`}>
+                            <span>{item.text}</span>
+                        </div>
+                    ) : item.kind === "system-event" ? (
+                        <article className={`session-system-event level-${item.level || "info"}`}>
+                            <header>
+                                <strong>{item.header || "System"}</strong>
+                            </header>
+                            {Array.isArray(item.lines) && item.lines.length > 1 ? (
+                                <ul>
+                                    {item.lines.map((line, lineIndex) => (
+                                        <li key={`${item.key}:line:${lineIndex}`}>{line}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p>{item.text}</p>
+                            )}
+                        </article>
+                    ) : item.kind === "interruption" ? (
+                        <p className="session-interruption">The agent was interrupted. Ask it to continue.</p>
+                    ) : (
+                        <p className={`session-status-row level-${item.level || "info"}`}>{item.text}</p>
+                    )}
                 </li>
             ))}
         </ol>

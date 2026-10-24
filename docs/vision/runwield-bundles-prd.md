@@ -57,7 +57,7 @@ Without bundles, these setups become undocumented local drift or fragile copy/pa
   override system.
 - **Be inspectable.** Users should be able to see exactly what a bundle installs or changes.
 - **Be removable.** Removing a bundle should not destroy unrelated local customization.
-- **Support local-first and hosted futures.** Bundle metadata should work in Core and eventually in Workspace.
+- **Support personal surfaces.** Bundle metadata should work across the CLI, TUI, and personal Workspace.
 
 ## Proposed Experience
 
@@ -147,7 +147,6 @@ resolution path.
 - Teams can standardize planning/review behavior without forking RunWield.
 - Bundle removal is safe and does not delete unrelated customization.
 - Bundles increase customization reuse without weakening Plan Lifecycle or protected-tool guarantees.
-- The model can later support Workspace/team catalogs without making local Core dependent on SaaS.
 
 ## Open Questions
 

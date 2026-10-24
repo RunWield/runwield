@@ -7,7 +7,7 @@ tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bun "$tool_root/scripts/check-bun-runtime.ts"
 
 staged=$(git diff --cached --name-only --diff-filter=ACM -- \
-    '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.md' '*.css' '*.html' '*.yml' '*.yaml' | head -c 20000)
+    '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.md' '*.css' '*.html' '*.yml' '*.yaml')
 
 if [ -z "$staged" ]; then
     echo "  (no formattable files staged, skipping Bun/Prettier)"

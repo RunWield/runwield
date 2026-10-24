@@ -1,13 +1,13 @@
 # Product Requirements Document: Remote SSH
 
-Last updated: 2026-10-19 EDT
+Last updated: 2026-10-24 EDT
 
 **Status:** Remote conversation, laptop history, image paste, and connected resume are implemented and verified on the
 compiled macOS laptop/Linux `sct` pilot with matching build identity and an authenticated synthetic OpenAI-compatible
 streaming provider. See [journey evidence](#conversation-journey-evidence). Laptop-owned remote Memory, personal MCP
-transport forwarding, and non-browser Core delivery workflows are delivered. See
-[workflow qualification](#workflow-journey-evidence). Automatic browser forwarding, full owned-process termination, and
-the production-provider/platform matrix remain target scope. **Document role:** Transient feature proposal. [RunWield Core](runwield-core-prd.md) owns shared installation,
+transport forwarding, Core delivery workflows, and local browser review are delivered. See
+[workflow qualification](#workflow-journey-evidence) and [review qualification](#review-journey-evidence). The
+production-provider/platform matrix remains target scope. **Document role:** Transient feature proposal. [RunWield Core](runwield-core-prd.md) owns shared installation,
 location, connection cleanup, and Session continuity requirements; this document keeps the remaining remote journey
 clear.
 
@@ -36,14 +36,15 @@ local RunWield setup.
 local browser reviews, connected-only execution, and saved Session resume.
 
 **Not included:** Unattended execution, source-code synchronization, a required local checkout, multi-user
-collaboration, hosted Workspace registration, remote ACP clients, migration of an existing local Session to another
+collaboration, remote ACP clients, migration of an existing local Session to another
 checkout, or automatic installation of every project dependency. Hostile-server isolation is not promised.
 
 ## Product Fit and Main Journey
 
 The conversation journey covers connection, normal Agent turns with core project tools and laptop Pi models, laptop
 clipboard images, offline history, and connected resume. It passed the qualified `sct` pilot below. Laptop-owned Memory
-and personal MCP forwarding extend this journey. Delivery workflows and local browser review follow in their child Plans.
+and personal MCP forwarding extend this journey. Delivery workflows and local browser review are delivered in their
+child Plans.
 
 Command forms:
 
@@ -94,18 +95,20 @@ on the server after exit; a separate saved personal profile must not remain.
 ### Remote connection and setup
 
 **Scope and maturity:** Remote conversation and saved-history journeys passed the compiled macOS/Linux `sct` pilot with
-an authenticated synthetic provider. Non-browser delivery also passed the compiled `sct` workflow journeys. Automatic
-browser forwarding, full owned-process termination, and provider/platform qualification remain target scope. The
+an authenticated synthetic provider. Delivery also passed the compiled `sct` workflow journeys. Local browser review
+is delivered; provider/platform qualification remains target scope. Windows laptop qualification is deferred, and
+Windows laptops are not claimed as supported for Remote SSH. The
 [Core installation](runwield-core-prd.md#installation-and-updates),
 [project context](runwield-core-prd.md#project-context-and-initialization), and
 [recovery](runwield-core-prd.md#execution-validation-and-recovery) capabilities own the current subset.
 
-**Current conversation-only behavior:** `wld remote <host>[:<directory>]` uses OpenSSH configuration, authentication,
+**Current connection behavior:** `wld remote <host>[:<directory>]` uses OpenSSH configuration, authentication,
 and host verification, resolves an existing remote directory (remote home by default), and opens the normal remote TUI
 there. Git is optional. The remote Linux host needs `python3`, SSHFS/FUSE for the personal mount, a writable private
 cache, and an executable compatible with the preflight for the matching glibc-linked Linux x86-64 or ARM64 build. The
-local machine needs OpenSSH and an explicitly built matching development bundle; see
-[build steps](runwield-core-prd.md#installation-and-updates). Runtime preparation checks build/protocol identity and
+SSH server must allow Unix-socket forwarding (`AllowStreamLocalForwarding`, enabled by default in OpenSSH), in addition
+to the existing TCP forwarding. The local machine needs OpenSSH and an explicitly built matching development bundle; see
+[build steps](../contributing.md#remote-development-bundle). Runtime preparation checks build/protocol identity and
 checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
 profile. Normal runtime startup requires executable `cymbal` and `ketch` helpers on the remote `PATH`; private binary
 staging alone does not supply them. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
@@ -114,8 +117,8 @@ stock SFTP server and SSHFS mount of the laptop's full `~/.wld` at a fresh priva
 file edit through this mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote
 project's `.wld` remained remote. The normal TUI accepts conversation turns with any Agent and core project tools
 through the laptop model connection. Opening an empty composer creates no saved Session or writer lock. The first
-message starts laptop-owned history; personal resources are not copied. Workflow execution and browser review follow in
-their owning child Plans.
+message starts laptop-owned history; personal resources are not copied. Workflow execution and browser review use the
+same remote project and laptop personal authority.
 
 **Current acceptance scenarios:**
 
@@ -299,25 +302,41 @@ unfinished tool effects.
 review, isolated execution, validation, semantic review and repair, Work Records, and publication use the normal Core
 workflow. In-memory delegated agents and reviewers use the laptop model bridge. Session artifacts, Plan Associations,
 review references, and transcript rollover are laptop-owned. Existing approval and validation meanings remain unchanged.
-Automatic local browser access remains target scope in
-[child09](../plans/remote-ssh-development/10-open-remote-reviews-in-the-local-browser.md). Until then, review servers
-print their remote loopback URL; the user can open them through a manual SSH forward.
+Local browser review is delivered in
+[child10](../plans/remote-ssh-development/10-open-remote-reviews-in-the-local-browser.md). One loopback forward in the
+main SSH connection reaches the remote review host through its private `review.sock`. The laptop browser uses
+`http://127.0.0.1:<port>`; review files and project operations stay remote.
 
 **Delivered requirement: Complete normal Core work remotely.** Reading and editing, Git, code search, planning, isolated
 execution, validation, repair, and publication use the remote project and its environment. This is not a shell-only
 shortcut while other tools operate on the laptop. Existing permissions and external prerequisites still apply;
 connecting does not silently grant access to local Git credentials.
 
-**Target requirement: Review remote work locally.** Plan and Code Review open in the user's local browser, show the actual
+**Delivered requirement: Review remote work locally.** Plan and Code Review open in the user's local browser, show the actual
 remote artifacts, and apply decisions to the correct live Session. Users need not configure tunnels or expose a public
-review server. Closing only the browser does not end the SSH Session.
+review server. Closing only the browser does not end the SSH Session or cancel the pending review. The same Plan or
+Code Review URL stays active through conversation, revision, and approval. Explanation-only turns do not refresh the
+reviewed content; a changed Plan or reviewed patch produces a revision at that URL. Existing token authorization and
+revision-safe decisions still apply. The Code Review sidebar action reopens the live laptop URL.
+
+TUI links and artifact actions use the remote Session's `BrowserPort` to request laptop browser opening through the
+authenticated `/browser/open` control route. It permits the connection's review origin and public HTTP/HTTPS links,
+not other laptop services. Files, expanded diffs, images, uploads, and polling use the remote review host. Built-in
+Guided Review runs in memory in the remote view process, reads the remote worktree, and uses the laptop model bridge;
+it creates no saved remote Session. An explicit `RUNWIELD_GUIDED_REVIEW_COMMAND` keeps its remote subprocess behavior.
+Direct server CLI review (`wld review`, `wld plans ui`, `wld wr`), remote ACP clients, and hosted Workspace registration
+remain out of scope.
 
 **Acceptance scenarios:**
 
 - Given a project available only remotely, when the user takes a change through planning, review, execution, validation,
   and publication, all project effects and validation commands occur remotely and the local Session records the results.
-- Given Plan or Code Review, when it opens, the laptop browser displays the remote content. Approval or feedback reaches
-  the same Session. Closing and reopening the browser while SSH remains connected does not cancel the wait.
+- **Delivered:** Given Plan or Code Review, when it opens, the laptop browser displays the remote content. Approval or
+  feedback reaches the same Session. Closing and reopening the browser while SSH remains connected does not cancel the
+  wait. Conversation and revision keep the same URL until approval; explanation-only turns keep the reviewed content
+  unchanged, and changed content appears as a revision.
+- Given a remote Code Review, expanded files, images, uploads, and polling reach the remote host. Built-in Guided Review
+  reads the remote worktree through an in-memory Agent using the laptop model, without a saved remote Session.
 - Given remote home without Git or a project with missing build dependencies, RunWield retains the ordinary supported
   non-Git behavior or reports the relevant prerequisite; it does not invent a repository or validate on the laptop.
 
@@ -427,9 +446,9 @@ current connection mounts laptop personal files and opens the normal remote TUI 
 and continue a saved **Session** whose history belongs to the laptop. A **Remote project locator** binds that history to
 an exact host identity and canonical remote project root; execution cwd and mount paths are separate facts. Memory
 bindings separately select laptop collections. Delivery workflows, in-memory child Sessions, write delegation, and Plan
-review run remotely with laptop-owned Session records and transcript rollover. Automatic local browser access and full
-owned-process termination remain target relationships. The compiled `sct` conversation and workflow journeys passed
-with synthetic laptop providers.
+review run remotely with laptop-owned Session records and transcript rollover. Reviews stay on the remote review host;
+one forward at connection start gives the laptop browser access. Connection cleanup stops owned processes. The compiled
+`sct` conversation and workflow journeys passed with synthetic laptop providers.
 
 ## Evidence and Open Checks
 
@@ -478,7 +497,7 @@ owner and synthetic laptop model responses. The production CLI also passed a sep
 relocation. Project tools, Plan review, worktrees, Git, validation, review and repair agents, Manual QA, and the Recorder
 used production code.
 
-- Planning and `plan_written`, review approval through a manual `ssh -L` forward, isolated execution, semantic rejection
+- Planning and `plan_written`, review approval, isolated execution, semantic rejection
   and repair, Work Record generation, merge, and confirmed publication completed. The laptop saved planning, execution,
   and semantic-repair segments with lineage.
 - Each journey disconnected after execution rollover. Connected `/resume` restored the successor's Pi Session ID.
@@ -494,5 +513,17 @@ used production code.
 Run `bun run src/shared/remote/verify-remote-workflows.ts` to repeat the source qualification, or set `WLD_LIVE_SOURCE=0`
 for the compiled checks. The script prints its local evidence and owned remote scratch locations. Fixture publication
 uses throwaway remote repositories, not this repository. This qualifies workflow behavior with synthetic models, not
-terminal interaction, automatic browser forwarding, full process-tree termination, or the release platform/provider
-matrix.
+terminal interaction, full process-tree termination, or the release platform/provider matrix. Local browser review has
+separate evidence below.
+
+### Review journey evidence
+
+The live macOS laptop/Linux `sct` review journey used the production connection's single SSH forward. Plan Review and
+Code Review kept the same URL through conversation, revision, and approval. Explanation-only turns did not refresh
+reviewed content; code changes produced a diff revision. Reopening Code Review from the sidebar was verified.
+Remote files, images, uploads, polling, and built-in Guided Review use the remote review host and laptop model boundary.
+
+While Plan Review was pending, `/plan-review` printed its existing complete URL. Reopening that URL preserved the
+pending decision, and approval completed the review. Ordinary terminal input stayed queued without a concurrent model
+request. Windows laptop qualification is deferred and Windows Remote SSH support is not claimed. Direct server CLI
+review, remote ACP clients, and hosted Workspace registration are not qualified by this journey.

@@ -73,6 +73,7 @@ export interface RemoteInteractiveConfig {
     resources: import("./personal-resources.ts").RemotePersonalResources;
     cwd: string;
     memoryCollection: string;
+    review: import("../../ui/workspace/server/review-host.ts").RemoteReviewHostConfig;
 }
 
 /** Admit private bootstrap data before importing the ordinary TUI composition. */
@@ -98,6 +99,8 @@ export async function parseRemoteInteractiveConfig(header: string): Promise<Remo
         !config.resources.globalRoot.startsWith("/")
     )
         throw new Error("Invalid remote interactive configuration");
+    const { validateRemoteReviewHostConfig } = await import("../../ui/workspace/server/review-host.ts");
+    validateRemoteReviewHostConfig(config.review);
     return config;
 }
 
@@ -114,6 +117,9 @@ export async function runRemoteView(): Promise<void> {
     const clearMemory = configureRemoteMemoryConnection({ ...config.connection, collection: config.memoryCollection });
     const { configureRemoteClipboardConnection } = await import("../../ui/tui/clipboard.ts");
     const clearClipboard = configureRemoteClipboardConnection(config.connection);
+    const { configureRemoteReviewHost } = await import("../../ui/workspace/server/review-host.ts");
+    const clearReviewHost = configureRemoteReviewHost(config.review);
+    let clearGuideRunner: (() => void) | undefined;
     let clearModels: (() => void) | undefined;
     let stopTUI: (() => void) | undefined;
     let lifecycle: import("../../ui/tui/chat-session.ts").InteractiveLifecycleHandle | undefined;
@@ -123,15 +129,18 @@ export async function runRemoteView(): Promise<void> {
     try {
         const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
         clearModels = await configureRemoteModelConnection(config.connection);
+        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.js");
+        const { runRemoteGuideCommand } = await import("./guide-runner.ts");
+        clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
         ({ stopTUI } = await import("../../ui/tui/tui.ts"));
         for (const signal of signals) process.on(signal, end);
         process.chdir(config.cwd);
         const { RemoteSessionControl } = await import("./session-control-client.ts");
-        const { NO_OPEN_BROWSER_PORT } = await import("../browser-port.ts");
+        const { createRemoteBrowserPort } = await import("./browser-bridge.ts");
         const { startInteractiveSession } = await import("../../ui/tui/chat-session.ts");
         await startInteractiveSession(null, {
             remoteSessionControl: new RemoteSessionControl(config.connection),
-            browser: NO_OPEN_BROWSER_PORT,
+            browser: createRemoteBrowserPort(config.connection),
             onLifecycleReady: (handle) => (lifecycle = handle),
         });
         // entry dispatch exits after return. Startup completion is not TUI exit.
@@ -144,6 +153,8 @@ export async function runRemoteView(): Promise<void> {
             try {
                 await clearMcp();
                 clearClipboard();
+                clearGuideRunner?.();
+                clearReviewHost();
                 clearMemory();
                 clearModels?.();
                 stopTUI?.();

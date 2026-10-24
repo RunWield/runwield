@@ -12,22 +12,12 @@ provenance:
         - "a5983252-78d4-466f-879e-17d27b749ade"
 ---
 
-# Core-Owned Named Invocation
+# Core-owned Named Invocation
 
 ## Summary
 
-Prompt Template and Skill slash invocations now resolve in shared Session runtime for TUI, Workspace, and ACP. Prompt
-Templates can declare one-shot agent, model, and thinking policy, run through an auxiliary turn without changing the
-root Session state, and preserve exact hidden expansions while displays stay compact. Reload now refreshes active Agent
-catalogs, bundled docs/templates were updated, and verification passed including final full CI.
-
-## Deviations from Plan
-
-An initial CI run hit `publication-machine.failure-matrix.test.ts`; a targeted rerun passed and the final full CI rerun
-passed.
+Prompt Template and Skill slash invocations resolve in shared Session runtime for TUI, Workspace, and ACP. Prompt Templates can declare one-shot Agent, model, and thinking policy and run through an auxiliary turn without changing root Session state. Saved history preserves exact hidden expansions while displays remain compact, and reload refreshes active Agent catalogs.
 
 ## Future Planning Notes
 
-Future named-invocation work should keep raw slash classification in Core, keep Prompt Template workflow authority
-separate from Skills, and preserve immutable transcript expansions for resume instead of re-reading changed template
-files.
+Keep raw slash classification in Core and Prompt Template workflow authority separate from Skills. Preserve immutable transcript expansions for resume instead of re-reading changed template files.

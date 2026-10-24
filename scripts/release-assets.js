@@ -11,8 +11,9 @@ import {
 import process from "node:process";
 /** Stage one checked, flat release asset set. Never change published bytes. */
 import { join } from "node:path";
-import { expectedReleaseAssetNames } from "./release.js";
-import { verifyBuildArtifact } from "./build-metadata.js";
+import { expectedReleaseAssetNames, parseReleaseTag } from "./release.js";
+import { releaseLicense } from "./release-license.ts";
+import { verifyBuildArtifact } from "./build-metadata.ts";
 import { extractReleaseRuntime } from "../src/shared/remote/release-artifact.ts";
 
 /**
@@ -33,9 +34,11 @@ export async function prepareDevelopmentArtifacts(launcher, linuxX64, linuxArm64
     if (
         metadata[1].target !== "x86_64-unknown-linux-gnu" ||
         metadata[2].target !== "aarch64-unknown-linux-gnu" ||
-        metadata.some((item) =>
-            item.buildId !== metadata[0].buildId || item.protocol !== metadata[0].protocol ||
-            item.version !== metadata[0].version
+        metadata.some(
+            (item) =>
+                item.buildId !== metadata[0].buildId ||
+                item.protocol !== metadata[0].protocol ||
+                item.version !== metadata[0].version,
         )
     ) {
         throw new Error("Development artifacts have mismatched build/protocol/VERSION or GNU targets");
@@ -57,12 +60,11 @@ export async function prepareDevelopmentArtifacts(launcher, linuxX64, linuxArm64
 
 /** @param {string} tag */
 export function releaseAssetNames(tag) {
-    return [
-        ...expectedReleaseAssetNames(tag),
-        `wld-${tag}-windows-x64.zip`,
-        `wld-${tag}-windows-x64.zip.sha256`,
-        "runwield-windows-package.json",
-    ];
+    const docs =
+        parseReleaseTag(tag).kind === "stable"
+            ? [`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`]
+            : [];
+    return [...expectedReleaseAssetNames(tag), ...docs];
 }
 
 /** @param {string} directory @returns {Promise<string[]>} */
@@ -70,7 +72,7 @@ async function files(directory) {
     const result = [];
     for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
-        if (entry.isDirectory()) result.push(...await files(path));
+        if (entry.isDirectory()) result.push(...(await files(path)));
         else if (entry.isFile()) result.push(path);
         else throw new Error(`Unsupported release asset: ${path}`);
     }
@@ -80,7 +82,8 @@ async function files(directory) {
 /** @param {string} path */
 async function sha256(path) {
     return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await fsReadFile(path))))
-        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /**
@@ -92,7 +95,29 @@ async function sha256(path) {
  */
 export async function prepareReleaseAssets(input, output, tag, published = false, publishedMetadata = "") {
     if (published && !publishedMetadata) throw new Error("Published recovery requires GitHub asset digests");
-    const names = releaseAssetNames(tag);
+    /** @type {PublishedRelease | null} */
+    const metadata = publishedMetadata ? JSON.parse(await fsReadFile(publishedMetadata, "utf8")) : null;
+    let names = releaseAssetNames(tag);
+    if (published) {
+        if (!metadata) throw new Error("Published recovery requires GitHub asset digests");
+        // Recover historical Windows bytes only when the immutable host manifest lists them.
+        const windows = [
+            ...["tar.gz", "tar.zst", "zip"].flatMap((extension) => [
+                `wld-${tag}-windows-x64.${extension}`,
+                `wld-${tag}-windows-x64.${extension}.sha256`,
+            ]),
+            "runwield-windows-package.json",
+        ];
+        names.push(...windows.filter((name) => metadata.assets.some((asset) => asset.name === name)));
+        const docs = names.filter((name) => name.startsWith("runwield-docs-"));
+        const publishedDocs = docs.filter((name) => metadata.assets.some((asset) => asset.name === name));
+        if (publishedDocs.length > 0 && publishedDocs.length !== docs.length) {
+            throw new Error("Published release has an incomplete docs asset set");
+        }
+        // Only old published Stable releases may omit both docs assets. Local
+        // files cannot opt a new publication or a partial published set out.
+        if (publishedDocs.length === 0) names = names.filter((name) => !docs.includes(name));
+    }
     const paths = await files(input);
     const selected = new Map();
     for (const name of names) {
@@ -110,8 +135,11 @@ export async function prepareReleaseAssets(input, output, tag, published = false
         sums.push(expected);
     }
     if (published) {
-        const actual = (await fsReadFile(selected.get("SHA256SUMS"), "utf8")).trim().split(/\r?\n/)
-            .map((line) => line.replace(/\s+/, "  ")).sort();
+        const actual = (await fsReadFile(selected.get("SHA256SUMS"), "utf8"))
+            .trim()
+            .split(/\r?\n/)
+            .map((line) => line.replace(/\s+/, "  "))
+            .sort();
         if (JSON.stringify(actual) !== JSON.stringify([...sums].sort())) {
             throw new Error("Published SHA256SUMS does not match the complete release set");
         }
@@ -128,6 +156,12 @@ export async function prepareReleaseAssets(input, output, tag, published = false
                 const directory = join(stage, suffix);
                 await fsMkdir(directory);
                 const { metadata } = await extractReleaseRuntime(selected.get(name), suffix, launcher, directory);
+                if (releaseLicense(tag.slice(1)).winget === "MIT") {
+                    const license = await fsReadFile(join(directory, "LICENSE"), "utf8").catch(() => "");
+                    const expected = await fsReadFile(new URL("../LICENSE", import.meta.url), "utf8");
+                    if (license !== expected)
+                        throw new Error(`Release archive must include the source LICENSE: ${name}`);
+                }
                 if (!launcher) {
                     if (metadata.version !== tag) throw new Error("Release launcher VERSION does not match tag");
                     launcher = { buildId: metadata.buildId, protocol: metadata.protocol, version: metadata.version };
@@ -137,9 +171,7 @@ export async function prepareReleaseAssets(input, output, tag, published = false
             await fsRm(stage, { recursive: true });
         }
     }
-    if (publishedMetadata) {
-        /** @type {PublishedRelease} */
-        const metadata = JSON.parse(await fsReadFile(publishedMetadata, "utf8"));
+    if (metadata) {
         for (const [name, path] of selected) {
             const asset = metadata.assets.find((asset) => asset.name === name);
             if (asset?.digest !== `sha256:${await sha256(path)}`) {

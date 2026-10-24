@@ -11,10 +11,8 @@ provenance:
         - "9ba48edf-2775-4b04-9ee7-822960e5d798"
 ---
 
-# Added useful worktree commit messages
+# Plan-aware worktree commit messages
 
 ## Summary
 
-Replaced the fixed dirty-worktree commit message with deterministic, plan-aware formatting. Automatic validation and
-manual recovery now forward plan names and summaries, while metadata-free callers retain a stable fallback. Tests cover
-message generation and metadata forwarding, and the change passed project verification.
+Automatic validation and manual recovery use deterministic, Plan-aware messages for dirty-worktree commits. Plan names and summaries supply context, while callers without metadata receive a stable fallback.

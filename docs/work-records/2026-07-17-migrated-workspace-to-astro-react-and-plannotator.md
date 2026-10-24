@@ -11,12 +11,8 @@ provenance:
         - "b4cfe540-2c86-47eb-8963-74788ecb6af0"
 ---
 
-# Migrated Workspace to Astro, React, and Plannotator
+# Astro, React, and Plannotator Workspace architecture
 
 ## Summary
 
-Completed and verified the Workspace architecture migration from Fresh/Preact/UnoCSS to Astro SSR, React islands,
-Tailwind, and Radix-compatible RunWield primitives. Preserved token-protected local launch behavior, Plan APIs,
-board/detail workflows, lifecycle actions, body editing and conflict handling, and RunWield theme propagation. Replaced
-compiled Plannotator review servers with Workspace-hosted plan and code review surfaces behind the existing
-review-launcher contract. All three child features were verified.
+Workspace uses Astro SSR, React islands, Tailwind, and Radix-compatible RunWield primitives. Token-protected local launch, Plan APIs, board and detail workflows, lifecycle actions, body editing, conflict handling, and theme propagation remain intact. Workspace-hosted Plan Review and Code Review replace compiled Plannotator review servers behind the existing review-launcher contract.

@@ -15,7 +15,7 @@ export function projectRemoteSessionRecords(
     const project = findProject(store.path, projectId);
     if (!project?.remote) throw new Error("Remote Session project is unavailable");
     const planSessions: RemoteSessionRecords["planSessions"] = [];
-    for (const { manifest } of query ? listManifests(sessionDirForProject(store.path, project), false) : []) {
+    for (const { manifest } of query ? listManifests(sessionDirForProject(store.path, project), true) : []) {
         if (query?.sessionId && manifest.runwieldSessionId !== query.sessionId) continue;
         const associations = store
             .listSessionPlanAssociations(manifest.runwieldSessionId, projectId)

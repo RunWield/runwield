@@ -80,6 +80,7 @@ export async function planDelivery(f: RuntimeFixture, client: RuntimeProcess) {
     const token = page.searchParams.get("token");
     assert(token);
     const response = await fetch(new URL(`/api/review/decision?token=${token}`, page.origin), {
+        unix: f.review.socketPath,
         method: "POST",
         headers: { "content-type": "application/json", "x-runwield-review-token": token },
         body: JSON.stringify({
@@ -92,6 +93,8 @@ export async function planDelivery(f: RuntimeFixture, client: RuntimeProcess) {
     assertEquals(response.status, 200, await response.text());
     const planned = await client.read();
     assertEquals(planned.ok, true, planned.error);
+    assertEquals(page.origin, f.review.origin);
+    assertEquals(f.browserRequests.at(-1), ready.reviewUrl);
     assert(planned.savedId);
     const plan = await readFile(join(f.remoteProject, "docs/plans/remote-delivery.md"), "utf8");
     assert(plan.includes('status: "ready_for_work"'), (await f.control.list(planned.savedId))[0].contents || "");

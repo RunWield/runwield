@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.js";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { writeUpdateCheckCache } from "../../shared/update-check.js";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 import {
     assertWorkflowBinaryCallsSupported,
@@ -285,6 +286,8 @@ export async function withRuntimeCommandFixture<T>(
             process.exitCode = 0;
             __resetSettingsForTests();
             initRunWieldTheme();
+            // Keep TUI release checks offline and prevent delayed writes across fixture HOME changes.
+            await writeUpdateCheckCache({ latestVersion: "v0.0.0", checkedAt: Date.now() });
             return await run({
                 alternateRoot: canonicalAlternateRoot,
                 homeDir,

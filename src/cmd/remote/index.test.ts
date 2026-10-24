@@ -91,6 +91,7 @@ if (args[0] === "-v") {
 }
 
 if (args[0] === "-tt") {
+    writeFileSync(process.env.SSH_LOG, JSON.stringify(args));
     if (!args.includes("ExitOnForwardFailure=yes") || !args.includes("remote-alias")) process.exit(42);
     process.stdout.write("REMOTE_SUPERVISOR_READY:/tmp/wld-remote-fixture/control.sock\\n");
     const deadline = Date.now() + 15000;
@@ -119,6 +120,7 @@ if (args[0] === "-tt") {
         } else {
             if (request.socket !== "/tmp/wld-remote-fixture/control.sock") throw new Error("Wrong private socket");
             const header = request.header;
+            writeFileSync(process.env.SSH_LOG + ".header", JSON.stringify(header));
             for (const route of ["handshake", "readiness"]) {
                 const response = await fetch("http://127.0.0.1:" + header.port + "/" + route, {
                     method: "POST", headers: { Authorization: "Bearer " + header.credential },
@@ -351,6 +353,7 @@ test("source remote help works without a generated identity and connection expla
         for (const path of [
             "src/cmd/remote/index.ts",
             "src/shared/foreground-process.ts",
+            "src/shared/http-server.ts",
             "src/shared/linux-process-group.ts",
             "src/shared/captured-process.ts",
             "src/shared/socket-listener.ts",
@@ -364,7 +367,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/remote/model-proof-config.ts",
             "src/constants.js",
             "runtime-root.js",
-            "scripts/build-metadata.js",
+            "scripts/build-metadata.ts",
             "src/shared/version.js",
         ])
             await fsCopyFile(path, join(root, path));
@@ -476,6 +479,19 @@ test("remote CLI exits after authenticated SSH closes while terminal stdin remai
         assertEquals(result.code, 0, result.stderr);
         assertStringIncludes(result.stdout, "REMOTE_EXIT_AFTER_INPUT");
         assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        const args: string[] = JSON.parse(await fsReadFile(sshLog, "utf8"));
+        assertEquals(args.filter((arg) => arg === "-L").length, 1);
+        const forward = args[args.indexOf("-L") + 1];
+        const match = /^127\.0\.0\.1:([1-9]\d*):(\/tmp\/wld-remote-[a-f0-9]{32})\/review\.sock$/.exec(forward);
+        assertEquals(match !== null, true, forward);
+        if (!match) throw new Error("Missing loopback review forward");
+        const port = Number(match[1]);
+        assertEquals(port <= 65535, true);
+        assertEquals(Buffer.byteLength(`${match[2]}/review.sock`) < 100, true);
+        assertStringIncludes(args.at(-1) ?? "", `--remote-supervisor `);
+        assertEquals((args.at(-1) ?? "").endsWith(` ${match[2]}`), true);
+        const header = JSON.parse(await fsReadFile(sshLog + ".header", "utf8"));
+        assertEquals(header.reviewPort, port);
     }, true);
 });
 

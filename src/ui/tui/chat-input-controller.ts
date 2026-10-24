@@ -1,6 +1,6 @@
 import { handleBashCommand } from "./bash-interceptor.ts";
 import { endBlink } from "./boot-logo.ts";
-import { installKeybindings } from "./keybindings.ts";
+import { disposeKeybindings, installKeybindings } from "./keybindings.ts";
 import { handleSlashCommand, isImmediateBuiltinSlashCommandWhileStreaming, type SkillMeta } from "./slash-dispatch.ts";
 import { readClipboardImage } from "./clipboard.ts";
 import { resolveTemplateModel } from "../../shared/models/model-validation.ts";
@@ -14,6 +14,7 @@ import { AGENTS } from "../../constants.js";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
 import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
+import { resourceExhaustionMessage } from "../../shared/resource-exhaustion.ts";
 
 type ThinkingLevel = Parameters<typeof persistThinkingLevel>[0];
 
@@ -70,6 +71,8 @@ function imageWarningKey(image: ImageAttachment): string {
 }
 
 function userTurnFailureMessage(error: Error | string): string | null {
+    const resourceMessage = resourceExhaustionMessage(error);
+    if (resourceMessage) return resourceMessage;
     if (error instanceof ClaudeCliBackendError || error instanceof AgyCliBackendError) {
         // The backend already emitted its sanitized message as a system status.
         return null;
@@ -575,6 +578,8 @@ export function createChatInputController(options: ChatInputControllerOptions): 
         cycleThinkingLevel,
         handleImagePaste,
         readClipboardImage,
+        onClipboardImageMissing: () => view.showClipboardImageMissing(),
+        onInput: () => view.clearClipboardImageNotice(),
         cancelRuntimeSession: () => runtime.cancelSession(options.getSessionId()).aborted,
     });
     return {
@@ -586,6 +591,7 @@ export function createChatInputController(options: ChatInputControllerOptions): 
         offerSessionCompletion,
         dispose: async () => {
             disposed = true;
+            disposeKeybindings(editor);
             editor.onChange = originalOnChange;
             await flushPendingThinkingLevelPersistence();
         },

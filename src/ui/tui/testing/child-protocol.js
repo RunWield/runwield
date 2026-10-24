@@ -10,8 +10,8 @@ import process from "node:process";
 
 import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 import { join } from "node:path";
-import { createGoldenIsolatedEnvironment } from "./isolated-environment.js";
-import { GOLDEN_CHILD_READY_MARKER, runGoldenChild } from "./subprocess-runner.js";
+import { createGoldenIsolatedEnvironment } from "./isolated-environment.ts";
+import { GOLDEN_CHILD_READY_MARKER, runGoldenChild } from "./subprocess-runner.ts";
 import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.ts";
 
 const CHILD_FLAG = "--golden-tui-child";
@@ -50,7 +50,7 @@ function parseLastJsonLine(stdout) {
 
 /**
  * @param {GoldenChildScenarioRequest} request
- * @param {import('./subprocess-runner.js').GoldenChildResult} result
+ * @param {import('./subprocess-runner.ts').GoldenChildResult} result
  * @param {unknown} childPayload
  */
 async function writeChildFailureArtifact(request, result, childPayload) {

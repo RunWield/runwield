@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "d140df78-c3cc-43d8-a0c8-8f588a67a5e7"
-status: "approved"
+status: "superseded"
 scope: "epic"
 origin: "internal"
 completionMode: "done_enough"
@@ -11,6 +11,7 @@ tickets:
 provenance:
     sourcePlans:
         - "0793ef3b-1dfa-465e-8873-2035c55d4f8b"
+supersededBy: "4539f59e-2074-4614-9e77-548b593621df"
 ---
 
 # Conversational Pair checkpoints and ACP interview chat fallback

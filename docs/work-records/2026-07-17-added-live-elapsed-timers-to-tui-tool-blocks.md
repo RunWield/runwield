@@ -11,14 +11,8 @@ provenance:
         - "7f62057d-bf3d-4786-80a8-4e9970c0a52f"
 ---
 
-# Added live elapsed timers to TUI tool blocks
+# Live elapsed timers in TUI tool blocks
 
 ## Summary
 
-TUI tool execution blocks now show an elapsed-time footer after 500ms, refresh it every 100ms while running, and replace
-it with the existing final "Took X.Xs" footer on completion. Fast, suppressed, and hydrated completed tools remain
-timer-free. Automated verification passed.
-
-## Deviations from Plan
-
-Coverage was added to message hydration tests instead of the proposed dedicated TUI API timer test.
+TUI tool blocks show a live elapsed-time footer for longer-running tools and replace it with the final duration on completion. Fast tools, suppressed tools, and restored completed tools remain timer-free.

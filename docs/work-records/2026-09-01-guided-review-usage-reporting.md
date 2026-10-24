@@ -16,20 +16,8 @@ provenance:
 
 ## Summary
 
-Guided Review now forwards provider runtime usage from the hidden `wld guided-review` command to Workspace jobs without
-mixing protocol data into review JSON. Workspace aggregates live token and USD cost totals, preserves partial totals on
-failure, and the toolbar now shows clear pending, available, and unavailable usage states. Automated command, route,
-runtime, workspace, seam, and full CI checks passed.
-
-## Deviations from Plan
-
-The headed browser check used port 5174 because 5173 was already in use.
-
-## Deferred Work
-
-The manual real-provider check was not run; no live LLM call was made.
+Guided Review forwards provider runtime usage to Workspace jobs without mixing protocol data into review JSON. Workspace aggregates live token and USD cost totals, preserves partial totals on failure, and shows distinct pending, available, and unavailable usage states.
 
 ## Future Planning Notes
 
-Keep usage protocol data off stdout when a subprocess also returns machine-readable content. For runtime usage, event
-presence must decide availability so valid zero-token or zero-cost reports are not shown as unavailable.
+Keep usage protocol data off stdout when a subprocess also returns machine-readable content. Event presence determines availability so valid zero-token or zero-cost reports are not shown as unavailable.

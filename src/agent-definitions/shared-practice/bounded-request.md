@@ -1,6 +1,6 @@
 ---
 name: Shared Bounded Request Practice
-description: "Contract for the elastic QUICK_FIX request shape that arrives as direct request-only work. Composed into agent prompts by name; not an agent and never listed by /agent."
+description: "Contract for the elastic QUICK_FIX request shape that arrives as direct request-only work."
 ---
 
 ## The QUICK_FIX Contract

@@ -11,11 +11,8 @@ provenance:
         - "a1d46cfe-1b25-4144-bd33-f71e4316e09d"
 ---
 
-# Offer Session Compaction Before Resume
+# Session compaction before resume
 
 ## Summary
 
-Updated `/resume` to estimate the selected session’s token usage before loading it. Sessions exceeding the configured
-context-window threshold now offer Compact now, Resume as-is, or Cancel. The flow handles estimation, model-context
-fallback, configurable thresholds, compaction failures or cancellation, and normal message restoration. Verification
-completed successfully.
+The /resume workflow estimates the selected Session's token use before loading it. Sessions above the configured context-window threshold offer Compact now, Resume as-is, or Cancel. The flow handles model-context fallback, compaction failure or cancellation, and normal message restoration.

@@ -260,6 +260,7 @@ export async function runPublicationPhase(
     humanReviewMetadata: HumanReviewMetadata,
 ): Promise<PublicationOutcome> {
     args.session.assertLive();
+    args.session.releaseActiveAgent();
     const outcome = await withPlanLock(
         context.projectRoot,
         args.planName,
