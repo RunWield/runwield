@@ -27,7 +27,7 @@ order: 1
 dependencies: []
 userVerifiedAt: null
 targetBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Corpus Selection, Oracle Verdicts, and Edge-Case Fixtures

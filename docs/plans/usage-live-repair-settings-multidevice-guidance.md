@@ -54,8 +54,8 @@ documentation flow: after an example of a settings file, before the detailed ref
     - Heading `## Usage`.
     - One paragraph advising readers to open the same Project and select the same date range before comparing Usage
       report totals across devices; verify the host time zone and check coverage notices match between devices.
-    - A relative markdown link `[Pair your browser](workspace.md#pair-your-browser)` pointing to the Workspace
-      browser-pairing setup guide.
+    - A relative Markdown link labeled “Pair your browser” with destination `workspace.md#pair-your-browser`, pointing
+      to the [Workspace browser-pairing setup guide](../user-documentation/workspace.md#pair-your-browser).
     - The section is placed between the closing code fence of the Example section and the `## Agent Model Overrides`
       heading (after line 109).
 - No other sections, examples, code samples, or settings content in the file are modified.
@@ -72,8 +72,8 @@ No external tickets identified. No Work Records superseded. Plan scope is docume
 
 - Pair reviews the rendered `## Usage` section in `docs/user-documentation/settings.md`.
 - Verify the paragraph mentions: same Project, same date range, host time zone, and coverage notices.
-- Click the relative link `[Pair your browser](workspace.md#pair-your-browser)` and confirm it navigates to the
-  Workspace browser-pairing section in workspace.md.
+- Click “Pair your browser” and confirm it navigates to the
+  [Workspace browser-pairing section](../user-documentation/workspace.md#pair-your-browser).
 - Confirm no other content in settings.md has been modified.
 
 **Expected result:**
