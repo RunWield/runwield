@@ -454,7 +454,7 @@
     "src/shared/workflow/validation-loop-delivery.test.ts",
     "src/shared/workflow/validation-loop-human-review.test.js",
     "src/shared/workflow/validation-loop-recovery.test.ts",
-    "src/shared/workflow/validation-loop-repair.test.js",
+    "src/shared/workflow/validation-loop-repair.test.ts",
     "src/shared/workflow/validation-loop-review.test.js",
     "src/shared/workflow/validation-manual-qa.test.ts",
     "src/shared/workflow/validation-merge-repair.test.ts",

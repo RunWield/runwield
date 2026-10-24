@@ -6,12 +6,18 @@ import { loadPlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { ensureRootAgentSession } from "../session/session.js";
 import { dispatchCiRepair } from "./validation-mechanical.ts";
+import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
 
-/**
- * @param {{ reportCompletion: boolean }} options
- */
-async function runCiRepair(options) {
+interface CiRepairOptions {
+    reportCompletion: boolean;
+}
+
+interface RepairTurnRequest {
+    userRequest: string;
+}
+
+async function runCiRepair(options: CiRepairOptions) {
     return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactory }) => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "PLANNED_CHANGE",
@@ -34,7 +40,7 @@ async function runCiRepair(options) {
         setModelResponseFactory(() =>
             options.reportCompletion
                 ? fauxAssistantMessage(fauxToolCall("task_completed", { message: "- CI repair completed." }))
-                : fauxAssistantMessage(fauxText("CI repair remains incomplete."))
+                : fauxAssistantMessage(fauxText("CI repair remains incomplete.")),
         );
         let ciRuns = 0;
         const result = await runValidationLoop({
@@ -92,7 +98,7 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
             getAgentDisplayName: () => "Validation Repair Engineer",
             getCurrentProgress: () => null,
             emitStatus: () => {},
-            runIndependentRepairTurn: (/** @type {{ userRequest: string }} */ request) => {
+            runIndependentRepairTurn: (request: RepairTurnRequest) => {
                 capturedRequest = request.userRequest;
                 return Promise.resolve({ completed: true });
             },
@@ -101,11 +107,11 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
         triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
     };
 
-    await dispatchCiRepair(
-        /** @type {any} */ (args),
-        /** @type {any} */ (context),
-        { kind: "completed", exitCode: 1, output: "broken command" },
-    );
+    await dispatchCiRepair(args as unknown as ValidationLoopArgs, context as PhaseContext, {
+        kind: "completed",
+        exitCode: 1,
+        output: "broken command",
+    });
 
     assertStringIncludes(capturedRequest, "Repair checkout: `/repair-checkout`");
     assertStringIncludes(capturedRequest, ".wld/settings.json");
