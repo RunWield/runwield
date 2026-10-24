@@ -140,3 +140,18 @@ Manual verification steps for reliable-usage-dashboard-and-langfuse-export/08-la
       values.
 
 <!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
+<!-- runwield:manual-qa:start child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
+## Workspace Export Settings and Delivery Status
+
+Manual verification steps for reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status
+
+- [ ] Open `/usage` and `/usage/settings`; confirm the Report and Settings tabs, active-tab highlight, status strip, and Back navigation work.
+- [ ] In Settings, inspect recording state and each available exporter state. Confirm an unapproved exporter has no destination form, and an approved exporter can create a destination.
+- [ ] Create a destination with a loopback HTTP endpoint and credentials. Confirm the local-development badge appears and the credential fields clear after save; verify the secret is absent from Network responses, browser storage, and page source.
+- [ ] Confirm delivery counts and explanations appear. Confirm no retry or resend control is available.
+- [ ] Use the dialogs to clear history and revoke a destination. Confirm the warnings appear before each action, Sessions and Plans remain after clear, and `/usage` still loads.
+- [ ] At 390 px and compact desktop width, use the keyboard to reach controls and operate dialogs; confirm focus returns to each dialog trigger.
+
+<!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->

@@ -508,6 +508,7 @@ test("interrupted clear hides old rows and the next writer completes deletion", 
         );
         const fenced = new UsageReporter().query([projectRoot], period, zone);
         assertEquals(fenced.projects[0].coverage.unavailable, true);
+        assertEquals(fenced.projects[0].coverage.historyClearPending, true);
         assertEquals(fenced.projects[0].links, []);
         assert(
             (

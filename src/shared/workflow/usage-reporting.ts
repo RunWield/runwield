@@ -123,6 +123,7 @@ export interface UsageProjectCoverage {
     corruptLines: number;
     incompleteTail: boolean;
     unavailable: boolean;
+    historyClearPending: boolean;
     overlappingUsage: number;
 }
 
@@ -433,9 +434,11 @@ export class UsageReporter {
             const projectId = projectIdentity(path);
             let cache: JournalCache;
             let unavailable = false;
+            let historyClearPending = false;
             try {
                 cache = this.refresh(path);
             } catch (error) {
+                historyClearPending = error instanceof Error && error.message === "history_clear_pending";
                 unavailable = !(error instanceof Error && "code" in error && error.code === "ENOENT");
                 this.journals.delete(path);
                 cache = { epoch: "initial", offset: 0, rows: new Map(), corruptLines: 0, incompleteTail: false };
@@ -705,6 +708,7 @@ export class UsageReporter {
                     corruptLines: cache.corruptLines,
                     incompleteTail: cache.incompleteTail,
                     unavailable,
+                    historyClearPending,
                     overlappingUsage,
                 },
             };
