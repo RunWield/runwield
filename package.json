@@ -75,7 +75,7 @@
         "@agentclientprotocol/sdk": "1.4.0",
         "@astrojs/check": "0.9.10",
         "@astrojs/react": "6.0.1",
-        "@base-ui/react": "1.7.0",
+        "@base-ui/react": "1.9.0",
         "@codemirror/autocomplete": "6.20.3",
         "@codemirror/commands": "6.11.1",
         "@codemirror/lang-javascript": "6.2.5",
