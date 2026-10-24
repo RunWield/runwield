@@ -715,7 +715,7 @@
     "src/ui/workspace/workspace-plan-review-ux.test.tsx",
     "src/ui/workspace/workspace-plan-review.integration.test.ts",
     "src/ui/workspace/workspace-portable.test.ts",
-    "src/ui/workspace/workspace-pwa.test.js",
+    "src/ui/workspace/workspace-pwa.test.ts",
     "src/ui/workspace/workspace-remote-review.test.js",
     "src/ui/workspace/workspace-remote-server.test.ts",
     "src/ui/workspace/workspace-remote-storage.test.js",
