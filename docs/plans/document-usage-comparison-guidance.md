@@ -12,7 +12,7 @@ origin: "internal"
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 deliveryBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Document Usage report comparison guidance for paired devices

@@ -107,6 +107,12 @@ used by later invocations.
 }
 ```
 
+## Usage
+
+To compare Usage totals on your paired desktop and phone, select the same Project filter and date range on each
+device. Confirm that the displayed host time zone and coverage notices match, then select **Apply range** on each
+device. See [Pair your browser](usage-acceptance-missing.md#pair-your-browser) for pairing instructions.
+
 ## Agent Model Overrides
 
 Bundled agent names are `architect`, `engineer`, `guide`, `ideator`, `operator`, `planner`, `router`, and `tester`.
