@@ -13,6 +13,12 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 deliveryBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 status: "reviewed"
+validatedCommit: "9a6f6c160931ee76c7ad1b9302928fd1185e1534"
+workRecord:
+    status: "generated"
+    recordId: "9741e9b0-dfce-4561-be51-f55ee1f7600a"
+    path: "docs/work-records/2026-10-24-clarified-usage-gaps-versus-zero-activity.md"
+    lastAttemptAt: "2026-10-24T20:19:07.689Z"
 ---
 
 # Document Usage Gap Comparison Guidance
