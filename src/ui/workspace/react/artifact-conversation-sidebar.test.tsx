@@ -35,7 +35,7 @@ test("review chat enables annotation-only send by click and keyboard, and disabl
                 await act(() =>
                     root.render(
                         <ArtifactConversationSidebar {...props} attachedContextLabel="1 review note attached" />,
-                    )
+                    ),
                 );
                 assertEquals(sendButton().disabled, false);
                 const before = sends;
@@ -44,7 +44,7 @@ test("review chat enables annotation-only send by click and keyboard, and disabl
                 await act(() =>
                     textarea.dispatchEvent(
                         new browser.KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
-                    )
+                    ),
                 );
                 assertEquals(sends, before + 2);
                 for (const blocking of [{ working: true }, { disabled: true }]) {
@@ -55,7 +55,7 @@ test("review chat enables annotation-only send by click and keyboard, and disabl
                                 attachedContextLabel="1 review note attached"
                                 {...blocking}
                             />,
-                        )
+                        ),
                     );
                     assertEquals(sendButton().disabled, true);
                 }
@@ -63,6 +63,44 @@ test("review chat enables annotation-only send by click and keyboard, and disabl
                 assertEquals(sendButton().disabled, true);
                 await act(() => root.render(<ArtifactConversationSidebar {...props} composer="Explain this change" />));
                 assertEquals(sendButton().disabled, false);
+                const toggles: string[] = [];
+                const queue = {
+                    items: [{ type: "annotations", label: "annotations", count: 2, included: true }],
+                    onToggle: (type: string) => {
+                        toggles.push(type);
+                    },
+                };
+                await act(() => root.render(<ArtifactConversationSidebar {...props} queue={queue} />));
+                assertEquals(sendButton().disabled, false);
+                await act(() =>
+                    container.querySelector<HTMLButtonElement>('[aria-label="Exclude annotations"]')!.click(),
+                );
+                assertEquals(toggles, ["annotations"]);
+                const queueBefore = sends;
+                await act(() =>
+                    container
+                        .querySelector("textarea")!
+                        .dispatchEvent(
+                            new browser.KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
+                        ),
+                );
+                assertEquals(sends, queueBefore + 1);
+                await act(() => root.render(<ArtifactConversationSidebar {...props} queue={queue} working />));
+                assertEquals(sendButton().disabled, true);
+                assertEquals(
+                    container.querySelector<HTMLButtonElement>('[aria-label="Exclude annotations"]')!.disabled,
+                    true,
+                );
+                await act(() =>
+                    root.render(
+                        <ArtifactConversationSidebar
+                            {...props}
+                            queue={{ ...queue, items: [{ ...queue.items[0], included: false }] }}
+                        />,
+                    ),
+                );
+                assertEquals(sendButton().disabled, true);
+                assertEquals(Boolean(container.querySelector('[aria-label="Include annotations"]')), true);
             }
         } finally {
             await act(() => root.unmount());

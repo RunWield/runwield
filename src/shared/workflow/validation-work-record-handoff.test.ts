@@ -6,7 +6,7 @@ import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd
 import { savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { getRunWieldSessionDir } from "../session/root-session.js";
-import { listWorkRecords, writeWorkRecord } from "../work-records/store.js";
+import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.js";
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
@@ -45,18 +45,22 @@ async function runWorkRecordHandoff(
     const respondToHandoff: FauxResponseFactory = (context) =>
         JSON.stringify(context).includes("post-verification checklist")
             ? fauxAssistantMessage(
-                fauxToolCall("manual_qa_completed", {
-                    checklistMarkdown: "Manual verification steps\n- [ ] Exercise the verified feature.",
-                }),
-            )
-            : fauxAssistantMessage(fauxToolCall("work_record_completed", {
-                title: "Verified Feature Outcome",
-                summary: "Generated through the real post-verification handoff.",
-                supersessionProposals: [{
-                    recordId: PREDECESSOR_RECORD_ID,
-                    reason: "The verified implementation replaces the older implementation.",
-                }],
-            }));
+                  fauxToolCall("manual_qa_completed", {
+                      checklistMarkdown: "Manual verification steps\n- [ ] Exercise the verified feature.",
+                  }),
+              )
+            : fauxAssistantMessage(
+                  fauxToolCall("work_record_completed", {
+                      title: "Verified Feature Outcome",
+                      summary: "Generated through the real post-verification handoff.",
+                      supersessionProposals: [
+                          {
+                              recordId: PREDECESSOR_RECORD_ID,
+                              reason: "The verified implementation replaces the older implementation.",
+                          },
+                      ],
+                  }),
+              );
     setModelResponseFactories([respondToHandoff, respondToHandoff]);
     const mnemotecaPort = createWorkRecordMnemotecaFixture();
     const ui = makeUi();
@@ -102,7 +106,7 @@ test("post-verification handoffs run real Work Record machinery through the Mnem
     await withRuntimeCommandFixture("validation-work-record-", async (fixture) => {
         const { records, indexCount, sessionManager, ui } = await runWorkRecordHandoff(fixture);
         const generated = records.find((record) =>
-            record.attrs.provenance?.sourcePlans?.includes("verified-feature-id")
+            record.attrs.provenance?.sourcePlans?.includes("verified-feature-id"),
         );
 
         assertEquals(records.length, 2);
@@ -110,18 +114,18 @@ test("post-verification handoffs run real Work Record machinery through the Mnem
         assertStringIncludes(generated?.summary || "", "real post-verification handoff");
         assertEquals(generated?.attrs.supersessionProposal?.candidates[0].recordId, PREDECESSOR_RECORD_ID);
         assertEquals(indexCount, 1);
-        const checklist = sessionManager.getEntries().find((entry) =>
-            entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"
-        );
+        const checklist = sessionManager
+            .getEntries()
+            .find((entry) => entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist");
         assertEquals(checklist?.type, "custom");
         if (checklist?.type === "custom") {
             assertStringIncludes(JSON.stringify(checklist.data), "Exercise the verified feature");
         }
-        const qaStartIndex = ui.messages.findIndex((message: string) =>
-            message === "Generating the manual QA test list..."
+        const qaStartIndex = ui.messages.findIndex(
+            (message: string) => message === "Generating the manual QA test list...",
         );
-        const creationStartIndex = ui.messages.findIndex((message: string) =>
-            message === "Generating the Work Record for the current plan..."
+        const creationStartIndex = ui.messages.findIndex(
+            (message: string) => message === "Generating the Work Record for the current plan...",
         );
         const creationDoneIndex = ui.messages.findIndex((message: string) => message === "The Work Record is ready.");
         assertEquals(qaStartIndex >= 0, true);
@@ -129,9 +133,10 @@ test("post-verification handoffs run real Work Record machinery through the Mnem
         assertEquals(creationDoneIndex > creationStartIndex, true);
         assertEquals(ui.messages.filter((message: string) => message === "The Work Record is ready.").length, 1);
         assertEquals(
-            ui.messages.some((message: string) =>
-                message.includes(`Supersession proposal remains pending: ${PREDECESSOR_RECORD_ID}`) &&
-                message.includes("wld wr supersede")
+            ui.messages.some(
+                (message: string) =>
+                    message.includes(`Supersession proposal remains pending: ${PREDECESSOR_RECORD_ID}`) &&
+                    message.includes("wld wr supersede"),
             ),
             true,
         );
@@ -175,10 +180,12 @@ test("post-verification canceled hosted interaction retains the proposal without
         const successor = records.find((record) => record.attrs.recordId !== PREDECESSOR_RECORD_ID);
 
         assertEquals(ui.promptSelections, ["canceled"]);
-        assertEquals(successor?.attrs.supersessionProposal?.candidates, [{
-            recordId: PREDECESSOR_RECORD_ID,
-            reason: "The verified implementation replaces the older implementation.",
-        }]);
+        assertEquals(successor?.attrs.supersessionProposal?.candidates, [
+            {
+                recordId: PREDECESSOR_RECORD_ID,
+                reason: "The verified implementation replaces the older implementation.",
+            },
+        ]);
         assertEquals(successor?.attrs.supersedes, undefined);
         assertEquals(predecessor?.attrs.status, "approved");
         assertEquals(predecessor?.attrs.supersededBy, undefined);

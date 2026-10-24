@@ -36,7 +36,7 @@ local RunWield setup.
 local browser reviews, connected-only execution, and saved Session resume.
 
 **Not included:** Unattended execution, source-code synchronization, a required local checkout, multi-user
-collaboration, hosted Workspace registration, remote ACP clients, migration of an existing local Session to another
+collaboration, remote ACP clients, migration of an existing local Session to another
 checkout, or automatic installation of every project dependency. Hostile-server isolation is not promised.
 
 ## Product Fit and Main Journey
@@ -105,7 +105,7 @@ and host verification, resolves an existing remote directory (remote home by def
 there. Git is optional. The remote Linux host needs `python3`, SSHFS/FUSE for the personal mount, a writable private
 cache, and an executable compatible with the preflight for the matching glibc-linked Linux x86-64 or ARM64 build. The
 local machine needs OpenSSH and an explicitly built matching development bundle; see
-[build steps](runwield-core-prd.md#installation-and-updates). Runtime preparation checks build/protocol identity and
+[build steps](../contributing.md#remote-development-bundle). Runtime preparation checks build/protocol identity and
 checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
 profile. Normal runtime startup requires executable `cymbal` and `ketch` helpers on the remote `PATH`; private binary
 staging alone does not supply them. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up

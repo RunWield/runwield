@@ -12,16 +12,12 @@ provenance:
         - "4c50a988-e730-4699-a0c6-df199f54addf"
 ---
 
-# PR-style review patches across all consumers
+# Shared common-ancestor review patches
 
 ## Summary
 
-Replaced direct target-tip review diffs with one common-ancestor-to-current-files patch shared by Reviewer tools, repair
-and resume flows, standalone Code Review, and Workspace reload. The patch includes committed and uncommitted execution
-work while excluding target-only changes. Invalid ancestry now fails closed, transient Git read fallbacks remain
-available, and tests, checks, documentation updates, and headed browser verification confirmed the behavior.
+Reviewer tools, repair and resume flows, standalone Code Review, and Workspace reload share one common-ancestor-to-current-files patch. It includes committed and uncommitted execution work while excluding target-only changes. Invalid ancestry fails closed, and transient Git read failures retain saved-patch fallback.
 
 ## Future Planning Notes
 
-Keep full review patches anchored to the target/execution common ancestor. Treat missing ancestry as an invalid
-comparison, but preserve saved-patch fallback for transient checkout read failures.
+Anchor full review patches to the target/execution common ancestor. Missing ancestry is an invalid comparison, while transient checkout read failures may use the saved patch.

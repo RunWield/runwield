@@ -22,8 +22,4 @@ provenance:
 
 ## Summary
 
-The Workspace Code Review surface now matches the established Plannotator review model while retaining RunWield's
-header, design-system styling, theme bridge, and focused settings. Its richer fixture presents multiple change types in
-a sidebar-ordered accordion; sidebar clicks navigate to the correct diff, Viewed collapses a file, and unchecking it
-reopens the file without forcing a scroll. Inline and global annotations work throughout, and both feedback and approval
-deliver every current comment and available annotated image to the agent.
+The Workspace Code Review surface matches the established Plannotator review model while retaining RunWield's header, design-system styling, theme bridge, and focused settings. A sidebar-ordered accordion supports file navigation and Viewed state; marking a file Viewed collapses it, and unchecking it reopens it without forcing a scroll. Inline and global annotations work throughout, and both feedback and approval deliver every current comment and available annotated image to the Agent.

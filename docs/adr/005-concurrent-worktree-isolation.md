@@ -68,8 +68,13 @@ publication first. Stale primary copies with the same Plan ID remain hidden afte
 
 ### Lifecycle
 
-1. **Plan child work:** when a targeted Epic child is opened for planning, resolve the latest target branch, create or
-   reuse one planning worktree, and bind Planner tools to that directory. This records document ownership only.
+1. **Start a Plan session:** only when planning, review, re-review, execution, or automatic continuation starts a
+   session in a targeted child, fetch the latest Epic branch and create or refresh its planning worktree. Bind the
+   session tools to that directory. All Plans use this preparation, including standalone Plans with a recorded delivery
+   branch. This records document ownership only. Plan location lookups are pure; loading or selecting a child never
+   creates a worktree. Session-less writes to an unstarted child without a worktree are refused with guidance to start
+   planning first. Creating on write was rejected because collaboration and lifecycle operations would still create
+   stale worktrees for children nobody started. Existing planning worktrees are reused, not removed.
 2. **Prepare execution:** after approval, promote that planning worktree or create a new execution worktree for ordinary
    Plans. Materialize the Plan and record the execution baseline before implementation starts.
 3. **Execute:** agents, editing tools, checks, diffs, and repair sessions use the explicit execution directory. RunWield

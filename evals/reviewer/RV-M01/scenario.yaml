@@ -1,0 +1,18 @@
+schemaVersion: 1
+scenarioId: RV-M01
+track: discovery
+fixtureRevision: 2
+planPath: docs/plans/configure-project-listing.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - multiple-defects
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate

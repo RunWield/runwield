@@ -79,7 +79,7 @@ export function listSavedRemoteSessions(
     for (const project of listProjectsFromDisk(baseDir).filter(
         (project) => project.remote && (!scope || scope.projectIds.includes(project.projectId)),
     )) {
-        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), false)) {
+        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), true)) {
             if (scope?.sessionId && manifest.runwieldSessionId !== scope.sessionId) continue;
             try {
                 const session = savedSession(project, manifest);
@@ -180,7 +180,7 @@ export class LaptopSessionControl {
         for (const project of listProjectsFromDisk(this.#store.path).filter((project) =>
             this.#projectMatches(project),
         )) {
-            const found = listManifests(sessionDirForProject(this.#store.path, project), false).find(
+            const found = listManifests(sessionDirForProject(this.#store.path, project), true).find(
                 ({ manifest }) => manifest.runwieldSessionId === sessionId,
             );
             if (found) return { project, ...found };
@@ -198,7 +198,7 @@ export class LaptopSessionControl {
             // remains a read of published evidence only.
             const projects = listProjectsFromDisk(store.path).filter((project) => this.#projectMatches(project));
             for (const project of projects) {
-                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), false)) {
+                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), true)) {
                     if (manifest.generation || (input.sessionId && input.sessionId !== manifest.runwieldSessionId)) {
                         continue;
                     }
@@ -280,7 +280,7 @@ export class LaptopSessionControl {
                     );
                     const directory = sessionDirForProject(store.path, project);
                     if (
-                        listManifests(directory, false).some(
+                        listManifests(directory, true).some(
                             ({ manifest }) => manifest.runwieldSessionId === input.sessionId,
                         )
                     ) {

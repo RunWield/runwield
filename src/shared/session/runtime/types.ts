@@ -92,7 +92,7 @@ export interface PromptSessionResult {
     error?: string;
     replacementSessionId?: string;
     templateNewSession?: boolean;
-    _validationResult?: import("./workflows.ts").RuntimeValidationResult | null;
+    _validationResult?: import("./workflow-options.ts").RuntimeValidationResult | null;
     namedInvocation?: {
         kind: string;
         name: string;

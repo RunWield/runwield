@@ -110,7 +110,7 @@ test("a timed-out test reaps a SIGTERM-resistant process and reports the timeout
                 "eval",
                 `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(
                     pidPath,
-                )}, String(process.pid)); if (process.platform !== "win32") process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);`,
+                )}, String(process.pid)); process.stdout.write("timeout stdout\\n"); process.stderr.write("timeout stderr\\n"); if (process.platform !== "win32") process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);`,
             ]),
             { failureLabel: "tests", timeoutMs: 500, command: process.execPath },
         );
@@ -118,7 +118,10 @@ test("a timed-out test reaps a SIGTERM-resistant process and reports the timeout
         assertEquals(result.code, 124);
         assertEquals(performance.now() - startedAt < 10_000, true);
         assertStringIncludes(result.stderr, "tests timed out");
-        assertStringIncludes(await fsReadFile(failureLogPath, "utf8"), "exceeded 0.5s");
+        const failureLog = await fsReadFile(failureLogPath, "utf8");
+        assertStringIncludes(failureLog, "exceeded 0.5s");
+        assertStringIncludes(failureLog, "timeout stdout");
+        assertStringIncludes(failureLog, "timeout stderr");
         const pid = Number(await fsReadFile(pidPath, "utf8"));
         let stopped = false;
         try {

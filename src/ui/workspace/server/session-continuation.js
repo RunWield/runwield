@@ -1,4 +1,11 @@
 import fs, { stat as fsStat } from "node:fs/promises";
+/**
+ * @typedef {Object} LiveCodeReviewOptions
+ * @property {string} projectId
+ * @property {string} operationId
+ * @property {string} interactionId
+ * @property {string} runwieldSessionId
+ */
 import { validateSequenceReviewDecision } from "../../../shared/workflow/sequence-review.ts";
 import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
 /* @module ui/workspace/server/session-continuation */
@@ -106,10 +113,10 @@ function browserTimelineProjection(projection) {
         ...projection,
         events: Array.isArray(projection.events)
             ? projection.events.map((event) => {
-                if (!event || typeof event !== "object") return event;
-                const { _meta, ...safeEvent } = /** @type {Record<string, unknown>} */ (event);
-                return safeEvent;
-            })
+                  if (!event || typeof event !== "object") return event;
+                  const { _meta, ...safeEvent } = /** @type {Record<string, unknown>} */ (event);
+                  return safeEvent;
+              })
             : projection.events,
         segments: Array.isArray(projection.segments) ? projection.segments : [],
     };
@@ -118,23 +125,26 @@ function browserTimelineProjection(projection) {
 /** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} request */
 function safePlanReviewReference(request) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
-    const triageMeta = meta.triageMeta && typeof meta.triageMeta === "object"
-        ? /** @type {Record<string, unknown>} */ (meta.triageMeta)
-        : {};
-    const planId = typeof meta.planId === "string" && meta.planId.trim()
-        ? meta.planId.trim()
-        : typeof triageMeta.planId === "string" && triageMeta.planId.trim()
-        ? triageMeta.planId.trim()
-        : typeof meta.planName === "string" && meta.planName.trim()
-        ? meta.planName.trim()
-        : "";
+    const triageMeta =
+        meta.triageMeta && typeof meta.triageMeta === "object"
+            ? /** @type {Record<string, unknown>} */ (meta.triageMeta)
+            : {};
+    const planId =
+        typeof meta.planId === "string" && meta.planId.trim()
+            ? meta.planId.trim()
+            : typeof triageMeta.planId === "string" && triageMeta.planId.trim()
+              ? triageMeta.planId.trim()
+              : typeof meta.planName === "string" && meta.planName.trim()
+                ? meta.planName.trim()
+                : "";
     if (!planId) return null;
     const planName = typeof meta.planName === "string" && meta.planName.trim() ? meta.planName.trim() : planId;
-    const classification = typeof meta.classification === "string" && meta.classification.trim()
-        ? meta.classification.trim()
-        : typeof triageMeta.classification === "string"
-        ? triageMeta.classification
-        : "PLANNED_CHANGE";
+    const classification =
+        typeof meta.classification === "string" && meta.classification.trim()
+            ? meta.classification.trim()
+            : typeof triageMeta.classification === "string"
+              ? triageMeta.classification
+              : "PLANNED_CHANGE";
     return {
         planId,
         planName,
@@ -144,19 +154,20 @@ function safePlanReviewReference(request) {
         expectedRevision: typeof meta.expectedRevision === "string" ? meta.expectedRevision : null,
         reviewedSource: meta.reviewedSource && typeof meta.reviewedSource === "object" ? meta.reviewedSource : null,
         expectedStatus: typeof meta.expectedStatus === "string" ? meta.expectedStatus : null,
-        expectedWorktree: meta.expectedWorktree && typeof meta.expectedWorktree === "object"
-            ? meta.expectedWorktree
-            : null,
+        expectedWorktree:
+            meta.expectedWorktree && typeof meta.expectedWorktree === "object" ? meta.expectedWorktree : null,
         previousPlan: typeof meta.previousPlan === "string" && meta.previousPlan.trim() ? meta.previousPlan : null,
         planVersions: Array.isArray(meta.planVersions)
             ? meta.planVersions.flatMap((entry) =>
-                entry && typeof entry === "object" && typeof entry.plan === "string"
-                    ? [{
-                        plan: entry.plan,
-                        timestamp: typeof entry.timestamp === "string" ? entry.timestamp : "",
-                    }]
-                    : []
-            )
+                  entry && typeof entry === "object" && typeof entry.plan === "string"
+                      ? [
+                            {
+                                plan: entry.plan,
+                                timestamp: typeof entry.timestamp === "string" ? entry.timestamp : "",
+                            },
+                        ]
+                      : [],
+              )
             : [],
     };
 }
@@ -165,24 +176,27 @@ function safePlanReviewReference(request) {
 function safeCodeReviewReference(request) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const rawPatch = typeof meta.diffText === "string" ? meta.diffText : "";
-    const planName = typeof meta.planName === "string" && meta.planName.trim()
-        ? meta.planName.trim()
-        : "Workspace changes";
+    const planName =
+        typeof meta.planName === "string" && meta.planName.trim() ? meta.planName.trim() : "Workspace changes";
     const planTitle = typeof meta.planTitle === "string" && meta.planTitle.trim() ? meta.planTitle.trim() : planName;
     const conversation = meta.reviewConversation;
-    const conversationEvents = conversation && typeof conversation === "object" && "events" in conversation &&
-            Array.isArray(conversation.events)
-        ? conversation.events
-        : [];
+    const conversationEvents =
+        conversation &&
+        typeof conversation === "object" &&
+        "events" in conversation &&
+        Array.isArray(conversation.events)
+            ? conversation.events
+            : [];
     return {
         rawPatch,
         conversationEvents,
         gitRef: `RunWield workflow diff: ${planName}`,
         planName,
         planTitle,
-        agentLabel: typeof meta.agentLabel === "string" && meta.agentLabel.trim()
-            ? meta.agentLabel.trim()
-            : "Reviewer Feedback Engineer",
+        agentLabel:
+            typeof meta.agentLabel === "string" && meta.agentLabel.trim()
+                ? meta.agentLabel.trim()
+                : "Reviewer Feedback Engineer",
     };
 }
 
@@ -203,9 +217,15 @@ function safeArtifactReviewReference(request) {
 function readPlanReviewDecisionMeta(response) {
     if (!response || typeof response !== "object") return {};
     const source = /** @type {Record<string, unknown>} */ (response);
-    return source._meta && typeof source._meta === "object"
-        ? /** @type {Record<string, unknown>} */ (source._meta)
-        : source;
+    const decision =
+        source._meta && typeof source._meta === "object"
+            ? /** @type {Record<string, unknown>} */ (source._meta)
+            : source;
+    // Feedback and review chat may omit approved, but an explicit decision must be boolean.
+    if (Object.hasOwn(decision, "approved") && typeof decision.approved !== "boolean") {
+        throw new Error("Plan review approved must be a boolean.");
+    }
+    return decision;
 }
 
 /** @param {unknown} response @returns {import("../../../shared/session/session-runtime-interactions.js").RuntimeInteractionResponse} */
@@ -238,9 +258,12 @@ async function readSessionListInfo(transcriptPath) {
         const stat = await fsStat(transcriptPath);
         const cached = sessionListInfoCache.get(transcriptPath);
         if (
-            cached && cached.size === stat.size && cached.mtime === stat.mtime?.getTime() &&
+            cached &&
+            cached.size === stat.size &&
+            cached.mtime === stat.mtime?.getTime() &&
             cached.ctime === stat.ctime?.getTime()
-        ) return cached.info;
+        )
+            return cached.info;
         const entries = [];
         const transcript = await fs.readFile(transcriptPath, "utf8");
         for (const line of transcript.split("\n")) {
@@ -374,6 +397,9 @@ export class WorkspaceSessionContinuationService {
     close() {
         if (this.closing) return this.closing;
         this.closing = (async () => {
+            // Accepted operations can wait for a model or a browser answer. Cancel
+            // those waits before draining them, while their store is still open.
+            for (const session of this.runtime.listSessions()) this.runtime.cancelSession(session.id);
             while (this.backgroundOperations.size) await Promise.all(this.backgroundOperations);
             await Promise.all(this.closingRetainedSessions.values());
             await this.runtime.closeAllSessionsWhenIdle();
@@ -416,9 +442,12 @@ export class WorkspaceSessionContinuationService {
         } else {
             const stopped =
                 /** @type {import('../../../shared/session/session-runtime-events.js').RuntimeAttentionRequestedEvent | undefined} */ (
-                    record.events.findLast((event) =>
-                        event.type === "attention_requested" && event.reason === "agentStopped" && !event.eventId &&
-                        !event.notificationSurface
+                    record.events.findLast(
+                        (event) =>
+                            event.type === "attention_requested" &&
+                            event.reason === "agentStopped" &&
+                            !event.eventId &&
+                            !event.notificationSurface,
                     )
                 );
             this.operations.set(operationId, {
@@ -428,17 +457,19 @@ export class WorkspaceSessionContinuationService {
                 generation: record.generation ?? null,
                 error: record.error,
                 events: stopped
-                    ? [{
-                        type: stopped.type,
-                        reason: stopped.reason,
-                        agentName: stopped.agentName,
-                        sessionName: stopped.sessionName,
-                        sessionId: stopped.sessionId,
-                        timestamp: stopped.timestamp,
-                    }]
+                    ? [
+                          {
+                              type: stopped.type,
+                              reason: stopped.reason,
+                              agentName: stopped.agentName,
+                              sessionName: stopped.sessionName,
+                              sessionId: stopped.sessionId,
+                              timestamp: stopped.timestamp,
+                          },
+                      ]
                     : [],
-                browserNotificationPolicy: previous?.browserNotificationPolicy ||
-                    this.resolveBrowserNotificationPolicy(record.projectId),
+                browserNotificationPolicy:
+                    previous?.browserNotificationPolicy || this.resolveBrowserNotificationPolicy(record.projectId),
             });
             this.closeRemoteNotifications(operationId);
         }
@@ -460,10 +491,11 @@ export class WorkspaceSessionContinuationService {
         const retained = this.retainedSessions.get(runwieldSessionId);
         if (!retained || this.openingContinuations.has(runwieldSessionId)) return;
         if (
-            [...this.operations.values()].some((operation) =>
-                operation.runwieldSessionId === runwieldSessionId && operation.status === "running"
+            [...this.operations.values()].some(
+                (operation) => operation.runwieldSessionId === runwieldSessionId && operation.status === "running",
             )
-        ) return;
+        )
+            return;
         const tasks = this.runtime.getSessionBackgroundTaskState(retained.sessionId);
         if (tasks && (tasks.active > 0 || tasks.pending > 0)) return;
         // Remove ownership synchronously before awaiting disposal; a new submission
@@ -512,8 +544,8 @@ export class WorkspaceSessionContinuationService {
                 if (record?.status === "running") {
                     record.runtimeSessionId = nextId;
                     record.events = [];
-                    record.runwieldSessionId = this.runtime.getSessionSnapshot(nextId)?.managed?.runwieldSessionId ||
-                        null;
+                    record.runwieldSessionId =
+                        this.runtime.getSessionSnapshot(nextId)?.managed?.runwieldSessionId || null;
                 }
                 this.retainedSessions.set(runwieldSessionId, { sessionId: nextId, unsubscribe: () => unsubscribe() });
                 unsubscribe = this.runtime.subscribeSessionEvents(nextId, receive);
@@ -540,7 +572,8 @@ export class WorkspaceSessionContinuationService {
                 if (record) this.setOperation(currentOperationId, { ...record, status: "completed" });
             }
             if (
-                event.type === "busy_changed" && !event.busy || event.type === "background_task_settled" ||
+                (event.type === "busy_changed" && !event.busy) ||
+                event.type === "background_task_settled" ||
                 event.type === "cancellation"
             ) {
                 queueMicrotask(() => void this.releaseRetainedIfDrained(runwieldSessionId));
@@ -593,9 +626,9 @@ export class WorkspaceSessionContinuationService {
         if (!record.runwieldSessionId) return;
         const notification = {
             event,
-            url: `/projects/${encodeURIComponent(record.projectId)}/sessions/${
-                encodeURIComponent(record.runwieldSessionId)
-            }`,
+            url: `/projects/${encodeURIComponent(record.projectId)}/sessions/${encodeURIComponent(
+                record.runwieldSessionId,
+            )}`,
             policy: this.resolveBrowserNotificationPolicy(record.projectId),
         };
         for (const listener of this.notificationListeners) {
@@ -711,7 +744,8 @@ export class WorkspaceSessionContinuationService {
                     description: command.description,
                     kind: "action",
                 })),
-                ...templates.filter((template) => !commandRegistry.getCommandDefinition(template.name))
+                ...templates
+                    .filter((template) => !commandRegistry.getCommandDefinition(template.name))
                     .map((template) => ({ name: template.name, description: template.description, kind: "prompt" })),
                 ...skills.map((skill) => ({
                     name: `skill:${skill.name}`,
@@ -729,9 +763,8 @@ export class WorkspaceSessionContinuationService {
      * @param {SessionListOptions} [options]
      */
     async listSessions(projectId, options = {}) {
-        const page = typeof options.page === "number" && Number.isInteger(options.page) && options.page >= 0
-            ? options.page
-            : 0;
+        const page =
+            typeof options.page === "number" && Number.isInteger(options.page) && options.page >= 0 ? options.page : 0;
         const pageSize =
             typeof options.pageSize === "number" && Number.isInteger(options.pageSize) && options.pageSize > 0
                 ? Math.min(options.pageSize, 100)
@@ -755,7 +788,8 @@ export class WorkspaceSessionContinuationService {
             // needs only five unseen names, regardless of the Project's history size.
             if (excludedSessions.has(session.runwieldSessionId)) continue;
             if (options.planId || excludedPlans.size) {
-                const associations = this.store.listSessionPlanAssociations(session.runwieldSessionId, projectId)
+                const associations = this.store
+                    .listSessionPlanAssociations(session.runwieldSessionId, projectId)
                     .filter((entry) => entry.committedGeneration !== null);
                 if (options.planId && !associations.some((entry) => entry.planId === options.planId)) continue;
                 if (associations.some((entry) => excludedPlans.has(entry.planId))) continue;
@@ -788,12 +822,12 @@ export class WorkspaceSessionContinuationService {
                     lastCatalogedAt: session.lastCatalogedAt,
                     state: inspected.activation?.state || "missing_activation",
                     generation: inspected.generation?.generation ?? null,
-                    activeSurface: inspected.activation?.state === "active"
-                        ? inspected.activation.ownerProcessKind
-                        : null,
-                    recoveryCategory: inspected.activation?.state === "active"
-                        ? "wait_for_owner"
-                        : inspected.activation?.state || "idle",
+                    activeSurface:
+                        inspected.activation?.state === "active" ? inspected.activation.ownerProcessKind : null,
+                    recoveryCategory:
+                        inspected.activation?.state === "active"
+                            ? "wait_for_owner"
+                            : inspected.activation?.state || "idle",
                     bootstrapRequired: inspected.activation?.state === "uninitialized",
                 };
             }),
@@ -834,8 +868,9 @@ export class WorkspaceSessionContinuationService {
             provider: committedFacts.provider,
             thinkingLevel: committedFacts.thinkingLevel,
             workflowContext:
-                /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (committedFacts
-                    .workflowContext || null),
+                /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (
+                    committedFacts.workflowContext || null
+                ),
         });
     }
 
@@ -845,9 +880,7 @@ export class WorkspaceSessionContinuationService {
      */
     async timeline(runwieldSessionId, options = {}) {
         const session = this.store.getSessionById(runwieldSessionId);
-        if (
-            !session || (options.projectId && !sessionBelongsToOwnerProject(this.store, session, options.projectId))
-        ) {
+        if (!session || (options.projectId && !sessionBelongsToOwnerProject(this.store, session, options.projectId))) {
             throw new Error("Session not found.");
         }
         let inspected = this.store.inspectSessionActivation(runwieldSessionId);
@@ -886,9 +919,10 @@ export class WorkspaceSessionContinuationService {
         if (projection.ok) {
             /** @type {import('../../../shared/session/live-session-connection.ts').LiveSessionInfo | null | undefined} */
             let liveInfo = projectLiveSessionInfo(
-                this.runtime.listSessions().find((item) =>
-                    item.managed?.runwieldSessionId === runwieldSessionId && !item.managed.dormant
-                ) || null,
+                this.runtime
+                    .listSessions()
+                    .find((item) => item.managed?.runwieldSessionId === runwieldSessionId && !item.managed.dormant) ||
+                    null,
             );
             if (!liveInfo && state === "active" && inspected.activation?.operationId) {
                 try {
@@ -910,7 +944,7 @@ export class WorkspaceSessionContinuationService {
                 const sessionStats = liveInfo.sessionStats || projection.snapshot.sessionStats;
                 Object.assign(projection.snapshot, liveInfo, { planAssociations, sessionStats });
             }
-            projection.snapshot.name = liveInfo?.name || await readSessionDisplayName(paths);
+            projection.snapshot.name = liveInfo?.name || (await readSessionDisplayName(paths));
             projection.snapshot.contextUsage = liveInfo?.contextUsage || null;
             projection.snapshot.systemContextTokens = liveInfo?.systemContextTokens ?? null;
         }
@@ -961,8 +995,10 @@ export class WorkspaceSessionContinuationService {
     findActiveWorkspaceOperation(runwieldSessionId, expectedGeneration) {
         for (const [operationId, record] of this.operations.entries()) {
             if (
-                record.runwieldSessionId === runwieldSessionId && record.expectedGeneration === expectedGeneration &&
-                record.runtimeSessionId && (record.status === "running" || record.status === "accepted")
+                record.runwieldSessionId === runwieldSessionId &&
+                record.expectedGeneration === expectedGeneration &&
+                record.runtimeSessionId &&
+                (record.status === "running" || record.status === "accepted")
             ) {
                 return { operationId, record };
             }
@@ -1134,7 +1170,9 @@ export class WorkspaceSessionContinuationService {
     async steerOperation(options) {
         const operation = this.operations.get(options.operationId);
         if (
-            operation?.projectId !== options.projectId || operation.status !== "running" || !operation.runwieldSessionId
+            operation?.projectId !== options.projectId ||
+            operation.status !== "running" ||
+            !operation.runwieldSessionId
         ) {
             throw new Error("The turn has finished. Send your message as a follow-up.");
         }
@@ -1158,15 +1196,17 @@ export class WorkspaceSessionContinuationService {
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
             throw new Error("Session not found.");
         }
-        const receipt = requireReceipt(this.store.createOrGetOperationReceipt({
-            deviceId: options.deviceId || null,
-            requestId: options.requestId,
-            requestHash: stableHash({ kind: "bootstrap", session: options.runwieldSessionId }),
-            runwieldSessionId: options.runwieldSessionId,
-            projectId: options.projectId,
-            expectedGeneration: null,
-            kind: "bootstrap",
-        }));
+        const receipt = requireReceipt(
+            this.store.createOrGetOperationReceipt({
+                deviceId: options.deviceId || null,
+                requestId: options.requestId,
+                requestHash: stableHash({ kind: "bootstrap", session: options.runwieldSessionId }),
+                runwieldSessionId: options.runwieldSessionId,
+                projectId: options.projectId,
+                expectedGeneration: null,
+                kind: "bootstrap",
+            }),
+        );
         const existing = this.store.inspectSessionActivation(options.runwieldSessionId);
         if (existing.generation) {
             return {
@@ -1209,10 +1249,13 @@ export class WorkspaceSessionContinuationService {
             return { operationId: receipt.operationId, generation: 0, status: "completed" };
         } catch (error) {
             const errorCode = codeFromError(error);
-            this.store.markSessionReconcileRequired({
-                runwieldSessionId: options.runwieldSessionId,
-                projectId: options.projectId,
-            }, { reason: errorCode });
+            this.store.markSessionReconcileRequired(
+                {
+                    runwieldSessionId: options.runwieldSessionId,
+                    projectId: options.projectId,
+                },
+                { reason: errorCode },
+            );
             this.store.updateOperationReceipt(receipt.operationId, {
                 status: "failed",
                 errorCode,
@@ -1246,20 +1289,20 @@ export class WorkspaceSessionContinuationService {
             }
         }
         const reviewUrl = planReview
-            ? `/projects/${encodeURIComponent(current.projectId)}/plans/${
-                encodeURIComponent(planReview.planId)
-            }?session=${encodeURIComponent(current.runwieldSessionId || "")}&operation=${
-                encodeURIComponent(operationId)
-            }&interaction=${encodeURIComponent(interactionId)}`
+            ? `/projects/${encodeURIComponent(current.projectId)}/plans/${encodeURIComponent(
+                  planReview.planId,
+              )}?session=${encodeURIComponent(current.runwieldSessionId || "")}&operation=${encodeURIComponent(
+                  operationId,
+              )}&interaction=${encodeURIComponent(interactionId)}`
             : codeReview
-            ? `/projects/${encodeURIComponent(current.projectId)}/sessions/${
-                encodeURIComponent(current.runwieldSessionId || "")
-            }/review/code?operation=${encodeURIComponent(operationId)}&interaction=${encodeURIComponent(interactionId)}`
-            : artifactReview
-            ? `/projects/${encodeURIComponent(current.projectId)}/sessions/${
-                encodeURIComponent(current.runwieldSessionId || "")
-            }/artifacts/${encodeURIComponent(artifactReview.artifactId)}`
-            : null;
+              ? `/projects/${encodeURIComponent(current.projectId)}/sessions/${encodeURIComponent(
+                    current.runwieldSessionId || "",
+                )}/review/code?operation=${encodeURIComponent(operationId)}&interaction=${encodeURIComponent(interactionId)}`
+              : artifactReview
+                ? `/projects/${encodeURIComponent(current.projectId)}/sessions/${encodeURIComponent(
+                      current.runwieldSessionId || "",
+                  )}/artifacts/${encodeURIComponent(artifactReview.artifactId)}`
+                : null;
         if ((planReview || codeReview) && reviewUrl) {
             const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
             if (typeof meta.onSurfaceReady === "function") meta.onSurfaceReady({ url: reviewUrl, opened: false });
@@ -1274,14 +1317,14 @@ export class WorkspaceSessionContinuationService {
                     prompt: request.prompt,
                     options: Array.isArray(request.options)
                         ? request.options.map(
-                            /** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionOption} option */ (
-                                option,
-                            ) => ({
-                                value: option.value,
-                                label: option.label,
-                                description: option.description,
-                            }),
-                        )
+                              /** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionOption} option */ (
+                                  option,
+                              ) => ({
+                                  value: option.value,
+                                  label: option.label,
+                                  description: option.description,
+                              }),
+                          )
                         : [],
                     defaultValue: request.defaultValue,
                     placeholder: request.placeholder,
@@ -1320,15 +1363,16 @@ export class WorkspaceSessionContinuationService {
                         expectedRevision: evidence.evidence.revision,
                         expectedStatus: evidence.evidence.status,
                         expectedWorktree: evidence.evidence.worktree,
-                        ...(plan && !request._meta?.reviewedSource && {
-                            reviewedSource: {
-                                planName: plan.planName,
-                                path: plan.path,
-                                markdown: plan.markdown,
-                                revision: plan.revision,
-                                attrs: plan.attrs,
-                            },
-                        }),
+                        ...(plan &&
+                            !request._meta?.reviewedSource && {
+                                reviewedSource: {
+                                    planName: plan.planName,
+                                    path: plan.path,
+                                    markdown: plan.markdown,
+                                    revision: plan.revision,
+                                    attrs: plan.attrs,
+                                },
+                            }),
                     };
                 }
                 const interactionId = String(request.id || crypto.randomUUID());
@@ -1455,9 +1499,8 @@ export class WorkspaceSessionContinuationService {
                         agentName: launch.agentName,
                     });
                     if (!preflight.ok) throw new ImageSubmissionValidationError(preflight.message);
-                    preparedModelOverride = "preparedModelOverride" in preflight
-                        ? preflight.preparedModelOverride || ""
-                        : "";
+                    preparedModelOverride =
+                        "preparedModelOverride" in preflight ? preflight.preparedModelOverride || "" : "";
                 } catch (error) {
                     if (preparedSessionId) this.runtime.closeSessionWhenIdle(preparedSessionId);
                     throw error;
@@ -1501,8 +1544,8 @@ export class WorkspaceSessionContinuationService {
                         ...(this.operations.get(operationId) || { projectId: options.projectId, events: [] }),
                         status: "running",
                         runtimeSessionId: sessionId,
-                        runwieldSessionId: this.runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId ||
-                            null,
+                        runwieldSessionId:
+                            this.runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId || null,
                     });
                     this.runtime.setInteractionAdapter(sessionId, this.createInteractionAdapter({ operationId }));
                     unsubscribe = this.subscribeOperationSession(operationId, sessionId);
@@ -1635,15 +1678,17 @@ export class WorkspaceSessionContinuationService {
                 throw new Error("This Session needs recovery before it can open a Plan review.");
             }
         }
-        const receipt = requireReceipt(this.store.createOrGetOperationReceipt({
-            deviceId: options.deviceId || null,
-            requestId: options.requestId,
-            requestHash,
-            runwieldSessionId: options.runwieldSessionId,
-            projectId: options.projectId,
-            expectedGeneration: options.expectedGeneration,
-            kind: "plan_action",
-        }));
+        const receipt = requireReceipt(
+            this.store.createOrGetOperationReceipt({
+                deviceId: options.deviceId || null,
+                requestId: options.requestId,
+                requestHash,
+                runwieldSessionId: options.runwieldSessionId,
+                projectId: options.projectId,
+                expectedGeneration: options.expectedGeneration,
+                kind: "plan_action",
+            }),
+        );
         if (receipt.status !== "accepted" || this.operations.has(receipt.operationId)) {
             return { kind: "starting", operationId: receipt.operationId, status: receipt.status };
         }
@@ -1665,9 +1710,10 @@ export class WorkspaceSessionContinuationService {
             try {
                 await this.closingRetainedSessions.get(options.runwieldSessionId);
                 const retainedId = this.retainedSessions.get(options.runwieldSessionId)?.sessionId;
-                const adopted = retainedId && this.runtime.getSessionSnapshot(retainedId)
-                    ? { sessionId: retainedId }
-                    : this.runtime.adoptManagedSession({ session, generation: recoveredGeneration });
+                const adopted =
+                    retainedId && this.runtime.getSessionSnapshot(retainedId)
+                        ? { sessionId: retainedId }
+                        : this.runtime.adoptManagedSession({ session, generation: recoveredGeneration });
                 runtimeSessionId = adopted.sessionId;
                 this.setOperation(receipt.operationId, {
                     ...(this.operations.get(receipt.operationId) || {
@@ -1687,12 +1733,14 @@ export class WorkspaceSessionContinuationService {
                     this.appendOperationEvent(receipt.operationId, event);
                 });
                 const result = await this.runtime.reopenPlanReview(runtimeSessionId);
-                const generation = this.runtime.getSessionSnapshot(runtimeSessionId)?.managed?.generation ??
+                const generation =
+                    this.runtime.getSessionSnapshot(runtimeSessionId)?.managed?.generation ??
                     options.expectedGeneration;
-                const status =
-                    ["busy", "unanswered", "missing_plan", "identity_mismatch", "not_reviewable"].includes(result.kind)
-                        ? "failed"
-                        : "completed";
+                const status = ["busy", "unanswered", "missing_plan", "identity_mismatch", "not_reviewable"].includes(
+                    result.kind,
+                )
+                    ? "failed"
+                    : "completed";
                 this.store.updateOperationReceipt(receipt.operationId, {
                     status,
                     resultGeneration: generation,
@@ -1801,28 +1849,29 @@ export class WorkspaceSessionContinuationService {
             if ((options.images || []).length > 0) {
                 try {
                     const retained = this.retainedSessions.get(options.runwieldSessionId)?.sessionId;
-                    preflightAdopted = retained && this.runtime.getSessionSnapshot(retained)
-                        ? { sessionId: retained }
-                        : this.runtime.adoptManagedSession({
-                            session,
-                            generation: options.expectedGeneration,
-                            activeAgent: committedFacts.activeAgent,
-                            model: committedFacts.model,
-                            provider: committedFacts.provider,
-                            thinkingLevel: committedFacts.thinkingLevel,
-                            workflowContext:
-                                /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (committedFacts
-                                    .workflowContext || null),
-                        });
+                    preflightAdopted =
+                        retained && this.runtime.getSessionSnapshot(retained)
+                            ? { sessionId: retained }
+                            : this.runtime.adoptManagedSession({
+                                  session,
+                                  generation: options.expectedGeneration,
+                                  activeAgent: committedFacts.activeAgent,
+                                  model: committedFacts.model,
+                                  provider: committedFacts.provider,
+                                  thinkingLevel: committedFacts.thinkingLevel,
+                                  workflowContext:
+                                      /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (
+                                          committedFacts.workflowContext || null
+                                      ),
+                              });
                     const preflight = await this.runtime.preflightUserTurnImages(preflightAdopted.sessionId, {
                         initialRequest: options.text,
                         initialImages: options.images || [],
                         agentName: decision.agentName,
                     });
                     if (!preflight.ok) throw new ImageSubmissionValidationError(preflight.message);
-                    preparedModelOverride = "preparedModelOverride" in preflight
-                        ? preflight.preparedModelOverride || ""
-                        : "";
+                    preparedModelOverride =
+                        "preparedModelOverride" in preflight ? preflight.preparedModelOverride || "" : "";
                 } catch (error) {
                     this.releasePreflightSession(options.runwieldSessionId, preflightAdopted);
                     throw error;
@@ -1864,15 +1913,17 @@ export class WorkspaceSessionContinuationService {
             }
             let receipt;
             try {
-                receipt = requireReceipt(this.store.createOrGetOperationReceipt({
-                    deviceId: options.deviceId || null,
-                    requestId: options.requestId,
-                    requestHash,
-                    runwieldSessionId: options.runwieldSessionId,
-                    projectId: options.projectId,
-                    expectedGeneration: options.expectedGeneration,
-                    kind: "continuation",
-                }));
+                receipt = requireReceipt(
+                    this.store.createOrGetOperationReceipt({
+                        deviceId: options.deviceId || null,
+                        requestId: options.requestId,
+                        requestHash,
+                        runwieldSessionId: options.runwieldSessionId,
+                        projectId: options.projectId,
+                        expectedGeneration: options.expectedGeneration,
+                        kind: "continuation",
+                    }),
+                );
             } catch (error) {
                 this.releasePreflightSession(options.runwieldSessionId, preflightAdopted);
                 throw error;
@@ -1902,18 +1953,22 @@ export class WorkspaceSessionContinuationService {
             });
             const retainedId = this.retainedSessions.get(options.runwieldSessionId)?.sessionId;
             const retainedSessionId = retainedId && this.runtime.getSessionSnapshot(retainedId) ? retainedId : null;
-            const adopted = preflightAdopted ||
-                (retainedSessionId ? { sessionId: retainedSessionId } : this.runtime.adoptManagedSession({
-                    session,
-                    generation: options.expectedGeneration,
-                    activeAgent: committedFacts.activeAgent,
-                    model: committedFacts.model,
-                    provider: committedFacts.provider,
-                    thinkingLevel: committedFacts.thinkingLevel,
-                    workflowContext:
-                        /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (committedFacts
-                            .workflowContext || null),
-                }));
+            const adopted =
+                preflightAdopted ||
+                (retainedSessionId
+                    ? { sessionId: retainedSessionId }
+                    : this.runtime.adoptManagedSession({
+                          session,
+                          generation: options.expectedGeneration,
+                          activeAgent: committedFacts.activeAgent,
+                          model: committedFacts.model,
+                          provider: committedFacts.provider,
+                          thinkingLevel: committedFacts.thinkingLevel,
+                          workflowContext:
+                              /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (
+                                  committedFacts.workflowContext || null
+                              ),
+                      }));
             this.setOperation(receipt.operationId, {
                 ...(this.operations.get(receipt.operationId) || { projectId: options.projectId, events: [] }),
                 status: "running",
@@ -1946,9 +2001,10 @@ export class WorkspaceSessionContinuationService {
                             generation = snapshot?.managed?.generation ?? generation;
                         } catch (configurationError) {
                             status = "failed";
-                            error = configurationError instanceof Error
-                                ? configurationError.message
-                                : String(configurationError || "Configuration change failed.");
+                            error =
+                                configurationError instanceof Error
+                                    ? configurationError.message
+                                    : String(configurationError || "Configuration change failed.");
                         }
                     }
                     this.store.updateOperationReceipt(receipt.operationId, {
@@ -2007,11 +2063,11 @@ export class WorkspaceSessionContinuationService {
         const operationSessionId = operation?.runwieldSessionId || options.runwieldSessionId || null;
         const existingReceipt = operationSessionId
             ? this.store.findOperationReceiptByRequest({
-                deviceId: options.deviceId || null,
-                requestId: options.requestId,
-                requestHash,
-                runwieldSessionId: operationSessionId,
-            })
+                  deviceId: options.deviceId || null,
+                  requestId: options.requestId,
+                  requestHash,
+                  runwieldSessionId: operationSessionId,
+              })
             : null;
         if (existingReceipt?.status === "completed" && existingReceipt.resultBody) return existingReceipt.resultBody;
         if (existingReceipt && existingReceipt.status !== "accepted") {
@@ -2027,22 +2083,27 @@ export class WorkspaceSessionContinuationService {
             throw new Error("Interaction Session does not match the live Workspace operation.");
         }
         if (!operation.runwieldSessionId) throw new Error("Live Workspace interaction is missing Session evidence.");
-        const receipt = existingReceipt || requireReceipt(this.store.createOrGetOperationReceipt({
-            deviceId: options.deviceId || null,
-            requestId: options.requestId,
-            requestHash,
-            runwieldSessionId: operation.runwieldSessionId,
-            projectId: options.projectId,
-            expectedGeneration: null,
-            kind: "plan_action",
-        }));
+        const receipt =
+            existingReceipt ||
+            requireReceipt(
+                this.store.createOrGetOperationReceipt({
+                    deviceId: options.deviceId || null,
+                    requestId: options.requestId,
+                    requestHash,
+                    runwieldSessionId: operation.runwieldSessionId,
+                    projectId: options.projectId,
+                    expectedGeneration: null,
+                    kind: "plan_action",
+                }),
+            );
         this.store.updateOperationReceipt(receipt.operationId, { status: "running" });
         try {
             let runtimeResponse = acceptedInteractionResponse(options.response);
             const request = operation.liveInteraction.request;
-            const planReview = request?.planReview && typeof request.planReview === "object"
-                ? /** @type {Record<string, unknown>} */ (request.planReview)
-                : null;
+            const planReview =
+                request?.planReview && typeof request.planReview === "object"
+                    ? /** @type {Record<string, unknown>} */ (request.planReview)
+                    : null;
             if (request?.type === "plan_review" && Array.isArray(planReview?.sequenceDocuments)) {
                 const decision = readPlanReviewDecisionMeta(options.response);
                 const location = await resolveWorkflowPlanLocation(
@@ -2051,9 +2112,12 @@ export class WorkspaceSessionContinuationService {
                 );
                 await validateSequenceReviewDecision(
                     location.documentRoot,
-                    /** @type {import('../../../shared/workflow/sequence-review.ts').SequenceReviewDocument[]} */ (planReview
-                        .sequenceDocuments),
-                    /** @type {import('../../../shared/workflow/sequence-review.ts').SequenceReviewDecision} */ (decision),
+                    /** @type {import('../../../shared/workflow/sequence-review.ts').SequenceReviewDocument[]} */ (
+                        planReview.sequenceDocuments
+                    ),
+                    /** @type {import('../../../shared/workflow/sequence-review.ts').SequenceReviewDecision} */ (
+                        decision
+                    ),
                 );
                 runtimeResponse = {
                     outcome: "accepted",
@@ -2068,12 +2132,17 @@ export class WorkspaceSessionContinuationService {
             } else if (request?.type === "plan_review" && planReview) {
                 const root = requireOwnerProjectRoot(this.store, options.projectId);
                 const planId = String(planReview.planId || "");
-                const source = planReview.reviewedSource && typeof planReview.reviewedSource === "object"
-                    ? /** @type {Record<string, unknown>} */ (planReview.reviewedSource)
-                    : null;
+                const source =
+                    planReview.reviewedSource && typeof planReview.reviewedSource === "object"
+                        ? /** @type {Record<string, unknown>} */ (planReview.reviewedSource)
+                        : null;
                 if (
-                    !source || typeof source.markdown !== "string" || typeof source.path !== "string" ||
-                    typeof source.planName !== "string" || !source.attrs || typeof source.attrs !== "object"
+                    !source ||
+                    typeof source.markdown !== "string" ||
+                    typeof source.path !== "string" ||
+                    typeof source.planName !== "string" ||
+                    !source.attrs ||
+                    typeof source.attrs !== "object"
                 ) {
                     throw new Error("Live review source is missing. Reload the Plan and review again.");
                 }
@@ -2087,8 +2156,9 @@ export class WorkspaceSessionContinuationService {
                     planRevision: String(source.revision || planReview.expectedRevision || ""),
                     originalAttrs: attrs,
                     trustedClassification:
-                        /** @type {import('../../../plan-store.js').PlanFrontMatter['classification']} */ (planReview
-                            .classification),
+                        /** @type {import('../../../plan-store.js').PlanFrontMatter['classification']} */ (
+                            planReview.classification
+                        ),
                     trustedWorkKind: attrs.workKind,
                     expectedSessionId: operation.runwieldSessionId,
                     reviewEvidence: {
@@ -2096,11 +2166,14 @@ export class WorkspaceSessionContinuationService {
                         runwieldSessionId: operation.runwieldSessionId,
                         status: String(planReview.expectedStatus || ""),
                         worktree:
-                            /** @type {import('../../../shared/workflow/plan-actions.ts').PlanWorktreeExpectation} */ (planReview
-                                .expectedWorktree),
+                            /** @type {import('../../../shared/workflow/plan-actions.ts').PlanWorktreeExpectation} */ (
+                                planReview.expectedWorktree
+                            ),
                     },
                     decision:
-                        /** @type {import('../../../shared/workflow/plan-review-actions.ts').SharedPlanReviewDecision} */ (decision),
+                        /** @type {import('../../../shared/workflow/plan-review-actions.ts').SharedPlanReviewDecision} */ (
+                            decision
+                        ),
                 });
                 if (actionResult.recoveryRequired) {
                     const result = {
@@ -2115,8 +2188,8 @@ export class WorkspaceSessionContinuationService {
                     return result;
                 }
                 if (actionResult.cancellationReason) {
-                    const message = actionResult.feedback ||
-                        "Plan review evidence is stale. Reload the Plan and review again.";
+                    const message =
+                        actionResult.feedback || "Plan review evidence is stale. Reload the Plan and review again.";
                     operation.answer.reject(new Error(message));
                     this.setOperation(options.operationId, {
                         ...operation,
@@ -2126,7 +2199,9 @@ export class WorkspaceSessionContinuationService {
                     throw new Error(message);
                 }
                 const images = await loadReviewFeedbackImages(
-                    /** @type {import('../../../shared/workflow/review-feedback-images.ts').ReviewImageDecision} */ (decision),
+                    /** @type {import('../../../shared/workflow/review-feedback-images.ts').ReviewImageDecision} */ (
+                        decision
+                    ),
                     root,
                 );
                 runtimeResponse = {
@@ -2169,17 +2244,18 @@ export class WorkspaceSessionContinuationService {
         }
         const request = operation.liveInteraction.request || {};
         if (request.type !== "plan_review") return null;
-        const planReview = request.planReview && typeof request.planReview === "object"
-            ? /** @type {Record<string, unknown>} */ (request.planReview)
-            : null;
+        const planReview =
+            request.planReview && typeof request.planReview === "object"
+                ? /** @type {Record<string, unknown>} */ (request.planReview)
+                : null;
         if (!planReview || planReview.planId !== options.planId) return null;
         return { operationId: options.operationId, interactionId: options.interactionId, request };
     }
 
     /**
-     * @param {{ projectId: string, operationId: string, interactionId: string, runwieldSessionId: string }} options
+     * @param {LiveCodeReviewOptions} options
      */
-    async getLiveCodeReview(options) {
+    async liveCodeReviewRequest(options) {
         if (!this.operations.has(options.operationId) || this.operations.get(options.operationId)?.remote) {
             await this.liveSession(options.projectId, options.runwieldSessionId);
         }
@@ -2191,10 +2267,30 @@ export class WorkspaceSessionContinuationService {
         }
         const request = operation.liveInteraction.request || {};
         if (request.type !== "code_review") return null;
-        const codeReview = request.codeReview && typeof request.codeReview === "object"
-            ? /** @type {Record<string, unknown>} */ (request.codeReview)
-            : null;
+        const codeReview =
+            request.codeReview && typeof request.codeReview === "object"
+                ? /** @type {Record<string, unknown>} */ (request.codeReview)
+                : null;
         if (!codeReview || typeof codeReview.rawPatch !== "string") return null;
+        return { ...request, codeReview: { ...codeReview, rawPatch: codeReview.rawPatch } };
+    }
+
+    /**
+     * @param {LiveCodeReviewOptions} options
+     */
+    async getLiveCodeReviewCheckout(options) {
+        if (!(await this.liveCodeReviewRequest(options))) return null;
+        const refresh = this.codeReviewRefreshContexts.get(`${options.operationId}:${options.interactionId}`);
+        return refresh ? { ...refresh } : null;
+    }
+
+    /**
+     * @param {LiveCodeReviewOptions} options
+     */
+    async getLiveCodeReview(options) {
+        const request = await this.liveCodeReviewRequest(options);
+        if (!request) return null;
+        const codeReview = request.codeReview;
         const refresh = this.codeReviewRefreshContexts.get(`${options.operationId}:${options.interactionId}`);
         let rawPatch = String(codeReview.rawPatch);
         if (refresh) {
@@ -2233,7 +2329,8 @@ export class WorkspaceSessionContinuationService {
             limit: 1,
         });
         if (!projection.ok) throw new Error(projection.message);
-        const currentSegment = this.store.listSessionTranscriptSegments(options.runwieldSessionId)
+        const currentSegment = this.store
+            .listSessionTranscriptSegments(options.runwieldSessionId)
             .find((segment) => segment.segmentId === inspected.generation?.currentSegmentId);
         if (!currentSegment) throw new Error("Current transcript segment is missing.");
         const evidence = await validateExpiredControlTranscriptEvidence({
@@ -2390,13 +2487,16 @@ export class WorkspaceSessionContinuationService {
      */
     async startPlanWorkflowOperation(options, review, requestHash) {
         const planId = String(options.triageMeta?.planId || "");
-        const live = [...this.operations.entries()].find(([, operation]) =>
-            operation.projectId === options.projectId && operation.runwieldSessionId === options.runwieldSessionId &&
-            operation.status === "running"
+        const live = [...this.operations.entries()].find(
+            ([, operation]) =>
+                operation.projectId === options.projectId &&
+                operation.runwieldSessionId === options.runwieldSessionId &&
+                operation.status === "running",
         );
         if (live) {
-            const existingReview =
-                /** @type {ReturnType<typeof safePlanReviewReference>} */ (live[1].liveInteraction?.request.planReview);
+            const existingReview = /** @type {ReturnType<typeof safePlanReviewReference>} */ (
+                live[1].liveInteraction?.request.planReview
+            );
             if (!review || existingReview?.planId !== planId) {
                 throw new Error("This Session is busy.");
             }
@@ -2404,15 +2504,17 @@ export class WorkspaceSessionContinuationService {
         }
         const state = this.store.inspectSessionActivation(options.runwieldSessionId);
         if (state.activation?.state !== "idle") throw new Error("This Session is busy.");
-        const receipt = requireReceipt(this.store.createOrGetOperationReceipt({
-            deviceId: options.deviceId || null,
-            requestId: options.requestId,
-            requestHash,
-            runwieldSessionId: options.runwieldSessionId,
-            projectId: options.projectId,
-            expectedGeneration: options.expectedGeneration,
-            kind: "continuation",
-        }));
+        const receipt = requireReceipt(
+            this.store.createOrGetOperationReceipt({
+                deviceId: options.deviceId || null,
+                requestId: options.requestId,
+                requestHash,
+                runwieldSessionId: options.runwieldSessionId,
+                projectId: options.projectId,
+                expectedGeneration: options.expectedGeneration,
+                kind: "continuation",
+            }),
+        );
         if (!receipt.wasCreated || receipt.status !== "accepted") {
             return review ? await this.waitForPlanReview(receipt.operationId) : this.getOperation(receipt.operationId);
         }
@@ -2420,9 +2522,10 @@ export class WorkspaceSessionContinuationService {
         if (!session) throw new Error("Session not found.");
         await this.closingRetainedSessions.get(options.runwieldSessionId);
         const retainedId = this.retainedSessions.get(options.runwieldSessionId)?.sessionId;
-        const adopted = retainedId && this.runtime.getSessionSnapshot(retainedId)
-            ? { sessionId: retainedId }
-            : this.runtime.adoptManagedSession({ session, generation: options.expectedGeneration });
+        const adopted =
+            retainedId && this.runtime.getSessionSnapshot(retainedId)
+                ? { sessionId: retainedId }
+                : this.runtime.adoptManagedSession({ session, generation: options.expectedGeneration });
         const operationId = receipt.operationId;
         this.store.updateOperationReceipt(operationId, { status: "running" });
         this.setOperation(operationId, {
@@ -2435,32 +2538,32 @@ export class WorkspaceSessionContinuationService {
             expectedGeneration: options.expectedGeneration,
         });
         this.runtime.setInteractionAdapter(adopted.sessionId, this.createInteractionAdapter({ operationId }));
-        const unsubscribe = this.runtime.subscribeSessionEvents(
-            adopted.sessionId,
-            (event) => this.appendOperationEvent(operationId, event),
+        const unsubscribe = this.runtime.subscribeSessionEvents(adopted.sessionId, (event) =>
+            this.appendOperationEvent(operationId, event),
         );
         this.runBackgroundOperation(async () => {
             let error;
             try {
                 const status = String(options.triageMeta?.status || "");
-                const result = options.action === "retry_work_record"
-                    ? await this.runtime.retryWorkRecord(adopted.sessionId, options.planName)
-                    : review
-                    ? await this.runtime.reviewSavedPlan(adopted.sessionId, planId)
-                    : status === "ready_for_decomposition"
-                    ? await this.runtime.runSlicerAgent(adopted.sessionId, {
-                        planName: options.planName,
-                        triageMeta: options.triageMeta,
-                    })
-                    : ["in_progress", "failed"].includes(status)
-                    ? await this.resumePlanExecution(adopted.sessionId, options)
-                    : await this.runtime.runValidation(adopted.sessionId, {
-                        planName: options.planName,
-                        planContent: options.planContent || "",
-                        triageMeta: options.triageMeta,
-                        trigger: options.action === "recover" ? "repair" : "session_resume",
-                        expectedGeneration: options.expectedGeneration,
-                    });
+                const result =
+                    options.action === "retry_work_record"
+                        ? await this.runtime.retryWorkRecord(adopted.sessionId, options.planName)
+                        : review
+                          ? await this.runtime.reviewSavedPlan(adopted.sessionId, planId)
+                          : status === "ready_for_decomposition"
+                            ? await this.runtime.runSlicerAgent(adopted.sessionId, {
+                                  planName: options.planName,
+                                  triageMeta: options.triageMeta,
+                              })
+                            : ["in_progress", "failed"].includes(status)
+                              ? await this.resumePlanExecution(adopted.sessionId, options)
+                              : await this.runtime.runValidation(adopted.sessionId, {
+                                    planName: options.planName,
+                                    planContent: options.planContent || "",
+                                    triageMeta: options.triageMeta,
+                                    trigger: options.action === "recover" ? "repair" : "session_resume",
+                                    expectedGeneration: options.expectedGeneration,
+                                });
                 if (result?.error) throw new Error(result.error);
                 if (result && "kind" in result && result.kind === "failed") {
                     throw new Error(result.reason || "Plan continuation failed. Open the Session for details.");
@@ -2540,8 +2643,11 @@ export class WorkspaceSessionContinuationService {
         const inspected = this.store.inspectSessionActivation(runwieldSessionId);
         const state = inspected.activation?.state || "uninitialized";
         const generation = inspected.generation?.generation ?? null;
-        const local = [...this.operations.entries()].find(([, operation]) =>
-            !operation.remote && operation.runwieldSessionId === runwieldSessionId && operation.status === "running"
+        const local = [...this.operations.entries()].find(
+            ([, operation]) =>
+                !operation.remote &&
+                operation.runwieldSessionId === runwieldSessionId &&
+                operation.status === "running",
         );
         if (local) return { state, generation, operation: this.getOperation(local[0]) };
         const operationId = inspected.activation?.operationId;
@@ -2651,7 +2757,8 @@ export class WorkspaceSessionContinuationService {
                 : live?.queuedMessages || [],
             liveInteraction: live?.liveInteraction || null,
             pendingConfiguration: live?.pendingConfiguration || null,
-            browserNotificationPolicy: live?.browserNotificationPolicy ||
+            browserNotificationPolicy:
+                live?.browserNotificationPolicy ||
                 (live?.projectId ? this.resolveBrowserNotificationPolicy(live.projectId) : undefined),
         };
     }

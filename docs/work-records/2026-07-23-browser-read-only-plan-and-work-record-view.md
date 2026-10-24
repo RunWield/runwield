@@ -11,16 +11,12 @@ provenance:
         - "34a79fb8-802a-4d68-8975-415fbf8959be"
 ---
 
-# Browser read-only Plan and Work Record view
+# Read-only browser artifact views
 
 ## Summary
 
-Completed a shared Workspace browser read surface for `wld plans read` and `wld wr read`, replacing terminal Markdown
-output with token-protected read-only Plan and Work Record views. The feature preserves existing artifact resolution
-semantics, renders canonical Markdown with Contents navigation and Work Record notices, disables
-annotation/editor/lifecycle controls, and uses a Close-only workflow to end the temporary session.
+`wld plans read` and `wld wr read` open token-protected, read-only Workspace views with canonical Markdown, Contents navigation, and Work Record notices. Artifact resolution remains unchanged; editing, annotations, and lifecycle controls are disabled, and Close ends the temporary view.
 
 ## Future Planning Notes
 
-The review-launcher and Workspace review route now support artifact-specific read presentation, making them the reusable
-seam for future read-only Markdown surfaces without adding separate renderers or lifecycle endpoints.
+Read-only Markdown surfaces reuse artifact-specific presentation in the shared review launcher and Workspace route.

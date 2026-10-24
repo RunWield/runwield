@@ -194,9 +194,16 @@ export type IsolatedAgentSessionRequest =
           reviewerMode: ReviewerRoundMode;
           customTools: OpaqueToolDefinition[];
           sessionManager: SessionManagerHandle;
+          /**
+           * Stable identity for one unfinished review. Automatic retries and corrective
+           * nudges of that review reuse it, so their model-turn budget is cumulative.
+           */
+          controllerRequestId?: string;
       }
     | {
           kind: "feedback_engineer";
+          /** A reply may end in plain text; patch identity decides whether validation restarts. */
+          conversationTurn?: boolean;
           agentName: string;
           userRequest: string;
           cwd: string;
@@ -313,6 +320,8 @@ export type ValidationSessionPort = {
     /** Active execution workflow state (session-owned; coordinator owns its equivalent later). */
     getActiveWorkflow(): ValidationWorkflowState | null;
     setActiveWorkflow(workflow: ValidationWorkflowState): void;
+    /** Release the selected Agent before RunWield-owned publication work. */
+    releaseActiveAgent(): void;
     /** Remember the validation phase when status cannot describe the pending repair. */
     rememberPosition(planName: string, position: ValidationPosition): void;
     /** Clear legacy process-local display state after a terminal result. */

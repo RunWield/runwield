@@ -11,19 +11,8 @@ provenance:
         - "e5dc3b60-334b-4a38-a8cf-ddd4cf6659a9"
 ---
 
-# Compact command completion notifications
+# Interactive compaction outcome notifications
 
 ## Summary
 
-Added a default-enabled `compactionFinished` notification event for interactive `/compact` terminal outcomes, wired
-slash command dispatch to provide notification callbacks, and documented the new setting. Automated focused tests passed
-with required permissions, and `deno task ci` passed with 1822 tests.
-
-## Deviations from Plan
-
-The initial focused test run failed without environment permissions and was rerun successfully with
-`deno test -A --no-check ...`.
-
-## Deferred Work
-
-Manual interactive TUI checks were not run because completion occurred in a non-interactive API session.
+Interactive `/compact` terminal outcomes trigger the default-enabled `compactionFinished` notification event through the slash-command notification interface.

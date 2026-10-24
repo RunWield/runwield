@@ -29,6 +29,7 @@ import { recordPlanEvent } from "./plan-lifecycle.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { createPublicationAttempt } from "./publication-attempt.ts";
 import { findCompletionSiblings } from "./plan-family.ts";
 
@@ -81,7 +82,7 @@ async function createPlan(root: string) {
     await git(root, ["commit", "-m", "Plan"]);
 }
 
-async function setStatus(root: string, status: "implemented" | "verified" | "in_progress" | "feedback") {
+async function setStatus(root: string, status: "implemented" | "verified" | "in_progress" | "draft") {
     const plan = await loadPlan(root, "demo");
     assert(plan);
     await updatePlanFrontMatter(root, "demo", { status }, {}, { expectedRevision: plan.revision });
@@ -123,6 +124,10 @@ test("missing execution worktree is rebuilt before lifecycle writes continue", a
         const body = await loadPlanBodyById(root, "demo");
         await fsRm(tree, { recursive: true });
 
+        const snapshot = await resolvePlanWithPrimaryRecovery(root, "demo");
+        assertEquals(snapshot.plan.markdown, primary.markdown);
+        assertEquals(await fsReaddir(directory), []);
+        await prepareSessionPlanningWorktree(root, "demo");
         assertEquals((await resolvePlanWithPrimaryRecovery(root, "demo")).plan.path, join(tree, "docs/plans/demo.md"));
         assertEquals((await loadPlanBodyById(root, "demo")).body, body.body);
         await savePlanBodyById(root, "demo", "# Recovered execution copy\n", body.bodyHash, {
@@ -400,7 +405,7 @@ test("execution startup uses the live successor despite a cached retired Session
         await createPlan(root);
         const old = await addTree(root, directory, "old", "demo", true);
         const current = await addTree(root, directory, "current");
-        await setStatus(old, "feedback");
+        await setStatus(old, "draft");
         await setStatus(current, "in_progress");
         const plan = await loadPlan(current, "demo");
         assert(plan);

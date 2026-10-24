@@ -11,16 +11,12 @@ provenance:
         - "6d94f358-093f-45af-8d8a-2ae4f52c38de"
 ---
 
-# Preserved Epic and Child Plan Metadata
+# Epic and child Plan metadata preservation
 
 ## Summary
 
-Extended the plan store to preserve Epic and child FEATURE metadata, retain unknown front matter fields, safely resolve
-nested stored-plan names, recursively discover plans, and find children by parentPlan. Added coverage for metadata
-round-tripping, nested plan operations, deterministic listing, parent-child lookup, and path traversal protection.
-Verification completed successfully.
+Plan storage preserves Epic and child Plan metadata, including unknown front matter fields. Nested Plans support safe name resolution, recursive discovery, deterministic listing, and parent-child lookup.
 
 ## Future Planning Notes
 
-Nested FEATURE plans can now reliably use canonical names relative to plans/, providing the storage foundation for Epic
-decomposition workflows.
+Nested child Plans use canonical names relative to the Plan store.

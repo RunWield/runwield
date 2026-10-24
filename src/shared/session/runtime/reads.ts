@@ -11,8 +11,6 @@ import {
 import { buildActiveConversationSubmissionMessage } from ".././session-user-messages.ts";
 import {
     classifyRootSessionLocator,
-    exportRootSessionToHtml,
-    exportRootSessionToJsonl,
     getRootSessionBranchEntries,
     getRunWieldSessionMemoryBackupDir,
     listCatalogSafeRootSessionLocators,
@@ -22,13 +20,20 @@ import {
     buildProjectedSessionInfo,
     captureTranscriptEvidence,
     createReplayEvents as createProjectedReplayEvents,
-    exportProjectedTranscript,
     getProjectedLastAssistantText,
     getCommittedTranscriptAuthorityFacts,
     inspectProjectedTranscript,
+    summarizeProjectedEntries,
     toProjectionFailure,
 } from ".././session-transcript-projection.js";
-import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
+import {
+    projectAggregateTranscript,
+    projectSegmentReplayEvents,
+    readVerifiedTranscriptSegments,
+    type TranscriptEntry,
+    type VerifiedTranscriptSegment,
+} from ".././session-transcript-manifest.ts";
+import { buildSessionExportDocument, type SessionExport, type SessionExportTimelineEvent } from "../session-export.ts";
 import { listRecentResumableSessions } from ".././session-resume-list.ts";
 import { buildSessionContextReport } from ".././session-context-report.ts";
 import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.js";
@@ -739,28 +744,97 @@ export class RuntimeReads {
         return await expandPromptTemplate(templatePath, instructions);
     }
 
-    async exportSession(sessionId: string, outputPath: string) {
+    async readSessionExport(sessionId: string): Promise<SessionExport> {
         const session = this.services.sessionHost.getSession(sessionId);
-        const managed = session?.getManagedMetadata?.() || null;
-        const manager = session?.getRootSessionManager();
-        if (managed && !manager) {
-            const projected = await this.readManagedCommittedProjection(sessionId);
-            if (!projected.ok) throw new Error(projected.message);
-            if (!session) throw new Error("Runtime session has no persistence store.");
-            return await exportProjectedTranscript(
-                projected.entries,
-                {
+        if (!session) throw new Error("SessionRuntime.readSessionExport: session not found");
+        const managed = session.getManagedMetadata();
+        if (managed) {
+            const store = this.services.sessionStore;
+            if (!store) throw new Error("This Session is unavailable.");
+            try {
+                const manifest = store.readSessionManifest(managed.runwieldSessionId, managed.projectId);
+                if (!manifest) throw new Error("Session Manifest is unavailable.");
+                if (!manifest.generation) throw new Error("Committed generation is unavailable.");
+                const options = {
                     cwd: session.cwd,
-                    sessionId: managed.piSessionId,
-                },
-                outputPath,
-            );
+                    runwieldSessionId: managed.runwieldSessionId,
+                    runtimeSessionId: sessionId,
+                    generation: manifest.generation,
+                    segments: manifest.segments,
+                };
+                const verified = await readVerifiedTranscriptSegments(options);
+                // Older manifests keep the Session Name only in committed Pi session_info entries.
+                const committedName = summarizeProjectedEntries(verified.flatMap((segment) => segment.entries)).name;
+                return {
+                    document: buildSessionExportDocument({
+                        session: {
+                            runwieldSessionId: manifest.runwieldSessionId,
+                            name: manifest.displayName || committedName || null,
+                            cwd: manifest.transcriptCwd,
+                            createdAt: manifest.createdAt,
+                            updatedAt: manifest.updatedAt,
+                        },
+                        segments: verified,
+                        artifacts: manifest.artifacts || [],
+                        planAssociations: (manifest.planAssociations || []).filter(
+                            (association) => association.committedGeneration !== null,
+                        ),
+                    }),
+                    timeline: projectSegmentReplayEvents(verified, options).map(
+                        (event) => ({ ...event, sessionId }) as SessionExportTimelineEvent,
+                    ),
+                };
+            } catch (error) {
+                throw new Error(toProjectionFailure(error).message);
+            }
         }
-        if (!isRuntimeRootSessionManager(manager)) {
+        const manager = session.getRootSessionManager();
+        if (manager && !isRuntimeRootSessionManager(manager)) {
             throw new Error("Runtime session has no persistence store.");
         }
-        return outputPath.toLowerCase().endsWith(".jsonl")
-            ? exportRootSessionToJsonl(manager, outputPath)
-            : await exportRootSessionToHtml(manager, outputPath);
+        const header = manager?.getHeader() || {
+            type: "session",
+            id: sessionId,
+            timestamp: new Date().toISOString(),
+            cwd: session.cwd,
+        };
+        const entries: TranscriptEntry[] = [header, ...(manager?.getBranch() || [])];
+        const verified: VerifiedTranscriptSegment[] = [
+            {
+                segmentId: sessionId,
+                ordinal: 0,
+                kind: "session",
+                label: "Session segment 1",
+                piSessionId: manager?.getSessionId() || sessionId,
+                sealed: false,
+                current: true,
+                transcriptCwd: session.cwd,
+                entries,
+            },
+        ];
+        return {
+            document: buildSessionExportDocument({
+                session: {
+                    runwieldSessionId: null,
+                    name: manager?.getSessionName() || null,
+                    cwd: session.cwd,
+                    createdAt: header.timestamp,
+                    updatedAt: null,
+                },
+                segments: verified,
+                artifacts: [],
+                planAssociations: [],
+            }),
+            timeline: createProjectedReplayEvents(sessionId, entries, { projectRoot: session.cwd }).map(
+                (event) =>
+                    ({
+                        ...event,
+                        sessionId,
+                        timestamp: event.timestamp,
+                        segmentOrdinal: 0,
+                        segmentKind: "session",
+                    }) as SessionExportTimelineEvent,
+            ),
+        };
     }
 }

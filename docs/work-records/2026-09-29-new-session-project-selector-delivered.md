@@ -12,16 +12,12 @@ provenance:
         - "266cb9df-e989-47c4-b2fd-9f55c17875ab"
 ---
 
-# New Session Project Selector Delivered
+# New Session Project selector
 
 ## Summary
 
-Added a Project selector above the New Session composer that follows the Project route and disappears after creation is
-accepted. Drafts and unresolved requests prevent switching; loading, failed reads, and navigation failures have recovery
-paths. Project-specific defaults and creation stay bound to the selected Project. Updated Workspace guidance and tests;
-the completed change was validated and delivered.
+A Project selector above the New Session composer follows the Project route and disappears after creation is accepted. Drafts and unresolved requests prevent switching. Loading, failed reads, and navigation failures have recovery paths, while Project-specific defaults and creation stay bound to the selected Project.
 
 ## Future Planning Notes
 
-Keep the route as the source of Project identity and preserve Project-scoped drafts rather than transferring in-progress
-input between Projects.
+Keep the route as the source of Project identity. Preserve Project-scoped drafts rather than moving in-progress input between Projects.

@@ -1,7 +1,7 @@
 # RunWield Domain Language
 
 RunWield is collaborative software planning with AI. Its product family combines a local plan-by-default coding harness,
-plugins for external agent hosts, and a collaborative SaaS Workspace. This glossary defines the project language used by
+plugins for external agent hosts, and a personal browser Workspace. This glossary defines the project language used by
 agents, docs, plans, and code. Entries cover RunWield-specific concepts, named tools and surfaces, and familiar words
 whose meaning here needs disambiguation. Ordinary software terms need no separate entry unless RunWield gives them a
 more specific meaning.
@@ -18,8 +18,8 @@ umbrella, Wield AI
 local interfaces. Core owns local workflow truth and may execute Agent turns through Pi or another Execution Backend.
 _Avoid_: `wld` as a product name, Native Mode, Managed Mode
 
-**RunWield Workspace**: The collaborative SaaS product for planning and records across Projects. _Avoid_: RunWield when
-a distinction from Core or Connect is required, local Workspace UI
+**RunWield Workspace**: The personal browser environment included in Core for Projects, Sessions, Plans, review, and
+knowledge search. _Avoid_: A separate subscription requirement, browser IDE
 
 **External Agent Host**: A coding-agent product such as Claude Code, Codex, OpenCode, or Pi that owns the user
 conversation and model access for an Attached Workflow. _Avoid_: Provider, Session Host, host harness
@@ -67,6 +67,10 @@ closed ACP Session
 it is not shared project knowledge or a source for cross-Session Agent retrieval. Pi persists completed tool calls and
 interaction results as committed transcript history; a live unanswered interaction is not committed history until its
 result is written. _Avoid_: Work Record, planning memory, shared conversation
+
+**Session Export**: A file copy of one Session's complete committed Session Transcript across all Session Transcript
+Segments, with Session Manifest facts. `/export` writes HTML or JSON; `/share` uploads both to a secret GitHub Gist. It is
+not a Shared Session Snapshot. _Avoid_: Pi export, segment export
 
 **Execution Backend**: The model-selected runtime that executes one RunWield Agent turn, such as Pi AgentSession, Claude
 CLI, or Antigravity CLI. It is distinct from a model provider and from an Agent Session object. Changing Execution
@@ -299,8 +303,9 @@ sample project, or a substitute for validation. _Avoid_: Onboarding workflow, tr
 matter records classification, complexity, status, timestamps, and origin. _Avoid_: Blueprint, spec, design doc
 
 **Work Record**: A small repo-local markdown retrospective planning-memory artifact that distills what completed planned
-work actually produced and what future planning should remember. _Avoid_: Review log, chat transcript, implementation
-diary, duplicate Plan
+work actually produced. It holds only facts that stay true after later changes: the delivered outcome, recorded Plan
+Deviations, out-of-scope facts, and durable lessons. _Avoid_: Review log, chat transcript, implementation diary, duplicate
+Plan, known issues list, validation receipt
 
 **Draft Work Record**: An external, manual, or imported Work Record awaiting human review before default search and
 Agent retrieval. _Avoid_: Approved record, generated internal record, memory
@@ -328,8 +333,9 @@ file-level code evidence when constructed from existing code. _Avoid_: Line refe
 **Plan Classification**: The Plan front matter workflow shape, limited to `PLANNED_CHANGE` and `PROJECT`; legacy
 `FEATURE` means `PLANNED_CHANGE`. _Avoid_: Routing intent, request type, work kind
 
-**Plan Status**: The lifecycle state of a Plan: `draft`, `feedback`, `approved`, `ready_for_decomposition`,
-`ready_for_work`, `in_progress`, `failed`, `implemented`, `verified`, `closed_without_verification`, or `on_hold`.
+**Plan Status**: The lifecycle state of a Plan: `draft`, `approved`, `ready_for_decomposition`,
+`ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified`, `user_verified`,
+`closed_without_verification`, or `on_hold`.
 _Avoid_: Phase, stage
 
 **Plan Lifecycle**: The state machine that decides how Plan Events change Plan Status and recovery metadata; see
@@ -400,16 +406,18 @@ done plan
 **Closed Without Verification Plan**: A terminal Plan accepted without successful RunWield Workflow Validation. _Avoid_:
 Verified plan, archived plan, on-hold plan
 
-**Review Loop**: The cycle where a planning agent writes or revises a Plan and the user approves or returns it through
-Plannotator. _Avoid_: Feedback loop, approval cycle
+**Review Loop**: The conversation where the owner and a planning Agent discuss a Plan until the owner approves it.
+Revisions happen only when the Plan must change. _Avoid_: Feedback loop, approval cycle
 
 **Semantic Review**: The internal state-machine term for the automated Reviewer check during Workflow Validation. It
 compares the approved Plan with the full proposed branch patch from the recorded target/execution common ancestor to the
-current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. _Avoid_: Code Review, Forge
+current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. **Run AI Review** in
+Standalone Code Review is not Semantic Review. _Avoid_: Code Review, Forge
 review, automated tests
 
 **Standalone Code Review**: Code Review of a PR, branch, or uncommitted changes without a Plan or Plan lifecycle.
-Started with `wld review`. The gate **Code Review** still means the Plan validation gate.
+Started with `wld review`. Run AI Review runs the bundled `review` skill and adds its findings as annotations.
+The gate **Code Review** still means the Plan validation gate.
 
 **Review Worktree**: A worktree created on demand for Standalone Code Review, outside the Plan worktree registry.
 RunWield preserves it when it holds uncommitted or unpushed work. An existing branch checkout can be reused but is not
@@ -417,8 +425,10 @@ owned or removed by Standalone Code Review.
 
 **Code Review**: The optional RunWield gate where a person reviews the same full proposed branch patch used by Semantic
 Review before delivery. Reload recomputes it from the recorded target, execution HEAD, and current worktree files. The
-user approves the diff or sends feedback. Internal compatibility identifiers can still use `humanReview` or
-`human_review`, but user-facing copy calls this **code review**. _Avoid_: Human Review, Semantic Review, Forge review,
+user approves the diff or discusses it with Engineer. For Git execution, a conversation turn records “Changes
+requested” only when the reviewed patch changes; a reply leaves the decision, Delivery Evidence, Plan Status, and CI
+results unchanged. Non-Git in-place turns and non-conversation feedback always use repair. Internal compatibility
+identifiers can still use `humanReview` or `human_review`, but user-facing copy calls this **code review**. _Avoid_: Human Review, Semantic Review, Forge review,
 Plan Review Loop
 
 **Review Issue Ledger**: The temporary per-attempt record of requirement coverage, Review Issues, repair claims, and
@@ -488,10 +498,16 @@ by structured Plan Lifecycle actions. _Avoid_: Raw Plan file editor, front matte
 **Plan UI Server**: The local server that backs Plan Board access to Plan files in the current checkout. _Avoid_: Hosted
 collaboration service, daemon
 
-**Feedback**: Structured user annotations returned when a Plan is denied or re-opened in Plannotator. _Avoid_: Comments,
-notes
+**Feedback**: Review context the owner sends to a planning or engineering Agent in a review conversation turn:
+annotations, attachments, direct edits, and question answers, with or without a message. Feedback is not a decision and
+does not by itself change Plan Status. In Git-backed Code Review chat, only a changed reviewed patch records “Changes
+requested” and starts checks. _Avoid_: Denial, rejection
 
-**Revision**: A single planning pass that updates a Plan in response to Feedback.
+**Review Queue**: The review context waiting in a review chat for the next send. Items enter it by default; the owner
+can exclude them from one send without deleting them. Used in Plan review and validation-time Code Review.
+_Avoid_: Attachments, context chip
+
+**Revision**: A planning pass that changes the Plan during review. A reply without a Plan change is not a Revision.
 
 **Origin**: A Plan front matter value of `internal` for RunWield-created plans or `external` for imported markdown.
 _Avoid_: Source, provenance
@@ -772,6 +788,11 @@ _Avoid_: Classification tool, triage result tool
 **Plan-Written Tool**: The `plan_written` Custom Tool that starts the Review Loop and returns the Plan outcome. _Avoid_:
 Review tool, approval tool
 
+**Plan Question**: The Plan-surface form of the **User-Interview Tool**: an embedded interview question written as a
+`wld-question` block in a Plan, answered by the owner in browser review, and resolved into question-and-answer text on
+approval. Unlike the User-Interview Tool, it is in the Plan body and answered asynchronously, not a blocking tool call
+in the conversation.
+
 **User-Interview Tool**: The `user_interview` Custom Tool for structured clarification questions. _Avoid_: Question
 tool, clarification form
 
@@ -795,14 +816,7 @@ current project docs, the applicable Plan, or code as evidence of implemented be
 **Local Memory**: A project Memory retained only in its owner's local Mnemoteca collection. _Avoid_: Private memory,
 personal memory
 
-**Team Memory Candidate**: A Local Memory classified as stable, repository-safe, and useful to teammates but not yet
-trusted as shared project context. _Avoid_: Shareable memory, pending memory
-
-**Team Memory**: A project Memory whose canonical human-readable form is versioned in the repository and whose local
-Mnemoteca copies are derived from trusted text. _Avoid_: Shared memory, synchronized memory
-
-**Core Memory**: A Memory tagged `core` that is injected into every Agent Session independently of whether it is Local
-or Team. It provides strong guidance within the same authority limits as other Memories; injection does not turn it into
+**Core Memory**: A Memory tagged `core` that is injected into every Agent Session. It provides strong guidance within the same authority limits as other Memories; injection does not turn it into
 project truth or permission. _Avoid_: Critical memory, pinned memory, shared memory
 
 **Global Memory**: A Memory stored in the cross-project collection. _Avoid_: Shared memory, universal memory
@@ -840,10 +854,11 @@ prefix of the current segment as one ordered Session timeline, including complet
 results. _Avoid_: Concatenated transcript, merged session, segment hydration
 
 **Pending Structured Interaction**: A live in-process wait for a user answer, such as `user_interview` or Plan review
-input. In a no-form ACP interview, each question ends one ACP request while the original Runtime operation and tool wait
-remain live; the next request answers that wait. Pending interactions are process-local. The interaction becomes durable
-only when Pi writes the completed tool result; if the owner process is lost first, the user asks the Agent to retry. A
-Pair Checkpoint is not a Pending Structured Interaction; its report and resolution records are durable Session data.
+input. In a no-form ACP client, each chat question (interview, command menu, text, or approval) ends one ACP request while
+Runtime work and its command or tool wait remain live; the next request answers that wait. Pending interactions are
+process-local. The interaction becomes durable only when Pi writes the completed tool result; if the owner process is
+lost first, the user asks the Agent to retry. A Pair Checkpoint is not a Pending Structured Interaction; its report and
+resolution records are durable Session data.
 _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 ## Relationships
@@ -925,7 +940,8 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   unchanged target context, or resolved by a confirmed Plan Deviation.
 - A **Review Advisory** does not block approval.
 - A proposed **Review Override** applies to one delivery only and does not change Plan authority.
-- Denied Plan review produces **Feedback**, and each response to Feedback produces one **Revision**.
+- A Plan review conversation turn can carry **Feedback**. It produces a **Revision** only when the Plan changes.
+  A meaningful Revision returns an approved or ready Plan to `draft`; formatting-only changes preserve its status.
 - A **PRD** may inform multiple Plans without participating in Plan Lifecycle.
 - A **Workspace** contains zero or more registered **Projects** and may host live Sessions across them.
 - A **Project** is the parent boundary for its Sessions, Plans, PRDs, ADRs, Work Records, and code access.
@@ -963,12 +979,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 - **Scope Escalation** states a concrete limit and offers user-owned transition options; it never changes control by
   itself.
 - The **See-Image Tool** uses **Vision Fallback** only for a text-only active model.
-- Every project **Memory** is either a **Local Memory** or a **Team Memory**; **Core Memory** independently controls
-  always-on injection.
-- A **Team Memory Candidate** begins as Local Memory and becomes Team Memory only after its canonical text is trusted
-  through the repository workflow.
-- A Team Memory has one canonical repository representation and zero or more derived local **Mnemoteca** copies.
-- Only Team Memories accepted through a **Trusted Branch** may become active shared context.
+- Project Memories stay in the owner’s local **Mnemoteca** collection; Global Memories span Projects.
 - Core Memories are injected into every Agent Session.
 
 [Mnemoteca]: https://github.com/gandazgul/mnemoteca

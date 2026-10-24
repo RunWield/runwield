@@ -12,16 +12,12 @@ provenance:
         - "e81c84ba-087d-40ec-8c4a-e9ce6c311993"
 ---
 
-# Stopped background results after task completion
+# Background-result suppression at task completion
 
 ## Summary
 
-Verified the task-completion cleanup: an eligible call warns once about running Background Tasks; a retry cancels and
-settles them before acceptance. Accepted completion suppresses pending and queued results and blocks stale generated
-turns, while later work can still receive fresh results. Core requirements and Session guidance now describe this
-boundary.
+An eligible task-completion call warns once about running Background Tasks; a retry cancels and settles them before acceptance. Accepted completion suppresses pending and queued results and blocks stale generated turns. Later work can receive fresh results.
 
 ## Future Planning Notes
 
-Suppress results at both the queue and model-dispatch boundaries; clearing pending task results alone does not stop
-already queued or in-flight delivery.
+Suppress results at both queue and model-dispatch boundaries. Clearing pending results alone does not stop queued or in-flight delivery.

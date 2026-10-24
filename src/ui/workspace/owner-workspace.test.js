@@ -1,4 +1,10 @@
-import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+    symlink as fsSymlink,
+} from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -127,12 +133,14 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
         const otherProject = store.registerProject({ root: otherProjectRoot, displayName: "Other Project" });
         let closedConnections = 0;
-        appObject = /** @type {any} */ (createOwnerWorkspaceApp({
-            mode: "owner",
-            publicOrigin: "http://127.0.0.1:8787",
-            store,
-        }));
-        appObject.ownerConnections.register(claimed.deviceId, { close: () => closedConnections += 1 });
+        appObject = /** @type {any} */ (
+            createOwnerWorkspaceApp({
+                mode: "owner",
+                publicOrigin: "http://127.0.0.1:8787",
+                store,
+            })
+        );
+        appObject.ownerConnections.register(claimed.deviceId, { close: () => (closedConnections += 1) });
         const app = appObject.handler();
 
         const rejected = await app(
@@ -153,7 +161,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         if (page.status === 503) {
             assertStringIncludes(html, "Workspace Astro build unavailable");
         } else {
-            assertEquals(page.status, 200);
+            assertEquals(page.status, 200, html);
             assertStringIncludes(html, "Owner Project Plan Board");
             assertStringIncludes(html, "Visible owner plan");
             assertStringIncludes(html, "Project Plan views");
@@ -298,21 +306,27 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             [
                 { type: "session", id: "phone-session", cwd: projectRoot },
                 { type: "session_info", name: "Phone Ideation" },
-            ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+            ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n",
         );
         /** @type {any} */ (store).listProjectSessions = () =>
             Promise.resolve({
-                sessions: [{
-                    runwieldSessionId: "session-owned",
-                    projectId: project.projectId,
-                    displayName: "Phone Ideation",
-                    transcriptPath,
-                }],
-                diagnostics: [{
-                    code: "path_leak_regression",
-                    sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
-                    message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
-                }],
+                sessions: [
+                    {
+                        runwieldSessionId: "session-owned",
+                        projectId: project.projectId,
+                        displayName: "Phone Ideation",
+                        transcriptPath,
+                    },
+                ],
+                diagnostics: [
+                    {
+                        code: "path_leak_regression",
+                        sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
+                        message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
+                    },
+                ],
             });
         /** @type {any} */ (store).inspectSessionActivation = () => ({
             activation: { state: "idle", ownerProcessKind: null },
@@ -439,7 +453,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             runwieldSessionId: "session-owned",
             events: [],
             liveInteraction: { interactionId: "interaction-owned", request: { prompt: "Pick" } },
-            answer: { resolve: () => answered = true, reject: () => {} },
+            answer: { resolve: () => (answered = true), reject: () => {} },
         });
         const wrongProjectAnswer = await app(
             new Request(
@@ -513,28 +527,29 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         /** @type {any} */ (store).getSessionById = (runwieldSessionId) =>
             runwieldSessionId === "session-owned"
                 ? {
-                    runwieldSessionId,
-                    projectId: "file-project-identity",
-                    transcriptCwd: projectRoot,
-                }
+                      runwieldSessionId,
+                      projectId: "file-project-identity",
+                      transcriptCwd: projectRoot,
+                  }
                 : null;
         const sessionDetailPage = await app(
-            new Request(
-                `http://127.0.0.1:8787/projects/${project.projectId}/sessions/session-owned`,
-                { headers: { cookie: cookiePair(claimed.credential) } },
-            ),
+            new Request(`http://127.0.0.1:8787/projects/${project.projectId}/sessions/session-owned`, {
+                headers: { cookie: cookiePair(claimed.credential) },
+            }),
         );
         assertEquals(sessionDetailPage.status === 404, false);
 
         store.catalogProjectSessions = () =>
             Promise.resolve({
                 cataloged: [],
-                diagnostics: [{
-                    code: "path_leak_regression",
-                    sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
-                    message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
-                    nested: { cwd: `${projectRoot}/nested` },
-                }],
+                diagnostics: [
+                    {
+                        code: "path_leak_regression",
+                        sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
+                        message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
+                        nested: { cwd: `${projectRoot}/nested` },
+                    },
+                ],
             });
         const rescan = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
@@ -655,14 +670,16 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
     let appObject;
     try {
         const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
-        appObject = /** @type {any} */ (createOwnerWorkspaceApp({
-            mode: "owner",
-            publicOrigin: "http://127.0.0.1:8787",
-            store,
-        }));
+        appObject = /** @type {any} */ (
+            createOwnerWorkspaceApp({
+                mode: "owner",
+                publicOrigin: "http://127.0.0.1:8787",
+                store,
+            })
+        );
         const plan = await loadPlan(projectRoot, "owner-plan");
         const openedRevision = await getPlanRevisionForText(plan.markdown);
-        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "feedback" }));
+        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "approved" }));
 
         let resolved = false;
         let rejectedMessage = "";
@@ -693,8 +710,8 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
                 },
             },
             answer: {
-                resolve: () => resolved = true,
-                reject: (error) => rejectedMessage = error instanceof Error ? error.message : String(error),
+                resolve: () => (resolved = true),
+                reject: (error) => (rejectedMessage = error instanceof Error ? error.message : String(error)),
             },
         });
 
@@ -719,7 +736,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
         );
         assertEquals(resolved, false);
         assertStringIncludes(rejectedMessage, "Plan Status changed after review opened");
-        assertEquals((await loadPlan(projectRoot, "owner-plan"))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(projectRoot, "owner-plan"))?.attrs.status, "approved");
     } finally {
         await appObject?.close();
         store.close();
@@ -895,6 +912,86 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
         assertEquals(answers[1]._meta.conversationTurn, true);
         assertEquals(answers[1]._meta.sequenceDecision.feedback, "Clarify the group.");
     } finally {
+        store.close();
+        await fsRm(dir, { recursive: true });
+    }
+});
+
+test("owner add and relink expose redacted confirmation before writes and keep auth", async () => {
+    const { getHomeDir } = await import("../../constants.js");
+    const dir = await fsMkdtemp(join(tmpdir(), "owner-consent-"));
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    const pairing = store.createPairingRequest({ codeFactory: () => "HOME12", proofFactory: () => "home-proof" });
+    store.approvePairingRequest(pairing.code);
+    const claimed = store.claimPairingRequest(pairing.proof, {
+        credentialFactory: () => "home-credential",
+        csrfFactory: () => "csrf-secret",
+    });
+    const owner = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
+    const app = owner.handler();
+    const request = (path, body, authenticated = true) =>
+        app(
+            new Request(`http://127.0.0.1:8787${path}`, {
+                method: "POST",
+                headers: {
+                    origin: "http://127.0.0.1:8787",
+                    "content-type": "application/json",
+                    ...(authenticated
+                        ? { cookie: cookiePair(claimed.credential), "x-runwield-csrf": "csrf-secret" }
+                        : {}),
+                },
+                body: JSON.stringify(body),
+            }),
+        );
+    try {
+        const root = getHomeDir();
+        const unauthenticated = await request("/api/owner/projects", { root }, false);
+        assertEquals(unauthenticated.status, 401);
+        const refusal = await request("/api/owner/projects", { root });
+        assertEquals(refusal.status, 409);
+        const warning = await refusal.json();
+        assertEquals(warning.code, "directory_confirmation_required");
+        assertEquals(JSON.stringify(warning).includes(root), false);
+        assertEquals(store.listProjects(), []);
+        const alias = `${dir}/root-alias`;
+        await fsSymlink(root, alias);
+        assertEquals(
+            (await request("/api/owner/projects", { root: alias, directoryConfirmation: warning.confirmation })).status,
+            409,
+        );
+        const aliasWarning = await (await request("/api/owner/projects", { root: alias })).json();
+        await fsRm(alias);
+        await fsSymlink("/", alias);
+        assertEquals(
+            (await request("/api/owner/projects", { root: alias, directoryConfirmation: aliasWarning.confirmation }))
+                .status,
+            409,
+        );
+        assertEquals(store.listProjects(), []);
+        const ordinary = await request("/api/owner/projects", { root: dir });
+        assertEquals(ordinary.status, 201);
+        const projectId = (await ordinary.json()).project.projectId;
+        const evidence = store.listProjectRootEvidence(projectId);
+        const relinkPath = `/api/owner/projects/${projectId}/action`;
+        assertEquals((await request(relinkPath, { action: "relink", newRoot: root })).status, 409);
+        assertEquals(store.listProjectRootEvidence(projectId), evidence);
+        assertEquals(
+            (
+                await request(relinkPath, {
+                    action: "relink",
+                    newRoot: root,
+                    directoryConfirmation: warning.confirmation,
+                })
+            ).status,
+            200,
+        );
+        assertEquals((await request("/api/owner/projects", { root })).status, 409);
+        assertEquals(
+            (await request("/api/owner/projects", { root, directoryConfirmation: warning.confirmation })).status,
+            201,
+        );
+    } finally {
+        await owner.close();
         store.close();
         await fsRm(dir, { recursive: true });
     }

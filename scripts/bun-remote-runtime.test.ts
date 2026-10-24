@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals } from "../src/testing/assertions.ts";
-import { buildWorkspaceRuntime } from "./build-workspace-runtime.js";
-import { buildPlanServerRuntime } from "./build-plan-server-runtime.js";
+import { buildWorkspaceRuntime } from "./build-workspace-runtime.ts";
+import { buildPlanServerRuntime } from "./build-plan-server-runtime.ts";
 import { captureScriptProcess } from "./script-process.ts";
 
 async function run(command: string, args: string[]): Promise<void> {

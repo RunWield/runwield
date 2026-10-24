@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
 import { formatTerminalTitle, sanitizeSessionName, setTerminalTitleForName } from "./terminal-title.ts";
 

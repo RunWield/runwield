@@ -12,24 +12,16 @@ provenance:
         - "363848da-a5f1-469e-8da0-b06ed9a89da5"
 ---
 
-# Delivered skippable onboarding tutorial
+# Skippable onboarding tutorial
 
 ## Summary
 
-Implemented and verified an optional TUI tutorial for one real Planned Change. Users can permanently skip automatic
-offers or start guidance through `/onboard` and interactive `wld onboard`; consent, setup, planning, review, execution,
-recovery, and recap reuse the normal workflow. Durable Session context preserves deduplicated guidance across resume and
-rollover, while verified recaps require actual delivery evidence. Documentation and 20 tests were added. Focused checks,
-type checks, lint, policy checks, seam checks, docs build, Workspace checks, browser rendering, and diff checks passed;
-full CI was otherwise blocked only by nine pre-existing broken links in untouched dashboard-plan files.
+An optional TUI tutorial guides one real Planned Change through the normal consent, setup, planning, review, execution, recovery, and recap workflow. Users can permanently skip automatic offers or start guidance explicitly. Durable Session context deduplicates guidance across resume and rollover, and successful recaps require actual delivery evidence.
 
-## Deferred Work
+## Out of Scope
 
-Workspace-native tutorial controls and cross-device narration remain deferred. The unrelated broken links under
-`docs/plans/reliable-usage-dashboard-and-langfuse-export/` still need repair.
+This work does not include Workspace-native tutorial controls or cross-device narration.
 
 ## Future Planning Notes
 
-Keep tutorial narration derived from committed workflow facts rather than a parallel progress state. Require confirmed
-verified delivery evidence before showing a successful recap; user-verified or closed-without-verification outcomes must
-remain distinct.
+Derive tutorial narration from committed workflow facts, not parallel progress state. Require confirmed delivery evidence for a successful recap and preserve user-verified and closed-without-verification distinctions.

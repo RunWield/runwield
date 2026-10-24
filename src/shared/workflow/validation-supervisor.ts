@@ -7,7 +7,8 @@ import process from "node:process";
 import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
-import { getLockHostname, isPidAlive } from "../process-liveness.ts";
+import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
+import { getLockHostname } from "../process-liveness.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
 import { createEngineValidationArgs, runValidationLoop, type ValidationLoopArgs } from "./validation.ts";
 import {
@@ -67,7 +68,7 @@ function checkpointRecord(
 async function ownerIsAlive(checkpoint: ValidationCheckpoint): Promise<boolean> {
     if (checkpoint.state !== "running") return false;
     if (!checkpoint.ownerPid || checkpoint.ownerHostname !== getLockHostname()) return false;
-    return await isPidAlive(checkpoint.ownerPid);
+    return await isRecordedProcessAlive(checkpoint.ownerPid, checkpoint.updatedAt, checkpoint.ownerIdentity);
 }
 
 function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
@@ -123,6 +124,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
             state: "running",
             ownerPid: process.pid,
             ownerHostname: getLockHostname(),
+            ownerIdentity: await readProcessIdentity(process.pid),
             repairGeneration: compatible ? prior.repairGeneration : undefined,
             repairKind: compatible ? prior.repairKind : undefined,
             repairCompletedOperationId: compatible ? prior.repairCompletedOperationId : undefined,

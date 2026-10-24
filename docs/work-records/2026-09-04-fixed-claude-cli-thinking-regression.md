@@ -12,16 +12,12 @@ provenance:
         - "7b1479d6-e11e-4965-884c-efec5f892f59"
 ---
 
-# Fixed Claude CLI Thinking Regression
+# Claude CLI root-turn thinking compatibility
 
 ## Summary
 
-Claude CLI root turns now build and run when an Agent or model preset has a non-off thinking level. The Prompt
-Template-only protection remains in place, so unsupported Claude CLI thinking still fails before model execution.
-Verification passed with targeted regression tests, full checks, full test suite, CI task, seams check, diff check,
-red-before evidence, and version ancestry evidence.
+Claude CLI root turns build and run when an Agent or model preset has a non-off thinking level. Unsupported thinking on auxiliary Prompt Template turns still fails before model execution.
 
 ## Future Planning Notes
 
-Keep backend thinking-level rejection scoped to auxiliary Prompt Template turns without workflow authority. The
-regression affected v0.9.6-rc.1 through v0.9.6-rc.4; v0.9.5 was not affected.
+Keep backend thinking-level rejection scoped to auxiliary Prompt Template turns without workflow authority.

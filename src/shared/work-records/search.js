@@ -3,7 +3,7 @@
  * Canonical Work Record retrieval hydrated from Markdown, using Mnemoteca only for candidates.
  */
 
-import { findWorkRecordById, listWorkRecords } from "./store.js";
+import { findWorkRecordById, listWorkRecords } from "./store.ts";
 import { formatWorkRecordScopeLabel, isCurrentWorkRecord, workRecordNotices } from "./list.ts";
 import {
     getWorkRecordIndexCollectionName,
@@ -71,8 +71,8 @@ function extractTags(value) {
     const tags = Array.isArray(result.metadata?.tags)
         ? result.metadata.tags
         : Array.isArray(result.tags)
-        ? result.tags
-        : [];
+          ? result.tags
+          : [];
     return tags.filter((tag) => typeof tag === "string");
 }
 
@@ -80,7 +80,8 @@ function extractTags(value) {
 export function parseWorkRecordSearchJson(output) {
     if (typeof output !== "string" || !output.trim()) return [];
     const parsed = JSON.parse(output);
-    return asJsonResults(parsed).map((result) => ({ recordId: recordIdFromTags(extractTags(result)), raw: result }))
+    return asJsonResults(parsed)
+        .map((result) => ({ recordId: recordIdFromTags(extractTags(result)), raw: result }))
         .filter((candidate) => candidate.recordId);
 }
 
@@ -107,16 +108,11 @@ export async function searchWorkRecords(cwd, query, options) {
     const accessMode = options.includeAll ? "all" : options.accessMode || "current";
     const bootstrap = await ensureSearchBootstrap(cwd, options);
     const collection = await getWorkRecordIndexCollectionName(cwd);
-    const output = await runMnemotecaWorkRecordCommand(cwd, [
-        "search",
-        "--name",
-        collection,
-        "--format",
-        "json",
-        "--limit",
-        String(options.limit || 20),
-        trimmed,
-    ], options);
+    const output = await runMnemotecaWorkRecordCommand(
+        cwd,
+        ["search", "--name", collection, "--format", "json", "--limit", String(options.limit || 20), trimmed],
+        options,
+    );
     let candidates;
     try {
         candidates = parseWorkRecordSearchJson(output);
@@ -135,9 +131,9 @@ export async function searchWorkRecords(cwd, query, options) {
     }
     if (duplicates.size) {
         throw new Error(
-            `Duplicate Work Record index entries for ${
-                [...duplicates].join(", ")
-            }. Run wld wr index rebuild to repair the derived Work Record index.`,
+            `Duplicate Work Record index entries for ${[...duplicates].join(
+                ", ",
+            )}. Run wld wr index rebuild to repair the derived Work Record index.`,
         );
     }
     const recordsById = new Map(bootstrap.canonical.map((record) => [record.attrs.recordId, record]));
@@ -217,9 +213,9 @@ export function formatWorkRecordSearchResults(result) {
     if (result.staleRecordIds.length) {
         lines.push(
             "",
-            `WARNING: discarded stale index candidate(s): ${
-                result.staleRecordIds.join(", ")
-            }. Run wld wr index rebuild.`,
+            `WARNING: discarded stale index candidate(s): ${result.staleRecordIds.join(
+                ", ",
+            )}. Run wld wr index rebuild.`,
         );
     }
     return lines.join("\n");

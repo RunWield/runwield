@@ -11,7 +11,7 @@ import { createChatInputController } from "./chat-input-controller.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
     const deadline = performance.now() + 5000;
@@ -180,10 +180,7 @@ for (const columns of [60, 140]) {
                         if (choice === "load-plan") terminal.input("\x1b[B");
                         terminal.pressEnter();
                         await waitFor(() => activeId !== originalId);
-                        assertEquals(
-                            runtime.getSessionSnapshot(activeId)?.activeAgent,
-                            "router",
-                        );
+                        assertEquals(runtime.getSessionSnapshot(activeId)?.activeAgent, "router");
                         if (choice === "load-plan") {
                             await waitFor(() => terminal.getScreenText().includes("Load plan:")).catch((error) => {
                                 throw new Error(`${error}\n${terminal.getScreenText()}`);
@@ -229,10 +226,13 @@ for (const choice of ["skip", "open", "dismiss"]) {
                 const response = adapter.requestInteraction({
                     type: "select",
                     prompt: "Would you like to review the code?",
-                    options: [{ value: "open", label: "Open code review" }, {
-                        value: "skip",
-                        label: "Skip code review",
-                    }],
+                    options: [
+                        { value: "open", label: "Open code review" },
+                        {
+                            value: "skip",
+                            label: "Skip code review",
+                        },
+                    ],
                     _meta: { presentation: "code_review_offer" },
                 });
                 await waitFor(() => terminal.getScreenText().includes("Skip code review"));

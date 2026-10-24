@@ -17,7 +17,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { writeWorkRecord } from "../../shared/work-records/store.js";
+import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { ownerProjectSessionsApi, ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
@@ -80,13 +80,14 @@ test("unified Workspace search ranks canonical sources and opens Project artifac
         );
         assertEquals(response.status, 200);
         const payload = await response.json();
-        assertEquals(payload.results.map((result: { contentType: string }) => result.contentType), [
-            "prd",
-            "adr",
-            "plan",
-            "design-system",
-        ]);
-        assertEquals(payload.results.some((result: { sourceId: string }) => result.sourceId === "source.ts"), false);
+        assertEquals(
+            payload.results.map((result: { contentType: string }) => result.contentType),
+            ["prd", "adr", "plan", "design-system"],
+        );
+        assertEquals(
+            payload.results.some((result: { sourceId: string }) => result.sourceId === "source.ts"),
+            false,
+        );
         assertEquals(
             payload.results.every((result: { projectId: string }) => result.projectId === project.projectId),
             true,
@@ -107,7 +108,10 @@ test("unified Workspace search ranks canonical sources and opens Project artifac
             new Request("http://127.0.0.1:8787/api/owner/search?q=Searchable%20Compass", { headers }),
         );
         const changed = await changedResponse.json();
-        assertEquals(changed.results.some((result: { contentType: string }) => result.contentType === "prd"), false);
+        assertEquals(
+            changed.results.some((result: { contentType: string }) => result.contentType === "prd"),
+            false,
+        );
         const staleDestination = await app(new Request(`http://127.0.0.1:8787${prd.destination}`, { headers }));
         assertEquals(staleDestination.status, 200);
         assertStringIncludes(await staleDestination.text(), "Replaced content");
@@ -199,18 +203,14 @@ test("every Workspace search result type opens its built destination", async () 
             assertStringIncludes(html, visibleText);
         }
         const recordResponse = await ownerApp.handler()(
-            new Request(
-                "http://127.0.0.1:8787/api/owner/search?q=Universal%20destination%20token&type=work-record",
-                { headers },
-            ),
+            new Request("http://127.0.0.1:8787/api/owner/search?q=Universal%20destination%20token&type=work-record", {
+                headers,
+            }),
         );
         const record = (await recordResponse.json()).results[0];
-        const recordHtml = await (await ownerApp.handler()(
-            new Request(
-                `http://127.0.0.1:8787${record.destination}`,
-                { headers },
-            ),
-        )).text();
+        const recordHtml = await (
+            await ownerApp.handler()(new Request(`http://127.0.0.1:8787${record.destination}`, { headers }))
+        ).text();
         assertStringIncludes(recordHtml, "/plans/destination-plan-id");
         assertStringIncludes(recordHtml, "Completion confidence: done enough.");
     } finally {
@@ -239,19 +239,16 @@ test("Project settings stays accessible when its root disappears or its registra
         assertEquals(html.includes("Workspace request blocked"), false);
         const action = (body: { action: string; newRoot?: string }) =>
             app(
-                new Request(
-                    `http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`,
-                    {
-                        method: "POST",
-                        headers: {
-                            ...headers,
-                            origin: "http://127.0.0.1:8787",
-                            "x-runwield-csrf": "csrf-secret",
-                            "content-type": "application/json",
-                        },
-                        body: JSON.stringify(body),
+                new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
+                    method: "POST",
+                    headers: {
+                        ...headers,
+                        origin: "http://127.0.0.1:8787",
+                        "x-runwield-csrf": "csrf-secret",
+                        "content-type": "application/json",
                     },
-                ),
+                    body: JSON.stringify(body),
+                }),
             );
         assertEquals((await action({ action: "disable" })).status, 200);
         const disabled = await app(new Request(settingsUrl, { headers }));
@@ -291,7 +288,10 @@ test("Removing and re-adding a Project preserves file-authoritative Session hist
         assertEquals(added.projectId === project.projectId, false);
         await store.catalogProjectSessions(added.projectId, { fullRescan: true });
         const rediscovered = await store.listProjectSessions(added.projectId);
-        assertEquals(rediscovered.sessions.some((item) => item.runwieldSessionId === session.runwieldSessionId), true);
+        assertEquals(
+            rediscovered.sessions.some((item) => item.runwieldSessionId === session.runwieldSessionId),
+            true,
+        );
         assertEquals(await fsReadFile(transcriptPath, "utf8"), transcript);
     } finally {
         await fixture.cleanup();
@@ -331,48 +331,67 @@ test("unassociated live Plan reviews use Plan names and ordinary questions use S
         });
         const continuation = {
             operations: new Map([
-                ["browser-op", {
-                    projectId: project.projectId,
-                    runwieldSessionId: "browser-session",
-                    status: "running",
-                    liveInteraction: {
-                        interactionId: "review-1",
-                        request: {
-                            type: "plan_review",
-                            planReview: { planId: "review-plan-id", planName: "review-me" },
+                [
+                    "browser-op",
+                    {
+                        projectId: project.projectId,
+                        runwieldSessionId: "browser-session",
+                        status: "running",
+                        liveInteraction: {
+                            interactionId: "review-1",
+                            request: {
+                                type: "plan_review",
+                                planReview: { planId: "review-plan-id", planName: "review-me" },
+                            },
                         },
                     },
-                }],
-                ["tui-op", {
-                    projectId: project.projectId,
-                    runwieldSessionId: "tui-session",
-                    status: "running",
-                    liveInteraction: {
-                        interactionId: "review-2",
-                        request: { type: "plan_review", _meta: { planName: "A new Plan in a worktree" } },
+                ],
+                [
+                    "tui-op",
+                    {
+                        projectId: project.projectId,
+                        runwieldSessionId: "tui-session",
+                        status: "running",
+                        liveInteraction: {
+                            interactionId: "review-2",
+                            request: { type: "plan_review", _meta: { planName: "A new Plan in a worktree" } },
+                        },
                     },
-                }],
-                ["question-op", {
-                    projectId: project.projectId,
-                    runwieldSessionId: "question-session",
-                    status: "running",
-                    liveInteraction: { interactionId: "question", request: { type: "text", prompt: "Which file?" } },
-                }],
+                ],
+                [
+                    "question-op",
+                    {
+                        projectId: project.projectId,
+                        runwieldSessionId: "question-session",
+                        status: "running",
+                        liveInteraction: {
+                            interactionId: "question",
+                            request: { type: "text", prompt: "Which file?" },
+                        },
+                    },
+                ],
             ]),
             listSessions: () =>
                 Promise.resolve({
-                    sessions: [
-                        { runwieldSessionId: "question-session", displayName: "Choose Terraform folder name" },
-                    ],
+                    sessions: [{ runwieldSessionId: "question-session", displayName: "Choose Terraform folder name" }],
                 }),
         };
         const dashboard = await loadOwnerDashboard(store, continuation);
         const items = dashboard.dashboard.sections.find((section) => section.key === "needs-you")?.items || [];
         assertEquals(items.length, 3);
         assertEquals(items.find((item) => item.planId === "review-plan-id")?.title, "Review the searchable artifacts");
-        assertEquals(items.some((item) => item.title === "A new Plan in a worktree"), true);
-        assertEquals(items.some((item) => item.title === "Choose Terraform folder name"), true);
-        assertEquals(items.some((item) => item.title === "Session is waiting for you"), false);
+        assertEquals(
+            items.some((item) => item.title === "A new Plan in a worktree"),
+            true,
+        );
+        assertEquals(
+            items.some((item) => item.title === "Choose Terraform folder name"),
+            true,
+        );
+        assertEquals(
+            items.some((item) => item.title === "Session is waiting for you"),
+            false,
+        );
     } finally {
         await ownerApp.close();
         store.close();
@@ -402,8 +421,9 @@ test("Dashboard shares concurrent reads but refreshes evidence after they finish
         });
         const refreshed = await loadOwnerDashboard(store, sessions);
         assertEquals(
-            refreshed.dashboard.sections.find((section) => section.key === "recently-finished")?.items
-                .some((item) => item.planId === "finished-plan"),
+            refreshed.dashboard.sections
+                .find((section) => section.key === "recently-finished")
+                ?.items.some((item) => item.planId === "finished-plan"),
             true,
         );
     } finally {
@@ -455,8 +475,8 @@ test("personal remote Workspace v2 Dashboard returns eligible completions for cl
         );
         assertEquals(response.status, 200);
         const payload = await response.json();
-        const recentlyFinished = payload.dashboard.sections.find((section: { key: string }) =>
-            section.key === "recently-finished"
+        const recentlyFinished = payload.dashboard.sections.find(
+            (section: { key: string }) => section.key === "recently-finished",
         ).items;
         assertEquals(recentlyFinished.length, 12);
         assertEquals(
@@ -477,17 +497,22 @@ test("personal remote Workspace v2 workflow presentation exposes connected actio
         planName: "Feature Plan",
         classification: "PLANNED_CHANGE",
         status: "validated_ci",
-        progressFacts: [{
-            kind: "validation_checkpoint",
-            phase: "semantic",
-            state: "awaiting_repair",
-            repairKind: "semantic",
-        }],
+        progressFacts: [
+            {
+                kind: "validation_checkpoint",
+                phase: "semantic",
+                state: "awaiting_repair",
+                repairKind: "semantic",
+            },
+        ],
         hasCodeReview: true,
     });
     assertEquals(presentation.currentStage?.id, "code_review");
     assertEquals(presentation.action?.kind, "review_code");
-    assertEquals(presentation.connections.some((connection) => connection.kind === "repair_return"), false);
+    assertEquals(
+        presentation.connections.some((connection) => connection.kind === "repair_return"),
+        false,
+    );
 
     const html = renderToStaticMarkup(createElement(WorkflowSidebar, { presentation }));
     assertEquals(html.includes("Repair returns to AI review"), false);
@@ -506,18 +531,16 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
     const { store, ownerApp, app } = pairedApp(dir);
     try {
         store.registerProject({ root, displayName: "Project" });
-        for (
-            const status of [
-                "draft",
-                "feedback",
-                "validated",
-                "approved",
-                "failed",
-                "ci_failed",
-                "review_failed",
-                "blocked",
-            ]
-        ) {
+        for (const status of [
+            "draft",
+            "feedback",
+            "validated",
+            "approved",
+            "failed",
+            "ci_failed",
+            "review_failed",
+            "blocked",
+        ]) {
             await savePlan(root, status, `# ${status}\n`, {
                 planId: status,
                 classification: "FEATURE",
@@ -549,9 +572,9 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
             [],
         );
         assertEquals(
-            payload.dashboard.sections.find((section: { key: string }) => section.key === "ready").items.map((
-                item: { planId: string },
-            ) => item.planId),
+            payload.dashboard.sections
+                .find((section: { key: string }) => section.key === "ready")
+                .items.map((item: { planId: string }) => item.planId),
             ["ready-6", "ready-5", "ready-4", "ready-3", "ready-2", "ready-1", "ready-0"],
         );
     } finally {
@@ -594,11 +617,14 @@ test("Dashboard distinguishes stopped execution from an active Agent and an ordi
         store.publishGenerationAndRelease(proof, {
             generation: 1,
             currentSegmentId: segment.segmentId,
-            ...await readTranscriptEvidence(fixture.transcriptPath),
+            ...(await readTranscriptEvidence(fixture.transcriptPath)),
         });
         const stopped = await loadOwnerDashboard(store, service);
         const attention = stopped.dashboard.sections.find((section) => section.key === "needs-you")?.items;
-        assertEquals(attention?.map((item) => item.planId), ["unfinished"]);
+        assertEquals(
+            attention?.map((item) => item.planId),
+            ["unfinished"],
+        );
         assertEquals(attention?.[0].href, `/projects/${project.projectId}/sessions/${session.runwieldSessionId}`);
         proof = store.acquireSessionActivation({
             runwieldSessionId: session.runwieldSessionId,
@@ -668,17 +694,22 @@ test("personal remote Workspace v2 Dashboard promotes associated live questions 
             sessionId === "question-session"
                 ? [{ planId: "active-plan", committedGeneration: 1 }]
                 : sessionId === "done-session"
-                ? [{ planId: "done-plan", committedGeneration: 1 }]
-                : [],
+                  ? [{ planId: "done-plan", committedGeneration: 1 }]
+                  : [],
         inspectSessionActivation: () => ({ activation: { state: "active", ownerProcessKind: "workspace" } }),
     };
     const sessionContinuation = {
-        operations: new Map([["op-1", {
-            projectId: "project-1",
-            runwieldSessionId: "question-session",
-            status: "running",
-            liveInteraction: { interactionId: "ask-1", request: { prompt: "Choose.", type: "text" } },
-        }]]),
+        operations: new Map([
+            [
+                "op-1",
+                {
+                    projectId: "project-1",
+                    runwieldSessionId: "question-session",
+                    status: "running",
+                    liveInteraction: { interactionId: "ask-1", request: { prompt: "Choose.", type: "text" } },
+                },
+            ],
+        ]),
         listSessions: () =>
             Promise.resolve({
                 sessions: [
@@ -691,10 +722,13 @@ test("personal remote Workspace v2 Dashboard promotes associated live questions 
     };
     try {
         const payload = await loadOwnerDashboard(store, sessionContinuation);
-        const needsYou = payload.dashboard.sections.find((section: { key: string }) =>
-            section.key === "needs-you"
+        const needsYou = payload.dashboard.sections.find(
+            (section: { key: string }) => section.key === "needs-you",
         ).items;
-        assertEquals(needsYou.some((item: { planId: string }) => item.planId === "active-plan"), true);
+        assertEquals(
+            needsYou.some((item: { planId: string }) => item.planId === "active-plan"),
+            true,
+        );
         for (const type of ["plan_review", "code_review"]) {
             sessionContinuation.operations.set("op-1", {
                 projectId: "project-1",
@@ -706,23 +740,20 @@ test("personal remote Workspace v2 Dashboard promotes associated live questions 
             const item = waiting.dashboard.sections.find((section) => section.key === "needs-you")?.items[0];
             assertEquals(item?.href, "/projects/project-1/sessions/question-session#interaction-ask-1");
             assertEquals(item?.actionLabel, type === "plan_review" ? "Review Plan" : "Review code");
-            assertEquals(
-                item?.statusLabel,
-                type === "plan_review" ? "Plan ready for review" : "Code ready for review",
-            );
+            assertEquals(item?.statusLabel, type === "plan_review" ? "Plan ready for review" : "Code ready for review");
         }
         sessionContinuation.operations.clear();
         const answered = await loadOwnerDashboard(store, sessionContinuation);
         assertEquals(answered.dashboard.sections.find((section) => section.key === "needs-you")?.items.length, 0);
         assertEquals(
-            payload.projects[0].sessions.some((session: { runwieldSessionId: string }) =>
-                session.runwieldSessionId === "done-session"
+            payload.projects[0].sessions.some(
+                (session: { runwieldSessionId: string }) => session.runwieldSessionId === "done-session",
             ),
             true,
         );
         assertEquals(
-            payload.projects[0].sessions.some((session: { runwieldSessionId: string }) =>
-                session.runwieldSessionId === "question-session"
+            payload.projects[0].sessions.some(
+                (session: { runwieldSessionId: string }) => session.runwieldSessionId === "question-session",
             ),
             false,
         );
@@ -773,10 +804,13 @@ test("personal remote Workspace v2 Dashboard uses live evidence for active work 
         const payload = await loadOwnerDashboard(store, sessionContinuation);
         const dashboardText = JSON.stringify(payload.dashboard);
         assertEquals(dashboardText.includes("inactive-plan"), false);
-        const recentlyFinished = payload.dashboard.sections.find((section: { key: string }) =>
-            section.key === "recently-finished"
+        const recentlyFinished = payload.dashboard.sections.find(
+            (section: { key: string }) => section.key === "recently-finished",
         ).items;
-        assertEquals(recentlyFinished.some((item: { planId: string }) => item.planId === "published-plan"), true);
+        assertEquals(
+            recentlyFinished.some((item: { planId: string }) => item.planId === "published-plan"),
+            true,
+        );
     } finally {
         await fsRm(dir, { recursive: true });
     }
@@ -806,12 +840,18 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
     try {
         const payload = await loadOwnerDashboard(store, sessionContinuation);
         const readyItems = payload.dashboard.sections.find((section: { key: string }) => section.key === "ready").items;
-        assertEquals(readyItems.some((item: { planId: string }) => item.planId === "ready-plan"), false);
-        const needsYou = payload.dashboard.sections.find((section: { key: string }) =>
-            section.key === "needs-you"
+        assertEquals(
+            readyItems.some((item: { planId: string }) => item.planId === "ready-plan"),
+            false,
+        );
+        const needsYou = payload.dashboard.sections.find(
+            (section: { key: string }) => section.key === "needs-you",
         ).items;
         assertEquals(needsYou.length, 0);
-        assertEquals(payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"), true);
+        assertEquals(
+            payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"),
+            true,
+        );
     } finally {
         await fsRm(dir, { recursive: true });
     }
@@ -832,9 +872,8 @@ test("personal remote Workspace v2 Session API filters committed Plan associatio
                 listSessions: (_projectId: string, options: { page: number }) => {
                     calls.push(options.page);
                     return Promise.resolve({
-                        sessions: options.page === 0
-                            ? [{ runwieldSessionId: "first" }]
-                            : [{ runwieldSessionId: "late" }],
+                        sessions:
+                            options.page === 0 ? [{ runwieldSessionId: "first" }] : [{ runwieldSessionId: "late" }],
                         hasNext: options.page === 0,
                         diagnostics: [],
                     });
@@ -847,7 +886,10 @@ test("personal remote Workspace v2 Session API filters committed Plan associatio
     const payload = await response.json();
     assertEquals(calls, [0, 1]);
     assertEquals(payload.total, 1);
-    assertEquals(payload.sessions.map((session: { runwieldSessionId: string }) => session.runwieldSessionId), ["late"]);
+    assertEquals(
+        payload.sessions.map((session: { runwieldSessionId: string }) => session.runwieldSessionId),
+        ["late"],
+    );
 });
 
 test("personal remote Workspace v2 standalone Session expansion excludes only rendered Plan associations", async () => {
@@ -863,15 +905,19 @@ test("personal remote Workspace v2 standalone Session expansion excludes only re
                     sessionId === "nested"
                         ? [{ planId: "active-plan", committedGeneration: 1 }]
                         : sessionId === "terminal"
-                        ? [{ planId: "terminal-plan", committedGeneration: 1 }]
-                        : [],
+                          ? [{ planId: "terminal-plan", committedGeneration: 1 }]
+                          : [],
             },
             sessionContinuation: {
                 listSessions: () =>
                     Promise.resolve({
-                        sessions: [{ runwieldSessionId: "nested" }, { runwieldSessionId: "terminal" }, {
-                            runwieldSessionId: "free",
-                        }],
+                        sessions: [
+                            { runwieldSessionId: "nested" },
+                            { runwieldSessionId: "terminal" },
+                            {
+                                runwieldSessionId: "free",
+                            },
+                        ],
                         hasNext: false,
                         diagnostics: [],
                     }),

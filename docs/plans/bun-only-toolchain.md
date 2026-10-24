@@ -4,6 +4,7 @@ workKind: "REFACTOR"
 complexity: "HIGH"
 status: "in-progress"
 createdAt: "2026-10-12"
+planId: "6356d270-7145-4aaa-b1ed-4a0e8e8a35b2"
 ---
 
 # Complete the Bun toolchain migration
@@ -125,7 +126,6 @@ Therefore a Landlock-only Bun image cannot be called equivalent. The remaining c
 exception for this restricted image, or accept a new host-managed sandbox requirement whose full filesystem and subprocess
 policy must then be qualified. Neither a weaker policy nor extra host privileges have been adopted. That was the decision pending at the previous checkpoint; the owner decision below resolves it for these test images.
 
-
 ## Owner-approved test container scope and original task names
 
 Carlos resolved the container decision: “No need to find equality with that one. Just replace it with bun. We can worry
@@ -148,7 +148,6 @@ argument boundaries, and failed build prerequisite propagation have focused regr
 Qualification for these final changes must include the remote image's runtime files, nonroot user, absent Deno runtime,
 health/readiness, built HTML/CSS, SQLite persistence across restart, graceful shutdown and read-only application directory.
 The draft PR stays unmerged and no release is published.
-
 
 ## Fresh dependency and API audit
 

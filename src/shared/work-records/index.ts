@@ -1,6 +1,6 @@
 export * from "./schema.ts";
 export * from "./markdown.js";
-export * from "./store.js";
+export * from "./store.ts";
 export * from "./lifecycle.ts";
 export * from "./list.ts";
 export * from "./supersession.ts";

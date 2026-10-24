@@ -12,21 +12,12 @@ provenance:
         - "d90a8cb8-cdfd-4192-ba1e-d2aa1f9ac3af"
 ---
 
-# Parallel CI Pre-Test Gates
+# Parallel CI pre-test gates
 
 ## Summary
 
-CI now runs the independent pre-test gates concurrently through `scripts/run-ci.ts`, then runs the existing isolated
-test task only after all gates pass. The runner keeps child output visible, reports all pre-test failures, preserves
-test exit codes, and is covered by focused scheduling and failure tests. RunWield Workflow Validation passed, including
-the final `deno task ci`.
-
-## Deviations from Plan
-
-The first full `deno task ci` failed in a TUI golden-scenario test, but that test passed when rerun directly and the
-final full CI run passed.
+CI runs independent pre-test gates concurrently and starts isolated tests only after every gate passes. Child output remains visible, all pre-test failures are reported, and test exit codes are preserved. Scheduling remains separate from the test runner's execution contract.
 
 ## Future Planning Notes
 
-The implementation keeps the test runner unchanged and limits the new logic to CI scheduling. If peak load becomes a
-problem, a future change can add a concurrency limit without changing the task contracts.
+CI scheduling changes must preserve test isolation, output visibility, and failure semantics.

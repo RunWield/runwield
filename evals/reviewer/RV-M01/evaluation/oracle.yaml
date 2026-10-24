@@ -1,0 +1,98 @@
+schemaVersion: 1
+scenarioId: RV-M01
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: >-
+        Only a disposable verification tree receives these files and scripts. Never copy them into a Reviewer
+        project.
+proofs:
+    explicit-false:
+        command: bun run test:oracle explicit-false
+        expectedFailureMarker: RV-M01-FALSE-DEFAULT
+    empty-cursor-page:
+        command: bun run test:oracle empty-cursor-page
+        expectedFailureMarker: RV-M01-EMPTY-PAGE-STOP
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-M01-A
+              severity: medium
+              category: boolean-defaulting
+              trigger: List a terminal page containing an archived project with filterEnabled explicitly false.
+              expectedBehavior: Disable the filter and return the archived project.
+              wrongBehavior: Boolean truthiness defaulting overwrites false with true, hiding the archived project.
+              evidence:
+                  - src/settings.ts
+                  - src/project-list.ts
+              acceptableConcepts:
+                  - explicit false must survive normalization
+                  - truthiness default enables a disabled filter
+                  - absence-aware boolean default
+              nearMisses:
+                  - Omitting filterEnabled intentionally enables filtering.
+                  - This proof uses one terminal page, so pagination cannot cause its failure.
+              proofCommand: bun run test:oracle explicit-false
+              expectedFailureMarker: RV-M01-FALSE-DEFAULT
+              evidenceNotes:
+                  src/settings.ts: loadSettings default
+                  src/project-list.ts: filter application
+            - defectId: RV-M01-B
+              severity: medium
+              category: cursor-traversal
+              trigger: >-
+                  With filtering explicitly true and all projects active, the second page is empty but
+                  supplies a cursor to a nonempty third page.
+              expectedBehavior: Continue to the third page and return the first and third pages in order.
+              wrongBehavior: An empty item array ends traversal early, omitting the third page.
+              evidence:
+                  - src/pagination.ts
+                  - src/model.ts
+                  - src/project-list.ts
+              acceptableConcepts:
+                  - empty page can have continuation
+                  - next cursor, not item count, decides completion
+                  - later page omitted
+              nearMisses:
+                  - A terminal empty page with no cursor may end traversal.
+                  - Repeated-cursor rejection is deliberate loop protection.
+                  - >-
+                      This proof uses explicit true and active projects, so boolean defaulting cannot cause
+                      its failure.
+              proofCommand: bun run test:oracle empty-cursor-page
+              expectedFailureMarker: RV-M01-EMPTY-PAGE-STOP
+              evidenceNotes:
+                  src/pagination.ts: empty-page break before nextCursor handling
+                  src/model.ts: ProjectPage continuation contract
+                  src/project-list.ts: collection before filtering
+cleanNearMisses:
+    - Omitting filterEnabled intentionally enables filtering.
+    - This proof uses one terminal page, so pagination cannot cause its failure.
+    - A terminal empty page with no cursor may end traversal.
+    - Repeated-cursor rejection is deliberate loop protection.
+    - This proof uses explicit true and active projects, so boolean defaulting cannot cause its failure.
+verificationOnlyCandidates:
+    clean:
+        patch: evaluation/clean.patch
+        patchBase: source
+        expectedProofOutcomes:
+            explicit-false: pass
+            empty-cursor-page: pass
+    booleanRepair:
+        patch: evaluation/fix-boolean.patch
+        patchBase: A
+        expectedProofOutcomes:
+            explicit-false: pass
+            empty-cursor-page: fail
+    paginationRepair:
+        patch: evaluation/fix-pagination.patch
+        patchBase: A
+        expectedProofOutcomes:
+            explicit-false: fail
+            empty-cursor-page: pass

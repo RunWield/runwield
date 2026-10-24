@@ -11,15 +11,8 @@ provenance:
         - "efca91ed-f3fc-4ee4-ba95-86fd76cee5aa"
 ---
 
-# Loaded Pi-Compatible External Skills
+# Pi-compatible external skill discovery
 
 ## Summary
 
-Added ~/.agents/skills as the lowest-priority skill source. External skills now flow through existing discovery into
-autocomplete, system prompts, boot banners, and slash-command expansion while preserving local, home, and bundled
-collision precedence.
-
-## Deviations from Plan
-
-External skill loading gained a global enableExternalSkills setting, defaulting to enabled, so users can opt out without
-changing the planned default behavior.
+RunWield discovers Pi-compatible external skills as its lowest-priority skill source. They participate in autocomplete, system prompts, boot banners, and slash-command expansion without overriding local, home, or bundled skills. External skill loading defaults to enabled and has a global opt-out setting.

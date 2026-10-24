@@ -435,6 +435,7 @@ export interface FileSessionStore {
     requireSessionProjectRoot(projectId: string): string;
     findSessionByLocator(locator: SessionLocator): CatalogedSession | null;
     getSessionById(runwieldSessionId: string, projectId?: string): CatalogedSession | null;
+    readSessionManifest(runwieldSessionId: string, projectId: string): FileSessionManifest | null;
     archiveSession(runwieldSessionId: string, projectId?: string): CatalogedSession;
     unarchiveSession(runwieldSessionId: string, projectId?: string): CatalogedSession;
     ensureSessionCatalogRecord(locator: EnsureSessionCatalogOptions): Promise<CatalogedSession>;

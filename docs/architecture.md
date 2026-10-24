@@ -648,9 +648,9 @@ flowchart TD
     Planner --> PlanOutcome["plan_written outcome"]
     Architect --> EpicOutcome["plan_written outcome"]
     PlanOutcome -->|approved_execute| Execute["Execute PLANNED_CHANGE Plan"]
-    PlanOutcome -->|saved or feedback| Planner
+    PlanOutcome -->|saved, conversation, or feedback| Planner
     EpicOutcome -->|approved_decompose| Slicer["Slicer creates child PLANNED_CHANGE Plans"]
-    EpicOutcome -->|saved or feedback| Architect
+    EpicOutcome -->|saved, conversation, or feedback| Architect
 
     Execute --> CompletionGate{"Engineer task_completed?"}
     CompletionGate -->|yes| Validation["Workflow Validation"]
@@ -695,14 +695,18 @@ hash first.
 
 ### Lifecycle state machine
 
+Review chat does not record a lifecycle event or write the Plan unless an owner edit is saved. Opening review preserves
+approval and readiness. A meaningful review revision returns an approved or ready Plan to draft; formatting-only
+changes preserve status. RunWield restores the same review after reply-only turns without another `plan_written` call.
+Legacy `feedback` and `in_review` normalize to `draft`. See [Plan Lifecycle](plan-lifecycle.md) for event details.
+
 ```mermaid
 stateDiagram-v2
     [*] --> draft
 
-    draft --> feedback: review_feedback
-    feedback --> feedback: review_feedback
+    draft --> draft: review_feedback (no-chat fallback)
+    approved --> draft: review_feedback or meaningful review revision
     draft --> approved: review_approved
-    feedback --> approved: review_approved
 
     approved --> ready_for_work: readiness_passed for PLANNED_CHANGE
     approved --> ready_for_decomposition: epic_readiness_passed
@@ -717,11 +721,11 @@ stateDiagram-v2
     implemented --> verified: validation_passed
     ready_for_work --> verified: epic_done_enough
 
-    ready_for_work --> feedback: review_reopened
-    in_progress --> feedback: review_reopened
-    failed --> feedback: review_reopened
-    implemented --> feedback: review_reopened
-    verified --> feedback: review_reopened
+    ready_for_work --> draft: review_reopened
+    in_progress --> draft: review_reopened
+    failed --> draft: review_reopened
+    implemented --> draft: review_reopened
+    verified --> draft: review_reopened
 
     draft --> on_hold: plan_held
     ready_for_work --> on_hold: plan_held
@@ -961,8 +965,13 @@ live-session internals.
 ### ACP adapter
 
 The ACP server calls public `SessionRuntime` methods with Runtime IDs. `AcpSessionMap` maps protocol IDs to opaque
-Runtime IDs and never stores hosted or Pi objects. Runtime events become ACP `session/update` notifications, and ACP
-client elicitation implements the same semantic interaction contract.
+Runtime IDs and never stores hosted or Pi objects. Runtime events become ACP `session/update` notifications. The
+adapter uses native forms when advertised; otherwise, all select, text, and approval questions, including command menus,
+use chat. Built-in commands and Agent turns share one live operation: each chat question ends an ACP request while
+Runtime work stays live, and the next request answers through the broker. Menus require a number in range or a unique
+exact label/value match, trimmed and case-insensitive; only unmatched `cancel` cancels a menu. Text and `user_interview`
+keep their distinct answer rules. Plan, Code, and Artifact Review keep browser links, and Artifact Review feedback keeps
+its browser question page. These presentations implement the same semantic interaction contract.
 
 ACP currently supports the MVP session methods and rejects unsupported methods explicitly. It contains protocol
 validation and mapping only; it does not own agent, workflow, or persistence state.
@@ -1016,7 +1025,7 @@ The current layout is:
 | `src/ui/review/`                     | Browser review interaction implementation                   | UI/review infrastructure; Core does not import it             |
 | `src/cmd/`                           | CLI/TUI command consumers                                   | Runtime public surface; no hosted/root/handler internals      |
 
-`src/shared/session/architecture-boundary.test.js` makes these rules executable in CI. It scans production files and
+`src/shared/session/architecture-boundary.test.ts` makes these rules executable in CI. It scans production files and
 fails on consumer vocabulary/imports in Core, internal session imports in consumers, host/object escape hatches,
 consumer event publication, and removed compatibility files returning.
 
@@ -1028,7 +1037,7 @@ dependency guard are what prevent this seam from silently returning.
 
 | Invariant                                              | Principal coverage                                                                  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Core knows no consumers; consumers use only Runtime    | `src/shared/session/architecture-boundary.test.js`                                  |
+| Core knows no consumers; consumers use only Runtime    | `src/shared/session/architecture-boundary.test.ts`                                  |
 | Opaque IDs and private internals                       | `src/shared/session/session-runtime.test.js`                                        |
 | One ordered turn lifecycle and error settlement        | `src/shared/session/session-runtime.test.js`                                        |
 | One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.js`                                    |
@@ -1050,16 +1059,16 @@ Git behavior.
 
 | Core area                    | Principal test suites                                                                                                                 | Existing emphasis                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Hosted state and registry    | `hosted-session.test.js`, `session-host.test.js`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
+| Hosted state and registry    | `hosted-session.test.js`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
 | Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.js`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
 | Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.js`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.js`, `plan-lifecycle.test.js`, `src/ui/review/plan-review.test.js`, `plan-written.test.js`                           | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
-| Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.js`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
+| Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
 | Git worktrees                | `worktree.test.js`, `worktree-registry.test.js`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
 | Configuration and policy     | `settings.test.js`, `model-registry.test.js`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.js` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
 | Collaboration primitives     | Tests under `src/shared/collaboration/`                                                                                               | Crypto, capabilities, protocol normalization, locks, secrets, client behavior                   |
-| Adapter/boundary conformance | `src/shared/session/architecture-boundary.test.js`, ACP tests, TUI runtime-adapter tests, Workspace tests                             | Dependency direction, protocol mapping, single event consumption, interactions, Plan projection |
+| Adapter/boundary conformance | `src/shared/session/architecture-boundary.test.ts`, ACP tests, TUI runtime-adapter tests, Workspace tests                             | Dependency direction, protocol mapping, single event consumption, interactions, Plan projection |
 
 The highest-value cross-boundary paths for later confidence analysis are visible in the diagrams above:
 

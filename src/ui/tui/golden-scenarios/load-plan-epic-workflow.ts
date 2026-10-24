@@ -161,6 +161,9 @@ export const loadPlanEpicSlicerScenario = {
     initialProjectFiles: [decompositionEpic],
     scriptedInteractions: [
         { type: "select", promptIncludes: "What would you like to do with this Epic", value: "slicer" },
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "pick_child" },
+        { type: "select", promptIncludes: "Load child Plan", value: "__next_child__" },
+        { type: "select", promptIncludes: "What would you like to do?", value: "resume" },
     ],
     script: [
         {
@@ -197,12 +200,24 @@ export const loadPlanEpicSlicerScenario = {
             ordinal: 2,
             text: "Loaded Epic decomposition completed.",
         },
+        {
+            id: "loaded-epic-child-planner",
+            agent: "planner",
+            phase: "plan_review",
+            ordinal: 1,
+            text: "Child planning resumed after Slicer.",
+        },
     ],
     actions: [
         { type: "type", text: "/load-plan decomposition-epic" },
         { type: "enter" },
         { type: "enter" },
         { type: "waitForPlanStatus", planName: "decomposition-epic", statuses: ["ready_for_work"], timeoutMs: 60000 },
+        { type: "waitForIdle", timeoutMs: 30000 },
+        { type: "type", text: "/load-plan decomposition-epic" },
+        { type: "enter" },
+        { type: "enter" },
+        { type: "waitForScreen", text: "Child planning resumed after Slicer.", timeoutMs: 30000 },
         { type: "waitForIdle", timeoutMs: 30000 },
         {
             type: "captureProjectState",
@@ -214,6 +229,14 @@ export const loadPlanEpicSlicerScenario = {
             assertEventIncludes(result, "runtime:agent:slicer");
             assertEventIncludes(result, "runtime:tool:start:slicer_finalize_decomposition");
             assertScreenIncludes(result, "Loaded Epic decomposition completed.");
+            assertScreenIncludes(result, "Child planning resumed after Slicer.");
+            assertEventIncludes(result, "runtime:agent:planner");
+            assert(
+                !`${result.screenText}\n${result.scrollbackText || ""}`.includes(
+                    'Could not find agent def for "slicer"',
+                ),
+                "Child loading must not resolve Slicer through top-level Agent discovery.",
+            );
             assert(planStatus(result, "decomposition-epic") === "ready_for_work", "Expected decomposed loaded Epic.");
             const child = result.state.projectState?.plans?.find(
                 (entry) => entry.name === "decomposition-epic/01-loaded-epic-child",

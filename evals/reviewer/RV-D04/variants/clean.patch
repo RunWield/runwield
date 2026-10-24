@@ -1,0 +1,97 @@
+diff --git a/src/browser.ts b/src/browser.ts
+--- a/src/browser.ts
++++ b/src/browser.ts
+@@ -3,8 +3,18 @@
+ import { summarize } from "./summary.ts";
+ 
+ export class SummaryBrowser {
++    private summaries = new Map<string, PlanSummary>();
+     constructor(private readonly repository: PlanRepository) {}
+     async load(ref: PlanRef): Promise<PlanSummary> {
+-        return summarize(await this.repository.read(ref));
++        const key = JSON.stringify([ref.projectId, ref.ownerId, ref.planId]);
++        const summaries = this.summaries;
++        const previous = summaries.get(key);
++        if (previous) return { ...previous };
++        const result = summarize(await this.repository.read(ref));
++        summaries.set(key, result);
++        return { ...result };
++    }
++    refresh(): void {
++        this.summaries = new Map();
+     }
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -6,7 +6,7 @@
+ }
+ 
+ import assert from "node:assert/strict";
+-import { mkdtemp, rm } from "node:fs/promises";
++import { mkdtemp, rm, readdir, unlink, open } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { PlanRepository } from "../src/repository.ts";
+@@ -32,5 +32,61 @@
+         await rm(root, { recursive: true, force: true });
+     }
+ });
++await check("repeated reads keep the current refresh snapshot", async () => {
++    const root = await mkdtemp(join(tmpdir(), "summary-"));
++    try {
++        const repository = new PlanRepository(root);
++        const browser = new SummaryBrowser(repository);
++        await repository.save(ref, { title: "Delivery", body: "First draft" });
++        await browser.load(ref);
++        await repository.save(ref, { title: "Delivery", body: "New draft" });
++        assert.equal((await browser.load(ref)).excerpt, "First draft");
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++await check("refresh makes the next read use current content", async () => {
++    const root = await mkdtemp(join(tmpdir(), "summary-"));
++    try {
++        const repository = new PlanRepository(root);
++        const browser = new SummaryBrowser(repository);
++        await repository.save(ref, { title: "Delivery", body: "First draft" });
++        await browser.load(ref);
++        await repository.save(ref, { title: "Delivery", body: "New draft" });
++        browser.refresh();
++        assert.equal((await browser.load(ref)).excerpt, "New draft");
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++
++await check("refresh isolates a read already in progress", async () => {
++    const root = await mkdtemp(join(tmpdir(), "summary-"));
++    try {
++        const repository = new PlanRepository(root);
++        const browser = new SummaryBrowser(repository);
++        const previous = { title: "Delivery", body: "First draft" };
++        await repository.save(ref, previous);
++        const names = await readdir(root);
++        assert.equal(names.length, 1);
++        const file = join(root, names[0]);
++        await unlink(file);
++        assert.equal(Bun.spawnSync(["mkfifo", file]).exitCode, 0);
++        const pending = browser.load(ref);
++        const writer = await open(file, "w");
++        try {
++            await unlink(file);
++            await repository.save(ref, { title: "Delivery", body: "New draft" });
++            browser.refresh();
++            await writer.writeFile(JSON.stringify(previous));
++        } finally {
++            await writer.close();
++        }
++        assert.equal((await pending).excerpt, "First draft");
++        assert.equal((await browser.load(ref)).excerpt, "New draft", "Refresh must isolate pending reads");
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
+ 
+ console.log(`# tests ${passed}`);

@@ -43,7 +43,7 @@ Direct Google SDK integration remains deferred. The September results are not fr
 - Type checking, lint, formatting, the zero-injection-seam gate and eight relevant test files passed. The source
   image-processing smoke check and a bundled/minified standalone build of that check both passed; the executable ran
   outside the checkout and exercised Photon JPEG/WebP conversion and Pi's resize worker. Full release and real surface
-  acceptance remain separate checks in the [revised Plan](../plans/generate-image-tool.md).
+  acceptance remain separate checks in the [revised Plan](../plans/archived/generate-image-tool.md).
 
 Sources for the October 3 checks:
 
@@ -179,7 +179,7 @@ and `api-auth-probes.ts`. Do not rerun successful generations just to verify doc
 
 ## Historical four-route follow-ups
 
-The current adapter acceptance checklist is in the [revised Plan](../plans/generate-image-tool.md). The following
+The current adapter acceptance checklist is in the [revised Plan](../plans/archived/generate-image-tool.md). The following
 September list is retained as historical follow-up context; its old Pi API name is not the Pi 1.0 implementation.
 
 1. Configure OpenRouter through RunWield's existing credential setup or `OPENROUTER_API_KEY`. Generate a mug through

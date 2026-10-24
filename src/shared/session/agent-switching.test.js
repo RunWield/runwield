@@ -90,9 +90,9 @@ test("Agent switches replace provider system instructions while retaining conver
                 assert(!getSystemMessageText(routerSystems[0]).includes("You are the Engineer"));
                 assert(getCurrentTools(requests[5].messages).some((tool) => tool.name === "triage_report"));
                 // Request projection must not erase the durable prompt-change evidence.
-                const savedSystems = sessionManager.buildSessionContext().messages.filter((message) =>
-                    message.role === "system"
-                );
+                const savedSystems = sessionManager
+                    .buildSessionContext()
+                    .messages.filter((message) => message.role === "system");
                 assert(savedSystems.length > 1);
             } finally {
                 hostedSession.dispose();
@@ -137,12 +137,12 @@ test("switchActiveAgent installs a real matching Agent root and handler", async 
         assertEquals(result, { ok: true, agentName: "guide", changed: true, model: undefined });
         assertEquals(hostedSession.getRootAgentName(), "guide");
         assertEquals(
-            typeof /** @type {{ prompt?: Function } | null} */ (hostedSession.getRootAgentSession())?.prompt,
+            typeof (/** @type {{ prompt?: Function } | null} */ (hostedSession.getRootAgentSession())?.prompt),
             "function",
         );
         assertEquals(typeof hostedSession.getActiveOnMessage(), "function");
-        const agentEvents = events.filter((event) =>
-            event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "guide"
+        const agentEvents = events.filter(
+            (event) => event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "guide",
         );
         assertEquals(agentEvents.length, 1);
         assertEquals(/** @type {any} */ (agentEvents[0]).displayName, "Guide");
@@ -160,7 +160,10 @@ test("switchActiveAgent reports a user switch from the unpersisted prompt-ready 
         hostedSession.setEventSink((/** @type {AgentNoticeEvent} */ event) => events.push(event));
         await switchActiveAgent(hostedSession, { agentName: "planner", sessionManager, releaseActiveWorkflow: true });
         const changed = events.filter((event) => event.type === RuntimeEventTypes.AGENT_CHANGED);
-        assertEquals(changed.map((event) => [event.agentName, event.rootHandoff]), [["planner", true]]);
+        assertEquals(
+            changed.map((event) => [event.agentName, event.rootHandoff]),
+            [["planner", true]],
+        );
         hostedSession.dispose();
     });
 });
@@ -171,7 +174,7 @@ test("switchActiveAgent marks only successful different root switches as handoff
         /** @type {Array<Record<string, unknown>>} */
         const events = [];
         hostedSession.setEventSink((/** @type {unknown} */ event) =>
-            events.push(/** @type {Record<string, unknown>} */ (event))
+            events.push(/** @type {Record<string, unknown>} */ (event)),
         );
 
         await switchActiveAgent(hostedSession, { agentName: "guide", sessionManager });
@@ -179,11 +182,14 @@ test("switchActiveAgent marks only successful different root switches as handoff
         await switchActiveAgent(hostedSession, { agentName: "planner", forceRebuild: true, sessionManager });
 
         const agentEvents = events.filter((event) => event.type === RuntimeEventTypes.AGENT_CHANGED);
-        assertEquals(agentEvents.map((event) => [event.agentName, event.displayName, event.rootHandoff]), [
-            ["guide", "Guide", undefined],
-            ["planner", "Planner", true],
-            ["planner", "Planner", undefined],
-        ]);
+        assertEquals(
+            agentEvents.map((event) => [event.agentName, event.displayName, event.rootHandoff]),
+            [
+                ["guide", "Guide", undefined],
+                ["planner", "Planner", true],
+                ["planner", "Planner", undefined],
+            ],
+        );
         hostedSession.dispose();
     });
 });
@@ -195,19 +201,21 @@ test("switchActiveAgent marks a presented Agent change while replay keeps the fi
         /** @type {Array<Record<string, unknown>>} */
         const events = [];
         hostedSession.setEventSink((/** @type {unknown} */ event) =>
-            events.push(/** @type {Record<string, unknown>} */ (event))
+            events.push(/** @type {Record<string, unknown>} */ (event)),
         );
 
         await switchActiveAgent(hostedSession, { agentName: "planner", sessionManager });
 
         const liveAgentEvents = events.filter((event) => event.type === RuntimeEventTypes.AGENT_CHANGED);
-        assertEquals(liveAgentEvents.map((event) => [event.agentName, event.displayName, event.rootHandoff]), [
-            ["planner", "Planner", true],
-        ]);
+        assertEquals(
+            liveAgentEvents.map((event) => [event.agentName, event.displayName, event.rootHandoff]),
+            [["planner", "Planner", true]],
+        );
         const replayEvents = createReplayEvents("presented-baseline", sessionManager.getBranch(), { projectRoot });
         assertEquals(
-            replayEvents.filter((event) =>
-                event.type === RuntimeEventTypes.SYSTEM_STATUS && event.message === "Agent switched to Planner"
+            replayEvents.filter(
+                (event) =>
+                    event.type === RuntimeEventTypes.SYSTEM_STATUS && event.message === "Agent switched to Planner",
             ).length,
             0,
         );
@@ -243,33 +251,31 @@ test("switchActiveAgent leaves the previous real root transaction intact when re
         assertStrictEquals(hostedSession.getRootAgentSession(), previousRoot);
         assertStrictEquals(hostedSession.getActiveOnMessage(), previousHandler);
         assertEquals(hostedSession.getAgentTransitionId(), transitionId);
-        assertEquals(hostedSession.consumeAgentTransitionSteering().map((entry) => entry.text), [
-            "retain after failure",
-        ]);
+        assertEquals(
+            hostedSession.consumeAgentTransitionSteering().map((entry) => entry.text),
+            ["retain after failure"],
+        );
         hostedSession.completeAgentTransition(transitionId);
         hostedSession.dispose();
     });
 });
 
 test("runActiveAgentTurn switches and completes a real root turn through the faux model boundary", async () => {
-    await withRuntimeCommandFixture(
-        "active-agent-turn-",
-        async ({ projectRoot, setModelResponse }) => {
-            setModelResponse("The isolated Guide turn completed.");
-            const { hostedSession, sessionManager } = makeSession(projectRoot);
+    await withRuntimeCommandFixture("active-agent-turn-", async ({ projectRoot, setModelResponse }) => {
+        setModelResponse("The isolated Guide turn completed.");
+        const { hostedSession, sessionManager } = makeSession(projectRoot);
 
-            const messages = await runActiveAgentTurn({
-                hostedSession,
-                agentName: "guide",
-                userRequest: "Explain the fixture.",
-                sessionManager,
-            });
+        const messages = await runActiveAgentTurn({
+            hostedSession,
+            agentName: "guide",
+            userRequest: "Explain the fixture.",
+            sessionManager,
+        });
 
-            assertEquals(hostedSession.getRootAgentName(), "guide");
-            assertEquals(JSON.stringify(messages).includes("The isolated Guide turn completed."), true);
-            hostedSession.dispose();
-        },
-    );
+        assertEquals(hostedSession.getRootAgentName(), "guide");
+        assertEquals(JSON.stringify(messages).includes("The isolated Guide turn completed."), true);
+        hostedSession.dispose();
+    });
 });
 
 test("switchActiveAgent resolves the active preset model when Router dispatches QUICK_FIX to Engineer", async () => {
@@ -468,73 +474,73 @@ test("switchActiveAgent rebuilds a real same-Agent root when forceRebuild is set
 });
 
 test("provider switch continues a failed request without changing execution ownership or worktree", async () => {
-    await withRuntimeCommandFixture(
-        "agent-switch-backend-continuation-",
-        async ({ projectRoot, setModelResponse }) => {
-            setModelResponse("Continuation completed.");
-            const { hostedSession, sessionManager } = makeSession(projectRoot);
-            /** @type {import('./hosted-session.js').ActiveExecutionWorkflow} */
-            const workflow = {
-                planName: "stable-plan",
-                triageMeta: { classification: "FEATURE", worktreeId: "wt-stable" },
-                executionAgent: "engineer",
-                executionStarted: true,
-                executionCwd: `${projectRoot}/worktrees/wt-stable`,
-            };
-            hostedSession.setActiveExecutionWorkflow(workflow);
-            await switchActiveAgent(hostedSession, {
-                agentName: "engineer",
-                model: "claude-cli/sonnet",
-                sessionManager,
-            });
+    await withRuntimeCommandFixture("agent-switch-backend-continuation-", async ({ projectRoot, setModelResponse }) => {
+        setModelResponse("Continuation completed.");
+        const { hostedSession, sessionManager } = makeSession(projectRoot);
+        /** @type {import('./hosted-session.js').ActiveExecutionWorkflow} */
+        const workflow = {
+            planName: "stable-plan",
+            triageMeta: { classification: "FEATURE", worktreeId: "wt-stable" },
+            executionAgent: "engineer",
+            executionStarted: true,
+            executionCwd: `${projectRoot}/worktrees/wt-stable`,
+        };
+        hostedSession.setActiveExecutionWorkflow(workflow);
+        await switchActiveAgent(hostedSession, {
+            agentName: "engineer",
+            model: "claude-cli/sonnet",
+            sessionManager,
+        });
 
-            const planBody = "# Stable Plan\n\nOnly one copy belongs in the transcript.";
-            const failed = prepareRequestDispatch(sessionManager, {
-                userRequest: planBody,
-                dispatchKind: "plan_execution",
-                backend: "claude-cli",
-            });
-            sessionManager.appendMessage({
-                role: "user",
-                timestamp: Date.now(),
-                content: [{ type: "text", text: planBody }],
-            });
-            failRequestDispatch(sessionManager, failed, true);
+        const planBody = "# Stable Plan\n\nOnly one copy belongs in the transcript.";
+        const failed = prepareRequestDispatch(sessionManager, {
+            userRequest: planBody,
+            dispatchKind: "plan_execution",
+            backend: "claude-cli",
+        });
+        sessionManager.appendMessage({
+            role: "user",
+            timestamp: Date.now(),
+            content: [{ type: "text", text: planBody }],
+        });
+        failRequestDispatch(sessionManager, failed, true);
 
-            await switchActiveAgent(hostedSession, {
-                agentName: "engineer",
-                model: "runtime-command-fixture/fixture-model",
-                forceRebuild: true,
-                sessionManager,
-            });
-            await runActiveAgentTurn({
-                hostedSession,
-                agentName: "engineer",
-                userRequest: planBody,
-                sessionManager,
-                dispatchKind: "plan_execution",
-            });
+        await switchActiveAgent(hostedSession, {
+            agentName: "engineer",
+            model: "runtime-command-fixture/fixture-model",
+            forceRebuild: true,
+            sessionManager,
+        });
+        await runActiveAgentTurn({
+            hostedSession,
+            agentName: "engineer",
+            userRequest: planBody,
+            sessionManager,
+            dispatchKind: "plan_execution",
+            resumePreviousRequest: true,
+        });
 
-            const transcript = sessionManager.getBranch()
-                .filter((entry) => entry.type === "message")
-                .flatMap((entry) =>
-                    /** @type {{ message?: { content?: Array<{ type: string, text?: string }> } }} */ (entry)
-                        .message?.content || []
-                )
-                .filter((block) => block.type === "text")
-                .map((block) => block.text || "")
-                .join("\n");
-            assertEquals(transcript.split(planBody).length - 1, 1);
-            assertEquals(transcript.split(BACKEND_CONTINUATION_REQUEST).length - 1, 1);
-            assertEquals(hostedSession.getActiveExecutionWorkflow(), workflow);
-            assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
-            assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionCwd, workflow.executionCwd);
-            const attempts = readRequestAttemptEntries(sessionManager);
-            assertEquals(attempts.at(-2)?.requestId, failed.requestId);
-            assertEquals(attempts.at(-2)?.backend, "pi");
-            hostedSession.dispose();
-        },
-    );
+        const transcript = sessionManager
+            .getBranch()
+            .filter((entry) => entry.type === "message")
+            .flatMap(
+                (entry) =>
+                    /** @type {{ message?: { content?: Array<{ type: string, text?: string }> } }} */ (entry).message
+                        ?.content || [],
+            )
+            .filter((block) => block.type === "text")
+            .map((block) => block.text || "")
+            .join("\n");
+        assertEquals(transcript.split(planBody).length - 1, 1);
+        assertEquals(transcript.split(BACKEND_CONTINUATION_REQUEST).length - 1, 1);
+        assertEquals(hostedSession.getActiveExecutionWorkflow(), workflow);
+        assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
+        assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionCwd, workflow.executionCwd);
+        const attempts = readRequestAttemptEntries(sessionManager);
+        assertEquals(attempts.at(-2)?.requestId, failed.requestId);
+        assertEquals(attempts.at(-2)?.backend, "pi");
+        hostedSession.dispose();
+    });
 });
 
 test("switchActiveAgent releases planned workflow only when user authorized", async () => {
@@ -560,8 +566,10 @@ test("switchActiveAgent releases planned workflow only when user authorized", as
         assertEquals(hostedSession.getActiveExecutionWorkflow(), null);
         assertEquals(hostedSession.getWorkflowContext()?.planName, "planned-release");
         assertEquals(
-            events.some((event) =>
-                event.type === RuntimeEventTypes.SYSTEM_STATUS && String(event.message || "").includes("/load-plan")
+            events.some(
+                (event) =>
+                    event.type === RuntimeEventTypes.SYSTEM_STATUS &&
+                    String(event.message || "").includes("/load-plan"),
             ),
             true,
         );
@@ -588,9 +596,10 @@ test("switchActiveAgent releases QUICK_FIX workflow with no-plan notice", async 
 
         assertEquals(hostedSession.getActiveExecutionWorkflow(), null);
         assertEquals(
-            events.some((event) =>
-                event.type === RuntimeEventTypes.SYSTEM_STATUS &&
-                String(event.message || "").includes("There is no resumable Plan")
+            events.some(
+                (event) =>
+                    event.type === RuntimeEventTypes.SYSTEM_STATUS &&
+                    String(event.message || "").includes("There is no resumable Plan"),
             ),
             true,
         );

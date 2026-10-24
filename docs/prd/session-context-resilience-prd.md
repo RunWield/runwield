@@ -116,4 +116,4 @@ steps belong in the [Session Context Resilience Plan](../plans/automatic-session
 ## Dependencies and Sequencing
 
 This capability can proceed independently of selective model adaptation. It must preserve deliberate workflow handoffs
-and contribute long-run reliability evidence to [Agent Behavior Evaluation](agent-behavior-evaluation-prd.md).
+and contribute long-run reliability evidence to [Agent Evaluation and Benchmark Harness](agent-behavior-evaluation-prd.md).

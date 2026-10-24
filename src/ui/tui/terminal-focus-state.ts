@@ -19,6 +19,7 @@ export interface FocusReportingTerminal {
 }
 
 export interface TerminalFocusStateOwner {
+    activate(): void;
     getState(): TerminalFocusState;
     filterInput(data: string): string;
     dispose(): void;
@@ -53,13 +54,19 @@ export function setCurrentTerminalFocusState(owner: TerminalFocusStateOwner | nu
 
 export function createTerminalFocusStateOwner(
     terminal: Pick<FocusReportingTerminal, "write">,
+    activateImmediately = true,
 ): TerminalFocusStateOwner {
     let state: TerminalFocusState = "unknown";
     let pendingInput = "";
+    let active = false;
     let disposed = false;
-    terminal.write(ENABLE_FOCUS_REPORTING);
 
     const owner = {
+        activate(): void {
+            if (active || disposed) return;
+            active = true;
+            terminal.write(ENABLE_FOCUS_REPORTING);
+        },
         getState(): TerminalFocusState {
             return state;
         },
@@ -72,22 +79,24 @@ export function createTerminalFocusStateOwner(
         dispose(): void {
             if (disposed) return;
             disposed = true;
-            terminal.write(DISABLE_FOCUS_REPORTING);
+            if (active) terminal.write(DISABLE_FOCUS_REPORTING);
             if (currentTerminalFocusState === owner) {
                 currentTerminalFocusState = null;
             }
         },
     } satisfies TerminalFocusStateOwner;
 
+    if (activateImmediately) owner.activate();
     return owner;
 }
 
 export function installTerminalFocusState(
     terminal: FocusReportingTerminal,
     onFocus?: () => void,
+    activateImmediately = true,
 ): TerminalFocusStateOwner {
     const originalStart = terminal.start.bind(terminal);
-    const owner = createTerminalFocusStateOwner(terminal);
+    const owner = createTerminalFocusStateOwner(terminal, activateImmediately);
     let mouseSequenceRecovery: MouseSequenceRecovery | undefined;
     terminal.start = (onInput: TerminalInputHandler, onResize?: TerminalResizeHandler): void => {
         mouseSequenceRecovery = createMouseSequenceRecovery(onInput);
@@ -100,6 +109,7 @@ export function installTerminalFocusState(
     };
     const disposeOwner = owner.dispose.bind(owner);
     const installedOwner: TerminalFocusStateOwner = {
+        activate: () => owner.activate(),
         getState: () => owner.getState(),
         filterInput: (data) => owner.filterInput(data),
         dispose: () => {
@@ -157,7 +167,10 @@ function createMouseSequenceRecovery(forwardInput: TerminalInputHandler): MouseS
     return {
         process(data: string): void {
             if (
-                !pending && !discardedMouseSequence && data !== ESC && data !== `${ESC}[` &&
+                !pending &&
+                !discardedMouseSequence &&
+                data !== ESC &&
+                data !== `${ESC}[` &&
                 !data.startsWith(SGR_MOUSE_PREFIX)
             ) {
                 forwardInput(data);
@@ -212,13 +225,10 @@ function isPartialSgrMouseSequence(data: string): boolean {
     if (!data.startsWith(SGR_MOUSE_PREFIX)) return false;
     const fields = data.slice(SGR_MOUSE_PREFIX.length).split(";");
     if (fields.length > 3) return false;
-    return fields.every((field, index) => index === fields.length - 1 ? /^\d*$/.test(field) : /^\d+$/.test(field));
+    return fields.every((field, index) => (index === fields.length - 1 ? /^\d*$/.test(field) : /^\d+$/.test(field)));
 }
 
-function filterFocusReportInput(
-    data: string,
-    initialState: TerminalFocusState,
-): FocusFilterResult {
+function filterFocusReportInput(data: string, initialState: TerminalFocusState): FocusFilterResult {
     let nextState = initialState;
     let filtered = "";
     for (let index = 0; index < data.length;) {

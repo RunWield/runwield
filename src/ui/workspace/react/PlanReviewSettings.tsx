@@ -17,7 +17,8 @@ import {
     saveQuickLabels,
 } from "@plannotator/ui/utils/quickLabels.ts";
 import { AUTO_CLOSE_OPTIONS, getAutoCloseDelay, setAutoCloseDelay } from "@plannotator/ui/utils/storage.ts";
-import { getUIPreferences, PLAN_WIDTH_OPTIONS, saveUIPreferences } from "@plannotator/ui/utils/uiPreferences.ts";
+import { PLAN_WIDTH_OPTIONS, saveUIPreferences } from "@plannotator/ui/utils/uiPreferences.ts";
+import { getPlanReviewPreferences } from "./plan-review-preferences.ts";
 
 const SETTINGS_TABS = [
     { id: "general", label: "General" },
@@ -53,13 +54,18 @@ const DEFAULT_CODE_LABELS = [
     { label: "chore", display: "chore", blocking: true },
 ];
 
-export function PlanReviewSettings(
-    { mode = "plan", open, onClose, onUIPreferencesChange, codeDiffStyle, onCodeDiffStyleChange },
-) {
+export function PlanReviewSettings({
+    mode = "plan",
+    open,
+    onClose,
+    onUIPreferencesChange,
+    codeDiffStyle,
+    onCodeDiffStyleChange,
+}) {
     const [activeTab, setActiveTab] = useState("general");
     const [identity, setIdentity] = useState("");
     const [autoCloseDelay, setAutoCloseDelayState] = useState("off");
-    const [uiPreferences, setUiPreferences] = useState(() => getUIPreferences());
+    const [uiPreferences, setUiPreferences] = useState(() => getPlanReviewPreferences());
     const [quickLabels, setQuickLabels] = useState(() => getQuickLabels());
     const [editingTipIndex, setEditingTipIndex] = useState(null);
     const [editingTipValue, setEditingTipValue] = useState("");
@@ -74,13 +80,14 @@ export function PlanReviewSettings(
     const diffShowBackground = useConfigValue("diffShowBackground");
     const diffExpandUnchanged = useConfigValue("diffExpandUnchanged");
     const diffFontSize = useConfigValue("diffFontSize");
+    const editSuggestions = useConfigValue("editSuggestions") === true;
 
     useEffect(() => {
         if (!open) return;
         setActiveTab("general");
         setIdentity(getIdentity());
         setAutoCloseDelayState(getAutoCloseDelay());
-        setUiPreferences(getUIPreferences());
+        setUiPreferences(getPlanReviewPreferences());
         setQuickLabels(getQuickLabels());
         setCodeLabels(readCodeLabels(conventionalLabelsJson));
         setEditingTipIndex(null);
@@ -117,7 +124,7 @@ export function PlanReviewSettings(
     }
 
     function updateQuickLabel(index, updates) {
-        const next = quickLabels.map((label, labelIndex) => labelIndex === index ? { ...label, ...updates } : label);
+        const next = quickLabels.map((label, labelIndex) => (labelIndex === index ? { ...label, ...updates } : label));
         updateQuickLabels(next);
     }
 
@@ -139,7 +146,9 @@ export function PlanReviewSettings(
                 role="dialog"
             >
                 <header className="flex items-center justify-between border-b border-border p-4">
-                    <h2 className="text-sm font-semibold" id="plan-review-settings-title">Settings</h2>
+                    <h2 className="text-sm font-semibold" id="plan-review-settings-title">
+                        Settings
+                    </h2>
                     <button
                         aria-label="Close settings"
                         className="rounded-md bg-muted p-1.5 text-foreground transition-colors hover:bg-muted/80"
@@ -198,89 +207,85 @@ export function PlanReviewSettings(
                                 />
                             )}
 
-                            {activeTab === "display" && (
-                                mode === "code"
-                                    ? (
-                                        <CodeDisplaySettings
-                                            diffExpandUnchanged={diffExpandUnchanged}
-                                            diffFontSize={diffFontSize}
-                                            diffIndicators={diffIndicators}
-                                            diffLineDiffType={diffLineDiffType}
-                                            diffShowBackground={diffShowBackground}
-                                            diffShowLineNumbers={diffShowLineNumbers}
-                                            diffStyle={codeDiffStyle || diffStyle}
-                                            onDiffStyleChange={onCodeDiffStyleChange ||
-                                                ((value) => configStore.set("diffStyle", value))}
-                                        />
-                                    )
-                                    : (
-                                        <DisplaySettings
-                                            gridEnabled={gridEnabled}
-                                            onGridEnabledChange={(next) => configStore.set("gridEnabled", next)}
-                                            onUIPreferencesChange={updateUIPreferences}
-                                            uiPreferences={uiPreferences}
-                                        />
-                                    )
-                            )}
+                            {activeTab === "display" &&
+                                (mode === "code" ? (
+                                    <CodeDisplaySettings
+                                        editSuggestions={editSuggestions}
+                                        diffExpandUnchanged={diffExpandUnchanged}
+                                        diffFontSize={diffFontSize}
+                                        diffIndicators={diffIndicators}
+                                        diffLineDiffType={diffLineDiffType}
+                                        diffShowBackground={diffShowBackground}
+                                        diffShowLineNumbers={diffShowLineNumbers}
+                                        diffStyle={codeDiffStyle || diffStyle}
+                                        onDiffStyleChange={
+                                            onCodeDiffStyleChange || ((value) => configStore.set("diffStyle", value))
+                                        }
+                                    />
+                                ) : (
+                                    <DisplaySettings
+                                        gridEnabled={gridEnabled}
+                                        onGridEnabledChange={(next) => configStore.set("gridEnabled", next)}
+                                        onUIPreferencesChange={updateUIPreferences}
+                                        uiPreferences={uiPreferences}
+                                    />
+                                ))}
 
-                            {activeTab === "labels" && (
-                                mode === "code"
-                                    ? (
-                                        <CodeLabelsSettings
-                                            enabled={conventionalComments}
-                                            labels={codeLabels}
-                                            onEnabledChange={(next) => configStore.set("conventionalComments", next)}
-                                            onLabelsChange={(next) => {
-                                                setCodeLabels(next);
-                                                configStore.set("conventionalLabels", JSON.stringify(next));
-                                            }}
-                                            onReset={() => {
-                                                setCodeLabels(DEFAULT_CODE_LABELS.map((label) => ({ ...label })));
-                                                configStore.set("conventionalLabels", null);
-                                            }}
-                                        />
-                                    )
-                                    : (
-                                        <LabelsSettings
-                                            editingTipIndex={editingTipIndex}
-                                            editingTipValue={editingTipValue}
-                                            labels={quickLabels}
-                                            onAdd={() => {
-                                                updateQuickLabels([
-                                                    ...quickLabels,
-                                                    {
-                                                        id: `custom-${Date.now()}`,
-                                                        emoji: "📌",
-                                                        text: "New label",
-                                                        color: "blue",
-                                                    },
-                                                ]);
-                                            }}
-                                            onDelete={(index) => {
-                                                updateQuickLabels(
-                                                    quickLabels.filter((_, labelIndex) => labelIndex !== index),
-                                                );
-                                                if (editingTipIndex === index) setEditingTipIndex(null);
-                                            }}
-                                            onEditTip={(index) => {
-                                                if (editingTipIndex === index) {
-                                                    setEditingTipIndex(null);
-                                                    return;
-                                                }
-                                                setEditingTipIndex(index);
-                                                setEditingTipValue(quickLabels[index].tip || "");
-                                            }}
-                                            onReset={() => {
-                                                resetQuickLabels();
-                                                setQuickLabels(DEFAULT_QUICK_LABELS.map((label) => ({ ...label })));
+                            {activeTab === "labels" &&
+                                (mode === "code" ? (
+                                    <CodeLabelsSettings
+                                        enabled={conventionalComments}
+                                        labels={codeLabels}
+                                        onEnabledChange={(next) => configStore.set("conventionalComments", next)}
+                                        onLabelsChange={(next) => {
+                                            setCodeLabels(next);
+                                            configStore.set("conventionalLabels", JSON.stringify(next));
+                                        }}
+                                        onReset={() => {
+                                            setCodeLabels(DEFAULT_CODE_LABELS.map((label) => ({ ...label })));
+                                            configStore.set("conventionalLabels", null);
+                                        }}
+                                    />
+                                ) : (
+                                    <LabelsSettings
+                                        editingTipIndex={editingTipIndex}
+                                        editingTipValue={editingTipValue}
+                                        labels={quickLabels}
+                                        onAdd={() => {
+                                            updateQuickLabels([
+                                                ...quickLabels,
+                                                {
+                                                    id: `custom-${Date.now()}`,
+                                                    emoji: "📌",
+                                                    text: "New label",
+                                                    color: "blue",
+                                                },
+                                            ]);
+                                        }}
+                                        onDelete={(index) => {
+                                            updateQuickLabels(
+                                                quickLabels.filter((_, labelIndex) => labelIndex !== index),
+                                            );
+                                            if (editingTipIndex === index) setEditingTipIndex(null);
+                                        }}
+                                        onEditTip={(index) => {
+                                            if (editingTipIndex === index) {
                                                 setEditingTipIndex(null);
-                                            }}
-                                            onSaveTip={saveTip}
-                                            onTipValueChange={setEditingTipValue}
-                                            onUpdate={updateQuickLabel}
-                                        />
-                                    )
-                            )}
+                                                return;
+                                            }
+                                            setEditingTipIndex(index);
+                                            setEditingTipValue(quickLabels[index].tip || "");
+                                        }}
+                                        onReset={() => {
+                                            resetQuickLabels();
+                                            setQuickLabels(DEFAULT_QUICK_LABELS.map((label) => ({ ...label })));
+                                            setEditingTipIndex(null);
+                                        }}
+                                        onSaveTip={saveTip}
+                                        onTipValueChange={setEditingTipValue}
+                                        onUpdate={updateQuickLabel}
+                                    />
+                                ))}
 
                             {activeTab === "shortcuts" && (
                                 <KeyboardShortcuts mode={mode === "code" ? "review" : "plan"} />
@@ -365,7 +370,9 @@ function GeneralSettings({
                     value={autoCloseDelay}
                 >
                     {AUTO_CLOSE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
+                        <option key={option.value} value={option.value}>
+                            {option.label}
+                        </option>
                     ))}
                 </select>
                 <div className="text-[10px] text-muted-foreground/70">
@@ -429,6 +436,7 @@ function DisplaySettings({ gridEnabled, onGridEnabledChange, onUIPreferencesChan
 }
 
 function CodeDisplaySettings({
+    editSuggestions,
     diffExpandUnchanged,
     diffFontSize,
     diffIndicators,
@@ -516,6 +524,13 @@ function CodeDisplaySettings({
                 label="Expand Unchanged Regions"
                 onChange={(next) => configStore.set("diffExpandUnchanged", next)}
             />
+            <div className="border-t border-border" />
+            <SettingSwitch
+                checked={editSuggestions}
+                description="Experimental: edit the diff to create code suggestions"
+                label="Edit code to suggest"
+                onChange={(next) => configStore.set("editSuggestions", next)}
+            />
         </>
     );
 }
@@ -575,7 +590,7 @@ function SettingSwitch({ checked, description, label, onChange }) {
 
 function CodeLabelsSettings({ enabled, labels, onEnabledChange, onLabelsChange, onReset }) {
     function updateLabel(index, updates) {
-        onLabelsChange(labels.map((label, labelIndex) => labelIndex === index ? { ...label, ...updates } : label));
+        onLabelsChange(labels.map((label, labelIndex) => (labelIndex === index ? { ...label, ...updates } : label)));
     }
 
     return (
@@ -614,7 +629,8 @@ function CodeLabelsSettings({ enabled, labels, onEnabledChange, onLabelsChange, 
                                     updateLabel(index, {
                                         display: event.target.value,
                                         label: labelId(event.target.value),
-                                    })}
+                                    })
+                                }
                                 type="text"
                                 value={label.display}
                             />
@@ -645,7 +661,8 @@ function CodeLabelsSettings({ enabled, labels, onEnabledChange, onLabelsChange, 
                             onLabelsChange([
                                 ...labels,
                                 { label: `custom-${labels.length + 1}`, display: "custom", blocking: false },
-                            ])}
+                            ])
+                        }
                         type="button"
                     >
                         + Add label
@@ -703,7 +720,8 @@ function LabelsSettings({
                                         onUpdate(index, {
                                             text: event.target.value,
                                             id: labelId(event.target.value),
-                                        })}
+                                        })
+                                    }
                                     type="text"
                                     value={label.text}
                                 />
@@ -727,7 +745,9 @@ function LabelsSettings({
                                     value={label.color}
                                 >
                                     {Object.keys(LABEL_COLOR_MAP).map((color) => (
-                                        <option key={color} value={color}>{color}</option>
+                                        <option key={color} value={color}>
+                                            {color}
+                                        </option>
                                     ))}
                                 </select>
                                 <span className="w-8 flex-shrink-0 text-center font-mono text-[10px] text-muted-foreground/50">
@@ -799,11 +819,12 @@ function readCodeLabels(value) {
         if (!Array.isArray(parsed)) return DEFAULT_CODE_LABELS.map((label) => ({ ...label }));
         return parsed.map((label) => ({
             label: typeof label?.label === "string" && label.label ? label.label : "custom",
-            display: typeof label?.display === "string" && label.display
-                ? label.display
-                : typeof label?.label === "string" && label.label
-                ? label.label
-                : "custom",
+            display:
+                typeof label?.display === "string" && label.display
+                    ? label.display
+                    : typeof label?.label === "string" && label.label
+                      ? label.label
+                      : "custom",
             blocking: label?.blocking === true || label?.blocking === "true",
         }));
     } catch {
@@ -812,7 +833,10 @@ function readCodeLabels(value) {
 }
 
 function labelId(value) {
-    return value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    return value
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "");
 }
 
 function SettingsToggleIcon({ name }) {

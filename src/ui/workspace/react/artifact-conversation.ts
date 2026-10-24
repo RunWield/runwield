@@ -3,6 +3,8 @@ export interface ArtifactConversationEvent {
     delta?: string;
     messageId?: string;
     agentName?: string;
+    message?: string;
+    level?: string;
 }
 
 export interface ArtifactConversationFeedbackInput {
@@ -24,10 +26,12 @@ export function buildArtifactConversationFeedback(input: ArtifactConversationFee
         "",
         "### Continue the review",
         codeReview
-            ? "Reply briefly to the user, then update the working files when the request requires it. " +
-                "Finish by reporting what changed so Code Review can reload the current diff."
-            : "Reply briefly to the user before using tools. Update the Plan when the request requires it. " +
-                "Then call `plan_written` again, even when the Plan does not need a change, so the review remains open.",
+            ? "Reply in chat to explain, clarify, or ask back. Edit the working files only when the request needs a code change. " +
+              "A reply without an edit keeps Code Review open with the same diff. " +
+              "An agreed scope change requires a confirmed Plan Deviation through `record_plan_deviation` before implementation."
+            : "Reply in chat to explain, clarify, or ask back. Revise the Plan and call `plan_written` when the answer " +
+              "changes scope, behavior, a decision, or verification. When in doubt, revise. " +
+              "A reply without a revision keeps the review open.",
     ].join("\n");
 }
 
@@ -38,10 +42,17 @@ export function collectArtifactConversationReply(
     const messages = new Map<string, { text: string; agentName: string }>();
     let anonymousIndex = 0;
     for (const event of events.slice(Math.max(0, startIndex))) {
-        if (event.type !== "assistant_text_delta" || typeof event.delta !== "string") continue;
+        const isError = event.type === "terminal_error" || (event.type === "system_status" && event.level === "error");
+        const text =
+            isError && typeof event.message === "string"
+                ? `Agent error: ${event.message}`
+                : event.type === "assistant_text_delta"
+                  ? event.delta
+                  : undefined;
+        if (typeof text !== "string") continue;
         const messageId = event.messageId || `anonymous-${anonymousIndex++}`;
         const current = messages.get(messageId) || { text: "", agentName: event.agentName || "Planner" };
-        current.text += event.delta;
+        current.text += text;
         if (event.agentName) current.agentName = event.agentName;
         messages.set(messageId, current);
     }

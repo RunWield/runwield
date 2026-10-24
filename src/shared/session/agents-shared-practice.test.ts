@@ -31,6 +31,15 @@ test("managed engineering assigns full validation to RunWield and keeps standalo
     }
 });
 
+test("engineering prompts require three results for a check", async () => {
+    for (const name of ["engineer", "plan-engineer", "frontend-engineer"]) {
+        const { systemPrompt } = await loadAgentDef(name);
+        const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
+        assertStringIncludes(normalizedPrompt, "An Empty Answer Is Not a Negative Answer");
+        assertStringIncludes(normalizedPrompt, "could not tell");
+    }
+});
+
 const QUICK_FIX_FRAGMENTS = [
     "user-authority",
     "working-tree-safety",
@@ -70,20 +79,26 @@ const PLANNING_DOC_AUTHORS: readonly string[] = ["planner", "architect"];
 
 /** Planning personas that compose the explanation practice on top of user authority. */
 const PLANNING_PRACTICE_CONSUMERS: ReadonlyArray<[string, readonly string[]]> = [
-    ["planner", [
-        ...PLANNING_DOC_FRAGMENTS,
-        "plain-language-dialogue",
-        "architecture-vocabulary",
-        "domain-design",
-        "planning-pending-changes",
-    ]],
-    ["architect", [
-        ...PLANNING_DOC_FRAGMENTS,
-        "plain-language-dialogue",
-        "architecture-vocabulary",
-        "domain-design",
-        "planning-pending-changes",
-    ]],
+    [
+        "planner",
+        [
+            ...PLANNING_DOC_FRAGMENTS,
+            "plain-language-dialogue",
+            "architecture-vocabulary",
+            "domain-design",
+            "planning-pending-changes",
+        ],
+    ],
+    [
+        "architect",
+        [
+            ...PLANNING_DOC_FRAGMENTS,
+            "plain-language-dialogue",
+            "architecture-vocabulary",
+            "domain-design",
+            "planning-pending-changes",
+        ],
+    ],
     ["ideator", [...PLANNING_DOC_FRAGMENTS]],
 ];
 
@@ -134,10 +149,13 @@ function fragmentFile(name: string, body: string): ProjectAgentFile {
 }
 
 test("shared practice fragments are appended after the agent's own prompt body", async () => {
-    const def = await withProjectAgents([
-        agentFile("temp-agent", "sharedPractice:\n    - house-rules\n", "## Process\n\nDo the process."),
-        fragmentFile("house-rules", "## House Rules\n\nNever skip the rules."),
-    ], (projectRoot) => loadAgentDef("temp-agent", projectRoot));
+    const def = await withProjectAgents(
+        [
+            agentFile("temp-agent", "sharedPractice:\n    - house-rules\n", "## Process\n\nDo the process."),
+            fragmentFile("house-rules", "## House Rules\n\nNever skip the rules."),
+        ],
+        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+    );
 
     const processIndex = def.systemPrompt.indexOf("Do the process.");
     const rulesIndex = def.systemPrompt.indexOf("Never skip the rules.");
@@ -146,35 +164,41 @@ test("shared practice fragments are appended after the agent's own prompt body",
 });
 
 test("fragments compose in declaration order and dedupe repeats", async () => {
-    const def = await withProjectAgents([
-        agentFile(
-            "temp-agent",
-            "sharedPractice:\n    - first-fragment\n    - second-fragment\n    - first-fragment\n",
-            "## Process\n\nBody.",
-        ),
-        fragmentFile("first-fragment", "FIRST_MARKER"),
-        fragmentFile("second-fragment", "SECOND_MARKER"),
-    ], (projectRoot) => loadAgentDef("temp-agent", projectRoot));
+    const def = await withProjectAgents(
+        [
+            agentFile(
+                "temp-agent",
+                "sharedPractice:\n    - first-fragment\n    - second-fragment\n    - first-fragment\n",
+                "## Process\n\nBody.",
+            ),
+            fragmentFile("first-fragment", "FIRST_MARKER"),
+            fragmentFile("second-fragment", "SECOND_MARKER"),
+        ],
+        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+    );
 
     assertEquals(def.systemPrompt.match(/FIRST_MARKER/g)?.length, 1);
     assertEquals(def.systemPrompt.indexOf("SECOND_MARKER") > def.systemPrompt.indexOf("FIRST_MARKER"), true);
 });
 
 test("a project fragment overrides the bundled fragment of the same name", async () => {
-    const def = await withProjectAgents([
-        agentFile("temp-agent", "sharedPractice:\n    - engineering-practice\n", "## Process\n\nBody."),
-        fragmentFile("engineering-practice", "PROJECT_OVERRIDE_MARKER"),
-    ], (projectRoot) => loadAgentDef("temp-agent", projectRoot));
+    const def = await withProjectAgents(
+        [
+            agentFile("temp-agent", "sharedPractice:\n    - engineering-practice\n", "## Process\n\nBody."),
+            fragmentFile("engineering-practice", "PROJECT_OVERRIDE_MARKER"),
+        ],
+        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+    );
 
     assertStringIncludes(def.systemPrompt, "PROJECT_OVERRIDE_MARKER");
     assertEquals(def.systemPrompt.includes("The Zero-Trust Implementation Protocol"), false);
 });
 
 test("an agent that declares no shared practice composes nothing extra", async () => {
-    const def = await withProjectAgents([
-        agentFile("temp-agent", "", "## Process\n\nBody."),
-        fragmentFile("engineering-practice", "SHOULD_NOT_APPEAR"),
-    ], (projectRoot) => loadAgentDef("temp-agent", projectRoot));
+    const def = await withProjectAgents(
+        [agentFile("temp-agent", "", "## Process\n\nBody."), fragmentFile("engineering-practice", "SHOULD_NOT_APPEAR")],
+        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+    );
 
     assertEquals(def.systemPrompt.includes("SHOULD_NOT_APPEAR"), false);
 });
@@ -197,11 +221,7 @@ test("a non-list sharedPractice field is rejected rather than silently ignored",
     await withProjectAgents(
         [agentFile("temp-agent", "sharedPractice: engineering-practice\n", "## Process\n\nBody.")],
         (projectRoot) =>
-            assertRejects(
-                () => loadAgentDef("temp-agent", projectRoot),
-                Error,
-                "non-list sharedPractice field",
-            ),
+            assertRejects(() => loadAgentDef("temp-agent", projectRoot), Error, "non-list sharedPractice field"),
     );
 });
 
@@ -227,7 +247,8 @@ test("every bundled fragment is claimed by at least one agent", async () => {
     const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
     const { SUBAGENTS } = await import("../../constants.js");
     const reviewPractice = (await fsReadFile(join(SHARED_PRACTICE_DIR, "review-practice.md"), "utf8"))
-        .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
+        .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
+        .trim();
     for (const id of [SUBAGENTS.REVIEWER, SUBAGENTS.INTEGRATION_REVIEWER]) {
         const reviewer = await loadSubAgentDefinition(id);
         assertStringIncludes(reviewer.systemPrompt, reviewPractice);
@@ -331,19 +352,17 @@ test("the Planner writes point-first Plans with optional callouts and exact step
 
 test("the Plan format keeps its sections and shows callout syntax Plan Review renders", async () => {
     const format = await fsReadFile(join(BUNDLED_AGENT_DEFS, "document-formats", "planner-plan-format.md"), "utf8");
-    for (
-        const heading of [
-            "Context",
-            "Objective",
-            "Approach",
-            "Expected Change Surface",
-            "Reuse Opportunities",
-            "Implementation Steps",
-            "Approval Confirmation",
-            "Verification Plan",
-            "Edge Cases & Considerations",
-        ]
-    ) {
+    for (const heading of [
+        "Context",
+        "Objective",
+        "Approach",
+        "Expected Change Surface",
+        "Reuse Opportunities",
+        "Implementation Steps",
+        "Approval Confirmation",
+        "Verification Plan",
+        "Edge Cases & Considerations",
+    ]) {
         assertStringIncludes(format, `\n## ${heading}\n`);
     }
     assertMatch(format, MARKER_ONLY_CALLOUT);
@@ -395,9 +414,15 @@ test("Plan and Epic authors share one architecture vocabulary", async () => {
     for (const agentName of PLANNING_DOC_AUTHORS) {
         const { systemPrompt } = await loadAgentDef(agentName);
         const normalized = systemPrompt.replaceAll(/\s+/g, " ");
-        for (
-            const term of ["Module", "Interface", "Seam", "Port", "Owner / source of truth", "Invariant", "Projection"]
-        ) {
+        for (const term of [
+            "Module",
+            "Interface",
+            "Seam",
+            "Port",
+            "Owner / source of truth",
+            "Invariant",
+            "Projection",
+        ]) {
             assertStringIncludes(normalized, `**${term}**`, `${agentName} is missing the ${term} definition`);
         }
         assertStringIncludes(
@@ -479,14 +504,13 @@ test("the shared pair ceremony stays medium-neutral", async () => {
 test("Planner and Architect use pending work as evidence without dirty-file warnings", async () => {
     for (const name of ["planner", "architect"]) {
         const { systemPrompt } = await loadAgentDef(name);
-        for (
-            const text of [
-                "Inspect staged, unstaged, and relevant untracked changes",
-                "Use task-relevant changes as evidence",
-                "Silently ignore unrelated changes",
-                "Preserve all existing work",
-                "A dirty checkout alone is neither a blocker nor a risk",
-            ]
-        ) assertStringIncludes(systemPrompt, text);
+        for (const text of [
+            "Inspect staged, unstaged, and relevant untracked changes",
+            "Use task-relevant changes as evidence",
+            "Silently ignore unrelated changes",
+            "Preserve all existing work",
+            "A dirty checkout alone is neither a blocker nor a risk",
+        ])
+            assertStringIncludes(systemPrompt, text);
     }
 });

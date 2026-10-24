@@ -239,7 +239,7 @@ execution contexts. Commands without model work have no model-usage record; late
 For browser-only commands, add `POST /api/owner/projects/:projectId/command-metrics` beside the Owner Session routes.
 Use existing `ownerFetch`, paired-device/origin/CSRF protection, and `requireOwnerProjectRoot`. Accept only a bounded,
 validated command-observation payload; derive the Project root on the server. Check any optional Session link belongs to
-that Project. Write through the local recorder, not Workspace SQLite, shared artifacts, or SaaS services. It must work
+that Project. Write through the local recorder, not Workspace SQLite, shared artifacts, or external services. It must work
 in new-Session mode without creating a Session. No offline browser backlog or network-dependent command failure.
 
 ## Expected Change Surface
@@ -329,7 +329,7 @@ extend adjacent existing suites as needed. Full CI is performed by the normal wo
 
 ```sh
 deno run -A scripts/run-tests.js src/shared/workflow/metrics.test.js src/shared/workflow/execution-metrics.test.ts src/shared/session/session-metrics.test.ts
-deno run -A scripts/run-tests.js src/shared/session/session-subscribers.test.js src/shared/session/session-prompt.test.js src/shared/session/session-context-report.test.js
+deno run -A scripts/run-tests.js src/shared/session/session-subscribers.test.js src/shared/session/session-prompt.test.js src/shared/session/session-context-report.test.ts
 deno run -A scripts/run-tests.js src/shared/session/backends/claude-cli/claude-cli-backend.test.ts src/shared/session/backends/claude-cli/mcp-bridge.test.ts src/shared/session/backends/agy-cli/agy-cli-backend.test.ts src/shared/session/claude-cli-execution.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/command-metrics.test.ts src/ui/tui/slash-dispatch.test.ts src/ui/workspace/command-metrics.test.ts
 deno task seams:check
@@ -415,4 +415,4 @@ metrics types.
 - **Assumption for review:** `!`/`!!` user shell shortcuts and standalone top-level CLI commands are not slash commands
   or Agent tools, so they remain outside this change. Their inclusion would be a separate scope extension.
 - **Assumption for review:** browser recording uses the existing local Owner server, including paired-device access.
-  Future SaaS analytics and RunWield Connect host telemetry remain out of scope.
+  External analytics and RunWield Connect host telemetry remain out of scope.

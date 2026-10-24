@@ -91,7 +91,9 @@ function parseUpdateArgs(argv: string[]): ParsedUpdateArgs | null {
 
 function confirmUpgrade(message: string, rc: boolean): boolean {
     if (rc) {
-        const answer = globalThis.prompt(`${message}\nContinue? [Y/n] `);
+        // Bun returns null for an empty line unless a default is supplied.
+        // Keep null reserved for EOF so a dismissed prompt still cancels.
+        const answer = globalThis.prompt(`${message}\nContinue? [Y/n] `, "");
         return answer !== null && (answer.trim() === "" || /^y(es)?$/i.test(answer.trim()));
     }
     const answer = globalThis.prompt(`${message}\nType INSTALL to continue:`) || "";
@@ -157,8 +159,8 @@ export async function runUpdateCommand(argv: string[], options: UpdateCommandOpt
         const release = parsedArgs.to
             ? { tagName: normalizeRunWieldVersion(parsedArgs.to), version: normalizeRunWieldVersion(parsedArgs.to) }
             : parsedArgs.rc
-            ? await fetchLatestRunWieldRcRelease(network)
-            : await fetchLatestRunWieldRelease(network);
+              ? await fetchLatestRunWieldRcRelease(network)
+              : await fetchLatestRunWieldRelease(network);
         const targetVersion = parseRunWieldReleaseVersion(release.version);
         if (!targetVersion) throw new Error(`Invalid RunWield release tag: ${release.version}`);
 
