@@ -447,7 +447,7 @@
     "src/shared/workflow/transition-recovery.test.ts",
     "src/shared/workflow/validation-ci-recovery.test.js",
     "src/shared/workflow/validation-completion-gating.test.ts",
-    "src/shared/workflow/validation-lifecycle-resume.test.js",
+    "src/shared/workflow/validation-lifecycle-resume.test.ts",
     "src/shared/workflow/validation-lifecycle-source.test.ts",
     "src/shared/workflow/validation-local-ci.test.ts",
     "src/shared/workflow/validation-loop-core.test.js",
