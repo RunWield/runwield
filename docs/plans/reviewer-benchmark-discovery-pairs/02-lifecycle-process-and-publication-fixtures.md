@@ -20,8 +20,8 @@ order: 2
 dependencies:
     - "01-corpus-selection-oracle-verdicts-and-edge-case-fixtures"
 userVerifiedAt: null
-status: "in_progress"
 targetBranch: "main"
+status: "implemented"
 ---
 
 # Lifecycle, Process, and Publication Fixtures

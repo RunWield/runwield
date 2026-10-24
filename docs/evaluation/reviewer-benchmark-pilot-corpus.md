@@ -2,25 +2,25 @@
 
 ## Status
 
-Partly materialized. The Reviewer-only runner has 17 admitted discovery cases in nine packages. The remaining
-27 scenarios are drafts. Mechanical admission must pass for every selected package before any model call. After the
+Partly materialized. The Reviewer-only runner has 25 admitted discovery cases in 13 packages. The remaining
+19 scenarios are drafts. Mechanical admission must pass for every selected package before any model call. After the
 paid run, the owner judges each fixture's Plan, diff, proof, and oracle together with the Reviewer's result, not as a
 pre-run requirement.
 
 | State              | Scenarios                                                | Source                                                          |
 | ------------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
 | Materialized smoke | RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, RV-M01 A | [Fixtures and run instructions](../../evals/reviewer/README.md) |
-| Materialized pairs | RV-D01–D03 A/B, RV-D06 A/B                               | [Fixtures and run instructions](../../evals/reviewer/README.md) |
-| Draft pairs        | RV-D07–D11, RV-D14–D16 (A/B)                             | Catalog below                                                   |
+| Materialized pairs | RV-D01–D03 A/B, RV-D06–D10 A/B                           | [Fixtures and run instructions](../../evals/reviewer/README.md) |
+| Draft pairs        | RV-D11, RV-D14–D16 (A/B)                                 | Catalog below                                                   |
 | Draft multi-defect | RV-M02–M06                                               | Catalog below                                                   |
 | Draft repair-state | RV-R01–R06                                               | Catalog below                                                   |
 
-`--scenarios all` selects the current 17 cases by package directory, sorted by scenario ID then variant. The original
+`--scenarios all` selects the current 25 cases by package directory, sorted by scenario ID then variant. The original
 nine-case `--scenarios smoke` selection is unchanged. The runner measures one configuration, one trial per case. The
 [2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine original rounds. The
 owner accepted its 13 blocking findings, including findings on two oracle-clean twins. Under the historical rules,
 these findings blocked semantic scoring against the original oracle. Four packages are now revision 2 after repairs;
-these revisions and the four new revision-1 packages have no paid measurements.
+these revisions and the eight new revision-1 packages have no paid measurements.
 
 Post-run `oracleVerdicts` in `adjudications.json` mark each case `confirmed` or `fixture_needs_repair`, with an
 optional note. A `fixture_needs_repair` verdict or any `novel_valid` finding excludes that case from every score and
@@ -28,7 +28,7 @@ lists it under fixtures needing repair; other cases still score. Repair the fixt
 Semantic scores stay pending while a counted case lacks a verdict or any of its blocking findings lacks a label.
 Older labels without verdicts remain valid but pending. See [adjudication instructions](../../evals/reviewer/README.md#human-adjudication).
 
-Completing the eight remaining discovery pairs would produce 33 cases in 17 packages. That expansion is future scope,
+Completing the four remaining discovery pairs would produce 33 cases in 17 packages. That expansion is future scope,
 not a claim about the delivered corpus. Additional multi-defect fixtures, repair-state execution, candidate comparison,
 and repetitions remain target.
 

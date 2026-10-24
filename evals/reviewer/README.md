@@ -1,6 +1,6 @@
 # Reviewer fixtures
 
-These synthetic Bun 1.4.3 projects define 17 discovery cases in nine packages. Mechanical admission runs before any
+These synthetic Bun 1.4.3 projects define 25 discovery cases in 13 packages. Mechanical admission runs before any
 model calls. After the paid run, the owner judges each fixture's Plan, patch, proof, and oracle together with the
 Reviewer's result. Fixture approval is not a pre-run requirement.
 
@@ -12,6 +12,10 @@ Reviewer's result. Fixture approval is not a pre-run requirement.
 | RV-D04  | [Summary cache](RV-D04/source/docs/plans/reuse-plan-summaries.md)                   | [Cache scope](RV-D04/evaluation/oracle.yaml)              | [A](RV-D04/variants/defective.patch), [B](RV-D04/variants/clean.patch) |
 | RV-D05  | [Artifact removal](RV-D05/source/docs/plans/remove-archived-artifact.md)            | [Path containment](RV-D05/evaluation/oracle.yaml)         | [A](RV-D05/variants/defective.patch), [B](RV-D05/variants/clean.patch) |
 | RV-D06  | [Shared board links](RV-D06/source/docs/plans/rename-through-board-links.md)        | [Verified authority](RV-D06/evaluation/oracle.yaml)       | [A](RV-D06/variants/defective.patch), [B](RV-D06/variants/clean.patch) |
+| RV-D07  | [Validation cancellation](RV-D07/source/docs/plans/cancel-validation-commands.md)   | [Descendant settlement](RV-D07/evaluation/oracle.yaml)    | [A](RV-D07/variants/defective.patch), [B](RV-D07/variants/clean.patch) |
+| RV-D08  | [Repair completion](RV-D08/source/docs/plans/resume-after-repair.md)                | [Completion ownership](RV-D08/evaluation/oracle.yaml)     | [A](RV-D08/variants/defective.patch), [B](RV-D08/variants/clean.patch) |
+| RV-D09  | [Validation start](RV-D09/source/docs/plans/record-validation-start.md)             | [Body ownership](RV-D09/evaluation/oracle.yaml)           | [A](RV-D09/variants/defective.patch), [B](RV-D09/variants/clean.patch) |
+| RV-D10  | [Publication retry](RV-D10/source/docs/plans/resume-saved-publication.md)           | [Target ancestry](RV-D10/evaluation/oracle.yaml)          | [A](RV-D10/variants/defective.patch), [B](RV-D10/variants/clean.patch) |
 | RV-D12  | [Registration coverage](RV-D12/source/docs/plans/cover-registration-persistence.md) | [Owned registry machinery](RV-D12/evaluation/oracle.yaml) | [A](RV-D12/variants/defective.patch), [B](RV-D12/variants/clean.patch) |
 | RV-D13  | [Archive and listing](RV-D13/source/docs/plans/archive-and-list-plans.md)           | [Plan completion](RV-D13/evaluation/oracle.yaml)          | [A](RV-D13/variants/defective.patch), [B](RV-D13/variants/clean.patch) |
 | RV-M01  | [Filtered pagination](RV-M01/source/docs/plans/configure-project-listing.md)        | [Two independent defects](RV-M01/evaluation/oracle.yaml)  | [A](RV-M01/variants/defective.patch)                                   |
@@ -31,14 +35,17 @@ Reviewer's result. Fixture approval is not a pre-run requirement.
   proof matrix checks that repairing either defect leaves the other reachable. None belongs in Reviewer context or history.
 
 The public scripts use standalone assertions and require no installed dependencies. RV-D04 uses POSIX `mkfifo` to
-coordinate a real filesystem read across refresh; admission therefore needs `mkfifo` on PATH. Run `bun run test` inside a
-materialized fixture. RunWield's own test suite uses `bun scripts/run-tests.js`, not these package scripts.
+coordinate a real filesystem read across refresh; admission therefore needs `mkfifo` on PATH. RV-D07 needs POSIX
+process groups (`process.kill(-pid)`). Its proof uses POSIX `env -u` to disable inherited Bun orphan cleanup so it
+exercises command cancellation itself. RV-D10 needs `git` on PATH and sets its own author and committer identity
+through environment variables. Its tests and proofs create repositories only in temporary directories outside the
+materialized project, then remove them in `finally`. Run `bun run test` inside a materialized fixture. RunWield's own test suite uses `bun scripts/run-tests.js`, not these package scripts.
 
 ## Fixture revisions after owner adjudication
 
 The recorded October baseline evaluated revision 1. RV-D04, RV-D12, RV-D13, and RV-M01 are now revision 2; RV-D05
-remains revision 1. RV-D01, RV-D02, RV-D03, and RV-D06 are new revision-1 packages. No paid Reviewer round has
-evaluated revision 2 or the four new packages.
+remains revision 1. RV-D01, RV-D02, RV-D03, and RV-D06–D10 are new revision-1 packages. No paid Reviewer round has
+evaluated revision 2 or the eight new packages.
 
 - RV-D04 isolates in-flight reads from later refreshes in both variants. The planted identity collision remains in A.
 - RV-D12 has two independent oracle defects: `RV-D12-A` for replaceable owned machinery and
@@ -168,6 +175,10 @@ import, or infrastructure error. B must pass the same command. For RV-M01, use i
 | RV-D04  | `project-scope`, `owner-scope`, `plan-scope` | Assertion failure | Pass              |
 | RV-D05  | `prefix-sibling`                             | Assertion failure | Pass              |
 | RV-D06  | `role-promotion`                             | Assertion failure | Pass              |
+| RV-D07  | `descendant-cancel`                          | Assertion failure | Pass              |
+| RV-D08  | `single-consumer`                            | Assertion failure | Pass              |
+| RV-D09  | `body-rollback`                              | Assertion failure | Pass              |
+| RV-D10  | `target-ancestry`                            | Assertion failure | Pass              |
 | RV-D12  | `seam-check`, `mutation-coverage`            | Assertion failure | Pass              |
 | RV-D13  | `archived-list`                              | Assertion failure | Pass              |
 | RV-M01  | `explicit-false`, `empty-cursor-page`        | Assertion failure | Pass              |

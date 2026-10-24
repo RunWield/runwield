@@ -1,0 +1,56 @@
+diff --git a/src/service.ts b/src/service.ts
+--- a/src/service.ts
++++ b/src/service.ts
+@@ -30,11 +30,23 @@
+         return task;
+     }
+     async completeTask(taskId: string): Promise<void> {
++        const prior = (await this.store.read()).tasks.find((task) => task.id === taskId);
++        if (prior?.completed) return;
+         const task = await this.recordCompletion(taskId);
+         await this.onCompletion(task);
++        if (task.kind === "repair") await this.validation.consume({ taskId }, "validation");
++    }
++    async recover(): Promise<void> {
++        const state = await this.store.read();
++        if (state.phase !== "repairing") return;
++        const task = state.tasks.find((entry) => entry.id === state.repairTaskId);
++        if (task?.completed) await this.validation.consume({ taskId: task.id }, "validation");
+     }
+     private async onCompletion(task: Task): Promise<void> {
+-        if (task.kind === "repair") return;
++        if (task.kind === "repair") {
++            await this.validation.consume({ taskId: task.id }, "listener");
++            return;
++        }
+         const state = await this.store.read();
+         state.notifications.push(task.id);
+         await this.store.write(state);
+diff --git a/tests/public.ts b/tests/public.ts
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -15,6 +15,24 @@
+     console.log("PASS ordinary task completion is durable");
+     await assert.rejects(service.completeTask("missing"), /Task not found/);
+     console.log("PASS unknown completion is refused");
++    await service.requestRepair("repair-1");
++    await service.completeTask("repair-1");
++    assert.equal((await service.snapshot()).phase, "checking");
++    assert.equal((await service.snapshot()).tasks.find((task) => task.id === "repair-1")?.completed, true);
++    console.log("PASS live repair resumes checks");
++    await service.requestRepair("repair-2");
++    await service.recordCompletion("repair-2");
++    const reopened = new TaskService(root);
++    await reopened.recover();
++    const recovered = await reopened.snapshot();
++    assert.equal(recovered.phase, "checking");
++    assert.equal(recovered.consumers.filter((entry) => entry.taskId === "repair-2").length, 1);
++    await reopened.recover();
++    assert.deepEqual(await reopened.snapshot(), recovered);
++    console.log("PASS restart recovery uses durable completion without replay");
++    await service.completeTask("task-1");
++    assert.deepEqual(await service.snapshot(), recovered);
++    console.log("PASS duplicate general completion is inert");
+ } finally {
+     await rm(root, { recursive: true, force: true });
+ }
