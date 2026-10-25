@@ -368,19 +368,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const primaryApprovalAction = reviewGroup
         ? PLAN_APPROVAL_ACTIONS.RUN
         : primaryPlanApprovalActionForClassification(planClassification, initialPayload.frontmatter?.type);
-    const approvalLabels = initialPayload.reviewRevisionUrl
-        ? { primary: "Approve & Ready", mobile: "Ready" }
-        : undefined;
     const outcomeCopy = initialPayload.reviewRevisionUrl
         ? submitted === "feedback"
             ? {
                   title: "Feedback sent",
                   subtitle: "Claude can retrieve your feedback. The next review round opens in this page.",
               }
-            : {
-                  title: "Approved & Ready",
-                  subtitle: "The Plan is ready for work. Execution handoff is a later Preview step.",
-              }
+            : submitted === "approved-later"
+              ? {
+                    title: "Approved for later",
+                    subtitle: "The Plan is Ready For Work. /runwield:implement starts it.",
+                }
+              : {
+                    title: "Approved & Run",
+                    subtitle: "Claude starts implementation in a RunWield worktree.",
+                }
         : reviewOutcomeCopy(
               submitted,
               planClassification,
@@ -1133,7 +1135,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                         submitting !== null || plannerWorking || waitingForRevision || reviewGroup?.busy
                                     }
                                     primaryApprovalAction={primaryApprovalAction}
-                                    approvalLabels={approvalLabels}
                                     sequenceCount={reviewGroup?.count}
                                     onApprove={submitApprove}
                                     isLoading={submitting === "approve"}
@@ -1167,7 +1168,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     submitting !== null || plannerWorking || waitingForRevision || reviewGroup?.busy
                                 }
                                 primaryApprovalAction={primaryApprovalAction}
-                                approvalLabels={approvalLabels}
                                 sequenceCount={reviewGroup?.count}
                                 onApprove={submitApprove}
                                 isLoading={submitting === "approve"}
@@ -1821,7 +1821,6 @@ function PlanReviewHeaderActions({
     setExecutionPolicy,
     disabled,
     primaryApprovalAction,
-    approvalLabels,
     onApprove,
     isLoading,
     sequenceCount,
@@ -1869,7 +1868,6 @@ function PlanReviewHeaderActions({
             <PlanApprovalSplitButton
                 sequence={sequenceCount !== undefined}
                 primaryAction={primaryApprovalAction}
-                labels={approvalLabels}
                 onApprove={onApprove}
                 disabled={disabled}
                 isLoading={isLoading}
@@ -1878,11 +1876,10 @@ function PlanReviewHeaderActions({
     );
 }
 
-function PlanApprovalSplitButton({ primaryAction, onApprove, disabled, isLoading, sequence = false, labels }) {
+function PlanApprovalSplitButton({ primaryAction, onApprove, disabled, isLoading, sequence = false }) {
     const isProject = primaryAction === PLAN_APPROVAL_ACTIONS.DECOMPOSE;
-    const primaryLabel =
-        labels?.primary || (sequence ? "Approve & Execute" : isProject ? "Approve & Slice" : "Approve & Run");
-    const primaryMobileLabel = labels?.mobile || (sequence ? "Execute" : isProject ? "Slice" : "Run");
+    const primaryLabel = sequence ? "Approve & Execute" : isProject ? "Approve & Slice" : "Approve & Run";
+    const primaryMobileLabel = sequence ? "Execute" : isProject ? "Slice" : "Run";
     const loadingLabel = isProject ? "Approving…" : "Approving…";
 
     function submitPrimary() {

@@ -103,11 +103,33 @@ test("Plan Review can chat and approve on the same page after the artifact advan
             assertEquals(submitted.at(-1).conversationTurn, true);
             assertEquals(submitted.at(-1).reviewRevision, 1);
             assertEquals(submitted.at(-1).feedback, "Question about N+1");
-            await act(() => button("Approve & Ready").click());
+            await act(() => button("Approve & Run").click());
             assertEquals(submitted.at(-1).approvalAction, "run");
             assertEquals(submitted.at(-1).reviewRevision, 1);
+            assertStringIncludes(container.textContent, "Approved & Run");
+            assertStringIncludes(container.textContent, "Claude starts implementation in a RunWield worktree.");
+            assertEquals(container.textContent.includes("Approve & Ready"), false);
         },
         plan,
         { payload, conversation: () => snapshot },
+    );
+});
+
+test("Attached Plan approval for later saves the Plan without claiming execution", async () => {
+    await withReview(
+        async ({ container, submitted, button }) => {
+            await act(() => button("More approval options").click());
+            await act(() =>
+                [...container.querySelectorAll("button")]
+                    .find((element) => element.textContent.includes("Approve for Later"))
+                    .click(),
+            );
+            assertEquals(submitted.at(-1).approvalAction, "later");
+            assertStringIncludes(container.textContent, "Approved for later");
+            assertStringIncludes(container.textContent, "The Plan is Ready For Work. /runwield:implement starts it.");
+            assertEquals(container.textContent.includes("Approve & Ready"), false);
+        },
+        plan,
+        { payload, conversation: () => ({ ...savedConversation(), pending: false, turns: [] }) },
     );
 });

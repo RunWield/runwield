@@ -177,8 +177,12 @@ test("Attached code review rejects an approval after the worktree changes", asyn
         });
         assert(!rejected.ok, JSON.stringify(rejected));
         assertEquals((await loadPlan(fixture.root, "p"))?.attrs.publicationReceipt ?? null, null);
-        const refreshed = await fixture.call("start_validation", await fixture.status());
-        assert(refreshed.ok && refreshed.workflow.nextAction.kind === "code_review", JSON.stringify(refreshed));
+        const revalidating = await fixture.call("start_validation", await fixture.status());
+        assert(revalidating.ok && revalidating.workflow.nextAction.kind === "validation", JSON.stringify(revalidating));
+        assertEquals(revalidating.workflow.nextAction.request.kind, "reviewer");
+        assertEquals(await fixture.ciCount(), 2);
+        const refreshed = await approveSemantic(fixture, revalidating.workflow);
+        assert(refreshed.workflow.nextAction.kind === "code_review", JSON.stringify(refreshed));
         assert(refreshed.workflow.nextAction.actionId !== action.actionId);
         assertStringIncludes(String(refreshed.workflow.nextAction.request.interaction._meta?.diffText), "value = 9");
     } finally {

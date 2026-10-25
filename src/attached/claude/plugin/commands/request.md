@@ -6,8 +6,9 @@ disable-model-invocation: true
 
 Start RunWield only for this request: $ARGUMENTS
 
-Show any returned `compatibility` notice to the user before continuing. On `incompatible_adapter` or
-`unsupported_host_version`, show Core's update message and stop. Core owns version compatibility.
+Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
+Core owns host and version compatibility.
 
 1. Call the RunWield MCP tool `activate`. Use a new unique `operationId` and put the user's request in
    `payload.requestText`. Use `${CLAUDE_SESSION_ID}` as `payload.hostRequestId`. If that variable is not substituted,

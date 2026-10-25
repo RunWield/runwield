@@ -75,6 +75,7 @@ export type AttachedRejectionCode =
     | "revision_conflict"
     | "workflow_busy"
     | "incompatible_adapter"
+    | "unsupported_host"
     | "unsupported_host_version";
 
 export interface AttachedRejection {

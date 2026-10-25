@@ -4,6 +4,7 @@ import { spawnNativeProcess } from "../foreground-process.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {
+    readdir as fsReaddir,
     stat as fsStat,
     writeFile as fsWriteFile,
     rename as fsRename,
@@ -20,6 +21,7 @@ import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "./operations.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import {
     activateInput,
+    EVIDENCE,
     pendingTriage,
     readRecordBytes,
     rejectionCode,
@@ -350,3 +352,17 @@ for (const operationId of ["constructor", "toString"]) {
         });
     });
 }
+
+test("a non-Claude activation rejects without creating a workflow record", async () => {
+    await withProject(async (projectRoot) => {
+        const input = activateInput();
+        const result = await run("activate", projectRoot, { ...input, evidence: { ...EVIDENCE, host: "codex" } });
+        assert(!result.ok);
+        assertEquals(result.rejection.code, "unsupported_host");
+        const files = await fsReaddir(locateAttachedWorkflows(projectRoot).workflowsDir).catch((error) => {
+            if (error.code === "ENOENT") return [];
+            throw error;
+        });
+        assertEquals(files, []);
+    });
+});

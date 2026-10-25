@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
+import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
     activateInput,
@@ -155,5 +156,23 @@ test("a closed workflow result carries no role instructions", async () => {
         const closed = await runOperation("triage_report", projectRoot, triageReportInput({ ...triage, outcome }));
         assert(closed.ok, JSON.stringify(closed));
         assertEquals(closed.instructions, undefined);
+    });
+});
+
+test("Attached roles resolve the current project Skill override without adding Skills to the reviewer", async () => {
+    await withProject(async (projectRoot) => {
+        const path = join(projectRoot, ".wld", "skills", "diagnose", "SKILL.md");
+        await fsMkdir(join(projectRoot, ".wld", "skills", "diagnose"), { recursive: true });
+        for (const description of ["Project diagnostic technique", "Updated project diagnostic technique"]) {
+            await fsWriteFile(path, `---\nname: diagnose\ndescription: ${description}\n---\nProject body`);
+            for (const role of ["engineer", "planner"] as const) {
+                const text = await resolveAttachedRoleInstructions(projectRoot, role);
+                assertStringIncludes(text, "## Skills");
+                assertStringIncludes(text, `- diagnose - ${description} (read: ${path})`);
+                assertEquals(text.split("- diagnose -").length - 1, 1);
+                assertEquals(text.includes("/bundled-skills/diagnose/SKILL.md"), false);
+            }
+        }
+        assertEquals((await resolveAttachedRoleInstructions(projectRoot, "reviewer")).includes("## Skills"), false);
     });
 });

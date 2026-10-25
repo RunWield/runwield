@@ -12,6 +12,7 @@ import {
 } from "./operations.ts";
 import { locateAttachedWorkflows, loadAttachedWorkflowRecord } from "./record-store.ts";
 import { activateInput, EVIDENCE, runOperation, withProject } from "./attached-test-fixture.ts";
+import { assessCompatibility } from "./compatibility.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 
 for (const adapterContract of [0, 2]) {
@@ -129,6 +130,7 @@ const payloads: Record<AttachedLifecycleOperationName, AttachedJsonObject> = {
 };
 
 for (const refusal of [
+    { reason: "a non-Claude host", code: "unsupported_host", evidence: { ...EVIDENCE, host: "codex" } },
     { reason: "a stale contract", code: "incompatible_adapter", evidence: { ...EVIDENCE, adapterContract: 0 } },
     {
         reason: "a host below the tested floor",
@@ -172,3 +174,15 @@ for (const refusal of [
         });
     }
 }
+
+test("compatibility checks host identity before adapter and version support", () => {
+    assertEquals(
+        assessCompatibility({ ...EVIDENCE, host: "codex", hostVersion: "2.1.303" }).status,
+        "unsupported_host",
+    );
+    assertEquals(assessCompatibility({ ...EVIDENCE, host: "codex", adapterContract: 0 }).status, "unsupported_host");
+    assertEquals(
+        assessCompatibility({ ...EVIDENCE, host: "claude-code", hostVersion: "2.1.303" }).status,
+        "compatible",
+    );
+});

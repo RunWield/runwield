@@ -16,7 +16,12 @@ export interface TestedClaudeVersion {
 
 export interface CompatibilityAssessment {
     status:
-        "compatible" | "untested_newer" | "version_not_reported" | "incompatible_adapter" | "unsupported_host_version";
+        | "unsupported_host"
+        | "compatible"
+        | "untested_newer"
+        | "version_not_reported"
+        | "incompatible_adapter"
+        | "unsupported_host_version";
     matrixVersion: number;
     message: string;
 }
@@ -81,6 +86,13 @@ export const CLAUDE_COMPATIBILITY_MATRIX = {
 /** Assess host evidence before Core performs an operation. Unknown versions remain usable with a notice. */
 export function assessCompatibility(evidence: HostEvidence): CompatibilityAssessment {
     const matrix = CLAUDE_COMPATIBILITY_MATRIX;
+    if (evidence.host !== matrix.host) {
+        return {
+            status: "unsupported_host",
+            matrixVersion: matrix.matrixVersion,
+            message: `RunWield Connect supports Claude Code only. ${evidence.host} is not a supported External Agent Host.`,
+        };
+    }
     const required = matrix.supportedAdapterContracts.join(", ");
     if (!matrix.supportedAdapterContracts.includes(evidence.adapterContract)) {
         return {

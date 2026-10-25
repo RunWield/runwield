@@ -1763,7 +1763,11 @@ export async function runAttachedOperation(
         const parsed = parseHostEvidence(input);
         if (!parsed.ok) return await rejected(name, parsed.rejection);
         const compatibility = assessCompatibility(parsed.envelope);
-        if (compatibility.status === "incompatible_adapter" || compatibility.status === "unsupported_host_version") {
+        if (
+            compatibility.status === "unsupported_host" ||
+            compatibility.status === "incompatible_adapter" ||
+            compatibility.status === "unsupported_host_version"
+        ) {
             return await rejected(name, rejection(compatibility.status, compatibility.message));
         }
         const result = await runParsedOperation(name, projectRoot, input, options);

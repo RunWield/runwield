@@ -9,6 +9,7 @@
  */
 
 import { getBundledAgentDefsPath } from "../session/agent-assets.ts";
+import { listVisibleSkillCatalog } from "../session/skill-catalog.ts";
 import { loadAgentDef } from "../session/agents.js";
 import { buildBridgedToolPromptAppendix } from "../session/bridged-tools/prompt.ts";
 import type { AttachedHostRole } from "./operations.ts";
@@ -89,9 +90,21 @@ export async function resolveAttachedRoleInstructions(projectRoot: string, role:
     if (role === "reviewer") return ROLE_ADDENDUM.reviewer;
     const agent = await loadAgentDef(role, projectRoot);
     const bundledAgentDefsPath = await getBundledAgentDefsPath();
+    const skills = agent.systemPrompt.includes("{{SKILLS}}") ? await listVisibleSkillCatalog(projectRoot) : [];
+    const skillsSection = skills.length
+        ? [
+              "## Skills",
+              "",
+              "Use Claude Code's Read tool to load a Skill's file when the task matches its description. " +
+                  "Use the exact path shown. Resolve relative references against the Skill file's directory.",
+              "",
+              ...skills.map(({ line }) => line),
+          ].join("\n")
+        : "";
     return [
         agent.rolePrompt.replaceAll("{{BUNDLED_AGENT_DEFS_DIR}}", bundledAgentDefsPath),
         buildBridgedToolPromptAppendix([], "Claude Code", agent.tools).trim(),
+        ...(skillsSection ? [skillsSection] : []),
         ...(role === "engineer" || role === "frontend-engineer" || role === "reviewer-feedback-engineer"
             ? []
             : [ENVELOPE_ADDENDUM]),
