@@ -178,7 +178,7 @@
     "src/shared/collaboration/capabilities.test.ts",
     "src/shared/collaboration/client.test.ts",
     "src/shared/collaboration/crypto.test.ts",
-    "src/shared/collaboration/lock.test.js",
+    "src/shared/collaboration/lock.test.ts",
     "src/shared/collaboration/protocol.test.ts",
     "src/shared/collaboration/secrets.test.js",
     "src/shared/collaboration/urls.test.ts",
