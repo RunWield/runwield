@@ -18,7 +18,7 @@ const events=join(process.env.CLAUDE_CONFIG_DIR,'events');
 writeFileSync(events,'');
 createInterface({input:process.stdin}).on('line',line=>appendFileSync(join(process.env.CLAUDE_CONFIG_DIR,'inputs'),line+'\\n'));
 let cursor=0;
-setInterval(()=>{const lines=readFileSync(events,'utf8').split('\\n').filter(Boolean);
+setInterval(()=>{const lines=readFileSync(events,'utf8').split('\\n').slice(0,-1);
 while(cursor<lines.length) process.stdout.write(lines[cursor++]+'\\n');},5);
 `;
 const started: JsonMap = {
@@ -353,6 +353,19 @@ for (const [name, event] of [
             await host.finishTurn(100);
         });
     });
+
+test("the external host fixture waits for a complete event line", async () => {
+    await withHost(async (root, host) => {
+        await emit(root, []);
+        const input = join(root, "claude-config/events");
+        await appendFile(input, '{"type":"result",');
+        await delay(50);
+        await appendFile(input, '"subtype":"success","is_error":false}\n');
+        await emit(root, []);
+        equal(host.readyForInput, true);
+        await host.finishTurn(100);
+    });
+});
 
 test("a redundant empty snapshot after the resumed parent result preserves that result", async () => {
     await withHost(async (root, host) => {

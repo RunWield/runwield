@@ -283,7 +283,7 @@ test("the fixture policy reaches the actual Core handoff and uses Core-assigned 
                     assert(result.ok && result.instructions.text.includes('acceptance-notes'));
                     inspected=await inspectSemantic(fixture,result.workflow);
                     result=await fixture.call('review_complete',inspected.workflow,{actionId:inspected.actionId,approved:true,findings:[{id:assigned[0],title:'acceptance-notes',status:'fix_confirmed'}]});
-                    assert(result.ok && result.workflow.nextAction.kind==='code_review');
+                    assert(result.ok && result.workflow.nextAction.kind==='code_review',JSON.stringify(result));
                     console.log(JSON.stringify({codeReview:true,ciRuns:await fixture.ciCount(),planStatus:(await fixture.plan()).attrs.status}));
                 } finally {await fixture.close();}
             `;

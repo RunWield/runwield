@@ -9,6 +9,7 @@
 
 import { createHash } from "node:crypto";
 import { isPlannedChangeClassification } from "../../constants.js";
+import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 
 /**
@@ -21,13 +22,16 @@ function isPlanDocumentPath(path: string, planName: string): boolean {
     return path === `docs/plans/${planName}.md` || /^docs\/plans\/.+\.md$/.test(path);
 }
 
-/** Identify reviewed implementation files without validation's own Plan writes. */
+/** Identify reviewed implementation files without validation's own Plan and runtime writes. */
 export function candidateIdentity(diffText: string, planName: string): string {
     const implementation = diffText
         .split(/(?=^diff --git )/m)
         .filter((section) => {
             const paths = extractDiffPaths(section);
-            return paths.length === 0 || paths.some((path) => !isPlanDocumentPath(path, planName));
+            return (
+                paths.length === 0 ||
+                paths.some((path) => !isPlanDocumentPath(path, planName) && !isRunWieldOwnedRuntimePath(path))
+            );
         })
         .join("");
     return createHash("sha256").update(implementation).digest("hex");

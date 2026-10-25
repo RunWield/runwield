@@ -81,6 +81,13 @@ test("candidate identity ignores all Plan sections but binds implementation cont
     );
 });
 
+test("candidate identity ignores transient RunWield runtime files but binds project settings", () => {
+    const lock = "diff --git a/.wld/internal/plan-locks/demo.lock b/.wld/internal/plan-locks/demo.lock\n+locked\n";
+    const settings = "diff --git a/.wld/settings.json b/.wld/settings.json\n+changed\n";
+    assertEquals(candidateIdentity(codeDiff + lock, "demo"), candidateIdentity(codeDiff, "demo"));
+    assertEquals(candidateIdentity(codeDiff + settings, "demo") === candidateIdentity(codeDiff, "demo"), false);
+});
+
 test("candidate identity retains unreadable diffs and renames outside Plan documents", () => {
     const rename =
         "diff --git a/docs/plans/demo.md b/src/demo.md\nrename from docs/plans/demo.md\nrename to src/demo.md\n";
