@@ -210,3 +210,17 @@ Manual verification steps for attached-mode-claude-feature-preview/11-repair-int
 - [ ] Retry a review reply with the same operation ID. Confirm that the saved result is returned and no second repair or decision is created.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/11-repair-integration-findings-2" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/12-repair-integration-findings-3" -->
+
+## Repair integration findings 3
+
+Manual verification steps for attached-mode-claude-feature-preview/12-repair-integration-findings-3
+
+- [ ] Change a code file after Semantic Review, then resume validation. Confirm CI and Semantic Review run again before a new Code Review appears.
+- [ ] During a Plan-to-code-review transition, poll the Plan review page. Confirm it responds and the review changes to the code-review page; close Claude and confirm review endpoints stop.
+- [ ] Open an Attached Plan review. Confirm the main action says **Approve & Run** and starts implementation; confirm **Approve for Later** leaves the Plan Ready For Work.
+- [ ] Try to activate an Attached workflow from a non-Claude host. Confirm the operation is rejected and no workflow or worktree is created; confirm status remains available.
+- [ ] Open Engineer and Planner role instructions for a project with a Skill override. Confirm the Skills section shows the project Skill path and description; confirm Reviewer instructions have no Skills section.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/12-repair-integration-findings-3" -->
