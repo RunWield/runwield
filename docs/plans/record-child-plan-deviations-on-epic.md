@@ -1,4 +1,5 @@
 ---
+planId: "e4419e07-9327-4305-91b3-7570aadffa90"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -17,14 +18,16 @@ affectedPaths:
     - "docs/domain-language.md"
     - "docs/plan-lifecycle.md"
     - "src/skills/runwield/PLANS.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
-createdAt: "2026-10-24T21:57:31-04:00"
-status: "draft"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
-planId: "e4419e07-9327-4305-91b3-7570aadffa90"
+createdAt: "2026-10-24T21:57:31-04:00"
+origin: "internal"
+userVerifiedAt: null
+routingIntent: "PLANNED_CHANGE"
+sessionName: "Epic Deviation Recording"
+targetBranch: "main"
+deliveryBranch: "main"
+status: "in_progress"
 ---
 
 # Record Child Plan Deviations on the Epic
