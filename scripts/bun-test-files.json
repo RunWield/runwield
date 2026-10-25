@@ -258,7 +258,7 @@
     "src/shared/runwield-owned-paths.test.ts",
     "src/shared/session/__tests__/agent-model-override.test.ts",
     "src/shared/session/__tests__/session-tools-policy.test.js",
-    "src/shared/session/abort-active-session.test.js",
+    "src/shared/session/abort-active-session.test.ts",
     "src/shared/session/active-agent-session.test.js",
     "src/shared/session/agent-contracts.test.ts",
     "src/shared/session/agent-handler.test.ts",
