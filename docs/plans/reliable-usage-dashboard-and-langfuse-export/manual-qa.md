@@ -155,3 +155,17 @@ Manual verification steps for reliable-usage-dashboard-and-langfuse-export/09-wo
 - [ ] At 390 px and compact desktop width, use the keyboard to reach controls and operate dialogs; confirm focus returns to each dialog trigger.
 
 <!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
+<!-- runwield:manual-qa:start child="reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance" -->
+
+## End-to-End Usage and Export Acceptance
+
+Manual verification steps for reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance
+
+- [ ] Run the live journey with the owner on a real Project. Check all three backends, interruption, repair, abandonment, disabled recording, and restart results in `/usage`.
+- [ ] Open `/usage` on desktop and phone. Confirm both show the same time zone, days, and totals, and that pending or failed clears leave the report readable with a clear status.
+- [ ] Compare `/usage` totals with the disposable Langfuse project's received counts and sums. Confirm partial cost has no native cost or model name, and each difference has a visible explanation.
+- [ ] After a lost export response, confirm the item is unconfirmed and is not sent again, while later items still arrive.
+- [ ] Clear usage during the journey. Confirm Sessions, Plans, and worktrees remain, and inspect the report and Langfuse data for private content.
+
+<!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance" -->

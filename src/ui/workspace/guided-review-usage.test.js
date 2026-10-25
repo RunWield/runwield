@@ -97,6 +97,7 @@ test("external Guided Review records one aggregate without counting its result t
         assertEquals(usages.length, 1);
         assertEquals(usages[0].inputTokens, 24);
         assertEquals(usages[0].costAmount, 0.5);
+        assertEquals(usages[0].costAvailability, "complete");
         assertEquals(usages[0].provider, "fixture-provider");
         assertEquals(usages[0].model, "fixture-model");
         assertEquals(usages[0].aggregationBasis, "turn");
@@ -117,6 +118,7 @@ test("external Guided Review keeps measured zero and missing cost distinct", asy
         assertEquals(usage?.outputTokens, 0);
         assertEquals(usage?.costAmount, null);
         assertEquals(usage?.costSource, "unavailable");
+        assertEquals(usage?.costAvailability, "unavailable");
         assertEquals(usage?.measurementAvailability, "partial");
     });
 });
@@ -154,7 +156,8 @@ test("Guided Review journals partial cost coverage even when token coverage is c
         assertEquals(usages[0].inputTokens, 24);
         assertEquals(usages[0].costAmount, 1);
         assertEquals(usages[0].costSource, "reported");
-        assertEquals(usages[0].measurementAvailability, "partial");
+        assertEquals(usages[0].costAvailability, "partial");
+        assertEquals(usages[0].measurementAvailability, "complete");
     });
 });
 

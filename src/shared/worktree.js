@@ -24,6 +24,7 @@ import {
     recordedProjectContextPaths,
 } from "./worktree-project-context.ts";
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
+import { resolvePublicationUpstream } from "./publication-target.ts";
 import { getWorkflowDiff } from "./workflow/git-snapshot.ts";
 import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
 import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
@@ -366,25 +367,27 @@ async function assertValidTargetBranchName(projectRoot, branch) {
 /**
  * @param {string} projectRoot
  * @param {string} branch
- * @returns {Promise<boolean>}
+ * @returns {Promise<string | null>}
  */
-async function remoteBranchExists(projectRoot, branch) {
-    const remoteResult = await runGitResult(projectRoot, ["remote", "get-url", "origin"]);
-    if (remoteResult.code !== 0) return false;
-
+async function fetchPublicationTargetRef(projectRoot, branch) {
+    const upstream = await resolvePublicationUpstream(projectRoot, branch);
+    if (!upstream) return null;
+    const remoteRef = `refs/remotes/${upstream.remote}/${upstream.branch}`;
     const fetchResult = await runGitResult(projectRoot, [
         "fetch",
-        "origin",
-        `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+        upstream.remote,
+        `+refs/heads/${upstream.branch}:${remoteRef}`,
     ]);
     if (fetchResult.code !== 0) {
         const message = fetchResult.stderr || fetchResult.stdout;
         if (message.includes("couldn't find remote ref")) {
-            return false;
+            return null;
         }
-        throw new Error(`Could not check remote target branch origin/${branch}: ${message}`.trim());
+        throw new Error(
+            `Could not check remote target branch ${upstream.remote}/${upstream.branch}: ${message}`.trim(),
+        );
     }
-    return await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`);
+    return remoteRef;
 }
 
 /**
@@ -394,9 +397,7 @@ async function remoteBranchExists(projectRoot, branch) {
  */
 async function createLocalBranchFromDefault(projectRoot, branch) {
     const defaultBranch = await resolveRepositoryDefaultBranch(projectRoot);
-    const defaultRef = (await remoteBranchExists(projectRoot, defaultBranch))
-        ? `refs/remotes/origin/${defaultBranch}`
-        : `refs/heads/${defaultBranch}`;
+    const defaultRef = (await fetchPublicationTargetRef(projectRoot, defaultBranch)) ?? `refs/heads/${defaultBranch}`;
     await runGit(projectRoot, ["branch", branch, defaultRef]);
     return { baseRef: `refs/heads/${branch}`, baseBranch: branch };
 }
@@ -412,7 +413,7 @@ export async function resolveRepositoryDefaultBranch(projectRoot) {
         const head = await runGitResult(projectRoot, ["ls-remote", "--symref", "origin", "HEAD"]);
         const branch = head.code === 0 ? head.stdout.match(/^ref: refs\/heads\/([^\t\n]+)\tHEAD/m)?.[1] : undefined;
         for (const candidate of [...new Set([branch, "main", "master"].filter(Boolean))]) {
-            if (candidate && (await remoteBranchExists(projectRoot, candidate))) return candidate;
+            if (candidate && (await fetchPublicationTargetRef(projectRoot, candidate))) return candidate;
         }
     }
     const configured = await runGitResult(projectRoot, ["config", "--get", "init.defaultBranch"]);
@@ -469,8 +470,9 @@ export async function resolveCurrentCheckoutBranch(projectRoot) {
 export async function prepareTargetBranchRef(projectRoot, branch) {
     await assertGitRepository(projectRoot, "Preparing an execution target branch");
     const target = await resolveTargetBranchName(projectRoot, branch);
-    if (await remoteBranchExists(projectRoot, target)) {
-        return { baseRef: `refs/remotes/origin/${target}`, baseBranch: target };
+    const remoteRef = await fetchPublicationTargetRef(projectRoot, target);
+    if (remoteRef) {
+        return { baseRef: remoteRef, baseBranch: target };
     }
 
     if (typeof branch === "string" && branch.trim().startsWith("origin/")) {
@@ -497,15 +499,16 @@ export async function ensureTargetBranchRef(projectRoot, branch, sourceBranch) {
     const target = await resolveTargetBranchName(projectRoot, branch);
     if (await gitRefExists(projectRoot, `refs/heads/${target}`)) return { branch: target, created: false };
     let sourceRef;
-    if (await remoteBranchExists(projectRoot, target)) {
-        sourceRef = `refs/remotes/origin/${target}`;
+    const remoteRef = await fetchPublicationTargetRef(projectRoot, target);
+    if (remoteRef) {
+        sourceRef = remoteRef;
     } else if (sourceBranch) {
         const source = await resolveTargetBranchName(projectRoot, sourceBranch);
-        sourceRef = (await remoteBranchExists(projectRoot, source))
-            ? `refs/remotes/origin/${source}`
-            : !sourceBranch.startsWith("origin/") && (await gitRefExists(projectRoot, `refs/heads/${source}`))
-              ? `refs/heads/${source}`
-              : undefined;
+        sourceRef =
+            (await fetchPublicationTargetRef(projectRoot, source)) ??
+            (!sourceBranch.startsWith("origin/") && (await gitRefExists(projectRoot, `refs/heads/${source}`))
+                ? `refs/heads/${source}`
+                : undefined);
         if (!sourceRef) throw new Error(`Source branch does not exist: ${sourceBranch}`);
     } else {
         await createLocalBranchFromDefault(projectRoot, target);

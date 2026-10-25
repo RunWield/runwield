@@ -1,9 +1,6 @@
-import { readdir as fsReaddir } from "node:fs/promises";
 import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 import {
     mkdir as fsMkdir,
-    readFile as fsReadFile,
-    copyFile as fsCopyFile,
     mkdtemp as fsMkdtemp,
     writeFile as fsWriteFile,
     rm as fsRm,
@@ -41,24 +38,18 @@ import { readMetricsExportStatus, runMetricsExportCycle } from "../../src/shared
 import { recordWorkflowMetric } from "../../src/shared/workflow/metrics.js";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../src/ui/theme/theme.js";
-import { type JsonRecord, observation, readback, span, withServer } from "./test-fixture.ts";
+import {
+    type JsonRecord,
+    attributes,
+    copyProduction,
+    metadata,
+    native,
+    observation,
+    readback,
+    span,
+    withServer,
+} from "./test-fixture.ts";
 
-interface Manifest {
-    files: string[];
-    wld: { metricsExporter: { contract: number; id: string; entry: string } };
-}
-async function copyProduction(path: string): Promise<void> {
-    await fsMkdir(path);
-    const manifest: Manifest = JSON.parse(await fsReadFile(new URL("./package.json", import.meta.url), "utf8"));
-    assertEquals(manifest.files, ["exporter.ts", "README.md", "LICENSE"]);
-    for (const file of ["package.json", ...manifest.files]) {
-        await fsCopyFile(new URL(file, import.meta.url), join(path, file));
-    }
-    assertEquals(
-        (await Array.fromAsync(await fsReaddir(path, { withFileTypes: true }))).map((entry) => entry.name).sort(),
-        ["LICENSE", "README.md", "exporter.ts", "package.json"],
-    );
-}
 test("production-only copy loads and sends without repository configuration or dependencies", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-"));
     try {
@@ -211,6 +202,7 @@ test("real absolute-directory install, owner approval, grant, journal, and worke
                                 costAmount: 0.01,
                                 costCurrency: "USD",
                                 costSource: "calculated",
+                                costAvailability: "complete",
                                 startedAt: "2026-09-20T12:00:00.100Z",
                                 endedAt: "2026-09-20T12:00:02.200Z",
                             },
@@ -239,6 +231,11 @@ test("real absolute-directory install, owner approval, grant, journal, and worke
                     await runMetricsExportCycle({ deadlineMs: 5000 });
                     assertEquals((await readMetricsExportStatus())[0].counts.unconfirmed, 1);
                     assertEquals(requests.filter((r) => r.method === "POST").length, 2);
+                    const agy = span(requests.filter((r) => r.method === "POST")[1]);
+                    assertEquals(metadata(agy).costAvailability, "complete");
+                    assertEquals(metadata(agy).measurementAvailability, "partial");
+                    assertEquals(native(agy, "cost_details"), { total: 0.01 });
+                    assertEquals(attributes(agy)["langfuse.observation.model.name"], "gemini-3.8-flash");
                     visible = true;
                     await runMetricsExportCycle({ deadlineMs: 5000 });
                     assertEquals((await readMetricsExportStatus())[0].counts.confirmed, 2);

@@ -9,7 +9,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UsageTrend } from "../design-system/components/react/UsageTrend.tsx";
-import { UsageStatusStrip } from "./react/UsageReport.tsx";
+import { UsageHistoryClearNotice, UsageStatusStrip } from "./react/UsageReport.tsx";
 
 test("usage trend breaks at a gap and draws covered zero as a baseline point", () => {
     const html = renderToStaticMarkup(
@@ -121,4 +121,19 @@ test("Usage routes mark only their own header tab as current", async () => {
             store.close();
         }
     });
+});
+
+test("pending clear notice identifies the Project and offers an explicit retry", () => {
+    const html = renderToStaticMarkup(
+        createElement(UsageHistoryClearNotice, {
+            projectId: "project",
+            label: "Project A",
+            onCleared: () => {},
+        }),
+    );
+    assertStringIncludes(html, "Clear did not finish");
+    assertStringIncludes(html, "Project A");
+    assertStringIncludes(html, "Old measurements are hidden until the clear finishes.");
+    assertStringIncludes(html, ">Retry clear</button>");
+    assertStringIncludes(html, 'role="status"');
 });

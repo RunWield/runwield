@@ -1,3 +1,10 @@
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    copyFile as fsCopyFile,
+    readdir as fsReaddir,
+} from "node:fs/promises";
+import { join } from "node:path";
 import { serveHttp } from "../../src/shared/http-server.ts";
 import { assertEquals } from "../../src/testing/assertions.ts";
 import { deliver, type MetricsExportContext, type MetricsExportObservation } from "./exporter.ts";
@@ -171,4 +178,21 @@ export async function captured(
         assertEquals(requests.length, 1);
         check(span(requests[0]), requests[0]);
     });
+}
+
+interface Manifest {
+    files: string[];
+    wld: { metricsExporter: { contract: number; id: string; entry: string } };
+}
+export async function copyProduction(path: string): Promise<void> {
+    await fsMkdir(path);
+    const manifest: Manifest = JSON.parse(await fsReadFile(new URL("./package.json", import.meta.url), "utf8"));
+    assertEquals(manifest.files, ["exporter.ts", "README.md", "LICENSE"]);
+    for (const file of ["package.json", ...manifest.files]) {
+        await fsCopyFile(new URL(file, import.meta.url), join(path, file));
+    }
+    assertEquals(
+        (await Array.fromAsync(await fsReaddir(path, { withFileTypes: true }))).map((entry) => entry.name).sort(),
+        ["LICENSE", "README.md", "exporter.ts", "package.json"],
+    );
 }

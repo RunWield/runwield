@@ -405,19 +405,21 @@ export function createOwnerWorkspaceApp(options) {
             status: 404,
         });
     });
-    app.store = store;
-    app.ownerConnections = connections;
-    app.sessionContinuation = sessionContinuation;
-    app.workspaceSearch = workspaceSearch;
     let closePromise;
-    app.close = () => {
+    const close = () => {
         closePromise ||= Promise.resolve(workspaceSearch.close()).finally(() => {
             connections.closeAll();
             return sessionContinuation.close();
         });
         return closePromise;
     };
-    return app;
+    return Object.assign(app, {
+        store,
+        ownerConnections: connections,
+        sessionContinuation,
+        workspaceSearch,
+        close,
+    });
 }
 
 /** @param {LocalWorkspaceAppOptions} options */
@@ -626,6 +628,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                                 : undefined,
                         targetBranch:
                             typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
+                        targetBaseRef:
+                            typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
                     });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
@@ -732,13 +736,18 @@ async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token 
     const payload = { ...reviewPayload, token, mode: "workflow" };
     if (reviewType === "code" && typeof reviewPayload.targetBranch === "string") {
         try {
-            payload.rawPatch = await getWorktreeReviewDiff(cwd, reviewPayload.targetBranch);
+            payload.rawPatch = await getWorktreeReviewDiff(
+                cwd,
+                reviewPayload.targetBranch,
+                typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
+            );
         } catch (error) {
             if (error instanceof WorktreeReviewComparisonError) throw error;
             // Keep the last complete patch if the checkout is temporarily unreadable.
         }
     }
     delete payload.targetBranch;
+    delete payload.targetBaseRef;
     delete payload.agentCwd;
     return payload;
 }

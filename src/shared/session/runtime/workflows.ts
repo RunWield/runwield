@@ -751,7 +751,11 @@ export class RuntimeWorkflows {
             const diffText =
                 workflow.executionMode === "non_git_in_place" || workflow.nonGitInPlace
                     ? continuation.repair.diffText
-                    : await getWorktreeReviewDiff(executionCwd, workflow.worktreeBaseBranch || "");
+                    : await getWorktreeReviewDiff(
+                          executionCwd,
+                          workflow.worktreeBaseBranch || "",
+                          workflow.worktreeBaseRef,
+                      );
             await runActiveAgentTurn({
                 hostedSession: session,
                 agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,

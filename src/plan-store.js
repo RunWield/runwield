@@ -42,6 +42,7 @@ import { normalizeTicketReferences } from "./shared/ticket-references.js";
 import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
+import { probeGitRepository } from "./shared/git.ts";
 import { renameRestoredPlanEntry } from "./shared/worktree-registry.js";
 import { resolvePrimaryCheckoutRoot } from "./shared/primary-checkout.ts";
 import { writePlanDocumentAndController } from "./shared/workflow/state-transition.ts";
@@ -2895,6 +2896,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 typeof projectPlan.attrs.targetBranch === "string" ? projectPlan.attrs.targetBranch.trim() : "";
             if (!targetBranch || !isProjectPlan(projectPlan.attrs)) continue;
             if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
+            const repository = await probeGitRepository(cwd);
+            if (repository.state === "not_git") continue;
+            if (!repository.ok) throw new Error(repository.message);
             let targetChildren;
             try {
                 targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);

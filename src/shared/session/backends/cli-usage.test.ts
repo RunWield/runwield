@@ -43,6 +43,7 @@ interface JournalUsageMeasurement {
     reasoningTokens: number | null;
     costAmount: number | null;
     costSource: string;
+    costAvailability: string;
     measurementAvailability: string;
 }
 
@@ -293,6 +294,7 @@ fixtures.push({
         reasoningTokens: null,
         costAmount: 0.0594932,
         costSource: "reported",
+        costAvailability: "complete",
         measurementAvailability: "complete",
     },
 });
@@ -316,6 +318,7 @@ for (const modelId of ["gemini-3.8-flash", "gemini-3.1-pro"]) {
                     ? (19529 * 0.75) / 1_000_000 + (155 * 3.75) / 1_000_000 + (16511 * 0.075) / 1_000_000
                     : null,
             costSource: modelId === "gemini-3.8-flash" ? "calculated" : "unavailable",
+            costAvailability: modelId === "gemini-3.8-flash" ? "complete" : "unavailable",
             measurementAvailability: "partial",
         },
     });
@@ -335,6 +338,7 @@ fixtures.push({
         reasoningTokens: 205 + 51,
         costAmount: (31817 * 0.75) / 1_000_000 + (320 * 3.75) / 1_000_000,
         costSource: "calculated",
+        costAvailability: "complete",
         measurementAvailability: "partial",
     },
 });

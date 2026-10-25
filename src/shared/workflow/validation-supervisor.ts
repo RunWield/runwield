@@ -290,7 +290,11 @@ async function rebuildSemanticRepairHandoff(
     const phase = await resolvePhaseContext(engineArgs);
     if (phase.kind === "blocked") return phase.result;
     const context = phase.context;
-    const diffText = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+    const diffText = await getWorktreeReviewDiff(
+        context.executionCwd,
+        context.worktreeBaseBranch || "",
+        context.worktreeBaseRef,
+    );
     const activeWorkflow = {
         ...context.workflowBase,
         semanticRound: reviewState.semanticRound,

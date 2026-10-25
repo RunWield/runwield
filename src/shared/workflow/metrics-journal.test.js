@@ -441,8 +441,14 @@ test("behind checkpoint recovers distant boundaries and gaps without accepting o
         assertEquals(saved.persisted, true);
         assertEquals(saved.collectionEpoch, "enabled:distant-disabled");
         assertEquals(saved.historyEpoch, old.historyEpoch);
-        assert(saved.coverageGap);
-        assertEquals(saved.coverageGap.corruptLines, [3]);
+        const journalLines = (await fsReadFile(path, "utf8")).trim().split("\n");
+        assertEquals(journalLines.filter((line) => line === "broken-interior").length, 1);
+        const gaps = journalLines
+            .filter((line) => line !== "broken-interior")
+            .map((line) => JSON.parse(line))
+            .filter((row) => row.event === "measurement_gap");
+        assertEquals(gaps.length, 1);
+        assertEquals(gaps[0].corruptLines, [3]);
         assertEquals(
             (await recordWorkflowMetric({ ...old, persisted: false, collectionEnabledAtCall: true }, projectRoot))
                 .reason,

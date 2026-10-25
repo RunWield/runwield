@@ -60,6 +60,7 @@ export function resolveWorkspaceFile(
 export interface ReviewFileContentOptions {
     cwd?: string;
     targetBranch?: string;
+    targetBaseRef?: string;
     headRef?: string;
 }
 
@@ -104,6 +105,7 @@ export async function reviewFileContentApi(
                         cwd,
                         options.targetBranch,
                         relative(cwd, candidate).replaceAll("\\", "/"),
+                        options.targetBaseRef,
                     );
                     if (oldContent !== null) break;
                 }

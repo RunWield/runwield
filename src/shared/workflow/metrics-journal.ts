@@ -186,14 +186,15 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
     delete state.recoveryBytes;
     delete state.recoveryCorruptLines;
     const tornBytes = tail.bytes.length - tail.end;
-    if (tornBytes) {
+    state.journalBytes = tail.offset + tail.end;
+    if (tornBytes || corruptLines.length) {
         if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
         const gap =
             JSON.stringify({
                 v: 1,
                 event: "measurement_gap",
                 ts: new Date().toISOString(),
-                reason: "incomplete_append",
+                reason: tornBytes ? "incomplete_append" : "interior_corruption",
                 tornBytes,
                 corruptLines,
                 historyEpoch: state.historyEpoch,
@@ -204,6 +205,7 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
         writeSynced(filePath, gap, true);
         removeSynced(intentPath);
         state.journalLines = (state.journalLines ?? 0) + 1;
+        state.journalBytes = end + new TextEncoder().encode(gap).length;
     }
     return { tornBytes, corruptLines };
 }
@@ -322,65 +324,72 @@ export async function withWorkflowMetricJournalLock<T>(
     run: (historyEpoch: string) => T | Promise<T>,
     signal?: AbortSignal,
 ): Promise<T> {
-    const lock = await acquireJournalLock(filePath, Date.now() + 1000, signal);
-    try {
-        finishHistoryClear(filePath);
-        const state = readJournalState(filePath);
-        repairJournalTail(filePath, state);
-        // A first grant also needs a stable history identity. Otherwise the first
-        // append looks like a post-grant clear and bypasses execution start checks.
-        if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
-        replaceSynced(join(dirname(filePath), "state.json"), JSON.stringify(state) + "\n");
-        if (state.recoveryBytes || lock.compromised) throw new Error("journal_unavailable");
-        return await run(state.historyEpoch);
-    } finally {
-        lock.close();
+    for (;;) {
+        const lock = await acquireJournalLock(filePath, Date.now() + 1000, signal);
+        try {
+            finishHistoryClear(filePath);
+            const state = readJournalState(filePath);
+            repairJournalTail(filePath, state);
+            // A first grant also needs a stable history identity. Otherwise the first
+            // append looks like a post-grant clear and bypasses execution start checks.
+            if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
+            replaceSynced(join(dirname(filePath), "state.json"), JSON.stringify(state) + "\n");
+            if (lock.compromised) throw new Error("journal_unavailable");
+            if (!state.recoveryBytes) return await run(state.historyEpoch);
+        } finally {
+            lock.close();
+        }
+        // Release the guard and let other operations run between bounded recovery chunks.
+        await new Promise((resolve) => setTimeout(resolve, 0));
     }
+}
+
+const journalRecoveries = new Map<string, Promise<void>>();
+
+function resumeJournalRecovery(filePath: string): void {
+    if (journalRecoveries.has(filePath)) return;
+    const recovery = withWorkflowMetricJournalLock(filePath, () => undefined)
+        // On failure, the checkpoint stays pending and a later write starts another pass.
+        .catch(() => {})
+        .finally(() => journalRecoveries.delete(filePath));
+    journalRecoveries.set(filePath, recovery);
 }
 
 /** Remove only one Project's measurement history; failure is explicit and retryable. */
 export async function clearWorkflowMetricJournal(filePath: string): Promise<JournalResult> {
-    let lock: JournalLock | undefined;
     try {
-        lock = await acquireJournalLock(filePath, Date.now() + 1000);
-        finishHistoryClear(filePath);
-        const previous = readJournalState(filePath);
-        repairJournalTail(filePath, previous);
-        if (previous.recoveryBytes) {
-            replaceSynced(join(dirname(filePath), "state.json"), JSON.stringify(previous) + "\n");
-            return { persisted: false, reason: "recovery_pending" };
-        }
-        const deliveryInFlight = await metricsDeliveryInFlightForJournal(filePath).catch(() => true);
-        const historyEpoch = crypto.randomUUID();
-        const historyStartedAt = new Date().toISOString();
-        const marker =
-            JSON.stringify({
+        return await withWorkflowMetricJournalLock(filePath, async () => {
+            const previous = readJournalState(filePath);
+            const deliveryInFlight = await metricsDeliveryInFlightForJournal(filePath).catch(() => true);
+            const historyEpoch = crypto.randomUUID();
+            const historyStartedAt = new Date().toISOString();
+            const marker =
+                JSON.stringify({
+                    v: 1,
+                    event: "history_epoch",
+                    ts: historyStartedAt,
+                    historyEpoch,
+                    collectionEpoch: previous.collectionEpoch.id,
+                    enabled: previous.collectionEpoch.enabled,
+                }) + "\n";
+            const state: JournalEpochState = {
                 v: 1,
-                event: "history_epoch",
-                ts: historyStartedAt,
                 historyEpoch,
-                collectionEpoch: previous.collectionEpoch.id,
-                enabled: previous.collectionEpoch.enabled,
-            }) + "\n";
-        const state: JournalEpochState = {
-            v: 1,
-            historyEpoch,
-            historyStartedAt,
-            collectionEpoch: previous.collectionEpoch,
-            journalBytes: new TextEncoder().encode(marker).length,
-            journalLines: 1,
-        };
-        // Intent fences readers and stale writers even if truncation is interrupted.
-        replaceSynced(join(dirname(filePath), "clear.json"), JSON.stringify({ state, marker }));
-        finishHistoryClear(filePath);
-        return { persisted: true, historyEpoch, deliveryInFlight };
+                historyStartedAt,
+                collectionEpoch: previous.collectionEpoch,
+                journalBytes: new TextEncoder().encode(marker).length,
+                journalLines: 1,
+            };
+            // Intent fences readers and stale writers even if truncation is interrupted.
+            replaceSynced(join(dirname(filePath), "clear.json"), JSON.stringify({ state, marker }));
+            finishHistoryClear(filePath);
+            return { persisted: true, historyEpoch, deliveryInFlight };
+        });
     } catch (error) {
         return {
             persisted: false,
             reason: error instanceof Error && error.message === "lock_timeout" ? "lock_timeout" : "storage_failure",
         };
-    } finally {
-        lock?.close();
     }
 }
 
@@ -414,19 +423,10 @@ export async function appendWorkflowMetric<T>(
         const repair = repairJournalTail(filePath, state);
         if (state.recoveryBytes) {
             replaceSynced(join(directory, "state.json"), JSON.stringify(state) + "\n");
+            resumeJournalRecovery(filePath);
             return { ...failedRecord, persisted: false, reason: "recovery_pending" };
         }
         if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
-        if (!repair.tornBytes && repair.corruptLines.length) {
-            entries.push({
-                v: 1,
-                event: "measurement_gap",
-                ts: new Date().toISOString(),
-                reason: "interior_corruption",
-                ...repair,
-                historyEpoch: state.historyEpoch,
-            });
-        }
         if (
             enabled !== state.collectionEpoch.enabled ||
             (state.collectionEpoch.id === "initial" && invocation.enabled && !enabled)

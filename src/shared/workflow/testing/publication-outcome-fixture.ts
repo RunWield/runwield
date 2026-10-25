@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { mergeFrontMatterText, savePlan } from "../../../plan-store.js";
-import { finalizeLocalPublicationLifecycle } from "../../publication-lifecycle.ts";
+import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { addEntry } from "../../worktree-registry.js";
 import { advanceStoredPublication, startPublicationAttempt } from "../publication-machine.ts";
@@ -28,7 +28,7 @@ const repository = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "Plan"]);
 });
 
-export async function makePublicationOutcomeFixture(projectRoot: string) {
+export async function makePublicationOutcomeFixture(projectRoot: string, remote = false) {
     const copy = await repository.checkout();
     async function moveContents(source: string, target: string): Promise<void> {
         await fsMkdir(target, { recursive: true });
@@ -42,6 +42,11 @@ export async function makePublicationOutcomeFixture(projectRoot: string) {
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "outcome-worktree-"));
     const executionCwd = join(worktreeRoot, "execution");
     const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
+    if (remote) {
+        const upstream = join(worktreeRoot, "remote.git");
+        await git(projectRoot, ["clone", "--bare", ".", upstream]);
+        await git(projectRoot, ["remote", "add", "origin", upstream]);
+    }
     await git(projectRoot, ["worktree", "add", "-b", "worktree/demo", executionCwd]);
     await addEntry(projectRoot, {
         id: "attempt-demo",
@@ -71,14 +76,6 @@ export async function makePublicationOutcomeFixture(projectRoot: string) {
             await git(executionCwd, ["add", "."]);
             await git(executionCwd, ["commit", "-m", "Publication artifacts"]);
             const artifactCommit = await git(executionCwd, ["rev-parse", "HEAD"]);
-            await git(projectRoot, ["merge", "--no-ff", "worktree/demo", "-m", "Publish"]);
-            const publishedCommit = await finalizeLocalPublicationLifecycle(
-                projectRoot,
-                "main",
-                "demo",
-                artifactCommit,
-                ["docs/plans/demo.md"],
-            );
             let attempt = await startPublicationAttempt({
                 projectRoot,
                 attemptId: "attempt-demo",
@@ -89,21 +86,33 @@ export async function makePublicationOutcomeFixture(projectRoot: string) {
                 validatedCommit,
                 targetHeadAtSeal: baseCommit,
             });
+            const planPaths = ["docs/plans/demo.md"];
             attempt = await advanceStoredPublication(projectRoot, attempt, "artifacts_committed", {
                 artifactCommit,
-                planPaths: ["docs/plans/demo.md"],
+                planPaths,
             });
-            attempt = await advanceStoredPublication(projectRoot, attempt, "target_integrated", {
-                targetBaseCommit: baseCommit,
-                integrationCommit: publishedCommit,
+            await publishExecutionWorktreeIsolated({
+                projectRoot,
+                executionCwd,
+                executionBranch: attempt.executionBranch,
+                targetBranch: attempt.targetBranch,
+                planName: attempt.planName,
+                sealedExecutionCommit: artifactCommit,
+                allowedPlanPaths: planPaths,
+                publicationRoot: attempt.publicationRoot,
+                onIntegrated: async (evidence) => {
+                    attempt = await advanceStoredPublication(projectRoot, attempt, "target_integrated", evidence);
+                },
+                onPublished: async (evidence) => {
+                    attempt = await advanceStoredPublication(projectRoot, attempt, "target_published", evidence);
+                },
+                onVerified: async () => {
+                    attempt = await advanceStoredPublication(projectRoot, attempt, "publication_verified", {
+                        verifiedAt: new Date().toISOString(),
+                    });
+                },
             });
-            attempt = await advanceStoredPublication(projectRoot, attempt, "target_published", {
-                publicationMode: "local",
-                publishedCommit,
-            });
-            return await advanceStoredPublication(projectRoot, attempt, "publication_verified", {
-                verifiedAt: new Date().toISOString(),
-            });
+            return attempt;
         },
         async dispose() {
             await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
