@@ -194,11 +194,16 @@ Initialization is optional and may occur before or after the first Attached Work
 - RunWield Connect does not require separate RunWield model credentials or a RunWield account.
 - RunWield may inject its Agent prompts and Skills or ask the host to create isolated workers, but it must not silently
   substitute a RunWield-owned Agent Session.
+- Each role response whose Core prompt uses Skills includes the effective Skill catalog with names, descriptions,
+  and read paths. The catalog resolves project, home, external, and bundled Skills at run time. The independent
+  reviewer receives no Skills. The Connect plugin ships no Skill files.
 
 **Acceptance scenarios:**
 
 - Given a complete attached change, when planning, implementation, review, repairs, and recording run, every model call
   uses the host’s model access.
+- Given a project Skill override, the next role response lists that Skill's project description and read path, rather
+  than the bundled version. Independent reviewer instructions contain no Skill catalog.
 - When an isolated worker is needed, the adapter uses a host-owned worker or discloses the limitation; it does not
   substitute a hidden RunWield model session or ask for separate model credentials.
 
@@ -614,9 +619,10 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 results; [Preview Acceptance](#preview-acceptance) records their evidence limits. Other hosts and stable support remain
 targets.
 
-Core checks every evidence-carrying operation before dispatch. An incompatible adapter contract or host below the
-tested floor rejects without changing the workflow, Plan, or worktree. Newer or unreported host versions continue with
-a visible notice, not a tested-support claim. Status remains readable with a stale adapter for recovery.
+Core checks every evidence-carrying operation before dispatch. A host other than Claude Code rejects with
+`unsupported_host`. An incompatible adapter contract or host below the tested floor also rejects without changing the
+workflow, Plan, or worktree. Newer or unreported host versions continue with a visible notice, not a tested-support
+claim. Status remains readable with a stale adapter for recovery.
 
 **Requirement: Disclose tested host support and limitations.**
 
@@ -656,6 +662,8 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 **Acceptance scenarios:**
 
+- Given a non-Claude host with a tested version number and supported adapter contract, activation rejects with
+  `unsupported_host` before changing any workflow, Plan, or worktree. Status remains readable for recovery.
 - When a user chooses an adapter, its guide shows tested versions, Preview/stable availability, permission requirements,
   and unsupported interactions before they depend on them.
 - When compatibility is presented, role instructions such as the Planner's Plan-only writes are not described as hard

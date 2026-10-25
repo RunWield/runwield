@@ -63,9 +63,8 @@ async function readLayer(layer: SkillLayer): Promise<SkillCandidate[]> {
                 if (hasFrontMatter(raw)) attrs = extractYaml(raw).attrs as SkillFrontMatter;
                 const declaredName = typeof attrs.name === "string" ? attrs.name.trim() : "";
                 const name = declaredName || entry.name;
-                const description = typeof attrs.description === "string"
-                    ? attrs.description.trim()
-                    : "No description provided";
+                const description =
+                    typeof attrs.description === "string" ? attrs.description.trim() : "No description provided";
                 const disabled = attrs["disable-model-invocation"];
                 candidates.push({
                     name,
@@ -106,19 +105,19 @@ export async function listSkills(options: { cwd?: string } = {}): Promise<SkillR
     const layers: SkillLayer[] = [
         ...(projectRoot
             ? [
-                { dir: join(projectRoot, ".wld", "skills"), source: "local", external: false } as const,
-                ...(externalEnabled
-                    ? [{ dir: join(projectRoot, ".agents", "skills"), source: "external", external: true } as const]
-                    : []),
-            ]
+                  { dir: join(projectRoot, ".wld", "skills"), source: "local", external: false } as const,
+                  ...(externalEnabled
+                      ? [{ dir: join(projectRoot, ".agents", "skills"), source: "external", external: true } as const]
+                      : []),
+              ]
             : []),
         ...(home
             ? [
-                { dir: join(home, "skills"), source: "home", external: false } as const,
-                ...(externalEnabled && externalRoot
-                    ? [{ dir: join(externalRoot, "skills"), source: "external", external: true } as const]
-                    : []),
-            ]
+                  { dir: join(home, "skills"), source: "home", external: false } as const,
+                  ...(externalEnabled && externalRoot
+                      ? [{ dir: join(externalRoot, "skills"), source: "external", external: true } as const]
+                      : []),
+              ]
             : []),
         ...bundledLayers,
     ];
@@ -126,7 +125,7 @@ export async function listSkills(options: { cwd?: string } = {}): Promise<SkillR
     const selected: SkillRecord[] = [];
     const claimed = new Set<string>();
     for (const layer of layers) {
-        const candidates = bundledCandidatesByDirectory.get(layer.dir) ?? await readLayer(layer);
+        const candidates = bundledCandidatesByDirectory.get(layer.dir) ?? (await readLayer(layer));
         for (const candidate of candidates) {
             if (layer.external && conflicts(candidate, protectedBundledNames)) continue;
             if (conflicts(candidate, claimed)) continue;
@@ -136,6 +135,18 @@ export async function listSkills(options: { cwd?: string } = {}): Promise<SkillR
         }
     }
     return selected;
+}
+
+export interface VisibleSkillCatalogEntry {
+    skill: SkillRecord;
+    line: string;
+}
+
+/** Model-visible Skills and their shared prompt representation for one Project. */
+export async function listVisibleSkillCatalog(cwd: string): Promise<VisibleSkillCatalogEntry[]> {
+    return (await listSkills({ cwd }))
+        .filter((skill) => skill.name && skill.description && !skill.disableModelInvocation)
+        .map((skill) => ({ skill, line: `- ${skill.name} - ${skill.description} (read: ${skill.path})` }));
 }
 
 /** Find one selected Skill by its published name or selected directory alias. */
@@ -150,11 +161,10 @@ export async function expandSkillRecord(skill: SkillRecord, additionalInstructio
         await assertPersonalResourcePath(skill.path, `Skill "${skill.name}"`);
         const raw = await fsReadFile(skill.path, "utf8");
         const body = (hasFrontMatter(raw) ? extractYaml(raw).body : raw).trim();
-        const skillBlock = `<skill name="${skill.name}" location="${skill.path}">\nReferences are relative to ${
-            dirname(skill.path)
-        }.\n\n${body}\n</skill>`;
-        const expanded =
-            `The user has invoked the "${skill.name}" skill. Follow the instructions below:\n\n${skillBlock}`;
+        const skillBlock = `<skill name="${skill.name}" location="${skill.path}">\nReferences are relative to ${dirname(
+            skill.path,
+        )}.\n\n${body}\n</skill>`;
+        const expanded = `The user has invoked the "${skill.name}" skill. Follow the instructions below:\n\n${skillBlock}`;
         return additionalInstructions ? `${expanded}\n\n${additionalInstructions}` : expanded;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

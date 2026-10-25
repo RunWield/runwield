@@ -5,8 +5,9 @@ disable-model-invocation: true
 
 Restore RunWield implementation in this project. Claude Code owns every model call.
 
-Show any returned `compatibility` notice to the user before continuing. On `incompatible_adapter` or
-`unsupported_host_version`, show Core's update message and stop. Core owns version compatibility.
+Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
+Core owns host and version compatibility.
 
 1. Call MCP `status` with the known `workflowId`, or `{}` for the most recent open workflow. Status is compact by default.
 2. For `plan_ready`, immediately call `start_execution`. For `plan_saved`, this user command also starts execution:

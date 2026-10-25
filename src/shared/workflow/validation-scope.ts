@@ -7,6 +7,7 @@
  * rather than when review behavior does.
  */
 
+import { createHash } from "node:crypto";
 import { isPlannedChangeClassification } from "../../constants.js";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 
@@ -20,12 +21,24 @@ function isPlanDocumentPath(path: string, planName: string): boolean {
     return path === `docs/plans/${planName}.md` || /^docs\/plans\/.+\.md$/.test(path);
 }
 
+/** Identify reviewed implementation files without validation's own Plan writes. */
+export function candidateIdentity(diffText: string, planName: string): string {
+    const implementation = diffText
+        .split(/(?=^diff --git )/m)
+        .filter((section) => {
+            const paths = extractDiffPaths(section);
+            return paths.length === 0 || paths.some((path) => !isPlanDocumentPath(path, planName));
+        })
+        .join("");
+    return createHash("sha256").update(implementation).digest("hex");
+}
+
 export function extractDiffPaths(diffText: string): string[] {
     const paths: string[] = [];
-    const diffHeaderPattern = /^diff --git a\/(.+?) b\/(.+)$/gm;
+    const diffHeaderPattern = /^diff --git ("a\/(?:\\.|[^"])*"|a\/.*?) ("b\/(?:\\.|[^"])*"|b\/.*)$/gm;
     let match: RegExpExecArray | null;
     while ((match = diffHeaderPattern.exec(diffText)) !== null) {
-        paths.push(match[1], match[2]);
+        paths.push(...match.slice(1).map((path) => (path.startsWith('"') ? path.slice(3, -1) : path.slice(2))));
     }
     return paths;
 }
@@ -68,7 +81,9 @@ export const requiresImplementationDiff = shouldRunWorkflowValidation;
 
 /** A validated child Plan hands control back to its parent Epic. */
 export function shouldContinueParentEpicAfterValidation(triageMeta: TriageMeta | undefined): boolean {
-    return isPlannedChangeClassification(triageMeta?.classification) &&
+    return (
+        isPlannedChangeClassification(triageMeta?.classification) &&
         typeof triageMeta?.parentPlan === "string" &&
-        triageMeta.parentPlan.trim().length > 0;
+        triageMeta.parentPlan.trim().length > 0
+    );
 }

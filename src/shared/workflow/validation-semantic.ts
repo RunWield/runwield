@@ -19,7 +19,7 @@ import {
     renderResolvedItems,
     unaccountedOpenItems,
 } from "./review-ledger.ts";
-import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
+import { candidateIdentity, hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import { buildValidationUserMessage, validationReviewerPauseMessage } from "./validation-user-messages.ts";
 import type {
     IsolatedAgentSessionOutcome,
@@ -68,6 +68,25 @@ import {
     saveHostCheckpoint,
 } from "./validation-host-state.ts";
 
+/** Every pass, including human takeover and repair skips, binds the current candidate. */
+async function semanticPassedCheckpoint(args: ValidationLoopArgs, context: PhaseContext) {
+    const prior = args.validationCheckpoint || args.triageMeta.validationCheckpoint;
+    return makeValidationCheckpoint({
+        ...prior,
+        attemptId: context.worktreeId || "in-place",
+        generation: prior?.generation || crypto.randomUUID(),
+        status: "reviewed",
+        phase: "delivery",
+        state: "ready",
+        candidateIdentity: context.nonGitInPlace
+            ? undefined
+            : candidateIdentity(
+                  await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || ""),
+                  args.planName,
+              ),
+    });
+}
+
 export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
     const phase = await resolvePhaseContext(args);
     if (phase.kind === "blocked") return phase.result;
@@ -110,7 +129,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
             undefined,
-            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
+            { validationCheckpoint: await semanticPassedCheckpoint(args, context) },
         );
         return {
             kind: "paused",
@@ -156,7 +175,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
             undefined,
-            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
+            { validationCheckpoint: await semanticPassedCheckpoint(args, context) },
         );
         return {
             kind: "paused",
@@ -193,7 +212,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                     humanReviewMode: "always",
                     humanReviewDecision: null,
                     humanReviewedAt: null,
-                    ...(args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {}),
+                    validationCheckpoint: await semanticPassedCheckpoint(args, context),
                 },
             );
             return {
@@ -381,6 +400,10 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 phase: "delivery",
                 state: "ready",
                 reviewState,
+                candidateIdentity: candidateIdentity(
+                    await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || ""),
+                    args.planName,
+                ),
             });
             await recordLifecycleEvent(
                 args,

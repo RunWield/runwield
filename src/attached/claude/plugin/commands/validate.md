@@ -5,8 +5,9 @@ disable-model-invocation: true
 
 Continue the project's open RunWield workflow. Do not activate a new request.
 
-Show any returned `compatibility` notice to the user before continuing. On `incompatible_adapter` or
-`unsupported_host_version`, show Core's update message and stop. Core owns version compatibility.
+Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
+Core owns host and version compatibility.
 
 1. Call MCP `status` with the known workflow ID, or `{}`. Status is compact by default. For `implemented` or
    `validation_recovery`, call `start_validation` with a new operation ID, the current workflow ID and revision, and

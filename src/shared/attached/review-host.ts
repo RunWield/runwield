@@ -38,12 +38,25 @@ interface HostedRound {
 
 const hosted = new Map<string, HostedRound>();
 const opening = new Map<string, Promise<HostedAttachedReview | null>>();
+const detachedStops = new Set<Promise<void>>();
+
+/** A request on the retiring surface must finish before its graceful shutdown can finish. */
+function stopDetached(surface: ReviewSurface<ReviewDecision>): void {
+    const stopped = Promise.resolve()
+        .then(() => surface.stop())
+        .catch(() => {
+            // The surface reports shutdown errors through its output channel.
+        })
+        .finally(() => detachedStops.delete(stopped));
+    detachedStops.add(stopped);
+}
 
 /** This object belongs to the browser host, never to a serialized validation interaction. */
 async function conversationFor(
     projectRoot: string,
     workflow: AttachedWorkflowView,
     type: "plan" | "code",
+    browser: BrowserPort,
 ): Promise<ReviewConversation> {
     const prior = hosted.get(workflow.workflowId);
     const conversation: ReviewConversation =
@@ -122,7 +135,7 @@ async function conversationFor(
                   ? action.actionId
                   : undefined;
         if (key && key !== sourceKey) {
-            await ensureReviewHosted(projectRoot, status.workflow);
+            await ensureReviewHosted(projectRoot, status.workflow, browser);
             return;
         }
         await sync();
@@ -168,7 +181,7 @@ export async function ensureReviewHosted(
         if (opened.kind !== "opened") {
             hosted.delete(workflow.workflowId);
             // A reload can be inside this server; let its response finish before shutdown waits for it.
-            void existing?.surface.stop();
+            if (existing) stopDetached(existing.surface);
             return null;
         }
         const basis = opened.basis;
@@ -176,7 +189,7 @@ export async function ensureReviewHosted(
         if (payload.planRevision !== basis.review.planRevision) {
             throw new Error("The Plan changed while opening. Retry status.");
         }
-        const conversation = await conversationFor(projectRoot, workflow, "plan");
+        const conversation = await conversationFor(projectRoot, workflow, "plan", browser);
         const surface = await startPlanReviewSurface<ReviewDecision>({
             reviewConversation: conversation,
             cwd: basis.documentRoot,
@@ -233,6 +246,7 @@ export async function ensureReviewHosted(
 /** Used when the host transport closes, as well as by acceptance checks. */
 export async function stopHostedAttachedReviews(): Promise<void> {
     await Promise.allSettled(opening.values());
+    await Promise.all(detachedStops);
     const surfaces = Array.from(hosted.values());
     hosted.clear();
     await Promise.all(surfaces.map(({ surface }) => surface.stop()));
@@ -251,7 +265,7 @@ async function ensureCodeReviewHosted(
     if (pending) return await pending;
     const task = (async () => {
         const meta = action.request.interaction._meta;
-        const conversation = await conversationFor(projectRoot, workflow, "code");
+        const conversation = await conversationFor(projectRoot, workflow, "code", browser);
         const surface = await startCodeReviewSurface<ReviewDecision>({
             reviewConversation: conversation,
             rawPatch: String(meta?.diffText || ""),
@@ -286,7 +300,7 @@ async function ensureCodeReviewHosted(
             guidance:
                 "Code review is open. Poll status for feedback or approval. Closing Claude leaves the workflow resumable.",
         };
-        if (existing?.type === "plan") await existing.surface.stop();
+        if (existing?.type === "plan") stopDetached(existing.surface);
         hosted.set(workflow.workflowId, {
             ...existing,
             type: "code",

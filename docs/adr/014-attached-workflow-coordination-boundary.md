@@ -76,7 +76,10 @@ logic. Every MCP operation, including instruction, artifact, and pending-chat re
 
 Deliver role instructions at run time. Each coordinator response that hands a role to the host carries that role's
 current instructions, resolved from the project, home, and bundled agent definitions in the same order Core Sessions
-use, and a map from RunWield tool names to host tool names. The adapter package ships no generated Skills or copied role
+use, and a map from RunWield tool names to host tool names. Roles whose Core prompt uses Skills also receive the
+current effective Skill catalog with read paths, resolved from project, home, external, and bundled Skills. The
+independent reviewer receives no Skills. Core and Attached share the catalog's visibility and text rules, so overrides
+and disabled Skills behave the same way. The adapter package ships no generated Skills or copied role
 prompts, so no copy can go stale. In Claude Code these instructions arrive as a tool result rather than a system prompt;
 that is an accepted compromise of the Attached model. Subagents receive the instructions in their task prompt.
 

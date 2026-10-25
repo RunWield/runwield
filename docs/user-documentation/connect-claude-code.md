@@ -4,7 +4,8 @@ RunWield Connect brings Plan review, isolated implementation, validation, and de
 this conversation and every model call. RunWield Core owns the Plan, workflow gates, recovery, and delivery evidence.
 RunWield Workspace is the separate browser product for RunWield Sessions and collaboration.
 
-This is a **FEATURE Preview**, not stable Claude Code support. Other hosts and request types are outside this Preview.
+This is a **FEATURE Preview**, not stable Claude Code support. Only Claude Code is a supported host. Other hosts
+reject with `unsupported_host` before workflow changes; other request types are outside this Preview.
 
 ## Tested scope
 
@@ -74,6 +75,16 @@ notifications during active checks. It does not ask Claude to run a second copy 
 Claude starts the plugin's `wld attached mcp` process and lists its tools when the plugin loads. That process and tool
 list are present even before a RunWield request. Loading the plugin alone does not inspect your prompt or repository,
 inject role instructions, restrict tools, or create workflow state. Ordinary Claude use stays ordinary.
+
+### Skills during a workflow
+
+Claude roles receive the effective RunWield Skill catalog with names, descriptions, and exact read paths. Project
+Skills in `.wld/skills/<name>/SKILL.md` override bundled Skills of the same name on the next role-instructions fetch.
+Home and enabled external Skills follow Core's normal catalog rules. Skills marked `disable-model-invocation: true`
+are not listed. The independent reviewer receives no Skill catalog.
+
+These references are supplied at run time. Connect does not bundle Skill files or replace the separate
+`runwield-skills` plugin.
 
 ## Start one FEATURE request
 
