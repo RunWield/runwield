@@ -197,3 +197,16 @@ Manual verification steps for attached-mode-claude-feature-preview/10-repair-int
 - [ ] Unset `HOME` and run an Attached operation. Confirm it rejects with a message to set `HOME` and creates no files in the project.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/10-repair-integration-findings" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/11-repair-integration-findings-2" -->
+
+## Repair integration findings 2
+
+Manual verification steps for attached-mode-claude-feature-preview/11-repair-integration-findings-2
+
+- [ ] In Attached code review, add an annotation and select Send Annotations. Confirm that the page submits Feedback and does not send the annotations as a chat turn.
+- [ ] Request a Plan change in review chat. Start a fresh Claude process and confirm that the Planner action includes the change summary. Submit the revised Plan and confirm that the summary is no longer present.
+- [ ] Start validation with a long-running check, then close Claude. Confirm that the MCP process and check stop. Resume validation and confirm that the check runs again without a canceled-check failure.
+- [ ] Retry a review reply with the same operation ID. Confirm that the saved result is returned and no second repair or decision is created.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/11-repair-integration-findings-2" -->
