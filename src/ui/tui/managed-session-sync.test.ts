@@ -1,25 +1,30 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { createManagedSessionSyncController } from "./managed-session-sync.js";
+import {
+    createManagedSessionSyncController,
+    type ManagedSessionSyncControllerOptions,
+} from "./managed-session-sync.js";
+
+type ManagedTimerPort = ManagedSessionSyncControllerOptions["timer"];
+type FixtureTimerCallback = () => void;
+type ScheduledCallback = () => void | Promise<void>;
 
 function createTimerFixture() {
-    /** @type {Array<() => void | Promise<void>>} */
-    const callbacks = [];
-    /** @type {unknown[]} */
-    const cleared = [];
+    const callbacks: ScheduledCallback[] = [];
+    const cleared: FixtureTimerCallback[] = [];
     return {
         callbacks,
         cleared,
         port: {
-            set(/** @type {() => void} */ callback) {
+            set(callback: FixtureTimerCallback) {
                 callbacks.push(callback);
                 return callback;
             },
-            clear(/** @type {unknown} */ timer) {
+            clear(timer: FixtureTimerCallback) {
                 cleared.push(timer);
             },
-        },
+        } as ManagedTimerPort,
     };
 }
 
