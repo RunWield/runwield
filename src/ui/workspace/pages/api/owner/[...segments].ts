@@ -11,6 +11,14 @@ import {
     devOwnerTimeline,
 } from "../../../server/dev-owner-fixtures.ts";
 
+async function usageSettingsFixture(): Promise<typeof import("../../../server/dev-usage-settings-fixture.ts")> {
+    // Match the native module instance used by dev-usage-fixture.ts.
+    return await Function(
+        "specifier",
+        "return import(specifier)",
+    )(new URL("../../../server/dev-usage-settings-fixture.ts", import.meta.url).href);
+}
+
 export const prerender = false;
 
 function json<T>(body: T, status = 200) {
@@ -55,6 +63,8 @@ export const GET = async ({ request, params }: { request: Request; params: { seg
     const segments = routeSegments({ params });
     const url = new URL(request.url);
 
+    if (segments.join("/") === "usage/settings")
+        return json((await usageSettingsFixture()).devUsageSettings(url.searchParams.get("exporterState")));
     if (segments.join("/") === "usage") {
         try {
             // Native Bun import keeps Core's host-only modules out of Vite's evaluator.
@@ -164,6 +174,20 @@ export const POST = async ({ request, params }: { request: Request; params: { se
         const body = await request.json().catch(() => ({}));
         const result = devOwnerSetSessionArchive(segments[3], segments[4] === "archive", body.confirmed === true);
         return json(result, result.status);
+    }
+    if (segments[0] === "usage" && (segments[1] === "settings" || segments[1] === "clear")) {
+        const body = await request.json().catch(() => null);
+        if (!body) return json({ error: "Invalid request body." }, 400);
+        try {
+            return json(
+                (await usageSettingsFixture()).devMutateUsageSettings(
+                    segments[1] === "clear" ? "clear" : segments[2],
+                    body,
+                ),
+            );
+        } catch (error) {
+            return json({ error: error instanceof Error ? error.message : "Usage settings could not be saved." }, 400);
+        }
     }
     if (segments.join("/") === "search/refresh") return json({ refreshed: true });
     if (segments.join("/") === "pairing/request") {

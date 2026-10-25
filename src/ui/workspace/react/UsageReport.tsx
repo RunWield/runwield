@@ -84,6 +84,38 @@ function Destinations({ links }: { links: OwnerUsageLink[] }) {
     );
 }
 
+interface UsageStatusStripProps {
+    recording: OwnerUsageReport["recording"];
+    exportStatus: OwnerUsageReport["export"];
+}
+
+export function UsageStatusStrip({ recording, exportStatus }: UsageStatusStripProps) {
+    const enabled = recording.projects.filter((project) => project.enabled).length;
+    const recordingLabel =
+        enabled === 0
+            ? "Recording off"
+            : enabled === recording.projects.length
+              ? "Recording on"
+              : `Recording on for ${enabled} of ${recording.projects.length} Projects`;
+    return (
+        <section className="rw-usage-status-strip" aria-label="Recording and export status">
+            <strong>{recordingLabel}</strong>
+            {!exportStatus.available && <p>Export is unavailable on this host.</p>}
+            {exportStatus.available && !exportStatus.destinations.length && (
+                <p>Export off — no destinations configured.</p>
+            )}
+            {exportStatus.destinations.map((destination) => (
+                <p key={destination.destinationId}>
+                    Export: {destination.exporterId} — {destination.counts.accepted} accepted,{" "}
+                    {destination.counts.pending} pending, {destination.counts.confirmed} confirmed,{" "}
+                    {destination.counts.unconfirmed} delivery unconfirmed, {destination.counts.rejected} rejected
+                </p>
+            ))}
+            <a href="/usage/settings">Usage settings</a>
+        </section>
+    );
+}
+
 export function UsageReport() {
     const [report, setReport] = useState<OwnerUsageReport | null>(null);
     const [loading, setLoading] = useState(true);
@@ -127,6 +159,7 @@ export function UsageReport() {
     return (
         <div className="rw-usage-page">
             <h1>Usage</h1>
+            {report && <UsageStatusStrip recording={report.recording} exportStatus={report.export} />}
             <form
                 className="rw-usage-filters"
                 onSubmit={(event) => {

@@ -1,8 +1,11 @@
+import { loadUsageSummary } from "./owner-usage-settings.ts";
 import { queryUsageReport, usageProjectIdentityForRoot } from "../../../shared/workflow/usage-reporting.ts";
 import type { UsageLink } from "../../../shared/workflow/usage-reporting.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import type { OwnerProjectSession, OwnerProjectStore } from "./owner-projects.ts";
 import { loadWorkspaceDetail } from "./plan-adapter.js";
+
+const HISTORY_CLEAR_MESSAGE = "Usage history is being cleared. Try loading the report again.";
 
 interface UsageOwnerSession extends OwnerProjectSession {
     displayName?: string | null;
@@ -31,7 +34,7 @@ function shiftDate(date: string, days: number) {
 }
 
 /** Authorization and local labels belong here; all measurement arithmetic stays in Core. */
-export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchParams) {
+export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSearchParams) {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const today = new Intl.DateTimeFormat("en-CA", {
         timeZone,
@@ -55,7 +58,30 @@ export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchPa
     );
     const roots = authorized.map((project) => requireOwnerProjectRoot(store, project.projectId));
     const identities = roots.map(usageProjectIdentityForRoot);
-    const report = queryUsageReport(roots, period, timeZone);
+    function query() {
+        try {
+            return queryUsageReport(roots, period, timeZone);
+        } catch (error) {
+            if (error instanceof Error && error.message === "usage_history_changed") {
+                return queryUsageReport(roots, period, timeZone);
+            }
+            throw error;
+        }
+    }
+    const report = (() => {
+        try {
+            const result = query();
+            if (result.projects.some((project) => project.coverage.historyClearPending)) {
+                throw new Error(HISTORY_CLEAR_MESSAGE);
+            }
+            return result;
+        } catch (error) {
+            if (error instanceof Error && error.message === "history_clear_pending") {
+                throw new Error(HISTORY_CLEAR_MESSAGE);
+            }
+            throw error;
+        }
+    })();
     const enriched = await Promise.all(
         report.projects.map(async (project) => {
             const indexes = identities.flatMap((identity, index) => (identity === project.projectId ? [index] : []));
@@ -142,6 +168,10 @@ export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchPa
                       : project.lifecycle,
             })),
     };
+}
+
+export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchParams) {
+    return { ...(await loadOwnerUsageReport(store, params)), ...(await loadUsageSummary(store)) };
 }
 
 export type OwnerUsageReport = Awaited<ReturnType<typeof loadOwnerUsage>>;

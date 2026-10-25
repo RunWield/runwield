@@ -13,10 +13,16 @@ wld install /absolute/path/to/langfuse-exporter
 ```
 
 RunWield asks for metrics-exporter code approval. Declining approval leaves the package installed but not executable.
-Approval alone does not authorize export. The installer can normalize the saved source to a relative identity; use the
-installed exporter's resolved source when creating a grant. Core must also hold an owner grant for the selected local
-Projects and the Langfuse destination. The grant starts at consent; it does not export prior history. Credentials are
-stored by Core, not by this package. Moving the directory or changing its version requires new code approval.
+Approval alone does not authorize export. Open **Usage → Settings** in Workspace and choose **Add destination**.
+Select `langfuse`, enter the Langfuse endpoint and external project ID, and explicitly choose the local Projects to
+export. Enter **Public key** (`publicKey`) and **Secret key** (`secretKey`) from that Langfuse project. Use the
+**Credentials** tab to replace or remove them later. Saved credentials never return to the browser; Core stores them in
+its private credentials file, not `settings.json` or this package.
+
+The grant starts at consent; it does not export prior history. New Projects are not exported automatically. The
+**Delivery status** tab shows Core's counts and codes. **Destination** holds endpoint changes and revoke, with
+confirmation of the new-boundary and in-flight limits. For local protocol testing, select **Local development endpoint**
+with a loopback HTTP endpoint. Moving the package directory or changing its version requires new code approval.
 
 Use the Langfuse region origin as the endpoint, for example `https://cloud.langfuse.com` or
 `https://us.cloud.langfuse.com`. The destination's `externalProject` must be the Langfuse **project ID**, not its
@@ -28,8 +34,8 @@ The [RunWield Free Use License](./LICENSE) applies to this package.
 
 ## Contract
 
-The manifest declares `wld.metricsExporter: { contract: 1, id: "langfuse", entry: "./exporter.ts" }`. Core's approved
-export worker calls these named exports:
+The manifest declares contract `1`, ID `langfuse`, entry `./exporter.ts`, and the `publicKey` and secret `secretKey`
+credential fields under `wld.metricsExporter`. Core's approved export worker calls these named exports:
 
 - `deliver(observation, context)` returns `accepted`, `not_accepted` with `retryable`, `needs_correction`, or
   `permanent`, or `uncertain`.

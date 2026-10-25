@@ -13,10 +13,17 @@ import {
     remotePersonalResourcesActive,
 } from "../remote/personal-resources.ts";
 
+export interface MetricsExporterCredentialField {
+    key: string;
+    label: string;
+    secret: boolean;
+}
+
 export interface MetricsExporterDeclaration {
     contract: 1;
     id: string;
     entry: string;
+    credentials?: MetricsExporterCredentialField[];
 }
 
 export interface MetricsExporterApproval {
@@ -34,6 +41,7 @@ export interface InstalledMetricsExporter {
     version: string;
     entryPath: string;
     approved: boolean;
+    credentialFields: MetricsExporterCredentialField[];
 }
 
 const APPROVAL_KEY = "metricsExporterApprovals";
@@ -52,6 +60,24 @@ export async function readMetricsExporterDeclaration(packageRoot: string): Promi
             isAbsolute(declaration.entry)
         )
             return null;
+        if (declaration.credentials !== undefined) {
+            if (!Array.isArray(declaration.credentials) || declaration.credentials.length > 8) return null;
+            const keys = new Set<string>();
+            for (const field of declaration.credentials) {
+                if (
+                    !field ||
+                    typeof field.key !== "string" ||
+                    !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.key) ||
+                    keys.has(field.key) ||
+                    typeof field.label !== "string" ||
+                    !field.label.trim() ||
+                    field.label.length > 64 ||
+                    typeof field.secret !== "boolean"
+                )
+                    return null;
+                keys.add(field.key);
+            }
+        }
         const root = await fsRealpath(packageRoot);
         const entryPath = await fsRealpath(join(root, declaration.entry));
         const rest = relative(root, entryPath);
@@ -68,7 +94,20 @@ export async function readMetricsExporterDeclaration(packageRoot: string): Promi
         for (const resource of resources.extensions) {
             if ((await fsRealpath(resource.path)) === entryPath) return null;
         }
-        return { contract: 1, id: declaration.id, entry: declaration.entry };
+        return {
+            contract: 1,
+            id: declaration.id,
+            entry: declaration.entry,
+            ...(declaration.credentials === undefined
+                ? {}
+                : {
+                      credentials: declaration.credentials.map((field: MetricsExporterCredentialField) => ({
+                          key: field.key,
+                          label: field.label,
+                          secret: field.secret,
+                      })),
+                  }),
+        };
     } catch {
         return null;
     }
@@ -145,6 +184,7 @@ export async function listInstalledMetricsExporters(
             version: typeof manifest.version === "string" ? manifest.version : "",
             entryPath,
             approved: false,
+            credentialFields: declaration.credentials ?? [],
         };
         exporter.approved = saved.some((record) => sameIdentity(record, exporter));
         exporters.push(exporter);

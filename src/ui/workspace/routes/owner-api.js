@@ -1,4 +1,5 @@
 import { loadOwnerUsage } from "../server/owner-usage.ts";
+import { loadUsageSettings, mutateUsageSettings, UsageSettingsError } from "../server/owner-usage-settings.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 /** @module ui/workspace/routes/owner-api */
 
@@ -208,6 +209,38 @@ export async function ownerUsageApi(ctx) {
         return ownerJson(await loadOwnerUsage(ctx.state.store, ctx.url.searchParams));
     } catch (error) {
         return ownerErrorJson(error, 400);
+    }
+}
+
+/**
+ * @typedef {Object} OwnerUsageSettingsContext
+ * @property {{ store: Parameters<typeof loadUsageSettings>[0] }} state
+ * @property {Request} req
+ * @property {{ action?: string }} params
+ * @property {URL} url
+ */
+/** @param {OwnerUsageSettingsContext} ctx */
+export async function ownerUsageSettingsApi(ctx) {
+    try {
+        return ownerJson(await loadUsageSettings(ctx.state.store));
+    } catch (error) {
+        return ownerErrorJson(error);
+    }
+}
+
+/** @param {OwnerUsageSettingsContext} ctx */
+export async function ownerUsageSettingsMutationApi(ctx) {
+    let body;
+    try {
+        body = await readJson(ctx.req);
+    } catch {
+        return ownerJson({ error: "Invalid request body." }, 400);
+    }
+    try {
+        const action = ctx.url.pathname === "/api/owner/usage/clear" ? "clear" : ctx.params.action || "";
+        return ownerJson(await mutateUsageSettings(ctx.state.store, action, body));
+    } catch (error) {
+        return ownerErrorJson(error, error instanceof UsageSettingsError ? error.status : 400);
     }
 }
 
