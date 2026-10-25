@@ -2,7 +2,12 @@ import process from "node:process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
-import { createAssistantMessageEventStream, type AssistantMessage, type ProviderStreams } from "@earendil-works/pi-ai";
+import {
+    fauxAssistantMessage,
+    createAssistantMessageEventStream,
+    type AssistantMessage,
+    type ProviderStreams,
+} from "@earendil-works/pi-ai";
 import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import { assertEquals } from "./assertions.ts";
 import { writeRuntimeExecutableFixture } from "./runtime-executable-fixture.ts";
@@ -28,6 +33,7 @@ export const JOURNEY_PERIOD = { start: "2026-09-01", end: "2026-09-04" };
 export async function configureJourneyModel() {
     await getModelRegistry().getRuntime();
     const responses: AssistantMessage[] = [];
+    let interrupt: (() => void) | undefined;
     const stream: ProviderStreams["streamSimple"] = (model) => {
         const response = responses.shift();
         assert(response, "No journey model response queued");
@@ -47,6 +53,9 @@ export async function configureJourneyModel() {
         };
         const events = createAssistantMessageEventStream();
         queueMicrotask(() => {
+            const cancel = interrupt;
+            interrupt = undefined;
+            cancel?.();
             events.push({ type: "done", reason: "stop", message });
             events.end();
         });
@@ -56,6 +65,10 @@ export async function configureJourneyModel() {
     return {
         respond(...messages: AssistantMessage[]) {
             responses.push(...messages);
+        },
+        interruptNext(cancel: () => void) {
+            interrupt = cancel;
+            responses.push({ ...fauxAssistantMessage("Interrupted execution"), timestamp: Date.now() });
         },
         dispose() {
             unregisterApiProviders("usage-journey");

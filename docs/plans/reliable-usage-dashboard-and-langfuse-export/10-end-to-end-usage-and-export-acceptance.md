@@ -39,7 +39,7 @@ dependencies:
     - "09-workspace-export-settings-and-delivery-status"
 userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "implemented"
+status: "reviewed"
 ---
 
 # End-to-End Usage and Export Acceptance

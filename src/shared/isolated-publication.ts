@@ -98,12 +98,6 @@ export interface RemotePublicationResult extends PublicationResultBase {
 
 export type IsolatedPublicationResult = LocalPublicationResult | RemotePublicationResult;
 
-interface UpstreamTarget {
-    remote: string;
-    branch: string;
-    url: string;
-}
-
 export interface UpstreamPublicationInspectionArgs {
     projectRoot: string;
     executionBranch: string;

@@ -1,7 +1,6 @@
 import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 import {
     mkdir as fsMkdir,
-    readFile as fsReadFile,
     mkdtemp as fsMkdtemp,
     writeFile as fsWriteFile,
     rm as fsRm,

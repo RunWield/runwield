@@ -1102,14 +1102,8 @@ export class ExecutionMetricsRecorder {
                 entry.type === "message" && entry.message.role === "assistant"
                     ? this.piMessageTiming.get(entry.message)
                     : undefined;
-            // Assistant timestamps belong to the model evidence, not delayed journal settlement.
-            const observedAt = normalizeObservedTime(
-                entry.type === "message" && entry.message.role === "assistant"
-                    ? Number.isFinite(entry.message.timestamp)
-                        ? (new Date(entry.message.timestamp).toJSON() ?? "")
-                        : ""
-                    : entry.timestamp,
-            );
+            // Pi's message timestamp is request start. The persisted entry is written at completion.
+            const observedAt = normalizeObservedTime(timing?.endedAt ?? entry.timestamp);
             await this.recordModelUsage(
                 {
                     observedAt,
@@ -1131,7 +1125,15 @@ export class ExecutionMetricsRecorder {
                     aggregationBasis: usageKind === "request" ? "request" : "turn",
                     turnId: this.piEntryTurnIds.get(entry.id) ?? null,
                 },
-                timing ? timing.scope : this.modelUsageScope(observedAt ?? ""),
+                timing
+                    ? timing.scope
+                    : this.modelUsageScope(
+                          entry.type === "message" && entry.message.role === "assistant"
+                              ? Number.isFinite(entry.message.timestamp)
+                                  ? (new Date(entry.message.timestamp).toJSON() ?? "")
+                                  : ""
+                              : (observedAt ?? ""),
+                      ),
             );
         }
     }

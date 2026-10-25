@@ -1,3 +1,4 @@
+import { resolvePublicationUpstream } from "../publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -102,31 +103,31 @@ async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: 
         throw new Error(`Invalid target branch name: ${targetBranch}`);
     }
     const branch = target.startsWith("origin/") ? target.slice("origin/".length) : target;
-    const remote = await captureForegroundProcess("git", { cwd: projectRoot, args: ["remote", "get-url", "origin"] });
+    const upstream = await resolvePublicationUpstream(projectRoot, branch);
     let remoteTargetExists = false;
-    if (remote.success) {
+    if (upstream) {
         const fetched = await captureForegroundProcess("git", {
             cwd: projectRoot,
-            args: ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
+            args: ["fetch", upstream.remote, `+refs/heads/${branch}:refs/remotes/${upstream.remote}/${branch}`],
         });
         if (!fetched.success) {
             const error = new TextDecoder().decode(fetched.stderr);
             if (!error.includes("couldn't find remote ref")) {
                 throw new Error(
-                    `Could not refresh target branch origin/${branch}. Planning was stopped before Planner starts.`,
+                    `Could not refresh target branch ${upstream.remote}/${branch}. Planning was stopped before Planner starts.`,
                 );
             }
         } else remoteTargetExists = true;
     }
     const baseRef =
-        remoteTargetExists && (await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`))
-            ? `refs/remotes/origin/${branch}`
+        upstream && remoteTargetExists && (await gitRefExists(projectRoot, `refs/remotes/${upstream.remote}/${branch}`))
+            ? `refs/remotes/${upstream.remote}/${branch}`
             : (await gitRefExists(projectRoot, `refs/heads/${branch}`))
               ? `refs/heads/${branch}`
               : "";
     if (!baseRef) throw new Error(`Target branch does not exist: ${targetBranch}. Create it before planning.`);
     const commit = (await runGit(projectRoot, ["rev-parse", `${baseRef}^{commit}`])).trim();
-    return { baseRef: commit, baseBranch: branch };
+    return { baseRef: commit, baseBranch: branch, targetRef: baseRef };
 }
 
 async function readTargetPlanMarkdown(projectRoot: string, planName: string, baseRef: string) {
@@ -198,7 +199,8 @@ export async function findTargetBranchPlan(cwd: string, targetBranch: string, pl
         throw new Error(`Invalid target branch name: ${targetBranch}`);
     }
     // Lookup uses the known snapshot. Only session preparation fetches into project refs.
-    const remoteRef = `refs/remotes/origin/${branch}`;
+    const upstream = await resolvePublicationUpstream(projectRoot, branch);
+    const remoteRef = upstream ? `refs/remotes/${upstream.remote}/${branch}` : `refs/heads/${branch}`;
     const ref = (await gitRefExists(projectRoot, remoteRef)) ? remoteRef : `refs/heads/${branch}`;
     // Undefined means this checkout has not fetched the branch; null means the
     // known branch has no document at this path.
@@ -323,7 +325,7 @@ export async function preparePlanningWorktreeForPlan(
             if (!targetPlan || targetPlan.attrs.planId !== planId || existing.baseBranch !== target.baseBranch) {
                 throw new Error(`Target Plan ${planName} does not match the saved planning identity.`);
             }
-            existing = await refreshPlanningWorktree(projectRoot, existing, target.baseRef);
+            existing = await refreshPlanningWorktree(projectRoot, existing, target.baseRef, target.targetRef);
             const renamed = await loadPlan(existing.path, planName);
             if (!renamed || renamed.attrs.planId !== planId) {
                 throw new Error(`Refreshed planning worktree is missing ${planName}. Your saved work is preserved.`);
@@ -351,7 +353,7 @@ export async function preparePlanningWorktreeForPlan(
                     );
                 }
             }
-            const entry = await refreshPlanningWorktree(projectRoot, existing, target.baseRef);
+            const entry = await refreshPlanningWorktree(projectRoot, existing, target.baseRef, target.targetRef);
             const refreshedPlan = await loadPlan(entry.path, planName);
             if (!refreshedPlan) throw new Error(`Registered worktree is missing its Plan: ${entry.path}`);
             return { entry, plan: refreshedPlan, reused: true };
@@ -410,7 +412,7 @@ export async function preparePlanningWorktreeForPlan(
                 baseBranch: target.baseBranch,
                 attemptId,
             });
-            const entry: WorktreeRegistryEntry = { ...artifacts, status: "planning" };
+            const entry: WorktreeRegistryEntry = { ...artifacts, baseRef: target.targetRef, status: "planning" };
             registerRollback("remove_clean_created_worktree_and_registry_entry", async () => {
                 await removeWorktreeGitArtifacts({ projectRoot, path: entry.path, force: true });
                 await removeWorktreeRegistryEntry(projectRoot, entry.id);

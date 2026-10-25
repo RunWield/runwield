@@ -1,3 +1,4 @@
+import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall, type AssistantMessage } from "@earendil-works/pi-ai";
@@ -90,8 +91,13 @@ async function lifecycle(root: string, name: string, attemptId: string, event: P
     assertEquals(result.status, "committed", JSON.stringify(result));
 }
 
-/** One real held delivery and one separately confirmed recovery abandonment, with no repair rounds. */
-export async function runJourneyRecovery(home: string, root: string, runtime: SessionRuntime) {
+/** One interrupted execution and one separately confirmed recovery abandonment, with no repair rounds. */
+export async function runJourneyRecovery(
+    home: string,
+    root: string,
+    runtime: SessionRuntime,
+    interruptNext: (cancel: () => void) => void,
+) {
     for (const name of ["ongoing", "abandon"]) {
         await savePlan(root, name, `# ${name}\n`, {
             planId: `plan-${name}`,
@@ -104,6 +110,33 @@ export async function runJourneyRecovery(home: string, root: string, runtime: Se
     await git(root, ["add", "docs/plans/ongoing.md", "docs/plans/abandon.md"]);
     await git(root, ["commit", "-m", "Journey recovery Plans"]);
     for (const name of ["ongoing", "abandon"]) {
+        if (name === "ongoing") {
+            const created = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            let interrupted = false;
+            interruptNext(() => {
+                interrupted = runtime.cancelSession(created.sessionId).aborted;
+            });
+            const plan = await loadPlan(root, name);
+            assert(plan);
+            const evidence = await loadPlanActionEvidence(root, `plan-${name}`);
+            assert(evidence.kind === "success");
+            await runtime.executePlan(created.sessionId, {
+                planName: name,
+                triageMeta: {
+                    ...plan.attrs,
+                    revision: evidence.evidence.revision,
+                    status: evidence.evidence.status,
+                    worktree: evidence.evidence.worktree,
+                },
+            });
+            assert(interrupted, "Execution must reach the model and be canceled");
+            const workflow = runtime.getRuntimeActiveExecutionWorkflow(created.sessionId);
+            assert(workflow?.executionCwd);
+            const ongoing = await loadPlan(workflow.executionCwd, name);
+            assertEquals(ongoing?.attrs.status, "in_progress");
+            await runtime.closeSessionWhenIdle(created.sessionId);
+            continue;
+        }
         const entry = await createTestWorktreeAttempt({
             projectRoot: root,
             planName: name,
@@ -120,13 +153,6 @@ export async function runJourneyRecovery(home: string, root: string, runtime: Se
             worktreeBaseBranch: entry.baseBranch,
             executionBaselineTree: await git(entry.path, ["rev-parse", "HEAD^{tree}"]),
         });
-        if (name === "ongoing") {
-            await lifecycle(entry.path, name, entry.id, "plan_held", { holdReason: "Interrupted; continue later." });
-            const held = await loadPlan(entry.path, name);
-            assertEquals(held?.attrs.status, "on_hold");
-            assertEquals(held?.attrs.heldFromStatus, "in_progress");
-            continue;
-        }
         const created = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
         const surface = createPlanSessionSurface(runtime, created.sessionId, {
             executePlan: (options) => runtime.executePlan(created.sessionId, options),

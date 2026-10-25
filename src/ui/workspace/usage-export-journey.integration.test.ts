@@ -116,7 +116,7 @@ test("collected producer evidence agrees with the owner report and Langfuse acro
                         await runJourneyCli(home, root, "agy-cli");
                         await runJourneyGuide(root);
                         await runJourneyPublication(root, publication, model.respond);
-                        await runJourneyRecovery(home, root, runtime);
+                        await runJourneyRecovery(home, root, runtime, model.interruptNext);
                     });
                     await runMetricsExportCycle({ deadlineMs: 5000 });
                     assert(requests.filter((w) => w.method === "POST").length > 0);
@@ -182,10 +182,10 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                     const spans = requests.filter((w) => w.method === "POST").map(span);
                     const usages = spans.filter((s) => metadata(s).kind === "model_usage");
                     assertEquals(report.timeZone, "America/New_York");
-                    // Fixed inputs: six Pi turns (pre-grant, normal, two repair calls, lost, later),
+                    // Fixed inputs: seven Pi turns (pre-grant, normal, two repair calls, interrupted, lost, later),
                     // 16 tokens each; Claude's pinned 11871,
                     // agy's pinned 36195, and two guide frames (15 each).
-                    assertEquals(report.totals.tokens.value, 6 * 16 + 11871 + 36195 + 30);
+                    assertEquals(report.totals.tokens.value, 7 * 16 + 11871 + 36195 + 30);
                     assertEquals(
                         {
                             published: report.totals.publishedChanges,
@@ -229,8 +229,8 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                             return counts;
                         }, {}),
                         {
-                            model_usage: 8,
-                            execution_finished: 6,
+                            model_usage: 9,
+                            execution_finished: 7,
                             tool_call_finished: 3,
                             validation_attempt: 2,
                             repair_round_finished: 1,
@@ -243,7 +243,7 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                         [
                             ["agy-cli", 36195],
                             ["claude-cli", 11871],
-                            ["pi", 126],
+                            ["pi", 142],
                         ].sort(),
                     );
                     // agy lacks cache-write coverage; the guide does not state its input/cache basis.
@@ -251,12 +251,12 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                     almost(report.totals.reportedCostUsd.value, 1 + 0.0594932);
                     assertEquals(report.totals.reportedCostUsd.exclusions, 1);
                     const agyCost = (19529 * 0.75 + 155 * 3.75 + 16511 * 0.075) / 1_000_000;
-                    almost(report.totals.estimatedCostUsd.value, 6 * 0.125 + agyCost);
+                    almost(report.totals.estimatedCostUsd.value, 7 * 0.125 + agyCost);
                     assertEquals(report.totals.estimatedCostUsd.exclusions, 0);
                     const gap = report.daily.find((day) => day.date === "2026-09-02")!;
                     assertEquals(gap.tokens, null);
                     assert(gap.gaps.includes("disabled"));
-                    assertEquals(usages.length, 8);
+                    assertEquals(usages.length, 9);
                     assertEquals(
                         usages.reduce((sum, s) => {
                             const m = metadata(s);
@@ -268,7 +268,7 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                                 Number(m.cacheWriteTokens || 0)
                             );
                         }, 0),
-                        48176,
+                        48192,
                     );
                     const guide = usages.find((s) => metadata(s).provider === "journey-guide")!;
                     assert(guide);
@@ -294,11 +294,11 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                                 sum + Object.values(native(s, "usage_details") || {}).reduce((a, b) => a + b, 0),
                             0,
                         ),
-                        5 * 16 + 11871 + 36195,
+                        6 * 16 + 11871 + 36195,
                     );
                     almost(
                         usages.reduce((sum, s) => sum + (native(s, "cost_details")?.total || 0), 0),
-                        5 * 0.125 + 0.0594932 + agyCost,
+                        6 * 0.125 + 0.0594932 + agyCost,
                     );
                     const ledger = [...readMetricsExportLedger("journey").values()];
                     assertEquals(
@@ -333,7 +333,7 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                     assertEquals((await readMetricsExportStatus())[0].counts, {
                         pending: 0,
                         accepted: 0,
-                        confirmed: 21,
+                        confirmed: 23,
                         unconfirmed: 1,
                         rejected: 0,
                     });

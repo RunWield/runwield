@@ -731,3 +731,56 @@ test("delayed standalone Pi usage belongs to its entry day, not collection day",
         }
     });
 });
+
+for (const live of [true, false]) {
+    test(`Pi assistant usage uses completion day (${live ? "live" : "replayed"})`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+            try {
+                setSystemTime(new Date("2026-11-02T04:59:00Z"));
+                const recorder = new ExecutionMetricsRecorder({ projectRoot });
+                const message = {
+                    role: "assistant" as const,
+                    api: "openai-responses" as const,
+                    provider: "openai",
+                    model: "fixture",
+                    content: [],
+                    stopReason: "stop" as const,
+                    timestamp: Date.now(),
+                    usage: {
+                        input: 10,
+                        output: 2,
+                        cacheRead: 0,
+                        cacheWrite: 0,
+                        totalTokens: 12,
+                        cost: { input: 0.2, output: 0.3, cacheRead: 0, cacheWrite: 0, total: 0.5 },
+                    },
+                };
+                setSystemTime(new Date("2026-11-02T05:01:00Z"));
+                if (live) recorder.recordPiAssistantMessageEnd(message);
+                const entries = SessionManager.inMemory(projectRoot);
+                entries.appendMessage(message);
+                setSystemTime(new Date("2026-11-03T05:01:00Z"));
+                await recorder.reconcilePiEntries(entries.getEntries(), new Set());
+                assertEquals(
+                    (await readMetrics()).find((row) => row.event === "model_usage")?.ts,
+                    "2026-11-02T05:01:00.000Z",
+                );
+                const report = new UsageReporter().query(
+                    [projectRoot],
+                    { start: "2026-11-01", end: "2026-11-04" },
+                    "America/New_York",
+                );
+                assertEquals(
+                    report.daily.map((day) => day.totals.tokens.value),
+                    [0, 12, 0],
+                );
+                assertEquals(
+                    report.daily.map((day) => day.totals.estimatedCostUsd.value),
+                    [0, 0.5, 0],
+                );
+            } finally {
+                setSystemTime();
+            }
+        });
+    });
+}
