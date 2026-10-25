@@ -303,3 +303,37 @@ test("presentEpicChildPlan warns and returns null when the child Plan is missing
     assertEquals(statuses[1].level, "warning");
     assertStringIncludes(statuses[1].message, "child Plan not found");
 });
+
+for (const orders of [
+    [undefined, 2],
+    [1, 1],
+]) {
+    test(`automatic continuation blocks ambiguous child order ${JSON.stringify(orders)}`, async () => {
+        const cwd = await makeProject();
+        await writePlan(cwd, "epic/00-done", {
+            classification: "FEATURE",
+            status: "verified",
+            parentPlan: "epic",
+            order: 0,
+        });
+        for (const [index, order] of orders.entries()) {
+            await writePlan(cwd, `epic/0${index + 1}-next`, {
+                classification: "FEATURE",
+                status: "draft",
+                parentPlan: "epic",
+                ...(order === undefined ? {} : { order }),
+            });
+        }
+        const resolution = await resolveEpicContinuation({ cwd, completedPlanName: "epic/00-done" });
+        assertEquals(resolution.kind, "blocked");
+        assertStringIncludes(resolution.reason || "", "order");
+    });
+}
+
+test("a completed family needs no next-child order to finish continuation", async () => {
+    const cwd = await makeProject();
+    await writePlan(cwd, "epic/done", { classification: "FEATURE", status: "verified", parentPlan: "epic" });
+    const resolution = await resolveEpicContinuation({ cwd, completedPlanName: "epic/done" });
+    assertEquals(resolution.kind, "none");
+    assertEquals(resolution.reason, "no_remaining_children");
+});

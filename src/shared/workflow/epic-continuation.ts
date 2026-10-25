@@ -1,3 +1,4 @@
+import { epicChildOrderProblem } from "./epic-child-order.ts";
 import { projectPlanType } from "../project-plan.ts";
 /**
  * @module shared/workflow/epic-continuation
@@ -173,6 +174,8 @@ export async function resolveEpicContinuation({
         .sort(compareChildPlansByOrder);
     const next = siblings.find((plan) => !TERMINAL_CHILD_STATUSES.has(plan.attrs.status));
     if (!next) return { kind: "none", reason: "no_remaining_children", completedPlanName, parentPlanName };
+    const orderProblem = epicChildOrderProblem(siblings);
+    if (orderProblem) return { kind: "blocked", reason: orderProblem, completedPlanName, parentPlanName };
 
     const childPlanName = next.name;
     const childStatus = next.attrs.status;

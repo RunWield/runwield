@@ -89,7 +89,10 @@ export function formatChildPlanLabel(child: EpicChildPlan): string {
         Array.isArray(child.attrs.dependencies) && child.attrs.dependencies.length > 0
             ? ` — deps: ${child.attrs.dependencies.join(", ")}`
             : "";
-    return `${order}${child.name} [${child.attrs.status}]${summary}${dependencies}`;
+    const parentPrefix = child.attrs.parentPlan ? `${child.attrs.parentPlan}/` : "";
+    const name =
+        parentPrefix && child.name.startsWith(parentPrefix) ? child.name.slice(parentPrefix.length) : child.name;
+    return `${order}${name} [${child.attrs.status}]${summary}${dependencies}`;
 }
 
 /**
@@ -111,7 +114,7 @@ export function formatChildPlanDescription(child: EpicChildPlan): string | undef
  */
 export function formatNextChildLabel(child: EpicChildPlan): string {
     const order = child.attrs.order !== undefined ? `${String(child.attrs.order).padStart(2, "0")}. ` : "";
-    const summary = child.attrs.summary || child.name;
+    const summary = child.attrs.summary || child.name.split("/").at(-1);
     return `Execute next incomplete child Planned Change: ${order}${summary} [${child.attrs.status}]`;
 }
 
