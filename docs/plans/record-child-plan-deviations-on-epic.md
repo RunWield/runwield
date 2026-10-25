@@ -27,7 +27,7 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "Epic Deviation Recording"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Record Child Plan Deviations on the Epic

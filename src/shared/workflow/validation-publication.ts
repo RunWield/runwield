@@ -1,4 +1,5 @@
 import { stat as fsStat } from "node:fs/promises";
+import { syncEpicChildPlanDeviations } from "./epic-review-context.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -623,6 +624,10 @@ async function runLockedPublicationPhase(
                 async () => await ensureRunWieldOwnedGitignoreBlock(context.executionCwd),
             );
             const targetHeadAtSeal = await args.git.branchHead(context.projectRoot, targetBranch);
+            await atStage(
+                "candidate_checkpoint",
+                async () => await syncEpicChildPlanDeviations(context.executionCwd, args.planName),
+            );
             const candidate = await atStage(
                 "candidate_checkpoint",
                 async () =>
@@ -678,6 +683,10 @@ async function runLockedPublicationPhase(
             await atStage(
                 "artifact_preparation",
                 async () => await runPostVerificationHandoffs(args, context.executionCwd, true),
+            );
+            await atStage(
+                "candidate_sealing",
+                async () => await syncEpicChildPlanDeviations(context.executionCwd, args.planName),
             );
             const artifactCandidate = await atStage(
                 "candidate_sealing",

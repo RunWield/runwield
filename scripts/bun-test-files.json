@@ -397,6 +397,7 @@
     "src/shared/workflow/epic-branch.test.ts",
     "src/shared/workflow/epic-continuation.test.js",
     "src/shared/workflow/epic-integration.test.ts",
+    "src/shared/workflow/epic-deviation-publication.integration.test.ts",
     "src/shared/workflow/epic-review-context.test.ts",
     "src/shared/workflow/epic-sibling-drafts.test.ts",
     "src/shared/workflow/execution-context.test.ts",

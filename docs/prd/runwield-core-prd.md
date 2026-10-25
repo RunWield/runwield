@@ -490,7 +490,9 @@ conflicting requirements or started work need the user's decision.
 
 Each child's review judges that child's own correctness, with the Epic as context. A reviewer can leave Integration
 Notes for the later integration review in the Epic's `### Integration Notes` subsection. The saved-note message names
-the parent Epic and states that the notes guide its integration review.
+the parent Epic and states that the notes guide its integration review. Integration Notes and confirmed child deviation
+blocks are written in the child's execution checkout and travel with its delivery to the Epic branch, not through a
+write to the primary checkout.
 
 **Requirement: An Epic finishes through its integration gate.** The Epic is implemented when every included child is
 delivered to the Epic branch. The integration gate then checks the exact branch head as one change: the project's
@@ -498,8 +500,10 @@ checks, an integration review of the whole Epic diff, and Code Review per the us
 checks or review, the temporary checkout initializes submodules recursively and runs the configured
 `worktree_setup_command`. Both reviews use the Epic document from that exact branch head, not the primary checkout.
 Missing branch requirements or failed checkout setup pause the gate without creating a repair child. A pass
-marks the Epic reviewed for that commit. Findings go to an Epic report and become a draft repair child that the user
-reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
+marks the Epic reviewed for that commit. Integration review treats confirmed child deviations as user-approved
+replacements: a gap caused only by a deviation is not a finding. It names each affected Epic outcome and source child
+in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings. Findings go
+to an Epic report and become a draft repair child that the user reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
 implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
 an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
 
@@ -560,8 +564,10 @@ siblings active. Listings show held work separately from active and finished wor
 - Given gate findings, the Epic report lists them and a draft repair child opens in Planner; its delivery runs the gate
   again.
 - Given Planner moves scope into an approved, unstarted sibling, the sibling returns to draft with the change.
-- Given a child review with Integration Notes, the notes appear in the Epic's subsection and reach the integration
-  review.
+- Given a child review with Integration Notes, the notes appear in the execution checkout's Epic subsection, travel
+  with child delivery, and reach the branch-head integration review; the primary copy is unchanged.
+- Given a delivered child deviation that removes an Epic outcome, integration review reports the outcome and source
+  child as an advisory, not a finding. Other integration defects still block approval.
 - Given an approved Epic, saved draft children stay drafts until finalization and their own approval.
 - Given an independently held child, holding and resuming the parent leaves it held.
 - Given enough delivered children to meet the goal, the user marks the Epic done enough and the remaining children stay
@@ -715,6 +721,14 @@ Retrying the same call returns the saved entry. Ordinary feedback and direct Pla
 Canceled, unsupported, or stale confirmation leaves the requirement as it was; a changed Plan revision or execution
 identity invalidates a pending confirmation. A host without confirmation support keeps the work and stops the turn.
 
+**Requirement: Epic readers see child deviations.** A confirmed deviation in an Epic child also appears in a managed
+`### Child Plan Deviations` subsection under the Epic's Objective. Each child has one replaceable block. The child
+Plan's `planDeviations` remains authoritative; neither the Epic's own deviation front matter nor Work Record aggregation
+uses that projection as a second source. Recording and same-call retries synchronize the block in the execution
+checkout. Publication retries synchronization before its checkpoints. A projection error does not revoke the saved
+child entry. Missing or collaboration-locked parents are left unchanged. Standalone and Sequence Plans keep ordinary
+recording without an Epic projection.
+
 **Acceptance scenarios:**
 
 - Given Pair or autonomous execution, when the user requests a conflicting requirement, the Agent asks for explicit
@@ -725,6 +739,15 @@ identity invalidates a pending confirmation. A host without confirmation support
   checkout.
 - Given a recorded replacement, reload, independent review, and the Work Record keep it.
 - Given canceled confirmation or a changed Plan revision, the effective requirement stays as it was.
+- Given an Epic child and accepted confirmation, both the child entry and its Epic block contain the exact superseded
+  requirement, replacement, optional reason, and approval time; the Epic's front matter is unchanged.
+- Given the same call retried after interruption, one child entry and one Epic block remain. A missing projection is
+  restored before publication sealing.
+- Given deviations from two children, replacing one block preserves the other and user-owned Objective text.
+- Given canceled, unsupported, or stale confirmation, the Epic stays byte-identical.
+- Given a standalone Plan or Sequence child, recording changes only the execution Plan.
+- Given child delivery, its Epic block reaches the branch-head integration review and the Epic Work Record lists the
+  child deviation once.
 
 #### Validation
 

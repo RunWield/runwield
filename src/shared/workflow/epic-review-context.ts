@@ -23,6 +23,8 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import type { ReviewIntegrationNote } from "../../tools/review-complete.ts";
+import { isEpicPlan } from "../project-plan.ts";
+import { readPlanDeviations, formatPlanDeviationForPrompt } from "../plan-deviations.ts";
 import { SharedPlanLockError } from "../collaboration/lock.ts";
 
 /** The Epic a child belongs to, and the request section that describes it. */
@@ -31,7 +33,26 @@ export interface EpicReviewContext {
     section: string;
 }
 
-const NOTES_HEADING = "### Integration Notes";
+interface ChildBlockSection {
+    heading: string;
+    parentHeading: string;
+    intro: string;
+    markerKind: string;
+}
+
+const NOTES_SECTION: ChildBlockSection = {
+    heading: "### Integration Notes",
+    parentHeading: "## Verification Plan",
+    intro: "Left by the reviewers of individual children for the integration review. These are places to look, not requirements.",
+    markerKind: "integration-notes",
+};
+
+const DEVIATIONS_SECTION: ChildBlockSection = {
+    heading: "### Child Plan Deviations",
+    parentHeading: "## Objective",
+    intro: "User-confirmed replacements from child Plans. Each child Plan remains the authority for its deviations.",
+    markerKind: "child-plan-deviations",
+};
 
 function hasEpicBranch(attrs: Partial<PlanFrontMatter>): boolean {
     return (
@@ -105,53 +126,77 @@ export async function loadEpicReviewContext(
     };
 }
 
-function noteMarker(kind: "start" | "end", childPlanName: string): string {
-    return `<!-- runwield:integration-notes:${kind} child="${childPlanName.replaceAll('"', "&quot;")}" -->`;
+function childMarker(section: ChildBlockSection, kind: "start" | "end", childPlanName: string): string {
+    return `<!-- runwield:${section.markerKind}:${kind} child="${childPlanName.replaceAll('"', "&quot;")}" -->`;
 }
 
-function renderNotesBlock(childPlanName: string, notes: ReviewIntegrationNote[]): string {
-    return [
-        noteMarker("start", childPlanName),
-        `**${childPlanName}**`,
-        "",
-        ...notes.map((note) => `- ${note.check}${note.where ? ` (${note.where})` : ""}`),
-        noteMarker("end", childPlanName),
-    ].join("\n");
-}
-
-/**
- * Place one child's notes in the Epic's managed `### Integration Notes`
- * subsection. A child's earlier block is replaced; the rest of the Epic body,
- * which the user owns, is left as it is.
- */
-export function withIntegrationNotes(markdown: string, childPlanName: string, notes: ReviewIntegrationNote[]): string {
-    const block = renderNotesBlock(childPlanName, notes);
-    const start = noteMarker("start", childPlanName);
-    const end = noteMarker("end", childPlanName);
+/** Replace one child's block without changing other children or user-owned text. */
+function withChildBlock(markdown: string, section: ChildBlockSection, childPlanName: string, lines: string[]): string {
+    const start = childMarker(section, "start", childPlanName);
+    const end = childMarker(section, "end", childPlanName);
+    const block = lines.length ? [start, `**${childPlanName}**`, "", ...lines, end].join("\n") : "";
     const startIndex = markdown.indexOf(start);
     const endIndex = markdown.indexOf(end);
     if (startIndex >= 0 && endIndex > startIndex) {
         return markdown.slice(0, startIndex) + block + markdown.slice(endIndex + end.length);
     }
+    if (!block) return markdown;
 
-    const lines = markdown.replace(/\s+$/, "").split("\n");
-    const headingIndex = lines.findIndex((line) => line.trim() === NOTES_HEADING);
+    const bodyLines = markdown.replace(/\s+$/, "").split("\n");
+    const headingIndex = bodyLines.findIndex((line) => line.trim() === section.heading);
     if (headingIndex >= 0) {
-        const after = lines.slice(headingIndex + 1).findIndex((line) => /^#{2,3}\s/.test(line));
-        const insertAt = after < 0 ? lines.length : headingIndex + 1 + after;
-        const before = lines.slice(0, insertAt).join("\n").replace(/\s+$/, "");
-        const rest = lines.slice(insertAt).join("\n");
+        const after = bodyLines.slice(headingIndex + 1).findIndex((line) => /^#{2,3}\s/.test(line));
+        const insertAt = after < 0 ? bodyLines.length : headingIndex + 1 + after;
+        const before = bodyLines.slice(0, insertAt).join("\n").replace(/\s+$/, "");
+        const rest = bodyLines.slice(insertAt).join("\n");
         return `${before}\n\n${block}\n${rest ? `\n${rest}\n` : ""}`;
     }
 
-    const verificationIndex = lines.findIndex((line) => /^##\s+Verification Plan\s*$/i.test(line));
-    const section = `${NOTES_HEADING}\n\nLeft by the reviewers of individual children for the integration review. These are places to look, not requirements.\n\n${block}`;
-    if (verificationIndex < 0) return `${lines.join("\n")}\n\n${section}\n`;
-    const after = lines.slice(verificationIndex + 1).findIndex((line) => /^##\s/.test(line));
-    const insertAt = after < 0 ? lines.length : verificationIndex + 1 + after;
-    const before = lines.slice(0, insertAt).join("\n").replace(/\s+$/, "");
-    const rest = lines.slice(insertAt).join("\n");
-    return `${before}\n\n${section}\n${rest ? `\n${rest}\n` : ""}`;
+    const parentIndex = bodyLines.findIndex(
+        (line) => line.trim().toLowerCase() === section.parentHeading.toLowerCase(),
+    );
+    const content = `${section.heading}\n\n${section.intro}\n\n${block}`;
+    if (parentIndex < 0) return `${bodyLines.join("\n")}\n\n${content}\n`;
+    const after = bodyLines.slice(parentIndex + 1).findIndex((line) => /^##\s/.test(line));
+    const insertAt = after < 0 ? bodyLines.length : parentIndex + 1 + after;
+    const before = bodyLines.slice(0, insertAt).join("\n").replace(/\s+$/, "");
+    const rest = bodyLines.slice(insertAt).join("\n");
+    return `${before}\n\n${content}\n${rest ? `\n${rest}\n` : ""}`;
+}
+
+/** Place one child's notes in the Epic's managed Verification Plan subsection. */
+export function withIntegrationNotes(markdown: string, childPlanName: string, notes: ReviewIntegrationNote[]): string {
+    return withChildBlock(
+        markdown,
+        NOTES_SECTION,
+        childPlanName,
+        notes.map((note) => `- ${note.check}${note.where ? ` (${note.where})` : ""}`),
+    );
+}
+
+/** Rebuild the Epic projection from the authoritative child in this checkout. */
+export async function syncEpicChildPlanDeviations(checkoutRoot: string, childPlanName: string): Promise<string | null> {
+    const child = await loadPlan(checkoutRoot, childPlanName);
+    const epicPlanName = child?.attrs.parentPlan?.trim();
+    if (!epicPlanName) return null;
+    const epic = await loadPlan(checkoutRoot, epicPlanName);
+    if (!epic || !isEpicPlan(epic.attrs)) return null;
+    const next = withChildBlock(
+        epic.markdown,
+        DEVIATIONS_SECTION,
+        childPlanName,
+        readPlanDeviations(child?.attrs.planDeviations).map((entry, index) =>
+            formatPlanDeviationForPrompt(entry, index + 1),
+        ),
+    );
+    if (next === epic.markdown) return null;
+    try {
+        await writePlanMarkdownWithRevisionLocked(checkoutRoot, epicPlanName, epic.path, next, epic.revision);
+    } catch (error) {
+        if (error instanceof SharedPlanLockError) return null;
+        throw error;
+    }
+    return `docs/plans/${epicPlanName}.md`;
 }
 
 /**
@@ -160,20 +205,18 @@ export function withIntegrationNotes(markdown: string, childPlanName: string, no
  * null when nothing was written.
  */
 export async function recordIntegrationNotes(
-    projectRoot: string,
+    checkoutRoot: string,
     epicPlanName: string,
     childPlanName: string,
     notes: ReviewIntegrationNote[] | undefined,
 ): Promise<string | null> {
     if (!notes || notes.length === 0) return null;
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
-    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
-    const epic = location.plan ? await loadPlan(location.documentRoot, epicPlanName) : null;
+    const epic = await loadPlan(checkoutRoot, epicPlanName);
     if (!epic) return null;
     const next = withIntegrationNotes(epic.markdown, childPlanName, notes);
     if (next === epic.markdown) return null;
     try {
-        await writePlanMarkdownWithRevisionLocked(location.documentRoot, epicPlanName, epic.path, next, epic.revision);
+        await writePlanMarkdownWithRevisionLocked(checkoutRoot, epicPlanName, epic.path, next, epic.revision);
     } catch (error) {
         // A shared Epic is written through collaboration; the notes stay in the review result instead.
         if (error instanceof SharedPlanLockError) return null;
