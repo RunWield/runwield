@@ -507,7 +507,7 @@
     "src/tools/__tests__/plan-deviation.test.ts",
     "src/tools/__tests__/plan-written.test.js",
     "src/tools/__tests__/read.test.js",
-    "src/tools/__tests__/review-complete.test.js",
+    "src/tools/__tests__/review-complete.test.ts",
     "src/tools/__tests__/set-session-name.test.ts",
     "src/tools/__tests__/task-completed.test.js",
     "src/tools/__tests__/triage-report.test.js",
