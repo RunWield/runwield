@@ -81,6 +81,7 @@
     "src/attached/claude/acceptance/world.test.ts",
     "src/attached/claude/execution-plugin.test.ts",
     "src/attached/claude/mcp-review-recovery.test.ts",
+    "src/attached/claude/mcp-shutdown.test.ts",
     "src/attached/claude/mcp-validation-no-progress.slow.test.ts",
     "src/attached/claude/mcp-validation-progress.slow.test.ts",
     "src/attached/claude/mcp-validation.test.ts",

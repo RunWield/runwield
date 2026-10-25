@@ -573,7 +573,7 @@ async function accept(
     const next = scrubAttachedChat({ ...current, ...changes, revision: current.revision + 1, updatedAt: now });
     const result: AttachedOperationResult = { ok: true, operation, workflow: await viewOf(next) };
     next.acceptedOperations = {
-        ...current.acceptedOperations,
+        ...next.acceptedOperations,
         [envelope.operationId]: {
             result: withoutAttachedChat(result),
             evidence: { ...envelope.evidence, coreVersion: VERSION },
@@ -1016,7 +1016,10 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
 }
 
 /** Accept only the issued action and live execution evidence, then call Core completion. */
-export async function taskCompleted(envelope: TaskCompletedEnvelope): Promise<AttachedOperationResult> {
+export async function taskCompleted(
+    envelope: TaskCompletedEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
     const loaded = await loadForOperation("task_completed", location, envelope.workflowId);
     if ("result" in loaded) return loaded.result;
@@ -1025,7 +1028,7 @@ export async function taskCompleted(envelope: TaskCompletedEnvelope): Promise<At
         (Object.hasOwn(loaded.record.acceptedOperations, envelope.operationId) &&
             loaded.record.acceptedOperations[envelope.operationId].result.operation === "task_completed")
     ) {
-        return await runValidationOperation("task_completed", envelope);
+        return await runValidationOperation("task_completed", envelope, options);
     }
 
     const transaction = await transactAttachedWorkflowRecord<AttachedOperationResult>(
@@ -1386,10 +1389,15 @@ export async function saveAttachedReviewChat(
     if (transaction.result) throw new Error(transaction.result);
 }
 
+type ReviewReplyDecision = Decision & { replayed?: boolean };
+
 /** Only the oldest unanswered turn of the current round can receive a reply. */
-async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOperationResult> {
+async function reviewReply(
+    envelope: ReviewReplyEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
-    const transaction = await transactAttachedWorkflowRecord<Decision>(
+    const transaction = await transactAttachedWorkflowRecord<ReviewReplyDecision>(
         location,
         envelope.workflowId,
         async (current) => {
@@ -1402,6 +1410,10 @@ async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOpera
                         ),
                     },
                 };
+            const saved = Object.hasOwn(current.acceptedOperations, envelope.operationId)
+                ? current.acceptedOperations[envelope.operationId]
+                : undefined;
+            if (saved) return { result: { result: { ...saved.result, operation: "review_reply" }, replayed: true } };
             const reconciled = await reconcilePlanPosition(current);
             if (reconciled !== current)
                 return {
@@ -1437,7 +1449,7 @@ async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOpera
                 !current.validation.holder;
             const source = planRound ? current.review : codeRound ? current.validation : null;
             const turn = source?.chat?.turns.find((item) => item.reply === undefined);
-            if (!turn || turn.turnId !== envelope.payload.turnId || current.acceptedOperations[envelope.operationId])
+            if (!turn || turn.turnId !== envelope.payload.turnId)
                 return {
                     result: {
                         result: await rejected(
@@ -1483,7 +1495,7 @@ async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOpera
                               actionId: crypto.randomUUID(),
                               role: "planner",
                               contractVersion: ATTACHED_PLANNER_CONTRACT_VERSION,
-                              note: "Revise the Plan as discussed in this Claude session, then call plan_written. No Feedback decision was recorded.",
+                              note: `The user requested this Plan change in review chat: ${envelope.payload.change.summary}. Revise the Plan, then call plan_written. No Feedback decision was recorded.`,
                           },
                           review: { ...current.review!, status: "revising", chat: undefined },
                       }
@@ -1504,14 +1516,23 @@ async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOpera
             rejection("workflow_busy", "Another process holds this workflow. Retry."),
         );
     const decision = transaction.result;
-    if (decision.result.ok && decision.result.workflow.nextAction.kind === "code_review" && envelope.payload.change) {
-        const result = await runValidationOperation("validation_decision", {
-            ...envelope,
-            payload: {
-                actionId: decision.result.workflow.nextAction.actionId,
-                answer: { outcome: "feedback", message: envelope.payload.change.summary },
+    if (
+        !decision.replayed &&
+        decision.result.ok &&
+        decision.result.workflow.nextAction.kind === "code_review" &&
+        envelope.payload.change
+    ) {
+        const result = await runValidationOperation(
+            "validation_decision",
+            {
+                ...envelope,
+                payload: {
+                    actionId: decision.result.workflow.nextAction.actionId,
+                    answer: { outcome: "feedback", message: envelope.payload.change.summary },
+                },
             },
-        });
+            options,
+        );
         return {
             ...result,
             operation: "review_reply",
@@ -1523,7 +1544,10 @@ async function reviewReply(envelope: ReviewReplyEnvelope): Promise<AttachedOpera
     return decision.result;
 }
 
-export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOperationResult> {
+export async function readStatus(
+    envelope: StatusEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
     if (!getHomeDir())
         return await rejected("status", rejection("home_unavailable", "Set HOME to use Attached workflows."));
     const location = locateAttachedWorkflows(envelope.projectRoot);
@@ -1538,14 +1562,18 @@ export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOper
     }
     const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
     if (!recovery && loaded.record.state === "reviewed") {
-        const continued = await runValidationOperation("start_validation", {
-            projectRoot: envelope.projectRoot,
-            workflowId: loaded.record.workflowId,
-            expectedRevision: loaded.record.revision,
-            operationId: crypto.randomUUID(),
-            evidence: loaded.record.evidence,
-            payload: {},
-        });
+        const continued = await runValidationOperation(
+            "start_validation",
+            {
+                projectRoot: envelope.projectRoot,
+                workflowId: loaded.record.workflowId,
+                expectedRevision: loaded.record.revision,
+                operationId: crypto.randomUUID(),
+                evidence: loaded.record.evidence,
+                payload: {},
+            },
+            options,
+        );
         return { ...continued, operation: "status" };
     }
     const projected = recovery ? loaded.record : await reconcilePlanPosition(loaded.record);
@@ -1592,6 +1620,7 @@ async function runParsedOperation(
     name: AttachedOperationName,
     projectRoot: string,
     input: AttachedJsonValue | undefined,
+    options: AttachedOperationOptions,
 ): Promise<AttachedOperationResult> {
     if (name === "activate") {
         const parsed = parseActivateInput(projectRoot, input);
@@ -1607,7 +1636,7 @@ async function runParsedOperation(
     }
     if (name === "review_reply") {
         const parsed = parseReviewReplyInput(projectRoot, input);
-        return parsed.ok ? await reviewReply(parsed.envelope) : await rejected(name, parsed.rejection);
+        return parsed.ok ? await reviewReply(parsed.envelope, options) : await rejected(name, parsed.rejection);
     }
     if (name === "start_execution") {
         const parsed = parseStartExecutionInput(projectRoot, input);
@@ -1615,7 +1644,7 @@ async function runParsedOperation(
     }
     if (name === "task_completed") {
         const parsed = parseTaskCompletedInput(projectRoot, input);
-        return parsed.ok ? await taskCompleted(parsed.envelope) : await rejected(name, parsed.rejection);
+        return parsed.ok ? await taskCompleted(parsed.envelope, options) : await rejected(name, parsed.rejection);
     }
     if (
         ["start_validation", "review_diff", "review_complete", "validation_decision", "work_record_completed"].includes(
@@ -1623,10 +1652,12 @@ async function runParsedOperation(
         )
     ) {
         const parsed = parseValidationInput(projectRoot, input, name);
-        return parsed.ok ? await runValidationOperation(name, parsed.envelope) : await rejected(name, parsed.rejection);
+        return parsed.ok
+            ? await runValidationOperation(name, parsed.envelope, options)
+            : await rejected(name, parsed.rejection);
     }
     const parsed = parseStatusInput(projectRoot, input);
-    return parsed.ok ? await readStatus(parsed.envelope) : await rejected(name, parsed.rejection);
+    return parsed.ok ? await readStatus(parsed.envelope, options) : await rejected(name, parsed.rejection);
 }
 
 /**
@@ -1675,6 +1706,10 @@ export type AttachedReadResult =
     | Extract<AttachedOperationResult, { ok: false }>;
 export type AttachedCarrierResult = AttachedOperationResult | AttachedReadResult;
 
+export interface AttachedOperationOptions {
+    signal?: AbortSignal;
+}
+
 /**
  * The single entry both carriers use: JSON text in, one result object out. Because the
  * CLI and MCP carriers both pass text here, the same input gives the same result.
@@ -1683,21 +1718,25 @@ export function runAttachedOperation(
     name: AttachedReadOperationName,
     projectRoot: string,
     inputText: string,
+    options?: AttachedOperationOptions,
 ): Promise<AttachedReadResult>;
 export function runAttachedOperation(
     name: AttachedLifecycleOperationName,
     projectRoot: string,
     inputText: string,
+    options?: AttachedOperationOptions,
 ): Promise<AttachedOperationResult>;
 export function runAttachedOperation(
     name: AttachedOperationName,
     projectRoot: string,
     inputText: string,
+    options?: AttachedOperationOptions,
 ): Promise<AttachedCarrierResult>;
 export async function runAttachedOperation(
     name: AttachedOperationName,
     projectRoot: string,
     inputText: string,
+    options: AttachedOperationOptions = {},
 ): Promise<AttachedCarrierResult> {
     if (!getHomeDir())
         return {
@@ -1727,10 +1766,10 @@ export async function runAttachedOperation(
         if (compatibility.status === "incompatible_adapter" || compatibility.status === "unsupported_host_version") {
             return await rejected(name, rejection(compatibility.status, compatibility.message));
         }
-        const result = await runParsedOperation(name, projectRoot, input);
+        const result = await runParsedOperation(name, projectRoot, input, options);
         return await withRoleInstructions(projectRoot, result.ok ? { ...result, compatibility } : result);
     }
-    return await runParsedOperation(name, projectRoot, input);
+    return await runParsedOperation(name, projectRoot, input, options);
 }
 
 /** Retrieve only the current action's host instructions, decision, or oldest queued chat turn. */
@@ -1823,6 +1862,7 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
 export async function runValidationOperation(
     operation: AttachedOperationName,
     envelope: AttachedValidationEnvelope | TaskCompletedEnvelope,
+    options: AttachedOperationOptions = {},
 ): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
     const loaded = await loadForOperation(operation, location, envelope.workflowId);
@@ -2025,6 +2065,7 @@ export async function runValidationOperation(
             projectRoot: claimed.projectRoot,
             planName: current.plan.planName,
             resume,
+            signal: options.signal,
         });
         if (result.kind === "failed") {
             const recovered: AttachedWorkflowRecord = {

@@ -63,13 +63,17 @@ test("Code page chat queues and replies without a decision, survives a fresh pro
         current = await fixture.status();
         assertEquals(pendingChat(current).message, "PRIVATE_CODE_SECOND");
         assertEquals((await fixture.evidence()).filter((entry) => entry.kind === "human").length, 0);
+        const beforeDuplicate = await readRecordBytes(fixture.root, fixture.workflowId);
         const duplicate = await reply(
             fixture.root,
             current,
-            { turnId: first.turnId, text: "Duplicate" },
+            { turnId: first.turnId, text: "Duplicate", change: { summary: "Do not repair on replay" } },
             "code-answer",
         );
-        assert(!duplicate.ok && duplicate.rejection.code === "action_superseded");
+        assert(duplicate.ok);
+        assertEquals(duplicate.workflow.revision, answered.result.workflow.revision);
+        assertEquals(await readRecordBytes(fixture.root, fixture.workflowId), beforeDuplicate);
+        assertEquals((await conversation(restored.url)).turns?.[0].reply, "PRIVATE_CODE_ANSWER");
         const approved = await fetch(reviewApi(restored.url, "decision"), {
             method: "POST",
             body: JSON.stringify({ approved: true, reviewRevision: 0 }),
@@ -119,13 +123,21 @@ test("a code chat change persists only its summary, re-verifies, and opens the c
             await readRecordBytes(fixture.root, fixture.workflowId),
         ])
             assertEquals(artifact.includes("PRIVATE_RENAME"), false);
+        const beforeReplay = await readRecordBytes(fixture.root, fixture.workflowId);
         const replay = await reply(
             fixture.root,
-            changed.workflow,
+            current,
             { turnId, text: "Duplicate", change: { summary: "Export value 9." } },
             "code-change",
         );
-        assert(!replay.ok && replay.rejection.code === "action_superseded");
+        assert(
+            replay.ok &&
+                replay.workflow.nextAction.kind === "validation" &&
+                replay.workflow.nextAction.request.kind === "repair",
+        );
+        assertEquals(replay.workflow.nextAction.actionId, changed.workflow.nextAction.actionId);
+        assertEquals(replay.workflow.nextAction.request.prompt.includes("Export value 9."), false);
+        assertEquals(await readRecordBytes(fixture.root, fixture.workflowId), beforeReplay);
         await writeFile(join(fixture.cwd, "implementation.ts"), "export const value = 3;\n");
         const repaired = await fixture.call("task_completed", changed.workflow, {
             actionId: changed.workflow.nextAction.actionId,

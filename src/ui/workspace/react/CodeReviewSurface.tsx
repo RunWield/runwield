@@ -722,7 +722,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     async function submitFeedback() {
-        if (conversationEnabled) {
+        if (conversationEnabled && initialPayload.agentTurnOwner !== "host") {
             setRightSidebarView("agent");
             await sendAgentMessage(true);
             return;

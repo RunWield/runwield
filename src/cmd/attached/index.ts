@@ -41,7 +41,7 @@ export async function runAttachedCommand(argv: string[]): Promise<void> {
     if (subcommand === "mcp" && rest.length === 0) {
         const { runAttachedMcpServer } = await import("../../attached/claude/mcp.ts");
         await runAttachedMcpServer(getCwd(), VERSION);
-        return;
+        process.exit(0);
     }
     const operation = ATTACHED_OPERATIONS.find((entry) => entry.name === subcommand);
     if (!operation || rest.length > 0) {

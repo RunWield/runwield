@@ -313,6 +313,51 @@ test("Code Review validation page retains approval and annotation feedback", asy
     });
 });
 
+test("host-owned Code Review sends annotations as structured feedback, not a chat turn", async () => {
+    await withReviewSurface(
+        undefined,
+        async ({ browser, container, button, submitted }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => button("Send Annotations").click());
+            assertEquals(submitted.length, 1);
+            assertEquals(submitted[0].approved, false);
+            assertEquals(Object.hasOwn(submitted[0], "conversationTurn"), false);
+            assertEquals(submitted[0].annotations.length, 1);
+            assertEquals(submitted[0].annotations[0].comment, "Mode review note");
+            assertStringIncludes(submitted[0].feedback, "Mode review note");
+            assertStringIncludes(container.textContent, "Feedback sent");
+        },
+        {
+            payload: { savedConversation: true, agentTurnOwner: "host", reviewRevision: 0 },
+            conversation: () => ({ reviewRevision: 0, revision: 0, pending: false, turns: [], events: [] }),
+        },
+    );
+});
+
+test("default Core Code Review sends annotations as a conversation turn", async () => {
+    await withReviewSurface(
+        undefined,
+        async ({ browser, container, button, submitted }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => button("Send Annotations").click());
+            assertEquals(submitted.length, 1);
+            assertEquals(submitted[0].approved, false);
+            assertEquals(submitted[0].conversationTurn, true);
+            assertEquals(submitted[0].annotations.length, 1);
+            assertEquals(submitted[0].annotations[0].comment, "Mode review note");
+            assertStringIncludes(submitted[0].feedback, "Mode review note");
+            assertEquals(
+                container.querySelector('button[role="tab"][title="Engineer"]').getAttribute("aria-selected"),
+                "true",
+            );
+        },
+        {
+            payload: { savedConversation: true, reviewRevision: 0 },
+            conversation: () => ({ reviewRevision: 0, revision: 0, pending: false, turns: [], events: [] }),
+        },
+    );
+});
+
 test("Code Review chat sends the displayed revision on the first turn and after N+1", async () => {
     let snapshot = {
         reviewRevision: 0,

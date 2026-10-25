@@ -273,7 +273,16 @@ export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkf
             clean.validation.request.interaction.type !== "code_review")
     )
         delete clean.validation.chat;
-    for (const receipt of Object.values(clean.acceptedOperations)) receipt.result = withoutAttachedChat(receipt.result);
+    for (const receipt of Object.values(clean.acceptedOperations)) {
+        receipt.result = withoutAttachedChat(receipt.result);
+        const action = receipt.result.workflow?.nextAction;
+        if (
+            receipt.result.operation === "review_reply" &&
+            action?.kind === "plan" &&
+            action.actionId !== clean.pendingAction?.actionId
+        )
+            delete action.note;
+    }
     return clean;
 }
 

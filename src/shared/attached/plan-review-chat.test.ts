@@ -45,8 +45,27 @@ test("Plan page chat queues in order, replies through the saved source, and stil
             assert(!outOfOrder.ok && outOfOrder.rejection.code === "action_superseded");
             const stale = await reply(root, workflow, { turnId: first.turnId, text: "Stale" });
             assert(!stale.ok && stale.rejection.code === "revision_conflict");
-            const answered = await reply(root, current, { turnId: first.turnId, text: "First private answer" });
+            const answered = await reply(
+                root,
+                current,
+                { turnId: first.turnId, text: "First private answer" },
+                "plan-answer",
+            );
             assert(answered.ok);
+            const beforeReplay = await readRecordBytes(root, workflow.workflowId);
+            const replay = await reply(
+                root,
+                current,
+                {
+                    turnId: first.turnId,
+                    text: "Changed retry answer",
+                    change: { summary: "Do not revise on replay" },
+                },
+                "plan-answer",
+            );
+            assert(replay.ok);
+            assertEquals(replay.workflow.revision, answered.workflow.revision);
+            assertEquals(await readRecordBytes(root, workflow.workflowId), beforeReplay);
             const live = await conversation(hosted.url);
             assertEquals(live.revision, before.revision + 1);
             assertEquals(
@@ -153,16 +172,42 @@ test("a Plan change from chat has no Feedback and opens the next round on the sa
                 const invalid = await reply(root, current, { turnId: turn.turnId, text: "Revising", change });
                 assert(!invalid.ok && invalid.rejection.code === "invalid_input");
             }
-            const changed = await reply(root, current, {
-                turnId: turn.turnId,
-                text: "PRIVATE_PLAN_REPLY",
-                change: { summary: "Use a selector" },
-            });
+            const changed = await reply(
+                root,
+                current,
+                {
+                    turnId: turn.turnId,
+                    text: "PRIVATE_PLAN_REPLY",
+                    change: { summary: "Use a selector" },
+                },
+                "plan-change",
+            );
             assert(changed.ok && changed.workflow.nextAction.kind === "plan");
+            const beforeReplay = await readRecordBytes(root, workflow.workflowId);
+            const replay = await reply(
+                root,
+                current,
+                {
+                    turnId: turn.turnId,
+                    text: "PRIVATE_PLAN_REPLY",
+                    change: { summary: "Use a selector" },
+                },
+                "plan-change",
+            );
+            assert(replay.ok && replay.workflow.nextAction.kind === "plan");
+            assertEquals(replay.workflow.nextAction.actionId, changed.workflow.nextAction.actionId);
+            assertEquals(await readRecordBytes(root, workflow.workflowId), beforeReplay);
             await ensureReviewHosted(root, changed.workflow, NO_OPEN_BROWSER_PORT, changed.reviewReply);
             assertEquals((await conversation(hosted.url)).events.at(-1)?.delta, "PRIVATE_PLAN_REPLY");
             assertEquals(changed.workflow.state, "awaiting_planning");
             assertEquals(changed.workflow.nextAction.feedback, undefined);
+            const instructions = await spawnAttachedCli("get_instructions", root, {
+                workflowId: workflow.workflowId,
+                actionId: changed.workflow.nextAction.actionId,
+            });
+            assert(instructions.result.ok && "context" in instructions.result);
+            assertStringIncludes(JSON.stringify(instructions.result.context), "Use a selector");
+            assertEquals((await readRecordBytes(root, workflow.workflowId)).includes("PRIVATE_PLAN"), false);
             assertEquals(changed.workflow.review?.outcome, undefined);
             const plan = await loadPlan(root, "dark-mode-toggle");
             assert(plan);
@@ -191,6 +236,7 @@ test("a Plan change from chat has no Feedback and opens the next round on the sa
             await conversation(next.url);
             assertEquals((await conversation(next.url)).events, []);
             assertEquals((await readRecordBytes(root, workflow.workflowId)).includes("PRIVATE_PLAN"), false);
+            assertEquals((await readRecordBytes(root, workflow.workflowId)).includes("Use a selector"), false);
             const late = await reply(root, submitted.workflow, { turnId: turn.turnId, text: "Late" });
             assert(!late.ok && late.rejection.code === "action_superseded");
             assertEquals(live.reviewRevision, 1);
