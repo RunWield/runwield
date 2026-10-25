@@ -4,19 +4,22 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
-    - "scripts/compile.js"
-    - "scripts/release-assets.js"
-    - "scripts/release-check.js"
-    - "src/cmd/install/"
-    - "src/cmd/update/"
+    - "src/cmd/remote/index.ts"
+    - "src/shared/remote/release-artifact.ts"
+    - "src/shared/remote/runtime.js"
+    - "src/shared/remote/target.ts"
+    - "src/shared/remote/supervisor.ts"
+    - "src/shared/remote/sftp-mount.ts"
+    - "packaging/remote/tested-dependencies.json"
+    - "scripts/check-remote-ssh-package.ts"
+    - ".github/workflows/release.yml"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
-    - "docs/adr/015-file-authoritative-session-bundles.md"
-    - "docs/domain-language.md"
+    - "docs/contributing.md"
+    - "docs/releasing.md"
 executionAgent: "engineer"
+collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T02:05:52.824Z"
-status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 11
@@ -33,34 +36,112 @@ dependencies:
     - "10-open-remote-reviews-in-the-local-browser"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
+status: "in_progress"
 ---
 
-# Package and Qualify Remote SSH Support
+# Package the Remote Runtime for Released Builds
 
 ## Context
 
-The preceding children establish behavior, but RunWield cannot claim remote SSH support until released builds contain
-matching Linux x64 and ARM64 runtimes, compatible SSHFS helpers and broad-access notices, and full journey and failure
-evidence on the advertised matrix. Prototype success on one host, synthetic filesystem tests, or a killed tunnel are not
-sufficient release evidence.
+A released `wld remote` must work on a clean Linux server that has only system packages. Today it does not:
 
-This slice closes the Remote SSH proposal into the lasting Core PRD, verifies ADR and glossary consistency, and retires
-the transient PRD only after delivered and unresolved requirements have durable owners.
+- Remote startup requires `cymbal` and `ketch` on the server `PATH`. When they are missing, the error tells the user to
+  run the personal installer, which the Epic forbids. The `sct` pilot passed only because both were already installed
+  in `/usr/local/bin`.
+- A released launcher downloads its full Linux archive from GitHub on **every** connection
+  (`downloadReleaseRuntime` in `src/shared/remote/release-artifact.ts`), even when the server cache is valid. A
+  reconnect fails when GitHub is unreachable.
+- A missing `sshfs`, `fusermount3`, or `/dev/fuse` is found only after the runtime is transferred and started
+  (`mountLaptopHome` in `src/shared/remote/sftp-mount.ts`). The error names the missing item but not the fix.
+- No release check runs the real release archive over SSH. ARM64 has never been exercised end to end.
+
+These parts already work and stay as they are:
+
+- `resolveRemoteTarget` reads the server OS and CPU before any download, and `linuxTarget` refuses other systems.
+- Released launchers verify the archive checksum and the build, protocol, version, and target identity.
+- `prepareRemoteRuntime` installs atomically into `~/.cache/runwield/runtime/<buildId>/<triple>/<sha256>/wld` under a
+  lock, reuses verified entries, repairs abandoned stages, and never touches shell profiles.
+- The review UI and Session-save Worker are compiled into the binary.
+
+**Owning requirements.** The change delivers part of
+[Remote connection and setup → Prepare RunWield automatically](../../prd/remote-ssh-prd.md#remote-connection-and-setup)
+and changes [Core Installation and updates](../../prd/runwield-core-prd.md#installation-and-updates) and
+[Core Remote connection → Prepare a matching development runtime](../../prd/runwield-core-prd.md#remote-connection).
+The remote host prerequisites change: `cymbal` and `ketch` no longer need to be on the server `PATH`.
+
+### Decisions from planning
+
+- **Laptop download and cache (owner, 2026-10-25).** On the first connection, the laptop downloads the Linux `wld`
+  archive and the pinned helper archives for the server's CPU, verifies them, and caches them on the laptop. Later
+  connections use the cache. The server needs no internet access.
+- **Check the server first (owner, 2026-10-25).** The launcher identifies the server OS, CPU, and prerequisites before
+  it downloads or transfers anything. A macOS server fails at that point with a clear message. Remote macOS servers
+  stay out of scope, as the Epic states.
+- **SSHFS is a server package (owner, 2026-10-25).** RunWield does not ship `sshfs`. The server installs `sshfs` and
+  `fuse3` from its own packages; RunWield names the install command for the server's distribution. Non-root FUSE
+  mounts need the system's setuid `fusermount3` either way, and not shipping `sshfs` avoids a GPL source obligation.
+- **Release gate on GitHub (owner, 2026-10-25).** The release workflow runs the real release archive over SSH on the
+  existing x64 and ARM64 Linux runners. This is the ARM64 support evidence.
+
+### Epic Scope Changes
+
+This child previously also held the host-match prompt and the release qualification. The prompt moved to
+`12-confirm-a-partly-matching-remote-host`. The live journey, failure matrix, and transient-PRD retirement moved to
+`13-qualify-remote-ssh-and-retire-the-proposal`.
 
 ## Objective
 
-Ship a non-destructive, verified remote runtime package for the supported matrix and prove the complete remote delivery,
-review, disconnect, and reconnect journeys. Publish only support claims backed by actual stock components and built
-artifacts.
+A released launcher connects to a clean, supported Linux server that has `python3`, `sshfs`, and `fuse3` installed.
+It supplies the RunWield runtime and its required helpers privately, works again without GitHub after the first
+connection, and gives an actionable error before any download when the server cannot run it. Every release proves
+this on x64 and ARM64 before publication.
 
 ## Approach
 
-Extend existing compile, release-asset, private-helper, checksum, licensing, and release-check machinery. Qualify the
-exact artifacts users receive on clean supported targets. Run one combined acceptance matrix that crosses all child
-boundaries, then consolidate lasting requirements and remove the transient proposal according to project policy.
+The launcher gains two steps before runtime preparation: a prerequisite verdict from the existing resolver, and a
+laptop cache that supplies the runtime archive and helper archives.
 
-Do not treat the ordinary personal installer as the remote bootstrap; profile mutation and unpinned dependency selection
-violate the architecture.
+```diff
+ runRemoteCommand (src/cmd/remote/index.ts)
+   resolveRemoteTarget            # also reports os-release and sshfs/fusermount3//dev/fuse
++  assertRemoteHostReady          # OS, CPU, prerequisites; distro install command
+-  downloadReleaseRuntime         # every connection
++  obtainReleaseRuntime           # laptop cache, download on miss
++  obtainRemoteHelpers            # pinned cymbal/ketch, laptop cache, download on miss
+   prepareRemoteRuntime           # existing two-phase transfer and remote cache
++  prepareRemoteHelpers           # same transfer protocol, private helper cache
+   ssh … exec wld --remote-supervisor
++    supervisor prepends private helper dirs to PATH, then starts the view
+```
+
+**One owner for helper identity.** `packaging/remote/tested-dependencies.json` pins each helper per Linux CPU: version,
+upstream URL, archive SHA-256, license, and the binary name. One module reads it and owns both the laptop cache path
+and the remote helper path. The launcher uses that module to transfer helpers; the remote supervisor uses the same
+module to find them. No other module knows the layout.
+
+**One code path for the runtime archive.** The laptop cache stores the archive and its `.sha256` file exactly as
+published. On a hit, the launcher verifies them as it does after a download, then runs the existing
+`extractReleaseRuntime`. On a miss, it downloads and writes both files atomically to the cache. The release gate puts
+the candidate archive into this cache; it needs no URL override or test seam.
+
+**Laptop cache location.** `<home>/.cache/runwield/remote/`, resolved through `getHomeDir()` on macOS and Linux. It
+stays outside `~/.wld`, so the personal mount does not expose large binaries to the server.
+
+**The release gate.** `scripts/check-remote-ssh-package.ts` runs in the Linux legs of `native-package-check`. The
+runner is both laptop and server: it installs `openssh-server`, `sshfs`, and `fuse3`, starts `sshd` on loopback, and
+writes a disposable HOME with an SSH alias. It seeds the laptop cache with the candidate archive, connects the release
+launcher in a PTY (as `verify-remote-reviews.ts` does), and runs one synthetic-provider turn that reads a remote-only
+sentinel. Then it exits and checks cleanup.
+
+> [!TIP]
+> **Why the gate costs little wall time**
+>
+> `native-package-check` already runs in parallel with `homebrew-check` (30-minute limit) and the CI shards. A few
+> extra minutes on the Linux legs should not lengthen the release. Without the gate, the release-only path (archive
+> extraction, laptop cache, ARM64 helper pins, ARM64 SSHFS and supervisor) would first run on a user's machine.
+
+Set aside: shipping helpers inside the ordinary Linux release archive. That would change every shell install and
+duplicate what `install.sh` already does for local installs.
 
 ## Expected Change Surface
 
@@ -69,84 +150,139 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `scripts/compile.js`, `scripts/release-assets.js`, release checks, and helper packaging — produce verified matching
-  remote runtimes and compatible dependency assets for Linux x64 and ARM64.
-- Installer/update/runtime preparation modules — install only private versioned remote cache resources and repair
-  interrupted setup without changing profiles or personal storage.
-- Release metadata, licenses, and source notices — describe shipped OpenSSH/SSHFS/FUSE-related dependencies and verified
-  compatibility limits.
-- `docs/prd/runwield-core-prd.md` and affected references — own the lasting delivered requirements, acceptance
-  scenarios, verified matrix, and deferred limits.
-- `docs/prd/remote-ssh-prd.md`, ADR-015, ADR-018, and `docs/domain-language.md` — consolidate accepted truth, fix
-  references, and retire the transient PRD when no requirement is orphaned.
+- `src/shared/remote/target.ts` — the fixed resolver also reports `/etc/os-release` `ID`/`ID_LIKE` and whether `sshfs`,
+  `fusermount3`, and a `/dev/fuse` character device are present.
+- New host-prerequisite module under `src/shared/remote/` — the readiness verdict and per-distribution install command.
+  `sftp-mount.ts` keeps its mount-time checks as the mount owner's invariant guard, and reuses this module's wording.
+- `src/shared/remote/runtime.js` — `linuxTarget` messages name the supported systems.
+- `src/shared/remote/release-artifact.ts` — the laptop runtime cache replaces per-connection download.
+- New helper module under `src/shared/remote/` and `packaging/remote/tested-dependencies.json` — pinned helpers, the
+  laptop helper cache, and the remote helper path.
+- `src/shared/remote/runtime.js` (`PREPARE_SOURCE`, `prepareRemoteRuntime`) — the transfer protocol also installs a
+  helper into its private versioned path, with checksum and `--help` preflight.
+- `src/shared/remote/supervisor.ts` — verifies private helpers and prepends their directories to `PATH` before the
+  remote view starts.
+- `src/cmd/remote/index.ts` — the new launcher order.
+- `scripts/check-remote-ssh-package.ts` and `.github/workflows/release.yml` — the SSH release gate on both Linux legs.
+- `docs/prd/runwield-core-prd.md`, `docs/prd/remote-ssh-prd.md`, `docs/contributing.md`, `docs/releasing.md` — the
+  changed prerequisites, cache behavior, and release gate.
+
+`src/shared/runtime-preflight.ts` is deliberately unchanged. The remote supervisor verifies its helpers before the view
+starts, so general preflight needs no remote branch.
 
 ## Reuse Opportunities
 
-- Existing Linux x64/ARM64 compile and release-asset pipelines — add remote runtime composition rather than a separate
-  release system.
-- Existing private helper packaging, checksum verification, atomic install, license, and source-notice patterns.
-- Acceptance tests and live evidence from children 01–07 — combine them into release gates rather than replacing their
-  focused checks.
-- Core PRD capability ownership and transient-PRD retirement policy — preserve one lasting owner for each requirement.
+- `extractReleaseRuntime`, `verifyBuildArtifact`, and `sha256Bytes` — the archive and identity checks for cached bytes.
+- `prepareRemoteRuntime` and `PREPARE_SOURCE` — the two-phase transfer, lock, atomic replace, stage repair, and reuse.
+- `packaging/windows/tested-dependencies.json` and `scripts/package-windows.ts` — the pinned-helper manifest shape and
+  checksum check. Use the same helper versions unless a Linux asset is missing.
+- `install.sh` `helper_asset_name` — the upstream Linux asset names for `cymbal` and `ketch`.
+- The PTY helper and synthetic provider in `src/shared/remote/verify-remote-reviews.ts` — the gate's terminal driver.
+- `native-package-check` in `.github/workflows/release.yml` — the existing x64 and ARM64 runners and release bytes.
 
 ## Implementation Steps
 
-- Release builds publish matching Linux x64 and ARM64 remote runtimes with the compiled review UI, Core project tools,
-  protocol metadata, checksums, and all required license/source notices.
-- Required SSHFS and user-space helpers are pinned, verified, installed atomically in private versioned storage, and
-  selected without replacing system packages or attempting root escalation; unavailable FUSE prerequisites fail clearly.
-  The release qualifies the full laptop `~/.wld` mounted at a fresh private remote path, direct personal file edits,
-  remote project `.wld` ownership, and the synchronous laptop-owned Session-save bridge selected on 2026-10-06. It does
-  not package copied personal resources or a special resource synchronization service.
-- Development builds require a matching development artifact, and released launchers require the same release/protocol
-  identity; neither can silently downgrade or run an arbitrary remote PATH installation.
-- Interrupted setup, stale connection resources, and partial helper installs repair automatically without deleting
-  remote project edits, local Session history, or package-managed installations.
-- The supported matrix names only laptop systems, remote GNU/Linux architectures, personal-resource SFTP behavior, FUSE
-  prerequisites, Session-save Worker behavior, and Pi providers exercised by the release evidence; untested platforms
-  and CLI backends remain excluded or deferred.
-- The complete remote-only delivery journey passes with actual built artifacts: bootstrap, planning, local Plan Review,
-  isolated execution, validation, AI review and repair, Code Review where selected, confirmed publication, disconnect,
-  offline local history, reconnect, and saved continuation.
-- Failure qualification covers normal exit, Stop, browser close, transport kill, a blocked network path, launcher death,
-  personal-resource serving-owner death, Session-owner and Worker death, save-acknowledgement loss, storage stall,
-  interrupted setup, and loss during write, sync, rollover, commit, review, merge, and publication.
-- Lasting delivered and unresolved requirements, observable outcomes, and acceptance scenarios move into their Core
-  capability owners; references are fixed and the transient Remote SSH PRD is removed only when nothing is lost.
-- (Moved from child04.) When `wld remote` connects to a target whose host identity matches a saved remote project only
-  partly (for example, the same host key but a different alias, hostname, or user), the user confirms once whether it is
-  the same target. A confirmed match reuses the saved project identity and its Session history. A refusal keeps a
-  separate target. The choice is retained, and history is never merged without confirmation.
-- ADR-018 is accepted, ADR-015 matches the implemented writer extension, and the glossary defines only shipped
-  relationships and avoided aliases.
+- `resolveRemoteTarget` returns the server's `os-release` `ID` and `ID_LIKE` and the presence of `sshfs`,
+  `fusermount3`, and a `/dev/fuse` character device, in addition to its current fields. Existing callers compile
+  unchanged.
+- Before any laptop cache read, download, or transfer, `runRemoteCommand` refuses a server that is not Linux, a CPU other
+  than x86-64 or ARM64, or a Linux server that lacks `sshfs`, `fusermount3`, or `/dev/fuse`. A macOS server reports that
+  Remote SSH supports Linux x86-64 and ARM64 servers and that the target runs macOS.
+- A missing-prerequisite error lists every missing item and one install command for the distribution family: Fedora/RHEL
+  `sudo dnf install sshfs fuse3`, Debian/Ubuntu `sudo apt install sshfs fuse3`, Arch `sudo pacman -S sshfs fuse3`,
+  openSUSE `sudo zypper install sshfs fuse3`, and a generic package-manager sentence for any other distribution. A
+  resolver failure caused by a missing `python3` says that the server needs `python3`.
+- A released launcher with a verified archive and `.sha256` in `<home>/.cache/runwield/remote/` for its VERSION and the
+  server's CPU makes no network request for the runtime. On a miss, it downloads both files, verifies the checksum
+  line, writes both atomically to the cache, and then extracts. A cached archive that fails verification is deleted and
+  downloaded again once.
+- The laptop runtime cache keeps entries only for the current launcher VERSION. Entries for other versions are removed
+  after the current entry is verified.
+- `packaging/remote/tested-dependencies.json` pins `cymbal` and `ketch` for `linux-x64` and `linux-arm64`: version,
+  upstream URL, archive SHA-256, license, license URL, and binary name. One module under `src/shared/remote/` reads it
+  and is the only owner of the laptop helper cache path and the remote helper path.
+- The launcher supplies each pinned helper from the laptop cache, or downloads, verifies, and caches it on a miss. It
+  transfers the helper binary and its license file to `~/.cache/runwield/helpers/<name>/<version>/<triple>/<archive
+sha256>/` on the server through the existing preparation protocol. The server verifies the binary checksum, runs
+  `--help`, installs atomically, and reuses a valid entry without a second transfer. Development launchers use the same
+  helper path; only release launchers use the runtime cache.
+- With a warm laptop cache and a warm server cache, a connection completes with no request to GitHub. With a warm laptop
+  cache and an empty server cache, it transfers the runtime and both helpers and makes no request to GitHub.
+- The remote supervisor verifies that each pinned helper exists at its private path and prepends those directories to
+  `PATH` before it starts the remote view. A missing or damaged helper stops startup with a message to reconnect, which
+  repairs the private cache. Nothing changes the remote user's profile, system packages, or `/usr/local/bin`.
+- `scripts/check-remote-ssh-package.ts` runs on a Linux runner against a release archive directory and a VERSION. It
+  installs and starts a loopback `sshd`, seeds the laptop cache with the candidate archive, connects the extracted
+  release launcher in a PTY, and completes one synthetic-provider turn whose second model request contains a
+  remote-only sentinel. It then exits and fails unless no supervisor or view process and no `fuse.sshfs` mount remain,
+  the private helpers exist under the server cache, the laptop saved one Session, and no remote transcript exists.
+- `native-package-check` runs `scripts/check-remote-ssh-package.ts` on the `linux-x64` and `linux-arm64` legs. A failure
+  blocks the `release` job through the existing `needs` gate. The macOS legs are unchanged.
+- The Core PRD Installation and Remote connection sections, the Remote SSH PRD connection section, `docs/contributing.md`,
+  and `docs/releasing.md` state the new server prerequisites (`python3`, `sshfs`, `fuse3`, usable `/dev/fuse`, glibc
+  Linux x86-64 or ARM64, OpenSSH with TCP and Unix-socket forwarding). They also state the laptop and server caches,
+  that RunWield supplies `cymbal` and `ketch` privately, and the SSH release gate. They no longer say helpers must be on
+  the server `PATH`. The live platform matrix and the retirement of the Remote SSH PRD stay with child 13.
 
 ## Verification Plan
 
-- Automated: run artifact manifest, checksum, architecture, protocol-version, compiled-review-UI, helper-license,
-  interrupted-install, and release-upgrade checks against the actual candidate assets.
-- Automated: run `deno task doc-links:check`, `deno task seams:check`, `deno task ci`, and the full safe test suite with
-  `deno task test`; never invoke `deno test` directly.
-- Paired live matrix: on clean remote Linux x64 and ARM64 targets, use supported laptop builds and at least the verified
-  Pi provider matrix to perform the complete journey with a same-named laptop sentinel tree.
-- Paired failure matrix: test each listed failure against actual OpenSSH, stock SFTP, SSHFS, native Deno locks, built
-  runtime, review UI, and provider. Continuously probe competing writers and confirm unrelated processes survive.
-- Compatibility: test remote home outside Git, missing paths, missing FUSE permission, direct personal file edits, broad
-  SFTP notice, remote project overrides, missing custom Skill dependencies, unsupported models, alias changes, same-name
-  projects, worktrees, and reconnect after uncertain publication.
-- Documentation: verify Core owns every lasting requirement and scenario, all links resolve after transient PRD removal,
-  ADR statuses match implementation, and the glossary does not promote unverified support.
+**Automated, focused** (`bun scripts/run-tests.js <paths>`):
 
-## Edge Cases
+- Prerequisite verdict: a resolver result for Darwin, for `armv7l`, and for Fedora, Ubuntu, Arch, and an unknown
+  distribution with each prerequisite missing produces the exact refusal and install command. A test runs
+  `runRemoteCommand` against a fake `ssh` executable on `PATH` that reports macOS. It fails unless the command fails
+  before any cache directory is created or any download starts. The fake `ssh` is an external subprocess boundary, not
+  a new seam.
+- Laptop runtime cache: with a real archive built by the existing release-artifact test fixtures in a disposable HOME,
+  a cache hit verifies and extracts without network access. A corrupted cached archive is replaced. Another VERSION's
+  entry is removed. This test fails if the launcher still calls `downloadReleaseRuntime` on a hit.
+- Helper module: the manifest parses, has both CPUs for both helpers, and every entry has a 64-hex SHA-256. The laptop
+  path and remote path come from the same function. A cached helper archive with a wrong checksum is rejected.
+- Remote helper installation: run the preparation protocol's Python source locally against a disposable HOME, as the
+  existing `runtime.test.js` does. A first run installs the helper, and a second run reuses it without reading bytes.
+  An abandoned stage is repaired. A checksum mismatch leaves no installed file.
+- Supervisor `PATH`: a test starts the supervisor entry with a disposable HOME that contains the private helpers. It
+  fails unless the started view's environment has them first on `PATH`, and unless a missing helper stops startup with
+  the reconnect message.
 
-- One successful Fedora x64 run does not establish every GNU/Linux distribution or libc. Record the exact tested
-  baseline.
-- Strict per-entry laptop write/sync acknowledgements, native writer exclusion, sticky save faults,
-  duplicate/conflicting request reconciliation, and stale-operation refusal are Session-storage release gates on each
-  advertised build. SFTP/SSHFS qualification remains required for personal resources; Session history is not written
-  through that mount.
-- A killed SSH tunnel is not a real blocked-network-path test, and launcher death alone does not prove Session-owner
-  exclusion or sticky save-fault behavior.
-- SSHFS has maintenance risk. Keep Session ownership and bundle formats transport-independent enough that a later
-  transport can replace it without changing authority.
-- Release qualification can uncover an architectural mismatch. Return that decision for review rather than shipping an
-  unlocked, downgraded, or silently reduced fallback.
+**Release gate:** run `bun scripts/check-remote-ssh-package.ts` locally on a Linux x64 machine against archives made
+with `bun scripts/release-assets.js`. Then trigger the release workflow with `workflow_dispatch` on the Epic branch and
+confirm that both Linux `native-package-check` legs pass the SSH check. Record each leg's duration and the total
+release wall time compared with the previous run.
+
+**Manual (owner, macOS arm64 laptop → Fedora Server x64):**
+
+- Delete `~/.cache/runwield/remote/` on the laptop and `~/.cache/runwield/` on the server. Remove `/usr/local/bin/cymbal`
+  and `/usr/local/bin/ketch` from the server, or take them off `PATH`. Connect with a release-format launcher. Confirm
+  it downloads once, transfers the runtime and helpers, and opens the TUI.
+- Disconnect, block `github.com` on the laptop, and reconnect. Confirm the connection succeeds.
+- Temporarily uninstall `sshfs` on the server. Confirm the error appears before any transfer and shows
+  `sudo dnf install sshfs fuse3`.
+- `wld remote` to a macOS host over SSH, if one is available. Confirm the macOS refusal happens before any download.
+
+**Protected behavior:** development-bundle connections, build and protocol identity refusal, remote cache reuse and
+stage repair, `install.sh` helper installation for local installs, `runtime-preflight` messages for local and
+package-managed installs, and the existing `native-package-check` identity checks.
+
+**Expected to stop:** the per-connection GitHub download for a released launcher, and the requirement that `cymbal` and
+`ketch` be on the server `PATH` for remote startup.
+
+**Documents:** run `bun run doc-links:check`. Confirm the Core PRD and Remote SSH PRD no longer list helper `PATH`
+prerequisites and do not claim the live platform matrix that child 13 owns.
+
+## Edge Cases & Considerations
+
+- **GitHub runners without FUSE.** If a hosted runner cannot mount FUSE, the gate cannot prove the mount. Stop and
+  report; do not drop the mount from the check or mark it optional.
+- **Missing upstream Linux ARM64 helper asset.** If a pinned version lacks a Linux ARM64 asset, pick the nearest version
+  that has both, and record it. Do not ship an x64-only helper set.
+- **Server without internet.** This is supported by design: only the laptop downloads.
+- **Server cache growth.** Old `~/.cache/runwield/runtime/<buildId>` and helper entries stay on the server. Pruning
+  while another laptop version may still be connected needs a separate decision. It is out of scope here.
+- **`AllowStreamLocalForwarding no`.** Child 10 left a diagnostic to this child only if qualification found such
+  servers. None was found; no probe is added.
+- **Third-party notices for the RunWield archive itself** (for example the Bun runtime) are a general release question,
+  not remote-specific. They are out of scope.
+- **Assumption: `snip` is not delivered.** It is optional at runtime, so remote Sessions run without it unless the
+  server already has it.
+- **Assumption: laptop cache location** `<home>/.cache/runwield/remote/` on both macOS and Linux laptops.
