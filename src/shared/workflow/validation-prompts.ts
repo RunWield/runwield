@@ -27,11 +27,13 @@ export { getAgentDisplayName } from "../session/agents.js";
  * (rounds three and above).
  *
  * @param {"discovery" | "verify"} [mode]
+ * @param {string} [projectRoot]
  * @returns {Promise<import('../session/types.js').AgentDefinition>}
  */
-export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discovery") {
+export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discovery", projectRoot?: string) {
     return await loadSubAgentDefinition(SUBAGENTS.REVIEWER, {
         reviewerMode: mode,
+        projectRoot,
     });
 }
 

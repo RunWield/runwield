@@ -156,3 +156,44 @@ Manual verification steps for attached-mode-claude-feature-preview/06-publish-va
       appears in the Work Record.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/06-publish-validated-work-and-record-the-outcome" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session" -->
+
+## Answer review chat from the Claude session
+
+Manual verification steps for attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session
+
+- [ ] Open an Attached Plan review, ask a question in chat, and confirm Claude's reply appears without changing the Plan or closing the review.
+- [ ] Request a Plan change in chat; confirm the revised Plan opens a new review round on the same page.
+- [ ] Open an Attached code review, ask a question in chat, and confirm Claude's reply appears without changing the diff or closing the review.
+- [ ] Request a code change in chat; confirm the revised diff opens a new review round and requires a new approval decision.
+- [ ] Send a chat message, restart Claude while the message is queued, and confirm the restored review shows the message and reply.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview" -->
+
+## Prove and document the supported Claude Preview
+
+Manual verification steps for attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview
+
+- [ ] Review the committed acceptance evidence and confirm the guide and Compatibility Matrix claim only the versions and limits supported by that evidence; do not treat historical evidence as proof of the current source.
+- [ ] Open the published Claude Code guide and confirm it shows the Preview label, tested versions, marketplace install steps, MCP server disclosure, permission information, recovery, update, disable, and uninstall guidance.
+- [ ] Review the README and PRDs. Confirm they describe Claude Code Preview only and make no stable-support, other-host, or `/runwield:init` claims.
+- [ ] In Claude Code, confirm the marketplace install instructions and plugin command names are clear, and that compatibility notices or rejection guidance tell the user what to do.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/10-repair-integration-findings" -->
+
+## Repair integration findings
+
+Manual verification steps for attached-mode-claude-feature-preview/10-repair-integration-findings
+
+- [ ] Approve a Plan for later in Attached mode. Confirm it is Ready For Work and no execution starts; run `/runwield:implement` and confirm execution starts.
+- [ ] Open an Attached review, change the Plan review in Core, then submit the old Attached decision. Confirm the newer Core decision remains unchanged.
+- [ ] Create a publication merge conflict during Attached delivery. Confirm a Claude repair request appears in the publication root; resolve and stage the conflict, then confirm delivery completes with the resolved content.
+- [ ] Run `get_instructions`, `get_artifact`, and `get_pending_chat` with `wld attached`. Confirm each returns the expected content.
+- [ ] Unset `HOME` and run an Attached operation. Confirm it rejects with a message to set `HOME` and creates no files in the project.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/10-repair-integration-findings" -->

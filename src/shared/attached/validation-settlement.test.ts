@@ -9,13 +9,61 @@ import { runAttachedOperation } from "./coordinator.ts";
 import {
     loadAttachedWorkflowRecord,
     locateAttachedWorkflows,
+    settleAttachedValidationHolder,
     writeAttachedWorkflowRecord,
     type AttachedWorkflowRecord,
 } from "./record-store.ts";
 import { parseDiffFiles } from "../workflow/review-diff.ts";
 import { getLockHostname } from "../process-liveness.ts";
-import { type AttachedJsonObject, type AttachedWorkflowView } from "./operations.ts";
+import { pruneEntry } from "../worktree-registry.js";
+import { type AttachedJsonObject, type AttachedWorkflowView, type AttachedOperationResult } from "./operations.ts";
 import process from "node:process";
+
+for (const holderState of ["live", "unconfirmed", "dead", "settled"] as const) {
+    test(`Core-advance status reconciliation respects a ${holderState} validation holder`, async () => {
+        const fixture = await attachedValidationFixture({ attrs: { status: "verified" } });
+        try {
+            const location = locateAttachedWorkflows(fixture.root);
+            const loaded = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+            assert(loaded.status === "found");
+            await pruneEntry(fixture.root, fixture.id);
+            const token = crypto.randomUUID();
+            const claim: AttachedWorkflowRecord = {
+                ...loaded.record,
+                state: "validating",
+                revision: loaded.record.revision + 1,
+                validation: {
+                    coverage: [],
+                    operationId: "unaccepted-completion",
+                    holder: {
+                        token,
+                        pid: holderState === "dead" ? 2_147_483_647 : process.pid,
+                        hostname: holderState === "unconfirmed" ? `${getLockHostname()}-other` : getLockHostname(),
+                    },
+                },
+            };
+            assertEquals(
+                (await writeAttachedWorkflowRecord(location, claim, loaded.record.revision)).status,
+                "written",
+            );
+            if (holderState === "settled") await settleAttachedValidationHolder(location, token);
+            const status = await fixture.status();
+            const saved = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+            assert(saved.status === "found");
+            if (holderState === "live" || holderState === "unconfirmed") {
+                assertEquals(status.state, "validating");
+                assertEquals(status.revision, claim.revision);
+                assertEquals(saved.record, claim);
+            } else {
+                assertEquals(status.state, "closed");
+                assertEquals(status.closure?.reason, "plan_advanced_in_core");
+                assertEquals(saved.record.revision, claim.revision + 1);
+            }
+        } finally {
+            await fixture.close();
+        }
+    });
+}
 
 for (const outcome of ["correction", "repair", "reviewed"] as const) {
     test(`a durable reviewer claim recovers after Core advanced to ${outcome} and replays the original receipt`, async () => {
@@ -143,7 +191,7 @@ for (const operation of ["review_complete", "task_completed"] as const) {
                 );
             };
             for (let loss = 0; loss < 2; loss++) {
-                const pending: ReturnType<typeof runAttachedOperation> =
+                const pending: Promise<AttachedOperationResult> =
                     loss === 0
                         ? fixture.call(operation, started.workflow, payload, "original-outcome")
                         : recover("first-recovery");

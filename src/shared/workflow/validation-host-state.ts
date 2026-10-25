@@ -30,12 +30,19 @@ export function rejectHostResume(): never {
     throw new ValidationHostRejected();
 }
 
+type HostRepairOptions = {
+    cwd?: string;
+    nextPhase?: ValidationCheckpoint["nextPhase"];
+    expectedStatus?: string;
+};
+
 export async function requestHostRepair(
     args: ValidationLoopArgs,
     context: PhaseContext,
     prompt: string,
     repairKind: string,
     failureReason?: string,
+    options: HostRepairOptions = {},
 ): Promise<never> {
     const checkpoint = args.validationCheckpoint || args.triageMeta.validationCheckpoint;
     if (!checkpoint) throw new Error("Validation checkpoint is missing.");
@@ -45,14 +52,15 @@ export async function requestHostRepair(
         identity: { attemptId: checkpoint.attemptId, generation: checkpoint.generation, repairGeneration },
         repairGeneration,
         prompt,
-        cwd: context.executionCwd,
+        cwd: options.cwd ?? context.executionCwd,
         role: "reviewer-feedback-engineer",
     };
     const repairCheckpoint: ValidationCheckpoint = {
         ...checkpoint,
         state: "awaiting_repair",
-        nextPhase: "mechanical",
-        expectedStatus: "implemented",
+        nextPhase: options.nextPhase ?? "mechanical",
+        expectedStatus: options.expectedStatus ?? "implemented",
+        ...(repairKind === "publication" ? { publicationRepairs: (checkpoint.publicationRepairs || 0) + 1 } : {}),
         repairGeneration,
         repairKind,
         repairCompletedOperationId: undefined,
@@ -69,8 +77,8 @@ export async function requestHostRepair(
             args.triageMeta.status === "reviewed"
                 ? "reviewed"
                 : args.triageMeta.status === "implemented"
-                ? "implemented"
-                : "validated_ci",
+                  ? "implemented"
+                  : "validated_ci",
             failureReason,
             { validationCheckpoint: repairCheckpoint },
         );

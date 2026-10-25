@@ -1,4 +1,5 @@
 /** Host-neutral, read-only diff parsing and byte paging. */
+import { readTextPage } from "../text-page.ts";
 import type { ReviewDiffScope, ReviewDiffSpan } from "./review-inspection.ts";
 
 export type DiffChangeType = "added" | "deleted" | "modified" | "renamed" | "copied";
@@ -241,43 +242,7 @@ export function getFileDiff(entries: DiffFileEntry[], path: string, options: Dif
         return { found: false, message: `File "${path}" not found in diff. Use "list" to see available files.` };
     }
 
-    const offsetBytes = options.offsetBytes || 0;
-    const maxBytes = options.maxBytes || 64 * 1024;
-
-    if (offsetBytes >= entry.byteLength) {
-        return {
-            found: true,
-            entry,
-            content: "",
-            offsetBytes: entry.byteLength,
-            nextOffsetBytes: entry.byteLength,
-            truncated: false,
-            remainingBytes: 0,
-        };
-    }
-
-    const fullBytes = new TextEncoder().encode(entry.text);
-    let start = offsetBytes;
-    while (start > 0 && (fullBytes[start] & 0xc0) === 0x80) start -= 1;
-    let end = Math.min(fullBytes.byteLength, start + maxBytes);
-    while (end > start && end < fullBytes.byteLength && (fullBytes[end] & 0xc0) === 0x80) end -= 1;
-    if (end === start && end < fullBytes.byteLength) {
-        end = Math.min(fullBytes.byteLength, start + maxBytes);
-        while (end < fullBytes.byteLength && (fullBytes[end] & 0xc0) === 0x80) end += 1;
-    }
-    const sliced = fullBytes.slice(start, end);
-    const remainingBytes = Math.max(0, fullBytes.byteLength - end);
-    const truncated = remainingBytes > 0;
-
-    return {
-        found: true,
-        entry,
-        content: new TextDecoder().decode(sliced),
-        offsetBytes: start,
-        nextOffsetBytes: end,
-        truncated,
-        remainingBytes,
-    };
+    return { found: true, entry, ...readTextPage(entry.text, options) };
 }
 
 export function listDiffFiles(entries: DiffFileEntry[], maxInlineBytes = 64 * 1024): DiffFileSummary[] {

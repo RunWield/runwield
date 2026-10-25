@@ -5,7 +5,7 @@ import { EVIDENCE } from "./attached-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import {
     type AttachedJsonObject,
-    type AttachedOperationName,
+    type AttachedLifecycleOperationName,
     type AttachedOperationResult,
     type AttachedWorkflowView,
 } from "./operations.ts";
@@ -44,7 +44,7 @@ export async function attachedValidationFixture(options: HostFixtureOptions = {}
             return result.workflow;
         },
         async call(
-            operation: AttachedOperationName,
+            operation: AttachedLifecycleOperationName,
             workflow: AttachedWorkflowView,
             payload: AttachedJsonObject = {},
             operationId: string = crypto.randomUUID(),

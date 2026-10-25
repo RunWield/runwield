@@ -1,9 +1,9 @@
 {
     "name": "runwield-skills",
+    "version": "0.1.0",
     "description": "RunWield skills for planning, guidance, and code review.",
-    "skills": [
-        "./skills/guide",
-        "./skills/ideator",
-        "./skills/review"
-    ]
+    "author": {
+        "name": "Carlos Ravelo"
+    },
+    "skills": ["./skills/guide", "./skills/ideator", "./skills/review"]
 }

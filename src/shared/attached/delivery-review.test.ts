@@ -1,13 +1,17 @@
+import { writeFile } from "node:fs/promises";
+import { test } from "node:test";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
+import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
 import { listWorkRecords, writeWorkRecord } from "../work-records/store.js";
 
 for (const answer of ["open", "skip"]) {
-    Deno.test(`Attached ask code review honors ${answer}`, async () => {
+    test(`Attached ask code review honors ${answer}`, async () => {
         const fixture = await attachedValidationFixture({ attrs: { humanReviewMode: "ask" } });
         try {
             const offered = await toDelivery(fixture);
@@ -25,13 +29,13 @@ for (const answer of ["open", "skip"]) {
     });
 }
 
-Deno.test("Attached browser feedback preserves images for the Claude repair", async () => {
+test("Attached browser feedback preserves images for the Claude repair", async () => {
     const fixture = await attachedValidationFixture();
     try {
         const started = await toDelivery(fixture);
         assert(started.workflow.nextAction.kind === "code_review");
         const image = join(fixture.parent, "feedback.png");
-        await Deno.writeFile(
+        await writeFile(
             image,
             Uint8Array.from(
                 atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aHuoAAAAASUVORK5CYII="),
@@ -51,7 +55,7 @@ Deno.test("Attached browser feedback preserves images for the Claude repair", as
         const status = await fixture.status();
         assert(status.nextAction.kind === "validation" && status.nextAction.request.kind === "repair");
         assertStringIncludes(status.nextAction.request.prompt, image);
-        await Deno.writeTextFile(join(fixture.cwd, "implementation.ts"), "export const value = 3;\n");
+        await writeFile(join(fixture.cwd, "implementation.ts"), "export const value = 3;\n");
         const repaired = await fixture.call("task_completed", status, {
             actionId: status.nextAction.actionId,
             message: "- Applied the image reference.",
@@ -63,21 +67,67 @@ Deno.test("Attached browser feedback preserves images for the Claude repair", as
     }
 });
 
-Deno.test("Attached delivery leaves valid supersession proposals for wld wr supersede", async () => {
+test("Core code decisions return their own durable receipt and reject superseded actions without one", async () => {
+    const fixture = await attachedValidationFixture();
+    try {
+        const started = await toDelivery(fixture);
+        assert(started.workflow.nextAction.kind === "code_review");
+        const action = started.workflow.nextAction;
+        const rejected = () =>
+            applyAttachedCodeReviewDecision(fixture.root, fixture.workflowId, "another-action", { approved: true });
+        await assertRejects(rejected, Error, "round changed");
+        const receipt = await applyAttachedCodeReviewDecision(fixture.root, fixture.workflowId, action.actionId, {
+            approved: true,
+        });
+        assert(receipt);
+        assert(/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(receipt.operationId));
+        assertEquals(receipt.workflowId, fixture.workflowId);
+        assertEquals(receipt.actionId, action.actionId);
+        assertEquals(receipt.attemptId, action.request.identity.attemptId);
+        assertEquals(receipt.generation, action.request.identity.generation);
+        assertEquals(receipt.decisionKey, action.request.identity.key);
+        const location = locateAttachedWorkflows(fixture.root);
+        const saved = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+        assert(saved.status === "found");
+        const durable = saved.record.acceptedOperations[receipt.operationId].result;
+        assert(
+            durable.ok &&
+                durable.operation === "validation_decision" &&
+                durable.workflow.nextAction.kind === "recorder",
+        );
+        await assertRejects(
+            () =>
+                applyAttachedCodeReviewDecision(fixture.root, fixture.workflowId, action.actionId, { approved: true }),
+            Error,
+            "round changed",
+        );
+        const after = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+        assert(after.status === "found");
+        assertEquals(after.record.acceptedOperations, saved.record.acceptedOperations);
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("Attached delivery leaves valid supersession proposals for wld wr supersede", async () => {
     const fixture = await attachedValidationFixture({ attrs: { humanReviewMode: "none" } });
     try {
         const oldId = crypto.randomUUID();
-        await writeWorkRecord(fixture.cwd, {
-            kind: "work_record",
-            recordId: oldId,
-            status: "approved",
-            scope: "planned_change",
-            workKind: "FEATURE",
-            origin: "internal",
-            completionMode: "verified",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            provenance: { sourcePlans: [crypto.randomUUID()] },
-        }, "# Previous value\n\n## Summary\n\nThe old value was implemented.\n");
+        await writeWorkRecord(
+            fixture.cwd,
+            {
+                kind: "work_record",
+                recordId: oldId,
+                status: "approved",
+                scope: "planned_change",
+                workKind: "FEATURE",
+                origin: "internal",
+                completionMode: "verified",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                provenance: { sourcePlans: [crypto.randomUUID()] },
+            },
+            "# Previous value\n\n## Summary\n\nThe old value was implemented.\n",
+        );
         const started = await toDelivery(fixture);
         assert(started.workflow.nextAction.kind === "recorder");
         const completed = await fixture.call("work_record_completed", started.workflow, {
@@ -99,7 +149,7 @@ Deno.test("Attached delivery leaves valid supersession proposals for wld wr supe
     }
 });
 
-Deno.test("Attached code review cannot launch a Core Guided Review model turn", async () => {
+test("Attached code review cannot launch a Core Guided Review model turn", async () => {
     const fixture = await attachedValidationFixture();
     const token = crypto.randomUUID();
     const server = startReviewWorkspaceServer({
@@ -128,7 +178,7 @@ Deno.test("Attached code review cannot launch a Core Guided Review model turn", 
     }
 });
 
-Deno.test("closing the ask Code Review offer leaves a fresh choice on continuation", async () => {
+test("closing the ask Code Review offer leaves a fresh choice on continuation", async () => {
     const fixture = await attachedValidationFixture({ attrs: { humanReviewMode: "ask" } });
     try {
         const offered = await toDelivery(fixture);
