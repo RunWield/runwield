@@ -64,6 +64,7 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compactPlan.workflow.nextAction.kind, "review");
         assertEquals(compactPlan.workflow.revision, plan.revision);
         assertEquals(Object.keys(JSON.parse(JSON.stringify(planPoll.structuredContent))).sort(), [
+            "compatibility",
             "ok",
             "operation",
             "review",
@@ -91,7 +92,10 @@ test("MCP status is compact by default and workers fetch complete current instru
         );
         const chatArguments = { workflowId: plan.workflowId, actionId: plan.review.actionId };
         const pendingResponse = await client.callTool({ name: "get_pending_chat", arguments: chatArguments });
-        const pendingCli = await spawnAttachedCli("get_pending_chat", fixture.root, chatArguments);
+        const pendingCli = await spawnAttachedCli("get_pending_chat", fixture.root, {
+            ...chatArguments,
+            evidence: EVIDENCE,
+        });
         assertEquals(pendingCli.code, 0, pendingCli.stderr);
         assert(pendingCli.result.ok && "chat" in pendingCli.result);
         assertEquals(pendingCli.result.chat.message, "Pending parity question");
@@ -121,6 +125,7 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compact.workflow.nextAction.kind, "validation");
         assertEquals(compact.workflow.nextAction.chatPending, false);
         assertEquals(Object.keys(JSON.parse(JSON.stringify(compactResponse.structuredContent))).sort(), [
+            "compatibility",
             "ok",
             "operation",
             "workflow",
@@ -189,12 +194,15 @@ test("MCP status is compact by default and workers fetch complete current instru
                 artifactResponse,
             ],
         ] as const) {
-            const read = await spawnAttachedCli(operation, fixture.root, arguments_);
+            const read = await spawnAttachedCli(operation, fixture.root, { ...arguments_, evidence: EVIDENCE });
             assertEquals(read.code, 0, read.stderr);
             assertEquals(read.result, response.structuredContent);
             assertEquals(read.result.operation, operation);
         }
-        const cli = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
+        const cli = await spawnAttachedCli("status", fixture.root, {
+            workflowId: fixture.workflowId,
+            evidence: EVIDENCE,
+        });
         assert(cli.result.ok);
         assertEquals(cli.result, compactResponse.structuredContent);
         assertEquals("instructions" in cli.result, false);
@@ -370,7 +378,10 @@ test("MCP actions and status do not inline oversized review artifacts", async ()
             "default status inlined the Plan/diff payload",
         );
         assert(statusPayload.length < 12_000, `status returned ${statusPayload.length} serialized characters`);
-        const cliStatus = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
+        const cliStatus = await spawnAttachedCli("status", fixture.root, {
+            workflowId: fixture.workflowId,
+            evidence: EVIDENCE,
+        });
         assertEquals(cliStatus.result, status.structuredContent);
         assertEquals(JSON.stringify(cliStatus.result).includes(oversizedPlanMarker), false);
     } finally {

@@ -127,6 +127,7 @@ export function compactStatus(result: AttachedCarrierResult, review: { url: stri
     return {
         ok: result.ok,
         operation: "status" as const,
+        ...(result.ok && result.compatibility && { compatibility: result.compatibility }),
         ...(!result.ok && { rejection: result.rejection }),
         workflow: compactWorkflow(result.workflow),
         ...(review && { review }),

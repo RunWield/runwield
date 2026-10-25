@@ -212,7 +212,11 @@ export async function reconcileConsumedHostResume(projectRoot: string, planName:
         )
             return undefined;
     }
-    if (resume.kind === "task_completed" && checkpoint.lastSettledOperationId === resume.identity.repairGeneration) {
+    if (
+        resume.kind === "task_completed" &&
+        checkpoint.lastSettledOperationId === resume.identity.repairGeneration &&
+        !checkpoint.pendingHostDecision
+    ) {
         return undefined;
     }
     if (

@@ -16,6 +16,7 @@ import {
 } from "../workflow/state-transition.ts";
 import { findById, listEntries, updateEntry } from "../worktree-registry.js";
 import {
+    EVIDENCE,
     reachPlanning,
     readRecordBytes,
     runOperation,
@@ -172,6 +173,7 @@ test("status retains the pending implementation action and resolves frontend rol
         assert(status.ok && status.workflow.nextAction.kind === "implementation");
         assertEquals(status.instructions, undefined);
         const content = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: root,
             workflowId: ready.workflowId,
             actionId: status.workflow.nextAction.actionId,

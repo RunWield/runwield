@@ -10,8 +10,9 @@ import {
     isAttachedReadOperation,
     type AttachedLifecycleOperationName,
 } from "./operations.ts";
-import { locateAttachedWorkflows, loadAttachedWorkflowRecord } from "./record-store.ts";
+import { locateAttachedWorkflows, loadAttachedWorkflowRecord, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { activateInput, EVIDENCE, runOperation, withProject } from "./attached-test-fixture.ts";
+import { compactStatus } from "./presentation.ts";
 import { assessCompatibility } from "./compatibility.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 
@@ -138,6 +139,68 @@ for (const refusal of [
         evidence: { ...EVIDENCE, hostVersion: "2.1.302" },
     },
 ]) {
+    for (const name of ["get_instructions", "get_artifact", "get_pending_chat"] as const) {
+        test(`${name} rejects ${refusal.reason} without returning content or changing the record`, async () => {
+            await withProject(async (root) => {
+                const activated = await runOperation("activate", root, activateInput());
+                assert(activated.ok && activated.workflow.nextAction.kind === "triage");
+                const location = locateAttachedWorkflows(root);
+                const path = join(location.workflowsDir, `${activated.workflow.workflowId}.json`);
+                const before = await readFile(path, "utf8");
+                const result = await runOperation(name, root, {
+                    workflowId: activated.workflow.workflowId,
+                    actionId: activated.workflow.nextAction.actionId,
+                    evidence: refusal.evidence,
+                    ...(name === "get_artifact" && { artifact: "prompt" }),
+                });
+                assert(!result.ok);
+                assertEquals(result.rejection.code, refusal.code);
+                for (const key of ["instructions", "context", "content", "chat", "request"]) {
+                    assertEquals(key in result, false);
+                }
+                assertEquals(await readFile(path, "utf8"), before);
+            });
+        });
+    }
+    test(`status reports ${refusal.reason} without continuing a reviewed workflow`, async () => {
+        const fixture = await attachedValidationFixture({ attrs: { status: "reviewed" } });
+        try {
+            const location = locateAttachedWorkflows(fixture.root);
+            const loaded = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+            assert(loaded.status === "found");
+            assertEquals(
+                (
+                    await writeAttachedWorkflowRecord(
+                        location,
+                        {
+                            ...loaded.record,
+                            state: "reviewed",
+                            revision: loaded.record.revision + 1,
+                        },
+                        loaded.record.revision,
+                    )
+                ).status,
+                "written",
+            );
+            const path = join(location.workflowsDir, `${fixture.workflowId}.json`);
+            const before = await readFile(path, "utf8");
+            const count = await fixture.ciCount();
+            const result = await runOperation("status", fixture.root, {
+                workflowId: fixture.workflowId,
+                evidence: refusal.evidence,
+            });
+            assert(result.ok, JSON.stringify(result));
+            assertEquals(result.compatibility?.status, refusal.code);
+            const compact = compactStatus(result, null);
+            assert("compatibility" in compact);
+            assertEquals(compact.compatibility, result.compatibility);
+            assertEquals(result.workflow.revision, loaded.record.revision + 1);
+            assertEquals(await fixture.ciCount(), count);
+            assertEquals(await readFile(path, "utf8"), before);
+        } finally {
+            await fixture.close();
+        }
+    });
     for (const operation of ATTACHED_OPERATIONS.filter((entry) => entry.inputSchema.required.includes("evidence"))) {
         if (isAttachedReadOperation(operation.name)) continue;
         const name = operation.name;
@@ -186,3 +249,45 @@ test("compatibility checks host identity before adapter and version support", ()
         "compatible",
     );
 });
+
+for (const hostVersion of ["2.1.303", "999.0.0", "not-reported", undefined]) {
+    test(`reviewed status continues with ${hostVersion ?? "saved activation"} evidence`, async () => {
+        const fixture = await attachedValidationFixture();
+        try {
+            const location = locateAttachedWorkflows(fixture.root);
+            const loaded = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+            assert(loaded.status === "found");
+            assertEquals(
+                (
+                    await writeAttachedWorkflowRecord(
+                        location,
+                        {
+                            ...loaded.record,
+                            state: "reviewed",
+                            revision: loaded.record.revision + 1,
+                        },
+                        loaded.record.revision,
+                    )
+                ).status,
+                "written",
+            );
+            const evidence = hostVersion ? { ...EVIDENCE, hostVersion } : undefined;
+            const result = await runOperation("status", fixture.root, {
+                workflowId: fixture.workflowId,
+                ...(evidence && { evidence }),
+            });
+            assert(result.ok, JSON.stringify(result));
+            assertEquals(result.compatibility, evidence ? assessCompatibility(evidence) : undefined);
+            assertEquals(await fixture.ciCount(), 1);
+            const after = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+            assert(after.status === "found");
+            const receipts = Object.values(after.record.acceptedOperations).filter(
+                (entry) => entry.result.operation === "start_validation",
+            );
+            assertEquals(receipts.length, 1);
+            assertEquals(receipts[0].evidence.hostVersion, hostVersion ?? EVIDENCE.hostVersion);
+        } finally {
+            await fixture.close();
+        }
+    });
+}

@@ -595,10 +595,14 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 - When host or Core processes stop, saved Plans and work remain available for useful continuation or explicit retry.
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.
+- **Saved planning context:** Given process loss before Triage or planning completes, `/runwield:plan-review` restores
+  the pending action. `get_instructions` returns the saved explicit request and, for the Planner, the saved Triage
+  outcome. A new conversation does not need the old conversation's text.
 - **Saved delivery recovery:** Given process loss during Code Review, recording, artifact sealing, publication, or
   cleanup, a fresh Claude conversation uses `status` and `/runwield:validate` to resume from shared durable evidence.
   Accepted sections and decisions are not repeated. Plans, work, Work Records, and recovery evidence remain available;
-  uncertain publication is reconciled before retry.
+  uncertain publication is reconciled before retry. If Core settled a repair completion into a CI decision but the
+  final Attached write was lost, recovery shows the same saved decision without running CI again.
 - **Interrupted checks:** Given a running Core validation command, closing Claude stops the owned command process tree
   and MCP process. A fresh `/runwield:validate` runs the checks again; the stopped run records no CI failure, repair
   attempt, or user pause.
@@ -622,7 +626,10 @@ targets.
 Core checks every evidence-carrying operation before dispatch. A host other than Claude Code rejects with
 `unsupported_host`. An incompatible adapter contract or host below the tested floor also rejects without changing the
 workflow, Plan, or worktree. Newer or unreported host versions continue with a visible notice, not a tested-support
-claim. Status remains readable with a stale adapter for recovery.
+claim. Current-action instruction, artifact, and pending-chat reads require current host evidence and reject under
+these same rules without returning work content. Claude's MCP server supplies evidence on every operation. Status
+remains readable with a stale adapter for recovery, reports the current assessment when evidence is supplied, and does
+not continue validation for a rejected host.
 
 **Requirement: Disclose tested host support and limitations.**
 
@@ -664,6 +671,9 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 - Given a non-Claude host with a tested version number and supported adapter contract, activation rejects with
   `unsupported_host` before changing any workflow, Plan, or worktree. Status remains readable for recovery.
+- Given a saved action and a rejected current host or adapter, instruction, artifact, and pending-chat reads return
+  the compatibility rejection and no work content. Status returns the current assessment without continuing validation
+  or changing the workflow revision.
 - When a user chooses an adapter, its guide shows tested versions, Preview/stable availability, permission requirements,
   and unsupported interactions before they depend on them.
 - When compatibility is presented, role instructions such as the Planner's Plan-only writes are not described as hard

@@ -118,6 +118,7 @@ test("a queued Plan chat survives fresh Core processes and browser rehosting", a
             assertEquals(fresh.code, 0);
             assert(fresh.result.ok && fresh.result.workflow.review);
             const chat = await readAttachedAction({
+                evidence: EVIDENCE,
                 projectRoot: root,
                 workflowId: workflow.workflowId,
                 actionId: fresh.result.workflow.review.actionId,
@@ -202,6 +203,7 @@ test("a Plan change from chat has no Feedback and opens the next round on the sa
             assertEquals(changed.workflow.state, "awaiting_planning");
             assertEquals(changed.workflow.nextAction.feedback, undefined);
             const instructions = await spawnAttachedCli("get_instructions", root, {
+                evidence: EVIDENCE,
                 workflowId: workflow.workflowId,
                 actionId: changed.workflow.nextAction.actionId,
             });

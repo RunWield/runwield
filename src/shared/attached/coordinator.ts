@@ -114,7 +114,7 @@ import { sameHostIdentity, ValidationHostRejected } from "../workflow/validation
 import { readReviewDiff } from "../workflow/review-diff.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
-import { assessCompatibility } from "./compatibility.ts";
+import { assessCompatibility, isBlockingCompatibility } from "./compatibility.ts";
 import { parseHostEvidence } from "./operations.ts";
 
 import process from "node:process";
@@ -1561,6 +1561,15 @@ export async function readStatus(
         return await rejected("status", rejection("workflow_not_found", "No Attached Workflow has this workflowId."));
     }
     const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
+    const compatibility = envelope.evidence ? assessCompatibility(envelope.evidence) : undefined;
+    if (compatibility && isBlockingCompatibility(compatibility)) {
+        return {
+            ok: true,
+            operation: "status",
+            compatibility,
+            workflow: await projectedViewOf(loaded.record, recovery),
+        };
+    }
     if (!recovery && loaded.record.state === "reviewed") {
         const continued = await runValidationOperation(
             "start_validation",
@@ -1569,12 +1578,12 @@ export async function readStatus(
                 workflowId: loaded.record.workflowId,
                 expectedRevision: loaded.record.revision,
                 operationId: crypto.randomUUID(),
-                evidence: loaded.record.evidence,
+                evidence: envelope.evidence || loaded.record.evidence,
                 payload: {},
             },
             options,
         );
-        return { ...continued, operation: "status" };
+        return { ...continued, operation: "status", ...(continued.ok && compatibility && { compatibility }) };
     }
     const projected = recovery ? loaded.record : await reconcilePlanPosition(loaded.record);
     if (projected.closure?.reason === "delivered" && loaded.record.state !== "closed") {
@@ -1596,7 +1605,7 @@ export async function readStatus(
         const settled = await commit(location, operation, loaded.record.revision, decision, async (winner) => ({
             result: { ok: true, operation: "status", workflow: await viewOf(winner) },
         }));
-        return { ...settled, operation: "status" };
+        return { ...settled, operation: "status", ...(settled.ok && compatibility && { compatibility }) };
     }
     if (
         projected !== loaded.record &&
@@ -1611,9 +1620,19 @@ export async function readStatus(
         const written = await writeAttachedWorkflowRecord(location, next, loaded.record.revision);
         if (written.status !== "written")
             return await rejected("status", rejection("revision_conflict", "The workflow changed. Retry status."));
-        return { ok: true, operation: "status", workflow: await projectedViewOf(next) };
+        return {
+            ok: true,
+            operation: "status",
+            ...(compatibility && { compatibility }),
+            workflow: await projectedViewOf(next),
+        };
     }
-    return { ok: true, operation: "status", workflow: await projectedViewOf(projected, recovery) };
+    return {
+        ok: true,
+        operation: "status",
+        ...(compatibility && { compatibility }),
+        workflow: await projectedViewOf(projected, recovery),
+    };
 }
 
 async function runParsedOperation(
@@ -1763,11 +1782,7 @@ export async function runAttachedOperation(
         const parsed = parseHostEvidence(input);
         if (!parsed.ok) return await rejected(name, parsed.rejection);
         const compatibility = assessCompatibility(parsed.envelope);
-        if (
-            compatibility.status === "unsupported_host" ||
-            compatibility.status === "incompatible_adapter" ||
-            compatibility.status === "unsupported_host_version"
-        ) {
+        if (isBlockingCompatibility(compatibility)) {
             return await rejected(name, rejection(compatibility.status, compatibility.message));
         }
         const result = await runParsedOperation(name, projectRoot, input, options);
@@ -1778,6 +1793,10 @@ export async function runAttachedOperation(
 
 /** Retrieve only the current action's host instructions, decision, or oldest queued chat turn. */
 export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
+    const compatibility = assessCompatibility(envelope.evidence);
+    if (isBlockingCompatibility(compatibility)) {
+        return { ok: false as const, rejection: rejection(compatibility.status, compatibility.message) };
+    }
     const current = await readStatus(envelope);
     if (!current.ok) return { ok: false as const, rejection: current.rejection };
     const workflow = current.workflow;
@@ -1849,12 +1868,29 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
             rejection: rejection("invalid_input", "The current action has no host instructions or decision prompt."),
         };
     }
+    let planningContext;
+    if (action.kind === "triage" || action.kind === "plan") {
+        const loaded = await loadAttachedWorkflowRecord(
+            locateAttachedWorkflows(envelope.projectRoot),
+            workflow.workflowId,
+        );
+        if (loaded.status !== "found" || loaded.record.revision !== workflow.revision) {
+            return {
+                ok: false as const,
+                rejection: rejection("action_superseded", "The action changed. Read compact status."),
+            };
+        }
+        planningContext = {
+            requestText: loaded.record.request.text,
+            ...(action.kind === "plan" && { triageOutcome: loaded.record.triageOutcome }),
+        };
+    }
     return {
         ok: true as const,
         ...identity,
         instructions: resolved.instructions,
         ...((action.kind === "triage" || action.kind === "plan" || action.kind === "implementation") && {
-            context: action,
+            context: { ...action, ...planningContext },
         }),
     };
 }

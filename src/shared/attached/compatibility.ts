@@ -133,3 +133,14 @@ export function assessCompatibility(evidence: HostEvidence): CompatibilityAssess
         message: `Claude Code ${evidence.hostVersion} and adapter contract ${evidence.adapterContract} are tested with Core.`,
     };
 }
+
+interface BlockingCompatibilityAssessment extends CompatibilityAssessment {
+    status: "unsupported_host" | "incompatible_adapter" | "unsupported_host_version";
+}
+
+/** Blocking assessments allow diagnostic status only, not host work or continuation. */
+export function isBlockingCompatibility(
+    assessment: CompatibilityAssessment,
+): assessment is BlockingCompatibilityAssessment {
+    return ["unsupported_host", "incompatible_adapter", "unsupported_host_version"].includes(assessment.status);
+}

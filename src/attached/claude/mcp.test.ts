@@ -25,6 +25,7 @@ import {
     type AttachedLifecycleOperationName,
     type AttachedOperationResult,
 } from "../../shared/attached/operations.ts";
+import type { AttachedReadResult } from "../../shared/attached/coordinator.ts";
 import { type AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
 
 import process from "node:process";
@@ -292,3 +293,57 @@ for (const adapterContract of [undefined, 0, 1])
             }
         },
     );
+
+for (const hostVersion of [EVIDENCE.hostVersion, "2.1.302"]) {
+    test(`MCP supplies current host ${hostVersion} evidence on action reads and diagnostic status`, async () => {
+        const root = await projectFixture.checkout({ prefix: "runwield-attached-mcp-read-" });
+        const transport = new StdioClientTransport({
+            command: process.execPath,
+            args: runtimeSourceArgs([
+                "run",
+                "-A",
+                "--quiet",
+                "--no-check",
+                "--config",
+                DENO_CONFIG_PATH,
+                CLI_PATH,
+                "attached",
+                "mcp",
+            ]),
+            cwd: root,
+            env: Object.fromEntries(
+                Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+            stderr: "pipe",
+        });
+        const client = new Client({ name: "claude-code", version: hostVersion });
+        try {
+            const activated = await spawnAttachedCli("activate", root, activateInput());
+            const ids = pendingTriage(activated.result);
+            const before = await readRecordBytes(root, ids.workflowId);
+            await client.connect(transport);
+            const response = await client.callTool({ name: "get_instructions", arguments: ids });
+            const read: AttachedReadResult = JSON.parse(JSON.stringify(response.structuredContent));
+            if (hostVersion === EVIDENCE.hostVersion) {
+                assert(read.ok && "instructions" in read);
+                assertEquals(read.instructions.role, "router");
+            } else {
+                assert(!read.ok);
+                assertEquals(read.rejection.code, "unsupported_host_version");
+                assertEquals("instructions" in read, false);
+            }
+            const status = await client.callTool({ name: "status", arguments: { workflowId: ids.workflowId } });
+            const result: AttachedOperationResult = JSON.parse(JSON.stringify(status.structuredContent));
+            assert(result.ok);
+            assertEquals(
+                result.compatibility?.status,
+                hostVersion === EVIDENCE.hostVersion ? "compatible" : "unsupported_host_version",
+            );
+            assertEquals(await readRecordBytes(root, ids.workflowId), before);
+        } finally {
+            await client.close().catch(() => undefined);
+            await transport.close().catch(() => undefined);
+            await fsRm(root, { recursive: true });
+        }
+    });
+}

@@ -40,6 +40,7 @@ export type AttachedReadOperationName = "get_instructions" | "get_artifact" | "g
 export type AttachedLifecycleOperationName = Exclude<AttachedOperationName, AttachedReadOperationName>;
 
 export interface AttachedActionReadEnvelope extends StatusEnvelope {
+    evidence: HostEvidence;
     actionId: string;
     content: "instructions" | "chat" | "prompt" | "execution_report" | "repair_report";
     offsetBytes?: number;
@@ -156,6 +157,7 @@ export type TriageReportEnvelope = WorkflowOperationEnvelope<TriageReportPayload
 export type PlanWrittenEnvelope = WorkflowOperationEnvelope<PlanWrittenPayload>;
 
 export interface StatusEnvelope {
+    evidence?: HostEvidence;
     projectRoot: string;
     workflowId?: string;
 }
@@ -581,15 +583,16 @@ export function parseReviewReplyInput(projectRoot: string, input: AttachedJsonVa
 
 export function parseStatusInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): StatusEnvelope => {
-        const object = readObject(input, "", ["workflowId"]);
+        const object = readObject(input, "", ["workflowId", "evidence"]);
         return {
             projectRoot,
             ...(object.workflowId !== undefined && { workflowId: readIdentifier(object, "workflowId", "workflowId") }),
+            ...(object.evidence !== undefined && { evidence: readEvidence(object) }),
         };
     });
 }
 
-/** Read operations share one strict, evidence-free envelope across carriers. */
+/** Read operations share one strict, evidence-carrying envelope across carriers. */
 export function parseAttachedActionReadInput(
     name: AttachedReadOperationName,
     projectRoot: string,
@@ -597,6 +600,7 @@ export function parseAttachedActionReadInput(
 ) {
     const parsed = parse(input, (): AttachedActionReadEnvelope => {
         const keys = [
+            "evidence",
             "workflowId",
             "actionId",
             ...(name === "get_artifact" ? ["artifact", "offsetBytes", "maxBytes"] : []),
@@ -627,6 +631,7 @@ export function parseAttachedActionReadInput(
             workflowId: readIdentifier(object, "workflowId", "workflowId"),
             actionId: readIdentifier(object, "actionId", "actionId"),
             content,
+            evidence: readEvidence(object),
             ...(typeof object.offsetBytes === "number" && { offsetBytes: object.offsetBytes }),
             ...(typeof object.maxBytes === "number" && { maxBytes: object.maxBytes }),
         };
@@ -757,7 +762,7 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
             type: "object",
             additionalProperties: false,
             required: [],
-            properties: { workflowId: IDENTIFIER_SCHEMA },
+            properties: { workflowId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA },
         },
     },
     {
@@ -1128,8 +1133,8 @@ ATTACHED_OPERATIONS.push(
         inputSchema: {
             type: "object",
             additionalProperties: false,
-            required: ["workflowId", "actionId"],
-            properties: { workflowId: IDENTIFIER_SCHEMA, actionId: IDENTIFIER_SCHEMA },
+            required: ["workflowId", "actionId", "evidence"],
+            properties: { workflowId: IDENTIFIER_SCHEMA, actionId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA },
         },
     },
     {
@@ -1139,10 +1144,11 @@ ATTACHED_OPERATIONS.push(
         inputSchema: {
             type: "object",
             additionalProperties: false,
-            required: ["workflowId", "actionId", "artifact"],
+            required: ["workflowId", "actionId", "artifact", "evidence"],
             properties: {
                 workflowId: IDENTIFIER_SCHEMA,
                 actionId: IDENTIFIER_SCHEMA,
+                evidence: EVIDENCE_SCHEMA,
                 artifact: { type: "string", enum: ["prompt", "execution_report", "repair_report"] },
                 offsetBytes: { type: "integer", minimum: 0 },
                 maxBytes: { type: "integer", minimum: 4, maximum: 65536 },
@@ -1155,8 +1161,8 @@ ATTACHED_OPERATIONS.push(
         inputSchema: {
             type: "object",
             additionalProperties: false,
-            required: ["workflowId", "actionId"],
-            properties: { workflowId: IDENTIFIER_SCHEMA, actionId: IDENTIFIER_SCHEMA },
+            required: ["workflowId", "actionId", "evidence"],
+            properties: { workflowId: IDENTIFIER_SCHEMA, actionId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA },
         },
     },
 );
