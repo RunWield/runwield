@@ -27,6 +27,7 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
     sameHostIdentity,
     ValidationHostRejected,
+    ValidationHostShutdown,
     ValidationHostWait,
     type ValidationHostResume,
 } from "./validation-host-contract.ts";
@@ -605,6 +606,7 @@ async function continueValidationAttempt(
         await settleValidation(args, claim.checkpoint, result, claim.planCwd);
         return result;
     } catch (error) {
+        if (error instanceof ValidationHostShutdown) throw error;
         const failure = error instanceof Error ? error : new Error(String(error));
         if (error instanceof ValidationAlreadyRunningError) {
             const message = validationUserMessage("already_running");

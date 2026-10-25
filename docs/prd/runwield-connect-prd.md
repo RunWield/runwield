@@ -303,8 +303,9 @@ newer Core decision cannot be overwritten by a stale Attached round.
 
 Both Attached review pages offer chat. Compact status reports chat presence; an explicit current-action read returns
 the oldest queued message and its selections. Claude answers with `review_reply`; a question changes no Plan status, validation gate, or review decision. A
-Plan change ends the round without recording Feedback and requests a revised Plan. The next submission opens a new
-round on the same page. Only structured browser decisions approve or reject.
+Plan change ends the round without recording Feedback and requests a revised Plan. The pending Planner action keeps
+Claude's short change summary across process restarts until the revised Plan is submitted. The next submission opens a
+new round on the same page. Only structured browser decisions approve or reject.
 
 **Acceptance scenario: Ask this session on both review pages.**
 
@@ -314,15 +315,18 @@ and page restore: the new page shows the saved user message, resumes waiting, an
 submission. Stale, answered, closed-round, and out-of-order replies cannot change the workflow. A Plan change opens
 the next Plan revision on the same page; a code change runs a fresh host repair and re-verification before the new diff
 opens. Approval, Feedback, and further chat use the displayed revision without reopening the page. Earlier diff approval
-does not carry over. Core starts no model turn for chat.
+does not carry over. A Plan change survives a fresh process as a pending Planner action with its change summary.
+Retrying `review_reply` with the same operation ID returns the saved result without another effect, even with the old
+revision. Core starts no model turn for chat.
 
 **Requirement: Return saved Code Review decisions for the current diff.**
 
 - The project's `codeReview` setting keeps its Core meaning: `none` skips the page, `ask` offers it, and `always`
   requires it. The MCP server hosts the shared `/review/code` page and saves the pending wait with its diff identity.
 - Approval is structured and bound to the current candidate diff hash. A changed candidate rejects stale approval.
-- Browser Feedback becomes a `human_feedback` action for a fresh Claude repair worker. Core reruns configured
-  re-verification before opening a new Code Review round. Core starts no model turn for that repair.
+- Send Annotations records structured browser Feedback, not a chat turn. Browser Feedback becomes a `human_feedback`
+  action for a fresh Claude repair worker. Core reruns configured re-verification before opening a new Code Review
+  round. Core starts no model turn for that repair.
 - Code Review chat is answered by the coordinating Claude session. A question leaves the review open. A code change
   uses a Claude-written change summary in the shared `human_feedback` repair path, then re-verification and a new
   diff-bound review. Chat prose cannot approve code or replace a structured decision.
@@ -490,7 +494,9 @@ headless evidence is linked under [Preview Acceptance](#preview-acceptance).
 Raw review messages, selections, and replies live only on the open Attached review round, including across restart.
 Closure removes them, including from operation receipts. They never enter the Plan validation checkpoint, Work Record,
 memory index, telemetry, or publication evidence. A code change stores only Claude's short change summary in repair and
-delivery evidence. A Plan change records no Feedback text; the revised Plan is the durable result.
+delivery evidence. A Plan change records no Feedback. It keeps only Claude's short change summary on the pending
+Planner action until the revised Plan is submitted, then removes it from the action and operation receipts. The revised
+Plan is the durable result.
 
 **Requirement: Use a fresh Claude Recorder with canonical artifacts only.**
 
@@ -562,6 +568,8 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 - A persistent local service may be added later for performance or cross-client continuity, but it is not part of the
   acquisition prerequisite.
 
+- Closing Claude stops running Core checks. The next resume runs interrupted checks again without recording a failure
+  for the stopped run.
 - Process loss must preserve Plans, implementation work, completed results, and useful recovery evidence.
 - RunWield must distinguish safe continuation from uncertain external side effects.
 - Recovery first reconciles partial effects from available evidence. RunWield automatically repairs its own locks,
@@ -586,6 +594,9 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
   cleanup, a fresh Claude conversation uses `status` and `/runwield:validate` to resume from shared durable evidence.
   Accepted sections and decisions are not repeated. Plans, work, Work Records, and recovery evidence remain available;
   uncertain publication is reconciled before retry.
+- **Interrupted checks:** Given a running Core validation command, closing Claude stops the owned command process tree
+  and MCP process. A fresh `/runwield:validate` runs the checks again; the stopped run records no CI failure, repair
+  attempt, or user pause.
 - **Interruption is not abandonment:** Given failed publication, retry limits, turn cancellation, or host quota loss,
   the workflow remains resumable. Closing Claude or the review page does not abandon delivery or delete retained work.
 - When an interrupted command may already have changed external state, recovery reconciles available evidence and asks

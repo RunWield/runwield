@@ -97,8 +97,9 @@ existing `.wld` directory or `AGENTS.md`. `/runwield:init` is not provided.
    inspection coverage and candidate freshness; the coordinating conversation cannot waive those checks.
 5. If a validation command is missing, Claude shows Core's exact question. If your request or approved Plan supplies
    the command, it shows that source and the answer. Otherwise, it asks you. It must not guess a command silently.
-6. Review the code when Core requests it. Feedback starts repair and validation, then opens the changed diff for a new
-   decision. Chat alone cannot approve or reject a Plan or diff.
+6. Review the code when Core requests it. **Send Annotations** sends structured Feedback. Feedback starts repair and
+   validation, then opens the changed diff for a new decision. Use chat to discuss annotations or request changes;
+   chat alone cannot approve or reject a Plan or diff.
 7. Core confirms delivery and reports the Work Record outcome. Implementation completion alone is not Verified.
    If publication has a repairable conflict, Core asks a fresh Claude worker to resolve and stage files in the
    publication directory. Core then completes publication without repeating passed checks or recording.
@@ -133,8 +134,9 @@ Use these commands in the same project, including from a new Claude Code convers
 
 Do not start another `/runwield:request` to resume the same work. Core loads its saved action and revision. A review
 page hosted by the old Claude process stops when that process closes; the resume command hosts the pending review
-again. Work already accepted by Core remains recorded. A stale action, changed diff, or process interruption cannot
-supply a new approval or duplicate an accepted outcome.
+again. Closing Claude also stops running Core checks. `/runwield:validate` runs interrupted checks again without
+recording a failure for the stopped run. Work already accepted by Core remains recorded. A stale action, changed diff,
+or process interruption cannot supply a new approval or duplicate an accepted outcome.
 
 ## Update and version messages
 

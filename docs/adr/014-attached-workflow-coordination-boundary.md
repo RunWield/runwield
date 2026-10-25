@@ -100,7 +100,9 @@ preserve existing Native and Managed behavior and is a hard prerequisite for Att
   reference rather than duplicate Plan Status, Plan Events, worktree registry state, or validation evidence.
 - Attached Review Rounds persist identity and the actual reviewed revision before opening Plannotator. A browser
   decision applies through Core and commits its Attached outcome before acknowledgment. The MCP process hosts the
-  surface, reuses its page across rounds, and stops it when the host transport closes. `status` rehosts a pending round
+  surface, reuses its page across rounds, and stops it when the host transport closes. Transport close also cancels
+  running Core checks and waits up to 10 seconds for in-flight operations before process exit. Interrupted checks keep
+  their resumable checkpoint and record no CI failure; a fresh process runs them again. `status` rehosts a pending round
   after process loss or returns its saved outcome; `/runwield:plan-review` can find the project's most recent open
   workflow in a fresh host conversation. No host transcript enters the payload or record. Core's local
   `waitForDecision()` promise remains a waiter, not Attached review authority.
