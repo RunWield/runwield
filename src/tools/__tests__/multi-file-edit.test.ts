@@ -4,18 +4,38 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { match as assertMatch, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { join } from "node:path";
-import { createMultiFileEditTool } from "../multi_file_edit.ts";
+import { createMultiFileEditTool, type MultiFileEditParams } from "../multi_file_edit.ts";
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} tool
- * @param {unknown} params
- * @returns {Promise<{ content: Array<{ type: string, text?: string }>, details?: { diff?: string, firstChangedLine?: number }, isError?: boolean }>}
- */
-async function executeMultiFileEdit(tool, params) {
-    const execute =
-        /** @type {(id: string, params: unknown, signal: AbortSignal, onUpdate: () => void, ctx: object) => Promise<any>} */ (tool
-            .execute);
-    return await execute("multi-file-edit-call-1", params, new AbortController().signal, () => {}, {});
+type MultiFileEditTool = ReturnType<typeof createMultiFileEditTool>;
+
+type MultiFileEditContext = Parameters<MultiFileEditTool["execute"]>[4];
+type NativeExecutionResult = Awaited<ReturnType<MultiFileEditTool["execute"]>>;
+
+interface MultiFileEditExecutionResult extends NativeExecutionResult {
+    isError?: boolean;
+}
+
+interface ToolContentProjection {
+    type: string;
+    text?: string;
+}
+
+interface MalformedEditArguments {
+    edits: Partial<MultiFileEditParams["edits"][number]>[];
+}
+
+async function executeMultiFileEdit(
+    tool: MultiFileEditTool,
+    params: MultiFileEditParams,
+): Promise<MultiFileEditExecutionResult> {
+    const execute = tool.execute;
+    return await execute(
+        "multi-file-edit-call-1",
+        params,
+        new AbortController().signal,
+        () => {},
+        {} as MultiFileEditContext,
+    );
 }
 
 test("multi_file_edit exposes distinct multi-file schema", () => {
@@ -25,7 +45,7 @@ test("multi_file_edit exposes distinct multi-file schema", () => {
     assertEquals(tool.label, "multi_file_edit");
     assertMatch(tool.description, /one or more files/i);
 
-    const properties = /** @type {{ properties: Record<string, any> }} */ (tool.parameters).properties;
+    const properties = tool.parameters.properties;
     assertEquals(Object.keys(properties), ["root", "edits"]);
     assertEquals(properties.edits.minItems, 1);
 
@@ -48,7 +68,7 @@ test("multi_file_edit applies replacements across multiple files", async () => {
         ],
     });
 
-    const text = result.content.map((c) => c.text || "").join("");
+    const text = result.content.map((c: ToolContentProjection) => c.text || "").join("");
     assertMatch(text, /2 replacements across 2 files/i);
     assertEquals(result.isError, undefined);
     assertEquals(await fsReadFile(firstPath, "utf8"), "alpha\nBETA\ngamma\n");
@@ -70,7 +90,7 @@ test("multi_file_edit applies same-file replacements against original content", 
         ],
     });
 
-    const text = result.content.map((c) => c.text || "").join("");
+    const text = result.content.map((c: ToolContentProjection) => c.text || "").join("");
     assertMatch(text, /2 replacements across 1 file/i);
     assertEquals(await fsReadFile(filePath, "utf8"), "FIRST\nsecond\nTHIRD\n");
 
@@ -107,7 +127,7 @@ test("multi_file_edit prepareArguments leaves malformed calls for schema validat
     const malformedPrepared = tool.prepareArguments?.({
         path: "legacy.txt",
         edits: [{ oldText: "a" }],
-    });
+    }) as MalformedEditArguments;
     assertEquals(malformedPrepared?.edits[0].path, "legacy.txt");
     assertEquals(malformedPrepared?.edits[0].oldText, "a");
     assertStrictEquals(malformedPrepared?.edits[0].newText, undefined);
