@@ -72,7 +72,7 @@ No external tickets identified. No Work Records superseded. Plan scope is docume
 
 - Pair reviews the rendered `## Usage` section in `docs/user-documentation/settings.md`.
 - Verify the paragraph mentions: same Project, same date range, host time zone, and coverage notices.
-- Click “Pair your browser” and confirm it navigates to the
+- Click “Pair your browser” (target `workspace.md#pair-your-browser`) and confirm it opens the
   [Workspace browser-pairing section](../user-documentation/workspace.md#pair-your-browser).
 - Confirm no other content in settings.md has been modified.
 
