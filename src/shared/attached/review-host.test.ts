@@ -23,7 +23,7 @@ test("the production decision route acknowledges only a committed Attached outco
             assertEquals(unauthorized.status, 404);
             await unauthorized.text();
             const conversation = await fetch(new URL(`/api/review/conversation${url.search}`, url));
-            assertEquals(conversation.status, 404);
+            assertEquals(conversation.status, 200);
             await conversation.text();
             const oldPlan = await loadPlan(root, "dark-mode-toggle");
             assert(oldPlan);
@@ -146,6 +146,15 @@ test("the production stale-review response preserves the pending durable round",
             assertEquals(page.status, 200);
             assertStringIncludes(await page.text(), "Delete the toggle.");
             assertEquals((await (await fetch(new URL(`/api/review/revision${url.search}`, url))).json()).revision, 1);
+            for (let poll = 0; poll < 3; poll++) {
+                const status = await runOperation("status", root, { workflowId: workflow.workflowId });
+                assert(status.ok);
+                await ensureReviewHosted(root, status.workflow, NO_OPEN_BROWSER_PORT);
+                assertEquals(
+                    (await (await fetch(new URL(`/api/review/revision${url.search}`, url))).json()).revision,
+                    1,
+                );
+            }
             const accepted = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({

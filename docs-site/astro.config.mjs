@@ -9,74 +9,76 @@ export default defineConfig({
     site: "https://docs.runwield.dev",
     outDir: "../dist/docs",
     integrations: [
-        withAwaitedSearchWrites(starlight({
-            title: "RunWield Docs",
-            description: "Install, use, and configure RunWield.",
-            logo: { src: "./src/assets/logo.svg" },
-            social: [
-                {
-                    icon: "github",
-                    label: "GitHub",
-                    href: "https://github.com/gandazgul/runwield",
-                },
-            ],
-            customCss: ["./src/styles/runwield.css"],
-            components: { Head: "./src/components/Head.astro" },
-            editLink: {
-                baseUrl: "https://github.com/gandazgul/runwield/edit/docs/stable/docs/",
-            },
-            head: [
-                { tag: "meta", attrs: { name: "theme-color", content: "#0b1020" } },
-                {
-                    tag: "link",
-                    attrs: { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
-                },
-            ],
-            sidebar: [
-                { label: "Home", link: "/" },
-                {
-                    label: "RunWield.dev",
-                    link: "https://runwield.dev",
-                    attrs: {
-                        class: "external-link",
-                        "aria-label": "RunWield.dev (external link)",
+        withAwaitedSearchWrites(
+            starlight({
+                title: "RunWield Docs",
+                description: "Install, use, and configure RunWield.",
+                logo: { src: "./src/assets/logo.svg" },
+                social: [
+                    {
+                        icon: "github",
+                        label: "GitHub",
+                        href: "https://github.com/gandazgul/runwield",
                     },
+                ],
+                customCss: ["./src/styles/runwield.css"],
+                components: { Head: "./src/components/Head.astro" },
+                editLink: {
+                    baseUrl: "https://github.com/gandazgul/runwield/edit/docs/stable/docs/",
                 },
-                { label: "Start", items: ["quickstart", "workspace"] },
-                {
-                    label: "Use RunWield",
-                    items: ["usage", "workflows", "sessions", "collaboration"],
-                },
-                {
-                    label: "Configure",
-                    items: ["providers", "settings", "customization", "themes", "mcp"],
-                },
-                { label: "Help", items: ["troubleshooting"] },
-                {
-                    label: "Contributing",
-                    collapsed: true,
-                    items: [
-                        "contributing",
-                        "contributing/plan-lifecycle",
-                        "contributing/validation-authority",
-                        {
-                            label: "Product requirements",
-                            items: [
-                                "contributing/prd/runwield",
-                                "contributing/prd/runwield-core-prd",
-                                "contributing/prd/runwield-workspace-prd",
-                                "contributing/prd/runwield-connect-prd",
-                                "contributing/prd/runwield-acp-protocol-prd",
-                            ],
+                head: [
+                    { tag: "meta", attrs: { name: "theme-color", content: "#0b1020" } },
+                    {
+                        tag: "link",
+                        attrs: { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+                    },
+                ],
+                sidebar: [
+                    { label: "Home", link: "/" },
+                    {
+                        label: "RunWield.dev",
+                        link: "https://runwield.dev",
+                        attrs: {
+                            class: "external-link",
+                            "aria-label": "RunWield.dev (external link)",
                         },
-                    ],
-                },
-                {
-                    label: preview ? "Preview documentation" : `Stable ${release.version}`,
-                    link: release.releaseUrl,
-                },
-            ],
-        })),
+                    },
+                    { label: "Start", items: ["quickstart", "workspace", "connect-claude-code"] },
+                    {
+                        label: "Use RunWield",
+                        items: ["usage", "workflows", "sessions", "collaboration"],
+                    },
+                    {
+                        label: "Configure",
+                        items: ["providers", "settings", "customization", "themes", "mcp"],
+                    },
+                    { label: "Help", items: ["troubleshooting"] },
+                    {
+                        label: "Contributing",
+                        collapsed: true,
+                        items: [
+                            "contributing",
+                            "contributing/plan-lifecycle",
+                            "contributing/validation-authority",
+                            {
+                                label: "Product requirements",
+                                items: [
+                                    "contributing/prd/runwield",
+                                    "contributing/prd/runwield-core-prd",
+                                    "contributing/prd/runwield-workspace-prd",
+                                    "contributing/prd/runwield-connect-prd",
+                                    "contributing/prd/runwield-acp-protocol-prd",
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        label: preview ? "Preview documentation" : `Stable ${release.version}`,
+                        link: release.releaseUrl,
+                    },
+                ],
+            }),
+        ),
     ],
 });
 

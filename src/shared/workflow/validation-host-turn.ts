@@ -18,6 +18,7 @@ export type ContinueHostTurnValidationArgs = {
     projectRoot: string;
     planName: string;
     resume?: ValidationHostResume;
+    signal?: AbortSignal;
 };
 export type {
     HostTurnValidationResult,
@@ -154,7 +155,7 @@ export async function continueHostTurnValidation(
             },
             workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
             supportsSemanticRepairHandoff: true,
-            hostTurn: { resume: args.resume },
+            hostTurn: { resume: args.resume, signal: args.signal },
         }),
     });
     if (result.kind === "host_request" && result.hostRequest) {

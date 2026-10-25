@@ -10,18 +10,14 @@ import {
     stat as fsStat,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import {
-    getHomeDir,
-    getRunWieldRuntimeDir,
-    PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-    RUNWIELD_DIR_NAME,
-} from "../../constants.js";
+import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
+    type AttachedReviewChat,
     type AttachedExecution,
     type AttachedOperationName,
     type AttachedOperationResult,
@@ -41,8 +37,8 @@ import process from "node:process";
  *
  * A record describes one host request, like a Session, so it lives in the user's home
  * keyed by the primary checkout root, not in Project Runtime State. Reading or writing
- * a record never touches the repository. With no home directory, records fall back to
- * the primary checkout's internal runtime directory, as worktrees do.
+ * a record never touches the repository. Without a home directory, Attached operations
+ * reject and ask the user to set HOME. There is no repository fallback.
  *
  * Every write holds a per-workflow lock file, checks the expected revision, and
  * replaces the file atomically. A lock left by a dead process is reclaimed.
@@ -87,8 +83,8 @@ export interface AttachedWorkflowRecord {
 export interface AttachedWorkflowLocation {
     projectRoot: string;
     workflowsDir: string;
-    /** `~/.wld/attached`, absent when records fall back into the project. */
-    homeBaseDir: string | null;
+    /** `~/.wld/attached`. A home directory is required. */
+    homeBaseDir: string;
 }
 
 export type LoadedAttachedWorkflow =
@@ -109,20 +105,9 @@ function canonicalPath(path: string): string {
 }
 
 export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLocation {
-    const primaryRoot = canonicalPath(resolvePrimaryCheckoutRoot(canonicalPath(projectRoot)));
     const homeDir = getHomeDir();
-    if (!homeDir) {
-        return {
-            projectRoot: primaryRoot,
-            workflowsDir: join(
-                getRunWieldRuntimeDir(primaryRoot),
-                PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-                ATTACHED_DIR_NAME,
-                WORKFLOWS_DIR_NAME,
-            ),
-            homeBaseDir: null,
-        };
-    }
+    if (!homeDir) throw new Error("home_unavailable: Set HOME to use Attached workflows.");
+    const primaryRoot = canonicalPath(resolvePrimaryCheckoutRoot(canonicalPath(projectRoot)));
     const homeBaseDir = join(homeDir, RUNWIELD_DIR_NAME, ATTACHED_DIR_NAME);
     return {
         projectRoot: primaryRoot,
@@ -155,7 +140,6 @@ async function findMovedRecord(
     location: AttachedWorkflowLocation,
     workflowId: string,
 ): Promise<AttachedWorkflowRecord | null> {
-    if (!location.homeBaseDir) return null;
     let entries: Dirent[];
     try {
         entries = await Array.fromAsync(await fsReaddir(location.homeBaseDir, { withFileTypes: true }));
@@ -264,8 +248,46 @@ async function removeAbandonedTemporaryFiles(path: string): Promise<void> {
     }
 }
 
+/** Receipts are durable workflow snapshots, never a second home for review text. */
+export function withoutAttachedChat(result: AttachedOperationResult): AttachedOperationResult {
+    const clean = structuredClone(result);
+    if (clean.ok) delete clean.reviewReply;
+    if (clean.workflow) {
+        if (clean.workflow.review) delete clean.workflow.review.chat;
+        const action = clean.workflow.nextAction;
+        if (action.kind === "review" || action.kind === "code_review") delete action.chat;
+    }
+    return clean;
+}
+
+/** Apply privacy on every write, including external Core reconciliation and recovery. */
+export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkflowRecord {
+    const clean = structuredClone(record);
+    if (clean.review && (clean.state !== "awaiting_review" || clean.review.status !== "pending"))
+        delete clean.review.chat;
+    if (
+        clean.validation &&
+        (clean.state !== "validating" ||
+            clean.validation.resume ||
+            clean.validation.request?.kind !== "decision" ||
+            clean.validation.request.interaction.type !== "code_review")
+    )
+        delete clean.validation.chat;
+    for (const receipt of Object.values(clean.acceptedOperations)) {
+        receipt.result = withoutAttachedChat(receipt.result);
+        const action = receipt.result.workflow?.nextAction;
+        if (
+            receipt.result.operation === "review_reply" &&
+            action?.kind === "plan" &&
+            action.actionId !== clean.pendingAction?.actionId
+        )
+            delete action.note;
+    }
+    return clean;
+}
+
 function atomicWrite(path: string, record: AttachedWorkflowRecord): void {
-    writeJsonAtomically(path, record);
+    writeJsonAtomically(path, scrubAttachedChat(record));
 }
 
 /**
@@ -321,6 +343,7 @@ export async function transactAttachedWorkflowRecord<Result>(
 
 /** Carrier checkpoint only. The shared validation checkpoint owns all gate policy. */
 export interface AttachedValidationCheckpoint {
+    chat?: AttachedReviewChat;
     actionId?: string;
     request?: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
     coverage: import("../workflow/review-inspection.ts").ReviewDiffSpan[];

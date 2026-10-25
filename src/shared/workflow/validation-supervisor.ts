@@ -27,6 +27,7 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
     sameHostIdentity,
     ValidationHostRejected,
+    ValidationHostShutdown,
     ValidationHostWait,
     type ValidationHostResume,
 } from "./validation-host-contract.ts";
@@ -271,19 +272,20 @@ export async function recordValidationRepairCompletion(args: ValidationRepairCom
             attemptId: checkpoint.attemptId,
             generation: checkpoint.generation,
             status: plan.attrs.status,
-            phase: "mechanical",
+            phase: checkpoint.repairKind === "publication" ? checkpoint.nextPhase : "mechanical",
             state: "ready",
             repairKind: checkpoint.repairKind,
             repairGeneration: checkpoint.repairGeneration,
             repairCompletedOperationId: args.repairGeneration,
             lastSettledOperationId: checkpoint.lastSettledOperationId,
-            reviewState: reviewState
-                ? {
-                      ...reviewState,
-                      reviewLedger: claimReviewFixes(reviewState.reviewLedger),
-                      lastRepairReport: args.report,
-                  }
-                : undefined,
+            reviewState:
+                reviewState && checkpoint.repairKind !== "publication"
+                    ? {
+                          ...reviewState,
+                          reviewLedger: claimReviewFixes(reviewState.reviewLedger),
+                          lastRepairReport: args.report,
+                      }
+                    : reviewState,
         });
         try {
             await updatePlanFrontMatter(
@@ -604,6 +606,7 @@ async function continueValidationAttempt(
         await settleValidation(args, claim.checkpoint, result, claim.planCwd);
         return result;
     } catch (error) {
+        if (error instanceof ValidationHostShutdown) throw error;
         const failure = error instanceof Error ? error : new Error(String(error));
         if (error instanceof ValidationAlreadyRunningError) {
             const message = validationUserMessage("already_running");

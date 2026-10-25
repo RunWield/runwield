@@ -56,9 +56,10 @@ loss recoverable from artifacts rather than process memory.
 
 Store each Attached Workflow Record in the user's home, at
 `~/.wld/attached/<encoded primary checkout root>/workflows/<workflowId>.json`. The key uses the same encoding as
-Sessions and execution worktrees, so every linked worktree of a repository finds the same records. When no home
-directory exists, records fall back to the primary checkout's internal runtime directory, as worktrees do. The record
-keeps the canonical primary checkout root as binding evidence. When the key and that root disagree, for example after
+Sessions and execution worktrees, so every linked worktree of a repository finds the same records. Without a home
+directory, Attached operations reject with `home_unavailable` and ask the user to set `HOME`. They write nothing to the
+repository. Temporary storage is not used because records must survive process loss and restart. The record keeps the
+canonical primary checkout root as binding evidence. When the key and that root disagree, for example after
 the project folder moves, the coordinator reports a recovery case and never matches the record to another project.
 
 Attached Workflow Records are not Project Runtime State under ADR-017. Like a Session, a record describes one host
@@ -71,7 +72,7 @@ together with Sessions.
 
 Provide MCP as a thin protocol adapter over the same coordinator operation surface for model-facing structured tools.
 The MCP adapter may translate framing and schemas but must not contain Plan Lifecycle, validation, worktree, or recovery
-logic.
+logic. Every MCP operation, including instruction, artifact, and pending-chat reads, is also a `wld attached` operation.
 
 Deliver role instructions at run time. Each coordinator response that hands a role to the host carries that role's
 current instructions, resolved from the project, home, and bundled agent definitions in the same order Core Sessions
@@ -99,7 +100,9 @@ preserve existing Native and Managed behavior and is a hard prerequisite for Att
   reference rather than duplicate Plan Status, Plan Events, worktree registry state, or validation evidence.
 - Attached Review Rounds persist identity and the actual reviewed revision before opening Plannotator. A browser
   decision applies through Core and commits its Attached outcome before acknowledgment. The MCP process hosts the
-  surface, reuses its page across rounds, and stops it when the host transport closes. `status` rehosts a pending round
+  surface, reuses its page across rounds, and stops it when the host transport closes. Transport close also cancels
+  running Core checks and waits up to 10 seconds for in-flight operations before process exit. Interrupted checks keep
+  their resumable checkpoint and record no CI failure; a fresh process runs them again. `status` rehosts a pending round
   after process loss or returns its saved outcome; `/runwield:plan-review` can find the project's most recent open
   workflow in a fresh host conversation. No host transcript enters the payload or record. Core's local
   `waitForDecision()` promise remains a waiter, not Attached review authority.

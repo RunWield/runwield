@@ -6,8 +6,14 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { savePlan } from "../../plan-store.js";
-import { runAttachedOperation } from "./coordinator.ts";
-import { type AttachedJsonObject, type AttachedOperationName, type AttachedOperationResult } from "./operations.ts";
+import { type AttachedReadResult, type AttachedCarrierResult, runAttachedOperation } from "./coordinator.ts";
+import {
+    type AttachedJsonObject,
+    type AttachedOperationName,
+    type AttachedOperationResult,
+    type AttachedReadOperationName,
+    type AttachedLifecycleOperationName,
+} from "./operations.ts";
 import { locateAttachedWorkflows } from "./record-store.ts";
 import process from "node:process";
 
@@ -23,7 +29,7 @@ export const DENO_CONFIG_PATH = join(REPO_ROOT, "deno.json");
 /** An uninitialized Project: one commit, no `.wld/`, no `.gitignore`. */
 export const projectFixture = defineCommittedGitFixture({ "README.md": "# Fixture\n" });
 
-export const EVIDENCE = { host: "claude-code", hostVersion: "2.1.0", adapterVersion: "0.1.0" };
+export const EVIDENCE = { host: "claude-code", hostVersion: "2.1.303", adapterVersion: "0.2.0", adapterContract: 1 };
 
 export function activateInput(operationId = "op-activate"): AttachedJsonObject {
     return {
@@ -72,6 +78,21 @@ export function rejectionCode(result: AttachedOperationResult): string | null {
 }
 
 /** Run one operation in-process through the same text entry the carriers use. */
+export function runOperation(
+    name: AttachedReadOperationName,
+    projectRoot: string,
+    input: AttachedJsonObject,
+): Promise<AttachedReadResult>;
+export function runOperation(
+    name: AttachedLifecycleOperationName,
+    projectRoot: string,
+    input: AttachedJsonObject,
+): Promise<AttachedOperationResult>;
+export function runOperation(
+    name: AttachedOperationName,
+    projectRoot: string,
+    input: AttachedJsonObject,
+): Promise<AttachedCarrierResult>;
 export function runOperation(name: AttachedOperationName, projectRoot: string, input: AttachedJsonObject) {
     return runAttachedOperation(name, projectRoot, JSON.stringify(input));
 }
@@ -145,12 +166,34 @@ export interface CliRun {
     stderr: string;
 }
 
+export interface ReadCliRun extends Omit<CliRun, "result"> {
+    result: AttachedReadResult;
+}
+export interface CarrierCliRun extends Omit<CliRun, "result"> {
+    result: AttachedCarrierResult;
+}
+
 /** Spawn a fresh `wld attached <operation>` Core process in `projectRoot`. */
+export function spawnAttachedCli(
+    operation: AttachedReadOperationName,
+    projectRoot: string,
+    input: AttachedJsonObject,
+): Promise<ReadCliRun>;
+export function spawnAttachedCli(
+    operation: AttachedLifecycleOperationName,
+    projectRoot: string,
+    input: AttachedJsonObject,
+): Promise<CliRun>;
+export function spawnAttachedCli(
+    operation: AttachedOperationName,
+    projectRoot: string,
+    input: AttachedJsonObject,
+): Promise<CarrierCliRun>;
 export async function spawnAttachedCli(
     operation: AttachedOperationName,
     projectRoot: string,
     input: AttachedJsonObject,
-): Promise<CliRun> {
+): Promise<CarrierCliRun> {
     const child = spawnNativeProcess(process.execPath, {
         args: runtimeSourceArgs([
             "run",

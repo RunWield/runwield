@@ -56,7 +56,7 @@ async function reviewModule() {
     return await modulePromise;
 }
 
-export async function withReview(verify, reviewedPlan) {
+export async function withReview(verify, reviewedPlan, options = {}) {
     const browser = new Window({ url: "http://localhost/review" });
     browser.document.fonts = new browser.EventTarget();
     const names = [
@@ -112,14 +112,16 @@ export async function withReview(verify, reviewedPlan) {
             confirmations.push(message);
             return confirmResult;
         };
-        globalThis.fetch = (url, options) => {
+        globalThis.fetch = (url, requestOptions) => {
             if (String(url) === "/decision") {
-                submitted.push(JSON.parse(options.body));
+                submitted.push(JSON.parse(requestOptions.body));
                 revision++;
                 return Promise.resolve(Response.json({ ok: true }));
             }
             if (String(url) === "/status")
-                return Promise.resolve(Response.json({ revision, plan: nextPlan, events: [] }));
+                return Promise.resolve(
+                    Response.json(options.conversation?.() || { revision, plan: nextPlan, events: [] }),
+                );
             return Promise.resolve(Response.json({ available: false, providers: [] }));
         };
         const { PlanReviewSurface } = await reviewModule();
@@ -138,6 +140,7 @@ export async function withReview(verify, reviewedPlan) {
             },
             submitUrl: "/decision",
             conversationStatusUrl: "/status",
+            ...options.payload,
         };
         const mount = async () => {
             root = createRoot(container);
@@ -153,7 +156,9 @@ export async function withReview(verify, reviewedPlan) {
                 ?.querySelector("input");
         const openChat = async () => {
             await act(() => container.querySelector('[aria-label="Open annotations sidebar"]').click());
-            await act(() => container.querySelector('button[role="tab"][title="Planner"]').click());
+            await act(() =>
+                container.querySelector(`button[role="tab"][title="${payload.agentLabel || "Planner"}"]`).click(),
+            );
         };
         await mount();
         await verify({
