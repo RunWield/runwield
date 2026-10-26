@@ -23,8 +23,8 @@ dependencies:
     - "05-keep-memory-and-integrations-on-their-owning-machine"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "reviewed"
 validatedCommit: "84fc9ad938d255addcd84228e909d6f8e0485f1b"
+status: "verified"
 ---
 
 # Confirm a Partly Matching Remote Host
