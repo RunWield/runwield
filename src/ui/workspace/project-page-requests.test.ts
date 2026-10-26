@@ -1,26 +1,34 @@
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { Window } from "happy-dom";
+import { Window, type CustomEvent, type HTMLButtonElement, type HTMLElement } from "happy-dom";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+
+interface NavigationDetail {
+    href: string;
+}
+
+interface FixtureWindow extends Omit<Window, "fetch"> {
+    fetch: () => Promise<Response>;
+}
 
 const settingsPage = await readFile(new URL("./pages/projects/[projectId]/settings.astro", import.meta.url), "utf8");
 const operations = ["disable", "enable", "remove", "rescan"];
 
-function mount(operation) {
-    const window = new Window({ url: "http://workspace.test/projects/project/settings?tab=general" });
+function mount(operation: string) {
+    const window = new Window({ url: "http://workspace.test/projects/project/settings?tab=general" }) as FixtureWindow;
     // Execute the page's real inline script with native event registration.
     window.document.body.innerHTML = `<section class="project-settings-card">
         <button data-project-action="project" data-action="${operation}">Action</button>
         <button data-project-action="project" data-action="rescan">Rescan</button>
         <p data-project-action-status role="status"></p><pre data-project-diagnostics="project" hidden></pre></section>`;
-    const target = window.document.querySelector("[data-project-action]");
-    const notices = [];
-    const navigations = [];
-    window.alert = (message) => notices.push(message);
+    const target = window.document.querySelector<HTMLButtonElement>("[data-project-action]")!;
+    const notices: (string | undefined)[] = [];
+    const navigations: string[] = [];
+    window.alert = (message?: string) => notices.push(message);
     window.confirm = () => true;
     window.document.addEventListener("runwield:workspace-navigate", (event) => {
         event.preventDefault();
-        navigations.push(event.detail.href);
+        navigations.push((event as CustomEvent<NavigationDetail>).detail.href);
     });
     const script = settingsPage.match(/<script is:inline data-astro-rerun>([\s\S]*?)<\/script>/)?.[1];
     if (!script) throw new Error("Project page script missing");
@@ -78,7 +86,7 @@ for (const operation of operations) {
     test(`Project ${operation}: pending requests prevent duplicate submission`, async () => {
         const page = mount(operation);
         try {
-            let complete;
+            let complete!: (response: Response) => void;
             let requests = 0;
             page.window.fetch = () => {
                 requests++;
@@ -91,17 +99,17 @@ for (const operation of operations) {
             const glyph = page.window.document.querySelector("[data-project-action-status] .rw-thinking-glyph");
             assertEquals(glyph?.getAttribute("aria-hidden"), "true");
             assertStringIncludes(page.visibleFeedback(), "Updating Project...");
-            for (const control of page.window.document.querySelectorAll("[data-project-action]")) {
+            for (const control of page.window.document.querySelectorAll<HTMLButtonElement>("[data-project-action]")) {
                 assertEquals(control.disabled, true);
             }
             await page.act();
-            page.window.document.querySelectorAll("[data-project-action]")[1].click();
+            page.window.document.querySelectorAll<HTMLButtonElement>("[data-project-action]")[1].click();
             assertEquals(requests, 1);
             complete(Response.json({ project: { projectId: "linked" } }));
             await pending;
             await new Promise((resolve) => setImmediate(resolve));
             assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
-            for (const control of page.window.document.querySelectorAll("[data-project-action]")) {
+            for (const control of page.window.document.querySelectorAll<HTMLButtonElement>("[data-project-action]")) {
                 assertEquals(control.disabled, false);
             }
             assertEquals(page.target.disabled, false);
@@ -143,7 +151,7 @@ for (const operation of operations) {
             assertEquals(page.navigations, []);
             assertEquals(page.target.disabled, false);
             assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
-            assertEquals(page.window.document.querySelector("[data-project-diagnostics]").hidden, true);
+            assertEquals(page.window.document.querySelector<HTMLElement>("[data-project-diagnostics]")!.hidden, true);
         } finally {
             await page.window.happyDOM.close();
         }
@@ -159,7 +167,7 @@ for (const operation of operations) {
             await page.act();
             assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
             if (operation === "rescan") {
-                const diagnostics = page.window.document.querySelector("[data-project-diagnostics]");
+                const diagnostics = page.window.document.querySelector<HTMLElement>("[data-project-diagnostics]")!;
                 assertEquals(diagnostics.hidden, false);
                 assertStringIncludes(diagnostics.textContent, "synthetic diagnostic");
                 assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
