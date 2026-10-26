@@ -53,16 +53,16 @@ boundary, not only input during root construction.
 
 Owning requirements:
 
-- [Core: TUI conversation](../prd/runwield-core-prd.md#tui-conversation): **Keep follow-ups with their active
+- [Core: TUI conversation](../../prd/runwield-core-prd.md#tui-conversation): **Keep follow-ups with their active
   specialist** and **Announce real Agent changes once**.
-- [Core: Request routing](../prd/runwield-core-prd.md#request-routing): **Match planning and checks to the request**,
+- [Core: Request routing](../../prd/runwield-core-prd.md#request-routing): **Match planning and checks to the request**,
   including no duplicate triage.
-- [Core: Plan review](../prd/runwield-core-prd.md#plan-review): preserve feedback in the planning conversation.
+- [Core: Plan review](../../prd/runwield-core-prd.md#plan-review): preserve feedback in the planning conversation.
 
 Proposed clarification: undelivered Steering Messages at an Agent handoff go to the replacement Agent once, in order,
 with their images. No routing choices or review outcomes change. Existing
-[ADR-006](../adr/006-uniform-agent-handler-workflow-tools.md) event authority and
-[ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md) runtime ownership remain in force.
+[ADR-006](../../adr/006-uniform-agent-handler-workflow-tools.md) event authority and
+[ADR-010](../../adr/010-session-runtime-sibling-adapters-and-acp.md) runtime ownership remain in force.
 
 ## Objective
 
