@@ -15,7 +15,6 @@ affectedPaths:
 createdAt: "2026-10-24"
 origin: "internal"
 userVerifiedAt: null
-status: "reviewed"
 epicCompletionMode: "done_enough"
 epicDoneEnoughAt: "2026-10-26T02:45:55.258Z"
 epicDoneEnoughSummary: "All 3 child plans are completed after reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run."
@@ -24,6 +23,7 @@ workRecord:
     recordId: "645f73cc-7766-434f-9efc-86c4622d3fbe"
     path: "docs/work-records/2026-10-26-full-discovery-corpus-and-case-level-benchmark-adjudication.md"
     lastAttemptAt: "2026-10-26T02:46:09.027Z"
+status: "verified"
 ---
 
 # Reviewer Benchmark: All Discovery Pairs

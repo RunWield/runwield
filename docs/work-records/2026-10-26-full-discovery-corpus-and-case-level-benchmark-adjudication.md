@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "645f73cc-7766-434f-9efc-86c4622d3fbe"
-status: "pending_verification"
+status: "approved"
 scope: "epic"
 origin: "internal"
 completionMode: "done_enough"
@@ -10,7 +10,6 @@ provenance:
     sourcePlans:
         - "21e30b85-ac1f-4afa-a201-fa23273a7bc7"
 ---
-
 # Full discovery corpus and case-level benchmark adjudication
 
 ## Summary
