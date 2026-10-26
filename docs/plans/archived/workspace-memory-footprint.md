@@ -10,10 +10,19 @@ affectedPaths:
     - "src/ui/workspace/islands/SessionSurface.jsx"
     - "scripts/workspace-memory-check.ts"
     - "docs/prd/runwield-workspace-prd.md"
-status: "validated"
 origin: "internal"
-userVerifiedAt: null
-userVerificationNote: null
+createdAt: "2026-10-26T13:40:12.143Z"
+status: "user_verified"
+userVerifiedAt: "2026-10-26T13:40:13.522Z"
+userVerificationNote: "this was done before epic validation"
+workRecord:
+  status: "generated"
+  recordId: "b21052d8-8fca-40c6-8732-2944d40dae61"
+  path: "docs/work-records/2026-10-26-workspace-renderer-reuse-and-bounded-observation-retention.md"
+  lastAttemptAt: "2026-10-26T13:40:46.590Z"
+archivedAt: "2026-10-26T13:43:35.596Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/workspace-memory-footprint.md"
 ---
 
 # Workspace Memory Footprint

@@ -20,6 +20,9 @@ createdAt: "2026-09-30T04:08:57.304Z"
 targetBranch: "main"
 status: "validated"
 validatedCommit: "3e3cb3cdf564229813abe40727f27925001f58c2"
+archivedAt: "2026-10-26T13:43:35.596Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/workspace-memory-footprint/01-reuse-workspace-renderer.md"
 ---
 
 # Reuse the Workspace Page Renderer

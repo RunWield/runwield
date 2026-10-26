@@ -28,6 +28,9 @@ workRecord:
     recordId: "21b92d3b-60a4-4506-815a-48d48d54c168"
     path: "docs/work-records/2026-10-04-mascot-visibility-control-and-stable-tui-blinking.md"
     lastAttemptAt: "2026-10-04T00:55:05.481Z"
+archivedAt: "2026-10-26T13:28:34.961Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/mascot-setting-and-blink-fix.md"
 ---
 
 # Mascot visibility setting and base-mascot blink fix

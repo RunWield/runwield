@@ -14,7 +14,7 @@ import {
     loadPlan,
 } from "../../plan-store.js";
 import { runArchiveTransition } from "../../shared/workflow/state-transition.ts";
-import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
+import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { relative } from "node:path";
@@ -105,9 +105,7 @@ async function removeActiveEpicChildDirectory(projectRoot: string, epicChildDire
     }
 }
 
-export async function archiveEpicWithChildren(
-    { projectRoot, plan, uiAPI }: ArchiveEpicOptions,
-): Promise<boolean> {
+export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: ArchiveEpicOptions): Promise<boolean> {
     if (!isTerminalArchivableStatus(plan.attrs.status)) {
         uiAPI.appendSystemMessage(
             `Epics with status ${plan.attrs.status} cannot be archived from this menu.`,
@@ -153,28 +151,30 @@ export async function archiveEpicWithChildren(
         return false;
     }
 
-    const now = new Date().toISOString();
-    const archived: ArchivedPlanResult[] = [];
-    for (const child of children) {
-        archived.push(await archiveOnePlan(projectRoot, child.name, now, true));
-    }
-    archived.push(await archiveOnePlan(projectRoot, plan.planName, now, false));
+    startBackgroundArchive({
+        projectRoot,
+        planName: plan.planName,
+        uiAPI,
+        archive: async () => {
+            const now = new Date().toISOString();
+            const archived: ArchivedPlanResult[] = [];
+            for (const child of children) {
+                archived.push(await archiveOnePlan(projectRoot, child.name, now, true));
+            }
+            archived.push(await archiveOnePlan(projectRoot, plan.planName, now, false));
 
-    await removeActiveEpicChildDirectory(projectRoot, epicChildDirectory, uiAPI);
+            await removeActiveEpicChildDirectory(projectRoot, epicChildDirectory, uiAPI);
 
-    const archivedList = archived.map((entry) => `- ${entry.name}: ${entry.relativePath}`).join("\n");
-    const archivedArtifacts = archived.flatMap((entry) => entry.artifacts || []);
-    const artifactList = archivedArtifacts.length > 0
-        ? `\nMoved Epic Artifact(s):\n${
-            archivedArtifacts.map((entry) => `- ${entry.fileName}: ${entry.relativePath}`).join("\n")
-        }`
-        : "";
-    uiAPI.appendSystemMessage(
-        `Archived Epic and child Plans:\n${archivedList}${artifactList}\nRestore with: ${CLI_BIN} plans archive restore <name>`,
-        false,
-        "RunWield",
-    );
-    const nudge = await formatArchiveRetentionNudge(projectRoot);
-    if (nudge) uiAPI.appendSystemMessage(nudge, false, "RunWield");
+            const archivedList = archived.map((entry) => `- ${entry.name}: ${entry.relativePath}`).join("\n");
+            const archivedArtifacts = archived.flatMap((entry) => entry.artifacts || []);
+            const artifactList =
+                archivedArtifacts.length > 0
+                    ? `\nMoved Epic Artifact(s):\n${archivedArtifacts
+                          .map((entry) => `- ${entry.fileName}: ${entry.relativePath}`)
+                          .join("\n")}`
+                    : "";
+            return `Archived Epic and child Plans:\n${archivedList}${artifactList}\nRestore with: ${CLI_BIN} plans archive restore <name>`;
+        },
+    });
     return true;
 }
