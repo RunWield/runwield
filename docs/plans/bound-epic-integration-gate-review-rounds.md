@@ -18,11 +18,17 @@ executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-25"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
+status: "reviewed"
+validatedCommit: "7bac6a9c0615a7b836cae5201889129e73c38e84"
+workRecord:
+    status: "generated"
+    recordId: "fcb85ab0-8d6a-4261-b664-75bb0c48aa04"
+    path: "docs/work-records/2026-10-26-bounded-epic-integration-gate-reviews.md"
+    lastAttemptAt: "2026-10-26T13:13:02.118Z"
 ---
 
 # Bound the Epic Integration Gate Review Rounds

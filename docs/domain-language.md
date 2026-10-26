@@ -635,11 +635,13 @@ delivery. _Avoid_: Integration requirements, deferred findings
 
 **Integration Gate**: The check that finishes an Epic with an **Epic Branch** once every included child is delivered to
 it. It runs the project's checks, an integration review of the whole Epic diff, and Code Review per the `codereview`
-setting, on the exact branch head. A pass makes the Epic `reviewed` for that commit; findings become a draft repair
-child that Planner starts from. When only gate repair drafts remain unstarted, the user can retry from the Epic menu.
-A pass closes those drafts without verification and records the checked commit in the reason. New findings update the
-newest draft, not a new child. The automatic gate still waits for repair delivery. _Avoid_: Epic validation run, final
-review
+setting, on the exact branch head. A pass makes the Epic `reviewed` for that commit. One full review opens a persistent
+finding ledger; later reviews verify stable finding IDs and check the repair delta for regressions. Findings create draft
+repair children before round three. From round three onward, the user chooses another repair, Code Review takeover
+(only with passing project checks), or stop. Human takeover approval is not AI approval. Existing integration repair
+children count toward the limit. When only unstarted gate repair drafts remain, the user can retry from the Epic menu.
+A pass closes those drafts without verification and names the checked commit in the reason. New findings update the
+newest draft after any required round-limit decision. The automatic gate still waits for repair delivery. _Avoid_: Epic validation run, final review
 
 **Sequence**: A PROJECT Plan with `type: sequence` whose brief context and complete child Plans are authored by Planner
 and reviewed together. Approve & Execute starts the first child; normal PROJECT continuation runs subsequent children in
@@ -887,7 +889,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 - Only a non-Epic Plan at **Ready For Work** can proceed to implementation.
 - An **Epic** contains decomposition context; its **Child PLANNED_CHANGE Plans** are the independently executable units.
 - An **Epic** with an **Epic Branch** is implemented when every included child is delivered to that branch, not when
-  every child shows a finished status, and is validated only by a passing **Integration Gate** on the current head.
+  every child shows a finished status, and is reviewed only by a passing **Integration Gate** on the current head.
 - An **Implemented Plan** must pass **Workflow Validation** before becoming a **Verified Plan**.
 - An **In-Progress Plan** or **Failed Plan** may require **Plan Recovery** before workflow can continue safely.
 - A **Verified Plan** or **Closed Without Verification Plan** may produce a **Work Record**. A Plan accumulates zero or

@@ -5,10 +5,11 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { setCustomSetting } from "../settings.js";
-import { findPlansByParent, loadPlan } from "../../plan-store.js";
+import { findPlansByParent, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testing/workflow-agent-tools.ts";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";
+import type { ReviewFinding, ReviewAdvisory } from "../../tools/review-complete.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { parseDiffFiles } from "./review-diff-tool.js";
 import { makeRecordedSession, makeUi } from "./validation-test-helpers.js";
@@ -18,7 +19,6 @@ import { HostedSession } from "../session/hosted-session.js";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { checkpointExecutionWorktree } from "../worktree.js";
 import { recordIntegrationNotes, syncEpicChildPlanDeviations } from "./epic-review-context.ts";
-import type { ReviewAdvisory } from "../../tools/review-complete.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { readEpicDeliveryState, reconcileEpicDelivery, runEpicIntegrationGate } from "./epic-integration.ts";
@@ -29,7 +29,7 @@ type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
 /** A review_complete decision the scripted integration reviewer reports. */
 interface ScriptedReview {
     approved: boolean;
-    findings?: Array<{ title: string; requirement: string; evidence: string; status: "new" }>;
+    findings?: Array<Omit<ReviewFinding, "resolved">>;
     advisories?: ReviewAdvisory[];
 }
 
@@ -41,6 +41,8 @@ type TaggedReviewDiffTool = NonNullable<IsolatedAgentSessionOptions["customTools
 interface ReviewerCall {
     userRequest: string;
     cwd: string;
+    definition?: IsolatedAgentSessionOptions["subAgentDefinition"];
+    repairDiff?: string;
 }
 
 async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes, body: string, extraYaml = "") {
@@ -145,12 +147,20 @@ async function deliverSecondChild(repo: string) {
     await git(repo, ["switch", "main"]);
 }
 
-function scriptedReviewer(review: ScriptedReview, calls: ReviewerCall[] = []): SemanticReviewPort {
+function scriptedReviewer(reviews: ScriptedReview | ScriptedReview[], calls: ReviewerCall[] = []): SemanticReviewPort {
+    let index = 0;
     return {
         runIsolatedAgentSession: async (options: IsolatedAgentSessionOptions) => {
-            calls.push({ userRequest: options.userRequest, cwd: options.cwd });
+            const review = Array.isArray(reviews) ? reviews[index++] : reviews;
+            assert(review, "Unexpected reviewer attempt");
             const diffTool = (options.customTools || []).find((tool) => tool.name === "review_diff") as
-                { __runwieldReviewDiffs?: { full?: string } } | undefined;
+                { __runwieldReviewDiffs?: { full?: string; repair?: string } } | undefined;
+            calls.push({
+                userRequest: options.userRequest,
+                cwd: options.cwd,
+                definition: options.subAgentDefinition,
+                repairDiff: diffTool?.__runwieldReviewDiffs?.repair,
+            });
             const full = diffTool?.__runwieldReviewDiffs?.full || "";
             const reads: WorkflowTestToolCall[] = parseDiffFiles(full).flatMap(
                 (file: { path: string; byteLength: number }) =>
@@ -498,8 +508,16 @@ for (const oldFindings of [
         const before = await loadPlan(repo, newestName);
         const older = await loadPlan(repo, repairName);
         const head = await git(repo, ["rev-parse", "epic/epic"]);
+        const { hostedSession } = gateSession();
+        hostedSession.setInteractionAdapter({
+            requestInteraction: async (request) => {
+                assertEquals(request.type, "select");
+                assertEquals((await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.round, 3);
+                return { outcome: "selected", value: "repair" };
+            },
+        });
         const result = await runEpicIntegrationGate({
-            hostedSession: gateSession().hostedSession,
+            hostedSession,
             projectRoot: repo,
             epicPlanName: "epic",
             semanticReviewPort: scriptedReviewer({ approved: true }),
@@ -986,4 +1004,348 @@ test("integration review keeps readable file headers with user prefix settings",
         hostedSession.dispose();
         await fsRm(repo, { recursive: true });
     }
+});
+
+test("existing integration repair children count toward the automatic review limit", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await deliverSecondChild(repo);
+    await git(repo, ["switch", "epic/epic"]);
+    for (const order of [3, 4]) {
+        await writePlan(repo, `epic/0${order}-repair-integration-findings`, childAttrs(order), "# Delivered repair\n");
+    }
+    await git(repo, ["add", "docs/plans"]);
+    await git(repo, ["commit", "-m", "earlier integration repairs"]);
+    await git(repo, ["switch", "main"]);
+    const { hostedSession } = gateSession();
+    const result = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: scriptedReviewer({
+            approved: false,
+            findings: [
+                { title: "Broken seam", requirement: "Ship together", evidence: "Not connected", status: "new" },
+            ],
+        }),
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS),
+    });
+    assertEquals(result.kind, "paused");
+    assertEquals((await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.round, 3);
+    assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 4);
+});
+
+const SEAM_FINDINGS: ScriptedReview = {
+    approved: false,
+    findings: [
+        { title: "First seam", requirement: "Ship together", evidence: "First disconnected", status: "new" },
+        { title: "Second seam", requirement: "Ship together", evidence: "Second disconnected", status: "new" },
+    ],
+};
+
+async function readyGate() {
+    const { repo } = await epicWithPendingSecondChild();
+    await setCustomSetting("codereview", "none", "project", repo);
+    await deliverSecondChild(repo);
+    const { hostedSession, recorder } = gateSession();
+    const options = {
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS),
+    };
+    return { repo, hostedSession, recorder, options };
+}
+
+async function seedReviewRound(repo: string, round: number) {
+    const plan = await loadPlan(repo, "epic");
+    assert(plan);
+    await updatePlanFrontMatter(
+        repo,
+        "epic",
+        {
+            epicIntegrationReview: {
+                round,
+                ledger: { items: [], sequence: 0 },
+                checkedCommit: await git(repo, ["rev-parse", "epic/epic"]),
+            },
+        },
+        {},
+        { expectedRevision: plan.revision },
+    );
+}
+
+async function deliverRepair(repo: string, childName: string) {
+    const child = await loadPlan(repo, childName);
+    assert(child);
+    await git(repo, ["add", "docs/plans"]);
+    await git(repo, ["commit", "-m", "save primary fixture documents"]);
+    await git(repo, ["switch", "epic/epic"]);
+    await writePlan(
+        repo,
+        childName,
+        childAttrs(Number(child.attrs.order), { planId: child.attrs.planId! }),
+        "# Delivered repair\n",
+    );
+    await fsWriteFile(join(repo, "repair.js"), "export const repaired = true;\n");
+    await git(repo, ["add", "docs/plans", "repair.js"]);
+    await git(repo, ["commit", "-m", "deliver integration repair"]);
+    await git(repo, ["switch", "main"]);
+}
+
+test("integration findings retain their IDs across delivery and verify only the repair delta", async () => {
+    const { repo, options } = await readyGate();
+    const calls: ReviewerCall[] = [];
+    const head = await git(repo, ["rev-parse", "epic/epic"]);
+    const first = await runEpicIntegrationGate({
+        ...options,
+        semanticReviewPort: scriptedReviewer(SEAM_FINDINGS, calls),
+    });
+    assert(first.kind === "findings");
+    assertEquals(calls[0].definition?.options?.reviewerMode, "discovery");
+    const state = (await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview;
+    assertEquals(state?.round, 1);
+    assertEquals(state?.checkedCommit, head);
+    assertEquals(
+        state?.ledger.items.map((item) => item.id),
+        ["R1-1", "R1-2"],
+    );
+    const report = await fsReadFile(join(repo, first.reportPath), "utf8");
+    const repair = await loadPlan(repo, first.repairChild.childPlanName!);
+    for (const id of ["R1-1", "R1-2"]) {
+        assertStringIncludes(report, `### ${id}.`);
+        assertStringIncludes(repair!.markdown, `### ${id}.`);
+    }
+    const markdown = await fsReadFile(join(repo, "docs/plans/epic.md"), "utf8");
+    assertEquals(markdown.includes("epicIntegrationReview:"), false);
+    await deliverRepair(repo, first.repairChild.childPlanName!);
+    // A new hosted Session reads the ledger from disk, not from the earlier gate's memory.
+    const second = await runEpicIntegrationGate({
+        ...options,
+        hostedSession: gateSession().hostedSession,
+        semanticReviewPort: scriptedReviewer(
+            {
+                approved: false,
+                findings: [
+                    { ...SEAM_FINDINGS.findings![0], id: "R1-1", status: "fix_confirmed", evidence: "Connected now" },
+                    {
+                        ...SEAM_FINDINGS.findings![1],
+                        id: "R1-2",
+                        status: "fix_rejected",
+                        rejectionReason: "Still not wired",
+                    },
+                ],
+            },
+            calls,
+        ),
+    });
+    assert(second.kind === "findings");
+    assertEquals(calls[1].definition?.options?.reviewerMode, "verify");
+    assertStringIncludes(calls[1].userRequest, "R1-1");
+    assertStringIncludes(calls[1].userRequest, "R1-2");
+    assertStringIncludes(calls[1].userRequest, "fix claimed");
+    assertStringIncludes(calls[1].repairDiff || "", "repair.js");
+    assertEquals(calls[1].repairDiff?.includes("diff --git a/first.js"), false);
+    const nextRepair = await loadPlan(repo, second.repairChild.childPlanName!);
+    assertStringIncludes(nextRepair!.markdown, "### R1-2.");
+    assertStringIncludes(nextRepair!.markdown, "Still not wired");
+    assertEquals(nextRepair!.markdown.includes("### R1-1."), false);
+    assertEquals(
+        (await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.ledger.items.map((item) => item.status),
+        ["fix_confirmed", "fix_rejected"],
+    );
+});
+
+test("a verify verdict cannot omit an open integration finding", async () => {
+    const { repo, options } = await readyGate();
+    const first = await runEpicIntegrationGate({ ...options, semanticReviewPort: scriptedReviewer(SEAM_FINDINGS) });
+    assert(first.kind === "findings");
+    await deliverRepair(repo, first.repairChild.childPlanName!);
+    const calls: ReviewerCall[] = [];
+    const result = await runEpicIntegrationGate({
+        ...options,
+        semanticReviewPort: scriptedReviewer(
+            [
+                { approved: true },
+                {
+                    approved: true,
+                    findings: SEAM_FINDINGS.findings!.map((item, i) => ({
+                        ...item,
+                        id: `R1-${i + 1}`,
+                        status: "fix_confirmed",
+                        evidence: "Connected",
+                    })),
+                },
+            ],
+            calls,
+        ),
+    });
+    assertEquals(result.kind, "passed");
+    assertEquals(calls.length, 2);
+    assertEquals(
+        (await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.ledger.items.every(
+            (item) => item.status === "fix_confirmed",
+        ),
+        true,
+    );
+});
+
+for (const choice of ["stop", "repair", "unanswered"]) {
+    test(`third integration review asks before creating a child: ${choice}`, async () => {
+        const { repo, options, hostedSession } = await readyGate();
+        await seedReviewRound(repo, 2);
+        hostedSession.setInteractionAdapter({
+            requestInteraction: async (request) => {
+                assertEquals(request.type, "select");
+                assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 2);
+                assertEquals((await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.round, 3);
+                return choice === "unanswered" ? { outcome: "canceled" } : { outcome: "selected", value: choice };
+            },
+        });
+        const result = await runEpicIntegrationGate({
+            ...options,
+            semanticReviewPort: scriptedReviewer(SEAM_FINDINGS),
+        });
+        assertEquals(result.kind, choice === "repair" ? "findings" : "paused");
+        assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, choice === "repair" ? 3 : 2);
+        const report = await fsReadFile(join(repo, "docs/plans/epic/integration-report.md"), "utf8");
+        assertStringIncludes(report, "R3-1");
+        if (result.kind === "paused") assertStringIncludes(result.reason, "docs/plans/epic/integration-report.md");
+    });
+}
+
+for (const checksPass of [true, false]) {
+    test(`limit Code Review takeover requires passing project checks: ${checksPass}`, async () => {
+        const { repo, options, hostedSession, recorder } = await readyGate();
+        await seedReviewRound(repo, 2);
+        let codeReviewOpened = false;
+        hostedSession.setInteractionAdapter({
+            requestInteraction: (request) => {
+                if (request.type === "select") {
+                    assertEquals(
+                        request.options?.some((option) => option.value === "code_review"),
+                        checksPass,
+                    );
+                    return Promise.resolve({ outcome: "selected", value: checksPass ? "code_review" : "stop" });
+                }
+                assertEquals(request.type, "code_review");
+                codeReviewOpened = true;
+                return Promise.resolve({ outcome: "accepted", _meta: { approved: true } });
+            },
+        });
+        const result = await runEpicIntegrationGate({
+            ...options,
+            semanticReviewPort: scriptedReviewer(SEAM_FINDINGS),
+            localCIPort: scriptedChecks(
+                checksPass ? PASSING_CHECKS : { kind: "completed", exitCode: 1, output: "failed" },
+            ),
+        });
+        assertEquals(result.kind, checksPass ? "passed" : "paused");
+        assertEquals(codeReviewOpened, checksPass);
+        const epic = await loadPlan(repo, "epic");
+        if (checksPass) {
+            assertEquals(epic?.attrs.status, "reviewed");
+            assert(epic?.attrs.epicIntegrationReview?.userTakeoverAt);
+            assertEquals(epic?.attrs.humanReviewMode, "always");
+            assertEquals(epic?.attrs.humanReviewDecision, "approved");
+            assertStringIncludes(recorder.messages.join("\n"), "integration review did not approve");
+            assertEquals(epic?.attrs.epicIntegrationReview?.ledger.items.length, 2);
+        }
+    });
+}
+
+for (const takeover of [true, false]) {
+    test(`Code Review changes create a repair child without a second limit decision: takeover=${takeover}`, async () => {
+        const { repo, options, hostedSession } = await readyGate();
+        await seedReviewRound(repo, 2);
+        await setCustomSetting("codereview", "always", "project", repo);
+        let limitPrompts = 0;
+        hostedSession.setInteractionAdapter({
+            requestInteraction: (request) => {
+                if (request.type === "select") {
+                    limitPrompts++;
+                    return Promise.resolve({ outcome: "selected", value: "code_review" });
+                }
+                assertEquals(request.type, "code_review");
+                return Promise.resolve({ outcome: "accepted", message: "Connect the seam" });
+            },
+        });
+        const result = await runEpicIntegrationGate({
+            ...options,
+            semanticReviewPort: scriptedReviewer(takeover ? SEAM_FINDINGS : { approved: true }),
+        });
+        assertEquals(result.kind, "findings");
+        assertEquals(limitPrompts, takeover ? 1 : 0);
+        assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 3);
+    });
+}
+
+for (const change of ["head", "controller"]) {
+    test(`a changed ${change} prevents a completed review from overwriting saved gate evidence`, async () => {
+        const { repo, options } = await readyGate();
+        const reviewer = scriptedReviewer(SEAM_FINDINGS);
+        const result = await runEpicIntegrationGate({
+            ...options,
+            semanticReviewPort: {
+                runIsolatedAgentSession: async (request) => {
+                    if (change === "head") {
+                        await git(repo, ["switch", "epic/epic"]);
+                        await fsWriteFile(join(repo, "new-head.js"), "export const changed = true;\n");
+                        await git(repo, ["add", "new-head.js"]);
+                        await git(repo, ["commit", "-m", "branch moved during review"]);
+                        await git(repo, ["switch", "main"]);
+                    } else {
+                        await seedReviewRound(repo, 9);
+                    }
+                    return await reviewer.runIsolatedAgentSession(request);
+                },
+            },
+        });
+        assertEquals(result.kind, "not_ready");
+        assertEquals(
+            (await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.round,
+            change === "head" ? undefined : 9,
+        );
+        assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 2);
+    });
+}
+
+test("a reviewer without a verdict pauses without consuming a round", async () => {
+    const { repo, options } = await readyGate();
+    await seedReviewRound(repo, 2);
+    const result = await runEpicIntegrationGate({
+        ...options,
+        semanticReviewPort: {
+            runIsolatedAgentSession: () => Promise.resolve([]),
+        },
+    });
+    assertEquals(result.kind, "paused");
+    assertEquals((await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview?.round, 2);
+    assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 2);
+});
+
+test("project-check failures alone reach the limit without becoming ledger findings", async () => {
+    const { repo, options, hostedSession } = await readyGate();
+    await seedReviewRound(repo, 2);
+    hostedSession.setInteractionAdapter({
+        requestInteraction: (request) => {
+            assertEquals(request.type, "select");
+            assertEquals(
+                request.options?.map((option) => option.value),
+                ["repair", "stop"],
+            );
+            return Promise.resolve({ outcome: "selected", value: "stop" });
+        },
+    });
+    const result = await runEpicIntegrationGate({
+        ...options,
+        semanticReviewPort: scriptedReviewer({ approved: true }),
+        localCIPort: scriptedChecks({ kind: "completed", exitCode: 1, output: "a deterministic failure" }),
+    });
+    assertEquals(result.kind, "paused");
+    const saved = (await loadPlan(repo, "epic"))?.attrs.epicIntegrationReview;
+    assertEquals(saved?.round, 3);
+    assertEquals(saved?.ledger.items, []);
+    assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 2);
 });
