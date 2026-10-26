@@ -1,5 +1,6 @@
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
@@ -98,16 +99,30 @@ async function epicWithPendingSecondChild() {
     await git(repo, ["commit", "-m", "second child work"]);
     const secondCommit = await git(repo, ["rev-parse", "HEAD"]);
     await git(repo, ["switch", "main"]);
-    await writePlan(repo, "epic", {
-        planId: "plan-epic",
-        classification: "PROJECT",
-        complexity: "HIGH",
-        status: "ready_for_work",
-        targetBranch: "epic/epic",
-        epicBaseCommit: base,
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Epic\n\n## Objective\n\nShip first and second together.\n");
+    await writePlan(
+        repo,
+        "epic",
+        {
+            planId: "plan-epic",
+            classification: "PROJECT",
+            complexity: "HIGH",
+            status: "ready_for_work",
+            targetBranch: "epic/epic",
+            epicBaseCommit: base,
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Epic\n\n## Objective\n\nShip first and second together.\n",
+    );
+    const epicDocument = await fsReadFile(join(repo, "docs/plans/epic.md"), "utf8");
+    await git(repo, ["switch", "epic/epic"]);
+    await git(repo, ["add", "docs/plans/epic.md"]);
+    await git(repo, ["commit", "-m", "Epic requirements"]);
+    await git(repo, ["switch", "main"]);
+    await fsMkdir(join(repo, "docs/plans"), { recursive: true });
+    await fsWriteFile(join(repo, "docs/plans/epic.md"), epicDocument);
+    await git(repo, ["add", "docs/plans/epic.md"]);
+    await git(repo, ["commit", "-m", "primary Epic copy"]);
     await writePlan(repo, "epic/02-second", childAttrs(2), "# Second\n", deliveryYaml(secondCommit));
     return { repo, base, secondCommit };
 }
@@ -123,15 +138,15 @@ function scriptedReviewer(review: ScriptedReview, calls: ReviewerCall[] = []): S
         runIsolatedAgentSession: async (options: IsolatedAgentSessionOptions) => {
             calls.push({ userRequest: options.userRequest, cwd: options.cwd });
             const diffTool = (options.customTools || []).find((tool) => tool.name === "review_diff") as
-                | { __runwieldReviewDiffs?: { full?: string } }
-                | undefined;
+                { __runwieldReviewDiffs?: { full?: string } } | undefined;
             const full = diffTool?.__runwieldReviewDiffs?.full || "";
-            const reads: WorkflowTestToolCall[] = parseDiffFiles(full).flatMap((
-                file: { path: string; byteLength: number },
-            ) => Array.from({ length: Math.max(1, Math.ceil(file.byteLength / 65536)) }, (_, index) => ({
-                name: "review_diff",
-                arguments: { command: "show", scope: "full", path: file.path, offsetBytes: index * 65536 },
-            })));
+            const reads: WorkflowTestToolCall[] = parseDiffFiles(full).flatMap(
+                (file: { path: string; byteLength: number }) =>
+                    Array.from({ length: Math.max(1, Math.ceil(file.byteLength / 65536)) }, (_, index) => ({
+                        name: "review_diff",
+                        arguments: { command: "show", scope: "full", path: file.path, offsetBytes: index * 65536 },
+                    })),
+            );
             const decision = {
                 outcome: review.approved ? "approved" : "feedback",
                 approved: review.approved,
@@ -171,10 +186,13 @@ test("a validated child with pending publication does not complete the Epic", as
     const state = await readEpicDeliveryState(repo, "epic");
     const reconciled = await reconcileEpicDelivery(repo, "epic");
 
-    assertEquals(state?.children.map((child) => [child.name, child.settled]), [
-        ["epic/01-first", true],
-        ["epic/02-second", false],
-    ]);
+    assertEquals(
+        state?.children.map((child) => [child.name, child.settled]),
+        [
+            ["epic/01-first", true],
+            ["epic/02-second", false],
+        ],
+    );
     assertEquals(reconciled.gateReady, false);
     assertEquals((await loadPlan(repo, "epic"))?.attrs.status, "ready_for_work");
 });
@@ -315,12 +333,14 @@ test("integration findings produce a report and a draft repair child on the Epic
         epicPlanName: "epic",
         semanticReviewPort: scriptedReviewer({
             approved: false,
-            findings: [{
-                title: "second.js never calls first.js",
-                requirement: "Ship first and second together.",
-                evidence: "second.js:1",
-                status: "new",
-            }],
+            findings: [
+                {
+                    title: "second.js never calls first.js",
+                    requirement: "Ship first and second together.",
+                    evidence: "second.js:1",
+                    status: "new",
+                },
+            ],
         }),
         workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
         localCIPort: scriptedChecks({ kind: "completed", exitCode: 1, output: "1 test failed" }),
@@ -376,7 +396,7 @@ test("Epic gate events apply only to Epics and a pass must name the checked comm
     await assertRejects(
         () =>
             Promise.resolve().then(() =>
-                buildPlanEventUpdates("epic_integration_passed", "implemented", { triageMeta: epic })
+                buildPlanEventUpdates("epic_integration_passed", "implemented", { triageMeta: epic }),
             ),
         Error,
         "requires integrationCommit",
@@ -386,7 +406,7 @@ test("Epic gate events apply only to Epics and a pass must name the checked comm
             Promise.resolve().then(() =>
                 buildPlanEventUpdates("epic_children_delivered", "ready_for_work", {
                     triageMeta: { classification: "PLANNED_CHANGE", status: "ready_for_work" },
-                })
+                }),
             ),
         Error,
         "can only apply to PROJECT Epic plans",
@@ -430,4 +450,152 @@ test("a reviewed Epic becomes verified only after its checked work reaches the f
     await git(repo, ["merge", "--no-ff", "epic/epic", "-m", "Deliver Epic"]);
     assertEquals((await reconcileEpicDelivery(repo, "epic")).status, "verified");
     assertEquals((await loadPlan(repo, "epic"))?.attrs.status, "verified");
+});
+
+test("the gate installs fresh-checkout dependencies before checks and review", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await setCustomSetting("codereview", "none", "project", repo);
+    // Project setup can be configured after the Epic branch was created.
+    await setCustomSetting("worktree_setup_command", "printf installed > dependency.txt", "project", repo);
+    await deliverSecondChild(repo);
+    const { hostedSession } = gateSession();
+    const accepted = scriptedReviewer({ approved: true });
+    const result = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: {
+            runIsolatedAgentSession: async (options) => {
+                assertEquals(await fsReadFile(join(options.cwd, "dependency.txt"), "utf8"), "installed");
+                return accepted.runIsolatedAgentSession(options);
+            },
+        },
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: {
+            run: async ({ cwd }) => {
+                assertEquals(await fsReadFile(join(cwd, "dependency.txt"), "utf8"), "installed");
+                return PASSING_CHECKS;
+            },
+        },
+    });
+    assertEquals(result.kind, "passed");
+    assertEquals((await git(repo, ["worktree", "list"])).split("\n").length, 1);
+});
+
+test("the gate initializes submodules before running project setup", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const previous = process.env.GIT_ALLOW_PROTOCOL;
+        process.env.GIT_ALLOW_PROTOCOL = "file";
+        try {
+            const { repo } = await epicWithPendingSecondChild();
+            const vendor = await repoFixture.checkout();
+            await git(repo, ["switch", "epic/epic"]);
+            await git(repo, ["-c", "protocol.file.allow=always", "submodule", "add", vendor, "third_party/vendor"]);
+            await git(repo, ["add", ".gitmodules", "third_party/vendor"]);
+            await git(repo, ["commit", "-m", "vendor dependency"]);
+            await git(repo, ["switch", "main"]);
+            await setCustomSetting("codereview", "none", "project", repo);
+            await setCustomSetting(
+                "worktree_setup_command",
+                "cat third_party/vendor/README.md > dependency.txt",
+                "project",
+                repo,
+            );
+            await deliverSecondChild(repo);
+            const { hostedSession } = gateSession();
+            const result = await runEpicIntegrationGate({
+                hostedSession,
+                projectRoot: repo,
+                epicPlanName: "epic",
+                semanticReviewPort: scriptedReviewer({ approved: true }),
+                workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                localCIPort: {
+                    run: async ({ cwd }) => {
+                        assertEquals(await fsReadFile(join(cwd, "dependency.txt"), "utf8"), "# Fixture\n");
+                        return PASSING_CHECKS;
+                    },
+                },
+            });
+            assertEquals(result.kind, "passed");
+            assertEquals((await git(repo, ["worktree", "list"])).split("\n").length, 1);
+        } finally {
+            if (previous === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
+            else process.env.GIT_ALLOW_PROTOCOL = previous;
+        }
+    });
+});
+
+test("failed gate setup pauses without checks, review, or a repair child", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await setCustomSetting("worktree_setup_command", "echo setup-failed >&2; exit 7", "project", repo);
+    await deliverSecondChild(repo);
+    const { hostedSession } = gateSession();
+    const reviewerCalls: ReviewerCall[] = [];
+    const checkCwds: string[] = [];
+    const result = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: scriptedReviewer({ approved: true }, reviewerCalls),
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS, checkCwds),
+    });
+    assertEquals(result.kind, "paused");
+    if (result.kind === "paused") assertStringIncludes(result.reason, "setup-failed");
+    assertEquals(checkCwds, []);
+    assertEquals(reviewerCalls, []);
+    assertEquals((await loadPlan(repo, "epic"))?.attrs.status, "implemented");
+    assertEquals(await loadPlan(repo, "epic/03-repair-integration-findings"), null);
+    assertEquals((await git(repo, ["worktree", "list"])).split("\n").length, 1);
+});
+
+test("integration review uses Epic requirements from the checked branch, not primary", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await setCustomSetting("codereview", "none", "project", repo);
+    const epicPath = join(repo, "docs/plans/epic.md");
+    await fsWriteFile(
+        epicPath,
+        (await fsReadFile(epicPath, "utf8")).replace("Ship first and second together.", "Stale primary requirements."),
+    );
+    await git(repo, ["add", "docs/plans/epic.md"]);
+    await git(repo, ["commit", "-m", "stale primary requirements"]);
+    await deliverSecondChild(repo);
+    const { hostedSession } = gateSession();
+    const calls: ReviewerCall[] = [];
+    const result = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: scriptedReviewer({ approved: true }, calls),
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS),
+    });
+    assertEquals(result.kind, "passed");
+    assertStringIncludes(calls[0].userRequest, "Ship first and second together.");
+    assertEquals(calls[0].userRequest.includes("Stale primary requirements."), false);
+});
+
+test("a missing branch Epic pauses rather than reviewing the primary document", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await git(repo, ["switch", "epic/epic"]);
+    await git(repo, ["rm", "docs/plans/epic.md"]);
+    await git(repo, ["commit", "-m", "remove branch Epic"]);
+    await git(repo, ["switch", "main"]);
+    await deliverSecondChild(repo);
+    const { hostedSession } = gateSession();
+    const calls: ReviewerCall[] = [];
+    const cwds: string[] = [];
+    const result = await runEpicIntegrationGate({
+        hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: scriptedReviewer({ approved: true }, calls),
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks(PASSING_CHECKS, cwds),
+    });
+    assertEquals(result.kind, "paused");
+    if (result.kind === "paused") assertStringIncludes(result.reason, "Epic document is missing");
+    assertEquals(calls, []);
+    assertEquals(cwds, []);
+    assertEquals((await git(repo, ["worktree", "list"])).split("\n").length, 1);
 });

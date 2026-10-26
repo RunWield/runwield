@@ -2077,3 +2077,93 @@ test("load-plan abandon names a rescue branch and cleanup can be retried after m
         }
     });
 });
+
+for (const orders of [
+    [2, 1],
+    [undefined, 1],
+    [1, 1],
+]) {
+    test(`Epic picker uses explicit order and readable child names ${JSON.stringify(orders)}`, async () => {
+        await withRuntimeCommandFixture("runwield-child-picker-", async ({ projectRoot }) => {
+            await writePlan(projectRoot, "long-parent-prefix", { classification: "PROJECT", status: "ready_for_work" });
+            for (const [index, order] of orders.entries()) {
+                await writePlan(projectRoot, `long-parent-prefix/0${index + 1}-distinct`, {
+                    status: "draft",
+                    parentPlan: "long-parent-prefix",
+                    ...(order === undefined ? {} : { order }),
+                });
+            }
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["pick_child", "long-parent-prefix/01-distinct", "view", "back", null, null]);
+            try {
+                await runLoadPlanCommand(["long-parent-prefix"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                const options =
+                    ui.promptOptions.find((items) =>
+                        items.some((item) => item.value === "long-parent-prefix/01-distinct"),
+                    ) || [];
+                assertEquals(options.length > 0, true);
+                const next = options.find((item) => item.value === "__next_child__");
+                if (orders[0] === 2) {
+                    assertStringIncludes(next?.label || "", "02-distinct");
+                    assertEquals(options[1].value, "long-parent-prefix/02-distinct");
+                } else {
+                    assertEquals(next, undefined);
+                    assertStringIncludes(ui.messages.join("\n"), "order");
+                }
+                assertEquals(
+                    options
+                        .filter((item) => item.value !== "__next_child__")
+                        .every((item) => !item.label.includes("long-parent-prefix/")),
+                    true,
+                );
+                assertStringIncludes(ui.messages.join("\n"), "Planned Change: long-parent-prefix/01-distinct");
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
+test("Epic picker distinguishes nested child paths without repeating the Epic prefix", async () => {
+    await withRuntimeCommandFixture("runwield-nested-child-picker-", async ({ projectRoot }) => {
+        await writePlan(projectRoot, "long-parent-prefix", { classification: "PROJECT", status: "ready_for_work" });
+        for (const area of ["frontend", "backend"]) {
+            await writePlan(projectRoot, `long-parent-prefix/${area}/setup`, {
+                status: "draft",
+                parentPlan: "long-parent-prefix",
+                order: 1,
+                summary: "Setup",
+            });
+        }
+        const { runtime, sessionId } = await createRuntime(projectRoot);
+        const ui = makeUi(["pick_child", null, null]);
+        try {
+            await runLoadPlanCommand(["long-parent-prefix"], {
+                sessionRuntime: runtime,
+                sessionId,
+                uiAPI: ui.uiAPI,
+                editor: ui.editor,
+            });
+            const options =
+                ui.promptOptions.find((items) =>
+                    items.some((item) => item.value === "long-parent-prefix/frontend/setup"),
+                ) || [];
+            const frontend = options.find((item) => item.value === "long-parent-prefix/frontend/setup");
+            const backend = options.find((item) => item.value === "long-parent-prefix/backend/setup");
+            assertStringIncludes(frontend?.label || "", "frontend/setup");
+            assertStringIncludes(backend?.label || "", "backend/setup");
+            assertEquals(frontend?.label === backend?.label, false);
+            assertEquals(
+                options.every((item) => !item.label.includes("long-parent-prefix/")),
+                true,
+            );
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});

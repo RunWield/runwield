@@ -1,0 +1,52 @@
+schemaVersion: 1
+scenarioId: RV-D10
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    target-ancestry:
+        command: bun run test:oracle target-ancestry
+        expectedFailureMarker: RV-D10-TARGET-ANCESTRY
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D10-A
+              severity: high
+              category: publication-history-loss
+              trigger: A publication push is rejected and saved as pending; another workspace advances the target before retryPublication resumes the attempt.
+              expectedBehavior: Integrate the current target into the saved repair and prove both the fetched target and validated candidate are ancestors of the commit sent with the fresh lease.
+              wrongBehavior: Retry fetches a new lease but pushes the old prepared commit without integrating the current target, replacing the branch and losing the intervening target commit.
+              evidence:
+                  - src/publication.ts
+                  - src/attempts.ts
+                  - src/git.ts
+                  - src/model.ts
+              acceptableConcepts:
+                  - a fresh force-with-lease expectation does not prove ancestry
+                  - the saved repair commit omits intervening target history
+                  - retry must integrate the current target before replacing the branch
+                  - target and validated candidate must both remain ancestors of the published commit
+              nearMisses:
+                  - Force-with-lease is intentional; the explicit lease still rejects target movement after the fetch.
+                  - A pending attempt keeps its validated candidate identity and push error.
+                  - A completed attempt returns its saved result without contacting the remote.
+                  - The caller supplies a validated candidate and an exclusively owned clean repair workspace.
+              proofCommand: bun run test:oracle target-ancestry
+              expectedFailureMarker: RV-D10-TARGET-ANCESTRY
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - Force-with-lease is intentional; the explicit lease still rejects target movement after the fetch.
+    - A pending attempt keeps its validated candidate identity and push error.
+    - A completed attempt returns its saved result without contacting the remote.
+    - The caller supplies a validated candidate and an exclusively owned clean repair workspace.

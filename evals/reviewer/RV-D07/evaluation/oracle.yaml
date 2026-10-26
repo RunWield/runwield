@@ -1,0 +1,48 @@
+schemaVersion: 1
+scenarioId: RV-D07
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    descendant-cancel:
+        command: bun run test:oracle descendant-cancel
+        expectedFailureMarker: RV-D07-DESCENDANT-CANCEL
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D07-A
+              severity: medium
+              category: process-tree-cancellation
+              trigger: A command spawns a descendant that acknowledges readiness and waits for a go file created only after cancellation returns.
+              expectedBehavior: Cancellation settles the process group before returning a cancelled result; no descendant can write after go.
+              wrongBehavior: Only the direct child is killed, so its live descendant writes a sentinel after cancellation returns.
+              evidence:
+                  - src/command.ts
+                  - src/validation.ts
+                  - tests/workload.ts
+              acceptableConcepts:
+                  - cancellation must include descendants, not just the direct child
+                  - detached process group survives a positive-pid kill
+                  - cancelled result precedes descendant settlement
+              nearMisses:
+                  - The command is launched in a detached POSIX process group.
+                  - Polling only observes file handshakes; elapsed time is not proof that no write happened.
+                  - The hidden proof always kills the process group in finally, including after the expected assertion.
+              proofCommand: bun run test:oracle descendant-cancel
+              expectedFailureMarker: RV-D07-DESCENDANT-CANCEL
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - The command is launched in a detached POSIX process group.
+    - Polling only observes file handshakes; elapsed time is not proof that no write happened.
+    - The hidden proof always kills the process group in finally, including after the expected assertion.

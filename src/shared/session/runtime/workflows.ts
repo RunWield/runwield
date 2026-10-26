@@ -642,7 +642,7 @@ ${outcome.feedback || ""}`,
                 { ...result, kind: "semantic_repair_handoff", semanticRepairHandoff: result.semanticRepairHandoff },
             );
         }
-        await this.continueEpicAfterValidation(session, result);
+        if (!options.suppressEpicContinuation) await this.continueEpicAfterValidation(session, result);
         return result;
     }
 

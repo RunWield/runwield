@@ -28,7 +28,13 @@ import type { PlanFrontMatter } from "../../plan-store.js";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
-import { getCodeReviewMode } from "../settings.js";
+import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.js";
+import { spawnForegroundShell } from "../foreground-process.ts";
+import {
+    captureProcessStreamTail,
+    formatCapturedProcessOutput,
+    PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
+} from "./process-output.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
 import type { HostedSession } from "../session/hosted-session.js";
@@ -651,9 +657,50 @@ async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (pa
     try {
         return await run(path);
     } finally {
-        await runGitResult(primaryRoot, ["worktree", "remove", "--force", path]);
+        await runGitResult(primaryRoot, ["worktree", "remove", "--force", "--force", path]);
         await runGitResult(primaryRoot, ["worktree", "prune"]);
         await fsRm(parent, { recursive: true }).catch(() => {});
+    }
+}
+
+/** Prepare disposable gate dependencies without execution lifecycle receipts or settings writes. */
+async function prepareGateCheckout(
+    session: HostedSession,
+    checkoutPath: string,
+    port: ValidationSessionPort,
+): Promise<void> {
+    const interactionId = `epic-gate-setup:${crypto.randomUUID()}`;
+    const controller = new AbortController();
+    session.addActiveInteraction(interactionId, { abortController: controller });
+    try {
+        port.emitStatus("Preparing Epic gate submodules.", "info");
+        const submodules = await captureForegroundProcess("git", {
+            cwd: checkoutPath,
+            args: ["submodule", "update", "--init", "--recursive"],
+            signal: controller.signal,
+        });
+        if (!submodules.success) {
+            throw new Error(`Epic gate submodule setup failed: ${new TextDecoder().decode(submodules.stderr)}`);
+        }
+        const exact = getExactProjectCustomSetting("worktree_setup_command", checkoutPath);
+        const configured =
+            typeof exact === "string" ? exact : getCustomSetting("worktree_setup_command", "project", checkoutPath);
+        const command = typeof configured === "string" ? configured.trim() : "";
+        if (!command) return;
+        port.emitStatus(`Preparing Epic gate dependencies: ${command}`, "info");
+        const process = spawnForegroundShell({ command, cwd: checkoutPath, signal: controller.signal });
+        const [outcome, stdout, stderr] = await Promise.all([
+            process.done,
+            captureProcessStreamTail(process.stdout, PROCESS_STREAM_OUTPUT_LIMIT_BYTES),
+            captureProcessStreamTail(process.stderr, PROCESS_STREAM_OUTPUT_LIMIT_BYTES),
+        ]);
+        const output = formatCapturedProcessOutput(stdout, stderr).trim();
+        if (output) port.emitStatus(output, "info");
+        if (controller.signal.aborted || outcome.terminatedBy !== null || outcome.exitCode !== 0) {
+            throw new Error(`Epic gate setup did not complete (exit ${outcome.exitCode}).\n${output}`);
+        }
+    } finally {
+        session.removeActiveInteraction(interactionId);
     }
 }
 
@@ -686,6 +733,18 @@ export async function runEpicIntegrationGate(
     );
 
     const run = await withGateCheckout(primaryRoot, head, async (checkoutPath) => {
+        // Review the requirements committed with this exact Epic head, not a primary copy.
+        const reviewEpic = await loadPlan(checkoutPath, epicPlanName);
+        if (!reviewEpic)
+            return {
+                kind: "paused" as const,
+                reason: `Epic document is missing from the checked branch: ${epicPlanName}`,
+            };
+        try {
+            await prepareGateCheckout(hostedSession, checkoutPath, port);
+        } catch (error) {
+            return { kind: "paused" as const, reason: error instanceof Error ? error.message : String(error) };
+        }
         const diffText = await runGit(primaryRoot, ["diff", "--no-color", "--no-ext-diff", base, head]);
         const checks = await runGateChecks(options, checkoutPath);
         if (checks.result.kind === "canceled") {
@@ -703,7 +762,7 @@ export async function runEpicIntegrationGate(
             diffText,
             buildIntegrationReviewRequest(
                 epicPlanName,
-                epic.markdown,
+                reviewEpic.markdown,
                 state,
                 checksSummary,
                 await filesByChild(primaryRoot, state),
@@ -716,8 +775,8 @@ export async function runEpicIntegrationGate(
             port,
             primaryRoot,
             epicPlanName,
-            epic.markdown,
-            epic.attrs,
+            reviewEpic.markdown,
+            reviewEpic.attrs,
             diffText,
             checkoutPath,
             state.branch,

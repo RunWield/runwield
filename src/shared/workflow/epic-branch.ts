@@ -6,7 +6,7 @@ import { rm as fsRm } from "node:fs/promises";
  * @module shared/workflow/epic-branch
  * Every Epic starts and ends on its own branch. This module names that branch,
  * creates it from the latest primary branch when the Epic first needs it, and
- * puts the Epic's child drafts on it so children can plan and run from it.
+ * puts the Epic requirements and child drafts on it so children can plan and run from it.
  *
  * Nothing here checks out, resets, or writes the user's working tree. The seed
  * commit is built with Git plumbing and the branch moves only by
@@ -241,12 +241,20 @@ async function seedEpicChildren(
         const relativePath = relative(documentRoot, child.path).replaceAll("\\", "/");
         return !onBranch.has(relativePath) && epicTargetBranch(child.attrs) === branch;
     });
-    if (pending.length === 0) return [];
+    const epic = await loadPlan(documentRoot, epicPlanName);
+    if (!epic) throw new Error(`Epic document is missing: ${epicPlanName}`);
+    const epicPath = relative(documentRoot, epic.path).replaceAll("\\", "/");
+    const epicOnBranch = await runGit(primaryRoot, ["ls-tree", "--name-only", head, "--", epicPath]);
+    // Once present, the branch owns the requirements. Never replace them with a primary copy.
+    const documents = epicOnBranch.trim()
+        ? pending
+        : [...pending, { name: epicPlanName, path: epic.path, attrs: epic.attrs }];
+    if (documents.length === 0) return [];
 
     const checkout = await checkoutForBranch(primaryRoot, branch);
     if (checkout) {
         throw new Error(
-            `Epic branch ${branch} is checked out at ${checkout}, so RunWield cannot add the child drafts to it ` +
+            `Epic branch ${branch} is checked out at ${checkout}, so RunWield cannot add the Epic documents to it ` +
                 `without changing that checkout. Switch that checkout to another branch and load the Epic again.`,
         );
     }
@@ -255,13 +263,13 @@ async function seedEpicChildren(
     try {
         const env = { GIT_INDEX_FILE: join(indexDir, "index") };
         await runGit(primaryRoot, ["read-tree", head], env);
-        for (const child of pending) {
+        for (const child of documents) {
             const relativePath = relative(documentRoot, child.path).replaceAll("\\", "/");
             const blob = (await runGit(primaryRoot, ["hash-object", "-w", "--path", relativePath, child.path])).trim();
             await runGit(primaryRoot, ["update-index", "--add", "--cacheinfo", `100644,${blob},${relativePath}`], env);
         }
         const tree = (await runGit(primaryRoot, ["write-tree"], env)).trim();
-        const message = `Add ${epicPlanName} child drafts to the Epic branch\n\n${pending
+        const message = `Add ${epicPlanName} documents to the Epic branch\n\n${documents
             .map((child) => `- ${child.name}`)
             .join("\n")}\n`;
         const commit = (await runGit(primaryRoot, ["commit-tree", tree, "-p", head, "-m", message])).trim();

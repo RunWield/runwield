@@ -3700,18 +3700,46 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
             throw new Error(`Plan is archived or hidden and cannot be assigned a planId: ${name}`);
         }
 
-        let reservedPlanIds = options.reservedPlanIds;
-        if (!reservedPlanIds) {
-            const plans = await listPlans(cwd);
-            const byId = groupExistingPlanIds(plans);
-            assertNoDuplicatePlanIds(byId);
-            reservedPlanIds = new Set(byId.keys());
-            for (const attempt of await listControllerDocumentWorktrees(cwd)) {
-                if (attempt.planId) reservedPlanIds.add(attempt.planId);
-            }
+        const attempts = await listControllerDocumentWorktrees(cwd);
+        const registered = attempts.filter((attempt) => attempt.planName === name);
+        if (registered.length > 1) {
+            throw new Error(
+                `Registered Plan ${name} has ambiguous document authority. Your files have not been changed.`,
+            );
+        }
+        const registeredPlanId = normalizePlanId(registered[0]?.planId);
+        let planId = normalizePlanId(plan.attrs.planId);
+        if (registeredPlanId && planId && registeredPlanId !== planId) {
+            throw new Error(
+                `Registered Plan ${name} does not match the saved Plan ID. Your files have not been changed.`,
+            );
+        }
+        if (
+            registeredPlanId &&
+            attempts.some(
+                (attempt) => attempt.planName !== name && normalizePlanId(attempt.planId) === registeredPlanId,
+            )
+        ) {
+            throw new Error(
+                `Registered Plan ID ${registeredPlanId} belongs to multiple Plans. Your files have not been changed.`,
+            );
+        }
+        const plans = await listPlans(cwd);
+        const byId = groupExistingPlanIds(plans);
+        assertNoDuplicatePlanIds(byId);
+        if (registeredPlanId && byId.get(registeredPlanId)?.some((other) => other.name !== name)) {
+            throw new Error(
+                `Registered Plan ID ${registeredPlanId} belongs to another Plan. Your files have not been changed.`,
+            );
+        }
+        const reservedPlanIds = options.reservedPlanIds || new Set(byId.keys());
+        // Registry IDs are already assigned identities, not just collision reservations.
+        // Read them even during explicit catalog backfills, which supply their own set.
+        for (const attempt of attempts) {
+            const id = normalizePlanId(attempt.planId);
+            if (id) reservedPlanIds.add(id);
         }
         const idGenerator = options.idGenerator || (() => crypto.randomUUID());
-        let planId = normalizePlanId(plan.attrs.planId);
         let markdown = plan.markdown;
         let attrs = { ...plan.attrs, planId };
 
@@ -3735,9 +3763,12 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
         }
 
         if (!planId) {
-            do {
-                planId = normalizePlanId(idGenerator());
-            } while (!planId || reservedPlanIds.has(planId));
+            planId = registeredPlanId;
+            if (!planId) {
+                do {
+                    planId = normalizePlanId(idGenerator());
+                } while (!planId || reservedPlanIds.has(planId));
+            }
             assertSharedPlanWriteAllowed(plan.attrs, options);
             attrs = { ...plan.attrs, planId };
             await bindControllerPlanIdentity(cwd, { planName: name, planId });
