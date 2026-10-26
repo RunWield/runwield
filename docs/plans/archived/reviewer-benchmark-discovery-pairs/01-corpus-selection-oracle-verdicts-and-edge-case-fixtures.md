@@ -38,14 +38,14 @@ archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs/01-corpus-selec
 
 ## Context
 
-First of three Plans in [Reviewer Benchmark: All Discovery Pairs](../reviewer-benchmark-discovery-pairs.md). Read the
+First of three Plans in [Reviewer Benchmark: All Discovery Pairs](../../reviewer-benchmark-discovery-pairs.md). Read the
 container for the owner's decisions.
 
 This Plan removes the smoke-only limits from the runner, changes scoring so that a bad fixture leaves the scores
 instead of freezing the run, and adds the first four new fixture packages: RV-D01, RV-D02, RV-D03, and RV-D06.
 
 Affected PRD capability:
-[Semantic Reviewer](../../prd/agent-behavior-evaluation-prd.md#semantic-reviewer). The current requirement and the
+[Semantic Reviewer](../../../prd/agent-behavior-evaluation-prd.md#semantic-reviewer). The current requirement and the
 `novel_valid` acceptance scenario change. Paired comparison, repeated trials, and repair-state scenarios stay target.
 
 ## Objective

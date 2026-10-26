@@ -42,15 +42,15 @@ cap of 1,000 does not bound the downstream queue.
 
 Owning requirements:
 
-- [Browser Sessions](../../prd/runwield-workspace-prd.md#browser-sessions): extend the proposed **Keep repeated browser
+- [Browser Sessions](../../../prd/runwield-workspace-prd.md#browser-sessions): extend the proposed **Keep repeated browser
   use memory-stable** requirement from slice 1 to operation completion and slow/disconnected observation. Preserve
   **Preserve conversation, drafts, and controls in the browser**.
-- [TUI and phone continuity](../../prd/runwield-workspace-prd.md#tui-and-phone-continuity): reconnect to the same saved
+- [TUI and phone continuity](../../../prd/runwield-workspace-prd.md#tui-and-phone-continuity): reconnect to the same saved
   conversation and current work.
-- [Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): preserve
+- [Browser Plan review and workflow](../../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): preserve
   pending reviews, current content, and explicit decisions.
-- [Core Session continuity](../../prd/runwield-core-prd.md#session-continuity) and
-  [ADR-015](../../adr/015-file-authoritative-session-bundles.md): saved history stays in files; background work and
+- [Core Session continuity](../../../prd/runwield-core-prd.md#session-continuity) and
+  [ADR-015](../../../adr/015-file-authoritative-session-bundles.md): saved history stays in files; background work and
   pending interactions belong to their live owner, not the browser connection.
 
 No product requirement is removed. Operation completion is not a new conclusion for a delivery workflow.
