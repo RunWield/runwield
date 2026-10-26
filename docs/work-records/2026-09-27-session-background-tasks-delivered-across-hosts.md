@@ -12,11 +12,8 @@ provenance:
         - "3d5753f1-239c-425d-9e19-d65d77a79076"
 ---
 
-# Session background tasks delivered across hosts
+# Session-owned background tasks across hosts
 
 ## Summary
 
-Verified Session-owned background shell tasks and read-only delegates now return immediately, share limits, logs, and
-cancellation, and deliver results automatically in TUI, Workspace, and ACP. Stop suppresses late results. Agent policy
-and product and architecture documents were updated. Focused Core and host tests and checks passed; RunWield validation
-completed after the execution report.
+Session-owned background shell tasks and read-only delegates return immediately and share limits, logs, and cancellation. Results reach TUI, Workspace, and ACP automatically. Stop suppresses late results.

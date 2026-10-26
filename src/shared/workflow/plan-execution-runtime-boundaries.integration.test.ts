@@ -33,6 +33,7 @@ import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { executePlan, executePreparedPlanSegmentHandoff } from "./plan-executor.ts";
+import { ReviewInspection } from "./review-inspection.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { buildExecutionSegmentContinuation } from "./execution-segment-handoff.ts";
 
@@ -341,10 +342,12 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                         systemPrompt: getCurrentSystemPrompt(context.messages),
                         toolNames: getCurrentTools(context.messages).map((tool) => tool.name),
                     });
-                    return fauxAssistantMessage(fauxToolCall("pair_checkpoint", {
-                        action: "report",
-                        summary: "Managed increment is ready.",
-                    }));
+                    return fauxAssistantMessage(
+                        fauxToolCall("pair_checkpoint", {
+                            action: "report",
+                            summary: "Managed increment is ready.",
+                        }),
+                    );
                 },
                 () => fauxAssistantMessage(fauxText(`The increment is isolated. ${"Pair discussion. ".repeat(6000)}`)),
                 () => fauxAssistantMessage(fauxText("Compacted Pair checkpoint context.")),
@@ -365,17 +368,21 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                         systemPrompt: getCurrentSystemPrompt(context.messages),
                         toolNames: getCurrentTools(context.messages).map((tool) => tool.name),
                     });
-                    return fauxAssistantMessage(fauxToolCall("pair_checkpoint", {
-                        action: "resolve",
-                        checkpointId: firstCheckpointId,
-                        decision: "continue",
-                    }));
+                    return fauxAssistantMessage(
+                        fauxToolCall("pair_checkpoint", {
+                            action: "resolve",
+                            checkpointId: firstCheckpointId,
+                            decision: "continue",
+                        }),
+                    );
                 },
                 () =>
-                    fauxAssistantMessage(fauxToolCall("pair_checkpoint", {
-                        action: "report",
-                        summary: "The next managed increment is ready.",
-                    })),
+                    fauxAssistantMessage(
+                        fauxToolCall("pair_checkpoint", {
+                            action: "report",
+                            summary: "The next managed increment is ready.",
+                        }),
+                    ),
             ]);
 
             try {
@@ -391,14 +398,16 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                 });
                 assertEquals(execution.executionComplete, false);
                 assertEquals(
-                    await runtime.promptUserTurn(sessionId, {
-                        initialRequest: "Is this increment isolated?",
-                    }).then((result) => result.ok),
+                    await runtime
+                        .promptUserTurn(sessionId, {
+                            initialRequest: "Is this increment isolated?",
+                        })
+                        .then((result) => result.ok),
                     true,
                 );
                 const compaction = await runtime.compactSession(sessionId);
                 assertEquals(compaction.error, undefined);
-                const sessionInfo = await runtime.getSessionInfo(sessionId) as {
+                const sessionInfo = (await runtime.getSessionInfo(sessionId)) as {
                     persistedId: string;
                     file: string;
                 };
@@ -416,15 +425,19 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                 activeRuntime = reloadedRuntime;
                 activeSessionId = loaded.sessionId;
                 assertEquals(
-                    await reloadedRuntime.promptUserTurn(loaded.sessionId, {
-                        initialRequest: "What changed in this increment?",
-                    }).then((result) => result.ok),
+                    await reloadedRuntime
+                        .promptUserTurn(loaded.sessionId, {
+                            initialRequest: "What changed in this increment?",
+                        })
+                        .then((result) => result.ok),
                     true,
                 );
                 assertEquals(
-                    await reloadedRuntime.promptUserTurn(loaded.sessionId, {
-                        initialRequest: "Looks good. Continue to the next increment.",
-                    }).then((result) => result.ok),
+                    await reloadedRuntime
+                        .promptUserTurn(loaded.sessionId, {
+                            initialRequest: "Looks good. Continue to the next increment.",
+                        })
+                        .then((result) => result.ok),
                     true,
                 );
 
@@ -568,7 +581,7 @@ test("restored autonomous Plan execution retains Plan Deviation availability", a
                         worktree: evidence.evidence.worktree,
                     },
                 });
-                const info = await runtime.getSessionInfo(sessionId) as SavedSessionInfo;
+                const info = (await runtime.getSessionInfo(sessionId)) as SavedSessionInfo;
                 await runtime.closeAllSessionsWhenIdle?.();
                 restored = makeRuntime(new SessionHost());
                 const loaded = await restored.loadSession({
@@ -615,10 +628,12 @@ test("autonomous validation repair receives a real Plan Deviation tool", async (
             setModelResponseFactories([
                 (context: TranscriptContext) => {
                     toolLists.push(getCurrentTools(context.messages).map((tool) => tool.name));
-                    return fauxAssistantMessage(fauxToolCall("record_plan_deviation", {
-                        supersededRequirement: "Replace navigation.",
-                        replacementRequirement: "Keep navigation.",
-                    }));
+                    return fauxAssistantMessage(
+                        fauxToolCall("record_plan_deviation", {
+                            supersededRequirement: "Replace navigation.",
+                            replacementRequirement: "Keep navigation.",
+                        }),
+                    );
                 },
                 () =>
                     fauxAssistantMessage(
@@ -644,6 +659,87 @@ test("autonomous validation repair receives a real Plan Deviation tool", async (
         },
     );
 });
+
+for (const confirmed of [false, true]) {
+    test(`Code Review conversation ${confirmed ? "records" : "does not record"} a Plan Deviation after typed confirmation`, async () => {
+        await withRuntimeCommandFixture(
+            "review-conversation-deviation-",
+            async ({ projectRoot, setModelResponseFactories }) => {
+                await initializeGitProject(projectRoot);
+                await saveExecutablePlan(projectRoot, "review-deviation", { status: "reviewed" });
+                const fixture = createExecutionFixture(projectRoot);
+                fixture.hostedSession.setActiveExecutionWorkflow({
+                    planName: "review-deviation",
+                    triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
+                    executionAgent: "engineer",
+                    executionStarted: true,
+                    collaborationStyle: "autonomous",
+                    projectRoot,
+                    executionCwd: projectRoot,
+                });
+                let confirmations = 0;
+                fixture.hostedSession.setInteractionAdapter({
+                    supportsInteraction: (type) => type === "plan_deviation_confirmation",
+                    requestInteraction: async (request) => {
+                        assertEquals(request.type, "plan_deviation_confirmation");
+                        assertEquals(
+                            (await loadPlan(projectRoot, "review-deviation"))?.attrs.planDeviations,
+                            undefined,
+                        );
+                        confirmations++;
+                        return { outcome: "selected", value: confirmed ? "confirm" : "cancel" };
+                    },
+                });
+                setModelResponseFactories([
+                    (context: TranscriptContext) => {
+                        assertEquals(
+                            getCurrentTools(context.messages).some((tool) => tool.name === "record_plan_deviation"),
+                            true,
+                        );
+                        return fauxAssistantMessage(
+                            fauxToolCall("record_plan_deviation", {
+                                supersededRequirement: "Replace navigation.",
+                                replacementRequirement: "Keep navigation.",
+                            }),
+                        );
+                    },
+                    () =>
+                        fauxAssistantMessage(
+                            fauxText("The original requirement stays until a deviation is confirmed."),
+                        ),
+                ]);
+                try {
+                    const result = await createValidationSessionPort(fixture.hostedSession).runIsolatedAgentSession({
+                        kind: "feedback_engineer",
+                        conversationTurn: true,
+                        agentName: "reviewer-feedback-engineer",
+                        userRequest:
+                            "Code Review conversation turn: confirm keeping navigation instead of replacing it.",
+                        cwd: projectRoot,
+                        review: {
+                            fullDiff: "",
+                            repairDiff: "",
+                            requiredScope: "full",
+                            inspection: new ReviewInspection([]),
+                        },
+                    });
+                    assertEquals(result.outcome, "completed");
+                    if (result.outcome !== "completed") throw new Error("Expected conversation reply.");
+                    assertEquals(result.taskReport.completed, false);
+                    assertStringIncludes(result.taskReport.report, "until a deviation is confirmed");
+                    assertEquals(confirmations, 1);
+                    const plan = await loadPlan(projectRoot, "review-deviation");
+                    assertEquals(plan?.attrs.planDeviations?.length || 0, confirmed ? 1 : 0);
+                    if (confirmed)
+                        assertEquals(plan?.attrs.planDeviations?.[0].replacementRequirement, "Keep navigation.");
+                    assertEquals(plan?.attrs.status, "reviewed");
+                } finally {
+                    fixture.hostedSession.dispose();
+                }
+            },
+        );
+    });
+}
 
 interface LegacyCopyEntry {
     type: string;
@@ -697,10 +793,12 @@ for (const legacy of [false, true]) {
                     response,
                     (context: TranscriptContext) => {
                         toolLists.push(getCurrentTools(context.messages).map((tool) => tool.name));
-                        return fauxAssistantMessage(fauxToolCall("record_plan_deviation", {
-                            supersededRequirement: "Use Pi 0.87.1.",
-                            replacementRequirement: "Use Pi 1.0.0.",
-                        }));
+                        return fauxAssistantMessage(
+                            fauxToolCall("record_plan_deviation", {
+                                supersededRequirement: "Use Pi 0.87.1.",
+                                replacementRequirement: "Use Pi 1.0.0.",
+                            }),
+                        );
                     },
                     () => fauxAssistantMessage(fauxText("Confirmed replacement recorded.")),
                 ]);
@@ -714,7 +812,7 @@ for (const legacy of [false, true]) {
                             worktree: evidence.evidence.worktree,
                         },
                     });
-                    let info = await runtime.getSessionInfo(sessionId) as SavedSessionInfo;
+                    let info = (await runtime.getSessionInfo(sessionId)) as SavedSessionInfo;
                     await runtime.closeAllSessionsWhenIdle?.();
                     if (legacy) {
                         info = await copyLegacyTranscript(info.file, projectRoot);

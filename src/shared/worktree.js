@@ -24,7 +24,7 @@ import {
     recordedProjectContextPaths,
 } from "./worktree-project-context.ts";
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
-import { getWorkflowDiff } from "./workflow/git-snapshot.ts";
+import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
 import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
 import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import {
@@ -219,6 +219,7 @@ async function isPreparationChange(root, path, baseRef, targetRef) {
  * @param {string} opts.baseRef
  * @param {string} [opts.targetRef]
  * @param {boolean} [opts.includeWorkingTree]
+ * @param {string} [opts.publishedRef] Published target whose identical committed files are not local implementation.
  * @returns {Promise<boolean>}
  */
 export async function hasExecutionChangesSince({
@@ -226,6 +227,7 @@ export async function hasExecutionChangesSince({
     baseRef,
     targetRef = "HEAD",
     includeWorkingTree = false,
+    publishedRef,
 }) {
     const committed = parseNameOnlyPaths(
         await runGit(worktreePath, ["diff", "--name-only", `${baseRef}..${targetRef}`, "--"]),
@@ -240,6 +242,20 @@ export async function hasExecutionChangesSince({
     for (const { paths, ref } of checks) {
         for (const path of paths) {
             if (!(await isPreparationChange(worktreePath, path, ref ? baseRef : "HEAD", ref))) {
+                if (ref && publishedRef) {
+                    const comparison = await runGitResult(worktreePath, [
+                        "diff",
+                        "--quiet",
+                        publishedRef,
+                        ref,
+                        "--",
+                        path,
+                    ]);
+                    if (comparison.code === 0) continue;
+                    if (comparison.code !== 1) {
+                        throw new Error(`Could not compare published file ${path}: ${comparison.stderr}`);
+                    }
+                }
                 return true;
             }
         }
@@ -1023,7 +1039,7 @@ export async function getWorktreeStatus({ path, branch, baseTree }) {
         try {
             diff = await getWorkflowDiff(path, baseTree);
         } catch {
-            diff = await runGit(path, ["diff"]);
+            diff = await runGit(path, ["diff", ...REVIEW_DIFF_FORMAT_ARGS]);
         }
     } else {
         diff = await getWorkflowDiff(path, undefined);

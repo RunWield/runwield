@@ -178,7 +178,7 @@ export type IndependentRepairTurnRequest = {
 };
 
 /** Which reviewer prompt runs: a Plan's discovery or verification round, or the Epic integration gate. */
-export type ReviewerRoundMode = "discovery" | "verify" | "integration";
+export type ReviewerRoundMode = "discovery" | "verify" | "integration" | "integration_verify";
 
 /** Diff data and observed reads for one round. The inspection also identifies its Session context. */
 export type ValidationReviewData = {
@@ -208,9 +208,13 @@ export type IsolatedAgentSessionRequest =
           reviewerMode: ReviewerRoundMode;
           review: ValidationReviewData;
           ledger: ReviewLedger;
+          /** Identity reused for retries of one unfinished review. */
+          controllerRequestId?: string;
       }
     | {
           kind: "feedback_engineer";
+          /** Plain-text replies keep the review open when the candidate is unchanged. */
+          conversationTurn?: boolean;
           agentName: string;
           userRequest: string;
           cwd: string;
@@ -306,6 +310,8 @@ export type ValidationSessionPort = {
     /** Active execution workflow state (session-owned; coordinator owns its equivalent later). */
     getActiveWorkflow(): ValidationWorkflowState | null;
     setActiveWorkflow(workflow: ValidationWorkflowState): void;
+    /** Release the selected Agent before RunWield-owned publication work. */
+    releaseActiveAgent(): void;
     /** Remember the validation phase when status cannot describe the pending repair. */
     rememberPosition(planName: string, position: ValidationPosition): void;
     /** Clear legacy process-local display state after a terminal result. */

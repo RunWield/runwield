@@ -11,21 +11,12 @@ provenance:
         - "39b939be-a544-422f-a765-8d65c632814c"
 ---
 
-# Unified Memory Tools
+# Unified memory recall and writing
 
 ## Summary
 
-RunWield replaced the separate memory recall, store, and delete tools with `memory_recall` and `memory_write`. Recall
-now searches project and global memory with provenance labels, while write handles store and delete with safe defaults,
-validation, global init, and core tags. Prompts, agent tool lists, Claude bridging, metrics, TUI titles, docs, and tests
-were updated. Workflow Validation passed with targeted suites and `deno task ci`.
-
-## Deviations from Plan
-
-Manual TUI/session checks were not run interactively; the covered behavior was verified through updated automated tests
-and runtime title tests.
+RunWield exposes memory_recall and memory_write as the model-facing memory tools. Recall searches project and global memory with provenance labels, while write handles storage and deletion with validation, safe defaults, global initialization, and core tags. Historical tool names remain readable in transcript and metrics consumers.
 
 ## Future Planning Notes
 
-When tool names change, keep compatibility for retired transcript names in historical UI and metrics consumers while
-removing the old names from current model-facing tool lists.
+Tool renames must remove retired names from current model-facing lists while preserving historical transcript and metrics compatibility.

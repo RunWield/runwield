@@ -15,6 +15,8 @@ export {
     getFileDiff,
     listDiffFiles,
     parseDiffFiles,
+    requiredReviewDiffFiles,
+    ReviewDiffParseError,
     summarizeDiffForReview,
 } from "./review-diff.ts";
 

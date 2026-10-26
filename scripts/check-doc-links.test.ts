@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.js";
+import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.ts";
 
 function fakeRepo(files: Record<string, string>) {
     return {
@@ -67,6 +67,28 @@ test("findBrokenLinks ignores tracked files deleted from the working tree", asyn
     const repo = fakeRepo({ "docs/present.md": "# Present" });
 
     assertEquals(await findBrokenLinks(["docs/deleted.md", "docs/present.md"], repo.readTextFile, repo.pathExists), []);
+});
+
+test("historical Plan references do not relax links in lasting documentation", async () => {
+    const repo = fakeRepo({
+        "docs/plans/completed.md":
+            "[proposal](../prd/retired.md)\n[code](../../src/missing.ts)\n[current](../prd/current.md#missing)",
+        "docs/user-guide.md": "[proposal](prd/retired.md)",
+        "docs/prd/current.md": "# Current",
+    });
+    const lasting = await findBrokenLinks(
+        ["docs/plans/completed.md", "docs/user-guide.md"],
+        repo.readTextFile,
+        repo.pathExists,
+    );
+    assertEquals(
+        lasting.map((link) => [link.sourceFile, link.target]),
+        [
+            ["docs/plans/completed.md", "../../src/missing.ts"],
+            ["docs/plans/completed.md", "../prd/current.md#missing"],
+            ["docs/user-guide.md", "prd/retired.md"],
+        ],
+    );
 });
 
 test("findBrokenLinks rejects a fragment with no matching heading", async () => {

@@ -40,7 +40,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runConfiguredGuideCommand,
+    runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
 import {
     resolveWorkspaceFile,
@@ -573,7 +573,7 @@ export function createReviewWorkspaceApp(options) {
     const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
     const reviewAgentState =
         reviewType === "code"
-            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runWldJobCommand })
             : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
@@ -665,6 +665,7 @@ export function createReviewWorkspaceApp(options) {
                                 turns: reviewConversation.turns,
                                 pending: reviewConversation.pending,
                             }),
+                            error: reviewConversation.error,
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
                             rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
@@ -677,7 +678,9 @@ export function createReviewWorkspaceApp(options) {
                 }
                 if (
                     reviewType === "code" &&
-                    (url.pathname.startsWith("/api/agents/") || url.pathname.startsWith("/api/guide/"))
+                    (url.pathname.startsWith("/api/agents/") ||
+                        url.pathname.startsWith("/api/guide/") ||
+                        url.pathname.startsWith("/api/ai-review/"))
                 ) {
                     if (
                         !hasReviewAssetToken(request, token) &&

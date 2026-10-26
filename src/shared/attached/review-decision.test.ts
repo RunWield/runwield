@@ -206,7 +206,7 @@ test("Core feedback after Attached approval yields a usable new Planner action",
             cwd: root,
             planName: "dark-mode-toggle",
             event: "review_feedback",
-            currentStatus: "feedback",
+            currentStatus: "draft",
             details: { failureReason: "Core feedback." },
         });
         const status = await runOperation("status", root, { workflowId: workflow.workflowId });
@@ -302,7 +302,7 @@ test("a newer Core approval cannot reuse an earlier Attached run decision", asyn
             cwd: root,
             planName: "dark-mode-toggle",
             event: "review_approved",
-            currentStatus: "feedback",
+            currentStatus: "draft",
         });
         await recordPlanEvent({
             cwd: root,

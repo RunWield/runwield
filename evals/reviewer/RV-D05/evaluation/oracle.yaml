@@ -1,0 +1,58 @@
+schemaVersion: 1
+scenarioId: RV-D05
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: >-
+        Only a disposable verification tree receives these files and scripts. Never copy them into a Reviewer
+        project.
+proofs:
+    prefix-sibling:
+        command: bun run test:oracle prefix-sibling
+        expectedFailureMarker: RV-D05-OUTSIDE-DELETION
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D05-A
+              severity: high
+              category: filesystem-containment
+              trigger: >-
+                  An archive root named archive has a real sibling archive-old. Request removal of
+                  ../archive-old/keep.txt.
+              expectedBehavior: Refuse the request and preserve the sibling file unchanged.
+              wrongBehavior: >-
+                  The resolved sibling path shares a string prefix with the root and is unlinked outside the
+                  archive.
+              evidence:
+                  - src/archive.ts
+                  - src/commands.ts
+                  - src/paths.ts
+              acceptableConcepts:
+                  - string prefix is not directory containment
+                  - archive-old sibling deletion
+                  - resolved relative path must stay below the root
+              nearMisses:
+                  - Resolving .. alone does not prove containment.
+                  - An internal nested regular file is an allowed deletion.
+                  - Canonicalizing symlinks is useful but does not repair a prefix comparison.
+              proofCommand: bun run test:oracle prefix-sibling
+              expectedFailureMarker: RV-D05-OUTSIDE-DELETION
+              evidenceNotes:
+                  src/archive.ts: removeArtifact containment check and unlink
+                  src/commands.ts: remove dispatch
+                  src/paths.ts: existing containedFile contract
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - Resolving .. alone does not prove containment.
+    - An internal nested regular file is an allowed deletion.
+    - Canonicalizing symlinks is useful but does not repair a prefix comparison.

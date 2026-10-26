@@ -11,13 +11,8 @@ provenance:
         - "dd441dd2-3995-4afa-821e-279ffe1a4820"
 ---
 
-# Implement thinking-level cycling
+# Model thinking-level cycling
 
 ## Summary
 
-Added Shift+Tab cycling for supported model thinking levels, persisted the selected level to settings, synchronized
-session state, displayed the active level with theme-aware coloring in the TUI footer, and updated boot help text.
-
-## Deviations from Plan
-
-The session-state field was named activeThinkingLevel, and persistence was centralized in a persistThinkingLevel helper.
+Shift+Tab cycles through the active model's supported thinking levels. RunWield persists the selected level, synchronizes Session state, and shows the active level with theme-aware coloring in the TUI footer.

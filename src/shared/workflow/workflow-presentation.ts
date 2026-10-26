@@ -5,13 +5,7 @@ export interface LiveValidationProgress extends RuntimeValidationProgressPresent
 }
 
 export type WorkflowPresentationStepState =
-    | "completed"
-    | "current"
-    | "upcoming"
-    | "blocked"
-    | "paused"
-    | "skipped"
-    | "unavailable";
+    "completed" | "current" | "upcoming" | "blocked" | "paused" | "skipped" | "unavailable";
 
 export type WorkflowPresentationActionKind =
     | "open_plan"
@@ -134,8 +128,8 @@ function stageDefinitions(input: WorkflowPresentationInput): StageDefinition[] {
     return clean(input.intent) === "QUICK_FIX"
         ? QUICK_FIX_STAGES
         : isProject(input)
-        ? CONTAINER_STAGES
-        : EXECUTABLE_STAGES;
+          ? CONTAINER_STAGES
+          : EXECUTABLE_STAGES;
 }
 
 function connectionDefinitions(stages: StageDefinition[], repairTarget: string): WorkflowPresentationConnection[] {
@@ -168,7 +162,7 @@ function baseStates(input: WorkflowPresentationInput, stages: StageDefinition[])
         return states;
     }
     if (isProject(input)) {
-        if (status === "feedback" || status === "failed") states.set("review", "needs_attention");
+        if (status === "failed") states.set("review", "needs_attention");
         else if (status === "ready_for_decomposition") states.set("decomposition", "running");
         else if (status === "ready_for_work" || status === "in_progress") {
             states.set("review", "completed");
@@ -180,14 +174,10 @@ function baseStates(input: WorkflowPresentationInput, stages: StageDefinition[])
         return states;
     }
 
-    if (
-        ["ready_for_work", "in_progress", "implemented", "validated_ci", "reviewed", "validated"].includes(
-            status,
-        )
-    ) {
+    if (["ready_for_work", "in_progress", "implemented", "validated_ci", "reviewed", "validated"].includes(status)) {
         states.set("planning", "completed");
     }
-    if (status === "feedback" || status === "failed") states.set("planning", "needs_attention");
+    if (status === "failed") states.set("planning", "needs_attention");
     else if (status === "ready_for_work") states.set("execution", "pending");
     else if (status === "in_progress") states.set("execution", "running");
     else if (status === "implemented" && input.validationPhase !== "semantic") {
@@ -270,8 +260,8 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
             }
         } else if (
             kind === "registry" &&
-            !(input.progressFacts || []).some((item) =>
-                item.kind === "validation_checkpoint" || item.kind === "publication"
+            !(input.progressFacts || []).some(
+                (item) => item.kind === "validation_checkpoint" || item.kind === "publication",
             )
         ) {
             const status = clean(fact.status);
@@ -282,8 +272,8 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
                     planStatus === "implemented" && input.validationPhase !== "semantic"
                         ? "mechanical"
                         : planStatus === "validated_ci" || input.validationPhase === "semantic"
-                        ? "semantic"
-                        : "repair",
+                          ? "semantic"
+                          : "repair",
                     "needs_attention",
                 );
             }
@@ -308,12 +298,12 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
             live.checks.ci === "passed"
                 ? "completed"
                 : live.checks.ci === "failed"
-                ? "needs_attention"
-                : live.outcome === "paused"
-                ? "paused"
-                : live.outcome === "failed"
-                ? "needs_attention"
-                : "running",
+                  ? "needs_attention"
+                  : live.outcome === "paused"
+                    ? "paused"
+                    : live.outcome === "failed"
+                      ? "needs_attention"
+                      : "running",
         );
         states.set(
             "repair",
@@ -332,22 +322,20 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
             "repair",
             live.stage === "engineer_repair" ? (live.outcome === "paused" ? "paused" : "running") : "not_required",
         );
-        for (
-            const [check, stage] of Object.entries({
-                ci: "mechanical",
-                semanticReview: "semantic",
-                humanReview: "code_review",
-                merge: "delivery",
-            })
-        ) {
+        for (const [check, stage] of Object.entries({
+            ci: "mechanical",
+            semanticReview: "semantic",
+            humanReview: "code_review",
+            merge: "delivery",
+        })) {
             const state = live.checks[check as keyof typeof live.checks];
             states.set(
                 stage,
                 state === "canceled" || (live.outcome === "paused" && state === "pending")
                     ? "paused"
                     : state === "failed"
-                    ? "needs_attention"
-                    : state,
+                      ? "needs_attention"
+                      : state,
             );
         }
     }
@@ -375,9 +363,10 @@ function repairReturnTarget(input: WorkflowPresentationInput): string {
 }
 
 function currentStageIndex(stages: StageDefinition[], rawStates: Map<string, string>): number {
-    const repair = stages.findIndex((stage) =>
-        stage.id === "repair" &&
-        (ACTIVE_STATES.has(rawStates.get(stage.id) || "") || PAUSED_STATES.has(rawStates.get(stage.id) || ""))
+    const repair = stages.findIndex(
+        (stage) =>
+            stage.id === "repair" &&
+            (ACTIVE_STATES.has(rawStates.get(stage.id) || "") || PAUSED_STATES.has(rawStates.get(stage.id) || "")),
     );
     if (repair >= 0) return repair;
     const urgent = stages.findIndex((stage) => {
@@ -404,8 +393,8 @@ function detailFor(stage: WorkflowPresentationStage, input: WorkflowPresentation
         item.kind === "publication"
             ? stage.id === "delivery"
             : item.kind === "validation_checkpoint"
-            ? stage.id === stageForValidationPhase(clean(item.phase))
-            : item.kind === "registry" && stage.id === "execution"
+              ? stage.id === stageForValidationPhase(clean(item.phase))
+              : item.kind === "registry" && stage.id === "execution",
     );
     if (fact?.failure && clean(fact.message)) return clean(fact.message);
     if (stage.current && clean(input.degradedMessage)) return clean(input.degradedMessage);
@@ -496,7 +485,8 @@ function actionFor(
     if (clean(input.intent) === "QUICK_FIX") {
         return { kind: "open_session", label: "Open Session", detail: "Open the working Session." };
     }
-    const completed = ["verified", "user_verified", "closed_without_verification"].includes(status) ||
+    const completed =
+        ["verified", "user_verified", "closed_without_verification"].includes(status) ||
         (isProject(input) && status === "validated");
     if (status === "on_hold" && input.canResume && clean(input.sessionState) !== "active") {
         return {
@@ -512,7 +502,8 @@ function actionFor(
     }
     if (
         ["approved", "ready_for_work"].includes(clean(input.status)) &&
-        clean(input.sessionState) !== "active" && (input.canResume || input.canRun)
+        clean(input.sessionState) !== "active" &&
+        (input.canResume || input.canRun)
     ) {
         return {
             kind: "review_plan",
@@ -558,19 +549,22 @@ export function buildWorkflowPresentation(input: WorkflowPresentationInput): Wor
     const definitions = stageDefinitions(input);
     const rawStates = mergedRawStates(input, definitions);
     const currentIndex = currentStageIndex(definitions, rawStates);
-    const stages = definitions.map((definition, index) => {
-        const state = stateFromRaw(rawStates.get(definition.id) || "pending", index === currentIndex);
-        const stage: WorkflowPresentationStage = {
-            id: definition.id,
-            label: definition.label,
-            state,
-            detail: "",
-            current: index === currentIndex,
-        };
-        return { ...stage, detail: detailFor(stage, input) };
-    }).filter((stage) => stage.state !== "skipped");
+    const stages = definitions
+        .map((definition, index) => {
+            const state = stateFromRaw(rawStates.get(definition.id) || "pending", index === currentIndex);
+            const stage: WorkflowPresentationStage = {
+                id: definition.id,
+                label: definition.label,
+                state,
+                detail: "",
+                current: index === currentIndex,
+            };
+            return { ...stage, detail: detailFor(stage, input) };
+        })
+        .filter((stage) => stage.state !== "skipped");
     const currentStage = stages.find((stage) => stage.current) || stages.at(-1) || null;
-    const blocker = clean(input.degradedMessage) ||
+    const blocker =
+        clean(input.degradedMessage) ||
         (currentStage && ["blocked", "paused", "unavailable"].includes(currentStage.state)
             ? currentStage.detail
             : null);

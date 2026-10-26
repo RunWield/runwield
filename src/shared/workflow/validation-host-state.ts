@@ -114,7 +114,7 @@ export interface HostReviewerCandidateArgs {
 /** Read-only shared preflight, before a carrier persists a stale reviewer claim. */
 export async function assertHostReviewerCandidate(args: HostReviewerCandidateArgs): Promise<void> {
     const { getWorktreeReviewDiff, getWorkflowDiff } = await import("./git-snapshot.ts");
-    const { parseDiffFiles } = await import("./review-diff.ts");
+    const { requiredReviewDiffFiles } = await import("./review-diff.ts");
     const { ReviewInspection } = await import("./review-inspection.ts");
     const { sameHostIdentity } = await import("./validation-host-contract.ts");
     const fullDiff = await getWorktreeReviewDiff(args.cwd, args.baseBranch);
@@ -131,7 +131,7 @@ export async function assertHostReviewerCandidate(args: HostReviewerCandidateArg
     const scope = mode === "discovery" ? "full" : "repair";
     try {
         ReviewInspection.fromRecorded(
-            parseDiffFiles(scope === "full" ? fullDiff : repairDiff).map((file) => ({
+            requiredReviewDiffFiles(scope === "full" ? fullDiff : repairDiff).map((file) => ({
                 scope,
                 path: file.path,
                 byteLength: file.byteLength,

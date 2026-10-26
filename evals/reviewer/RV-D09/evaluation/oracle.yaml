@@ -1,0 +1,49 @@
+schemaVersion: 1
+scenarioId: RV-D09
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    body-rollback:
+        command: bun run test:oracle body-rollback
+        expectedFailureMarker: RV-D09-BODY-ROLLBACK
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D09-A
+              severity: high
+              category: concurrent-author-data-loss
+              trigger: The configured transition command edits the author body after status changes to validating, then exits nonzero.
+              expectedBehavior: Restore the previous lifecycle front matter on the latest author body and propagate the command failure.
+              wrongBehavior: Whole-file snapshot rollback restores the earlier body and deletes the concurrent author revision.
+              evidence:
+                  - src/lifecycle.ts
+                  - src/plans.ts
+                  - src/commands.ts
+                  - AGENTS.md
+              acceptableConcepts:
+                  - rollback owns metadata, not author body
+                  - restoring a snapshot erases a concurrent body edit
+                  - read the current document before restoring owned front matter
+              nearMisses:
+                  - Restoring the approved status after a failed command is required.
+                  - The body edit occurs inside the failing command before it exits, not through a timing race.
+                  - The project has one lifecycle writer; author body edits can run concurrently.
+              proofCommand: bun run test:oracle body-rollback
+              expectedFailureMarker: RV-D09-BODY-ROLLBACK
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - Restoring the approved status after a failed command is required.
+    - The body edit occurs inside the failing command before it exits, not through a timing race.
+    - The project has one lifecycle writer; author body edits can run concurrently.

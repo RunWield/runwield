@@ -11,8 +11,8 @@ import {
 } from "node:fs/promises";
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { packageWinget } from "./package-winget.js";
-import { sha256 } from "./package-windows.js";
+import { packageWinget } from "./package-winget.ts";
+import { sha256 } from "./package-windows.ts";
 
 async function run(command: string, args: string[], cwd?: string): Promise<void> {
     const result = await captureScriptProcess(command, { args, cwd, stdout: "piped", stderr: "piped" });
@@ -90,7 +90,7 @@ test("package:winget renders standard manifests from published ZIP bytes", async
         assertStringIncludes(installer, "ArchiveBinariesDependOnPath: true");
         assertStringIncludes(installer, "PortableCommandAlias: wld");
         assertStringIncludes(installer, "PackageIdentifier: Git.Git");
-        assertStringIncludes(locale, "License: Free Use License");
+        assertStringIncludes(locale, "License: MIT");
         const summary = JSON.parse(await fsReadFile(join(output, "runwield-winget-package.json"), "utf8"));
         assertEquals(summary.packageIdentifier, "Gandazgul.RunWield");
     } finally {
@@ -170,3 +170,27 @@ test("package:winget rejects ZIPs without package metadata", async () => {
         await fsRm(root, { recursive: true });
     }
 });
+
+for (const [tag, license] of [
+    ["v0.12.4", "Free Use License"],
+    ["v0.14.0", "MIT"],
+]) {
+    test(`package:winget preserves the release license for ${tag}`, async () => {
+        const root = await fsMkdtemp(join(tmpdir(), "runwield-winget-license-"));
+        const server = serve(root);
+        try {
+            await makeReleaseZip(root, tag);
+            const output = join(root, "out");
+            await packageWinget({ tag, output, baseUrl: server.baseUrl, testOnly: true });
+            const locale = await fsReadFile(
+                join(output, "Gandazgul.RunWield", tag.slice(1), "Gandazgul.RunWield.locale.en-US.yaml"),
+                "utf8",
+            );
+            assertStringIncludes(locale, `License: ${license}\n`);
+            assertStringIncludes(locale, `LicenseUrl: https://github.com/RunWield/runwield/blob/${tag}/LICENSE`);
+        } finally {
+            await server.close();
+            await fsRm(root, { recursive: true });
+        }
+    });
+}

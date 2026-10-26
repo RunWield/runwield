@@ -12,20 +12,12 @@ provenance:
         - "f9164a69-018d-4287-9ae0-8178d5cb5974"
 ---
 
-# Code review diff highlighting no longer blanks lazy languages
+# Safe lazy-language diff highlighting
 
 ## Summary
 
-The Workspace code review surface now prepares Pierre/Shiki grammars for the current diff before rendering. Failed
-grammar loads fall back to plain text instead of leaving files blank. The surface waits for readiness in all-files and
-Guided Review diff blocks, and the dev fixture now covers TSX, JSX, Java, and C++. Automated checks, workspace tests,
-full CI, and browser verification passed.
-
-## Deviations from Plan
-
-The work also repaired the `deno task workspace:test` path in `deno.json` so the planned verification command could run.
+Workspace code review prepares the current diff's Pierre/Shiki grammars before rendering. Failed grammar loads fall back to plain text rather than hide file content. All-files and Guided Review blocks use the same readiness protection.
 
 ## Future Planning Notes
 
-Use RunWield-owned preparation before vendored diff rendering when a vendored async failure can otherwise hide content.
-Keep lazy grammar loading demand-driven and use plain text as the safe fallback.
+Prepare asynchronous rendering dependencies before invoking vendored renderers. Keep language loading demand-driven and preserve plain text as the safe fallback.

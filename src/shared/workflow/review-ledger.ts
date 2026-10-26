@@ -17,7 +17,7 @@ import type { ReviewFinding } from "./review-outcome.ts";
 
 export type ReviewIssueStatus = "new" | "fix_claimed" | "fix_confirmed" | "fix_rejected";
 
-export interface LedgerItem {
+export type LedgerItem = {
     /** Stable identity, e.g. "R1-2". Never reused or renumbered. */
     id: string;
     openedInRound: number;
@@ -28,13 +28,13 @@ export interface LedgerItem {
     /** Optional only for checkpoints written before explicit issue states. */
     status?: ReviewIssueStatus;
     rejectionReason?: string;
-}
+};
 
-export interface ReviewLedger {
+export type ReviewLedger = {
     items: LedgerItem[];
     /** Monotonic counter backing identity assignment. */
     sequence: number;
-}
+};
 
 export function createLedger(): ReviewLedger {
     return { items: [], sequence: 0 };

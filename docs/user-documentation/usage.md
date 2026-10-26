@@ -72,8 +72,8 @@ Type `/` for completion.
 | `/theme`         | Pick a theme.                                                                 |
 | `/reload`        | Reload settings, instructions, prompts, Skills, models, themes, and memories. |
 | `/mcp`           | Show MCP server status. See [MCP](mcp.md).                                    |
-| `/export`        | Export the Session to HTML or JSONL.                                          |
-| `/share`         | Upload the Session as a secret GitHub Gist.                                   |
+| `/export`        | Export the complete Session to HTML or JSON.                                  |
+| `/share`         | Share complete Session HTML and JSON as a secret Gist with a preview link.    |
 | `/quit`, `/exit` | Exit.                                                                         |
 
 Prompt templates and Skills also appear as slash commands. See [Customization](customization.md).

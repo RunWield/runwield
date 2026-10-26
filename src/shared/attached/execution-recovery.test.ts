@@ -202,7 +202,7 @@ test("execution evidence projects Core feedback and later AI review from the wor
         await updatePlanFrontMatter(
             execution.executionCwd,
             "dark-mode-toggle",
-            { status: "feedback" },
+            { status: "draft" },
             {},
             {
                 expectedRevision: plan.revision,

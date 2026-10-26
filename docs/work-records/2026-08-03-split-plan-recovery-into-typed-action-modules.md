@@ -12,17 +12,12 @@ provenance:
         - "7989da8c-27e5-464a-8764-3dbdba75e7b7"
 ---
 
-# Split Plan Recovery into typed action modules
+# Typed Plan Recovery actions
 
 ## Summary
 
-Plan Recovery was refactored from a large menu flow into a focused coordinator plus typed action, reset, and manual
-merge publication modules while preserving live context handling, outcome translation, and transactional
-lifecycle/publication wrappers. Architecture boundary coverage was migrated to TypeScript and expanded across the Plan
-Recovery module family. Verification passed with checks, language policy, seams, targeted
-recovery/integration/architecture/golden tests, and full CI.
+Plan Recovery separates coordination, actions, resets, and manual merge publication into typed modules. Shared outcomes distinguish menu re-prompts from handled actions and review outcomes. Lifecycle and publication operations retain transactional wrappers and live-context handling.
 
 ## Future Planning Notes
 
-The split established an explicit RecoveryActionOutcome contract so future Plan Recovery changes can distinguish menu
-re-prompts from terminal handled/review outcomes without relying on branch-level loop control.
+Use explicit recovery outcomes instead of branch-local loop control. Keep lifecycle and publication transactions intact across module boundaries.

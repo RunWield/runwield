@@ -28,6 +28,9 @@ import {
 import { preparePublicationRevalidation, prepareReviewedCandidateRevalidation } from "./publication-revalidation.ts";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
+import { HostedSession } from "../session/hosted-session.js";
+import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
+import { assertPreMergeCandidateUnchanged } from "../worktree.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
 
@@ -43,8 +46,24 @@ const repository = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "Plan"]);
 });
 
-async function fixture() {
+async function fixture(epicChild = false) {
     const projectRoot = await repository.checkout();
+    if (epicChild) {
+        await savePlan(projectRoot, "epic", "# Epic\n\n## Objective\n\nShip all outcomes.\n", {
+            classification: "PROJECT",
+            planId: "revalidation-epic",
+        });
+        const child = (await loadPlan(projectRoot, "rewrite"))!;
+        await savePlan(
+            projectRoot,
+            "rewrite",
+            child.markdown,
+            { parentPlan: "epic" },
+            { expectedRevision: child.revision },
+        );
+        await git(projectRoot, ["add", "."]);
+        await git(projectRoot, ["commit", "-m", "Epic family"]);
+    }
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "publication-revalidation-"));
     const entry = await createTestWorktreeAttempt({
         projectRoot,
@@ -447,6 +466,62 @@ test("reviewed checkpoints without a candidate identity retain legacy continuati
         assertEquals(plan?.attrs.status, "reviewed");
         assertEquals(plan?.attrs.validationCheckpoint, f.checkpoint);
     } finally {
+        await f.cleanup();
+    }
+});
+
+test("a confirmed child deviation after sealing survives publication revalidation with its Epic projection", async () => {
+    const f = await fixture(true);
+    const hostedSession = new HostedSession({
+        id: "late-child-deviation",
+        cwd: f.projectRoot,
+        interactionAdapter: {
+            supportsInteraction: () => true,
+            requestInteraction: () => ({ outcome: "accepted", value: true }),
+        },
+    });
+    hostedSession.setActiveExecutionWorkflow({
+        planName: f.entry.planName,
+        triageMeta: { classification: "PLANNED_CHANGE" },
+        executionAgent: "engineer",
+        projectRoot: f.projectRoot,
+        executionCwd: f.entry.path,
+        executionMode: "worktree",
+        worktreeId: f.entry.id,
+        worktreeBranch: f.entry.branch,
+        executionStarted: true,
+    });
+    try {
+        const tool = createPlanDeviationTool({ hostedSession });
+        type DeviationContext = Parameters<typeof tool.execute>[4];
+        const result = await tool.execute(
+            "late-confirmation",
+            {
+                supersededRequirement: "Ship all outcomes.",
+                replacementRequirement: "Ship the selected outcome only.",
+            },
+            undefined,
+            undefined,
+            {} as DeviationContext,
+        );
+        assertEquals(result.details?.decision, "recorded");
+        const epicBefore = (await loadPlan(f.entry.path, "epic"))!.markdown;
+        assertStringIncludes(epicBefore, "Replacement requirement: Ship the selected outcome only.");
+        await assertRejects(() =>
+            assertPreMergeCandidateUnchanged({
+                worktreePath: f.entry.path,
+                sealedExecutionCommit: f.attempt.artifactCommit!,
+                allowedPlanPaths: [],
+            }),
+        );
+        assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+        const child = (await loadPlan(f.entry.path, f.entry.planName))!;
+        assertEquals(child.attrs.status, "implemented");
+        assertEquals(child.attrs.planDeviations?.[0].id, "late-confirmation");
+        assertEquals((await loadPlan(f.entry.path, "epic"))?.markdown, epicBefore);
+        assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, undefined);
+    } finally {
+        hostedSession.dispose();
         await f.cleanup();
     }
 });

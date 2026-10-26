@@ -782,6 +782,24 @@ body:has(.rw-code-review) button.review-toolbar-btn.primary:disabled,
     min-height: 0;
 }
 
+.rw-artifact-read .rw-plan-document-canvas {
+    justify-content: stretch;
+    padding: 0;
+}
+
+.rw-artifact-read .rw-plan-document-canvas > .relative {
+    min-width: 0;
+    max-width: none !important;
+    flex: 1;
+}
+
+.rw-artifact-read article[data-print-region="article"] {
+    min-height: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 .rw-artifact-document-toolbar {
     display: flex;
     align-items: center;
@@ -994,7 +1012,13 @@ body:has(.rw-code-review) button.review-toolbar-btn.primary:disabled,
 }
 
 .rw-code-diff-left-controls {
-    flex: 1 1 12rem;
+    flex: 1 1 24rem;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.rw-code-diff-toolbar[data-ai-review] .rw-code-diff-left-controls {
+    flex-basis: 100%;
 }
 
 .rw-code-diff-sidebar-restore {
@@ -1472,7 +1496,12 @@ body:has(.rw-code-review) button.review-toolbar-btn.primary:disabled,
 }
 
 .rw-code-diff-toolbar .rw-guide-actions {
-    flex-wrap: nowrap;
+    flex: 1 1 16rem;
+    align-items: flex-start;
+}
+
+.rw-code-diff-toolbar .rw-guide-actions > button {
+    flex-shrink: 0;
 }
 
 .rw-guide-cost-note {
@@ -1481,9 +1510,8 @@ body:has(.rw-code-review) button.review-toolbar-btn.primary:disabled,
 }
 
 .rw-code-diff-toolbar .rw-guide-cost-note {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex-basis: 100%;
+    overflow-wrap: anywhere;
 }
 
 .rw-dev-fixture-switcher {

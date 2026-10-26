@@ -33,7 +33,7 @@ local RunWield setup.
 local browser reviews, connected-only execution, and saved Session resume.
 
 **Not included:** Unattended execution, source-code synchronization, a required local checkout, multi-user
-collaboration, hosted Workspace registration, remote ACP clients, migration of an existing local Session to another
+collaboration, remote ACP clients, migration of an existing local Session to another
 checkout, or automatic installation of every project dependency. Hostile-server isolation is not promised.
 
 ## Product Fit and Main Journey

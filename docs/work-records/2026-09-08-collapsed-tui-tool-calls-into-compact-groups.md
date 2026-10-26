@@ -14,10 +14,8 @@ provenance:
         - "2661bce2-39e8-4ff0-af97-558420127efb"
 ---
 
-# Collapsed TUI Tool Calls into Compact Groups
+# Compact TUI tool-call groups
 
 ## Summary
 
-The TUI now groups contiguous tool calls into compact one-line rows, with per-call status coloring and `Ctrl+O`
-expansion for full results and images. Workflow tools such as `plan_written` and `triage_report` remain standalone full
-blocks. Verification passed with the focused TUI and session-help test set.
+The TUI groups contiguous tool calls into compact one-line rows with per-call status coloring and expansion for full results and images. Workflow tools remain standalone full blocks.

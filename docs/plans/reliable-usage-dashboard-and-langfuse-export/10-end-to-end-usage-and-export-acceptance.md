@@ -88,8 +88,8 @@ exposes a defect.
 - `docs/settings.md` and `src/skills/runwield/SETTINGS.md` — default-on recording, retention until deletion, and export
   approval semantics accurate.
 - `docs/design-system.md` — any pattern children 05 or 09 added is documented.
-- `docs/plans/complete-tool-call-metrics.md` — left untouched as a separate draft; only its satisfied coverage goals are
-  noted, and its token-denominator scope stays out.
+- The historical **Complete Tool-Call Metrics** draft is not added as scope; note satisfied coverage goals only and keep
+  its token-denominator scope out.
 
 ## Reuse Opportunities
 

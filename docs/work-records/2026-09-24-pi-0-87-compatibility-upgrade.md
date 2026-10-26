@@ -12,22 +12,16 @@ provenance:
         - "eca2ba1e-32ca-4e5a-bed5-dc579b81e0a2"
 ---
 
-# Pi 0.87 compatibility upgrade
+# Pi 0.87 compatibility
 
 ## Summary
 
-Upgraded all four direct Pi packages to 0.87 and adapted provider context, temperature retries, stream termination,
-workflow result reading, and compiled release behavior. Named Invocation expansions, including images, now persist as
-append-only context edits; legacy repair is idempotent and limited to the active branch. Cache warming remains off
-without changing stored settings. Core requirements and ADR-015 were updated. Focused checks, compilation, compiled ACP
-continuation, and image-resize smoke tests passed; a transient auth-fixture failure passed on rerun. Full RunWield
-validation remains pending.
+RunWield integrates Pi 0.87 provider context, temperature retries, stream termination, workflow-result reading, and compiled release behavior. Named Invocation expansions, including images, persist as append-only context edits. Legacy repair is idempotent and limited to the active branch, and cache warming stays off without changing stored settings.
 
-## Deferred Work
+## Out of Scope
 
-The owner deferred a user-facing cache-warming setting. Full RunWield validation remains pending.
+This work does not include a user-facing cache-warming setting.
 
 ## Future Planning Notes
 
-The cache-warming override is specific to Pi 0.87; verify upstream behavior before replacing it with a user setting.
-Preserve canonical saved context edits and branch-scoped legacy repair in future Pi upgrades.
+The cache-warming override is specific to Pi 0.87; confirm upstream behavior before replacing it with a user setting. Preserve canonical saved context edits and branch-scoped legacy repair across Pi upgrades.

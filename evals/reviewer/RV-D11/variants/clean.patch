@@ -1,0 +1,15 @@
+diff --git a/src/commands.ts b/src/commands.ts
+--- a/src/commands.ts
++++ b/src/commands.ts
+@@ -1,5 +1,11 @@
+ import { listNotes } from "./store.ts";
++import { summarize } from "./summary.ts";
++import type { Summary } from "./model.ts";
+ 
+ export async function noteTitles(root: string): Promise<string[]> {
+     return (await listNotes(root)).map((note) => note.title);
+ }
++
++export async function projectSummary(): Promise<Summary> {
++    return summarize(await listNotes(process.cwd()));
++}

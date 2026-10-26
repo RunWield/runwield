@@ -88,6 +88,21 @@ export interface ReviewDiffRead {
     coverage?: ReviewDiffSpan;
 }
 
+/** A nonempty patch whose changed files cannot be read. */
+export class ReviewDiffParseError extends Error {
+    constructor() {
+        super("RunWield could not read the changed files from the review diff. The change was not approved.");
+        this.name = "ReviewDiffParseError";
+    }
+}
+
+/** Reject unreadable content rather than treating it as an empty patch. */
+export function requiredReviewDiffFiles(text: string): DiffFileEntry[] {
+    const files = parseDiffFiles(text);
+    if (text.trim() && files.length === 0) throw new ReviewDiffParseError();
+    return files;
+}
+
 export function parseDiffFiles(diffText: string): DiffFileEntry[] {
     if (!diffText || !diffText.trim()) return [];
 

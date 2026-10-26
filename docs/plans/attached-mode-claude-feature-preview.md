@@ -24,7 +24,8 @@ origin: "internal"
 userVerifiedAt: null
 planId: "7bf7ec07-2212-4bca-b5c5-3d4ac863025e"
 epicBaseCommit: "7bef10a1ef4b075a5484c6d4a44c56cf2791fed0"
-status: "ready_for_work"
+status: "implemented"
+epicIntegrationReport: "docs/plans/attached-mode-claude-feature-preview/integration-report.md"
 ---
 
 # RunWield Connect for Claude Code: FEATURE Preview

@@ -207,7 +207,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {boolean|null} [devServerHmr] - Whether the dev server is expected to support hot module reload
  * @property {string} createdAt - ISO timestamp
  * @property {string} [planId] - Durable project-scoped resource identity for Workspace URLs
- * @property {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} status
+ * @property {"draft"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} status
  * @property {"internal"|"external"} [origin] - "internal" = created by a RunWield agent; "external" = a pre-existing markdown file loaded from an arbitrary path and resumed with RunWield
  * @property {string} [parentPlan] - Canonical parent plan name for child FEATURE plans
  * @property {number} [order] - Epic child FEATURE execution order.
@@ -532,7 +532,6 @@ function joinFrontMatterAndBody(frontMatter, body) {
 
 const PLAN_STATUSES = new Set([
     "draft",
-    "feedback",
     "approved",
     "ready_for_decomposition",
     "ready_for_work",
@@ -557,7 +556,6 @@ const PLAN_LIST_STATUS_ORDER = new Map([
     ["ready_for_work", 2],
     ["ready_for_decomposition", 3],
     ["draft", 4],
-    ["feedback", 5],
     ["approved", 6],
     ["in_progress", 7],
     ["verified", 8],
@@ -576,7 +574,8 @@ const PLAN_LIST_CLASSIFICATION_ORDER = new Map([
 const LEGACY_PLAN_STATUSES = new Map([
     ["validated_reviewer", "reviewed"],
     ["completed", "verified"],
-    ["in_review", "feedback"],
+    ["feedback", "draft"],
+    ["in_review", "draft"],
     // Older/manual recovery copies used this to mean implementation was done
     // and Workflow Validation had not started yet.
     ["ready_for_review", "implemented"],
@@ -892,10 +891,7 @@ function normalizeNonNegativeInteger(value) {
 function normalizePlanStatusForOptionalHold(status) {
     if (status === null) return null;
     if (typeof status !== "string") return undefined;
-    const normalized = normalizePlanStatus(status);
-    return normalized === DEFAULT_FRONT_MATTER.status && status !== DEFAULT_FRONT_MATTER.status
-        ? undefined
-        : normalized;
+    return canonicalPlanStatus(status);
 }
 
 /**
@@ -2872,8 +2868,9 @@ export async function listPlans(cwd) {
 
 /**
  * List saved plans, reading target-branch children only for `onlyEpic` when it
- * is given. Reading an Epic's target branch fetches it and reads every Plan on
- * it, so a lookup scoped to one Epic must not pay that for every other Epic.
+ * is given. Catalog evidence uses existing Git snapshots; remote refresh belongs
+ * to the selected Epic's workflow. A scoped lookup also avoids reading every
+ * Plan on unrelated Epic branches.
  *
  * @param {string} cwd
  * @param {string | null} onlyEpic
@@ -2898,7 +2895,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
             let targetChildren;
             try {
-                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
+                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name, {
+                    refresh: false,
+                });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (
@@ -3702,18 +3701,46 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
             throw new Error(`Plan is archived or hidden and cannot be assigned a planId: ${name}`);
         }
 
-        let reservedPlanIds = options.reservedPlanIds;
-        if (!reservedPlanIds) {
-            const plans = await listPlans(cwd);
-            const byId = groupExistingPlanIds(plans);
-            assertNoDuplicatePlanIds(byId);
-            reservedPlanIds = new Set(byId.keys());
-            for (const attempt of await listControllerDocumentWorktrees(cwd)) {
-                if (attempt.planId) reservedPlanIds.add(attempt.planId);
-            }
+        const attempts = await listControllerDocumentWorktrees(cwd);
+        const registered = attempts.filter((attempt) => attempt.planName === name);
+        if (registered.length > 1) {
+            throw new Error(
+                `Registered Plan ${name} has ambiguous document authority. Your files have not been changed.`,
+            );
+        }
+        const registeredPlanId = normalizePlanId(registered[0]?.planId);
+        let planId = normalizePlanId(plan.attrs.planId);
+        if (registeredPlanId && planId && registeredPlanId !== planId) {
+            throw new Error(
+                `Registered Plan ${name} does not match the saved Plan ID. Your files have not been changed.`,
+            );
+        }
+        if (
+            registeredPlanId &&
+            attempts.some(
+                (attempt) => attempt.planName !== name && normalizePlanId(attempt.planId) === registeredPlanId,
+            )
+        ) {
+            throw new Error(
+                `Registered Plan ID ${registeredPlanId} belongs to multiple Plans. Your files have not been changed.`,
+            );
+        }
+        const plans = await listPlans(cwd);
+        const byId = groupExistingPlanIds(plans);
+        assertNoDuplicatePlanIds(byId);
+        if (registeredPlanId && byId.get(registeredPlanId)?.some((other) => other.name !== name)) {
+            throw new Error(
+                `Registered Plan ID ${registeredPlanId} belongs to another Plan. Your files have not been changed.`,
+            );
+        }
+        const reservedPlanIds = options.reservedPlanIds || new Set(byId.keys());
+        // Registry IDs are already assigned identities, not just collision reservations.
+        // Read them even during explicit catalog backfills, which supply their own set.
+        for (const attempt of attempts) {
+            const id = normalizePlanId(attempt.planId);
+            if (id) reservedPlanIds.add(id);
         }
         const idGenerator = options.idGenerator || (() => crypto.randomUUID());
-        let planId = normalizePlanId(plan.attrs.planId);
         let markdown = plan.markdown;
         let attrs = { ...plan.attrs, planId };
 
@@ -3737,9 +3764,12 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
         }
 
         if (!planId) {
-            do {
-                planId = normalizePlanId(idGenerator());
-            } while (!planId || reservedPlanIds.has(planId));
+            planId = registeredPlanId;
+            if (!planId) {
+                do {
+                    planId = normalizePlanId(idGenerator());
+                } while (!planId || reservedPlanIds.has(planId));
+            }
             assertSharedPlanWriteAllowed(plan.attrs, options);
             attrs = { ...plan.attrs, planId };
             await bindControllerPlanIdentity(cwd, { planName: name, planId });

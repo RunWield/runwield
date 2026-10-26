@@ -12,17 +12,12 @@ provenance:
         - "21bd9fe8-84b7-4b23-80cf-9f9fbf22f303"
 ---
 
-# Resumed repaired merge publication
+# Durable repaired-merge publication continuation
 
 ## Summary
 
-RunWield now persists `validationMergeRepairWorktree` as durable validation-continuation state so an interrupted
-repaired merge can be published on a later validation call instead of restarting the conflicting merge. The lifecycle
-now clears stale repair paths when validation proof or implementation lineage changes, and documentation distinguishes
-this status-preserving continuation from `worktree_merge_failed`. Verification passed via targeted workflow tests,
-objective checks OC1/OC2/OC3, `deno task test src/shared/workflow`, `deno task seams:check`, and full `deno task ci`.
+Validation persists repaired-merge continuation state so an interrupted publication can resume without repeating the conflicting merge. Changes to validation proof or implementation lineage clear stale repair references. This continuation preserves lifecycle status and remains distinct from a merge-failure transition.
 
 ## Future Planning Notes
 
-Validation continuation metadata that affects delivery should be persisted through protected Front Matter transitions
-and fail closed when persistence is blocked; stale paths should be cleared broadly on lineage-reset lifecycle events.
+Delivery continuation state requires protected, durable transitions. Persistence failure must stop the transition, and lineage resets must invalidate stale repair state.

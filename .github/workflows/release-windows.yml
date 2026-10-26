@@ -21,6 +21,8 @@ permissions:
 
 jobs:
     native:
+        # Windows publication and checks are paused by owner decision.
+        if: ${{ false }}
         name: Windows ${{ matrix.arch }} ${{ matrix.phase }} ${{ matrix.shard || '' }}
         runs-on: ${{ matrix.runner }}
         timeout-minutes: ${{ matrix.phase == 'source' && 60 || 20 }}
@@ -170,7 +172,7 @@ jobs:
               run: bun run install:locked
             - name: Prepare generated source version for focused checks
               if: matrix.phase == 'package'
-              run: bun scripts/write-version.js
+              run: bun scripts/write-version.ts
             - name: Check all source and test types
               if: matrix.phase == 'source'
               run: bun run check
@@ -209,7 +211,7 @@ jobs:
             - name: Qualify native locking, process trees and compiled identity
               if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
               timeout-minutes: 12
-              run: bun scripts/run-tests.js src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts src/shared/runtime-identity.test.ts src/shared/sqlite.test.ts src/shared/private-json-file.test.ts scripts/run-bun-tests.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/primary-checkout.test.ts src/cmd/load-plan/primary-plan-recovery.test.ts src/cmd/load-plan/plan-authority.integration.test.ts src/cmd/load-plan/legacy-validation.integration.test.ts scripts/install-platforms.test.ts scripts/install-integrity.test.ts scripts/install-interaction.test.ts scripts/pre-commit-hook.test.ts scripts/docs-workflow.test.ts scripts/public-docs.test.ts src/shared/owner-coordination/database.test.js src/shared/session/live-session-connection.test.ts src/shared/session/live-session-events.test.ts src/testing/workflow-binary-fixtures.test.ts src/shared/remote/entry-isolation.test.ts
+              run: bun scripts/run-tests.js src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts src/shared/runtime-identity.test.ts src/shared/sqlite.test.ts src/shared/private-json-file.test.ts scripts/run-bun-tests.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/primary-checkout.test.ts src/cmd/load-plan/primary-plan-recovery.test.ts src/cmd/load-plan/plan-authority.integration.test.ts src/cmd/load-plan/legacy-validation.integration.test.ts scripts/install-platforms.test.ts scripts/install-integrity.test.ts scripts/install-interaction.test.ts scripts/pre-commit-hook.test.ts scripts/docs-workflow.test.ts scripts/public-docs.test.ts src/shared/owner-coordination/database.test.ts src/shared/session/live-session-connection.test.ts src/shared/session/live-session-events.test.ts src/testing/workflow-binary-fixtures.test.ts src/shared/remote/entry-isolation.test.ts
             - name: Compile native executable and embedded Workspace
               id: compile
               if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
@@ -237,6 +239,15 @@ jobs:
                   New-Item -ItemType Directory -Force $destination | Out-Null
                   $bytes = 0
                   $count = 0
+                  foreach ($file in (Get-ChildItem $env:RUNNER_TEMP -File -Filter 'tests-*.log' | Select-Object -First 100)) {
+                    if ($file.Length -gt 5MB -or $bytes + $file.Length -gt 20MB -or $count -ge 100) {
+                      Write-Warning "Failure log retention limit: $($file.FullName)"
+                      continue
+                    }
+                    Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $destination $file.Name)
+                    $bytes += $file.Length
+                    $count++
+                  }
                   $roots = Get-ChildItem $env:RUNNER_TEMP -Directory -Filter 'rw-*'
                   foreach ($root in $roots) {
                     $files = Get-ChildItem $root.FullName -File -Recurse -ErrorAction SilentlyContinue |

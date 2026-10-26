@@ -11,17 +11,8 @@ provenance:
         - "76e4b286-5dcf-48e2-9609-0114d07493c0"
 ---
 
-# Guided Review Explainers for validation-time code review
+# Guided Review explainers for Code Review
 
 ## Summary
 
-Added configurable Guided Review generation to validation-time human code reviews. RunWield now uses deterministic diff
-and Plan signals to recommend explainers, passes generation policy through the existing review workflow, and renders
-structured single-column narratives with prose, callouts, Mermaid diagrams, annotatable diffs, and sandboxed widgets.
-Plain Diff review remains available and active by default, guide costs and reasons are disclosed, feedback semantics are
-preserved, and automated validation passed.
-
-## Future Planning Notes
-
-Revisit recommendation thresholds using real-world usage data and monitor whether exceptional widget generation remains
-appropriately rare.
+RunWield offers configurable Guided Review generation during validation-time Code Review. Deterministic diff and Plan signals recommend explainers, and guides present prose, callouts, Mermaid diagrams, annotatable diffs, and sandboxed widgets in a single-column narrative. Plain Diff remains the default, generation reasons and costs are disclosed, and feedback semantics remain unchanged.

@@ -11,22 +11,12 @@ provenance:
         - "544d15a1-8c14-4beb-9475-81e2c538b344"
 ---
 
-# Migrated Workspace toward direct Plannotator UI reuse
+# Direct Plannotator component reuse
 
 ## Summary
 
-Established a React/TypeScript-capable Workspace architecture, integrated pinned upstream Plannotator source, and proved
-direct component reuse for read-only Plan detail rendering while preserving existing Plan APIs, lifecycle controls,
-editing safety, authentication, and compiled review workflows. Automated verification passed and human review approved
-the implementation.
-
-## Deferred Work
-
-Migrate Plan and code review from the compiled Plannotator bridge to Workspace-hosted routes, replace the existing body
-editor only after save and recovery semantics are covered, and continue migrating remaining Workspace surfaces from
-Fresh/Preact as justified.
+Workspace supports React and TypeScript and integrates pinned upstream Plannotator source for direct read-only Plan detail rendering. Plan APIs, lifecycle controls, editing safety, authentication, and compiled review workflows retain their behavior.
 
 ## Future Planning Notes
 
-Use the new review-launcher seam for built-in review routes. Keep Plannotator dependencies pinned and reviewed, preserve
-the Workspace-scoped TypeScript exception, and bridge Plannotator styling through RunWield design-system tokens.
+Keep Plannotator dependencies pinned and reviewed, and bridge their styling through RunWield design-system tokens.

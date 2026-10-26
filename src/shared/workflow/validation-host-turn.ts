@@ -38,6 +38,7 @@ function createHostTurnPort(cwd: string): ValidationSessionPort {
         setActiveWorkflow: (value) => {
             workflow = value;
         },
+        releaseActiveAgent() {},
         rememberPosition() {},
         clearPosition() {},
         getCurrentProgress: () => progress,

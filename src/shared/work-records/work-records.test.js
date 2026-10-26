@@ -1,3 +1,4 @@
+import { syncEpicChildPlanDeviations } from "../workflow/epic-review-context.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.js";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
@@ -599,6 +600,7 @@ test("Work Record generation includes confirmed child Plan Deviations in Epic re
                 },
             ],
         });
+        await syncEpicChildPlanDeviations(cwd, "epic/01-child");
         const source = (await previewWorkRecordBackfill(cwd)).eligible.find((candidate) => candidate.name === "epic");
         if (!source) throw new Error("Expected Epic source.");
 
@@ -611,6 +613,10 @@ test("Work Record generation includes confirmed child Plan Deviations in Epic re
 
         assertEquals(outcome.status, "generated");
         const record = await findWorkRecordById(cwd, "46464646-4646-4646-8646-464646464646");
+        assertEquals(
+            (record?.sections["Deviations from Plan"] || "").split("Replacement requirement: Keep child nav.").length,
+            2,
+        );
         assertStringIncludes(
             record?.sections["Deviations from Plan"] || "",
             "Superseded requirement: Replace child nav.",

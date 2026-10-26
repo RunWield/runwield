@@ -65,7 +65,8 @@ Request
 
 P: Plan creation and review
 ├─ saved / canceled / unfinished → stop with Plan available for later
-├─ feedback → revise → P again
+├─ conversation → reply or revise → same review
+├─ no-chat feedback → revise → P again
 ├─ approved Epic → X: Slicer → select child → P for that child
 └─ approved executable Plan → E: execution preparation and implementation
    ├─ blocked / canceled / Pair stop / missing completion → pause → R
@@ -76,7 +77,8 @@ P: Plan creation and review
          ├─ findings → semantic repair → V1
          ├─ round limit → user chooses another review, repair, human review, or stop
          └─ accepted review or explicit skip rule → H: human code review
-            ├─ feedback → human-feedback repair → V1 → H
+            ├─ chat, patch unchanged → reply → H
+            ├─ chat, patch changed / non-chat feedback → human-feedback repair → V1 → H
             ├─ no decision → retry H or pause
             └─ approval / allowed skip → D: artifact preparation and publication
                ├─ non-Git → record validation + advisory handoffs → finish
@@ -103,9 +105,13 @@ P0. Planner/Architect writes docs/plans/<name>.md
       │  └─ U decline/cancel → canceled or intentional end; no execution
       ├─ remote review handoff → T event(saved) → stop for external review
       ├─ stale review evidence → canceled; reload and review the current Plan
-      ├─ U feedback → review_feedback → status feedback
-      │  → T event(feedback), nonterminal tool result
-      │  → same planning conversation revises → P0 / plan_written
+      ├─ U chat → no lifecycle event; no Plan write unless an owner edit is saved
+      │  → T event(conversation), nonterminal tool result
+      │  → reply only → RunWield restores the same review after turn settlement
+      │  → meaningful revision of approved/ready Plan → review_reopened → draft
+      │  → revised Plan → P0 / plan_written on the same page
+      ├─ U no-chat fallback feedback → review_feedback → draft
+      │  → T event(feedback) → planning revision → P0 / plan_written
       └─ U approval → review_approved → status approved
          ├─ executable Plan → readiness_passed → ready_for_work
          │  ├─ U run now → T event(approved_execute) → E0
@@ -122,8 +128,14 @@ of review prose. Temporary execution-control changes in a feedback submission ar
 
 `runPlanningAgent` awaits `runActiveAgentTurn`, then claims a `plan_written` event and passes its payload to
 `decidePostPlanning`. No event gives `no_call`. The interactive root handler can notice an event before the turn ends;
-its feedback branch instead lets the current planning turn continue and then looks for the later accepted Plan event.
-These are different consumer paths, despite sharing the same tool.
+its feedback and conversation branches let the current planning turn continue. A settled conversation turn without a
+new Plan review restores the same review, including after an Agent error or canceled turn. The chat shows errors;
+explicit review cancellation does not restore the review. These consumer paths share the same tool.
+
+Opening an approved or ready Plan for review preserves its status. Meaningful saved owner edits and Agent revisions
+return approved/ready Plans to draft; formatting-only changes preserve status. Review chat has no 180-second deadline.
+The queue, isolated question sends, and approval warning follow
+[Workspace Browser Plan review](prd/runwield-workspace-prd.md#browser-plan-review-and-workflow).
 
 Sources: [plan_written](../src/tools/plan-written.ts),
 [shared review decision](../src/shared/workflow/plan-review-actions.ts),
@@ -363,7 +375,16 @@ H0. Read saved decision and review mode
 
 H1. Request Code Review with current diff and Plan
 ├─ U approved → persist approved + timestamp → D
-├─ U feedback / annotations / images
+├─ U conversation turn, Git execution
+│  → capture reviewed patch after RunWield writes
+│  → independent Reviewer-Feedback Engineer receives conversation and context; reply or edit
+│  → compare reviewed patch after the turn
+│  ├─ unchanged + reply → H1 with same diff; no decision, evidence, status, or CI changes
+│  ├─ changed → record changes_requested; validation_failed → implemented
+│  │  ├─ T task_completed → record completed repair → V1 → semantic skip-for-human rule → H1
+│  │  └─ no completion / failure → pause; do not reopen over unfinished repair
+│  └─ unchanged + no answer → pause; retry turn
+├─ U non-conversation feedback / annotations / images, or non-Git conversation turn
 │  → persist changes_requested; validation_failed → implemented BEFORE repair
 │  → independent Reviewer-Feedback Engineer receives human feedback
 │  ├─ T task_completed → V1 → semantic skip-for-human rule → H1
@@ -374,7 +395,10 @@ H1. Request Code Review with current diff and Plan
 ```
 
 Guided-review explanations and review conversation text support the user's decision. They do not approve publication.
-Conversation feedback takes the same invalidation/repair/recheck path as submitted feedback. The code does not impose an
+Git conversation turns use patch identity, not the Agent's report: an unchanged patch keeps review and checks intact.
+A changed patch records “Changes requested” and returns through repair and CI to the same conversation without AI
+review. Non-Git in-place turns have no patch identity and always use repair, as does non-conversation feedback. Scope
+changes require a confirmed [Plan Deviation](prd/runwield-core-prd.md#plan-deviations). The code does not impose an
 automatic count limit on human-requested repairs.
 
 Sources: [human review](../src/shared/workflow/validation-human-review.ts),
@@ -522,7 +546,7 @@ X1. Child workflow returns verified after D
       ├─ dependency missing/not satisfied → blocked
       ├─ other unsupported state → blocked; do not skip ahead
       └─ eligible → finish old Session handoffs and create fresh Session
-         ├─ draft / feedback → P with Planner
+         ├─ draft → P with Planner
          ├─ approved → readiness_passed → E
          └─ ready_for_work → E
             → child's own V/H/D; save-for-later stops the automatic chain
@@ -578,7 +602,7 @@ These are command/user paths. None needs to invent a missing agent completion fr
 
 | Entry or choice                                          | Transition and destination                                                                                                                                                 |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Load draft/feedback                                      | Continue Planner/Architect, or direct review if eligible; then P. Direct review uses the structured review result directly and does not require `plan_written`.            |
+| Load draft                                               | Continue Planner/Architect, or direct review if eligible; then P. Direct review uses the structured review result directly and does not require `plan_written`.            |
 | Load approved/ready Plan                                 | User can execute, review, defer/hold, inspect, or cancel. Approved execution first records readiness. Affected-path drift can require confirmation.                        |
 | Load in_progress/failed                                  | Recovery menu resolves worktree and journals; continue records `recovery_continue` to ready_for_work and returns through E; reset uses `recovery_reset`.                   |
 | Load implemented/reviewed (including legacy equivalents) | Resume validation through V0 at its saved phase; no repeat initial implementation completion required.                                                                     |
@@ -589,7 +613,7 @@ These are command/user paths. None needs to invent a missing agent completion fr
 | Hold                                                     | `plan_held` stores heldFromStatus/reason/baseline; status on_hold.                                                                                                         |
 | Resume hold                                              | Run current evidence/staleness checks; failure stays held, warning needs a user choice, success `hold_resumed` restores the permitted saved status and re-enters its flow. |
 | Reset held Plan                                          | Explicit reset decision, with optional attempt abandonment, records `hold_reset_to_draft`; return to planning.                                                             |
-| Reopen review                                            | `review_reopened` moves to feedback and detaches/abandons the old execution association where required; P again.                                                           |
+| Reopen review                                            | Explicit recovery `review_reopened` moves to draft and detaches/abandons the old execution association where required; P again.                                            |
 | Abandon / reset                                          | Explicit recovery action uses owned Git/registry/lifecycle operations; outcome can be committed, rolled back, blocked, or needs recovery. It is not validation success.    |
 | User Verified                                            | Required user note + `manual_user_verified` → user_verified. No automatic CI, semantic approval, or publication proof is asserted.                                         |
 | Close without verification                               | Explicit canonical action + reason → closed_without_verification. Does not claim CI/review/publication.                                                                    |
@@ -604,7 +628,7 @@ Source: [load-plan dispatcher](../src/cmd/load-plan/index.ts),
 [recovery actions](../src/cmd/load-plan/plan-recovery-actions.ts), [reset](../src/cmd/load-plan/plan-recovery-reset.ts),
 [hold](../src/cmd/load-plan/plan-hold.ts), [canonical actions](../src/shared/workflow/plan-actions.ts).
 
-Direct review is available for draft, feedback, approved, and ready-for-work Plans with a valid execution policy,
+Direct review is available for draft, approved, and ready-for-work Plans with a valid execution policy,
 including Plans without custom shell checks. The old automatic Plan Amendment approval gate has been removed from the
 active validation code.
 

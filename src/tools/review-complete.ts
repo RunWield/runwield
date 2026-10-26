@@ -5,7 +5,7 @@
  * plan_written for planners.
  */
 
-import { Type } from "@earendil-works/pi-ai";
+import { type Static, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
@@ -131,7 +131,9 @@ type ReviewCompleteDetails =
     | { outcome: "rejected"; reason: "approved_with_open_findings" | "incomplete_inspection" | "invalid_findings" }
     | ReviewOutcomeDetails;
 
-type ReviewCompleteResult = AgentToolResult<ReviewCompleteDetails> & { terminate: boolean };
+export type ReviewCompleteParams = Static<typeof PARAMETERS>;
+
+export type ReviewCompleteResult = AgentToolResult<ReviewCompleteDetails> & { terminate: boolean };
 
 interface ReviewCompletedToolOptions {
     hostedSession: HostedSession;

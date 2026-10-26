@@ -11,14 +11,8 @@ provenance:
         - "45d43146-1061-4e05-b040-c79080120cae"
 ---
 
-# Epic-aware load-plan action selection
+# Epic-aware Plan action selection
 
 ## Summary
 
-Updated load-plan to recognize Epic plans, offer decomposition or child FEATURE selection, display child status and
-summaries, and delegate selected children through the existing FEATURE workflow. Added coverage for empty child lists,
-cancellation, and child selection. Verification passed and the work was merged.
-
-## Deferred Work
-
-Dependency warnings for selected child FEATURE plans remain assigned to feature 7.
+The load-plan workflow recognizes Epics and offers decomposition or child FEATURE selection. Child choices show status and summary, and selected children use the existing FEATURE workflow.

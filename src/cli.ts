@@ -210,6 +210,13 @@ async function main(): Promise<void> {
         if (primaryRoot !== getCwd() && !(await confirmProjectDirectory(primaryRoot, allowSystemDirectory))) return;
     }
 
+    if (firstPositional === "ai-review") {
+        const { createAiReviewCliIo, runAiReviewCommand } = await import("./cmd/ai-review/index.ts");
+        const code = await runAiReviewCommand(createAiReviewCliIo());
+        if (code !== 0) exit(code);
+        return;
+    }
+
     if (firstPositional === "guided-review") {
         const { createGuidedReviewCliIo, runGuidedReviewCommand } = await import("./cmd/guided-review/index.ts");
         const code = await runGuidedReviewCommand(createGuidedReviewCliIo());

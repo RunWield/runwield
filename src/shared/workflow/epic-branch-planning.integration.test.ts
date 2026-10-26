@@ -833,7 +833,7 @@ for (const action of ["resume", "planner_re_review", "review", "proceed"]) {
                     "latest published code\n",
                 );
                 if (action === "planner_re_review")
-                    assertEquals((await loadPlan(entries[0].path, "epic/02-next"))?.attrs.status, "feedback");
+                    assertEquals((await loadPlan(entries[0].path, "epic/02-next"))?.attrs.status, "draft");
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
             }

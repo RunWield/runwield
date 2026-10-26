@@ -84,6 +84,7 @@ export interface ReviewConversation {
     completed?: boolean;
     resultMessage?: string;
     completionDelivered?: boolean;
+    error?: string;
     id: string;
     agentLabel: string;
     revision: number;
@@ -138,6 +139,7 @@ export interface StandaloneReviewPayload {
     mode: "pr" | "branch" | "uncommitted";
     /** Selected commit before the Engineer worktree exists. */
     headRef?: string;
+    baseLabel?: string;
     forge?: StandaloneForgeState;
     commit?: StandaloneCommitState;
     reviewContext?: string;

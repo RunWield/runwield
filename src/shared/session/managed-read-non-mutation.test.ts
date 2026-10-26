@@ -43,8 +43,9 @@ async function removeTempDir(path: string): Promise<void> {
             await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
-            const isRetryable = error instanceof Error &&
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+            const isRetryable =
+                error instanceof Error &&
                 /Directory not empty|resource busy|os error 66|os error 16/i.test(error.message);
             if (!isRetryable || attempt === 4) throw error;
             await delay(25 * (attempt + 1));
@@ -55,7 +56,9 @@ async function removeTempDir(path: string): Promise<void> {
 export async function sha256File(path: string): Promise<string> {
     const bytes = await fsReadFile(path);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 export async function readTranscriptSnapshot(path: string): Promise<TranscriptSnapshot> {
@@ -157,9 +160,9 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
                 generation: 0,
                 byteLength: bytes.length,
                 terminalEntryId: "entry-assistant",
-                digestHex: Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join(
-                    "",
-                ),
+                digestHex: Array.from(new Uint8Array(digest))
+                    .map((byte) => byte.toString(16).padStart(2, "0"))
+                    .join(""),
             });
             const runtime = createSessionRuntime({
                 sessionStore: store,
@@ -167,7 +170,6 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
                 ownerInstanceId: "managed-read-test",
             });
             const adopted = runtime.adoptManagedSession({ session, generation: 0 });
-            const outputPath = join(home, "export.jsonl");
             const exercised = new Set<string>();
             const run = async (name: string, action: () => void | Promise<void>) => {
                 exercised.add(name);
@@ -187,8 +189,8 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
                     // Missing skills still exercise the runtime read path.
                 }
             });
-            await run("exportSession", async () => {
-                await runtime.exportSession(adopted.sessionId, outputPath);
+            await run("readSessionExport", async () => {
+                await runtime.readSessionExport(adopted.sessionId);
             });
             await run("getLastAssistantText", async () => {
                 assertEquals(await runtime.getLastAssistantText(adopted.sessionId), "Committed hello.");
@@ -226,11 +228,13 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
             });
             await run("inspectResumableSession", async () => {
                 assertEquals(
-                    (await runtime.inspectResumableSession({
-                        cwd,
-                        sessionId: piSessionId,
-                        sessionPath: transcriptPath,
-                    })).messageCount,
+                    (
+                        await runtime.inspectResumableSession({
+                            cwd,
+                            sessionId: piSessionId,
+                            sessionPath: transcriptPath,
+                        })
+                    ).messageCount,
                     2,
                 );
             });
@@ -295,7 +299,10 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
             const readOnly = Object.entries(SESSION_RUNTIME_METHOD_POLICY)
                 .filter(([, policy]) => policy === "read_only")
                 .map(([name]) => name);
-            assertEquals(readOnly.filter((name) => !exercised.has(name)), []);
+            assertEquals(
+                readOnly.filter((name) => !exercised.has(name)),
+                [],
+            );
             assertEquals(exercised.has("replaySession"), true);
             assertEquals(instrumented.calls, []);
         } finally {
@@ -318,7 +325,10 @@ test("writable Pi API instrumentation reports a negative control call", async ()
         } catch {
             // The negative control only proves the writable boundary was reached.
         }
-        assertEquals(instrumented.calls.map((call) => call.name), ["open"]);
+        assertEquals(
+            instrumented.calls.map((call) => call.name),
+            ["open"],
+        );
     } finally {
         instrumented.restore();
     }

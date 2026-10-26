@@ -11,22 +11,12 @@ provenance:
         - "797354ff-94e3-4829-a9a1-7fdeab903f17"
 ---
 
-# Work Records V1 delivered
+# Internal Work Records
 
 ## Summary
 
-RunWield now has V1 internal Work Records as durable repo-local Markdown artifacts with Plan backlinks,
-lifecycle/metadata support, close-without-verification reason handling, Recorder generation, explicit backfill, derived
-search/read flows, planning-agent retrieval tools, session-end automatic generation, settings, and documentation. The
-Epic was marked done_enough after all four child FEATURE plans were verified.
-
-## Deferred Work
-
-Manual/external Work Record creation, Recorder-led interviews for outside work, Guided Review reuse,
-pending-verification approval flows, and Plannotator Work Record approval remain outside the V1 scope.
+The Epic was closed as done enough. Work Records provide durable repository-local Markdown with Plan backlinks, lifecycle metadata, closure reasons, Recorder generation, backfill, search, reading, planning-agent retrieval, and automatic Session-end generation.
 
 ## Future Planning Notes
 
-Keep Markdown under docs/work-records/ as canonical and treat search/index state as rebuildable. Preserve the clean
-boundary where Plan lifecycle records terminal outcomes while Work Record generation/indexing remain best-effort and
-non-blocking.
+Markdown is canonical; search indexes are rebuildable. Work Record generation and indexing remain best-effort and do not block Plan lifecycle outcomes.

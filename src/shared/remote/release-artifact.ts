@@ -5,8 +5,8 @@ import { getCwd } from "../../constants.js";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { chmod as fsChmod, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ArtifactMetadata } from "../../../scripts/build-metadata.js";
-import { sha256Bytes, verifyBuildArtifact } from "../../../scripts/build-metadata.js";
+import type { ArtifactMetadata } from "../../../scripts/build-metadata.ts";
+import { sha256Bytes, verifyBuildArtifact } from "../../../scripts/build-metadata.ts";
 
 export interface LauncherIdentity {
     buildId: string;
@@ -59,17 +59,24 @@ export async function extractReleaseRuntime(
 ): Promise<ExtractedReleaseRuntime> {
     const target = TARGETS[suffix];
     if (!target) throw new Error(`Unsupported release runtime: ${suffix}`);
-    const entries = new TextDecoder().decode(await tar(["-tzf", archive])).trim().split(/\r?\n/);
-    if (entries.length !== 2 || entries[0] !== "wld" || entries[1] !== "wld.build.json") {
-        throw new Error(`Release archive must contain only wld and wld.build.json: ${archive}`);
+    const entries = new TextDecoder()
+        .decode(await tar(["-tzf", archive]))
+        .trim()
+        .split(/\r?\n/);
+    const hasLicense = entries.length === 3 && entries[2] === "LICENSE";
+    if ((entries.length !== 2 && !hasLicense) || entries[0] !== "wld" || entries[1] !== "wld.build.json") {
+        throw new Error(`Release archive must contain only wld, wld.build.json and optional LICENSE: ${archive}`);
     }
+    if (hasLicense) await fsWriteFile(join(directory, "LICENSE"), await tar(["-xOzf", archive, "LICENSE"]));
     const artifact = join(directory, "wld");
     await fsWriteFile(artifact, await tar(["-xOzf", archive, "wld"]));
     await fsWriteFile(`${artifact}.build.json`, await tar(["-xOzf", archive, "wld.build.json"]));
     const metadata = await verifyBuildArtifact(artifact);
     if (
-        metadata.target !== target || (launcher &&
-            (metadata.buildId !== launcher.buildId || metadata.protocol !== launcher.protocol ||
+        metadata.target !== target ||
+        (launcher &&
+            (metadata.buildId !== launcher.buildId ||
+                metadata.protocol !== launcher.protocol ||
                 metadata.version !== launcher.version))
     ) {
         throw new Error(`Release runtime does not match launcher build, protocol, VERSION or ${target} target`);

@@ -7,7 +7,7 @@
 import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
-import { buildDiffInspectionSection, parseDiffFiles } from "./review-diff-tool.js";
+import { buildDiffInspectionSection, requiredReviewDiffFiles, ReviewDiffParseError } from "./review-diff.ts";
 import { ReviewInspection } from "./review-inspection.ts";
 import { loadEpicReviewContext, recordIntegrationNotes } from "./epic-review-context.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
@@ -592,8 +592,15 @@ export async function runReviewerRound(
         ? await getWorkflowDiff(context.executionCwd, state.repairBaselineTree)
         : "";
     const requiredScope = reviewMode === "discovery" ? "full" : "repair";
+    let requiredFiles;
+    try {
+        requiredFiles = requiredReviewDiffFiles(requiredScope === "full" ? diffText : repairDiffText);
+    } catch (error) {
+        if (error instanceof ReviewDiffParseError) return { kind: "failed", reason: error.message };
+        throw error;
+    }
     let inspection = new ReviewInspection(
-        parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).map((file) => ({
+        requiredFiles.map((file) => ({
             scope: requiredScope,
             path: file.path,
             byteLength: file.byteLength,
@@ -612,6 +619,7 @@ export async function runReviewerRound(
         });
     }
 
+    const controllerRequestId = `request:${crypto.randomUUID()}`;
     const initialAttempt =
         args.hostTurn && savedHostReview?.semanticRound === state.semanticRound
             ? savedHostReview.correctionCount + 1
@@ -649,6 +657,7 @@ export async function runReviewerRound(
                 userRequest: config.prompt,
                 cwd: context.executionCwd,
                 reviewerMode: reviewMode,
+                controllerRequestId,
                 review: config.review,
                 ledger: state.reviewLedger,
             };
@@ -668,7 +677,7 @@ export async function runReviewerRound(
                     if (!sameHostIdentity(identity, resume.identity)) throw new ValidationHostRejected();
                     try {
                         inspection = ReviewInspection.fromRecorded(
-                            parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).map((file) => ({
+                            requiredFiles.map((file) => ({
                                 scope: requiredScope,
                                 path: file.path,
                                 byteLength: file.byteLength,
@@ -705,8 +714,7 @@ export async function runReviewerRound(
                               outcome: "completed" as const,
                               reviewOutcome: normalized?.accepted && !coverageFeedback ? normalized.details : null,
                               usedDiffTool:
-                                  resume.coverage.some((span) => span.end > span.start) ||
-                                  parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).length === 0,
+                                  resume.coverage.some((span) => span.end > span.start) || requiredFiles.length === 0,
                               trustedOpaqueMcpReview: false,
                           };
                     args.hostTurn.consumed = true;
@@ -1001,7 +1009,7 @@ export async function runReviewerRound(
 
     if (epicContext && latestOutcome.integrationNotes?.length) {
         const written = await recordIntegrationNotes(
-            context.projectRoot,
+            context.executionCwd,
             epicContext.epicPlanName,
             args.planName,
             latestOutcome.integrationNotes,
@@ -1144,6 +1152,57 @@ export function buildSemanticReviewAttempt(
         prompt: sections.join("\n"),
         review,
     };
+}
+
+/** Run one reply-or-edit turn without recording a repair or changing validation metadata. */
+export async function dispatchReviewConversationTurn(
+    args: ValidationLoopArgs,
+    context: PhaseContext,
+    packet: ReviewFeedbackRepairPacket,
+): Promise<{ completed: boolean; report: string; reason?: string }> {
+    args.session.setActiveWorkflow(context.workflowBase);
+    try {
+        const outcome = await args.session.runIsolatedAgentSession({
+            kind: "feedback_engineer",
+            conversationTurn: true,
+            agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
+            userRequest: [
+                "## Code Review conversation turn",
+                "Reply in chat to explain, clarify, or ask back. Edit working files only when the request needs a code change.",
+                "A reply without an edit keeps Code Review open and does not restart checks. End a reply in plain text.",
+                "After an edit, run focused checks and call task_completed. If an edit is blocked, stop in plain text and name the blocker.",
+                "A scope change agreed in chat is authority only after record_plan_deviation confirms and records it. Reload the effective Plan after confirmation. Do not edit the Plan directly.",
+                `Execution checkout: ${context.executionCwd}`,
+                `Plan: ${args.planName}`,
+                "",
+                packet.findingsSection,
+                "",
+                buildDiffInspectionSection(packet.diffText),
+            ].join("\n"),
+            images: packet.images,
+            cwd: context.executionCwd,
+            review: {
+                fullDiff: packet.diffText,
+                repairDiff: "",
+                requiredScope: "full",
+                inspection: new ReviewInspection([]),
+            },
+        });
+        if (outcome.outcome === "operational_failure") {
+            return { completed: false, report: "", reason: outcome.failure.message };
+        }
+        const report = outcome.taskReport;
+        return {
+            completed: report.completed,
+            report: report.report,
+            ...(!report.completed
+                ? { reason: repairBlockedReason(args, context.projectRoot, report.blockerText) }
+                : {}),
+        };
+    } catch (error) {
+        await logValidationFailure(error instanceof Error ? error : new Error(String(error)), "review_conversation");
+        return { completed: false, report: "", reason: "The review conversation could not finish. Retry the turn." };
+    }
 }
 
 export async function dispatchReviewFeedbackRepair(

@@ -1,0 +1,53 @@
+diff --git a/src/model.ts b/src/model.ts
+index d5d6ad1..4693258 100644
+--- a/src/model.ts
++++ b/src/model.ts
+@@ -1,5 +1,6 @@
+ export interface ReceiptSettings {
+     shop: string;
++    enabled: boolean;
+ }
+ export interface Invoice {
+     number: string;
+diff --git a/src/receipts.ts b/src/receipts.ts
+index 66c5850..0a3cd6e 100644
+--- a/src/receipts.ts
++++ b/src/receipts.ts
+@@ -7,6 +7,6 @@ export async function createReceipt(root: string, number: string): Promise<strin
+     const lines = [settings.shop, `Receipt ${invoice.number}`];
+     for (const item of invoice.items) lines.push(`${item.label}: ${(item.cents / 100).toFixed(2)}`);
+     lines.push(`Total: ${(totalCents(invoice) / 100).toFixed(2)}`);
+-    lines.push("Join our rewards club for member offers.");
++    if (settings.enabled) lines.push("Join our rewards club for member offers.");
+     return lines.join("\n") + "\n";
+ }
+diff --git a/src/settings.ts b/src/settings.ts
+index c39a078..77c1012 100644
+--- a/src/settings.ts
++++ b/src/settings.ts
+@@ -4,8 +4,10 @@ import type { ReceiptSettings } from "./model.ts";
+
+ interface SavedSettings {
+     shop?: string;
++    enabled?: boolean;
+ }
+ export async function loadSettings(root: string): Promise<ReceiptSettings> {
+     const saved: SavedSettings = JSON.parse(await readFile(join(root, "receipt-settings.json"), "utf8"));
+-    return { shop: saved.shop ?? "Corner Shop" };
++    const configured = saved.enabled;
++    return { shop: saved.shop ?? "Corner Shop", enabled: configured ?? true };
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 9a4de49..d072491 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -34,3 +34,9 @@ await withShop("{}", async (root) => {
+     await assert.rejects(createReceipt(root, "../private"), /Invalid invoice number/);
+ });
+ console.log("PASS invoice requests stay inside the shop");
++await withShop('{"shop":"Harbor Shop","enabled":true}', async (root) => {
++    const receipt = await createReceipt(root, "inv-7");
++    assert.ok(receipt.startsWith("Harbor Shop\n"));
++    assert.ok(receipt.endsWith("Join our rewards club for member offers.\n"));
++});
++console.log("PASS explicitly enabled offers keep the shop label");

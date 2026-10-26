@@ -470,12 +470,13 @@ export const commandRegistry = {
     [COMMAND_NAMES.SHARE]: {
         name: COMMAND_NAMES.SHARE,
         displayName: "Share",
-        description: "Share current session as a secret GitHub Gist",
-        summary: "Export the current session JSONL snapshot and upload it as a secret GitHub Gist.",
+        description: "Share the complete Session as a secret GitHub Gist",
+        summary: "Upload complete Session HTML and JSON to one secret GitHub Gist with a preview link.",
         usage: ["/share"],
         notes: [
             "Requires GitHub CLI ('gh') to be installed and authenticated.",
-            "Saves session as a secret (private) Gist.",
+            "Uploads runwield-session.html and runwield-session.json, including thinking and tool output.",
+            "Shows the Gist URL and an HTML preview link. Anyone with the secret Gist link can read it.",
         ],
         execute: (argv, options) => runShareCommand(argv, { ...options, githubCli: SYSTEM_GITHUB_CLI_PORT }),
         surfaces: ["slash"],
@@ -484,12 +485,13 @@ export const commandRegistry = {
     [COMMAND_NAMES.EXPORT]: {
         name: COMMAND_NAMES.EXPORT,
         displayName: "Export",
-        description: "Export current session (HTML default, or specify .html/.jsonl path)",
-        summary: "Export current interactive session to HTML (default) or JSONL.",
-        usage: ["/export", "/export output.html", "/export output.jsonl"],
+        description: "Export the complete Session (HTML default, or specify a .json path)",
+        summary: "Export all committed Session segments and Manifest facts to HTML or JSON.",
+        usage: ["/export", "/export output.html", "/export output.json"],
         notes: [
             "Slash command only (interactive session).",
-            "Default output path is session-<iso-datetime>.html in the current working directory.",
+            "Default output path is session-<iso-datetime>.html in the Session project directory.",
+            "JSONL export is retired. Use a .json path instead.",
         ],
         execute: runExportCommand,
         surfaces: ["slash"],
@@ -929,7 +931,7 @@ export function getSlashCommandDefinition(commandName, slashSurface = "tui") {
  * @param {string[]} args
  */
 export function requiresProjectDirectoryConsent(name, args = []) {
-    if (name === "guided-review") return true;
+    if (name === "guided-review" || name === "ai-review") return true;
     const command = getCommandDefinition(name);
     if (!command) return true;
     if (!hasCommandSurface(command, "cli")) return false;

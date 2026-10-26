@@ -11,15 +11,8 @@ provenance:
         - "110786ce-e028-4b3f-98f3-722c25782f5e"
 ---
 
-# Per-Agent Model Overrides, Presets, and JSONC Settings
+# Per-Agent model overrides, presets, and JSONC settings
 
 ## Summary
 
-Implemented merged global/project per-agent model overrides and preset overlays, with explicit runtime selections
-retaining priority. Settings now accept JSONC comments and trailing commas, model resolution and footer display remain
-aligned, invalid configured models fall back safely, and preset changes apply through /reload. Automated and manual
-verification completed successfully.
-
-## Future Planning Notes
-
-Preset activation remains config-only; consider an interactive preset-switching command if user demand warrants it.
+RunWield merges global and project per-Agent model overrides with preset overlays, while explicit runtime selections retain priority. Settings accept JSONC comments and trailing commas. Invalid configured models fall back safely, model resolution stays aligned with footer display, and /reload applies preset changes.

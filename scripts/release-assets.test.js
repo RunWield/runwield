@@ -13,9 +13,9 @@ import {
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
+import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.ts";
 import { expectedReleaseAssetNames } from "./release.js";
-import { sha256File } from "./build-metadata.js";
+import { sha256File } from "./build-metadata.ts";
 
 /** @param {string} tag */
 async function fixture(tag = "v1.2.3") {
@@ -50,8 +50,9 @@ async function fixture(tag = "v1.2.3") {
                     sha256,
                 }),
             );
+            await fsCopyFile(new URL("../LICENSE", import.meta.url), join(stage, "LICENSE"));
             const result = await captureScriptProcess("tar", {
-                args: ["-czf", join(input, name), "-C", stage, "wld", "wld.build.json"],
+                args: ["-czf", join(input, name), "-C", stage, "wld", "wld.build.json", "LICENSE"],
             });
             if (!result.success) throw new Error("Could not create test archive");
         } else await fsWriteFile(join(input, name), name);
@@ -71,6 +72,7 @@ test("release assets exclude incidental package JSON and produce a unique flat s
     try {
         await fsMkdir(join(f.input, "other"));
         await fsWriteFile(join(f.input, "package.json"), "{}");
+        await fsWriteFile(join(f.input, `wld-${f.tag}-windows-x64.zip`), "not part of new publication");
         await fsWriteFile(join(f.input, "other/package.json"), "{}");
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const names = Array.fromAsync(await fsReaddir(f.output, { withFileTypes: true }), (entry) => entry.name);
@@ -164,8 +166,9 @@ for (const field of ["buildId", "version"]) {
             const metadata = JSON.parse(await fsReadFile(metadataPath, "utf8"));
             metadata[field] = field === "buildId" ? "b".repeat(64) : "v9.8.7";
             await fsWriteFile(metadataPath, JSON.stringify(metadata));
+            await fsCopyFile(new URL("../LICENSE", import.meta.url), join(stage, "LICENSE"));
             const result = await captureScriptProcess("tar", {
-                args: ["-czf", join(f.input, name), "-C", stage, "wld", "wld.build.json"],
+                args: ["-czf", join(f.input, name), "-C", stage, "wld", "wld.build.json", "LICENSE"],
             });
             if (!result.success) throw new Error("Could not create test archive");
             const digest = Array.from(
@@ -197,14 +200,13 @@ test("published release recovery requires independent asset digests", async () =
 
 for (const tag of ["v1.2.3", "v1.2.3-rc.1"]) {
     test(`${tag} upload set includes docs only for Stable`, () => {
-        const expected = [
-            ...expectedReleaseAssetNames(tag),
-            `wld-${tag}-windows-x64.zip`,
-            `wld-${tag}-windows-x64.zip.sha256`,
-            "runwield-windows-package.json",
-        ];
+        const expected = [...expectedReleaseAssetNames(tag)];
         if (tag === "v1.2.3") expected.push(`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`);
         assertEquals(releaseAssetNames(tag).sort(), expected.sort());
+        assertEquals(
+            releaseAssetNames(tag).some((name) => name.includes("windows")),
+            false,
+        );
     });
 }
 
@@ -298,6 +300,41 @@ async function legacyFixture() {
     return { ...f, metadata, assets };
 }
 
+for (const missing of [false, true]) {
+    test(`published recovery retains original Windows bytes and rejects missing files: ${missing}`, async () => {
+        const f = await legacyFixture();
+        try {
+            const name = `wld-${f.tag}-windows-x64.zip`;
+            const path = join(f.input, name);
+            await fsWriteFile(path, "original Windows package");
+            const sum = `${await sha256File(path)}  ${name}\n`;
+            await fsWriteFile(`${path}.sha256`, sum);
+            const previousSums = await fsReadFile(join(f.input, "SHA256SUMS"), "utf8");
+            await fsWriteFile(join(f.input, "SHA256SUMS"), previousSums + sum);
+            const names = await fsReaddir(f.input);
+            const assets = [];
+            for (const file of names) {
+                assets.push({ name: file, digest: `sha256:${await sha256File(join(f.input, file))}` });
+            }
+            await fsWriteFile(f.metadata, JSON.stringify({ assets }));
+            if (missing) {
+                await fsRm(path);
+                await assertRejects(
+                    () => prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata),
+                    Error,
+                    `Expected one ${name}; found 0`,
+                );
+            } else {
+                await prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata);
+                assertEquals(await fsReadFile(join(f.output, name)), await fsReadFile(path));
+                assertEquals(await fsReadFile(join(f.output, "SHA256SUMS"), "utf8"), previousSums + sum);
+            }
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}
+
 test("published legacy Stable recovery preserves a release with neither docs asset in metadata", async () => {
     const f = await legacyFixture();
     try {
@@ -389,3 +426,23 @@ test("published Stable recovery verifies the independent docs digest", async () 
         await fsRm(f.root, { recursive: true });
     }
 });
+
+for (const includeLicense of [false, true]) {
+    test(`MIT publication rejects ${includeLicense ? "incorrect" : "missing"} license text`, async () => {
+        const f = await fixture("v0.14.0-rc.1");
+        try {
+            const name = `wld-${f.tag}-darwin-arm64.tar.gz`;
+            const stage = join(f.root, "stage-darwin-arm64");
+            await fsWriteFile(join(stage, "LICENSE"), "obsolete license");
+            const members = ["wld", "wld.build.json", ...(includeLicense ? ["LICENSE"] : [])];
+            const packed = await captureScriptProcess("tar", {
+                args: ["-czf", join(f.input, name), "-C", stage, ...members],
+            });
+            assertEquals(packed.success, true);
+            await fsWriteFile(join(f.input, `${name}.sha256`), `${await sha256File(join(f.input, name))}  ${name}\n`);
+            await assertRejects(() => prepareReleaseAssets(f.input, f.output, f.tag), Error, "source LICENSE");
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}

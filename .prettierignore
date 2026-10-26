@@ -1,0 +1,4 @@
+# Reviewer projects and hidden proofs are checked by corpus admission, not as RunWield source.
+evals/reviewer/*/source/
+evals/reviewer/*/variants/
+evals/reviewer/*/evaluation/

@@ -1,0 +1,45 @@
+schemaVersion: 1
+scenarioId: RV-D01
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    empty-selection:
+        command: bun run test:oracle empty-selection
+        expectedFailureMarker: RV-D01-EMPTY-SELECTION
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D01-A
+              severity: medium
+              category: selection-defaulting
+              trigger: Call refreshDigests with an explicit empty selection against a catalog with two stale digests.
+              expectedBehavior: Leave both project records unchanged and return no updated identities.
+              wrongBehavior: The empty list selects every project and overwrites both digests.
+              evidence:
+                  - src/batch.ts
+                  - src/catalog.ts
+              acceptableConcepts:
+                  - empty selection is not omission
+                  - length fallback expands an empty list to the whole catalog
+                  - unrequested batch writes
+              nearMisses:
+                  - An omitted selection intentionally refreshes every project.
+                  - A nonempty selection is deduplicated and validated before writes.
+              proofCommand: bun run test:oracle empty-selection
+              expectedFailureMarker: RV-D01-EMPTY-SELECTION
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - An omitted selection intentionally refreshes every project.
+    - A nonempty selection is deduplicated and validated before writes.

@@ -92,7 +92,7 @@ for (const canonicalStatus of ["approved", "ready_for_work", "in_progress"] as c
     });
 }
 
-test("Core feedback reconciles to a Planner action; its resubmitted feedback-status Plan can open round two", async () => {
+test("Core feedback reconciles to a Planner action; its resubmitted draft Plan can open round two", async () => {
     await withProject(async (projectRoot) => {
         const workflow = await submitReview(projectRoot);
         await recordPlanEvent({
@@ -126,7 +126,7 @@ test("Core feedback reconciles to a Planner action; its resubmitted feedback-sta
         const opened = await openAttachedReviewRound(projectRoot, workflow.workflowId);
         assert(opened.kind === "opened");
         assertEquals(opened.basis.review.round, 2);
-        assertEquals(opened.basis.attrs.status, "feedback");
+        assertEquals(opened.basis.attrs.status, "draft");
     });
 });
 

@@ -17,7 +17,7 @@ import {
     listRuntimeAssetDestinations,
     listRuntimeFiles,
     REQUIRED_WORKSPACE_RUNTIME_FILES,
-} from "./build-plan-server-runtime.js";
+} from "./build-plan-server-runtime.ts";
 
 interface RuntimeBuildCommand {
     command: string;

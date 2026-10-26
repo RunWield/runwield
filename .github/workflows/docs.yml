@@ -54,6 +54,7 @@ jobs:
               with:
                   ref: ${{ github.event.repository.default_branch }}
                   path: tooling
+                  submodules: recursive
                   persist-credentials: false
 
             - name: Setup Bun
@@ -92,7 +93,7 @@ jobs:
                   bun ../tooling/scripts/verify-docs-source.ts "$documented" "$(git rev-parse HEAD)"
                   gh release download "$documented" --dir "$RUNNER_TEMP/docs-release-assets"
                   gh api "repos/$GITHUB_REPOSITORY/releases/tags/$documented" > "$RUNNER_TEMP/docs-release.json"
-                  bun ../tooling/scripts/release-assets.js \
+                  bun ../tooling/scripts/release-assets.ts \
                     "$RUNNER_TEMP/docs-release-assets" "$RUNNER_TEMP/verified-docs-release" \
                     "$documented" published "$RUNNER_TEMP/docs-release.json"
 

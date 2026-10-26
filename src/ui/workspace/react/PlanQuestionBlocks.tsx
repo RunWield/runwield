@@ -1,4 +1,5 @@
-import { useEffect, useState, type RefObject } from "react";
+import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
+import { useEffect, useId, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Block } from "@plannotator/ui/types.ts";
 import type { PlanQuestionAnswer, PlanQuestionBlock } from "../../../shared/plan-questions.ts";
@@ -9,6 +10,9 @@ interface PlanQuestionBlocksProps {
     blocks: Block[];
     questions: PlanQuestionBlock[];
     answers: PlanQuestionAnswer[];
+    busy?: boolean;
+    sentAnswers?: PlanQuestionAnswer[];
+    onSubmitAnswer?: (id: string) => void;
     onAnswer: (id: string, value: boolean | string) => void;
 }
 interface QuestionMount {
@@ -24,6 +28,9 @@ export function PlanQuestionBlocks({
     questions,
     answers,
     onAnswer,
+    busy,
+    sentAnswers,
+    onSubmitAnswer,
 }: PlanQuestionBlocksProps) {
     const [mounts, setMounts] = useState<QuestionMount[]>([]);
     useEffect(() => {
@@ -66,6 +73,13 @@ export function PlanQuestionBlocks({
                     block={block}
                     value={answers.find((answer) => answer.id === block.id)?.value}
                     onAnswer={onAnswer}
+                    busy={busy}
+                    sent={sentAnswers?.some(
+                        (answer) =>
+                            answer.id === block.id &&
+                            answer.value === answers.find((candidate) => candidate.id === block.id)?.value,
+                    )}
+                    onSubmitAnswer={onSubmitAnswer}
                 />
             ),
             target,
@@ -78,9 +92,13 @@ interface QuestionFormProps {
     block: PlanQuestionBlock;
     value?: boolean | string;
     onAnswer: PlanQuestionBlocksProps["onAnswer"];
+    busy?: boolean;
+    sent?: boolean;
+    onSubmitAnswer?: PlanQuestionBlocksProps["onSubmitAnswer"];
 }
 
-function QuestionForm({ block, value, onAnswer }: QuestionFormProps) {
+function QuestionForm({ block, value, onAnswer, busy, sent, onSubmitAnswer }: QuestionFormProps) {
+    const fieldId = useId();
     const question = block.question!;
     const id = block.id!;
     const choices =
@@ -118,7 +136,7 @@ function QuestionForm({ block, value, onAnswer }: QuestionFormProps) {
                             <label className="rw-question-option" key={String(choice.value)}>
                                 <input
                                     type="radio"
-                                    name={`plan-question-${id}`}
+                                    name={`plan-question-${fieldId}`}
                                     checked={!isOther && value === choice.value}
                                     onChange={() => {
                                         setOtherSelected(false);
@@ -138,7 +156,7 @@ function QuestionForm({ block, value, onAnswer }: QuestionFormProps) {
                                 <label className="rw-question-option">
                                     <input
                                         type="radio"
-                                        name={`plan-question-${id}`}
+                                        name={`plan-question-${fieldId}`}
                                         checked={isOther}
                                         onChange={() => {
                                             setOtherSelected(true);
@@ -161,6 +179,15 @@ function QuestionForm({ block, value, onAnswer }: QuestionFormProps) {
                     </>
                 )}
             </fieldset>
+            {sent ? (
+                <p className="rw-question-help" role="status">
+                    Answer sent
+                </p>
+            ) : onSubmitAnswer && value !== undefined && (typeof value !== "string" || value.trim()) ? (
+                <RunWieldButton disabled={busy} onClick={() => onSubmitAnswer(id)}>
+                    Submit answer
+                </RunWieldButton>
+            ) : null}
         </div>
     );
 }

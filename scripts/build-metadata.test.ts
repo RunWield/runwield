@@ -11,10 +11,10 @@ import { tmpdir } from "node:os";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { computeBuildIdentity, sha256File, verifyBuildArtifact } from "./build-metadata.js";
-import type { ArtifactMetadata } from "./build-metadata.js";
-import { prepareDevelopmentArtifacts } from "./release-assets.js";
-import { writeBuildIdentityFile } from "./write-version.js";
+import { computeBuildIdentity, sha256File, verifyBuildArtifact } from "./build-metadata.ts";
+import type { ArtifactMetadata } from "./build-metadata.ts";
+import { prepareDevelopmentArtifacts } from "./release-assets.ts";
+import { writeBuildIdentityFile } from "./write-version.ts";
 
 async function fixture() {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));

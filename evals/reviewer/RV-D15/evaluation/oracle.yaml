@@ -1,0 +1,48 @@
+schemaVersion: 1
+scenarioId: RV-D15
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    first-run:
+        command: bun run test:oracle first-run
+        expectedFailureMarker: RV-D15-FIRST-RUN-IDENTIFIER
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D15-A
+              severity: high
+              category: first-run-invalid-identifier
+              trigger: "A new user initializes a workspace with no saved selection."
+              expectedBehavior: "Setup stores the default stable id default with the new display label My Workspace."
+              wrongBehavior: "The default stored id becomes My Workspace; the untouched identifier validator rejects its spaces and capitals, so every first-run setup fails before saving."
+              evidence:
+                  - src/setup.ts
+                  - src/store.ts
+                  - src/identifier.ts
+              acceptableConcepts:
+                  - "a display label is not a valid stored workspace identifier"
+                  - "the unchanged store validates the default id on first-run setup"
+                  - "all users without a saved selection receive an identifier error"
+              nearMisses:
+                  - "Existing saved workspace selections bypass default creation and remain unchanged."
+                  - "Spaces and capitals are valid in display labels; the validator only restricts ids."
+                  - "Changing only the label is the requested behavior, not a scope omission."
+              proofCommand: bun run test:oracle first-run
+              expectedFailureMarker: RV-D15-FIRST-RUN-IDENTIFIER
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - "Existing saved workspace selections bypass default creation and remain unchanged."
+    - "Spaces and capitals are valid in display labels; the validator only restricts ids."
+    - "Changing only the label is the requested behavior, not a scope omission."

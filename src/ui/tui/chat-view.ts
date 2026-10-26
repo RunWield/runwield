@@ -348,7 +348,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             return [];
         }
         return mascot.render(width, compact, {
-            agentName: snapshot?.activeAgentInfo?.agentName || snapshot?.activeAgent || "",
+            agentName: snapshot?.activeAgentInfo?.agentName || snapshot?.activeAgent || "router",
             parentAgentName: snapshot?.activeAgent || undefined,
             sessionId: options.getSessionId(),
             pose: mascotPose({ busy: runningTasksComponent.isBusy, answering: mascotAnswering }),
@@ -635,24 +635,6 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         },
     });
     options.configureUiAPI?.(uiAPI);
-    const basePromptSelect = uiAPI.promptSelect?.bind(uiAPI);
-    if (basePromptSelect) {
-        uiAPI.promptSelect = async (title, promptOptions, hooks) => {
-            const result = await basePromptSelect(title, promptOptions, hooks);
-            tui.setFocus(editor);
-            tui.requestRender();
-            return result;
-        };
-    }
-    const basePromptText = uiAPI.promptText?.bind(uiAPI);
-    if (basePromptText) {
-        uiAPI.promptText = async (title, promptOptions) => {
-            const result = await basePromptText(title, promptOptions);
-            tui.setFocus(editor);
-            tui.requestRender();
-            return result;
-        };
-    }
     const unsubscribeThemeChange = onThemeChange(() => {
         tui.invalidate();
         tui.requestRender();

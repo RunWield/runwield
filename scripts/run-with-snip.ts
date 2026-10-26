@@ -112,9 +112,11 @@ async function formatCommandResult(
     };
 }
 
-async function testTimeoutResult(timeoutMs: number): Promise<SnipCommandResult> {
+async function testTimeoutResult(timeoutMs: number, result?: ScriptProcessOutput): Promise<SnipCommandResult> {
     const failureLogPath = await makeTempFile({ prefix: "tests-timeout-", suffix: ".log" });
-    await fsWriteFile(failureLogPath, `Test process exceeded ${timeoutMs / 1000}s and was stopped.\n`);
+    const decoder = new TextDecoder();
+    const output = result ? decoder.decode(result.stdout) + decoder.decode(result.stderr) : "";
+    await fsWriteFile(failureLogPath, `Test process exceeded ${timeoutMs / 1000}s and was stopped.\n${output}`);
     return {
         code: 124,
         stdout: "",
@@ -146,7 +148,7 @@ export async function runBoundedTest(
             signal: controller.signal,
         });
         clearTimeout(timer);
-        if (timedOut) return await testTimeoutResult(options.timeoutMs);
+        if (timedOut) return await testTimeoutResult(options.timeoutMs, result);
         return await formatCommandResult(options.command ?? process.execPath, args, options, result);
     } catch (error) {
         if (!timedOut) throw error;

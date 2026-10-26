@@ -16,6 +16,7 @@ import { createPlanWrittenTool } from "../plan-written.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.js";
 import { join } from "node:path";
+import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
 
 /**
  * @param {Object} options
@@ -68,10 +69,23 @@ ${options.parentPlan ? `parentPlan: ${options.parentPlan}\n` : ""}---
             // rejects a stale revision, so a made-up string would fail the write.
             const reviewedName = /** @type {any} */ (request._meta)?.planName || "runtime-boundary";
             const reviewedCwd = /** @type {any} */ (request._meta)?.cwd || cwd;
-            return loadPlan(reviewedCwd, reviewedName).then((plan) => {
+            return loadPlan(reviewedCwd, reviewedName).then(async (plan) => {
                 const revision = plan?.revision;
                 const scripted = reviewResponses.shift() || options.reviewResponse;
                 if (scripted) {
+                    if (scripted._meta?.approved && plan?.attrs.status === "draft") {
+                        const accepted = await applySharedPlanReviewDecision({
+                            cwd: reviewedCwd,
+                            planName: reviewedName,
+                            planPath: plan.path,
+                            planWithFrontMatter: plan.markdown,
+                            planRevision: plan.revision,
+                            originalAttrs: plan.attrs,
+                            trustedClassification: plan.attrs.classification,
+                            decision: scripted._meta,
+                        });
+                        return { ...scripted, _meta: { ...scripted._meta, ...accepted } };
+                    }
                     return scripted._meta ? { ...scripted, _meta: { revision, ...scripted._meta } } : scripted;
                 }
                 return {
@@ -79,8 +93,8 @@ ${options.parentPlan ? `parentPlan: ${options.parentPlan}\n` : ""}---
                     _meta: {
                         approved: true,
                         revision,
-                        approvalAction: options.approvalAction ||
-                            (options.classification === "PROJECT" ? "decompose" : "run"),
+                        approvalAction:
+                            options.approvalAction || (options.classification === "PROJECT" ? "decompose" : "run"),
                     },
                 };
             });
@@ -194,9 +208,10 @@ test("plan_written streams declared plan details into the active tool block", as
     assertEquals(updates[0].details.planName, "runtime-boundary");
     assertEquals(updates[0].details.planFileUrl.startsWith("file://"), true);
     assertEquals(
-        events.some((event) =>
-            event.type === RuntimeEventTypes.SYSTEM_STATUS &&
-            String(event.message || "").includes("Plan name: docs/plans/runtime-boundary.md")
+        events.some(
+            (event) =>
+                event.type === RuntimeEventTypes.SYSTEM_STATUS &&
+                String(event.message || "").includes("Plan name: docs/plans/runtime-boundary.md"),
         ),
         false,
     );
@@ -333,7 +348,10 @@ test("plan_written returns review feedback and images to the planning agent", as
         feedback: "Remove the cross-boundary import.",
         imageCount: 1,
     });
-    assertEquals(result.content.some((/** @type {any} */ item) => item.type === "image"), true);
+    assertEquals(
+        result.content.some((/** @type {any} */ item) => item.type === "image"),
+        true,
+    );
     // Feedback is not readiness: the Plan must still be sitting at `approved`.
     assertEquals((await readPlan())?.attrs.status, "approved");
 });
@@ -406,7 +424,10 @@ test("plan_written cancellation asks whether to reopen review before completing"
 
     assertEquals(result.details.outcome, "canceled");
     assertEquals(result.terminate, true);
-    assertEquals(events.some((event) => String(event.message || "").includes("This session is complete")), true);
+    assertEquals(
+        events.some((event) => String(event.message || "").includes("This session is complete")),
+        true,
+    );
 });
 
 test("plan_written reopens review when recovery confirmation is accepted", async () => {
@@ -641,8 +662,14 @@ test("plan_written feature approval can save without execution", async () => {
     assertEquals(result.details.outcome, "saved");
     assertEquals(result.terminate, true);
     assertStringIncludes(result.content[0].text, SESSION_COMPLETE_GUIDANCE);
-    assertEquals(events.some((event) => String(event.message || "").includes("Plan saved")), true);
-    assertEquals(events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)), true);
+    assertEquals(
+        events.some((event) => String(event.message || "").includes("Plan saved")),
+        true,
+    );
+    assertEquals(
+        events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)),
+        true,
+    );
 });
 
 test("plan_written persists an Epic child relationship in Session workflow context", async () => {
@@ -670,8 +697,14 @@ test("plan_written project approval can save for later with session-complete gui
     assertEquals(result.details.outcome, "saved");
     assertEquals(result.terminate, true);
     assertStringIncludes(result.content[0].text, SESSION_COMPLETE_GUIDANCE);
-    assertEquals(events.some((event) => String(event.message || "").includes("Plan saved")), true);
-    assertEquals(events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)), true);
+    assertEquals(
+        events.some((event) => String(event.message || "").includes("Plan saved")),
+        true,
+    );
+    assertEquals(
+        events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)),
+        true,
+    );
 });
 
 test("plan_written project approval returns decomposition outcome", async () => {

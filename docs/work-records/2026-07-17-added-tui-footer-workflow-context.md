@@ -11,11 +11,8 @@ provenance:
         - "83614ade-f5a7-402b-8b22-5872dc422d33"
 ---
 
-# Added TUI footer workflow context
+# TUI footer workflow context
 
 ## Summary
 
-Implemented persisted, session-scoped Routing Intent, Complexity, and Plan-name context in the TUI footer. Eligible
-workflow roles now show theme-colored Quick Fix, Feature, or Epic labels with responsive truncation, while excluded
-roles retain the Agent-only footer. Context survives session resume, resets appropriately on new Triage, and is covered
-by persistence, tool, theme, and footer tests. Full verification completed successfully.
+The TUI footer presents persisted, Session-scoped Routing Intent, Complexity, and Plan-name context. Eligible workflow roles show theme-colored Quick Fix, Feature, or Epic labels with responsive truncation; other roles retain the Agent-only footer. Context survives Session resume and resets on new Triage.

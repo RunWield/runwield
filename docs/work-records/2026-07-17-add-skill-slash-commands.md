@@ -11,10 +11,8 @@ provenance:
         - "b473615c-82bd-4b48-a2b5-4df052bc75fc"
 ---
 
-# Add skill slash commands
+# Skill slash commands
 
 ## Summary
 
-Added autocomplete and dispatch support for `/skill:{name} [instructions]`. Skill commands expand `SKILL.md` content
-into a `<skill>` XML user message, support optional instructions, and handle unknown or unreadable skills without
-disrupting the interactive session. The implementation passed verification.
+RunWield provides autocomplete and dispatch for `/skill:{name} [instructions]`. Skill commands expand skill content into a `<skill>` XML user message with optional instructions. Unknown or unreadable skills do not disrupt the interactive Session.

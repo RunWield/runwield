@@ -2,6 +2,7 @@ import { stat as fsStat } from "node:fs/promises";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
 import { runHostRecorder } from "./validation-host-recorder.ts";
+import { syncEpicChildPlanDeviations } from "./epic-review-context.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -259,6 +260,7 @@ export async function runPublicationPhase(
     context: PhaseContext,
     humanReviewMetadata: HumanReviewMetadata,
 ): Promise<PublicationOutcome> {
+    args.session.releaseActiveAgent();
     const outcome = await withPlanLock(
         context.projectRoot,
         args.planName,
@@ -633,6 +635,10 @@ async function runLockedPublicationPhase(
                 async () => await ensureRunWieldOwnedGitignoreBlock(context.executionCwd),
             );
             const targetHeadAtSeal = await args.git.branchHead(context.projectRoot, targetBranch);
+            await atStage(
+                "candidate_checkpoint",
+                async () => await syncEpicChildPlanDeviations(context.executionCwd, args.planName),
+            );
             const candidate = await atStage(
                 "candidate_checkpoint",
                 async () =>
@@ -688,6 +694,10 @@ async function runLockedPublicationPhase(
             await atStage(
                 "artifact_preparation",
                 async () => await runPostVerificationHandoffs(args, context.executionCwd, true),
+            );
+            await atStage(
+                "candidate_sealing",
+                async () => await syncEpicChildPlanDeviations(context.executionCwd, args.planName),
             );
             const artifactCandidate = await atStage(
                 "candidate_sealing",

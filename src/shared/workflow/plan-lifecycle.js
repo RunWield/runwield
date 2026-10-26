@@ -39,13 +39,12 @@ export class PlanLifecycleTransitionError extends Error {
 }
 
 /**
- * @typedef {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} PlanStatus
+ * @typedef {"draft"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} PlanStatus
  */
 
 /** @type {Record<PlanStatus, string>} */
 const PLAN_STATUS_HELP_TEXT = {
     draft: "it is still a draft",
-    feedback: "it needs changes",
     approved: "it is approved",
     ready_for_decomposition: "it is ready to split into smaller work",
     ready_for_work: "it is ready for work",
@@ -128,7 +127,7 @@ function buildStalePlanStatusMessage(planName, currentStatus, canonicalStatus) {
  */
 
 /** @type {PlanStatus[]} */
-const MANUAL_BOARD_STATUSES = ["draft", "feedback", "approved", "ready_for_work"];
+const MANUAL_BOARD_STATUSES = ["draft", "approved", "ready_for_work"];
 
 /** @type {PlanStatus[]} */
 const MANUAL_BOARD_SOURCE_STATUSES = [...MANUAL_BOARD_STATUSES, "in_progress", "implemented"];
@@ -136,7 +135,6 @@ const MANUAL_BOARD_SOURCE_STATUSES = [...MANUAL_BOARD_STATUSES, "in_progress", "
 /** @type {PlanStatus[]} */
 export const PLAN_STATUSES = [
     "draft",
-    "feedback",
     "approved",
     "ready_for_decomposition",
     "ready_for_work",
@@ -153,7 +151,6 @@ export const PLAN_STATUSES = [
 /** @type {PlanStatus[]} */
 export const ACTIVE_PLAN_STATUSES = [
     "draft",
-    "feedback",
     "approved",
     "ready_for_decomposition",
     "ready_for_work",
@@ -203,8 +200,8 @@ const ALL_KNOWN_STATUSES = /** @type {PlanStatus[]} */ ([...PLAN_STATUSES, "vali
 
 /** @type {Record<PlanEvent, PlanStatus[]>} */
 const ALLOWED_FROM = {
-    review_feedback: ["draft", "feedback", "approved"],
-    review_approved: ["draft", "feedback", "approved"],
+    review_feedback: ["draft", "approved"],
+    review_approved: ["draft", "approved"],
     readiness_passed: ["approved"],
     epic_readiness_passed: ["approved"],
     decomposition_finalized: ["approved", "ready_for_decomposition"],
@@ -220,6 +217,7 @@ const ALLOWED_FROM = {
     recovery_continue: ["in_progress", "failed"],
     recovery_reset: ["in_progress", "failed", "implemented"],
     review_reopened: [
+        "approved",
         "ready_for_decomposition",
         "ready_for_work",
         "in_progress",
@@ -256,7 +254,7 @@ const EPIC_ONLY_EVENTS = new Set([
 
 /** @type {Record<PlanEvent, PlanStatus>} */
 const EVENT_STATUS = {
-    review_feedback: "feedback",
+    review_feedback: "draft",
     review_approved: "approved",
     readiness_passed: "ready_for_work",
     epic_readiness_passed: "ready_for_decomposition",
@@ -272,7 +270,7 @@ const EVENT_STATUS = {
     validation_passed: "verified",
     recovery_continue: "ready_for_work",
     recovery_reset: "ready_for_work",
-    review_reopened: "feedback",
+    review_reopened: "draft",
     epic_done_enough: "closed_without_verification",
     epic_children_delivered: "implemented",
     epic_integration_passed: "reviewed",
@@ -685,12 +683,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
             updates.humanReviewedAt = null;
         }
 
-        if (
-            targetStatus === "draft" ||
-            targetStatus === "feedback" ||
-            targetStatus === "approved" ||
-            targetStatus === "ready_for_decomposition"
-        ) {
+        if (targetStatus === "draft" || targetStatus === "approved" || targetStatus === "ready_for_decomposition") {
             updates.failureReason = null;
             updates.failedAt = null;
         }

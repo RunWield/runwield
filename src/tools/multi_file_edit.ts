@@ -43,7 +43,7 @@ interface MultiFileEdit {
     newText: string;
 }
 
-interface MultiFileEditParams {
+export interface MultiFileEditParams {
     root?: string;
     edits: MultiFileEdit[];
 }

@@ -328,7 +328,7 @@ test("platform checks are release-only, use the selected commit, and cannot sile
     assertEquals(release.name, "release-gate");
     assertEquals(release.concurrency?.["cancel-in-progress"], false);
     const paths = await fsReaddir(".github/workflows");
-    for (const platform of ["unix", "windows", "containers"]) {
+    for (const platform of ["unix", "containers"]) {
         assertEquals(paths.includes(`bun-${platform}.yml`), false);
         const workflow = await readGate(`release-${platform}`);
         assertEquals(Object.keys(workflow.on).sort(), ["workflow_call", "workflow_dispatch"]);
@@ -369,12 +369,13 @@ test("platform checks are release-only, use the selected commit, and cannot sile
     }
 });
 
-test("release matrix preserves native source and package coverage without duplicate Ubuntu source or a new Windows asset", async () => {
+test("release matrix qualifies Unix assets and keeps Windows diagnostics paused", async () => {
     const unix = await readGate("release-unix");
     assertEquals(unix.jobs.source.strategy?.matrix.runner, ["macos-latest"]);
     assertEquals(unix.jobs.source.strategy?.matrix.shard, [1, 2, 3, 4]);
     assertEquals(unix.jobs.package.strategy?.matrix.runner, ["ubuntu-latest", "macos-latest"]);
     const windows = (await readGate("release-windows")).jobs.native;
+    assertEquals(windows.if, "${{ false }}");
     assertEquals(windows.strategy?.["max-parallel"], 5);
     assertEquals(windows.strategy?.["fail-fast"], false);
     const entries = windows.strategy?.matrix.include || [];
@@ -387,9 +388,9 @@ test("release matrix preserves native source and package coverage without duplic
         assertEquals(entries.filter((entry) => entry.arch === arch && entry.phase === "package").length, 1);
     }
     const release = await readGate("release");
-    assertEquals(release.jobs.build.strategy?.matrix.include?.length, 5);
+    assertEquals(release.jobs.build.strategy?.matrix.include?.length, 4);
     const build = await fsReadFile(".github/workflows/release.yml", "utf8");
-    assertEquals(build.includes("asset_suffix: windows-arm64"), false);
+    assertEquals(/windows|winget/i.test(build), false);
     assertEquals(
         release.jobs["native-package-check"].strategy?.matrix.include?.map((entry) => entry.asset),
         ["linux-x64", "linux-arm64", "darwin-arm64", "darwin-x64"],
@@ -437,11 +438,9 @@ test("publication requires every product and source gate including actual packag
         "golden",
         "release-check",
         "assets",
-        "windows-package-check",
         "homebrew-check",
         "native-package-check",
         "unix-checks",
-        "windows-checks",
         "containers-checks",
     ];
     assertEquals(release.needs, [
@@ -451,11 +450,9 @@ test("publication requires every product and source gate including actual packag
         "golden",
         "release-check",
         "assets",
-        "windows-package-check",
         "native-package-check",
         "homebrew-check",
         "unix-checks",
-        "windows-checks",
         "containers-checks",
     ]);
     assertStringIncludes(release.if || "", "!cancelled()");

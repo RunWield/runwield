@@ -25,7 +25,7 @@ import { createWorkRecordCompletedTool } from "../../tools/work-record-completed
 import { dedupeTicketReferencesByUrl } from "../ticket-references.js";
 import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
-import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.js";
+import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
 

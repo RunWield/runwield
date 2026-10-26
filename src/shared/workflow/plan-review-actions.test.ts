@@ -187,7 +187,7 @@ test("shared Plan review rejects stale revision status and worktree before mutat
     const executionDir = await addActiveWorktree(fixture.dir);
     const executionPlanPath = getStoredPlanPath(executionDir, "plan");
     try {
-        const currentPlan = injectFrontMatter(fixture.markdown, { status: "feedback", worktreeId: "other" });
+        const currentPlan = injectFrontMatter(fixture.markdown, { status: "draft", worktreeId: "other" });
         await fsWriteFile(executionPlanPath, currentPlan);
 
         const result = await applySharedPlanReviewDecision({
@@ -208,7 +208,7 @@ test("shared Plan review rejects stale revision status and worktree before mutat
         });
 
         assertEquals(result.cancellationReason, "stale_plan_review");
-        assertEquals((await loadPlan(executionDir, "plan"))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(executionDir, "plan"))?.attrs.status, "draft");
         assertEquals((await loadPlan(executionDir, "plan"))?.attrs.worktreeId, "wt-prior");
         assertEquals(await fsReadFile(executionPlanPath, "utf8"), currentPlan);
         assertEquals(await fsReadFile(fixture.planPath, "utf8"), fixture.markdown);
@@ -353,7 +353,7 @@ test("shared Plan review commits edited Feedback and approval notes with classif
 
         assertEquals(feedback.approved, false);
         assertStringIncludes(feedbackMarkdown, "# Edited Feedback");
-        assertEquals(feedbackAttrs.status, "feedback");
+        assertEquals(feedbackAttrs.status, "draft");
         assertEquals(feedbackAttrs.classification, "PLANNED_CHANGE");
         assertEquals(feedbackAttrs.executionAgent, "frontend-engineer");
 
@@ -429,8 +429,8 @@ for (const { name, original, current, matches } of [
 }
 
 for (const stale of [true, false]) {
-    test(`shared review ${stale ? "rejects old" : "accepts current"} controller evidence on unchanged feedback status`, async () => {
-        const fixture = await makePlanFile({ status: "feedback" });
+    test(`shared review ${stale ? "rejects old" : "accepts current"} controller evidence on unchanged draft status`, async () => {
+        const fixture = await makePlanFile({ status: "draft" });
         try {
             const reviewed = await loadPlan(fixture.dir, "plan");
             assert(reviewed);
@@ -439,7 +439,7 @@ for (const stale of [true, false]) {
                     cwd: fixture.dir,
                     planName: "plan",
                     event: "review_feedback",
-                    currentStatus: "feedback",
+                    currentStatus: "draft",
                     details: { failureReason: "New Core feedback." },
                 });
             }
@@ -469,4 +469,69 @@ for (const stale of [true, false]) {
             await fsRm(fixture.dir, { recursive: true });
         }
     });
+}
+
+for (const status of ["draft", "approved", "ready_for_work", "ready_for_decomposition"] as const) {
+    test(`conversation preserves ${status} bytes, revision, and lifecycle evidence`, async () => {
+        const fixture = await makePlanFile({ status });
+        try {
+            const before = await loadPlan(fixture.dir, "plan");
+            assert(before);
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: before.path,
+                planWithFrontMatter: before.markdown,
+                planRevision: before.revision,
+                originalAttrs: before.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: {
+                    approved: false,
+                    conversationTurn: true,
+                    feedback: "Why this scope?",
+                    plan: before.markdown,
+                },
+            });
+            assertEquals(result.conversationTurn, true);
+            const after = await loadPlan(fixture.dir, "plan");
+            assertEquals(await fsReadFile(before.path, "utf8"), before.markdown);
+            assertEquals(after?.revision, before.revision);
+            assertEquals(after?.attrs, before.attrs);
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
+    });
+}
+
+for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] as const) {
+    for (const meaningful of [true, false]) {
+        test(`conversation direct edit ${meaningful ? "invalidates" : "preserves"} ${status}`, async () => {
+            const fixture = await makePlanFile({ status });
+            try {
+                const before = await loadPlan(fixture.dir, "plan");
+                assert(before);
+                const edit = before.markdown.replace(
+                    "Do the thing.",
+                    meaningful ? "Change the scope." : "Do the\nthing.",
+                );
+                const result = await applySharedPlanReviewDecision({
+                    cwd: fixture.dir,
+                    planName: "plan",
+                    planPath: before.path,
+                    planWithFrontMatter: before.markdown,
+                    planRevision: before.revision,
+                    originalAttrs: before.attrs,
+                    trustedClassification: "PLANNED_CHANGE",
+                    decision: { approved: false, conversationTurn: true, feedback: "An owner edit.", plan: edit },
+                });
+                assertEquals(result.cancellationReason, undefined);
+                const after = await loadPlan(fixture.dir, "plan");
+                assertEquals(after?.attrs.status, meaningful ? "draft" : status);
+                assertEquals(after?.attrs.failureReason, before.attrs.failureReason);
+                assertStringIncludes(after?.body || "", meaningful ? "Change the scope." : "Do the\nthing.");
+            } finally {
+                await fsRm(fixture.dir, { recursive: true });
+            }
+        });
+    }
 }

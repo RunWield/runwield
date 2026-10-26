@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping improve RunWield. RunWield is source-available and accepts issues and pull requests, but it is not
-open source yet. Before contributing, read the [license](../LICENSE).
+Thanks for helping improve RunWield. RunWield is open source under the [MIT License](../LICENSE) from v0.14.0.
+Issues and pull requests are welcome.
 
 ## Start with the design docs
 
@@ -90,7 +90,7 @@ wld snip-filters cleanup
 ## Task compatibility
 
 Use the established task names with Bun: `bun run compile`, `bun run ci`, `bun run workspace:build`, and so on.
-All 49 original Deno task names remain available. See the [complete task audit](plans/bun-task-compatibility.md) for
+All 49 original Deno task names remain available. See the [complete task audit](bun-task-compatibility.md) for
 per-task argument contracts and explicit runtime-specific exceptions.
 
 ```bash
@@ -114,7 +114,7 @@ bun run compile --output bin/wld
 BUILD_ID=$(bun -e 'console.log((await Bun.file("bin/wld.build.json").json()).buildId)')
 bun run compile --target x86_64-unknown-linux-gnu --output bin/wld-linux-x64 --expect-build-id "$BUILD_ID"
 bun run compile --target aarch64-unknown-linux-gnu --output bin/wld-linux-arm64 --expect-build-id "$BUILD_ID"
-bun scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
+bun scripts/release-assets.ts development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
 ```
 
 Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never
@@ -337,8 +337,11 @@ RunWield itself is plan-by-default for non-trivial work. Contributions should pr
 
 ## License note
 
-RunWield is source-available and free to use, inspect, and run for personal, internal, or commercial work. You may
-submit issues and pull requests.
+Contributions to RunWield are made under the [MIT License](../LICENSE). Preserve copyright, license, and attribution
+notices for third-party material and identify its source. Earlier releases retain their tagged licenses.
 
-You may not distribute modified versions, publish derivative works, rebrand RunWield, or offer it as a competing product
-or service without prior written permission.
+## Maintaining portable skills
+
+The `skills/` submodule checks out [RunWield/skills](https://github.com/RunWield/skills). Initialize it with
+`git submodule update --init skills`. Core keeps the review baseline and fails CI when the portable skills drift from
+their reviewed source definitions. See [skills maintenance](skills-maintenance.md) for the edit and publication steps.

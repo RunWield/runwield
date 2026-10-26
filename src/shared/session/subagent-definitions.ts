@@ -23,6 +23,7 @@ const REVIEWER_FEEDBACK_ENGINEER_FILE = "reviewer-feedback-engineer.md";
 const REVIEWER_PROMPT_FILE = "reviewer-prompt.md";
 const REVIEWER_VERIFY_PROMPT_FILE = "reviewer-verify-prompt.md";
 const INTEGRATION_REVIEWER_PROMPT_FILE = "integration-reviewer-prompt.md";
+const INTEGRATION_REVIEWER_VERIFY_PROMPT_FILE = "integration-reviewer-verify-prompt.md";
 const SLICER_PROMPT_FILE = "slicer-prompt.md";
 const VERIFICATION_ADVERSARY_ROLE_FILE = "verification-adversary.md";
 
@@ -174,6 +175,7 @@ export const SUBAGENT_DEFINITIONS: Readonly<Record<SubAgentDefinitionId, SubAgen
         displayNameFallback: "Integration Reviewer",
         loadMode: "barePrompt",
         file: INTEGRATION_REVIEWER_PROMPT_FILE,
+        verifyFile: INTEGRATION_REVIEWER_VERIFY_PROMPT_FILE,
         allowedTools: INTEGRATION_REVIEWER_SUBAGENT_TOOLS,
     }),
     [SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER]: Object.freeze({
@@ -247,10 +249,7 @@ function normalizeBundledPromptFrontMatter(parsed: ParsedPromptFrontMatter): Par
 }
 
 function subagentRelativePath(definition: SubAgentDefinition, reviewerMode: ReviewerSubAgentMode) {
-    const file =
-        definition.id === SUBAGENTS.REVIEWER && reviewerMode === "verify" && definition.verifyFile
-            ? definition.verifyFile
-            : definition.file;
+    const file = reviewerMode === "verify" && definition.verifyFile ? definition.verifyFile : definition.file;
     return join(SUBAGENT_DEFINITIONS_DIR, file);
 }
 

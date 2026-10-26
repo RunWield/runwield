@@ -16,17 +16,8 @@ provenance:
 
 ## Summary
 
-RunWield now has Core-owned stdio MCP support for global, project, and ACP-provided server definitions. MCP tools load
-into root Agent sessions for Pi and Claude CLI, survive reloads and Session replacement, and shut down with Session
-lifecycle. ACP now accepts valid stdio MCP servers and rejects unsupported transports with safe errors. Documentation
-and tests were added for configuration, trust limits, ACP behavior, and lifecycle handling.
-
-## Deviations from Plan
-
-`deno task ci` and standalone `deno task test` timed out during their test phases, but targeted MCP, ACP, and Session
-suites passed along with `deno task check`, `deno task seams:check`, `deno task compile`, and `deno fmt --check`.
+Core owns stdio MCP support for global, Project, and ACP-provided server definitions. MCP tools load into root Agent Sessions for Pi and Claude CLI, survive reloads and Session replacement, and shut down with the Session lifecycle. ACP accepts valid stdio MCP servers and rejects unsupported transports with safe errors.
 
 ## Future Planning Notes
 
-Future MCP work can build on `src/shared/mcp/` as the Core ownership point. The ACP audit remains useful because this
-change resolves stdio MCP handling only; other ACP conformance gaps still need separate planning.
+Keep MCP ownership in Core. Support for stdio does not imply support for other MCP transports or ACP capabilities.
