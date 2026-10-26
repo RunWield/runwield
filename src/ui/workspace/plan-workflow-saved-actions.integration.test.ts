@@ -1,5 +1,7 @@
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
+import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
+import type { WorkspacePlanReviewStarted } from "./server/session-continuation.js";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -11,6 +13,10 @@ import { WorkspaceSessionContinuationService } from "./server/session-continuati
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+
+interface FixturePlanProgress extends OwnerPlanProgress {
+    expectedRevision: string;
+}
 
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n" });
 
@@ -31,7 +37,7 @@ for (const withSession of [false, true]) {
                     executionAgent: "engineer",
                     holdStalenessBaseline: "saved-baseline",
                 });
-                let sessionId;
+                let sessionId: string | undefined;
                 if (withSession) {
                     const created = await runtime.createInteractiveSession({ cwd: root });
                     await runtime.recordPlanAssociation(created.sessionId, {
@@ -44,11 +50,13 @@ for (const withSession of [false, true]) {
                 }
                 const params = { projectId: project.projectId, planId: "held-id", runwieldSessionId: sessionId };
                 const state = { store, sessionContinuation: service };
-                const progress = await (await ownerProjectPlanProgressApi({
-                    req: new Request("http://workspace.local/progress"),
-                    params,
-                    state,
-                })).json();
+                const progress: FixturePlanProgress = await (
+                    await ownerProjectPlanProgressApi({
+                        req: new Request("http://workspace.local/progress"),
+                        params,
+                        state,
+                    })
+                ).json();
                 assertEquals(progress.canResume, true, JSON.stringify(progress));
                 assertExists(progress.expectedRevision);
                 const presentation = buildWorkflowPresentation({
@@ -56,7 +64,7 @@ for (const withSession of [false, true]) {
                     canResume: progress.canResume,
                 });
                 assertEquals(presentation.action.kind, "resume_from_hold");
-                const action = async (acceptResumeWarnings, expectedRevision = progress.expectedRevision) => {
+                const action = async (acceptResumeWarnings: boolean, expectedRevision = progress.expectedRevision) => {
                     const req = new Request("http://workspace.local/workflow", {
                         method: "POST",
                         body: JSON.stringify({
@@ -84,11 +92,13 @@ for (const withSession of [false, true]) {
                 const restored = await action(true);
                 assertEquals(restored.status, 200, await restored.text());
                 assertEquals((await loadPlan(root, "held")).attrs.status, "ready_for_work");
-                const refreshed = await (await ownerProjectPlanProgressApi({
-                    req: new Request("http://workspace.local/progress"),
-                    params,
-                    state,
-                })).json();
+                const refreshed: FixturePlanProgress = await (
+                    await ownerProjectPlanProgressApi({
+                        req: new Request("http://workspace.local/progress"),
+                        params,
+                        state,
+                    })
+                ).json();
                 assertEquals(
                     buildWorkflowPresentation({ status: refreshed.plan.status, canResume: refreshed.canResume }).action
                         .kind,
@@ -129,11 +139,13 @@ test("Workspace opens saved Plan review without a Session, deduplicates concurre
                 throw new Error("Review must not run an Agent");
             });
             const params = { projectId: project.projectId, planId: "saved-id" };
-            const progress = await (await ownerProjectPlanProgressApi({
-                req: new Request("http://workspace.local/progress"),
-                params,
-                state: { store, sessionContinuation: service },
-            })).json();
+            const progress: FixturePlanProgress = await (
+                await ownerProjectPlanProgressApi({
+                    req: new Request("http://workspace.local/progress"),
+                    params,
+                    state: { store, sessionContinuation: service },
+                })
+            ).json();
             assertEquals(progress.sessionHref, "");
             assertEquals(progress.canResume, true);
             assertStringIncludes(progress.planWorkflowUrl, "/plans/saved-id/workflow");
@@ -147,7 +159,7 @@ test("Workspace opens saved Plan review without a Session, deduplicates concurre
                     params,
                     state: { store, sessionContinuation },
                 });
-                const body = await response.json();
+                const body: WorkspacePlanReviewStarted = await response.json();
                 assertEquals(response.status, 202, JSON.stringify(body));
                 return body;
             };
