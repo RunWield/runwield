@@ -1,3 +1,4 @@
+import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -19,6 +20,7 @@ import {
     readRecordBytes,
     runOperation,
     spawnAttachedCli,
+    submitReview,
     withProject,
 } from "./attached-test-fixture.ts";
 import { completionInput, executionInput, implementing, readyPlan } from "./execution-test-fixture.ts";
@@ -112,8 +114,10 @@ test("fresh start heals an unsettled preparation journal and adopts the same aut
         const retry = await spawnAttachedCli("start_execution", root, executionInput(ready, "retry-start"));
         assert(retry.result.ok, JSON.stringify(retry.result));
         assertEquals(retry.result.workflow.state, "implementing");
-        assertEquals(retry.result.workflow.execution?.worktreeId, execution.worktreeId);
-        assertEquals(retry.result.workflow.execution?.baselineTree, execution.baselineTree);
+        const current = await runOperation("status", root, { workflowId: ready.workflowId });
+        assert(current.ok);
+        assertEquals(current.workflow.execution?.worktreeId, execution.worktreeId);
+        assertEquals(current.workflow.execution?.baselineTree, execution.baselineTree);
         assertEquals((await listTransitionRecoveryRecords(execution.executionCwd)).length, 0);
         assertEquals((await listEntries(root)).length, 1);
     });
@@ -165,15 +169,23 @@ test("status retains the pending implementation action and resolves frontend rol
             "---\npromptOverride: true\n---\nProject frontend override after handoff\n",
         );
         const status = await runOperation("status", root, { workflowId: ready.workflowId });
-        assert(status.ok && status.instructions);
+        assert(status.ok && status.workflow.nextAction.kind === "implementation");
+        assertEquals(status.instructions, undefined);
+        const content = await readAttachedAction({
+            projectRoot: root,
+            workflowId: ready.workflowId,
+            actionId: status.workflow.nextAction.actionId,
+            content: "instructions",
+        });
+        assert(content.ok && "instructions" in content);
         assertEquals(status.workflow.state, "implementing");
         assertEquals(status.workflow.nextAction, started.workflow.nextAction);
-        assertStringIncludes(status.instructions.text, "Project frontend override after handoff");
+        assertStringIncludes(content.instructions.text, "Project frontend override after handoff");
         const replay = await runOperation("start_execution", root, executionInput(ready, "constructor"));
         assert(replay.ok && replay.instructions);
         assertEquals(JSON.stringify(replay.workflow), JSON.stringify(started.workflow));
         assertStringIncludes(replay.instructions.text, "Project frontend override after handoff");
-        assertStringIncludes(status.instructions.text, "Do not call any RunWield lifecycle tool");
+        assertStringIncludes(content.instructions.text, "Do not call any RunWield lifecycle tool");
         assertEquals((await readRecordBytes(root, ready.workflowId)).includes('"instructions"'), false);
     });
 });
@@ -320,7 +332,9 @@ test("first preparation retry heals its source journal before selecting an unmat
         const retry = await spawnAttachedCli("start_execution", root, executionInput(ready, "retry-first"));
         assert(retry.result.ok, JSON.stringify(retry.result));
         assertEquals(retry.result.workflow.state, "implementing");
-        assertEquals(retry.result.workflow.execution?.worktreeId, entry.id);
+        const current = await runOperation("status", root, { workflowId: ready.workflowId });
+        assert(current.ok);
+        assertEquals(current.workflow.execution?.worktreeId, entry.id);
         assertEquals((await loadPlan(entry.path, "dark-mode-toggle"))?.attrs.status, "in_progress");
         assertEquals((await listTransitionRecoveryRecords(root)).length, 0);
         assertEquals((await listEntries(root)).length, 1);
@@ -409,7 +423,39 @@ for (const checkpoint of ["retained", "missing"] as const) {
             assertEquals(retry.result.ok, checkpoint === "retained", JSON.stringify(retry.result));
             assertEquals((await listTransitionRecoveryRecords(root)).length, checkpoint === "retained" ? 0 : 1);
             assertEquals((await listEntries(root)).length, 1);
-            if (retry.result.ok) assertEquals(retry.result.workflow.execution?.worktreeId, execution.worktreeId);
+            if (retry.result.ok) {
+                const current = await runOperation("status", root, { workflowId: ready.workflowId });
+                assert(current.ok);
+                assertEquals(current.workflow.execution?.worktreeId, execution.worktreeId);
+            }
         });
     });
 }
+
+test("execution recovers approval committed before readiness without a status write", async () => {
+    await withProject(async (root) => {
+        const submitted = await submitReview(root);
+        await recordPlanEvent({
+            cwd: root,
+            planName: "dark-mode-toggle",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        const approved = await loadPlan(root, "dark-mode-toggle");
+        assert(approved);
+        const status = await runOperation("status", root, { workflowId: submitted.workflowId });
+        assert(status.ok);
+        assertEquals(status.workflow.state, "plan_ready");
+        assertEquals(await loadPlan(root, "dark-mode-toggle"), approved, "Reconciliation must be read-only.");
+        const started = await runOperation(
+            "start_execution",
+            root,
+            executionInput(status.workflow, "recover-readiness"),
+        );
+        assert(started.ok && started.workflow.nextAction.kind === "implementation", JSON.stringify(started));
+        assertEquals(
+            (await loadPlan(started.workflow.nextAction.executionCwd, "dark-mode-toggle"))?.attrs.status,
+            "in_progress",
+        );
+    });
+});

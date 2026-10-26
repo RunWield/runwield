@@ -1,7 +1,14 @@
+import process from "node:process";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { writeFile, stat } from "node:fs/promises";
 import { findIndexedDocumentIdsByRecordId } from "../work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { assert, assertEquals } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { inspectSemantic, prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { DENO_CONFIG_PATH, EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
@@ -19,25 +26,26 @@ export async function crash(
     timing: string,
 ) {
     const config = join(fixture.parent, "crash.json");
-    await Deno.writeTextFile(
-        config,
-        JSON.stringify({ projectRoot: fixture.root, operation, input, crashPoint: point, timing }),
+    await writeFile(config, JSON.stringify({ projectRoot: fixture.root, operation, input, crashPoint: point, timing }));
+    const output = await collectProcessOutput(
+        spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
+                "run",
+                "-A",
+                "--quiet",
+                "--no-check",
+                "--config",
+                DENO_CONFIG_PATH,
+                fromFileUrl(new URL("./testing/delivery-process.ts", import.meta.url)),
+                config,
+            ]),
+            cwd: fixture.root,
+            stdin: "null",
+            env: { PATH: `${fixture.bin}:${process.env.PATH || ""}` },
+            stdout: "piped",
+            stderr: "piped",
+        }),
     );
-    const output = await new Deno.Command(Deno.execPath(), {
-        args: [
-            "run",
-            "-A",
-            "--quiet",
-            "--no-check",
-            "--config",
-            DENO_CONFIG_PATH,
-            fromFileUrl(new URL("./testing/delivery-process.ts", import.meta.url)),
-            config,
-        ],
-        env: { PATH: `${fixture.bin}:${Deno.env.get("PATH") || ""}` },
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
     assertEquals(output.code, 86, new TextDecoder().decode(output.stderr) + new TextDecoder().decode(output.stdout));
 }
 
@@ -49,7 +57,7 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
         let operation: AttachedOperationName;
         let payload: AttachedJsonObject;
         if (point === "code_review_wait") {
-            await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+            await writeFile(join(fixture.cwd, "marker"), "pass");
             const started = await fixture.call("start_validation", await fixture.status());
             assert(started.ok);
             const inspected = await inspectSemantic(fixture, started.workflow);
@@ -64,10 +72,7 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
             payload = { actionId: workflow.nextAction.actionId, answer: { outcome: "approved" } };
             if (point !== "recorder_wait") {
                 const approved = await fixture.call(operation, workflow, payload);
-                assert(
-                    approved.ok && approved.workflow.nextAction.kind === "recorder",
-                    JSON.stringify(approved),
-                );
+                assert(approved.ok && approved.workflow.nextAction.kind === "recorder", JSON.stringify(approved));
                 workflow = approved.workflow;
                 operation = "work_record_completed";
                 payload = {
@@ -77,9 +82,10 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
                 };
             }
         }
-        const savedRecorder = point !== "code_review_wait" && point !== "recorder_wait"
-            ? (await fixture.plan()).attrs.validationCheckpoint?.hostRecorder
-            : undefined;
+        const savedRecorder =
+            point !== "code_review_wait" && point !== "recorder_wait"
+                ? (await fixture.plan()).attrs.validationCheckpoint?.hostRecorder
+                : undefined;
         if (point !== "code_review_wait" && point !== "recorder_wait") assert(savedRecorder);
         await crash(
             fixture,
@@ -117,11 +123,7 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
             workflow = resumed.result.workflow;
         }
         if (savedRecorder) {
-            assertEquals(
-                workflow.nextAction.kind,
-                "delivered",
-                "Recovery must not request accepted work again.",
-            );
+            assertEquals(workflow.nextAction.kind, "delivered", "Recovery must not request accepted work again.");
         }
         if (workflow.nextAction.kind === "code_review") {
             const approved = await fixture.call("validation_decision", workflow, {
@@ -146,25 +148,25 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
         if (savedRecorder) assertEquals(records[0].attrs.recordId, savedRecorder.recordId);
         assert(records[0].body.includes("The implementation exports the new value."));
         assertEquals(
-            (await findIndexedDocumentIdsByRecordId(fixture.root, records[0].attrs.recordId, {
-                mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-            })).length,
+            (
+                await findIndexedDocumentIdsByRecordId(fixture.root, records[0].attrs.recordId, {
+                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                })
+            ).length,
             1,
         );
         const plan = await loadPlan(fixture.root, "p");
         assert(plan?.attrs.publicationReceipt);
-        await git(fixture.root, [
-            "merge-base",
-            "--is-ancestor",
-            plan.attrs.publicationReceipt.publishedCommit,
-            "main",
-        ]);
+        await git(fixture.root, ["merge-base", "--is-ancestor", plan.attrs.publicationReceipt.publishedCommit, "main"]);
         const evidence = await fixture.evidence();
+        assertEquals(evidence.filter((entry) => entry.kind === "human" && entry.outcome === "Approved").length, 1);
         assertEquals(
-            evidence.filter((entry) => entry.kind === "human" && entry.outcome === "Approved").length,
-            1,
+            await stat(fixture.modelMarker).then(
+                () => true,
+                () => false,
+            ),
+            false,
         );
-        assertEquals(await Deno.stat(fixture.modelMarker).then(() => true, () => false), false);
         const logs = await git(fixture.root, ["log", "--format=%B", "main"]);
         assertEquals(logs.split("RunWield-Publication-Attempt: wt-host").length - 1, 1);
     } finally {

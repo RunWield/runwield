@@ -9,6 +9,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { setCustomSetting } from "../settings.js";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { buildAgentSession, expandSkillCommand, listSkills } from "./session.js";
+import { listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { resolveNamedInvocation } from "./named-invocation.ts";
 
 async function writeSkill(
@@ -73,8 +74,9 @@ test("installed review skill is user-invokable with its portable instructions an
         for (const file of ["SKILL.md", "github.md", "gitlab.md", "pull-requests.md"]) {
             assertEquals(
                 await fsReadFile(join(bundledDir, file), "utf8"),
-                (await fsReadFile(fromFileUrl(new URL(`../../../skills/review/${file}`, import.meta.url)), "utf8"))
-                    .replace("license: MIT; complete terms in ../LICENSE", "license: MIT; complete terms in LICENSE"),
+                (
+                    await fsReadFile(fromFileUrl(new URL(`../../../skills/review/${file}`, import.meta.url)), "utf8")
+                ).replace("license: MIT; complete terms in ../LICENSE", "license: MIT; complete terms in LICENSE"),
             );
         }
         assertEquals(
@@ -225,13 +227,7 @@ test("Skill catalog uses one winner for published names and keeps only its direc
             "shared-published-name",
             "project winner",
         );
-        await writeSkill(
-            homeDir,
-            join(".wld", "skills"),
-            "home-alias",
-            "shared-published-name",
-            "home loser",
-        );
+        await writeSkill(homeDir, join(".wld", "skills"), "home-alias", "shared-published-name", "home loser");
 
         await assertPublicSelection(projectRoot, "shared-published-name", winnerPath, "external", "project winner");
         const byWinnerAlias = await resolveNamedInvocation({ cwd: projectRoot, text: "/skill:project-alias" });
@@ -281,7 +277,10 @@ test("Skill catalog disables both external scopes and does not scan a Project wi
         await setCustomSetting("enableExternalSkills", false, "global", projectRoot);
 
         const skills = await listSkills({ cwd: projectRoot });
-        assertEquals(skills.some((skill) => skill.path === projectExternal || skill.path === homeExternal), false);
+        assertEquals(
+            skills.some((skill) => skill.path === projectExternal || skill.path === homeExternal),
+            false,
+        );
         assertEquals(
             (await resolveNamedInvocation({ cwd: projectRoot, text: "/skill:project-external-only" })).kind,
             "ordinary",
@@ -299,10 +298,16 @@ test("Skill catalog disables both external scopes and does not scan a Project wi
             "bundled",
         );
 
-        assertEquals((await listSkills()).some((skill) => skill.path === projectOnly), false);
+        assertEquals(
+            (await listSkills()).some((skill) => skill.path === projectOnly),
+            false,
+        );
         const secondProject = join(homeDir, "second-project");
         await fsMkdir(secondProject);
-        assertEquals((await listSkills({ cwd: secondProject })).some((skill) => skill.path === projectOnly), false);
+        assertEquals(
+            (await listSkills({ cwd: secondProject })).some((skill) => skill.path === projectOnly),
+            false,
+        );
     });
 });
 
@@ -342,7 +347,10 @@ test("Agent Session keeps Pi skills empty before and after Runtime reload", asyn
                 noPromptTemplates: true,
             });
             await unrestricted.reload();
-            assertEquals(unrestricted.getSkills().skills.some((skill) => skill.name === "pi-only-skill"), true);
+            assertEquals(
+                unrestricted.getSkills().skills.some((skill) => skill.name === "pi-only-skill"),
+                true,
+            );
 
             const built = await buildAgentSession({ cwd: projectRoot, agentName: "guide" });
             try {
@@ -459,4 +467,34 @@ test("disabled external Skill requests cannot reach the model through Pi fallbac
             }
         },
     );
+});
+
+test("visible Skill catalog keeps disabled Skills user-only and renders the selected path", async () => {
+    await withRuntimeCommandFixture("skill-catalog-visible-", async ({ projectRoot }) => {
+        const path = await writeSkill(projectRoot, ".wld/skills", "visible-fixture", "visible-fixture", "visible");
+        const disabled = await writeSkill(
+            projectRoot,
+            ".wld/skills",
+            "user-only-fixture",
+            "user-only-fixture",
+            "user-only",
+        );
+        await fsWriteFile(
+            disabled,
+            (await fsReadFile(disabled, "utf8")).replace("---\nname:", "---\ndisable-model-invocation: true\nname:"),
+        );
+        const catalog = await listVisibleSkillCatalog(projectRoot);
+        assertEquals(
+            catalog.find(({ skill }) => skill.name === "visible-fixture")?.line,
+            `- visible-fixture - visible description (read: ${path})`,
+        );
+        assertEquals(
+            catalog.some(({ skill }) => skill.name === "user-only-fixture"),
+            false,
+        );
+        assertEquals(
+            (await listSkills({ cwd: projectRoot })).some((skill) => skill.path === disabled),
+            true,
+        );
+    });
 });

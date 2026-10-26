@@ -1,0 +1,12 @@
+{
+    "name": "runwield",
+    "owner": {
+        "name": "gandazgul"
+    },
+    "plugins": [
+        {
+            "name": "runwield",
+            "source": "./src/attached/claude/plugin"
+        }
+    ]
+}

@@ -2,15 +2,28 @@ import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
 /** Process-local browser hosting; the coordinator owns every durable review decision. */
 import { type BrowserPort, SYSTEM_BROWSER_PORT } from "../browser-port.ts";
 import { preparePlanReviewPayload } from "../../ui/review/plan-review.ts";
-import { type ReviewSurface, startCodeReviewSurface, startPlanReviewSurface } from "../../ui/review/review-launcher.ts";
+import {
+    type ReviewConversationEvent,
+    type ReviewConversation,
+    type ReviewSurface,
+    startCodeReviewSurface,
+    startPlanReviewSurface,
+} from "../../ui/review/review-launcher.ts";
 import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.js";
-import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
-import type { AttachedWorkflowView } from "./operations.ts";
+import { readStatus, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
+import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
+import type { AttachedChatReply, AttachedWorkflowView } from "./operations.ts";
 
 export interface HostedAttachedReview {
     url: string;
     round: number;
     guidance: string;
+}
+
+interface TransientAttachedReply {
+    events: ReviewConversationEvent[];
+    revision: number;
+    delivered: boolean;
 }
 
 interface HostedRound {
@@ -19,17 +32,142 @@ interface HostedRound {
     actionId: string;
     review: HostedAttachedReview;
     surface: ReviewSurface<ReviewDecision>;
+    conversation: ReviewConversation;
+    transientReply?: TransientAttachedReply;
 }
 
 const hosted = new Map<string, HostedRound>();
 const opening = new Map<string, Promise<HostedAttachedReview | null>>();
+const detachedStops = new Set<Promise<void>>();
+
+/** A request on the retiring surface must finish before its graceful shutdown can finish. */
+function stopDetached(surface: ReviewSurface<ReviewDecision>): void {
+    const stopped = Promise.resolve()
+        .then(() => surface.stop())
+        .catch(() => {
+            // The surface reports shutdown errors through its output channel.
+        })
+        .finally(() => detachedStops.delete(stopped));
+    detachedStops.add(stopped);
+}
+
+/** This object belongs to the browser host, never to a serialized validation interaction. */
+async function conversationFor(
+    projectRoot: string,
+    workflow: AttachedWorkflowView,
+    type: "plan" | "code",
+    browser: BrowserPort,
+): Promise<ReviewConversation> {
+    const prior = hosted.get(workflow.workflowId);
+    const conversation: ReviewConversation =
+        prior?.type === type
+            ? prior.conversation
+            : {
+                  id: `attached-${type}:${workflow.workflowId}`,
+                  agentLabel: "Claude",
+                  revision: 0,
+                  events: [],
+                  turns: [],
+              };
+    let sourceRevision = 0;
+    const sourceKey =
+        type === "plan"
+            ? workflow.review?.actionId
+            : workflow.nextAction.kind === "code_review"
+              ? workflow.nextAction.actionId
+              : undefined;
+    conversation.completed = false;
+    conversation.events = [];
+    const sync = async () => {
+        const loaded = await loadAttachedWorkflowRecord(locateAttachedWorkflows(projectRoot), workflow.workflowId);
+        const record = loaded.status === "found" ? loaded.record : null;
+        const key = type === "plan" ? record?.review?.actionId : record?.validation?.actionId;
+        const chat = type === "plan" ? record?.review?.chat : record?.validation?.chat;
+        conversation.turns =
+            key === sourceKey
+                ? (chat?.turns ?? []).map(({ turnId, message, reply }) => ({ turnId, message, reply }))
+                : [];
+        conversation.pending =
+            conversation.turns.some((turn) => turn.reply === undefined) ||
+            (type === "plan"
+                ? record?.review?.status === "revising"
+                : record?.state === "validating" &&
+                  (Boolean(record.validation?.resume) || record.validation?.request?.kind !== "decision"));
+        // Round closure purges text. A revision after a change is signaled only when the revised artifact is ready.
+        if (key === sourceKey) {
+            const revision = chat?.revision ?? sourceRevision;
+            conversation.revision += Math.max(0, revision - sourceRevision);
+            sourceRevision = revision;
+            conversation.events = (chat?.turns ?? []).flatMap((turn) =>
+                turn.reply === undefined
+                    ? []
+                    : [
+                          {
+                              type: "assistant_text_delta" as const,
+                              delta: turn.reply,
+                              messageId: turn.turnId,
+                              agentName: "Claude",
+                          },
+                      ],
+            );
+        } else {
+            conversation.events = [];
+        }
+        const live = hosted.get(workflow.workflowId);
+        if (live?.transientReply) {
+            if (live.transientReply.delivered) {
+                delete live.transientReply;
+            } else {
+                conversation.events = live.transientReply.events;
+                if (conversation.revision > live.transientReply.revision) live.transientReply.delivered = true;
+            }
+        }
+    };
+    await sync();
+    conversation.refresh = async () => {
+        const status = await readStatus({ projectRoot, workflowId: workflow.workflowId });
+        if (!status.ok) return;
+        const action = status.workflow.nextAction;
+        const key =
+            action.kind === "review"
+                ? status.workflow.review?.actionId
+                : action.kind === "code_review"
+                  ? action.actionId
+                  : undefined;
+        if (key && key !== sourceKey) {
+            await ensureReviewHosted(projectRoot, status.workflow, browser);
+            return;
+        }
+        await sync();
+        if (status.workflow.state === "closed" || status.workflow.state === "plan_ready") {
+            if (!conversation.completed) conversation.revision += 1;
+            conversation.completed = true;
+            conversation.pending = false;
+            conversation.turns = [];
+            conversation.events = [];
+        }
+    };
+    return conversation;
+}
 
 /** Hosting and restoring never infer a user decision from the lifetime of a process. */
 export async function ensureReviewHosted(
     projectRoot: string,
     workflow: AttachedWorkflowView,
     browser: BrowserPort = SYSTEM_BROWSER_PORT,
+    reply?: AttachedChatReply,
 ): Promise<HostedAttachedReview | null> {
+    const live = hosted.get(workflow.workflowId);
+    if (live && reply) {
+        live.transientReply = {
+            events: [
+                ...live.conversation.events.map((event) => ({ ...event, delta: "" })),
+                { type: "assistant_text_delta", delta: reply.text, messageId: reply.turnId, agentName: "Claude" },
+            ],
+            revision: live.conversation.revision,
+            delivered: false,
+        };
+    }
     if (workflow.nextAction.kind === "code_review") return await ensureCodeReviewHosted(projectRoot, workflow, browser);
     if (workflow.recovery || workflow.review?.status !== "pending") return null;
     const pending = opening.get(workflow.workflowId);
@@ -43,7 +181,7 @@ export async function ensureReviewHosted(
         if (opened.kind !== "opened") {
             hosted.delete(workflow.workflowId);
             // A reload can be inside this server; let its response finish before shutdown waits for it.
-            void existing?.surface.stop();
+            if (existing) stopDetached(existing.surface);
             return null;
         }
         const basis = opened.basis;
@@ -51,7 +189,9 @@ export async function ensureReviewHosted(
         if (payload.planRevision !== basis.review.planRevision) {
             throw new Error("The Plan changed while opening. Retry status.");
         }
+        const conversation = await conversationFor(projectRoot, workflow, "plan", browser);
         const surface = await startPlanReviewSurface<ReviewDecision>({
+            reviewConversation: conversation,
             cwd: basis.documentRoot,
             plan: payload.planWithFm,
             planPath: basis.planPath,
@@ -82,9 +222,17 @@ export async function ensureReviewHosted(
             url: surface.url,
             round: basis.review.round,
             guidance:
-                "The browser review is open. Poll status for the durable outcome. Follow Planner instructions after feedback or cancellation; on plan_ready call start_execution immediately and dispatch the host worker.",
+                "The browser review is open. Poll status for the durable outcome. Follow Planner instructions after feedback or cancellation; on plan_ready call start_execution immediately and dispatch the host worker. On plan_saved, report Ready For Work, saved for later, and stop. When the user invokes /runwield:implement, start_execution accepts either plan_ready or plan_saved.",
         };
-        hosted.set(workflow.workflowId, { type: "plan", actionId: basis.review.actionId, review, surface });
+        hosted.set(workflow.workflowId, {
+            ...existing,
+            type: "plan",
+            stale: false,
+            actionId: basis.review.actionId,
+            review,
+            surface,
+            conversation,
+        });
         return review;
     })();
     opening.set(workflow.workflowId, task);
@@ -98,6 +246,7 @@ export async function ensureReviewHosted(
 /** Used when the host transport closes, as well as by acceptance checks. */
 export async function stopHostedAttachedReviews(): Promise<void> {
     await Promise.allSettled(opening.values());
+    await Promise.all(detachedStops);
     const surfaces = Array.from(hosted.values());
     hosted.clear();
     await Promise.all(surfaces.map(({ surface }) => surface.stop()));
@@ -116,7 +265,9 @@ async function ensureCodeReviewHosted(
     if (pending) return await pending;
     const task = (async () => {
         const meta = action.request.interaction._meta;
+        const conversation = await conversationFor(projectRoot, workflow, "code", browser);
         const surface = await startCodeReviewSurface<ReviewDecision>({
+            reviewConversation: conversation,
             rawPatch: String(meta?.diffText || ""),
             gitRef: String(meta?.targetBranch || ""),
             agentCwd: String(meta?.executionCwd || ""),
@@ -130,7 +281,12 @@ async function ensureCodeReviewHosted(
             surfaceId: `attached-code:${workflow.workflowId}`,
             onDecision: async (decision) => {
                 try {
-                    await applyAttachedCodeReviewDecision(projectRoot, workflow.workflowId, action.actionId, decision);
+                    return await applyAttachedCodeReviewDecision(
+                        projectRoot,
+                        workflow.workflowId,
+                        action.actionId,
+                        decision,
+                    );
                 } catch (error) {
                     const live = hosted.get(workflow.workflowId);
                     if (live) live.stale = true;
@@ -144,8 +300,16 @@ async function ensureCodeReviewHosted(
             guidance:
                 "Code review is open. Poll status for feedback or approval. Closing Claude leaves the workflow resumable.",
         };
-        if (existing?.type === "plan") await existing.surface.stop();
-        hosted.set(workflow.workflowId, { type: "code", actionId: action.actionId, review, surface });
+        if (existing?.type === "plan") stopDetached(existing.surface);
+        hosted.set(workflow.workflowId, {
+            ...existing,
+            type: "code",
+            stale: false,
+            actionId: action.actionId,
+            review,
+            surface,
+            conversation,
+        });
         return review;
     })();
     opening.set(workflow.workflowId, task);

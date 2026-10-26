@@ -63,7 +63,7 @@ export type HostTurnValidationResult =
           workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
       }
     | { kind: "paused" | "failed"; reason: string; recovery?: ValidationRecoveryResult };
-export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean };
+export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean; signal?: AbortSignal };
 
 export function sameHostIdentity(
     left: ValidationHostIdentity | ValidationReviewerIdentity | ValidationDecisionIdentity | ValidationRepairIdentity,
@@ -83,5 +83,12 @@ export class ValidationHostWait extends Error {
 export class ValidationHostRejected extends Error {
     constructor(message = "The supplied outcome does not match the current validation request.") {
         super(message);
+    }
+}
+
+/** Host shutdown leaves the canonical validation checkpoint resumable. */
+export class ValidationHostShutdown extends Error {
+    constructor() {
+        super("The validation host stopped.");
     }
 }

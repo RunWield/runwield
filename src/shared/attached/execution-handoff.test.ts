@@ -1,3 +1,5 @@
+import { compactStatus } from "./presentation.ts";
+import { readAttachedAction } from "./coordinator.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";
 import { writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
@@ -78,10 +80,17 @@ test("fresh process restores the issued worktree and current implementer instruc
     await withProject(async (root) => {
         const started = await implementing(root);
         const fresh = await spawnAttachedCli("status", root, { workflowId: started.workflow.workflowId });
-        assert(fresh.result.ok && fresh.result.instructions);
-        assertEquals(fresh.result.workflow.nextAction, started.workflow.nextAction);
-        assertStringIncludes(fresh.result.instructions.text, "overrides Core lifecycle instructions");
-        assertStringIncludes(fresh.result.instructions.text, "Do not call any RunWield lifecycle tool");
+        assert(fresh.result.ok && fresh.result.workflow.nextAction.kind === "implementation");
+        assertEquals(fresh.result, compactStatus(started, null));
+        const content = await readAttachedAction({
+            projectRoot: root,
+            workflowId: fresh.result.workflow.workflowId,
+            actionId: fresh.result.workflow.nextAction.actionId,
+            content: "instructions",
+        });
+        assert(content.ok && "instructions" in content);
+        assertStringIncludes(content.instructions.text, "overrides Core lifecycle instructions");
+        assertStringIncludes(content.instructions.text, "Do not call any RunWield lifecycle tool");
         const retry = await runOperation("start_execution", root, executionInput(started.workflow, "new-start"));
         assert(!retry.ok && retry.rejection.code === "action_superseded");
         const entry = (await listEntries(root))[0];

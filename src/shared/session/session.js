@@ -125,7 +125,7 @@ import {
     remotePersonalResourcesActive,
 } from "../remote/personal-resources.ts";
 import { getBundledAgentDefsPath } from "./agent-assets.ts";
-import { expandSkill, listSkills } from "./skill-catalog.ts";
+import { expandSkill, listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.js";
 import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.js";
@@ -1708,13 +1708,9 @@ export async function assembleFinalSystemPromptWithContextProjection(
     const skillItems = [];
     if (hasSkillsPlaceholder) {
         try {
-            const skills = await listSkills({ cwd });
-            const visibleSkills = skills.filter(
-                (skill) => skill.name && skill.description && !skill.disableModelInvocation,
-            );
+            const visibleSkills = await listVisibleSkillCatalog(cwd);
             skillsBlock = visibleSkills
-                .map((skill) => {
-                    const line = `- ${skill.name} - ${skill.description} (read: ${skill.path})`;
+                .map(({ skill, line }) => {
                     const item = createContextProjectionItem(skill.name, line, {
                         name: skill.name,
                         path: skill.path,

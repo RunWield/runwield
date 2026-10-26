@@ -104,14 +104,26 @@ compatibility, privacy at the host boundary, and host-specific continuation.
 
 ### Explicit per-request activation
 
-**Scope and maturity:** The Claude Code plugin delivers activation steps 1, 3, and 4 below and FEATURE Plan submission.
-For local development, load `src/attached/claude/plugin` with `claude --plugin-dir` and start
-`/runwield:request <request>`. `wld attached activate` identifies the Project root, binds one host request to one
-Attached Workflow Record, and returns a pending Router action with current role instructions. `triage_report` hands a
-FEATURE request to the Planner; `plan_written` gives the written Plan its ID and Triage front matter. The Plan stays in
-draft and can be opened and run with `wld`. The operations are also MCP tools through `wld attached mcp`. The plugin
-checks the role contract version. Review, execution, and delivery continue through the capabilities below. The install
-flow and full host and Core preflight (step 2) remain target scope.
+**Scope and maturity:** The Claude Code FEATURE implementation includes a marketplace install, per-request activation,
+Core-owned adapter-contract and host-version preflight, and ordinary Plan submission. Before publication, install the
+marketplace from a local checkout. The [Claude guide](../user-documentation/connect-claude-code.md) gives the commands
+and tested scope. The [acceptance evidence](#preview-acceptance) identifies the source snapshot and permissions used.
+
+`wld attached activate` binds one host request to one Attached Workflow Record. Current Router instructions are
+available explicitly by action ID. `triage_report` hands a FEATURE request to the Planner; `plan_written` assigns the
+Plan ID and Triage front matter. The Plan stays an ordinary draft that Core can open and execute. Claude starts the
+plugin MCP server and lists its tools when the plugin loads; before a tool call, Core inspects no prompt or repository
+and writes no workflow state.
+
+**Requirement: Keep CLI and MCP operations equivalent.**
+
+Every MCP operation is also a `wld attached` CLI operation. Both carriers use the same input checks and return the same
+content, including current-action instructions, bounded artifacts, and pending review chat.
+
+**Acceptance scenario: Read through either carrier.**
+
+Given a current action, `get_instructions`, `get_artifact`, and `get_pending_chat` return the same content through CLI
+and MCP. Invalid read arguments return an `invalid_input` rejection through either carrier.
 
 **Requirement: Leave ordinary host work unchanged outside explicit activation.**
 
@@ -171,7 +183,8 @@ Initialization is optional and may occur before or after the first Attached Work
 
 ### Host-owned reasoning
 
-**Scope and maturity:** Target for every Connect workflow.
+**Scope and maturity:** Implemented for the Claude FEATURE journey with the source and permissions scope recorded in
+[Preview Acceptance](#preview-acceptance). This remains a requirement for every later Connect adapter.
 
 **Requirement: Use the external host for every model call.**
 
@@ -181,11 +194,16 @@ Initialization is optional and may occur before or after the first Attached Work
 - RunWield Connect does not require separate RunWield model credentials or a RunWield account.
 - RunWield may inject its Agent prompts and Skills or ask the host to create isolated workers, but it must not silently
   substitute a RunWield-owned Agent Session.
+- Each role response whose Core prompt uses Skills includes the effective Skill catalog with names, descriptions,
+  and read paths. The catalog resolves project, home, external, and bundled Skills at run time. The independent
+  reviewer receives no Skills. The Connect plugin ships no Skill files.
 
 **Acceptance scenarios:**
 
 - Given a complete attached change, when planning, implementation, review, repairs, and recording run, every model call
   uses the host’s model access.
+- Given a project Skill override, the next role response lists that Skill's project description and read path, rather
+  than the bundled version. Independent reviewer instructions contain no Skill catalog.
 - When an isolated worker is needed, the adapter uses a host-owned worker or discloses the limitation; it does not
   substitute a hidden RunWield model session or ask for separate model credentials.
 
@@ -197,8 +215,8 @@ Initialization is optional and may occur before or after the first Attached Work
 ### Shared Plan and verification outcomes
 
 **Scope and maturity:** The Claude FEATURE Preview delivers Plan review, Feedback, approval, and readiness through
-Plannotator and Core. Review decisions are durable before browser acknowledgment. Claude receives Feedback and image
-paths through `status`, revises the Plan, and submits the next round into the same browser page. Cancellation returns to
+Plannotator and Core. Review decisions are durable before browser acknowledgment. Claude retrieves Feedback and image
+paths explicitly with current instructions, revises the Plan, and submits the next round into the same browser page. Cancellation returns to
 Claude with a review-canceled note and leaves the workflow open. The Preview also implements the guarded execution
 handoff, implementation checkpoint, and shared validation continuation below. Validation coordination has automated
 coverage and live Claude Code verification of direct reviewer MCP access, fresh repair workers, independent
@@ -206,9 +224,35 @@ re-verification, restoration after MCP loss, and a CI call longer than five minu
 continues into saved Code Review, Claude recording, and shared publication. Automated real-Git and fresh-process tests
 cover delivery and recovery. Headed MCP checks confirm feedback, a refreshed diff, approval, and pending-review restore.
 Live Claude Code 2.1.299 confirms fresh Recorder dispatch, section submission, proven publication, and indexed
-recording; a private conversation sentinel stays out of RunWield artifacts and the memory index. Complete Preview
-release and live integrated support remain **TARGET** until child 08. Review-page chat remains **TARGET** for child 07,
-not delivered. Core owns shared delivery and record requirements.
+recording; a private conversation sentinel stays out of RunWield artifacts and the memory index. The integrated
+headless result and release evidence boundary are recorded under [Preview Acceptance](#preview-acceptance). Attached Plan and Code Review chat uses the
+coordinating Claude session. Core owns shared delivery and record requirements.
+
+**Draft follow-up consideration — deliver review decisions to an idle host session:** When Claude is actively waiting
+through bounded `status`, a browser decision returns to that turn for the next workflow action. If the host turn has ended,
+the user resumes the workflow to retrieve the saved outcome. A future Connect capability could deliver Plannotator
+Feedback or approval into an idle Claude session as a host message, without starting a model call in Core or changing Core's
+authority over the decision and workflow state.
+
+**Requirement: Keep host status and artifact handoffs bounded.**
+
+- MCP status is compact by default: workflow identity, state, revision, pending action identity, chat presence, and
+  decision status. It retains the metadata needed for execution, recovery, and delivery without repeating Plans, diffs,
+  prompts, reports, or role instructions.
+- A worker fetches its complete current Core instructions by workflow and action ID. Reviewer instructions are not
+  copied or condensed by the coordinating conversation. Explicit bounded reads provide prompts and reports; Core's
+  diff tool remains the inspection authority.
+- An active turn waits for browser decisions through a bounded status call that returns on change or timeout. Restart
+  retrieves the saved decision; it never invents approval.
+- A validation-command question is shown exactly. Claude may reuse an answer explicitly supplied in the request or
+  approved Plan after showing its source; otherwise it asks the user rather than guessing.
+
+**Acceptance scenarios: Bounded host handoffs.**
+
+- Given a large Plan, diff, or execution report, repeated MCP status omits its content. A current action can fetch the
+  complete instructions or bounded artifact pages, and an old action cannot retrieve a newer action's content.
+- Given no configured validation command, Core returns a durable text question and runs no CI before a valid answer.
+  An explicitly supplied command is saved and executed unchanged.
 
 **Requirement: Keep Core approval and verification authoritative.**
 
@@ -243,14 +287,54 @@ the external host. The host continues to own its conversation and model calls.
 - The External Agent Host may summarize review progress, but RunWield remains the authority for the resulting lifecycle
   transition.
 
+**Requirement: Preserve the selected Plan approval action.**
+
+Approve & Run authorizes immediate execution after readiness. Approve for Later leaves the Plan `ready_for_work` and
+starts no execution. Claude reports that it is saved; `/runwield:implement` starts it later. If recovery finds approval
+without a saved approval action, Claude does not infer permission to run. Shared execution completes readiness when a
+crash left the Plan `approved`. A review decision also checks the saved controller revision under the Plan lock; a
+newer Core decision cannot be overwritten by a stale Attached round.
+
+**Acceptance scenarios:**
+
+- **Save for later:** After Approve for Later, status reports `plan_saved`, no execution worktree exists, and
+  `/runwield:implement` starts the ready Plan. Approve & Run still reports `plan_ready` and continues immediately.
+- **Approval recovery:** After process loss between approval and readiness, status reports saved work without inventing
+  an approval action. Explicit implementation completes readiness and starts execution.
+- **Concurrent review:** After Core records a newer decision, the older Attached round is rejected without changing
+  the Plan or its pending Attached outcome.
+
+**Requirement: Answer review chat in the coordinating Claude session.**
+
+Both Attached review pages offer chat. Compact status reports chat presence; an explicit current-action read returns
+the oldest queued message and its selections. Claude answers with `review_reply`; a question changes no Plan status, validation gate, or review decision. A
+Plan change ends the round without recording Feedback and requests a revised Plan. The pending Planner action keeps
+Claude's short change summary across process restarts until the revised Plan is submitted. The next submission opens a
+new round on the same page. Only structured browser decisions approve or reject.
+
+**Acceptance scenario: Ask this session on both review pages.**
+
+Given an Attached Plan or Code Review round, when the user sends two messages before Claude replies, Claude receives
+them in order. The page shows each answer without deciding the review. A queued message survives a fresh Core process
+and page restore: the new page shows the saved user message, resumes waiting, and displays the answer without another
+submission. Stale, answered, closed-round, and out-of-order replies cannot change the workflow. A Plan change opens
+the next Plan revision on the same page; a code change runs a fresh host repair and re-verification before the new diff
+opens. Approval, Feedback, and further chat use the displayed revision without reopening the page. Earlier diff approval
+does not carry over. A Plan change survives a fresh process as a pending Planner action with its change summary.
+Retrying `review_reply` with the same operation ID returns the saved result without another effect, even with the old
+revision. Core starts no model turn for chat.
+
 **Requirement: Return saved Code Review decisions for the current diff.**
 
 - The project's `codeReview` setting keeps its Core meaning: `none` skips the page, `ask` offers it, and `always`
   requires it. The MCP server hosts the shared `/review/code` page and saves the pending wait with its diff identity.
 - Approval is structured and bound to the current candidate diff hash. A changed candidate rejects stale approval.
-- Browser Feedback becomes a `human_feedback` action for a fresh Claude repair worker. Core reruns configured
-  re-verification before opening a new Code Review round. Core starts no model turn for that repair.
-- Review-page chat is child 07 **TARGET** scope. Chat prose cannot approve code or replace saved Feedback.
+- Send Annotations records structured browser Feedback, not a chat turn. Browser Feedback becomes a `human_feedback`
+  action for a fresh Claude repair worker. Core reruns configured re-verification before opening a new Code Review
+  round. Core starts no model turn for that repair.
+- Code Review chat is answered by the coordinating Claude session. A question leaves the review open. A code change
+  uses a Claude-written change summary in the shared `human_feedback` repair path, then re-verification and a new
+  diff-bound review. Chat prose cannot approve code or replace a structured decision.
 
 **Requirement: Close Attached delivery only on shared completion proof.**
 
@@ -261,12 +345,20 @@ consented shared Core in-place completion: Claude recording runs before Verified
 publication claim. Canonical Plans, Work Records, and recovery evidence remain. Normal proven cleanup can remove the
 execution worktree; interrupted or uncertain delivery retains work and recovery artifacts.
 
+A repairable publication conflict issues a durable repair action for a fresh Claude worker in the publication root.
+The worker resolves and stages conflicted files; Core completes the merge and publication. Completion resumes delivery
+without repeating passed CI, Code Review, or recording. The shared merge-repair budget persists across processes.
+
 **Acceptance scenarios:**
 
 - **Saved current-diff decision:** Given `codeReview: always`, status returns the saved Code Review page. A fresh
   process restores the pending wait. Approval of a different diff is rejected and does not authorize publication.
 - **Human Feedback repair:** Given browser Feedback, a fresh Claude worker repairs the issued `human_feedback` action.
   Core reruns configured re-verification, then opens a new Code Review round for the repaired diff.
+- **Publication conflict:** Given a repairable conflict, a fresh Claude worker receives the publication directory.
+  After it resolves and stages the files, Core confirms publication and closes delivery without rerunning CI. Two
+  unresolved repair completions exhaust the shared repair budget and retain recovery evidence; no third repair is
+  issued.
 - **Proof before closure:** Given passed local checks but no publication proof, the Attached workflow stays open. Proven
   Git publication closes it as `delivered` and releases host restrictions without claiming an onward merge.
 - **Consented in-place completion:** Given consented non-Git execution, Claude recording precedes shared Core completion
@@ -295,12 +387,13 @@ on Claude Code 2.1.293 confirms automatic handoff after browser approval, coordi
 restoration of the same worker action and worktree. No wider host-version range is declared. Validation coordination now
 has automated real-Git, fresh-process, and shared-engine coverage. Delivery now continues through the shared Core
 engine. Automated recovery, headed MCP review, and live Claude Code 2.1.299 Recorder checks cover this delivery slice.
-Complete Preview release and live integrated support remain **TARGET** until child 08. Other hosts, QUICK_FIX, and
-safe-handoff fallback beyond non-Git consent remain targets.
+The integrated evidence and release boundary are under [Preview Acceptance](#preview-acceptance). Other hosts,
+QUICK_FIX, and safe-handoff fallback beyond non-Git consent remain targets.
 
 **Requirement: Automatically hand approved work to its isolated implementer.**
 
-- After approval and readiness, Claude immediately starts execution; no separate execution confirmation is required.
+- After Approve & Run and readiness, Claude immediately starts execution; no separate execution confirmation is
+  required. Approve for Later stops at Ready For Work until `/runwield:implement`.
 - Core prepares a RunWield-owned worktree, branch, baseline, and registered execution attempt through the same authority
   used by Core Sessions. Claude discloses the directory, branch, and RunWield-owned `.gitignore` block.
 - The invoking checkout is preserved, including dirty and untracked user work, except that disclosed `.gitignore` block.
@@ -388,7 +481,8 @@ safe-handoff fallback beyond non-Git consent remain targets.
 
 ### Artifact privacy and records
 
-**Scope and maturity:** Target for every Connect workflow; Core owns record semantics.
+**Scope and maturity:** Implemented for the Claude FEATURE journey; Core owns record semantics. The integrated
+headless evidence is linked under [Preview Acceptance](#preview-acceptance).
 
 **Requirement: Record structured outcomes without importing host transcripts.**
 
@@ -399,6 +493,15 @@ safe-handoff fallback beyond non-Git consent remain targets.
 - RunWield does not copy or index the raw External Agent Host conversation transcript.
 - Raw host conversations remain private working space. Organizational knowledge continues to come from explicit durable
   artifacts and synthesis rather than chat-history ingestion.
+
+**Requirement: Keep review chat temporary.**
+
+Raw review messages, selections, and replies live only on the open Attached review round, including across restart.
+Closure removes them, including from operation receipts. They never enter the Plan validation checkpoint, Work Record,
+memory index, telemetry, or publication evidence. A code change stores only Claude's short change summary in repair and
+delivery evidence. A Plan change records no Feedback. It keeps only Claude's short change summary on the pending
+Planner action until the revised Plan is submitted, then removes it from the action and operation receipts. The revised
+Plan is the durable result.
 
 **Requirement: Use a fresh Claude Recorder with canonical artifacts only.**
 
@@ -449,13 +552,15 @@ uses the same guidance within each user project’s own PRD structure.
 and execution handoff. Activation and Triage write nothing to the repository. Plan submission previews required runtime
 and ignore setup; execution discloses its worktree and branch. Fresh processes restore review decisions, consent
 questions, implementation actions, and accepted results. No always-running service is required. Saved validation and
-delivery actions use shared Core recovery, with automated fresh-process checks and headed MCP review restore. Complete
-Preview release and live integrated support remain **TARGET** until child 08.
+delivery actions use shared Core recovery, with automated fresh-process checks and headed MCP review restore.
+[Preview Acceptance](#preview-acceptance) owns the integrated evidence and release boundary.
 
 **Requirement: Start with necessary setup and preserve work after interruption.**
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
 - Full `wld init` is not an entrance requirement.
+- Attached operations require a home directory for durable records. Without `HOME`, they return `home_unavailable`
+  with guidance to set it, and write nothing to the repository. There is no repository or temporary-storage fallback.
 - RunWield creates only the artifacts required by the invoked workflow and clearly previews material repo-local changes.
 - Richer context and memory seeding remain available through a namespaced host action such as `/runwield:init`.
 - Supporting actions may be namespaced under RunWield, but internal lifecycle transitions must not become a cluttered
@@ -468,6 +573,8 @@ Preview release and live integrated support remain **TARGET** until child 08.
 - A persistent local service may be added later for performance or cross-client continuity, but it is not part of the
   acquisition prerequisite.
 
+- Closing Claude stops running Core checks. The next resume runs interrupted checks again without recording a failure
+  for the stopped run.
 - Process loss must preserve Plans, implementation work, completed results, and useful recovery evidence.
 - RunWield must distinguish safe continuation from uncertain external side effects.
 - Recovery first reconciles partial effects from available evidence. RunWield automatically repairs its own locks,
@@ -483,6 +590,8 @@ Preview release and live integrated support remain **TARGET** until child 08.
 
 - Given a trusted uninitialized repository, when the user starts their first attached change, full `wld init` is
   optional and material required repository changes are previewed.
+- Given no home directory, activation, status, and current-action reads return `home_unavailable`. No `.wld` directory
+  or other repository artifact is created.
 - When host or Core processes stop, saved Plans and work remain available for useful continuation or explicit retry.
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.
@@ -490,6 +599,9 @@ Preview release and live integrated support remain **TARGET** until child 08.
   cleanup, a fresh Claude conversation uses `status` and `/runwield:validate` to resume from shared durable evidence.
   Accepted sections and decisions are not repeated. Plans, work, Work Records, and recovery evidence remain available;
   uncertain publication is reconciled before retry.
+- **Interrupted checks:** Given a running Core validation command, closing Claude stops the owned command process tree
+  and MCP process. A fresh `/runwield:validate` runs the checks again; the stopped run records no CI failure, repair
+  attempt, or user pause.
 - **Interruption is not abandonment:** Given failed publication, retry limits, turn cancellation, or host quota loss,
   the workflow remains resumable. Closing Claude or the review page does not abandon delivery or delete retained work.
 - When an interrupted command may already have changed external state, recovery reconciles available evidence and asks
@@ -501,7 +613,16 @@ Preview release and live integrated support remain **TARGET** until child 08.
 
 ### Compatibility and honest availability
 
-**Scope and maturity:** Target, assessed separately for each supported host/version.
+**Scope and maturity:** Implemented for Claude Code through the Core-owned
+[Compatibility Matrix](../../src/shared/attached/compatibility.ts) and
+[host guide](../user-documentation/connect-claude-code.md). The matrix lists only versions with passing saved live
+results; [Preview Acceptance](#preview-acceptance) records their evidence limits. Other hosts and stable support remain
+targets.
+
+Core checks every evidence-carrying operation before dispatch. A host other than Claude Code rejects with
+`unsupported_host`. An incompatible adapter contract or host below the tested floor also rejects without changing the
+workflow, Plan, or worktree. Newer or unreported host versions continue with a visible notice, not a tested-support
+claim. Status remains readable with a stale adapter for recovery.
 
 **Requirement: Disclose tested host support and limitations.**
 
@@ -541,6 +662,8 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 **Acceptance scenarios:**
 
+- Given a non-Claude host with a tested version number and supported adapter contract, activation rejects with
+  `unsupported_host` before changing any workflow, Plan, or worktree. Status remains readable for recovery.
 - When a user chooses an adapter, its guide shows tested versions, Preview/stable availability, permission requirements,
   and unsupported interactions before they depend on them.
 - When compatibility is presented, role instructions such as the Planner's Plan-only writes are not described as hard
@@ -573,9 +696,10 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 ## End-to-End Preview Acceptance Journey
 
-**Maturity: TARGET until child 08 confirms the integrated journey.** The delivery slice has automated recovery, headed
-MCP review, and live Claude Recorder evidence. Review-page chat remains child 07 target scope; child 08 owns the
-installed end-to-end journey and final Preview support claims.
+**Maturity:** The saved headless Claude Code result covers all 16 steps below, installation lifecycle checks, privacy,
+and operation provenance. See [Preview Acceptance](#preview-acceptance) for the exact source and permissions boundary.
+A complete default-permissions walkthrough is also required before Preview release; historical slice runs do not
+replace that proof.
 
 The Claude Code Preview is complete only when a user can perform this bounded end-to-end journey:
 
@@ -585,14 +709,16 @@ The Claude Code Preview is complete only when a user can perform this bounded en
 3. Invoke RunWield for a FEATURE-sized User Request in an existing Claude Code conversation.
 4. Have Claude perform RunWield Triage and plan under the RunWield Planner instructions.
 5. Have Claude produce a canonical RunWield Plan and submit it through Core-owned lifecycle operations.
-6. Receive Plannotator Feedback, revise the Plan in the same user-facing flow, and resubmit it.
+6. Ask Claude a question from Plan review, receive its answer on the page, then request a Plan change and review the
+   revised Plan on the same page. Structured Plannotator Feedback remains available.
 7. Approve the Plan through Plannotator and pass the normal Readiness Gate.
 8. Create or reuse a RunWield-owned execution worktree and capture the execution baseline.
 9. Have a Claude-hosted implementation worker complete the approved Plan in the worktree.
 10. Run the configured local validation command and independent Claude-hosted Semantic Code Review.
 11. Return blocking Review Issues to a Claude-hosted repair worker and independently re-verify repairs under the normal
     bounded convergence policy.
-12. Complete optional human review when configured.
+12. Complete optional human review when configured. Ask Claude from Code Review, then request a code change. Review the
+    re-verified diff and make a structured decision; chat itself never approves.
 13. Merge validated work back through RunWield's existing worktree safeguards and record the Plan as Verified only after
     merge-back succeeds.
 14. Generate the canonical Work Record and eligible memory outcome without importing the Claude transcript.
@@ -634,6 +760,16 @@ product semantics. Later adapters must reuse the host-neutral Core contract rath
 ## Success Criteria
 
 ### Preview Acceptance
+
+**Recorded evidence:** [Claude Code 2.1.303](../../src/attached/claude/acceptance/results/claude-code-2.1.303.json)
+passes the 16-step headless journey and the extra lifecycle, safety, and provenance checks. The result identifies its
+Core commit, dirty-source digest, adapter contract, plugin version, and bypassed permissions in a throwaway repository.
+The [Compatibility Matrix](../../src/shared/attached/compatibility.ts) and
+[Claude guide](../user-documentation/connect-claude-code.md) name exactly that tested version and its limits.
+
+Preview release also requires a complete default-permissions headed journey against the final source. The saved
+headless result does not prove its permission prompts or later source changes. Stable and later-host support remain
+targets.
 
 - A user can install RunWield Connect for Claude Code without configuring a second model provider or RunWield account.
 - A normal Claude Code request made after installation but outside `/runwield:request` receives no RunWield prompt
@@ -761,8 +897,12 @@ capability evidence.
 
 ## Open Questions
 
-- Which host versions can support the first complete journey, and what limitations need to be disclosed?
-- What installation and update experience best fits each host while keeping compatible local Core dependencies easy to
-  manage?
+- **Claude version and limits:** The matrix records the passing headless journey on Claude Code 2.1.303. The guide
+  discloses FEATURE-only routing, host-instructed role boundaries, no hooks or `/runwield:init`, timeout settings, and
+  the exact source and permission mode. Which prompts appear in a complete default-permissions headed journey remains
+  an acceptance question. Other host/version ranges need their own evidence.
+- **Claude installation and update:** Use the `runwield` marketplace and `runwield@runwield` plugin, with Core installed
+  separately through its installer or package manager. Core owns compatibility checks and exact update guidance. The
+  branch uses a local marketplace before publication. Installation paths for later hosts remain open.
 
 Transport, internal workflow contracts, and worker coordination belong in architecture and implementation planning.
