@@ -320,6 +320,42 @@ review and push the printed commit to `docs/stable`, then dispatch deployment fr
 already has its Pages and DNS configuration. An older tag, an API failure, a failed build, or a rejected non-fast-forward
 push must leave the current Pages deployment unchanged.
 
+## Remote SSH package gate
+
+For unpublished releases, the Linux x64 and ARM64 `native-package-check` legs run `scripts/check-remote-ssh-package.ts`
+against the candidate release archives before publication. Published-release recovery keeps the existing native
+identity checks but does not retroactively require private remote helpers from immutable historical binaries. Each SSH check uses a disposable account, network-isolated loopback OpenSSH, real SSHFS, and a synthetic
+provider. The second model request must contain a remote-only sentinel read by the real tool. The gate checks one
+laptop-owned Session, no saved server transcript, private helpers and MIT notices, and normal process/mount cleanup.
+Missing FUSE fails the gate; it is not optional. Evidence is retained as `remote-ssh-<asset>` workflow artifacts.
+
+For local Linux qualification with passwordless sudo:
+
+```sh
+bun run install:locked
+bun scripts/check-remote-ssh-package.ts release-upload vMAJOR.MINOR.PATCH-rc.1
+```
+
+The gate installs system `openssh-server`, `sshfs`, `fuse3`, and `python3` packages. Run it only on a qualification
+machine. Normal remote connections do not install packages. Servers need glibc Linux x86-64 or ARM64, usable
+`/dev/fuse`, and OpenSSH terminal allocation plus TCP and Unix-socket forwarding. The launcher checks OS, CPU, and
+prerequisites before downloads or transfers and supplies `cymbal` and `ketch` privately. Verified archives and notices
+stay in laptop `~/.cache/runwield/remote/`; server runtime/helper entries stay in `~/.cache/runwield/runtime/` and
+`~/.cache/runwield/helpers/`. A warm laptop cache supports reconnect and empty-server setup without GitHub access.
+
+To qualify a pushed branch without publication:
+
+```sh
+gh workflow run release.yml --ref epic/remote-ssh-development -f qualification_only=true
+```
+
+Omit `tag`. This mode builds `v0.0.0-rc.1` bytes from the selected branch commit, runs native package checks, and blocks
+release publication, package publication, documentation publication, and release-branch integration. It skips the full
+source/Golden and other release lanes; normal publication still requires them. The unchanged recovery mode requires
+an immutable release `tag`. Deliver the changed workflow before dispatch, then compare Linux job durations and total
+qualification wall time with the previous release run. Live platform/provider qualification belongs to child 13, not
+this smoke check.
+
 ## Recovery
 
 - **Initial atomic branch-and-tag push failed**: the local tag remains. Inspect the remote branch and tag because a

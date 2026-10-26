@@ -7,22 +7,28 @@ on:
     workflow_dispatch:
         inputs:
             tag:
-                description: Existing immutable release tag to recover
-                required: true
+                description: Existing immutable release tag to recover (required unless qualification_only)
+                required: false
                 type: string
+            qualification_only:
+                description: Qualify selected branch candidate bytes only; never publish or promote
+                required: false
+                type: boolean
+                default: false
 
 permissions:
     contents: write
 
 concurrency:
-    group: release-${{ inputs.tag || github.ref_name }}
+    group: release-${{ inputs.qualification_only && github.sha || inputs.tag || github.ref_name }}
     cancel-in-progress: false
 
 jobs:
     metadata:
         runs-on: ubuntu-latest
         outputs:
-            published: ${{ steps.existing.outputs.published }}
+            published: ${{ steps.existing.outputs.published || 'false' }}
+            qualification_only: ${{ github.event_name == 'workflow_dispatch' && inputs.qualification_only }}
             tag: ${{ steps.metadata.outputs.tag }}
             source_sha: ${{ steps.source.outputs.sha }}
             bun_version: ${{ steps.source.outputs.bun_version }}
@@ -51,8 +57,21 @@ jobs:
             - name: Validate release metadata
               id: metadata
               env:
-                  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+                  RELEASE_TAG: ${{ inputs.qualification_only && 'v0.0.0-rc.1' || inputs.tag || github.ref_name }}
+                  QUALIFICATION_ONLY: ${{ inputs.qualification_only || false }}
+                  DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+                  RECOVERY_TAG: ${{ inputs.tag }}
               run: |
+                  # Interface: qualification_only=true uses selected github.sha and v0.0.0-rc.1.
+                  # Recovery: qualification_only=false requires an existing immutable tag.
+                  if [[ "$DISPATCH" == true && "$QUALIFICATION_ONLY" != true && -z "$RECOVERY_TAG" ]]; then
+                    echo "Recovery requires tag; use qualification_only=true to qualify a branch" >&2
+                    exit 1
+                  fi
+                  if [[ "$QUALIFICATION_ONLY" == true && -n "$RECOVERY_TAG" ]]; then
+                    echo "Qualification does not accept a recovery tag" >&2
+                    exit 1
+                  fi
                   bun run release:metadata --tag "$RELEASE_TAG" > metadata.json
                   bun -e '
                     const metadata = JSON.parse(await Bun.file("metadata.json").text());
@@ -72,17 +91,22 @@ jobs:
               env:
                   RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
                   RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
+                  QUALIFICATION_ONLY: ${{ inputs.qualification_only || false }}
               run: |
                   set -euo pipefail
-                  git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"
-                  source_sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+                  if [[ "$QUALIFICATION_ONLY" == true ]]; then
+                    source_sha="$GITHUB_SHA"
+                  else
+                    git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"
+                    source_sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+                  fi
                   echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
                   bun_version=$(git show "$source_sha:.bun-version")
                   echo "bun_version=$bun_version" >> "$GITHUB_OUTPUT"
                   # Frozen compatibility set: existing Bun releases with Deno container recipes.
                   # New source never falls back because a tool or test went missing.
                   legacy_containers=false
-                  if [[ "$RECOVERY" == true ]]; then
+                  if [[ "$RECOVERY" == true && "$QUALIFICATION_ONLY" != true ]]; then
                     case "$source_sha" in
                       55cc60ec1cf5a96eeb41c9fddd12459200101aab|d46be40f400aa3d07c56007c0a8aadabea5b6aeb)
                         legacy_containers=true ;;
@@ -95,6 +119,7 @@ jobs:
               run: echo "value=$(openssl rand -base64 32)" >> "$GITHUB_OUTPUT"
 
             - name: Detect existing release without hiding API failures
+              if: ${{ !inputs.qualification_only }}
               id: existing
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -108,6 +133,7 @@ jobs:
                   fi
 
     ci-shards:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
 
@@ -217,6 +243,7 @@ jobs:
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     golden-shards:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
         strategy:
@@ -330,6 +357,7 @@ jobs:
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     release-check:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
         steps:
@@ -354,6 +382,7 @@ jobs:
               run: bun scripts/release-check.js --runtime bun --binary-only --build-version "${{ needs.metadata.outputs.build_version }}"
 
     unix-checks:
+        if: needs.metadata.outputs.qualification_only != 'true'
         needs: metadata
         uses: ./.github/workflows/release-unix.yml
         with:
@@ -363,6 +392,7 @@ jobs:
             contents: read
 
     containers-checks:
+        if: needs.metadata.outputs.qualification_only != 'true'
         needs: metadata
         uses: ./.github/workflows/release-containers.yml
         with:
@@ -461,7 +491,7 @@ jobs:
                       *.sha256
 
     docs-artifact:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' }}
         needs: metadata
         runs-on: ubuntu-latest
         outputs:
@@ -614,9 +644,13 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: ${{ runner.os == 'Linux' && 'recursive' || 'false' }}
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
+            - name: Install frozen dependencies for Linux SSH gate
+              if: runner.os == 'Linux' && needs.metadata.outputs.published != 'true'
+              run: bun run install:locked
             - name: Download checked release bytes
               uses: actions/download-artifact@v5
               with:
@@ -646,8 +680,22 @@ jobs:
                     }
                   '
 
+            # Recovery keeps immutable published bytes, including releases that
+            # predate private remote helpers. New publications always run this gate.
+            - name: Qualify release archive over real loopback SSH
+              if: runner.os == 'Linux' && needs.metadata.outputs.published != 'true'
+              run: bun scripts/check-remote-ssh-package.ts release-upload "${{ needs.metadata.outputs.build_version }}"
+            - name: Retain SSH qualification evidence
+              if: always() && runner.os == 'Linux'
+              uses: actions/upload-artifact@v5
+              with:
+                  name: remote-ssh-${{ matrix.asset }}-${{ github.run_attempt }}
+                  include-hidden-files: true
+                  path: ${{ runner.temp }}/wld-remote-ssh-*/
+                  if-no-files-found: warn
+
     homebrew-check:
-        if: ${{ !cancelled() && needs.assets.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.assets.result == 'success' }}
         runs-on: macos-15
         timeout-minutes: 30
         needs: [metadata, assets]
@@ -708,7 +756,7 @@ jobs:
                   bun run package:homebrew:check --tap homebrew-check
 
     release:
-        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
         runs-on: ubuntu-latest
         needs:
             - metadata
@@ -749,7 +797,7 @@ jobs:
     homebrew-package:
         runs-on: macos-15
         timeout-minutes: 30
-        if: ${{ !cancelled() && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
         needs:
             - metadata
             - release
@@ -845,7 +893,7 @@ jobs:
                   git push origin HEAD:main
 
     publish-docs:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
         needs: [metadata, release, docs-artifact]
         runs-on: ubuntu-latest
         permissions:
@@ -908,7 +956,7 @@ jobs:
                   exit 1
 
     integrate-release-branch:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
         needs: [metadata, release]
         runs-on: ubuntu-latest
         permissions:
@@ -923,16 +971,16 @@ jobs:
               run: bash scripts/integrate-release-branch.sh "$RELEASE_TAG"
 
     ci:
-        if: always()
-        needs: ci-shards
+        if: ${{ always() && needs.metadata.outputs.qualification_only != 'true' }}
+        needs: [metadata, ci-shards]
         runs-on: ubuntu-latest
         steps:
             - name: Require every source shard
               run: test '${{ needs.ci-shards.result }}' = 'success'
 
     golden:
-        if: always()
-        needs: golden-shards
+        if: ${{ always() && needs.metadata.outputs.qualification_only != 'true' }}
+        needs: [metadata, golden-shards]
         runs-on: ubuntu-latest
         steps:
             - name: Require every Golden shard

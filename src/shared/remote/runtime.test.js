@@ -52,6 +52,7 @@ async function fixture(fn) {
         for (const [source, destination] of [
             ["src/shared/remote/runtime.js", join(remote, "runtime.js")],
             ["src/shared/remote/target.ts", join(remote, "target.ts")],
+            ["src/shared/remote/host-prerequisites.ts", join(remote, "host-prerequisites.ts")],
         ])
             await copyFile(source, destination);
         for (const relative of [

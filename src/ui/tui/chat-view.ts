@@ -1,5 +1,6 @@
 import { RunWieldTui } from "./tui.ts";
 import { getCwd } from "../../constants.js";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
@@ -289,22 +290,25 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         );
         const helpText = new Text(compactHelp, 0, 0);
         const updateNoticeText = new Text("", 0, 0);
-        const cachedUpdateAvailability = getCachedUpdateAvailabilitySync(SYSTEM_UPDATE_CHECK_PORTS.clock, {
-            currentVersion: VERSION,
-        });
-        if (cachedUpdateAvailability) {
-            if (cachedUpdateAvailability.available) {
-                updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
+        // The laptop owns the launcher version. A supplied remote runtime never updates itself.
+        if (!remotePersonalResourcesActive()) {
+            const cachedUpdateAvailability = getCachedUpdateAvailabilitySync(SYSTEM_UPDATE_CHECK_PORTS.clock, {
+                currentVersion: VERSION,
+            });
+            if (cachedUpdateAvailability) {
+                if (cachedUpdateAvailability.available) {
+                    updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
+                }
+            } else {
+                void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
+                    .then((availability) => {
+                        updateNoticeText.setText(
+                            availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
+                        );
+                        tui.requestRender();
+                    })
+                    .catch(() => {});
             }
-        } else {
-            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
-                .then((availability) => {
-                    updateNoticeText.setText(
-                        availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
-                    );
-                    tui.requestRender();
-                })
-                .catch(() => {});
         }
         renderBootLogo(container);
         container.addChild(new Text(titleLine, 0, 0));

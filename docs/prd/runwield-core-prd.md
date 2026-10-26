@@ -1860,15 +1860,29 @@ or incorrect notice while recovery preserves already published bytes.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.
 - Given a native Windows package check, the packaged Agent creates a Git branch and the Dashboard stream completes.
 
-Use `bin/remote-build/wld-launcher` with its adjacent Linux GNU target files and `.build.json` files. The current remote
-host needs an OpenSSH server that can allocate a terminal and forward loopback ports, `python3`, a writable private
-cache, SSHFS/FUSE for the personal mount, and a runnable glibc-linked Linux x86-64 or ARM64 executable. Git is optional
-for a non-Git directory. Normal runtime startup requires `cymbal` and `ketch` on the remote `PATH`, with successful
-`--help` checks. Mnemoteca runs on the laptop, not the server. Staging the RunWield executable does not install these
-helpers. The `sct` pilot used authentic, verified helper installations under `/usr/local/bin`. The launcher starts a
-stock SFTP/SSHFS personal mount before opening the normal remote TUI and connects Session operations to the laptop-owned
-save service. The matching compiled macOS/Linux conversation, offline-history, and resume journey passed with an
-authenticated synthetic provider. See the [Remote SSH proposal](remote-ssh-prd.md#remote-connection-and-setup).
+**Requirement: Supply the remote runtime and helpers privately.** Released launchers obtain their exact VERSION-tagged
+Linux archive. Development launchers use `bin/remote-build/wld-launcher` with adjacent matching GNU target files and
+`.build.json` files. Both supply pinned `cymbal` and `ketch` binaries and MIT notices privately; no system helper
+installation or remote personal installer is required. Mnemoteca runs on the laptop.
+
+The laptop checks the server before cache access, downloads, or transfers. Servers need glibc Linux x86-64 or ARM64,
+`python3`, `sshfs`, `fuse3`, a usable `/dev/fuse` character device, writable private cache storage, and OpenSSH with
+terminal allocation, TCP forwarding, and Unix-socket forwarding. Git is optional for a non-Git directory. Unsupported
+systems fail explicitly; missing packages receive distribution-specific install guidance.
+
+Verified release archives and helper archives with their notices stay in laptop `~/.cache/runwield/remote/`, outside the
+personal mount. A verified current VERSION replaces older laptop runtime versions. Server executables stay under
+`~/.cache/runwield/runtime/<buildId>/<triple>/<binary-sha256>/`; helpers stay under
+`~/.cache/runwield/helpers/<name>/<version>/<triple>/<archive-sha256>/`. Server entries are retained across versions.
+Preparation verifies, repairs, and reuses these private entries. The supervisor checks helper digests and puts private
+helper directories first on its process tree's `PATH`. Profiles, system packages, and `/usr/local/bin` are unchanged.
+A warm laptop can reconnect or populate an empty server cache without GitHub or server internet access. The remote
+view does not check for launcher updates; the laptop owns its runtime version.
+
+**Requirement: Gate releases on native SSH packaging.** Before publication, both Linux native-package checks connect the
+candidate archive through real SSH and SSHFS, read a remote-only file through a synthetic model turn, and confirm
+laptop-owned history and owned-process cleanup. A qualification-only branch dispatch cannot publish or promote assets.
+The live platform/provider matrix remains with [Remote SSH qualification](remote-ssh-prd.md#remote-connection-and-setup).
 
 **Acceptance scenarios:**
 
@@ -1892,12 +1906,12 @@ the remote account's home or an existing requested directory. The normal remote 
 directory. Relative paths and `~` refer to the remote account. Git is optional; discovery reports a repository or
 worktree when one exists.
 
-**Requirement: Prepare a matching development runtime.** The launcher uses an explicitly built development bundle from
-one checkout (see [contributing](../contributing.md#remote-development-bundle)). It verifies build and protocol
-identity, version, and checksum, then stages and checks the executable in a private remote cache. A later connection
-repairs an interrupted stage. The remote profile and package-managed installs stay as they are. The remote host needs
-an OpenSSH server with terminal allocation, TCP forwarding, and Unix-socket forwarding (`AllowStreamLocalForwarding`,
-enabled by default), `python3`, a writable private cache, SSHFS/FUSE, and a glibc Linux x86-64 or ARM64 system.
+**Requirement: Prepare a matching runtime.** Follow the [private runtime and helper installation
+contract](#installation-and-updates). Development builds require an explicit matching bundle from one checkout (see
+[contributing](../contributing.md#remote-development-bundle)); releases use their exact VERSION-tagged archive. Build,
+protocol, version, and checksum checks apply to both. Check the server's OS, CPU, and mount prerequisites before any
+artifact access. OpenSSH must permit terminal allocation, TCP forwarding, and Unix-socket forwarding
+(`AllowStreamLocalForwarding`, enabled by default).
 
 **Requirement: Keep personal files on the laptop.** The connection mounts laptop `~/.wld` at a private remote root
 through stock SFTP/SSHFS; the remote project's `.wld` stays on the server. Edits to personal Agents, prompts, and
@@ -1914,7 +1928,12 @@ project files, and verified cache. When the supervisor cannot confirm process ex
 - Given a path through a symlink or Git worktree, the view shows its canonical directory; a missing directory fails.
 - Given a matching bundle and a supported host, connecting transfers or reuses a verified executable, mounts the
   personal root, and opens the normal remote TUI without creating saved history until the first message.
-- Given a mismatched artifact or missing prerequisite, connection fails with the cause.
+- Given a mismatched artifact, connection fails with the cause rather than substituting a runtime.
+- Given a macOS server or unsupported CPU, connection fails before artifact access and names the supported Linux CPUs.
+- Given missing SSHFS/FUSE prerequisites, connection lists each missing item and the distribution's install command
+  before any transfer. Missing `python3` receives explicit package guidance.
+- Given warm laptop caches, reconnecting or populating an empty server cache needs no GitHub request.
+- Given a damaged private helper, startup stops with reconnect guidance; reconnect repairs it without a system install.
 - Given a personal Skill edited through the mount, the laptop sees the change, and the project `.wld` stays remote.
 - Given connection loss, the supervisor stops its own processes and leaves unrelated server processes running.
 - Given a provider authenticated only on the laptop, a remote Agent's model request runs in the laptop

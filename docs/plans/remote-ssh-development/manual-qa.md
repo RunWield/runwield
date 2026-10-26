@@ -404,3 +404,44 @@ Manual verification steps for remote-ssh-development/10-open-remote-reviews-in-t
 - [ ] Record the deferred Windows check as unchecked in the manual QA record: Plan Review opens and approves through the forward from Win32-OpenSSH.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/10-open-remote-reviews-in-the-local-browser" -->
+
+## Release-format remote package evidence: 2026-10-26
+
+This is child 11 package evidence, not child 13 real-provider qualification. The unpublished `v0.0.0-rc.1`
+archives share build ID `ccfe8d2b68aa8f17a74ff6b7788db8620d40eecca44babe15664a76e42531ceb`. Bun 1.4.3 built
+Linux x64/ARM64 and macOS x64/ARM64 targets. `scripts/release-assets.js` verified all four archive pairs. Archives
+contain `wld`, `wld.build.json`, and `LICENSE` only.
+
+- **Linux x64 archive gate:** `bun scripts/check-remote-ssh-package.ts . v0.0.0-rc.1` passed on Fedora `sct` in
+  **81.39 seconds**. A disposable server account used a private network namespace with no internet route. The real
+  SSH/SSHFS connection read a remote-only sentinel, returned it in the second synthetic-provider request, and saved
+  one laptop Session. Private helpers and notices were present; no remote transcript, owned process, or mount remained.
+- **Native macOS ARM64 laptop → Fedora x64:** the compiled macOS launcher passed cold helper setup, warm reconnect
+  with HTTPS blocked, and setup after removing the server cache with HTTPS still blocked. Because the candidate is
+  unpublished, its verified runtime archive was seeded into the laptop cache; cold helper archives were downloaded
+  normally. The cold connection read the remote sentinel. The laptop saved one Session, and exit left no owned remote
+  process or mount. Helpers were absent from the disposable account's system `PATH`; owner installations were unchanged.
+- **Early refusal:** hiding `sshfs` from that disposable account's `PATH` produced `sudo dnf install sshfs fuse3`
+  before runtime or helper transfer. No real macOS SSH server was tested; automated subprocess coverage checks that refusal.
+- **Linux supervisor and mount checks:** 13 supervisor tests and nine mount tests passed, with no skips. Mount tests
+  used both `WLD_TEST_SSHFS=1` and `WLD_TEST_SSHFS_STALL=1` and exercised real FUSE mounts.
+- **Focused source checks:** 498 tests: 478 passed, 20 platform/opt-in skips, none failed, across 81 files with runner
+  concurrency two. The change adds **88 tests** and removes none. An earlier concurrency-eight run failed while waiting
+  for laptop MCP dispatch; the isolated rerun and the complete concurrency-two rerun passed. No MCP implementation
+  change was made. Type, lint, seam, document-link, and whitespace checks passed. Full managed CI has not run.
+
+Retained laptop evidence: `.ci-cache/remote-package-final2/`, `/tmp/remote-package-final2-build.log`,
+`/tmp/remote-package-bounded-reports`, and
+`/var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/wld-native-package-u4xlobzp`.
+Linux evidence: `sct:/tmp/wld-package-qualification-GMGbHhrX/gate-final2.log`,
+`sct:/tmp/wld-remote-ssh-3zfEzZ`, `sct:/tmp/remote-package-linux-final-reports`, and
+`sct:/tmp/remote-package-linux-mount-reports`. The native driver is `/tmp/remote-package-native-qa.py` on the laptop.
+
+### Hosted qualification still required
+
+The changed workflow has not reached GitHub. No qualification dispatch of these bytes has run, and hosted Linux ARM64
+SSH/SSHFS support is not yet established. After permitted delivery, dispatch the nonpublishing qualification mode
+from `epic/remote-ssh-development`, inspect both Linux gates and retained evidence, and compare their job times and
+overall qualification time with [release run 40256858840](https://github.com/RunWield/runwield/actions/runs/40256858840).
+That historical run passed its native Linux x64 check in 39 seconds and ARM64 check in 71 seconds; its
+created-to-updated interval was 13 minutes 11 seconds. It predates this SSH gate and does not qualify these changes.

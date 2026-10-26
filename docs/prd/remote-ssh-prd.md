@@ -104,14 +104,15 @@ Windows laptops are not claimed as supported for Remote SSH. The
 
 **Current connection behavior:** `wld remote <host>[:<directory>]` uses OpenSSH configuration, authentication,
 and host verification, resolves an existing remote directory (remote home by default), and opens the normal remote TUI
-there. Git is optional. The remote Linux host needs `python3`, SSHFS/FUSE for the personal mount, a writable private
-cache, and an executable compatible with the preflight for the matching glibc-linked Linux x86-64 or ARM64 build. The
-SSH server must allow Unix-socket forwarding (`AllowStreamLocalForwarding`, enabled by default in OpenSSH), in addition
-to the existing TCP forwarding. The local machine needs OpenSSH and an explicitly built matching development bundle; see
-[build steps](../contributing.md#remote-development-bundle). Runtime preparation checks build/protocol identity and
-checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
-profile. Normal runtime startup requires executable `cymbal` and `ketch` helpers on the remote `PATH`; private binary
-staging alone does not supply them. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
+there. Git is optional. The server needs glibc Linux x86-64 or ARM64, `python3`, `sshfs`, `fuse3`, usable `/dev/fuse`,
+writable private cache storage, and OpenSSH with terminal allocation, TCP forwarding, and Unix-socket forwarding
+(`AllowStreamLocalForwarding`, enabled by default). The launcher checks these before artifact access and gives
+package guidance for missing prerequisites. It refuses macOS servers before downloading tools.
+The laptop needs OpenSSH and a released launcher or an [explicit matching development
+bundle](../contributing.md#remote-development-bundle). The [Core installation
+contract](runwield-core-prd.md#installation-and-updates) owns the verified laptop runtime/helper caches, private server
+runtime/helper caches, offline reconnect, and pinned `cymbal`/`ketch` supply with notices. No remote personal installer,
+system helper installation, or separate personal profile is required. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
 owned processes, with uncertain termination reported when it cannot be confirmed. The launcher starts a connection-owned
 stock SFTP server and SSHFS mount of the laptop's full `~/.wld` at a fresh private remote root. A direct personal Skill
 file edit through this mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote
@@ -135,14 +136,15 @@ same remote project and laptop personal authority.
 SSH user, key, port, jump-host, and host-verification behavior remains effective. Paths are data, not shell commands. An
 invalid or inaccessible folder fails clearly; RunWield must not silently work in another folder or create the target.
 
-**Remaining target requirement: Prepare RunWield automatically.** A supported host does not need a prior RunWield
-installation or provider login. RunWield prepares compatible required tools and reports progress. It does not overwrite
-a remote user's existing profile or package-managed installation. Missing permission or unsupported platform errors
-identify the real prerequisite; ordinary internal setup and repair stay automatic.
+**Requirement: Prepare RunWield automatically.** The [Core installation
+contract](runwield-core-prd.md#installation-and-updates) owns automatic runtime/helper preparation and repair. A supported
+host needs neither prior RunWield installation nor provider login. Profiles and package-managed installations stay
+unchanged. The Linux x64/ARM64 SSH release gate blocks publication on failure; live provider/platform qualification
+remains with child 13.
 
-**Remaining target acceptance scenario:** Given a supported host without RunWield, when the user connects, full release
-setup completes without manual profile copying. Current runtime preparation follows the
-[Core installation contract](runwield-core-prd.md#installation-and-updates).
+**Acceptance scenario:** Given a supported host without RunWield and with the system prerequisites, connection prepares
+the runtime and helpers without manual profile copying. Subsequent connections use verified laptop caches, including
+when GitHub is unavailable or the server cache is empty.
 
 **Shared requirements:** [Installation and updates](runwield-core-prd.md#installation-and-updates),
 [project context](runwield-core-prd.md#project-context-and-initialization).

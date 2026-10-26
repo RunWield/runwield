@@ -1,3 +1,4 @@
+import { seedLaptopHelpers, writeRemoteHelperArtifacts } from "../../testing/remote-helper-fixture.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { basename, delimiter } from "node:path";
 import { spawn } from "node:child_process";
@@ -76,7 +77,7 @@ async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>
             await fsWriteFile(
                 source,
                 `
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 const args = process.argv.slice(2);
 const readyFile = process.env.SSH_LOG + ".ready";
@@ -91,6 +92,8 @@ if (args[0] === "-v") {
 }
 
 if (args[0] === "-tt") {
+    const helpers = readFileSync(process.env.SSH_LOG + ".helpers", "utf8").trim().split("\\n").map(line => JSON.parse(line));
+    if (helpers.length !== 2 || helpers[0].files[0].name !== "cymbal" || helpers[1].files[0].name !== "ketch") throw new Error("Private helpers were not prepared");
     writeFileSync(process.env.SSH_LOG, JSON.stringify(args));
     if (!args.includes("ExitOnForwardFailure=yes") || !args.includes("remote-alias")) process.exit(42);
     process.stdout.write("REMOTE_SUPERVISOR_READY:/tmp/wld-remote-fixture/control.sock\\n");
@@ -114,7 +117,10 @@ if (args[0] === "-tt") {
     for await (const line of lines) {
         const request = JSON.parse(line);
         if ("path" in request) {
-            console.log(JSON.stringify({ ok: true, cwd: "/remote/home", home: "/remote/home", os: "Linux", arch: "x86_64", gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
+            console.log(JSON.stringify({ ok: true, cwd: "/remote/home", home: "/remote/home", os: "Linux", arch: "x86_64", sshfs: true, fusermount3: true, fuseDevice: true, gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
+        } else if (request.kind === "helper") {
+            appendFileSync(process.env.SSH_LOG + ".helpers", JSON.stringify(request) + "\\n");
+            console.log(JSON.stringify({ ok: true, reused: true, path: "/remote/home/.cache/runwield/" + request.cacheParts.join("/") + "/" + request.files[0].name }));
         } else if ("sha256" in request) {
             console.log(JSON.stringify({ ok: true, reused: true, path: "/remote/home/.cache/runwield/runtime/" + request.buildId + "/" + request.target + "/" + request.sha256 + "/wld" }));
         } else {
@@ -163,7 +169,7 @@ const request = JSON.parse(input);
 let exists = false;
 try { exists = statSync(join(process.env.REMOTE_HOME, request.path || "")).isDirectory(); } catch {}
 if (!exists) { console.log(JSON.stringify({ ok: false, error: "Remote target is not an existing directory" })); process.exit(1); }
-console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || ""), home: "/remote/home", os: "Linux", arch: "x86_64", gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
+console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || ""), home: "/remote/home", os: "Linux", arch: "x86_64", sshfs: true, fusermount3: true, fuseDevice: true, gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
 `,
             );
             await writeRuntimeExecutableFixture(join(bin, "ssh"), source);
@@ -172,7 +178,7 @@ console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || "
             // runs unchanged through the actual shell and Python interpreter.
             await fsWriteFile(
                 join(root, "sitecustomize.py"),
-                'import platform\nplatform.system = lambda: "Linux"\nplatform.machine = lambda: "x86_64"\n',
+                'import platform, shutil, os, stat\nplatform.system = lambda: "Linux"\nplatform.machine = lambda: "x86_64"\noriginal_which = shutil.which\nshutil.which = lambda name: "/usr/bin/" + name if name in ("sshfs", "fusermount3") else original_which(name)\noriginal_stat = os.stat\nos.stat = lambda path, *args, **kwargs: os.stat_result((stat.S_IFCHR, 0, 0, 0, 0, 0, 0, 0, 0, 0)) if path == "/dev/fuse" else original_stat(path, *args, **kwargs)\n',
             );
             await fsWriteFile(
                 join(bin, "ssh"),
@@ -200,7 +206,15 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
         const version = join(root, "version.js");
         await fsWriteFile(version, 'export const VERSION = "development";\n');
         const preload = join(root, "build-boundary.ts");
+        const helperArtifacts = connected ? await writeRemoteHelperArtifacts(join(root, "helper-artifacts")) : null;
+        if (helperArtifacts) await seedLaptopHelpers(join(root, "helper-artifacts"), local, helperArtifacts.pins);
         const replacements = {
+            ...(helperArtifacts
+                ? {
+                      [fromFileUrl(new URL("../../../packaging/remote/tested-dependencies.json", import.meta.url))]:
+                          helperArtifacts.manifestPath,
+                  }
+                : {}),
             [fromFileUrl(new URL("../../shared/build-identity.js", import.meta.url))]: identity,
             [fromFileUrl(new URL("../../shared/version.js", import.meta.url))]: version,
         };
@@ -211,7 +225,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 const replacements = ${JSON.stringify(replacements)};
 plugin({ name: "fixture-build-boundary", setup(build) {
-    build.onResolve({ filter: /(?:build-identity|version)\\.js$/ }, ({ path, importer }) => {
+    build.onResolve({ filter: /(?:build-identity|version)\\.js$|tested-dependencies\\.json$/ }, ({ path, importer }) => {
         const target = resolve(dirname(importer), path);
         const replacement = replacements[target];
         if (replacement) return { path: replacement };
@@ -347,7 +361,7 @@ test("remote CLI help and invalid arity do not contact SSH", async () => {
 test("source remote help works without a generated identity and connection explains the build step", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
-        for (const path of ["src/cmd/remote", "src/shared/remote", "scripts"]) {
+        for (const path of ["src/cmd/remote", "src/shared/remote", "scripts", "packaging/remote"]) {
             await fsMkdir(join(root, path), { recursive: true });
         }
         for (const path of [
@@ -356,13 +370,18 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/http-server.ts",
             "src/shared/linux-process-group.ts",
             "src/shared/captured-process.ts",
+            "src/shared/native-file-lock.ts",
+            "src/shared/native-file-lock-windows.ts",
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
             "src/shared/jsonc.ts",
             "src/shared/remote/runtime.js",
             "src/shared/remote/target.ts",
+            "src/shared/remote/host-prerequisites.ts",
             "src/shared/remote/control.ts",
             "src/shared/remote/release-artifact.ts",
+            "src/shared/remote/helpers.ts",
+            "packaging/remote/tested-dependencies.json",
             "src/shared/remote/sftp-mount.ts",
             "src/shared/remote/model-proof-config.ts",
             "src/constants.js",

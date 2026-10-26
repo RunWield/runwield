@@ -17,9 +17,16 @@ affectedPaths:
     - "docs/prd/remote-ssh-prd.md"
     - "docs/contributing.md"
     - "docs/releasing.md"
+planDeviations:
+    - id: "call_817eec016bc747649877b31c6b186716|fc_03eb5d4179c33120016ade7ccdc5e48197a7ea4d576cd7e6f1"
+      supersededRequirement: "Then trigger the release workflow with `workflow_dispatch` on the Epic branch and confirm that both Linux `native-package-check` legs pass the SSH check. Record each leg's duration and the total release wall time compared with the previous run."
+      replacementRequirement: "Add a qualification-only workflow dispatch mode that builds release-format candidate archives from the selected branch without publication. Use that mode on the Epic branch to confirm that both Linux native-package-check legs pass the SSH check, and record each leg's duration and total qualification wall time compared with the previous release run. Delivery of the changed workflow to GitHub remains subject to RunWield's delivery boundary."
+      reason: "The current manual dispatch accepts an immutable existing release tag and can proceed to publication; it cannot safely qualify unpublished Epic-branch candidate bytes."
+      approvedAt: "2026-10-26T01:37:38.726Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T02:05:52.824Z"
+status: "in_progress"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 11
@@ -36,7 +43,6 @@ dependencies:
     - "10-open-remote-reviews-in-the-local-browser"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "in_progress"
 ---
 
 # Package the Remote Runtime for Released Builds

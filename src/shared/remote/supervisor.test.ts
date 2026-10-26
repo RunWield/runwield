@@ -1,3 +1,9 @@
+import {
+    writeRemoteHelperArtifacts,
+    writeFixtureHelperModule,
+    seedRemoteHelpers,
+} from "../../testing/remote-helper-fixture.ts";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -50,6 +56,7 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
         }
     }
     await fsWriteFile("view-header", new TextDecoder().decode(new Uint8Array(bytes)));
+    await fsWriteFile("view-path", process.env.PATH ?? "");
     reader.releaseLock();
     process.on("SIGTERM", () => {});
     process.on("SIGUSR1", () => process.exit(0));
@@ -83,7 +90,13 @@ try:
         channel.connect(locator.decode())
         channel.sendall(b'{' if header == 'partial-header' else header.encode() + b'\n')
     print('READY', flush=True)
-    command = sys.stdin.readline().strip()
+    while not select.select([sys.stdin], [], [], .1)[0]:
+        if select.select([master], [], [], 0)[0]:
+            try: output += os.read(master, 65536)
+            except OSError: break
+        if child.poll() is not None: break
+    with open(os.path.join(cwd, 'supervisor-output'), 'wb') as logfile: logfile.write(output)
+    command = sys.stdin.readline().strip() if child.poll() is None else ''
     if command == 'blocked':
         os.set_blocking(master, False)
         for _ in range(1024):
@@ -127,7 +140,18 @@ async function compiledSupervisor(): Promise<string> {
     const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     buildRoot = root;
     const sourcePath = await fsRealpath("src/shared/remote/supervisor.ts");
-    const source = sourcePath;
+    const artifactRoot = join(root, "helper-artifacts");
+    const artifacts = await writeRemoteHelperArtifacts(artifactRoot);
+    const helpers = await writeFixtureHelperModule(root, artifacts.manifestPath);
+    await seedRemoteHelpers(artifactRoot, getHomeDir(), artifacts.pins);
+    const source = join(root, "supervisor.ts");
+    const supervisorSource = (await fsReadFile(sourcePath, "utf8")).replace(
+        /\b(from\s+|import\()"(\.[^"]+)"/g,
+        (_match, prefix: string, relative: string) => {
+            return `${prefix}${JSON.stringify(relative === "./helpers.ts" ? helpers : fileURLToPath(new URL(relative, pathToFileURL(sourcePath))))}`;
+        },
+    );
+    await fsWriteFile(source, supervisorSource);
     await fsWriteFile(
         join(root, "entry.ts"),
         entry.replace('"./src/shared/remote/supervisor.ts"', JSON.stringify(source)),
@@ -264,7 +288,13 @@ for (const scenario of [
                         view = Number(await fsReadFile(join(root, "view"), "utf8").catch(() => ""));
                         await new Promise((resolve) => setTimeout(resolve, 30));
                     }
-                    assert(view > 0);
+                    assert(
+                        view > 0,
+                        await fsReadFile(join(root, "supervisor-output"), "utf8").catch(() => "view did not start"),
+                    );
+                    const helperPath = (await fsReadFile(join(root, "view-path"), "utf8")).split(":");
+                    assert(helperPath[0].includes("/helpers/cymbal/"));
+                    assert(helperPath[1].includes("/helpers/ketch/"));
                     assertEquals(await fsRealpath(`/proc/${view}/cwd`), root);
                     const bootstrap = JSON.parse(await fsReadFile(join(root, "view-header"), "utf8"));
                     assertEquals(bootstrap.connection, { port, credential: service.credential });
@@ -491,6 +521,40 @@ test(
                 (error) => assertEquals(error.code, "ENOENT"),
             );
         } finally {
+            await fsRm(directory, { recursive: true, force: true });
+        }
+    },
+);
+
+test(
+    "supervisor refuses an empty private helper cache before starting the view",
+    { skip: process.platform !== "linux" },
+    async () => {
+        const executable = await compiledSupervisor();
+        const root = await fsMkdtemp(join(tmpdir(), "supervisor-missing-helper-"));
+        const directory = `/tmp/wld-remote-${randomBytes(16).toString("hex")}`;
+        try {
+            const result = await captureForegroundProcess(executable, {
+                cwd: root,
+                args: ["--remote-supervisor", "43127", directory],
+                env: { HOME: root, WLD_TEST_SANDBOX_HOME: root },
+            });
+            assertEquals(result.success, false);
+            assertStringIncludes(new TextDecoder().decode(result.stderr), "Reconnect to repair");
+            await fsStat(directory).then(
+                () => {
+                    throw new Error("helper refusal created a socket directory");
+                },
+                (error) => assertEquals(error.code, "ENOENT"),
+            );
+            await fsStat(join(root, "view")).then(
+                () => {
+                    throw new Error("view started without helpers");
+                },
+                (error) => assertEquals(error.code, "ENOENT"),
+            );
+        } finally {
+            await fsRm(root, { recursive: true, force: true });
             await fsRm(directory, { recursive: true, force: true });
         }
     },

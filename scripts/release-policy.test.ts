@@ -61,7 +61,7 @@ test("release workflow keeps tag publication and manual recovery channel-safe", 
 
     assertStringIncludes(workflow, 'git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"');
     assertStringIncludes(workflow, "workflow_dispatch:");
-    assertMatch(workflow, /workflow_dispatch:[\s\S]*tag:[\s\S]*required: true/);
+    assertMatch(workflow, /workflow_dispatch:[\s\S]*tag:[\s\S]*required: false/);
     assertStringIncludes(workflow, "RELEASE_TAG: ${{ inputs.tag || github.ref_name }}");
     assertStringIncludes(
         workflow.slice(workflow.indexOf("    metadata:"), workflow.indexOf("    ci-shards:")),

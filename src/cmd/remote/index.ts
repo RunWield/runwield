@@ -7,11 +7,13 @@ import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 /* CLI-only remote connection. SSH supplies authentication, host verification and
  * terminal transport. Saved remote Sessions remain on the laptop. */
 import { dirname, join } from "node:path";
-import { linuxTarget, prepareRemoteRuntime } from "../../shared/remote/runtime.js";
+import { linuxTarget, prepareRemoteRuntime, verifyRemoteRuntimeArtifact } from "../../shared/remote/runtime.js";
 import { fixedPythonCommand, resolveRemoteTarget } from "../../shared/remote/target.ts";
+import { assertRemoteHostReady } from "../../shared/remote/host-prerequisites.ts";
 import { type MountHeader, startLaptopSftp } from "../../shared/remote/sftp-mount.ts";
 import { VERSION } from "../../shared/version.js";
-import { downloadReleaseRuntime } from "../../shared/remote/release-artifact.ts";
+import { obtainReleaseRuntime } from "../../shared/remote/release-artifact.ts";
+import { obtainRemoteHelpers, prepareRemoteHelpers } from "../../shared/remote/helpers.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "../../shared/remote/model-proof-config.ts";
 
 export const REMOTE_USAGE =
@@ -236,11 +238,12 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     let metadata: { sha256: string };
     try {
         target = await resolveRemoteTarget(host, path, "ssh", setupAbort.signal);
+        assertRemoteHostReady(target);
         triple = linuxTarget(target);
         const suffix = triple === "x86_64-unknown-linux-gnu" ? "linux-x64" : "linux-arm64";
         // Released launchers never substitute a development or latest asset.
         const release = VERSION.startsWith("v")
-            ? await downloadReleaseRuntime(
+            ? await obtainReleaseRuntime(
                   VERSION,
                   suffix,
                   {
@@ -253,8 +256,11 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             : null;
         const artifact = release?.artifact ?? join(dirname(process.execPath), `wld-${triple}`);
         try {
+            await verifyRemoteRuntimeArtifact(artifact, target);
+            const helpers = await obtainRemoteHelpers(target, setupAbort.signal);
             ({ path: executable } = await prepareRemoteRuntime(host, target, artifact, "ssh", setupAbort.signal));
             metadata = JSON.parse(await fsReadFile(`${artifact}.build.json`, "utf8"));
+            await prepareRemoteHelpers(host, target.home, helpers, setupAbort.signal);
         } finally {
             if (release) await fsRm(release.directory, { recursive: true });
         }

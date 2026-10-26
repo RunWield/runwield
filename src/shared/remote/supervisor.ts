@@ -15,6 +15,7 @@ import { terminateOwnedLinuxGroup } from "../foreground-process.ts";
 import { setChildSubreaper, terminateOwnedLinuxDescendants } from "../linux-process-group.ts";
 import { type MountHeader, mountLaptopHome, type RemoteMount, validateMountHeader } from "./sftp-mount.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "./model-proof-config.ts";
+import { verifiedRemoteHelperPath } from "./helpers.ts";
 
 export interface RemoteSupervisorHeader {
     credential: string;
@@ -202,6 +203,10 @@ export async function runRemoteSupervisor(): Promise<void> {
     const socketDirectory = process.argv.slice(2)[2];
     if (!/^\/tmp\/wld-remote-[a-f0-9]{32}$/.test(socketDirectory)) throw new Error("Invalid remote socket directory");
     if (process.platform !== "linux") throw new Error("Remote supervisor requires Linux");
+    process.env.PATH = await verifiedRemoteHelperPath(
+        { os: "Linux", arch: process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch },
+        process.env.PATH ?? "",
+    );
     setChildSubreaper();
     await mkdir(socketDirectory, { mode: 0o700 });
     let originalMode: string | undefined;
