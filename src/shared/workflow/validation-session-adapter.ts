@@ -102,11 +102,7 @@ const lastRepairSessions = new WeakMap<HostedSession, RepairSession>();
 
 function hasUnfinishedRepairAttempt(manager: SessionManager): boolean {
     const latest = readRequestAttemptEntries(manager).at(-1);
-    return Boolean(
-        latest &&
-            latest.dispatchKind === "validation_repair" &&
-            latest.phase !== "completed",
-    );
+    return Boolean(latest && latest.dispatchKind === "validation_repair" && latest.phase !== "completed");
 }
 
 function getPendingRepairManager(hostedSession: HostedSession, cwd: string, userRequest: string): SessionManager {
@@ -270,11 +266,16 @@ async function runIsolatedRequest(
                 cwd: request.cwd,
                 // The Epic integration gate runs its own reviewer, with its own prompt and tool ceiling.
                 subAgentDefinition:
-                    request.reviewerMode === "integration"
-                        ? { id: SUBAGENTS.INTEGRATION_REVIEWER }
+                    request.reviewerMode === "integration" || request.reviewerMode === "integration_verify"
+                        ? {
+                              id: SUBAGENTS.INTEGRATION_REVIEWER,
+                              options: {
+                                  reviewerMode: request.reviewerMode === "integration_verify" ? "verify" : "discovery",
+                              },
+                          }
                         : { id: SUBAGENTS.REVIEWER, options: { reviewerMode: request.reviewerMode } },
                 toolNames:
-                    request.reviewerMode === "integration"
+                    request.reviewerMode === "integration" || request.reviewerMode === "integration_verify"
                         ? [...INTEGRATION_REVIEWER_SUBAGENT_TOOLS]
                         : [...REVIEWER_SUBAGENT_TOOLS],
                 customTools: bindReviewDiffTools(hostedSession, request.customTools),
