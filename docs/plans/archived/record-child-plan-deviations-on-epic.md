@@ -34,6 +34,9 @@ workRecord:
     path: "docs/work-records/2026-10-26-child-plan-deviations-in-epic-integration-context.md"
     lastAttemptAt: "2026-10-26T01:57:45.766Z"
 status: "verified"
+archivedAt: "2026-10-26T13:13:14.837Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/record-child-plan-deviations-on-epic.md"
 ---
 
 # Record Child Plan Deviations on the Epic

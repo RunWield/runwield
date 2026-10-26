@@ -29,6 +29,9 @@ userVerifiedAt: null
 targetBranch: "main"
 validatedCommit: "e02b77ab57cf2d25f271326e0ab6dc4b3c282d04"
 status: "verified"
+archivedAt: "2026-10-26T13:44:32.657Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs/01-corpus-selection-oracle-verdicts-and-edge-case-fixtures.md"
 ---
 
 # Corpus Selection, Oracle Verdicts, and Edge-Case Fixtures

@@ -69,7 +69,7 @@ export interface HandleEpicPlanOptions {
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan
  * @param {PlanSessionSurface} opts.session
- * @returns {Promise<"handled" | "continue" | "review" | "direct_review">}
+ * @returns {Promise<"handled" | "archiving" | "continue" | "review" | "direct_review">}
  */
 export async function handleEpicPlan({
     projectRoot,
@@ -78,12 +78,14 @@ export async function handleEpicPlan({
     runSlicerAgent,
     loadChildPlan,
     session,
-}: HandleEpicPlanOptions): Promise<"handled" | "continue" | "review" | "direct_review"> {
+}: HandleEpicPlanOptions): Promise<"handled" | "archiving" | "continue" | "review" | "direct_review"> {
     if (!isProjectPlan(plan.attrs)) return "continue";
     projectPlanType(plan.attrs);
     const sequence = isSequencePlan(plan.attrs);
 
     let epicGateReady = false;
+    let epicGateRetryReady = false;
+    let openRepairDrafts: string[] = [];
     if (await isGitRepository(projectRoot)) {
         try {
             const branch = await ensureEpicBranch(projectRoot, plan.planName, { seedChildren: false });
@@ -104,6 +106,9 @@ export async function handleEpicPlan({
             }
             const reconciled = await reconcileEpicDelivery(projectRoot, plan.planName);
             epicGateReady = reconciled.gateReady;
+            epicGateRetryReady = reconciled.gateRetryReady;
+            openRepairDrafts =
+                reconciled.state?.children.filter((child) => child.openRepairDraft).map((child) => child.name) || [];
             if (reconciled.status === "verified" && plan.attrs.status !== "verified") {
                 const record = await autoGenerateWorkRecordForCompletedPlan({
                     cwd: projectRoot,
@@ -176,6 +181,15 @@ export async function handleEpicPlan({
     if (hasChildren) {
         uiAPI.appendSystemMessage(formatEpicProgressSummary(children), false, "RunWield");
     }
+    if (epicGateRetryReady) {
+        uiAPI.appendSystemMessage(
+            `Open integration repair drafts: ${openRepairDrafts.join(", ")}. ` +
+                `Report: ${plan.attrs.epicIntegrationReport || "No report recorded"}. ` +
+                "Retry the integration gate or plan the repair child.",
+            false,
+            "RunWield",
+        );
+    }
     if (pendingPublication.length > 0) {
         for (const child of pendingPublication) {
             uiAPI.appendSystemMessage(
@@ -237,8 +251,15 @@ export async function handleEpicPlan({
                 ? [{ value: "review", label: sequence ? "Review Sequence with Planner" : "Review with Architect" }]
                 : []),
             ...(canOpenSlicer ? [{ value: "slicer", label: "Open or resume Slicer decomposition" }] : []),
-            ...(epicGateReady && session.runEpicIntegrationGate
-                ? [{ value: "integration_gate", label: "Run the integration gate on the Epic branch" }]
+            ...((epicGateReady || epicGateRetryReady) && session.runEpicIntegrationGate
+                ? [
+                      {
+                          value: "integration_gate",
+                          label: epicGateReady
+                              ? "Run the integration gate on the Epic branch"
+                              : "Retry the integration gate",
+                      },
+                  ]
                 : []),
             ...(hasChildren && (plan.attrs.status === "ready_for_work" || plan.attrs.status === "implemented")
                 ? [{ value: "done_enough", label: `Mark ${sequence ? "Sequence" : "Epic"} done enough for now` }]
@@ -301,7 +322,7 @@ export async function handleEpicPlan({
 
         if (answer === "archive_epic") {
             const archived = await archiveEpicWithChildren({ projectRoot, plan, uiAPI });
-            if (archived) return "handled";
+            if (archived) return "archiving";
             continue;
         }
 
