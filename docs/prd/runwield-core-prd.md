@@ -502,10 +502,21 @@ checks or review, the temporary checkout initializes submodules recursively and 
 Missing branch requirements or failed checkout setup pause the gate without creating a repair child. A pass
 marks the Epic reviewed for that commit. Integration review treats confirmed child deviations as user-approved
 replacements: a gap caused only by a deviation is not a finding. It names each affected Epic outcome and source child
-in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings. Findings go
-to an Epic report and become a draft repair child that the user reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
-implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
-an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
+in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings.
+
+The gate keeps a persistent Review Issue Ledger with stable finding IDs. Its first tracked review checks the whole
+Epic; later reviews confirm or reject open IDs and check only changes since the last checked commit for regressions.
+Reports and repair children retain those IDs and rejection reasons. Before the third review, findings create a draft
+repair child that the user reviews like any child. From the third review onward, RunWield asks the user to plan another
+repair, review the whole Epic in Code Review, or stop. Code Review takeover requires passing project checks. Approval
+records the user's decision, not AI approval; open AI findings remain in the ledger. Code Review change requests create
+a repair child without another limit prompt. An unanswered prompt pauses with the report and ledger saved. Existing
+Epics without saved review state count their earlier integration repair children toward the limit; their first tracked
+review still checks the whole Epic to establish the ledger.
+
+A later commit on the Epic branch returns the Epic to implemented. The ledger and round count persist, and the next
+review verifies findings and the new changes. The user merges the reviewed Epic branch or opens a pull request. Child
+manual checks are collected in an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
 
 **Requirement: Hold and resume.** **On hold** means paused and resumable. A held Plan keeps its previous stage and an
 optional reason. **Resume from hold** checks for relevant changes or missing work, then resumes, warns, or offers
@@ -564,8 +575,16 @@ siblings active. Listings show held work separately from active and finished wor
   and setup completes before checks or review. Setup failure pauses the gate and removes the temporary checkout.
 - Given different Epic requirements in the primary checkout and checked branch, review uses the checked branch document.
   If that document is missing, the gate pauses instead of using the primary copy.
-- Given gate findings, the Epic report lists them and a draft repair child opens in Planner; its delivery runs the gate
-  again.
+- Given gate findings before the third review, the report and draft repair child list stable IDs; delivery runs a
+  verify-only review that confirms or rejects those IDs and checks the repair delta for regressions.
+- Given a verify result that omits an open ID, the gate requests a verdict on that ID instead of accepting the result.
+- Given findings at or after the third review, no child is created before the user chooses. Another repair creates one
+  child; stop or no answer pauses with the report and ledger saved.
+- Given passing checks at the review limit, the user can approve the whole Epic in Code Review. The Epic becomes
+  reviewed with human takeover evidence, not AI approval. Failing checks exclude that choice.
+- Given Code Review changes at any round, a repair child carries them without another limit prompt.
+- Given an Epic with two earlier integration repair children and no saved review state, its first tracked full review
+  counts as round three and findings require a user decision.
 - Given Planner moves scope into an approved, unstarted sibling, the sibling returns to draft with the change.
 - Given a child review with Integration Notes, the notes appear in the execution checkout's Epic subsection, travel
   with child delivery, and reach the branch-head integration review; the primary copy is unchanged.
