@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "fcb85ab0-8d6a-4261-b664-75bb0c48aa04"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "5d5dbde5-c78a-4cb6-8f1d-47c9fb043752"
 ---
-
 # Bounded Epic Integration Gate reviews
 
 ## Summary
