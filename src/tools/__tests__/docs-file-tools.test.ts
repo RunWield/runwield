@@ -10,26 +10,53 @@ import { test } from "node:test";
 import { match as assertMatch, doesNotMatch as assertNotMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
+import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { TextContent, TSchema } from "@earendil-works/pi-ai";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../docs-file-tools.js";
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} tool
- * @param {unknown} params
- * @returns {Promise<any>}
- */
-async function executeTool(tool, params) {
-    const execute =
-        /** @type {(id: string, params: unknown, signal: AbortSignal, onUpdate: () => void, ctx: object) => Promise<any>} */
-        (tool.execute);
-    return await execute("docs-tool-call-1", params, new AbortController().signal, () => {}, {});
+type DocsTool = ReturnType<typeof createWriteDocsToolDefinition>;
+
+interface FixtureDocsParams {
+    path: string;
+    content?: string;
+    oldText?: string;
+    newText?: string;
 }
 
-/**
- * @param {unknown} result
- * @returns {string}
- */
-function toolText(result) {
-    const typed = /** @type {{ content?: Array<{ text?: string }> }} */ (result);
+interface FixtureContentPart extends Partial<Omit<TextContent, "type">> {
+    type?: string;
+}
+
+interface FixtureDocsResult {
+    content?: FixtureContentPart[];
+    isError?: boolean;
+}
+
+interface FixtureEditSchema {
+    properties: Record<"path" | "oldText" | "newText", TSchema>;
+}
+
+type FixtureExecute = (
+    id: string,
+    params: FixtureDocsParams,
+    signal: AbortSignal,
+    onUpdate: () => void,
+    ctx: ExtensionToolContext,
+) => Promise<FixtureDocsResult>;
+
+async function executeTool(tool: DocsTool, params: FixtureDocsParams) {
+    const execute = tool.execute as FixtureExecute;
+    return await execute(
+        "docs-tool-call-1",
+        params,
+        new AbortController().signal,
+        () => {},
+        {} as ExtensionToolContext,
+    );
+}
+
+function toolText(result: FixtureDocsResult) {
+    const typed = result;
     return (typed.content || []).map((item) => item.text || "").join("\n");
 }
 
@@ -50,7 +77,7 @@ test("edit_docs exposes Markdown-only single-edit metadata", () => {
     assertEquals(typeof tool.execute, "function");
     assertEquals(typeof tool.parameters, "object");
 
-    const properties = /** @type {{ properties: Record<string, unknown> }} */ (tool.parameters).properties;
+    const properties = (tool.parameters as FixtureEditSchema).properties;
     assertEquals(Object.keys(properties), ["path", "oldText", "newText"]);
 });
 
@@ -61,12 +88,15 @@ test("edit_docs reports a failed match without dumping the document", async () =
         const originalContent = "# Guide\n\nUnrelated document contents.\n";
         await fsWriteFile(filePath, originalContent);
         const tool = createEditDocsToolDefinition(dir);
-        const error = await assertRejects(() =>
-            executeTool(tool, {
-                path: "guide.md",
-                oldText: "Absent section",
-                newText: "Replacement section",
-            }), Error);
+        const error = await assertRejects(
+            () =>
+                executeTool(tool, {
+                    path: "guide.md",
+                    oldText: "Absent section",
+                    newText: "Replacement section",
+                }),
+            Error,
+        );
         assertMatch(error.message, /not find|not found|match/i);
         assertNotMatch(error.message, /Unrelated document contents|File exists on disk/);
         assertEquals(await fsReadFile(filePath, "utf8"), originalContent);
@@ -167,7 +197,7 @@ test("write_docs rejects non-.md suffixes before creating files", async () => {
             try {
                 await fsStat(join(dir, path));
             } catch (error) {
-                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) exists = false;
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") exists = false;
                 else throw error;
             }
             assertEquals(exists, false, `${path} should not be created`);

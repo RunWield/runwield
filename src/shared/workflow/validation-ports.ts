@@ -183,7 +183,7 @@ export type IndependentRepairTurnRequest = {
  * types exactly once.
  */
 /** Which reviewer prompt runs: a Plan's discovery or verification round, or the Epic integration gate. */
-export type ReviewerRoundMode = "discovery" | "verify" | "integration";
+export type ReviewerRoundMode = "discovery" | "verify" | "integration" | "integration_verify";
 
 export type IsolatedAgentSessionRequest =
     | {
