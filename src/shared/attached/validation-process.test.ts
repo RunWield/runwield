@@ -30,7 +30,10 @@ test("fresh CLI processes restore the same validation handoff and replay complet
         assert(first.result.ok && first.result.workflow.nextAction.kind === "validation");
         const replay = await spawnAttachedCli("start_validation", fixture.root, start);
         assertEquals(replay.result, first.result);
-        const status = await spawnAttachedCli("status", fixture.root, { workflowId: workflow.workflowId });
+        const status = await spawnAttachedCli("status", fixture.root, {
+            workflowId: workflow.workflowId,
+            evidence: EVIDENCE,
+        });
         assert(status.result.ok);
         assertEquals(status.result, compactStatus(first.result, null));
         assertEquals(await fixture.ciCount(), 1);

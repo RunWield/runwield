@@ -12,7 +12,7 @@ import {
     listTransitionRecoveryRecords,
 } from "../workflow/state-transition.ts";
 import { makeValidationProjectRoot } from "../workflow/validation-test-helpers.js";
-import { readRecordBytes, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
+import { EVIDENCE, readRecordBytes, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { completionInput, executionInput, readyPlan } from "./execution-test-fixture.ts";
 import { type AttachedWorkflowRecord, loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 
@@ -26,7 +26,7 @@ for (const consent of ["proceed", "decline"] as const) {
             assertEquals(question.workflow.state, "awaiting_consent");
             assertEquals(question.workflow.execution, null);
             assertStringIncludes(question.workflow.nextAction.disclosure, "edits current files directly");
-            const fresh = await spawnAttachedCli("status", root, { workflowId: ready.workflowId });
+            const fresh = await spawnAttachedCli("status", root, { workflowId: ready.workflowId, evidence: EVIDENCE });
             assert(fresh.result.ok);
             assertEquals(fresh.result, compactStatus(question, null));
             const wrong = await runOperation(
