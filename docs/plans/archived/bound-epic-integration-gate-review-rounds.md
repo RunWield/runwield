@@ -84,10 +84,10 @@ decides. The Integration Gate uses none of this.
 
 ### PRD
 
-- [Epic decomposition and hold](../prd/runwield-core-prd.md#epic-decomposition-and-hold) owns the changed requirement
+- [Epic decomposition and hold](../../prd/runwield-core-prd.md#epic-decomposition-and-hold) owns the changed requirement
   **An Epic finishes through its integration gate** and the scenario "Given gate findings, the Epic report lists them
   and a draft repair child opens in Planner; its delivery runs the gate again."
-- [Semantic review and repair](../prd/runwield-core-prd.md#semantic-review-and-repair) owns the principles this Plan
+- [Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair) owns the principles this Plan
   applies to the gate: **Distinguish repair claims from confirmed fixes** and **Hand the decision to the user after
   automatic rounds** (three automatic rounds).
 - Behavior that stays the same: the gate checks the exact branch head, runs project checks, uses the Epic document from

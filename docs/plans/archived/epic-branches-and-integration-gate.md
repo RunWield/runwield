@@ -19,14 +19,16 @@ affectedPaths:
     - "docs/plan-lifecycle.md"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
 executionAgent: "engineer"
 createdAt: "2026-09-21T17:14:01.408Z"
-status: "draft"
 origin: "internal"
 planId: "5a7fd331-f2b4-4b1b-9b79-324a3b55ecb1"
+status: "user_verified"
+userVerifiedAt: "2026-10-26T19:13:40.038Z"
+userVerificationNote: "Owner confirmed this Plan was delivered. Implementation and tests were published in commit 667d10be5 (Run every Epic on its own branch with an integration gate, 2026-10-01), which is contained in main. The draft status was stale."
+archivedAt: "2026-10-26T19:53:33.720Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/epic-branches-and-integration-gate.md"
 ---
 
 # Epic Branches and Integration Gate

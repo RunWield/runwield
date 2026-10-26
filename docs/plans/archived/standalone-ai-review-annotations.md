@@ -65,7 +65,7 @@ What is missing:
 - Validation-time AI review (Semantic Review, `review_complete`) cannot be reused. Its findings have only free-text
   `evidence`, and its prompt needs an approved Plan and the Review Issue Ledger.
 
-Owning capability: [Core Standalone code review](../prd/runwield-core-prd.md#standalone-code-review).
+Owning capability: [Core Standalone code review](../../prd/runwield-core-prd.md#standalone-code-review).
 
 - **Proposed addition:** a requirement "Draft annotations with AI review", with acceptance scenarios.
 - **Must survive:** the three review sources, Guided Review, Engineer chat, source-specific actions (Post comments,

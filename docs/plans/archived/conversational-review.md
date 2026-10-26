@@ -39,7 +39,7 @@ archivedFromPath: "docs/plans/conversational-review.md"
 ## Context
 
 **Two Plans, reviewed together and executed in order.** The owner asked for a Sequence after the
-[Conversational Review PRD](../prd/conversational-review-prd.md) settled the product decisions.
+[Core Plan review requirements](../../prd/runwield-core-prd.md#plan-review) settled the product decisions.
 
 Today every review chat message is a review decision. In Plan review, the Planner or Architect can only answer by
 republishing the Plan, and each message writes `status: feedback` to the Plan. In Code Review, each message records
@@ -49,10 +49,10 @@ Both chats become normal conversations. The Agent replies, and it changes the wo
 
 Owning capabilities:
 
-- [Core Plan review](../prd/runwield-core-prd.md#plan-review) and [Plan lifecycle](../prd/runwield-core-prd.md#plan-lifecycle)
-- [Core Code Review gate](../prd/runwield-core-prd.md#code-review-gate) and
-  [Semantic review and repair](../prd/runwield-core-prd.md#semantic-review-and-repair)
-- [Workspace Browser Plan review and workflow](../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow)
+- [Core Plan review](../../prd/runwield-core-prd.md#plan-review) and [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle)
+- [Core Code Review gate](../../prd/runwield-core-prd.md#code-review-gate) and
+  [Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair)
+- [Workspace Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow)
 
 ## Objective
 

@@ -18,10 +18,10 @@ origin: "internal"
 userVerifiedAt: "2026-10-26T14:04:49.829Z"
 userVerificationNote: "this was done by codex"
 workRecord:
-  status: "generated"
-  recordId: "b82a93f7-bb4a-44a6-a576-858b76666183"
-  path: "docs/work-records/2026-10-26-portable-bun-runtime-and-development-toolchain.md"
-  lastAttemptAt: "2026-10-26T14:05:08.047Z"
+    status: "generated"
+    recordId: "b82a93f7-bb4a-44a6-a576-858b76666183"
+    path: "docs/work-records/2026-10-26-portable-bun-runtime-and-development-toolchain.md"
+    lastAttemptAt: "2026-10-26T14:05:08.047Z"
 archivedAt: "2026-10-26T14:09:14.645Z"
 archivedFromStatus: "user_verified"
 archivedFromPath: "docs/plans/runtime-migration.md"
@@ -57,8 +57,8 @@ production and tests subsystem by subsystem; qualify and switch distribution. Th
 ## Objective and scope
 
 Preserve current Session identity, files, recovery, writer exclusion, CLI/TUI behavior and Workspace journeys while
-replacing Deno-specific runtime dependencies. Follow [ADR-015](../adr/015-file-authoritative-session-bundles.md) and the
-Core [execution, validation and recovery requirements](../prd/runwield-core-prd.md#execution-validation-and-recovery).
+replacing Deno-specific runtime dependencies. Follow [ADR-015](../../adr/015-file-authoritative-session-bundles.md) and the
+Core [execution, validation and recovery requirements](../../prd/runwield-core-prd.md#execution-validation-and-recovery).
 No current PRD requirement is added or removed by the first portable storage slice.
 
 Bun is the preferred target; Node + pnpm remains the fallback if compatibility evidence warrants it. No target-choice

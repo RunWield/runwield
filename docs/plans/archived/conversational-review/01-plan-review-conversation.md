@@ -52,13 +52,13 @@ archivedFromPath: "docs/plans/conversational-review/01-plan-review-conversation.
 **Every Plan review chat message is a "deny" decision today.** The owner wants a normal conversation with Planner or
 Architect. The Agent replies in chat and changes the Plan only when needed.
 
-Source: [Conversational Review PRD](../../prd/conversational-review-prd.md), sections "Plan and Epic review
-conversation" and "Plan Status without `feedback`". Owning capabilities:
+Source: [Core Plan review](../../../prd/runwield-core-prd.md#plan-review) and
+[Plan lifecycle](../../../prd/runwield-core-prd.md#plan-lifecycle). Owning capabilities:
 
-- [Core Plan review](../../prd/runwield-core-prd.md#plan-review): changed. Chat turns are not decisions. A reply-only
+- [Core Plan review](../../../prd/runwield-core-prd.md#plan-review): changed. Chat turns are not decisions. A reply-only
   turn keeps the review open. "Send Annotations" stops being a review action.
-- [Core Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle): changed. `feedback` is removed.
-- [Workspace Browser Plan review](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): changed.
+- [Core Plan lifecycle](../../../prd/runwield-core-prd.md#plan-lifecycle): changed. `feedback` is removed.
+- [Workspace Browser Plan review](../../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): changed.
   "Chat in the review" and "Answer Plan Questions in place" get the review queue, Submit answer, and the approval
   warning.
 

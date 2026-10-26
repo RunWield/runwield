@@ -55,14 +55,14 @@ the following:
 - runs a repair;
 - runs CI again before the review reopens.
 
-Source: [Conversational Review PRD](../../prd/conversational-review-prd.md), section "Code Review conversation".
+Source: [Core Code Review gate](../../../prd/runwield-core-prd.md#code-review-gate).
 Owning capabilities:
 
-- [Core Code Review gate](../../prd/runwield-core-prd.md#code-review-gate): changed. A chat turn is a repair only
+- [Core Code Review gate](../../../prd/runwield-core-prd.md#code-review-gate): changed. A chat turn is a repair only
   when the reviewed patch changed.
-- [Core Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair): changed. "In Code
+- [Core Semantic review and repair](../../../prd/runwield-core-prd.md#semantic-review-and-repair): changed. "In Code
   Review, feedback starts repair and checks" applies only to turns that change the patch.
-- [Workspace Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow):
+- [Workspace Browser Plan review and workflow](../../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow):
   changed. Code Review chat uses the review queue from slice 1.
 
 **Behavior that must survive:**
