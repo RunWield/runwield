@@ -10,17 +10,27 @@ import {
     recordActiveAgent,
     recordManualModelSelection,
     resolveResumeAgentName,
+    type ModelChangeEntry,
+    type PersistedActiveAgentState,
+    type PersistedModelState,
+    type SessionEntryReader,
 } from "./active-agent-session.js";
 
-/** @param {Array<Record<string, unknown>>} entries */
-function makeSessionManager(entries = []) {
-    return /** @type {import('@earendil-works/pi-coding-agent').SessionManager} */ (/** @type {unknown} */ ({
-        getBranch: () => entries,
-        /** @param {string} customType @param {unknown} data */
-        appendCustomEntry: (customType, data) => {
+type FixtureEntryData = Partial<PersistedActiveAgentState & PersistedModelState>;
+type SessionBranch = ReturnType<NonNullable<SessionEntryReader["getBranch"]>>;
+
+interface FixtureSessionEntry extends ModelChangeEntry {
+    customType?: string;
+    data?: FixtureEntryData;
+}
+
+function makeSessionManager(entries: FixtureSessionEntry[] = []) {
+    return {
+        getBranch: (): SessionBranch => entries,
+        appendCustomEntry: (customType: string, data: FixtureEntryData) => {
             entries.push({ type: "custom", customType, data });
         },
-    }));
+    } as SessionManager;
 }
 
 test("recordActiveAgent stores and reads the latest active root agent", () => {
@@ -33,8 +43,7 @@ test("recordActiveAgent stores and reads the latest active root agent", () => {
 });
 
 test("recordActiveAgent persists display name with canonical root agent", () => {
-    /** @type {Array<Record<string, unknown>>} */
-    const entries = [];
+    const entries: FixtureSessionEntry[] = [];
     const sessionManager = makeSessionManager(entries);
 
     recordActiveAgent(sessionManager, "project-operator", "Project Operator");
@@ -50,8 +59,7 @@ test("recordActiveAgent persists display name with canonical root agent", () => 
 });
 
 test("recordActiveAgent skips duplicate adjacent markers", () => {
-    /** @type {Array<Record<string, unknown>>} */
-    const entries = [];
+    const entries: FixtureSessionEntry[] = [];
     const sessionManager = makeSessionManager(entries);
 
     recordActiveAgent(sessionManager, AGENTS.PLANNER);
