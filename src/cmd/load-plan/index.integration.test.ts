@@ -1075,6 +1075,66 @@ test("load-plan distinguishes validated Epic children from pending publication",
     });
 });
 
+for (const ordinaryChildPending of [false, true]) {
+    test(`load-plan ${ordinaryChildPending ? "withholds" : "offers"} integration retry with ${ordinaryChildPending ? "undelivered scope" : "only an open repair draft"}`, async () => {
+        await withRuntimeCommandFixture("runwield-epic-retry-", async () => {
+            const projectRoot = await recoverableArchiveFixture.checkout({ prefix: "runwield-epic-retry-git-" });
+            await writePlan(projectRoot, "epic", {
+                classification: "PROJECT",
+                status: "implemented",
+                targetBranch: "epic/epic",
+                epicIntegrationReport: "docs/plans/epic/integration-report.md",
+            });
+            await writePlan(projectRoot, "epic/01-delivered", {
+                parentPlan: "epic",
+                status: "verified",
+                order: 1,
+            });
+            await git(projectRoot, ["add", "docs/plans"]);
+            await git(projectRoot, ["commit", "-m", "Delivered Epic"]);
+            await git(projectRoot, ["branch", "epic/epic"]);
+            const repairName = "epic/02-repair-integration-findings";
+            await writePlan(projectRoot, repairName, {
+                parentPlan: "epic",
+                status: "draft",
+                order: 2,
+                targetBranch: "epic/epic",
+            });
+            if (ordinaryChildPending) {
+                await writePlan(projectRoot, "epic/03-pending", {
+                    parentPlan: "epic",
+                    status: "draft",
+                    order: 3,
+                });
+            }
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["cancel"]);
+            try {
+                await runLoadPlanCommand(["epic"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                assertEquals(
+                    ui.promptOptions.flat().filter((option) => option.value === "integration_gate"),
+                    ordinaryChildPending ? [] : [{ value: "integration_gate", label: "Retry the integration gate" }],
+                );
+                if (!ordinaryChildPending) {
+                    assertStringIncludes(ui.messages.join("\n"), repairName);
+                    assertStringIncludes(ui.messages.join("\n"), "docs/plans/epic/integration-report.md");
+                    assertStringIncludes(
+                        ui.messages.join("\n"),
+                        "Retry the integration gate or plan the repair child.",
+                    );
+                }
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
 test("Approve for Later creates no execution segment", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });

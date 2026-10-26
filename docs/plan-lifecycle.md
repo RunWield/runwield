@@ -304,8 +304,13 @@ runs the project's checks, then an integration review of the whole Epic diff fro
 then Code Review per the `codereview` setting. A pass records `epic_integration_passed`. Findings write
 `docs/plans/<epic>/integration-report.md`, record `epic_integration_failed`, and add a draft repair child under the Epic
 that Planner starts from. The repair child is reviewed and run like any other child, and its delivery runs the gate
-again. The user can mark the Epic done enough at any point. RunWield never merges the Epic branch into the primary
-branch; the user merges it or opens a pull request. A later load verifies the checked Epic commit against its recorded
+again. When an implemented Epic has only unstarted gate repair drafts left, its load-plan menu offers **Retry the
+integration gate** and names the drafts and report. A passing retry records the Epic as reviewed and closes each repair
+draft through `manual_closed_without_verification`, with a reason that names the checked commit. It preserves the draft
+body and identity. New findings update the newest draft's checked commit and Findings section, preserving other content
+and metadata. A pause leaves drafts unchanged. Started repairs and other undelivered children block retry. The automatic
+gate still waits for repair delivery. The user can mark the Epic done enough at any point. RunWield never merges the
+Epic branch into the primary branch; the user merges it or opens a pull request. A later load verifies the checked Epic commit against its recorded
 final target before recording `epic_publication_confirmed`. Plan-only completion metadata does not invalidate the
 reviewed implementation.
 
