@@ -120,7 +120,8 @@ test("Stable releases validate on macOS before publishing the Homebrew tap", asy
     assertEquals(jobStart >= 0, true);
     assertStringIncludes(job, "runs-on: macos-15");
     assertStringIncludes(job, "needs.metadata.outputs.kind == 'stable'");
-    assertStringIncludes(job, "repository: gandazgul/homebrew-tap");
+    assertStringIncludes(job, "repository: RunWield/homebrew-tap");
+    assertStringIncludes(workflow, "gh api repos/RunWield/homebrew-tap --jq '.permissions.push' | grep -Fx true");
     assertStringIncludes(job, "token: ${{ secrets.HOMEBREW_TAP_TOKEN }}");
     assertStringIncludes(job, "HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}");
     assertEquals(dependencyTapIndex >= 0, true);
