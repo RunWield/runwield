@@ -611,7 +611,7 @@
     "src/ui/tui/remote-connection-view.test.ts",
     "src/ui/tui/runtime-adapter.test.js",
     "src/ui/tui/runtime-interaction-adapter.test.js",
-    "src/ui/tui/segment-aware-sync.test.js",
+    "src/ui/tui/segment-aware-sync.test.ts",
     "src/ui/tui/session-completion.test.ts",
     "src/ui/tui/session-replay.test.ts",
     "src/ui/tui/session-sidebar.test.ts",
