@@ -18,7 +18,7 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Review diffs do not depend on the user's Git settings

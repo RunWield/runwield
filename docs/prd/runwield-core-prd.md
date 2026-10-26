@@ -1019,12 +1019,14 @@ repair that weakens a test to resolve a finding is a repair-introduced regressio
 **Requirement: Review one proposed branch patch.** For Git execution, review sees the branch's proposed change relative
 to its recorded target branch: committed, staged, unstaged, and untracked work, with target-only changes excluded. The
 same patch supplies AI review, repair context, and Code Review, including after reload. A missing target, missing
-execution commit, or unrelated history is a recoverable comparison failure.
+execution commit, or unrelated history is a recoverable comparison failure. Review patches use one fixed format,
+independent of user Git settings for prefixes, colors, external diff programs, and relative paths.
 
 **Requirement: Read the change before deciding.** The Reviewer receives the approved Plan. Rounds one and two read the
 complete diff of every changed file; round two also verifies earlier findings. Round three onward reads the complete
 repair diff and assesses every open issue. An approval or rejection with unread parts returns those parts and the
-instructions to read them, in the same review.
+instructions to read them, in the same review. A non-empty patch with no readable file headers stops the review with a
+clear reason before a Reviewer runs; it does not count as an empty change and cannot receive approval.
 
 **Requirement: Distinguish repair claims from confirmed fixes.** Issue states are `new`, `fix claimed`,
 `fix confirmed`, and `fix rejected`. Each finding keeps its identity across rounds, with open and resolved items
@@ -1054,6 +1056,10 @@ post-validation context, once. Review quality is judged by useful convergence an
 **Acceptance scenarios:**
 
 - Given a missing Plan requirement, the finding stays visible through repair until the Reviewer confirms the fix.
+- Given user Git settings that change diff prefixes, colors, external diff output, or relative paths, review lists every
+  changed file with its repository path and requires reading it.
+- Given a non-empty review patch with no readable file headers, the review round stops with a clear reason and no
+  Reviewer approval is recorded.
 - Given an unread diff chunk, a verdict attempt returns its path and read command; the review continues and completes
   after every required chunk is read.
 - Given a round-one rejection, round two checks the whole implementation and earlier findings; later rounds check open
