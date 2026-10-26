@@ -479,3 +479,16 @@ and a later retry at prerequisite setup when `dnf install` exceeded 120 seconds.
 Direct SSH to `sct` also timed out, and the laptop's configured DNS resolver stopped answering. GitHub API and artifact checks used an alternate DNS lookup with normal TLS verification, without changing
 system DNS settings. The earlier successful Fedora checks above and the current hosted Ubuntu checks remain distinct
 pieces of evidence. Full managed CI and child 13 real-provider journeys remain separate from this package qualification.
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/11-package-and-qualify-remote-ssh-support" -->
+
+## Package the Remote Runtime for Released Builds
+
+Manual verification steps for remote-ssh-development/11-package-and-qualify-remote-ssh-support
+
+- [ ] On a clean Fedora x64 server, connect with the release launcher. Confirm it opens the TUI and does not require `cymbal` or `ketch` on the server `PATH`.
+- [ ] Disconnect, block `github.com` on the laptop, and reconnect. Confirm the connection succeeds.
+- [ ] Remove `sshfs` from the server and connect. Confirm the launcher stops before transfer and shows `sudo dnf install sshfs fuse3`.
+- [ ] Connect to a macOS host over SSH, if available. Confirm the launcher refuses the host before any download.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/11-package-and-qualify-remote-ssh-support" -->
