@@ -46,7 +46,7 @@ Working an Epic in slices is harder than it should be. Three problems show up on
   later child completes read as defects.
 
 This Plan was the Epic assembly child of
-[Plan Packages and Independent Validation](plan-packages-and-independent-validation.md). The owner split it out to ship
+Plan Packages and Independent Validation (removed on 2026-10-26). The owner split it out to ship
 first, so the Plan Packages Epic itself runs on the new flow. It uses today's machinery only: no Plan Packages, no
 `validation.md`, no Validator. Plan Packages later upgrades the integration gate's checks to Validator running the Epic
 contract.
@@ -62,16 +62,16 @@ Owner decisions:
   `validated`. The gate also respects the `codereview` setting.
 - The Epic stops at `validated`. RunWield does not merge the Epic into the primary branch; the user merges or opens a
   pull request. Automatic publication remains in
-  [Epic Branch Publication Workflow](epic-branch-publication-workflow.md).
+  [Epic Branch Publication Workflow](../epic-branch-publication-workflow.md).
 - Integration findings go through ordinary planning: Planner starts with the gate's report, the user reviews the repair
   child like any Plan, it runs against the Epic branch, and its delivery reruns the gate. The loop is unbounded; the
   user stops it by not engaging with Planner.
 
 Prompt changes for flexible sibling drafts, Semantic Reviewer's Epic child mode, and removing "unfinished" noise are a
 separate change, settled after this one. Isolated Planner worktrees remain in
-[Isolate Planning and Reuse Its Worktrees](isolate-planning-and-reuse-worktrees.md).
+[Isolate Planning and Reuse Its Worktrees](../isolate-planning-and-reuse-worktrees.md).
 
-Owning Core PRD capability: [Epic decomposition and hold](../prd/runwield-core-prd.md#epic-decomposition-and-hold).
+Owning Core PRD capability: [Epic decomposition and hold](../../prd/runwield-core-prd.md#epic-decomposition-and-hold).
 Change default child delivery to the Epic branch, replace status-only Epic completion with delivered containment plus
 the integration gate, and add the integration-repair loop. Preserve explicit child target overrides, hold, and
 done-enough.

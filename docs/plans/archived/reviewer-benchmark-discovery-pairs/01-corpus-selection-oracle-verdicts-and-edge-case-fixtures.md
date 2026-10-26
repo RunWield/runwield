@@ -38,7 +38,7 @@ archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs/01-corpus-selec
 
 ## Context
 
-First of three Plans in [Reviewer Benchmark: All Discovery Pairs](../../reviewer-benchmark-discovery-pairs.md). Read the
+First of three Plans in [Reviewer Benchmark: All Discovery Pairs](../reviewer-benchmark-discovery-pairs.md). Read the
 container for the owner's decisions.
 
 This Plan removes the smoke-only limits from the runner, changes scoring so that a bad fixture leaves the scores

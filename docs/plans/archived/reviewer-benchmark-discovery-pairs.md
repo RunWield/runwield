@@ -24,6 +24,9 @@ workRecord:
     path: "docs/work-records/2026-10-26-full-discovery-corpus-and-case-level-benchmark-adjudication.md"
     lastAttemptAt: "2026-10-26T02:46:09.027Z"
 status: "verified"
+archivedAt: "2026-10-26T23:51:08.152Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs.md"
 ---
 
 # Reviewer Benchmark: All Discovery Pairs
@@ -51,11 +54,11 @@ The owner decided on 2026-10-24:
 
 This work changes these capabilities in `docs/prd/agent-behavior-evaluation-prd.md`:
 
-- [Semantic Reviewer](../prd/agent-behavior-evaluation-prd.md#semantic-reviewer) — the current requirement grows from
+- [Semantic Reviewer](../../prd/agent-behavior-evaluation-prd.md#semantic-reviewer) — the current requirement grows from
   the smoke corpus to every admitted discovery package. The `novel_valid` acceptance scenario changes from "freeze
   the run" to "exclude the case".
-- [Repeatable scenario runs](../prd/agent-behavior-evaluation-prd.md#repeatable-scenario-runs) and
-  [Reports and comparison](../prd/agent-behavior-evaluation-prd.md#reports-and-comparison) — unchanged in kind: one
+- [Repeatable scenario runs](../../prd/agent-behavior-evaluation-prd.md#repeatable-scenario-runs) and
+  [Reports and comparison](../../prd/agent-behavior-evaluation-prd.md#reports-and-comparison) — unchanged in kind: one
   configuration, one trial, local report.
 
 ## Objective
@@ -90,11 +93,11 @@ is `novel_valid`. Labels cover only the Reviewer's findings; there is no way to 
 
 ## Sequence
 
-| Order | Plan                                                                                                                                                                    | Delivers                                                                                                                                        |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | [01-corpus-selection-oracle-verdicts-and-edge-case-fixtures](archived/reviewer-benchmark-discovery-pairs/01-corpus-selection-oracle-verdicts-and-edge-case-fixtures.md) | Corpus-wide selection, coverage group in `scenario.yaml`, oracle verdicts and per-case exclusion, adjudication worksheet; RV-D01, D02, D03, D06 |
-| 2     | [02-lifecycle-process-and-publication-fixtures](archived/reviewer-benchmark-discovery-pairs/02-lifecycle-process-and-publication-fixtures.md)                           | RV-D07, D08, D09, D10                                                                                                                           |
-| 3     | [03-context-fixtures-and-full-discovery-run](reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run.md)                                          | RV-D11, D14, D15, D16; the paid run of 33 cases; the committed report                                                                           |
+| Order | Plan                                                                                                                                                           | Delivers                                                                                                                                        |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | [01-corpus-selection-oracle-verdicts-and-edge-case-fixtures](reviewer-benchmark-discovery-pairs/01-corpus-selection-oracle-verdicts-and-edge-case-fixtures.md) | Corpus-wide selection, coverage group in `scenario.yaml`, oracle verdicts and per-case exclusion, adjudication worksheet; RV-D01, D02, D03, D06 |
+| 2     | [02-lifecycle-process-and-publication-fixtures](reviewer-benchmark-discovery-pairs/02-lifecycle-process-and-publication-fixtures.md)                           | RV-D07, D08, D09, D10                                                                                                                           |
+| 3     | [03-context-fixtures-and-full-discovery-run](reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run.md)                                 | RV-D11, D14, D15, D16; the paid run of 33 cases; the committed report                                                                           |
 
 ## Expected Change Surface
 

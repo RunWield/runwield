@@ -24,6 +24,9 @@ workRecord:
     path: "docs/work-records/2026-10-21-acp-mid-turn-steering-extension.md"
     lastAttemptAt: "2026-10-21T18:10:47.955Z"
 status: "verified"
+archivedAt: "2026-10-26T23:50:37.727Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/acp-mid-turn-steering-extension.md"
 ---
 
 # ACP Mid-Turn Steering Extension
@@ -48,7 +51,7 @@ The user reported the symptom through OpenAB in Discord: a correction sent durin
 the next message until the current turn ends. A feature request has been sent to the OpenAB team. This Plan delivers the
 RunWield side so OpenAB, or any client using the same extension, can steer RunWield.
 
-**Owning PRD:** [ACP Protocol PRD — Protocol negotiation and interactions](../prd/runwield-acp-protocol-prd.md#protocol-negotiation-and-interactions).
+**Owning PRD:** [ACP Protocol PRD — Protocol negotiation and interactions](../../prd/runwield-acp-protocol-prd.md#protocol-negotiation-and-interactions).
 
 - **Proposed addition:** a requirement and acceptance scenarios for the `_session/steering` extension.
 - **Must survive:** "If work is currently running, the client reports that state without losing the user's input."
