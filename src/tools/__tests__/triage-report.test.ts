@@ -2,8 +2,22 @@ import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
-import { createTriageReportTool } from "../triage-report.ts";
+import type { Static, TextContent } from "@earendil-works/pi-ai";
+import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.js";
+import { createTriageReportTool, type TriageReportDetails } from "../triage-report.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
+
+type TriageTool = ReturnType<typeof createTriageReportTool>;
+type TriageParameters = Static<TriageTool["parameters"]>;
+type FixtureTriageEvent = Partial<Pick<RuntimeSystemStatusEvent, "message">>;
+
+interface FixtureTriageResult {
+    content: TextContent[];
+    details: TriageReportDetails;
+    terminate: boolean;
+}
+
+type FixtureExecute = (toolCallId: string, params: TriageParameters) => Promise<FixtureTriageResult>;
 
 const TRIAGE_PROJECT_ROOT = makeToolProjectFixture("runwield-triage-report-");
 
@@ -36,20 +50,19 @@ test("createTriageReportTool instances are independent", () => {
 
 test("triage_report execute returns canonical routingIntent details for INQUIRY", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        /** @type {any[]} */
-        const events = [];
+        const events: FixtureTriageEvent[] = [];
         const hostedSession = new HostedSession({ id: "triage-inquiry", cwd: projectRoot });
-        hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+        hostedSession.setEventSink({ emit: (event: FixtureTriageEvent) => events.push(event) });
         const tool = createTriageReportTool({ hostedSession });
 
-        const params = {
-            routingIntent: /** @type {const} */ ("INQUIRY"),
-            complexity: /** @type {const} */ ("LOW"),
+        const params: TriageParameters = {
+            routingIntent: "INQUIRY",
+            complexity: "LOW",
             summary: "explain routing",
             sessionName: "routing overview",
         };
 
-        const result = await /** @type {any} */ (tool.execute)("call-1", params);
+        const result = await (tool.execute as FixtureExecute)("call-1", params);
 
         assertEquals(result.terminate, true);
         assertEquals(result.details, params);
@@ -69,7 +82,7 @@ test("triage_report execute records workflow context when a HostedSession is ava
     const hostedSession = new HostedSession({ id: "triage-context", cwd: TRIAGE_PROJECT_ROOT });
     const tool = createTriageReportTool({ hostedSession });
 
-    await /** @type {any} */ (tool.execute)("call-1", {
+    await (tool.execute as FixtureExecute)("call-1", {
         routingIntent: "QUICK_FIX",
         complexity: "LOW",
         summary: "fix typo",
@@ -85,20 +98,19 @@ test("triage_report execute records workflow context when a HostedSession is ava
 
 test("triage_report accepts documentation Work Kind only for planned changes", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        /** @type {any[]} */
-        const events = [];
+        const events: FixtureTriageEvent[] = [];
         const hostedSession = new HostedSession({ id: "triage-documentation", cwd: projectRoot });
-        hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+        hostedSession.setEventSink({ emit: (event: FixtureTriageEvent) => events.push(event) });
         const tool = createTriageReportTool({ hostedSession });
 
-        const planned = await /** @type {any} */ (tool.execute)("call-1", {
+        const planned = await (tool.execute as FixtureExecute)("call-1", {
             routingIntent: "PLANNED_CHANGE",
             workKind: "DOCUMENTATION",
             complexity: "MEDIUM",
             summary: "refresh public docs",
             sessionName: "refresh docs",
         });
-        const operation = await /** @type {any} */ (tool.execute)("call-2", {
+        const operation = await (tool.execute as FixtureExecute)("call-2", {
             routingIntent: "OPERATION",
             workKind: "DOCUMENTATION",
             complexity: "LOW",
@@ -122,19 +134,19 @@ test("triage_report accepts documentation Work Kind only for planned changes", a
 test("triage_report execute preserves plan classification only for PLANNED_CHANGE and PROJECT", async () => {
     const tool = createTriageReportTool();
 
-    const feature = await /** @type {any} */ (tool.execute)("call-1", {
+    const feature = await (tool.execute as FixtureExecute)("call-1", {
         routingIntent: "FEATURE",
         complexity: "MEDIUM",
         summary: "plan feature",
         sessionName: "plan feature",
     });
-    const operation = await /** @type {any} */ (tool.execute)("call-2", {
+    const operation = await (tool.execute as FixtureExecute)("call-2", {
         routingIntent: "OPERATION",
         complexity: "LOW",
         summary: "show status",
         sessionName: "show status",
     });
-    const quickFix = await /** @type {any} */ (tool.execute)("call-3", {
+    const quickFix = await (tool.execute as FixtureExecute)("call-3", {
         routingIntent: "QUICK_FIX",
         complexity: "LOW",
         summary: "fix typo",
@@ -152,13 +164,13 @@ test("triage_report execute preserves plan classification only for PLANNED_CHANG
 test("triage_report execute normalizes legacy classification params", async () => {
     const tool = createTriageReportTool();
 
-    const legacyFeature = await /** @type {any} */ (tool.execute)("call-0", {
+    const legacyFeature = await (tool.execute as FixtureExecute)("call-0", {
         classification: "FEATURE",
         complexity: "MEDIUM",
         summary: "legacy feature",
         sessionName: "legacy feature",
     });
-    const result = await /** @type {any} */ (tool.execute)("call-1", {
+    const result = await (tool.execute as FixtureExecute)("call-1", {
         classification: "PROJECT",
         complexity: "HIGH",
         summary: "legacy project",
@@ -174,13 +186,13 @@ test("triage_report execute normalizes legacy classification params", async () =
 test("triage_report execute sanitizes sessionName when provided and omits it when absent", async () => {
     const tool = createTriageReportTool();
 
-    const sanitized = await /** @type {any} */ (tool.execute)("call-1", {
+    const sanitized = await (tool.execute as FixtureExecute)("call-1", {
         routingIntent: "INQUIRY",
         complexity: "LOW",
         summary: "explain routing",
         sessionName: " explain\n\trouting\u0007 ",
     });
-    const omitted = await /** @type {any} */ (tool.execute)("call-2", {
+    const omitted = await (tool.execute as FixtureExecute)("call-2", {
         routingIntent: "INQUIRY",
         complexity: "LOW",
         summary: "explain routing",
@@ -195,7 +207,7 @@ test("triage_report execute rejects params without canonical or legacy intent", 
 
     await assertRejects(
         () =>
-            /** @type {any} */ (tool.execute)("call-1", {
+            (tool.execute as FixtureExecute)("call-1", {
                 complexity: "LOW",
                 summary: "missing intent",
             }),
