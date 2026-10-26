@@ -523,7 +523,7 @@
     "src/tools/create-image.test.ts",
     "src/tools/init-verification-command.test.ts",
     "src/tools/plan-safe-file-tools-portable.test.ts",
-    "src/tools/plan-safe-file-tools.test.js",
+    "src/tools/plan-safe-file-tools.test.ts",
     "src/tools/plan-written.test.ts",
     "src/tools/qa-checklist-generated.test.ts",
     "src/tools/see-image.test.js",
