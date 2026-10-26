@@ -1,5 +1,6 @@
 import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
+import type { WorkflowMetricCategory, WorkflowMetricRecord } from "./metrics.js";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -16,6 +17,29 @@ import {
     recordWorkflowMetric,
     sanitizeMetricDetails,
 } from "./metrics.js";
+
+interface SanitizedNestedDetails {
+    diffText: string;
+    value: string;
+}
+
+type SanitizedSensitiveDetails = {
+    prompt: string;
+    token: string;
+    cwd: string;
+    nested: SanitizedNestedDetails;
+};
+
+type SanitizedPathDetails = {
+    path: string;
+    file: string;
+    affectedPaths: string[];
+};
+
+type SanitizedPlainDetails = {
+    ok: boolean;
+    items: string[];
+};
 
 test("isWorkflowMetricsEnabled honors boolean and object opt-in settings", () => {
     assertEquals(isWorkflowMetricsEnabled(undefined), false);
@@ -57,7 +81,7 @@ test("recordWorkflowMetric writes worktree events under the primary project", as
             const metrics = contents
                 .trim()
                 .split("\n")
-                .map((line) => JSON.parse(line));
+                .map((line): WorkflowMetricRecord => JSON.parse(line));
             assertEquals(metrics.length, 1);
             assertEquals(metrics[0].category, "execution");
         } finally {
@@ -117,14 +141,12 @@ test("recordWorkflowMetric swallows write failures", async () => {
 
 test("sanitizeMetricDetails redacts sensitive keys, paths, and long strings", () => {
     const long = "x".repeat(400);
-    const sanitized = /** @type {any} */ (
-        sanitizeMetricDetails({
-            prompt: "secret prompt",
-            token: "abc",
-            cwd: "/Users/example/project",
-            nested: { diffText: "patch", value: long },
-        })
-    );
+    const sanitized = sanitizeMetricDetails({
+        prompt: "secret prompt",
+        token: "abc",
+        cwd: "/Users/example/project",
+        nested: { diffText: "patch", value: long },
+    }) as SanitizedSensitiveDetails;
     assertEquals(sanitized.prompt, "[redacted]");
     assertEquals(sanitized.token, "[redacted]");
     assertEquals(sanitized.cwd, "[path-redacted]");
@@ -133,27 +155,23 @@ test("sanitizeMetricDetails redacts sensitive keys, paths, and long strings", ()
 });
 
 test("sanitizeMetricDetails redacts generic relative paths but preserves affectedPaths metadata", () => {
-    const sanitized = /** @type {any} */ (
-        sanitizeMetricDetails({
-            path: "src/private/file.js",
-            file: "docs/plans/secret.md",
-            affectedPaths: ["src/visible.js", "docs/visible.md", "/Users/example/project/secret.js"],
-        })
-    );
+    const sanitized = sanitizeMetricDetails({
+        path: "src/private/file.js",
+        file: "docs/plans/secret.md",
+        affectedPaths: ["src/visible.js", "docs/visible.md", "/Users/example/project/secret.js"],
+    }) as SanitizedPathDetails;
     assertEquals(sanitized.path, "[path-redacted]");
     assertEquals(sanitized.file, "[path-redacted]");
     assertEquals(sanitized.affectedPaths, ["src/visible.js", "docs/visible.md", "[path-redacted]"]);
 });
 
 test("sanitizeMetricDetails omits non-plain objects instead of stringifying them", () => {
-    const sanitized = /** @type {any} */ (
-        sanitizeMetricDetails({
-            ok: true,
-            error: new Error("/Users/example/project/secret.js failed with private output"),
-            url: new URL("file:///Users/example/project/secret.js"),
-            items: ["safe", new Error("unsafe output")],
-        })
-    );
+    const sanitized = sanitizeMetricDetails({
+        ok: true,
+        error: new Error("/Users/example/project/secret.js failed with private output"),
+        url: new URL("file:///Users/example/project/secret.js"),
+        items: ["safe", new Error("unsafe output")],
+    }) as SanitizedPlainDetails;
     assertEquals(sanitized.ok, true);
     assertEquals("error" in sanitized, false);
     assertEquals("url" in sanitized, false);
@@ -162,7 +180,7 @@ test("sanitizeMetricDetails omits non-plain objects instead of stringifying them
 
 test("recordWorkflowMetric accepts each workflow metric category", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        const categories = [
+        const categories: WorkflowMetricCategory[] = [
             "routing",
             "planning",
             "execution",
@@ -173,7 +191,7 @@ test("recordWorkflowMetric accepts each workflow metric category", async () => {
         ];
         for (const category of categories) {
             await recordWorkflowMetric(
-                { category: /** @type {any} */ (category), event: `${category}_event`, details: { ok: true } },
+                { category: category, event: `${category}_event`, details: { ok: true } },
                 projectRoot,
             );
         }

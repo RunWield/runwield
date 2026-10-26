@@ -416,7 +416,7 @@
     "src/shared/workflow/implementation-checkpoint-completion.test.ts",
     "src/shared/workflow/mechanical-validation.test.ts",
     "src/shared/workflow/metrics-process-boundary.test.ts",
-    "src/shared/workflow/metrics.test.js",
+    "src/shared/workflow/metrics.test.ts",
     "src/shared/workflow/orchestrator.test.ts",
     "src/shared/workflow/pair-execution.test.ts",
     "src/shared/workflow/plan-action-evidence.test.ts",
