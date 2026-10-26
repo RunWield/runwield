@@ -2,13 +2,31 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { Agent } from "@earendil-works/pi-agent-core";
 import { AgentSession, createAgentSession, estimateTokens } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 
-/** @returns {import('@earendil-works/pi-ai').Usage} */
-function zeroUsage() {
+interface ProviderContextObservation {
+    call: number;
+    completedToolResults: number;
+    estimatedTokens: number;
+    compacted: boolean;
+}
+
+interface PublicContextResilienceApi {
+    AgentSessionClass: typeof AgentSession;
+    AgentClass: typeof Agent;
+    createSession: typeof createAgentSession;
+}
+
+interface PackageDependencies {
+    dependencies: Record<string, string>;
+}
+
+function zeroUsage(): Usage {
     return {
         input: 0,
         output: 0,
@@ -19,11 +37,7 @@ function zeroUsage() {
     };
 }
 
-/**
- * @param {number} callIndex
- * @returns {import('@earendil-works/pi-ai').AssistantMessage}
- */
-function makeToolCallMessage(callIndex) {
+function makeToolCallMessage(callIndex: number): AssistantMessage {
     return {
         role: "assistant",
         content: [{ type: "toolCall", id: `tool-${callIndex}`, name: "large_result", arguments: {} }],
@@ -36,8 +50,7 @@ function makeToolCallMessage(callIndex) {
     };
 }
 
-/** @returns {import('@earendil-works/pi-ai').AssistantMessage} */
-function makeDoneMessage() {
+function makeDoneMessage(): AssistantMessage {
     return {
         role: "assistant",
         content: [{ type: "text", text: "done" }],
@@ -50,11 +63,7 @@ function makeDoneMessage() {
     };
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').AssistantMessage} message
- * @returns {import('@earendil-works/pi-ai').AssistantMessageEventStream}
- */
-function messageStream(message) {
+function messageStream(message: AssistantMessage) {
     const stream = createAssistantMessageEventStream();
     queueMicrotask(() => {
         stream.push({ type: "start", partial: { ...message, content: [] } });
@@ -69,11 +78,7 @@ function messageStream(message) {
     return stream;
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').AssistantMessage["stopReason"]} stopReason
- * @returns {Exclude<import('@earendil-works/pi-ai').AssistantMessage["stopReason"], "pending" | "error" | "aborted">}
- */
-function finalDoneStopReason(stopReason) {
+function finalDoneStopReason(stopReason: AssistantMessage["stopReason"]) {
     if (stopReason === "pending") {
         throw new Error('messageStream fixture cannot emit final done with stopReason "pending".');
     }
@@ -83,23 +88,15 @@ function finalDoneStopReason(stopReason) {
     return stopReason;
 }
 
-/**
- * @param {unknown[]} messages
- * @returns {number}
- */
-function estimateContextMessagesTokens(messages) {
+function estimateContextMessagesTokens(messages: AgentMessage[]) {
     let total = 0;
     for (const message of messages) {
-        total += estimateTokens(/** @type {any} */ (message));
+        total += estimateTokens(message);
     }
     return total;
 }
 
-/**
- * @param {unknown[]} messages
- * @returns {boolean}
- */
-function hasCompactionSummary(messages) {
+function hasCompactionSummary(messages: AgentMessage[]) {
     return JSON.stringify(messages).includes("Compaction Summary");
 }
 
@@ -112,8 +109,7 @@ test("messageStream fixture rejects pending as a final done stop reason", () => 
 });
 
 test("RunWield/Pi seam currently submits another provider call after tool-result pressure without compaction", async () => {
-    const providerContexts =
-        /** @type {{ call: number; completedToolResults: number; estimatedTokens: number; compacted: boolean }[]} */ ([]);
+    const providerContexts: ProviderContextObservation[] = [];
     let providerCalls = 0;
     let completedToolResults = 0;
     const contextWindow = 6_000;
@@ -181,10 +177,7 @@ test("RunWield/Pi seam currently submits another provider call after tool-result
     );
 });
 
-/**
- * @param {{ AgentSessionClass: any; AgentClass: any; createSession: Function }} api
- */
-function characterizePublicContextResilienceContract(api) {
+function characterizePublicContextResilienceContract(api: PublicContextResilienceApi) {
     const agentSessionMethods = Object.getOwnPropertyNames(api.AgentSessionClass.prototype);
     const agentMethods = Object.getOwnPropertyNames(api.AgentClass.prototype);
     const publicAgentSessionMethods = agentSessionMethods.filter((name) => !name.startsWith("_"));
@@ -217,14 +210,12 @@ function characterizePublicContextResilienceContract(api) {
 
 test("selected public Pi AgentSession contract lacks the required completed-turn stop and recovery hook", async () => {
     const repositoryRoot = new URL("../../../", import.meta.url);
-    const packageConfig = JSON.parse(await fsReadFile(new URL("package.json", repositoryRoot), "utf8"));
+    const packageConfig: PackageDependencies = JSON.parse(
+        await fsReadFile(new URL("package.json", repositoryRoot), "utf8"),
+    );
     for (const [name, specifier] of Object.entries(packageConfig.dependencies)) {
         if (!name.startsWith("@earendil-works/")) continue;
-        assertMatch(
-            /** @type {string} */ (specifier),
-            /^\d+\.\d+\.\d+$/,
-            `${name} should use an exact npm version in the frozen Bun graph`,
-        );
+        assertMatch(specifier, /^\d+\.\d+\.\d+$/, `${name} should use an exact npm version in the frozen Bun graph`);
     }
 
     const contract = characterizePublicContextResilienceContract({
