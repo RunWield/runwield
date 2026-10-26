@@ -132,7 +132,7 @@
         "esbuild": "0.28.2",
         "fuse.js": "7.5.0",
         "happy-dom": "20.14.5",
-        "highlight.js": "11.11.1",
+        "highlight.js": "11.12.0",
         "js-yaml": "4.3.2",
         "jsonc-parser": "3.3.1",
         "katex": "0.18.5",
