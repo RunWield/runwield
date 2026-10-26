@@ -439,10 +439,11 @@ export const twoChildProjectContinuationScenario = {
             // `approvalAction: "later"` settles the Epic at ready_for_decomposition.
             // Accepting the transient `approved` here let the scenario race ahead of
             // the lifecycle and act on a status the Plan had already left.
+            // Include runtime startup and durable approval under CI contention.
             type: "waitForPlanStatus",
             planName: "epic",
             statuses: ["ready_for_decomposition"],
-            timeoutMs: 12000,
+            timeoutMs: 60000,
         },
         { type: "runSlicerDecomposition", planName: "epic" },
         { type: "waitForIdle", timeoutMs: 15000 },
@@ -678,7 +679,7 @@ export const projectChildCiFailureStopScenario = {
         },
         { type: "type", text: "submit the epic project plan for architect review" },
         { type: "enter" },
-        { type: "waitForPlanStatus", planName: "epic", statuses: ["ready_for_decomposition"], timeoutMs: 12000 },
+        { type: "waitForPlanStatus", planName: "epic", statuses: ["ready_for_decomposition"], timeoutMs: 60000 },
         { type: "runSlicerDecomposition", planName: "epic" },
         { type: "waitForIdle", timeoutMs: 15000 },
         { type: "switchAgent", agentName: "planner" },

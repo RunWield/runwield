@@ -110,7 +110,11 @@ import {
 import { getLockHostname, isLockHolderGone } from "../process-liveness.ts";
 import { assertHostReviewerCandidate } from "../workflow/validation-host-state.ts";
 import { continueHostTurnValidation, reconcileConsumedHostResume } from "../workflow/validation-host-turn.ts";
-import { sameHostIdentity, ValidationHostRejected } from "../workflow/validation-host-contract.ts";
+import {
+    sameHostIdentity,
+    ValidationHostRejected,
+    type ValidationHostResume,
+} from "../workflow/validation-host-contract.ts";
 import { readReviewDiff } from "../workflow/review-diff.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
@@ -1544,6 +1548,22 @@ async function reviewReply(
     return decision.result;
 }
 
+type RecorderResume = Extract<ValidationHostResume, { kind: "recorder" }>;
+
+/** The error the host must see for a Recorder submission, or undefined when it was accepted. */
+function recorderSubmissionError(
+    submitted: RecorderResume | undefined,
+    workRecord: PlanFrontMatter["workRecord"] | undefined,
+): string | undefined {
+    if (!submitted) return undefined;
+    try {
+        parseRecorderSections(submitted.sections);
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+    }
+    return workRecord?.status === "failed" ? workRecord.error : undefined;
+}
+
 export async function readStatus(
     envelope: StatusEnvelope,
     options?: AttachedOperationOptions,
@@ -1589,19 +1609,28 @@ export async function readStatus(
     if (projected.closure?.reason === "delivered" && loaded.record.state !== "closed") {
         const original = loaded.record.validation;
         const operation = original?.operation || "start_validation";
+        const operationId = original?.operationId || crypto.randomUUID();
         const decision = await accept(
             operation,
             {
                 projectRoot: envelope.projectRoot,
                 workflowId: loaded.record.workflowId,
                 expectedRevision: loaded.record.revision,
-                operationId: original?.operationId || crypto.randomUUID(),
+                operationId,
                 evidence: original?.evidence || loaded.record.evidence,
                 payload: {},
             },
             loaded.record,
             { state: "closed", pendingAction: null, validation: null, closure: projected.closure },
         );
+        const recorderError = recorderSubmissionError(
+            original?.resume?.kind === "recorder" ? original.resume : undefined,
+            projected.closure.workRecord,
+        );
+        if (recorderError && decision.next) {
+            decision.result = await rejected(operation, rejection("invalid_outcome", recorderError), decision.next);
+            decision.next.acceptedOperations[operationId].result = decision.result;
+        }
         const settled = await commit(location, operation, loaded.record.revision, decision, async (winner) => ({
             result: { ok: true, operation: "status", workflow: await viewOf(winner) },
         }));
@@ -1949,7 +1978,18 @@ export async function runValidationOperation(
                 fresh = false;
             }
         }
-        if (fresh) return { ok: true, operation, workflow: await viewOf(current) };
+        if (fresh) {
+            const decision = await accept(operation, envelope, current, { state: "validating", pendingAction: null });
+            return await commit(location, operation, current.revision, decision, async (winner) => ({
+                result:
+                    winner.acceptedOperations[envelope.operationId]?.result ??
+                    (await rejected(
+                        operation,
+                        rejection("revision_conflict", "Validation changed. Read status and retry."),
+                        winner,
+                    )),
+            }));
+        }
     }
     if (operation !== "start_validation") {
         if (resume || !checkpoint.request || checkpoint.actionId !== envelope.payload.actionId) {
@@ -2064,16 +2104,8 @@ export async function runValidationOperation(
             );
         }
     }
-    let recorderError: string | undefined;
     const submittedRecorder =
         resume?.kind === "recorder" ? resume : checkpoint.resume?.kind === "recorder" ? checkpoint.resume : undefined;
-    if (submittedRecorder) {
-        try {
-            parseRecorderSections(submittedRecorder.sections);
-        } catch (error) {
-            recorderError = error instanceof Error ? error.message : String(error);
-        }
-    }
     const claimed: AttachedWorkflowRecord = {
         ...current,
         state: "validating",
@@ -2082,7 +2114,8 @@ export async function runValidationOperation(
         updatedAt: new Date().toISOString(),
         validation: {
             ...checkpoint,
-            resume,
+            // Keep Recorder evidence for receipt recovery even when Core has consumed the submission.
+            resume: resume ?? submittedRecorder,
             // A consumed resume can disappear before its original receipt is durable.
             operationId: checkpoint.operationId ?? envelope.operationId,
             operation: checkpoint.operationId ? checkpoint.operation : operation,
@@ -2159,20 +2192,16 @@ export async function runValidationOperation(
                             recovery: result.recovery,
                         },
                     };
+        let recorderError = recorderSubmissionError(
+            submittedRecorder,
+            result.kind === "verified" ? result.workRecord : undefined,
+        );
         if (result.kind === "host_request" && result.request.kind === "recorder") {
             recorderError ||= result.request.validationError;
         }
-        if (result.kind === "verified" && submittedRecorder) {
-            recorderError ||= result.workRecord?.status === "failed" ? result.workRecord.error : undefined;
-        }
         const decision = await accept(operation, envelope, claimed, changes);
         if (recorderError && decision.next) {
-            decision.result = {
-                ok: false,
-                operation,
-                rejection: rejection("invalid_outcome", recorderError),
-                workflow: await viewOf(decision.next),
-            };
+            decision.result = await rejected(operation, rejection("invalid_outcome", recorderError), decision.next);
             decision.next.acceptedOperations[envelope.operationId].result = decision.result;
         }
         // Preserve the original outcome operation's receipt on recovery as well.

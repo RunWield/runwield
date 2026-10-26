@@ -237,3 +237,15 @@ Manual verification steps for attached-mode-claude-feature-preview/13-repair-int
 - [ ] Recover after a lost final write for a saved CI decision and confirm the same decision appears without another CI run.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/13-repair-integration-findings-4" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/14-repair-integration-findings-5" -->
+
+## Repair integration findings 5
+
+Manual verification steps for attached-mode-claude-feature-preview/14-repair-integration-findings-5
+
+- [ ] In an Attached workflow, restore a validation handoff and repeat the same `start_validation` operation after the workflow revision changes. Confirm the repeated response matches the first response.
+- [ ] Submit an invalid Recorder Work Record twice, with the second submission allowed after the retry. After publication and process recovery, check that status shows delivery complete and retrying the operation reports `invalid_outcome`, not success.
+- [ ] Submit a valid Recorder Work Record, then recover after publication. Confirm the repeated operation reports success.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/14-repair-integration-findings-5" -->

@@ -44,3 +44,25 @@ for (const operationId of ["constructor", "toString", "valueOf"]) {
         }
     });
 }
+
+test("a restored validation handoff replays after another call advances the workflow", async () => {
+    const fixture = await attachedValidationFixture();
+    try {
+        await fsWriteFile(join(fixture.cwd, "marker"), "pass");
+        const started = await fixture.call("start_validation", await fixture.status());
+        assert(started.ok && started.workflow.nextAction.kind === "validation");
+        const restored = await fixture.call("start_validation", started.workflow, {}, "restore-handoff");
+        assert(restored.ok && restored.workflow.nextAction.kind === "validation");
+        const listed = await fixture.call("review_diff", restored.workflow, {
+            actionId: restored.workflow.nextAction.actionId,
+            command: "list",
+            scope: "full",
+        });
+        assert(listed.ok);
+        assert(listed.workflow.revision > restored.workflow.revision);
+        assertEquals(await fixture.call("start_validation", started.workflow, {}, "restore-handoff"), restored);
+        assertEquals(await fixture.ciCount(), 1);
+    } finally {
+        await fixture.close();
+    }
+});

@@ -12,7 +12,7 @@ type DriverConfig = {
     timing?: "before" | "after";
 };
 type SavedRequest = { kind?: string; interaction?: { type?: string } };
-type SavedRecorder = { sections?: { title: string }; invalidSubmissions?: number };
+type SavedRecorder = { sections?: { title: string }; invalidSubmissions?: number; failure?: string };
 type SavedController = {
     status?: string;
     deliveryEvidence?: { mode?: string };
@@ -45,7 +45,8 @@ function crashPoint(from: fs.PathLike, to: fs.PathLike): string {
                 point = "in_place_verified";
             }
             const recorder = saved.state.validationCheckpoint?.hostRecorder;
-            if (recorder?.sections) point = "recorder_sections";
+            if (recorder?.failure) point = "recorder_failure";
+            else if (recorder?.sections) point = "recorder_sections";
             else if (recorder?.invalidSubmissions) point = "recorder_rejected";
         }
         const phase = saved.entries?.find((entry) => entry.publication)?.publication?.phase;
