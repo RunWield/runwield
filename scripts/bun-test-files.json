@@ -362,7 +362,7 @@
     "src/shared/session/tool-event-title.test.ts",
     "src/shared/session/tutorial-context-session.test.ts",
     "src/shared/session/work-record-retry.test.ts",
-    "src/shared/session/workflow-context-session.test.js",
+    "src/shared/session/workflow-context-session.test.ts",
     "src/shared/settings-mascot.test.ts",
     "src/shared/settings-plan-delivery.test.ts",
     "src/shared/settings.test.js",
