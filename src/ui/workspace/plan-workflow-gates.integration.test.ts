@@ -1,5 +1,8 @@
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
+import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
+import type { WorkspacePlanReviewStarted } from "./server/session-continuation.js";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -13,6 +16,24 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
+
+type FixtureWorkflowStarted = Pick<WorkspacePlanReviewStarted, "operationId">;
+type FixtureSelectRequest = Pick<RuntimeInteractionRequest, "prompt">;
+type FixtureCodeReviewRequest = Required<Pick<RuntimeInteractionRequest, "reviewUrl">>;
+
+interface FixtureInteractionRequests {
+    select: FixtureSelectRequest;
+    code_review: FixtureCodeReviewRequest;
+}
+
+interface FixtureLiveInteraction<Kind extends keyof FixtureInteractionRequests> {
+    interactionId: string;
+    request: FixtureInteractionRequests[Kind];
+}
+
+interface FixturePlanProgress extends OwnerPlanProgress {
+    interactionHref: string;
+}
 
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n", "implementation.txt": "before\n" });
 
@@ -56,15 +77,21 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                     });
                     await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
                     const plan = await loadPlan(tree.path, name);
-                    await savePlan(tree.path, name, body, {
-                        ...plan.attrs,
-                        executionMode: "worktree",
-                        executionBaselineTree: baseline,
-                        worktreeId: tree.id,
-                        worktreePath: tree.path,
-                        worktreeBranch: tree.branch,
-                        worktreeBaseBranch: "main",
-                    }, { expectedRevision: plan.revision });
+                    await savePlan(
+                        tree.path,
+                        name,
+                        body,
+                        {
+                            ...plan.attrs,
+                            executionMode: "worktree",
+                            executionBaselineTree: baseline,
+                            worktreeId: tree.id,
+                            worktreePath: tree.path,
+                            worktreeBranch: tree.branch,
+                            worktreeBaseBranch: "main",
+                        },
+                        { expectedRevision: plan.revision },
+                    );
                 }
                 const { sessionId } = await runtime.createInteractiveSession({ cwd: root, agentName: "engineer" });
                 await runtime.recordPlanAssociation(sessionId, {
@@ -93,7 +120,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                     params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },
                     state: { store, sessionContinuation: service },
                 });
-                const started = await response.json();
+                const started: FixtureWorkflowStarted = await response.json();
                 assertEquals(response.status, 202, JSON.stringify(started));
                 assertExists(started.operationId);
                 if (epic) {
@@ -107,13 +134,15 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                         projectId: project.projectId,
                     });
                     assertEquals(
-                        timeline.events.some((event) =>
-                            event.type === "system_status" && event.message === "Agent switched to Slicer"
+                        timeline.events.some(
+                            (event) => event.type === "system_status" && event.message === "Agent switched to Slicer",
                         ),
                         true,
                     );
                 } else {
-                    const interaction = async (type) => {
+                    const interaction = async <Kind extends keyof FixtureInteractionRequests>(
+                        type: Kind,
+                    ): Promise<FixtureLiveInteraction<Kind>> => {
                         for (let i = 0; i < 500; i++) {
                             const operation = service.getOperation(started.operationId);
                             if (operation.liveInteraction?.request.type === type) return operation.liveInteraction;
@@ -129,16 +158,20 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                         params: { projectId: project.projectId, planId },
                         state: { store, sessionContinuation: service },
                     });
-                    const progress = await progressResponse.json();
+                    const progress: FixturePlanProgress = await progressResponse.json();
                     assertEquals(progress.canResume, false, JSON.stringify(progress));
                     assertEquals(progress.canRun, false);
                     assertStringIncludes(progress.interactionHref, question.interactionId);
-                    const otherProgress = async () =>
-                        await (await ownerProjectPlanProgressApi({
-                            req: new Request(`http://workspace.local/progress?session=${managed.runwieldSessionId}`),
-                            params: { projectId: project.projectId, planId: "earlier-plan-id" },
-                            state: { store, sessionContinuation: service },
-                        })).json();
+                    const otherProgress = async (): Promise<OwnerPlanProgress> =>
+                        await (
+                            await ownerProjectPlanProgressApi({
+                                req: new Request(
+                                    `http://workspace.local/progress?session=${managed.runwieldSessionId}`,
+                                ),
+                                params: { projectId: project.projectId, planId: "earlier-plan-id" },
+                                state: { store, sessionContinuation: service },
+                            })
+                        ).json();
                     assertEquals(
                         (await otherProgress()).interactionHref,
                         "",
