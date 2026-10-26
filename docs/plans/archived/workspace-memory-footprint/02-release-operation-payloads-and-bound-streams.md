@@ -23,6 +23,9 @@ createdAt: "2026-09-30T13:17:28.080Z"
 targetBranch: "main"
 status: "validated"
 validatedCommit: "18de97e526ec751c7cd2ff08fbb3bc39a5cd3dfd"
+archivedAt: "2026-10-26T13:43:35.596Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/workspace-memory-footprint/02-release-operation-payloads-and-bound-streams.md"
 ---
 
 # Release Finished Operation Payloads and Bound Observation Streams

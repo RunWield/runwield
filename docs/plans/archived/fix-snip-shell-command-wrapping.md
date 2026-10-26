@@ -24,6 +24,9 @@ workRecord:
     path: "docs/work-records/2026-10-20-conservative-snip-shell-command-wrapping.md"
     lastAttemptAt: "2026-10-20T19:32:48.990Z"
 status: "verified"
+archivedAt: "2026-10-26T13:32:14.269Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/fix-snip-shell-command-wrapping.md"
 ---
 
 # Fix Snip Shell-Command Wrapping

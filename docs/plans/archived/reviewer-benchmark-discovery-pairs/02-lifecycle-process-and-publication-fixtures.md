@@ -23,6 +23,9 @@ userVerifiedAt: null
 targetBranch: "main"
 validatedCommit: "b74469de54340f3b6dd4eaf201dd00e7b449cd86"
 status: "verified"
+archivedAt: "2026-10-26T13:44:32.657Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs/02-lifecycle-process-and-publication-fixtures.md"
 ---
 
 # Lifecycle, Process, and Publication Fixtures

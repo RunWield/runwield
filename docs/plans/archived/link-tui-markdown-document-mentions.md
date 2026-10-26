@@ -29,6 +29,9 @@ workRecord:
     path: "docs/work-records/2026-10-09-clickable-tui-markdown-document-mentions.md"
     lastAttemptAt: "2026-10-09T13:57:46.087Z"
 status: "verified"
+archivedAt: "2026-10-26T13:29:09.299Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/link-tui-markdown-document-mentions.md"
 ---
 
 # Link TUI Markdown Document Mentions

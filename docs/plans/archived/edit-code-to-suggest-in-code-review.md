@@ -25,6 +25,9 @@ workRecord:
     path: "docs/work-records/2026-10-16-edit-to-suggest-in-code-review.md"
     lastAttemptAt: "2026-10-16T03:41:18.220Z"
 status: "verified"
+archivedAt: "2026-10-26T13:33:13.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/edit-code-to-suggest-in-code-review.md"
 ---
 
 # Edit Code to Suggest in Code Review
