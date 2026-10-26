@@ -743,7 +743,7 @@
     "src/ui/workspace/plan-workflow-gates.integration.test.js",
     "src/ui/workspace/plan-workflow-resume.integration.test.ts",
     "src/ui/workspace/plan-workflow-review.integration.test.js",
-    "src/ui/workspace/plan-workflow-saved-actions.integration.test.js",
+    "src/ui/workspace/plan-workflow-saved-actions.integration.test.ts",
     "src/ui/workspace/project-page-requests.test.ts",
     "src/ui/workspace/project-request-headers.test.ts",
     "src/ui/workspace/project-root-form.test.tsx",
