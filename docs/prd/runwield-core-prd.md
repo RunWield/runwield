@@ -407,6 +407,11 @@ checkout. RunWield asks before it removes the execution worktree; declining keep
 Unmerged branch commits stay recoverable. A User Verified Plan can be archived when no recoverable work would be lost.
 User Verified and RunWield Verified Plans share one terminal menu: Archive, Re-open for review, View, and Cancel.
 
+**Requirement: Archive without blocking the conversation.** After required confirmations, Load Plan runs Plan and
+Epic archive writes and retention checks in the background. It reopens the Load Plan menu with pending archives
+excluded, so the user can select another Plan without waiting. If no Plans remain, it returns to chat. It reports
+completion or failure in the conversation. A repeat request for the same pending archive does not start a second archive.
+
 **Requirement: Deliberate closure.** Users can mark an Epic done enough, with a summary, when its delivered children
 meet the goal; this records a done-enough completion. `closed_without_verification` records the user's deliberate
 abandonment of the remaining work. Both outcomes keep unfinished work available and are labeled as distinct from
@@ -424,6 +429,10 @@ verification.
 - Given a Plan in an execution worktree, User Verification saves the Plan and note in the primary checkout, asks to
   remove the worktree, and generates the Work Record. Reloading offers the shared terminal menu.
 - Given the user declines worktree removal, the execution files stay; Archive asks again.
+- Given a confirmed Plan or Epic archive waiting for storage, Load Plan reopens its menu before the write completes,
+  excludes pending archives, and reports the result later. If no Plans remain, it returns to chat. A repeat request
+  reports that the archive is already running.
+- Given a background archive that fails, the conversation reports the failure and does not claim completion.
 - Given the user closes a Plan without verification, the Plan records that outcome and its reason.
 - Given an unpublished workflow, User Verification labels it unpublished, and a canceled turn keeps the workflow open.
 

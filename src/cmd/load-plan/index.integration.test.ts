@@ -91,6 +91,16 @@ function makeUi(selections: Array<string | null>, textInputs: Array<string | nul
     return { editor, messages, promptOptions, prompts, uiAPI };
 }
 
+async function waitForArchive(ui: LoadPlanUiFixture): Promise<void> {
+    for (let attempt = 0; attempt < 1500; attempt++) {
+        const failure = ui.messages.find((message) => message.startsWith("Archive failed for"));
+        if (failure) throw new Error(failure);
+        if (ui.messages.some((message) => message.startsWith("Archived"))) return;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error("Background archive did not finish");
+}
+
 async function createRuntime(
     projectRoot: string,
     agentName = "router",
@@ -568,6 +578,7 @@ test("load-plan archives a verified Plan through the real Plan store", async () 
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(await loadPlan(projectRoot, "finished"), null);
             assertEquals((await loadArchivedPlan(projectRoot, "finished"))?.attrs.archivedFromStatus, "verified");
@@ -613,6 +624,7 @@ test("load-plan offers lifecycle actions for a validated Plan already published 
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(ui.prompts.includes("What would you like to do?"), true);
             assertEquals(await loadPlan(projectRoot, "published"), null);
@@ -640,6 +652,7 @@ test("load-plan offers completed actions for a validated non-Git Plan without co
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
             assertEquals(
                 ui.prompts.some((prompt) => prompt.startsWith("Plan recovery")),
                 false,
@@ -759,6 +772,7 @@ for (const confirmRemoval of [true, false]) {
                     uiAPI: reload.uiAPI,
                     editor: reload.editor,
                 });
+                await waitForArchive(reload);
                 assertEquals(
                     reload.promptOptions[0].map((option) => option.value),
                     ["archive", "review", "view", "cancel"],
@@ -822,6 +836,7 @@ test("load-plan confirms cleanup of unregistered legacy recovery when archiving 
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(await loadPlan(projectRoot, "finished-with-stale-worktree"), null);
             const archived = await loadArchivedPlan(projectRoot, "finished-with-stale-worktree");
@@ -853,6 +868,7 @@ test("load-plan archives a verified Epic with every child Plan and keeps the fol
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(await loadPlan(projectRoot, "epic"), null);
             assertEquals(await loadPlan(projectRoot, "epic/01-first"), null);
