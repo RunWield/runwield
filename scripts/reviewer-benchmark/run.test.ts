@@ -68,8 +68,11 @@ test("all selects every package and oracle variant in scenario and variant order
         }) as FixtureOracle;
         for (const variant of Object.keys(oracle.variants).sort()) expected.push(`${entry.name}/${variant}`);
     }
+    const selected = await selectCases("all");
+    assert.equal(selected.length, 33);
+    assert.equal(new Set(selected.map((entry) => entry.fixture.manifest.scenarioId)).size, 17);
     assert.deepEqual(
-        (await selectCases("all")).map((entry) => `${entry.fixture.manifest.scenarioId}/${entry.variant}`),
+        selected.map((entry) => `${entry.fixture.manifest.scenarioId}/${entry.variant}`),
         expected,
     );
 });

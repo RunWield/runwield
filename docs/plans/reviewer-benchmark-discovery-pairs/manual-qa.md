@@ -24,3 +24,16 @@ Manual verification steps for reviewer-benchmark-discovery-pairs/02-lifecycle-pr
 - [ ] Review `docs/evaluation/reviewer-benchmark-pilot-corpus.md`. Confirm that RV-D07–RV-D10 are shown as materialized.
 
 <!-- runwield:manual-qa:end child="reviewer-benchmark-discovery-pairs/02-lifecycle-process-and-publication-fixtures" -->
+
+<!-- runwield:manual-qa:start child="reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run" -->
+
+## Context Fixtures and the Full Discovery Run
+
+Manual verification steps for reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run
+
+- [ ] Review the report in code review. Confirm it lists results and worksheets for all 33 cases and is marked pending adjudication.
+- [ ] For each case, decide if the defect is real and the clean twin is clean. Label each blocking finding as matched, duplicate, unsupported, or novel_valid.
+- [ ] Confirm the Engineer records oracle verdicts and finding labels in `adjudications.json`, scores again, and updates the report.
+- [ ] Confirm the updated report lists excluded cases under fixtures needing repair and shows semantic scores as scored when every counted case has a label.
+
+<!-- runwield:manual-qa:end child="reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run" -->

@@ -1,0 +1,28 @@
+diff --git a/src/dates.ts b/src/dates.ts
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -1,7 +1,3 @@
+ export function localDateKey(timestamp: string): string {
+-    const date = new Date(timestamp);
+-    const year = date.getFullYear();
+-    const month = String(date.getMonth() + 1).padStart(2, "0");
+-    const day = String(date.getDate()).padStart(2, "0");
+-    return `${year}-${month}-${day}`;
++    return new Date(timestamp).toISOString().slice(0, 10);
+ }
+diff --git a/src/summary.ts b/src/summary.ts
+--- a/src/summary.ts
++++ b/src/summary.ts
+@@ -1,6 +1,10 @@
+ import type { CalendarEvent } from "./model.ts";
+ import { writeSummary } from "./store.ts";
++import { localDateKey } from "./dates.ts";
+ 
+-export async function exportSummary(path: string, events: CalendarEvent[]): Promise<void> {
+-    await writeSummary(path, events.map((event) => event.title).join("\n"));
++export async function exportSummary(path: string, events: CalendarEvent[], includeDates = false): Promise<void> {
++    const lines = events.map((event) =>
++        includeDates ? localDateKey(event.startsAt) + " " + event.title : event.title,
++    );
++    await writeSummary(path, lines.join("\n"));
+ }

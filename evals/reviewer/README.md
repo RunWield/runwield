@@ -1,6 +1,6 @@
 # Reviewer fixtures
 
-These synthetic Bun 1.4.3 projects define 25 discovery cases in 13 packages. Mechanical admission runs before any
+These synthetic Bun 1.4.3 projects define 33 discovery cases in 17 packages. Mechanical admission runs before any
 model calls. After the paid run, the owner judges each fixture's Plan, patch, proof, and oracle together with the
 Reviewer's result. Fixture approval is not a pre-run requirement.
 
@@ -16,8 +16,12 @@ Reviewer's result. Fixture approval is not a pre-run requirement.
 | RV-D08  | [Repair completion](RV-D08/source/docs/plans/resume-after-repair.md)                | [Completion ownership](RV-D08/evaluation/oracle.yaml)     | [A](RV-D08/variants/defective.patch), [B](RV-D08/variants/clean.patch) |
 | RV-D09  | [Validation start](RV-D09/source/docs/plans/record-validation-start.md)             | [Body ownership](RV-D09/evaluation/oracle.yaml)           | [A](RV-D09/variants/defective.patch), [B](RV-D09/variants/clean.patch) |
 | RV-D10  | [Publication retry](RV-D10/source/docs/plans/resume-saved-publication.md)           | [Target ancestry](RV-D10/evaluation/oracle.yaml)          | [A](RV-D10/variants/defective.patch), [B](RV-D10/variants/clean.patch) |
+| RV-D11  | [Project summary](RV-D11/source/docs/plans/summarize-project-notes.md)              | [Active directory](RV-D11/evaluation/oracle.yaml)         | [A](RV-D11/variants/defective.patch), [B](RV-D11/variants/clean.patch) |
 | RV-D12  | [Registration coverage](RV-D12/source/docs/plans/cover-registration-persistence.md) | [Owned registry machinery](RV-D12/evaluation/oracle.yaml) | [A](RV-D12/variants/defective.patch), [B](RV-D12/variants/clean.patch) |
 | RV-D13  | [Archive and listing](RV-D13/source/docs/plans/archive-and-list-plans.md)           | [Plan completion](RV-D13/evaluation/oracle.yaml)          | [A](RV-D13/variants/defective.patch), [B](RV-D13/variants/clean.patch) |
+| RV-D14  | [History retention](RV-D14/source/docs/plans/prune-history.md)                      | [Approved deviation](RV-D14/evaluation/oracle.yaml)       | [A](RV-D14/variants/defective.patch), [B](RV-D14/variants/clean.patch) |
+| RV-D15  | [Workspace label](RV-D15/source/docs/plans/friendly-workspace-label.md)             | [Untouched validator](RV-D15/evaluation/oracle.yaml)      | [A](RV-D15/variants/defective.patch), [B](RV-D15/variants/clean.patch) |
+| RV-D16  | [Dated export](RV-D16/source/docs/plans/date-summary-export.md)                     | [Untouched date caller](RV-D16/evaluation/oracle.yaml)    | [A](RV-D16/variants/defective.patch), [B](RV-D16/variants/clean.patch) |
 | RV-M01  | [Filtered pagination](RV-M01/source/docs/plans/configure-project-listing.md)        | [Two independent defects](RV-M01/evaluation/oracle.yaml)  | [A](RV-M01/variants/defective.patch)                                   |
 
 ## Package boundary
@@ -44,8 +48,9 @@ materialized project, then remove them in `finally`. Run `bun run test` inside a
 ## Fixture revisions after owner adjudication
 
 The recorded October baseline evaluated revision 1. RV-D04, RV-D12, RV-D13, and RV-M01 are now revision 2; RV-D05
-remains revision 1. RV-D01, RV-D02, RV-D03, and RV-D06–D10 are new revision-1 packages. No paid Reviewer round has
-evaluated revision 2 or the eight new packages.
+remains revision 1. RV-D01–D03, RV-D06–D11, and RV-D14–D16 are new revision-1 packages. The
+[full discovery report](../../docs/evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md)
+evaluates all 33 current cases and is pending owner adjudication.
 
 - RV-D04 isolates in-flight reads from later refreshes in both variants. The planted identity collision remains in A.
 - RV-D12 has two independent oracle defects: `RV-D12-A` for replaceable owned machinery and
@@ -92,8 +97,9 @@ then variant. A new package needs no runner registry entry. `--scenarios smoke` 
 RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A. For a subset, use `--scenarios RV-D04,RV-D05` or
 `--scenarios RV-D04/A,RV-D04/B`. Unknown cases fail before admission. The CLI supports one trial per case.
 
-The planned 33-case discovery corpus is not yet delivered. Additional multi-defect fixtures, repair-state execution,
-repetitions, and candidate comparison remain target.
+The 33-case discovery corpus is materialized. RV-M02–M06, repair-state execution, repetitions, and candidate
+comparison remain target. RV-D11 changes cwd only in a proof child. RV-D16 sets its proof child timezone explicitly;
+neither changes the Reviewer process environment.
 
 ### Human adjudication
 
@@ -179,8 +185,12 @@ import, or infrastructure error. B must pass the same command. For RV-M01, use i
 | RV-D08  | `single-consumer`                            | Assertion failure | Pass              |
 | RV-D09  | `body-rollback`                              | Assertion failure | Pass              |
 | RV-D10  | `target-ancestry`                            | Assertion failure | Pass              |
+| RV-D11  | `active-project`                             | Assertion failure | Pass              |
 | RV-D12  | `seam-check`, `mutation-coverage`            | Assertion failure | Pass              |
 | RV-D13  | `archived-list`                              | Assertion failure | Pass              |
+| RV-D14  | `age-retention`                              | Assertion failure | Pass              |
+| RV-D15  | `first-run`                                  | Assertion failure | Pass              |
+| RV-D16  | `local-reminder-day`                         | Assertion failure | Pass              |
 | RV-M01  | `explicit-false`, `empty-cursor-page`        | Assertion failure | Pass              |
 
 RV-D12's mutation proof removes the durable rename in another disposable copy and runs its public suite. A's tests

@@ -12,12 +12,10 @@ passive product telemetry. The shared End-to-End Benchmark Harness remains targe
 
 ## Current Corpus Scope
 
-Nine packages under `evals/reviewer/` provide 17 discovery cases: RV-D01–D06 A/B, RV-D12 A/B, RV-D13 A/B, and
-RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario ID then variant.
+Seventeen packages under `evals/reviewer/` provide 33 discovery cases: RV-D01–D16 A/B and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario ID then variant.
 `--scenarios smoke` preserves the original nine cases: RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A.
 Each case runs once with the effective configured Reviewer model. The runner does not author or compare a
-reconnaissance candidate. The planned 33-case discovery corpus is future scope; additional multi-defect fixtures,
-repair-state execution, repetitions, and paired comparison remain target.
+reconnaissance candidate. RV-M02–M06, repair-state execution, repetitions, and paired comparison remain target.
 
 The runner scores decision accuracy and clean approval mechanically. Evidence-path matches are suggestions only.
 Defect recall, blocking-finding precision, and severe-defect recall require human oracle verdicts and finding labels
@@ -37,7 +35,11 @@ Six matched the original oracle; seven required oracle corrections, including
 an independent RV-D12 concern formerly bundled under one id. Under the baseline's scoring rules, semantic scoring
 was frozen against that historical oracle. This is a historical observation, not the current run-wide rule. Its saved
 labels have no oracle verdicts and remain valid; rescoring with the current runner is pending adjudication. Four
-packages are now revision 2, with no new paid measurements. The clean rejections were not automatically false positives.
+packages are now revision 2. The clean rejections were not automatically false positives.
+
+The latest run is the [33-case discovery run](reviewer-benchmark-results/2026-10-discovery-pairs.md), pending
+adjudication. It evaluates the current fixture revisions. One trial does not establish stability; no threshold applies.
+Changed smoke fixtures prevent interpreting it as a trend against the October baseline.
 
 See [run and adjudication instructions](../../evals/reviewer/README.md#run-and-score).
 
