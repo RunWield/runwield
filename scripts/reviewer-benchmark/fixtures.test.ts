@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FIXTURE_GROUPS, loadFixture } from "./fixtures.ts";
+import { FIXTURE_GROUPS, loadFixture, readFixturePatch } from "./fixtures.ts";
+import { materializeFixture } from "./materialize.ts";
+import { projectEngineerPlanBody } from "../../src/shared/workflow/engineer-plan-projection.ts";
 import { corpusPath, corpusIds, withFixtureCopy } from "./test-fixtures.ts";
 
 for (const id of corpusIds) {
@@ -189,5 +191,40 @@ for (const id of ["RV-D99", "RV-M99"]) {
             assert.equal(fixture.manifest.scenarioId, id);
             assert.equal(fixture.manifest.group, "cross-file-context");
         });
+    });
+}
+
+for (const variant of ["A", "B"] as const) {
+    test(`RV-D14 ${variant} projects the approved age replacement into Reviewer context`, async () => {
+        const fixture = await loadFixture(join(corpusPath, "RV-D14"));
+        const project = await materializeFixture(fixture, variant);
+        try {
+            const projected = projectEngineerPlanBody(project.planContent);
+            assert.match(projected, /## Approved Plan Deviations/);
+            assert.ok(
+                projected.includes(
+                    "Replacement requirement: Delete only records older than 30 days; retain all records at or after the 30-day cutoff, regardless of count.",
+                ),
+            );
+            assert.equal((projected.match(/Replacement requirement:/g) || []).length, 1);
+        } finally {
+            await project.cleanup();
+        }
+    });
+}
+
+for (const id of corpusIds) {
+    const fixture = await loadFixture(join(corpusPath, id));
+    if (fixture.manifest.group !== "cross-file-context") continue;
+    test(`${id} requires evidence outside the defective patch`, async () => {
+        const candidate = fixture.oracle.variants.A!;
+        const patch = await readFixturePatch(fixture, candidate.patch);
+        const changed = new Set([...patch.matchAll(/^diff --git a\/\S+ b\/(\S+)$/gm)].map((match) => match[1]));
+        for (const defect of candidate.defects) {
+            assert.ok(
+                defect.evidence.some((path) => !changed.has(path)),
+                `${defect.defectId} needs untouched evidence`,
+            );
+        }
     });
 }

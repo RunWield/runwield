@@ -24,8 +24,8 @@ order: 3
 dependencies:
     - "02-lifecycle-process-and-publication-fixtures"
 userVerifiedAt: null
-status: "in_progress"
 targetBranch: "main"
+status: "implemented"
 ---
 
 # Context Fixtures and the Full Discovery Run

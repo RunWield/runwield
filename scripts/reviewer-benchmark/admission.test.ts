@@ -23,8 +23,12 @@ const counts: Record<string, ExpectedChecks> = {
     "RV-D08": { variants: 2, public: 2, proofs: 2 },
     "RV-D09": { variants: 2, public: 2, proofs: 2 },
     "RV-D10": { variants: 2, public: 2, proofs: 2 },
+    "RV-D11": { variants: 2, public: 2, proofs: 2 },
     "RV-D12": { variants: 2, public: 4, proofs: 4 },
     "RV-D13": { variants: 2, public: 2, proofs: 2 },
+    "RV-D14": { variants: 2, public: 2, proofs: 2 },
+    "RV-D15": { variants: 2, public: 2, proofs: 2 },
+    "RV-D16": { variants: 2, public: 2, proofs: 2 },
     "RV-M01": { variants: 1, public: 4, proofs: 8 },
 };
 

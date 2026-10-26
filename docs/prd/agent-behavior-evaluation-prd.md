@@ -57,9 +57,8 @@ tool calls before triage, and repeated or forbidden tool attempts.
 #### Semantic Reviewer
 
 **Current requirement: Evaluate the production Reviewer on every admitted discovery package.** The interim
-`bun scripts/run-reviewer-benchmark.ts` runner evaluates 17 admitted discovery cases in nine synthetic Bun 1.4.3
-TypeScript packages: RV-D01 A/B, RV-D02 A/B, RV-D03 A/B, RV-D04 A/B, RV-D05 A/B, RV-D06 A/B, RV-D12 A/B,
-RV-D13 A/B, and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario
+`bun scripts/run-reviewer-benchmark.ts` runner evaluates 33 admitted discovery cases in 17 synthetic Bun 1.4.3
+TypeScript packages: RV-D01–D16 A/B and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario
 ID then variant. The original nine-case `--scenarios smoke` set is unchanged. The runner uses the effective Reviewer
 model, production prompt, tools, inspection gate, nudges, and `review_complete` through `runReviewerRound`, with
 round 1 and an empty ledger. It does not run outer workflow lifecycle or Delivery Evidence writes.
@@ -68,8 +67,10 @@ The [one-trial baseline](../evaluation/reviewer-benchmark-results/2026-10-baseli
 RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A: nine complete rounds, mechanical decisions 7/9, and clean approval
 2/4. The owner accepted all 13 findings; under the historical scoring rules, the original oracle needed corrections
 before semantic scoring. Four fixture packages are now revision 2 after repairs; the paid baseline measures revision 1
-only. These revisions and the four new packages have no paid measurements. Mechanical decision accuracy and clean
-approval are separate from finding quality. Evidence-path matches are suggestions, never recall.
+only. The [full discovery report](../evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md) records one
+trial on all 33 current cases, pending adjudication. Changed smoke fixtures cannot show a trend against the baseline.
+Mechanical decision accuracy and clean approval are separate from finding quality. Evidence-path matches are
+suggestions, never recall.
 
 The owner judges each fixture together with the Reviewer's results after the paid run, not as a pre-run requirement.
 Human `adjudications.json` accepts an optional `oracleVerdicts` list of `{ caseId, verdict, note? }`, with verdict
@@ -98,13 +99,13 @@ Review Reconnaissance prompt on paired fixtures with the same model configuratio
 A blocking finding requires repository evidence. Reports retain supported findings rather than risks ruled out during
 review. Recall, precision, clean approval, and severe misses remain separate measures.
 
-The shared harness, candidate prompt authoring/comparison, repeated trials, and repair-state scenarios remain target.
-Completing the remaining discovery pairs would provide 33 cases; that corpus expansion is future scope, not current
-behavior. Additional multi-defect fixtures remain target. One-trial runs do not establish stability, a prompt
-improvement, or a model support decision.
+The shared harness, candidate prompt authoring/comparison, repeated trials, RV-M02–M06 multi-defect fixtures, and
+RV-R01–R06 repair-state scenarios remain target. One-trial runs do not establish stability, a prompt improvement, or a
+model support decision.
 
 **Current acceptance scenarios:**
 
+- Given `--scenarios all`, the runner admits all 17 packages before model calls and records all 33 cases in the discovery report.
 - Given a finding that cites an oracle path but has no human label, recall stays pending rather than counting a match.
 - Given confirmed counted cases and fully adjudicated findings, recall counts distinct matched defects, precision
   penalizes duplicates and unsupported findings, and high/critical recall remains separate.

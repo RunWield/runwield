@@ -1,0 +1,20 @@
+schemaVersion: 1
+scenarioId: RV-D14
+track: discovery
+group: plan-adherence
+fixtureRevision: 1
+planPath: docs/plans/prune-history.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - approved-plan-deviation
+    - age-retention
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate
