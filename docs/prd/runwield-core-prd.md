@@ -407,6 +407,11 @@ checkout. RunWield asks before it removes the execution worktree; declining keep
 Unmerged branch commits stay recoverable. A User Verified Plan can be archived when no recoverable work would be lost.
 User Verified and RunWield Verified Plans share one terminal menu: Archive, Re-open for review, View, and Cancel.
 
+**Requirement: Archive without blocking the conversation.** After required confirmations, Load Plan runs Plan and
+Epic archive writes and retention checks in the background. It reopens the Load Plan menu with pending archives
+excluded, so the user can select another Plan without waiting. If no Plans remain, it returns to chat. It reports
+completion or failure in the conversation. A repeat request for the same pending archive does not start a second archive.
+
 **Requirement: Deliberate closure.** Users can mark an Epic done enough, with a summary, when its delivered children
 meet the goal; this records a done-enough completion. `closed_without_verification` records the user's deliberate
 abandonment of the remaining work. Both outcomes keep unfinished work available and are labeled as distinct from
@@ -424,6 +429,10 @@ verification.
 - Given a Plan in an execution worktree, User Verification saves the Plan and note in the primary checkout, asks to
   remove the worktree, and generates the Work Record. Reloading offers the shared terminal menu.
 - Given the user declines worktree removal, the execution files stay; Archive asks again.
+- Given a confirmed Plan or Epic archive waiting for storage, Load Plan reopens its menu before the write completes,
+  excludes pending archives, and reports the result later. If no Plans remain, it returns to chat. A repeat request
+  reports that the archive is already running.
+- Given a background archive that fails, the conversation reports the failure and does not claim completion.
 - Given the user closes a Plan without verification, the Plan records that outcome and its reason.
 - Given an unpublished workflow, User Verification labels it unpublished, and a canceled turn keeps the workflow open.
 
@@ -502,10 +511,28 @@ checks or review, the temporary checkout initializes submodules recursively and 
 Missing branch requirements or failed checkout setup pause the gate without creating a repair child. A pass
 marks the Epic reviewed for that commit. Integration review treats confirmed child deviations as user-approved
 replacements: a gap caused only by a deviation is not a finding. It names each affected Epic outcome and source child
-in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings. Findings go
-to an Epic report and become a draft repair child that the user reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
-implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
-an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
+in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings.
+
+The gate keeps a persistent Review Issue Ledger with stable finding IDs. Its first tracked review checks the whole
+Epic; later reviews confirm or reject open IDs and check only changes since the last checked commit for regressions.
+Reports and repair children retain those IDs and rejection reasons. Before the third review, findings create a draft
+repair child that the user reviews like any child. From the third review onward, RunWield asks the user to plan another
+repair, review the whole Epic in Code Review, or stop. Code Review takeover requires passing project checks. Approval
+records the user's decision, not AI approval; open AI findings remain in the ledger. Code Review change requests create
+a repair child without another limit prompt. An unanswered prompt pauses with the report and ledger saved. Existing
+Epics without saved review state count their earlier integration repair children toward the limit; their first tracked
+review still checks the whole Epic to establish the ledger.
+
+A later commit on the Epic branch returns the Epic to implemented. The ledger and round count persist, and the next
+review verifies findings and the new changes. The user merges the reviewed Epic branch or opens a pull request. Child
+manual checks are collected in an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
+
+If an implemented Epic is blocked only by gate-created repair children still in draft, its load-plan menu offers
+**Retry the integration gate** and names the drafts and report. A passing retry closes all open repair drafts without
+verification, with a reason that names the checked commit; it does not delete them. New findings replace the newest
+draft's Findings and checked commit while preserving its identity and other sections. A pause leaves drafts unchanged.
+A started repair or any undelivered non-repair child blocks retry. The automatic gate still requires every child to be
+settled; it does not skip repair drafts.
 
 **Requirement: Hold and resume.** **On hold** means paused and resumable. A held Plan keeps its previous stage and an
 optional reason. **Resume from hold** checks for relevant changes or missing work, then resumes, warns, or offers
@@ -564,8 +591,23 @@ siblings active. Listings show held work separately from active and finished wor
   and setup completes before checks or review. Setup failure pauses the gate and removes the temporary checkout.
 - Given different Epic requirements in the primary checkout and checked branch, review uses the checked branch document.
   If that document is missing, the gate pauses instead of using the primary copy.
-- Given gate findings, the Epic report lists them and a draft repair child opens in Planner; its delivery runs the gate
-  again.
+- Given gate findings before the third review, the report and draft repair child list stable IDs; delivery runs a
+  verify-only review that confirms or rejects those IDs and checks the repair delta for regressions.
+- Given a verify result that omits an open ID, the gate requests a verdict on that ID instead of accepting the result.
+- Given findings at or after the third review, no child is created before the user chooses. Another repair creates one
+  child or updates the newest open repair draft; stop or no answer pauses with the report and ledger saved.
+- Given passing checks at the review limit, the user can approve the whole Epic in Code Review. The Epic becomes
+  reviewed with human takeover evidence, not AI approval. Failing checks exclude that choice.
+- Given Code Review changes at any round, a repair child carries them without another limit prompt.
+- Given an Epic with two earlier integration repair children and no saved review state, its first tracked full review
+  counts as round three and findings require a user decision.
+- Given an implemented Epic blocked only by an unstarted gate repair draft, including a draft only in the primary
+  checkout, load-plan offers **Retry the integration gate** and names the draft and report. A passing retry marks the
+  Epic reviewed and closes the draft without verification with a reason that names the checked commit.
+- Given new findings on a retry, the newest open repair draft receives the findings and checked commit without a new
+  child. Its Plan ID, order, status, target, and other sections stay unchanged. A paused retry changes no draft.
+- Given a started repair child or an undelivered ordinary child, no retry option is offered. An open repair draft still
+  blocks the automatic gate.
 - Given Planner moves scope into an approved, unstarted sibling, the sibling returns to draft with the change.
 - Given a child review with Integration Notes, the notes appear in the execution checkout's Epic subsection, travel
   with child delivery, and reach the branch-head integration review; the primary copy is unchanged.
@@ -1019,12 +1061,14 @@ repair that weakens a test to resolve a finding is a repair-introduced regressio
 **Requirement: Review one proposed branch patch.** For Git execution, review sees the branch's proposed change relative
 to its recorded target branch: committed, staged, unstaged, and untracked work, with target-only changes excluded. The
 same patch supplies AI review, repair context, and Code Review, including after reload. A missing target, missing
-execution commit, or unrelated history is a recoverable comparison failure.
+execution commit, or unrelated history is a recoverable comparison failure. Review patches use one fixed format,
+independent of user Git settings for prefixes, colors, external diff programs, and relative paths.
 
 **Requirement: Read the change before deciding.** The Reviewer receives the approved Plan. Rounds one and two read the
 complete diff of every changed file; round two also verifies earlier findings. Round three onward reads the complete
 repair diff and assesses every open issue. An approval or rejection with unread parts returns those parts and the
-instructions to read them, in the same review.
+instructions to read them, in the same review. A non-empty patch with no readable file headers stops the review with a
+clear reason before a Reviewer runs; it does not count as an empty change and cannot receive approval.
 
 **Requirement: Distinguish repair claims from confirmed fixes.** Issue states are `new`, `fix claimed`,
 `fix confirmed`, and `fix rejected`. Each finding keeps its identity across rounds, with open and resolved items
@@ -1054,6 +1098,10 @@ post-validation context, once. Review quality is judged by useful convergence an
 **Acceptance scenarios:**
 
 - Given a missing Plan requirement, the finding stays visible through repair until the Reviewer confirms the fix.
+- Given user Git settings that change diff prefixes, colors, external diff output, or relative paths, review lists every
+  changed file with its repository path and requires reading it.
+- Given a non-empty review patch with no readable file headers, the review round stops with a clear reason and no
+  Reviewer approval is recorded.
 - Given an unread diff chunk, a verdict attempt returns its path and read command; the review continues and completes
   after every required chunk is read.
 - Given a round-one rejection, round two checks the whole implementation and earlier findings; later rounds check open
@@ -2072,7 +2120,7 @@ collaboration and broader code-intelligence improvements are separate follow-up 
 - [Project runtime state](../adr/017-project-runtime-state-under-wld-internal.md)
 - [ACP compatibility](runwield-acp-protocol-prd.md) and [implementation details](../acp-implementation-details.md)
 - [Workspace requirements](runwield-workspace-prd.md) and
-  [continuation readiness Plan](../plans/workspace-session-continuation-readiness.md)
+  [continuation readiness Plan](../plans/archived/workspace-session-continuation-readiness.md)
 
 ## Success Metrics
 

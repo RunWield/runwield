@@ -28,6 +28,9 @@ workRecord:
     path: "docs/work-records/2026-10-24-production-reviewer-benchmark-and-baseline.md"
     lastAttemptAt: "2026-10-24T03:59:46.788Z"
 status: "verified"
+archivedAt: "2026-10-26T02:43:51.801Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reviewer-benchmark-smoke-runner.md"
 ---
 
 # Reviewer Benchmark Smoke Runner
@@ -50,11 +53,11 @@ The benchmark design already exists as proposed documents:
 
 This Plan affects these PRD capabilities in `docs/prd/agent-behavior-evaluation-prd.md`, all **Target** today:
 
-- [Semantic Reviewer scorecard](../prd/agent-behavior-evaluation-prd.md#semantic-reviewer) — this Plan delivers a
+- [Semantic Reviewer scorecard](../../prd/agent-behavior-evaluation-prd.md#semantic-reviewer) — this Plan delivers a
   one-trial baseline smoke run for a subset of the measures.
-- [Repeatable scenario runs](../prd/agent-behavior-evaluation-prd.md#repeatable-scenario-runs) — this Plan delivers
+- [Repeatable scenario runs](../../prd/agent-behavior-evaluation-prd.md#repeatable-scenario-runs) — this Plan delivers
   isolation, oracle hiding, prerequisite checks, and resume for the Reviewer only.
-- [Reports and comparison](../prd/agent-behavior-evaluation-prd.md#reports-and-comparison) — this Plan delivers a
+- [Reports and comparison](../../prd/agent-behavior-evaluation-prd.md#reports-and-comparison) — this Plan delivers a
   local report for one configuration. Paired comparison stays target.
 
 The shared End-to-End Benchmark Harness stays target. This runner is an interim, Reviewer-only owner that the shared

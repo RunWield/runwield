@@ -27,6 +27,9 @@ workRecord:
     path: "docs/work-records/2026-10-17-permanent-work-record-content-and-stable-publication.md"
     lastAttemptAt: "2026-10-17T17:51:48.908Z"
 status: "verified"
+archivedAt: "2026-10-26T03:45:04.859Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/recorder-writes-permanent-work-records.md"
 ---
 
 # Recorder writes permanent Work Records

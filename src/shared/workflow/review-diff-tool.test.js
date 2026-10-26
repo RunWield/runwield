@@ -6,8 +6,10 @@ import {
     getFileDiff,
     listDiffFiles,
     parseDiffFiles,
+    requiredReviewDiffFiles,
+    ReviewDiffParseError,
 } from "./review-diff-tool.js";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 
 import { __resetSettingsForTests } from "../settings.js";
 
@@ -132,8 +134,7 @@ test("getFileDiff supports byte offset for truncated reads", () => {
 });
 
 test("getFileDiff preserves UTF-8 characters across byte pages", () => {
-    const diff =
-        `diff --git a/src/unicode.js b/src/unicode.js\n--- a/src/unicode.js\n+++ b/src/unicode.js\n@@ -1 +1 @@\n-old\n+before 😀 after\n`;
+    const diff = `diff --git a/src/unicode.js b/src/unicode.js\n--- a/src/unicode.js\n+++ b/src/unicode.js\n@@ -1 +1 @@\n-old\n+before 😀 after\n`;
     const entry = parseDiffFiles(diff)[0];
     const emojiStart = new TextEncoder().encode(entry.text.slice(0, entry.text.indexOf("😀"))).byteLength;
     const first = getFileDiff([entry], entry.path, { maxBytes: emojiStart + 2 });
@@ -184,10 +185,7 @@ test("buildDiffInspectionSection lists changed files without inlining the diff",
 
 test("buildDiffInspectionSection documents the repair scope only when one exists", () => {
     assertEquals(buildDiffInspectionSection(SAMPLE_INLINE_DIFF).includes('scope: "repair"'), false);
-    assertStringIncludes(
-        buildDiffInspectionSection(SAMPLE_INLINE_DIFF, { hasRepairScope: true }),
-        'scope: "repair"',
-    );
+    assertStringIncludes(buildDiffInspectionSection(SAMPLE_INLINE_DIFF, { hasRepairScope: true }), 'scope: "repair"');
 });
 
 test("review_diff tool responds to list command", async () => {
@@ -276,3 +274,21 @@ test("review_diff tool returns no-files message for empty diff", async () => {
 });
 
 // ─── Large-diff / error-handling integration tests ──────────────────────────
+
+test("required review files are empty only for an empty patch", () => {
+    assertEquals(requiredReviewDiffFiles(""), []);
+    assertEquals(requiredReviewDiffFiles("  \n"), []);
+    assertEquals(requiredReviewDiffFiles(SAMPLE_INLINE_DIFF), parseDiffFiles(SAMPLE_INLINE_DIFF));
+});
+
+for (const text of [
+    "diff --git x/f y/f\n-old\n+new\n",
+    "diff --git f f\n-old\n+new\n",
+    "\x1b[1mdiff --git a/f b/f\x1b[m\n-old\n+new\n",
+    "external diff output",
+]) {
+    test(`required review files reject unreadable content: ${JSON.stringify(text)}`, () => {
+        assertThrows(() => requiredReviewDiffFiles(text), ReviewDiffParseError, "The change was not approved");
+        assertEquals(parseDiffFiles(text), []);
+    });
+}

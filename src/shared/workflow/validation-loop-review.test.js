@@ -18,7 +18,13 @@ import {
     makeValidationProjectRoot,
     runValidationLoop,
     runValidationPhase,
+    UNEXPECTED_VALIDATION_PORTS,
 } from "./validation-test-helpers.js";
+
+import { createLedger } from "./review-ledger.ts";
+import { resolvePhaseContext } from "./validation-context.ts";
+import { createValidationSessionPort } from "./validation-session-adapter.ts";
+import { runReviewerRound } from "./validation-semantic.ts";
 
 function makeValidationUi() {
     const uiAPI = makeUi();
@@ -1375,4 +1381,148 @@ test("transcript provenance cannot waive production diff inspection", async () =
     assertEquals(ledgerCalls, 2);
     assertStringIncludes(ledgerPrompts[1], "Account for every open finding: R1-1");
     assertEquals((await loadPlan(third.projectRoot, "p"))?.attrs.status, "reviewed");
+});
+
+test("a non-empty unreadable review patch fails before a Reviewer starts", async () => {
+    const { hostedSession } = await makeValidatedCiRun();
+    let reviewerCalls = 0;
+    /** @type {import('./validation-types.ts').ValidationLoopArgs} */
+    const args = {
+        ...UNEXPECTED_VALIDATION_PORTS,
+        planName: "p",
+        planContent: "# p",
+        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        session: createValidationSessionPort(hostedSession, {
+            semanticReviewPort: {
+                runIsolatedAgentSession: () => {
+                    reviewerCalls += 1;
+                    return Promise.reject(new Error("An unreadable diff must not reach the Reviewer"));
+                },
+            },
+        }),
+    };
+    try {
+        const resolved = await resolvePhaseContext(args);
+        if (resolved.kind !== "ok") throw new Error(`Review context blocked: ${resolved.result.reason}`);
+        const result = await runReviewerRound(
+            args,
+            resolved.context,
+            {
+                semanticRound: 1,
+                reviewLedger: createLedger(),
+                repairBaselineTree: "",
+                lastRepairReport: "",
+            },
+            "discovery",
+            "diff --git workflow.js workflow.js\n+change\n",
+        );
+        assertEquals(result.kind, "failed");
+        if (result.kind !== "failed") throw new Error("Expected review failure");
+        assertStringIncludes(result.reason, "could not read the changed files");
+        assertStringIncludes(result.reason, "The change was not approved");
+        assertEquals(reviewerCalls, 0);
+    } finally {
+        hostedSession.dispose();
+    }
+});
+
+test("Git prefix settings cannot let a list-only Reviewer approve unread changes", async () => {
+    const { projectRoot, hostedSession } = await makeValidatedCiRun();
+    await git(projectRoot, ["config", "diff.noprefix", "true"]);
+    const prompts = [];
+    try {
+        await runValidationPhase({
+            hostedSession,
+            planName: "p",
+            planContent: "# p",
+            triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+            semanticReviewPort: {
+                /** @param {import('./validation-session-adapter.ts').IsolatedAgentSessionOptions} opts */
+                runIsolatedAgentSession: async (opts) => {
+                    prompts.push(opts.userRequest);
+                    if (prompts.length > 2) throw new Error("Review should finish after reading the missing bytes");
+                    if (prompts.length === 1) {
+                        // No auto-generated show calls: this Reviewer really tries to skip the read.
+                        await executeWorkflowTestTools(opts, [
+                            { name: "review_diff", arguments: { command: "list" } },
+                            { name: "review_complete", arguments: { approved: true, findings: [] } },
+                        ]);
+                    } else {
+                        assertStringIncludes(opts.userRequest, "Review is incomplete");
+                        assertStringIncludes(opts.userRequest, "workflow.js");
+                        await executeWorkflowTestTools(opts, [
+                            { name: "review_diff", arguments: { command: "show", path: "workflow.js" } },
+                            { name: "review_complete", arguments: { approved: true, findings: [] } },
+                        ]);
+                    }
+                    return [];
+                },
+            },
+        });
+        assertEquals(prompts.length, 2);
+        assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
+    } finally {
+        hostedSession.dispose();
+    }
+});
+
+test("an empty proposed patch still skips semantic review", async () => {
+    const { projectRoot, hostedSession } = await makeValidatedCiRun();
+    await git(projectRoot, ["add", "workflow.js"]);
+    await git(projectRoot, ["commit", "-m", "target already has the change"]);
+    try {
+        await runValidationPhase({
+            hostedSession,
+            planName: "p",
+            planContent: "# p",
+            triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+            // The default port throws if a Reviewer starts.
+            semanticReviewPort: reviewPort(),
+        });
+        assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
+    } finally {
+        hostedSession.dispose();
+    }
+});
+
+test("verification of an empty repair patch requires no reads from the full patch", async () => {
+    const { projectRoot, hostedSession } = await makeValidatedCiRun();
+    const repairBaselineTree = await captureWorktreeTree(projectRoot);
+    /** @type {import('./validation-types.ts').ValidationLoopArgs} */
+    const args = {
+        ...UNEXPECTED_VALIDATION_PORTS,
+        planName: "p",
+        planContent: "# p",
+        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        session: createValidationSessionPort(hostedSession, {
+            semanticReviewPort: {
+                runIsolatedAgentSession: async (opts) => {
+                    await executeWorkflowTestTools(opts, [
+                        { name: "review_diff", arguments: { command: "list", scope: "repair" } },
+                        { name: "review_complete", arguments: { approved: true, findings: [] } },
+                    ]);
+                    return [];
+                },
+            },
+        }),
+    };
+    try {
+        const resolved = await resolvePhaseContext(args);
+        if (resolved.kind !== "ok") throw new Error(`Review context blocked: ${resolved.result.reason}`);
+        const result = await runReviewerRound(
+            args,
+            resolved.context,
+            {
+                semanticRound: 3,
+                reviewLedger: createLedger(),
+                repairBaselineTree,
+                lastRepairReport: "No repair changes",
+            },
+            "verify",
+            await getWorktreeReviewDiff(projectRoot, "main"),
+        );
+        assertEquals(result.kind, "complete");
+    } finally {
+        hostedSession.dispose();
+    }
 });

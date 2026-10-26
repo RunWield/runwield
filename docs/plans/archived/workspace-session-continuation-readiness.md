@@ -12,13 +12,18 @@ affectedPaths:
 executionAgent: "engineer"
 frontend: true
 createdAt: "2026-09-07T23:05:28.350448-04:00"
-status: "validated"
 origin: "internal"
 workRecord:
     status: "generated"
     recordId: "b9297c76-43e2-40d5-a225-d4575c787ced"
     path: "docs/work-records/2026-09-08-workspace-session-continuation-and-steering.md"
     lastAttemptAt: "2026-09-20T03:13:51.924Z"
+status: "user_verified"
+userVerifiedAt: "2026-10-26T02:45:15.123Z"
+userVerificationNote: "this has been done for a long time"
+archivedAt: "2026-10-26T02:46:07.176Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/workspace-session-continuation-readiness.md"
 ---
 
 # Restore Ordinary Workspace Session Continuation
@@ -29,8 +34,8 @@ The same developer can start or continue a conversation in Workspace, move to th
 one updated Session. Long history, previous workflow context, and an idle open screen must not prevent continuation.
 While work runs, the phone can steer it, answer its questions, queue a follow-up, or stop it.
 
-Product intent: [Workspace PRD](../prd/runwield-workspace-prd.md). Architecture:
-[ADR-015](../adr/015-file-authoritative-session-bundles.md).
+Product intent: [Workspace PRD](../../prd/runwield-workspace-prd.md). Architecture:
+[ADR-015](../../adr/015-file-authoritative-session-bundles.md).
 
 ## Resolved Gaps
 
@@ -53,7 +58,7 @@ Product intent: [Workspace PRD](../prd/runwield-workspace-prd.md). Architecture:
 
 ## Delivery Evidence
 
-See the [Work Record](../work-records/2026-09-08-workspace-session-continuation-and-steering.md) for verification.
+See the [Work Record](../../work-records/2026-09-08-workspace-session-continuation-and-steering.md) for verification.
 Implementation and automated validation are complete; this status does not claim owner acceptance testing.
 
 ## Boundaries

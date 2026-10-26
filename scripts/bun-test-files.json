@@ -98,6 +98,7 @@
     "src/cmd/init/init-state_test.ts",
     "src/cmd/init/init-verification-confirmation.integration.test.ts",
     "src/cmd/install/index.test.ts",
+    "src/cmd/load-plan/archive-background.integration.test.ts",
     "src/cmd/load-plan/code-review-close.integration.test.ts",
     "src/cmd/load-plan/getArgumentCompletions.test.ts",
     "src/cmd/load-plan/index.integration.test.ts",

@@ -36,6 +36,9 @@ workRecord:
     path: "docs/work-records/2026-10-20-complete-session-export-and-gist-sharing.md"
     lastAttemptAt: "2026-10-20T23:45:54.469Z"
 status: "verified"
+archivedAt: "2026-10-26T02:32:32.283Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/runwield-complete-session-export.md"
 ---
 
 # Export and Share the Complete RunWield Session
@@ -73,13 +76,13 @@ returns only display events and discards the raw entries.
 | Background Task output logs                                      | Local task logs                         | No                                                 |
 
 **PRD:** no current capability owns local `/export` or `/share`. This Plan adds a requirement to
-[Session continuity](../prd/runwield-core-prd.md#session-continuity) in the Core PRD.
+[Session continuity](../../prd/runwield-core-prd.md#session-continuity) in the Core PRD.
 
 **Behavior that must stay the same:**
 
-- the Workspace [Session snapshot sharing](../prd/runwield-workspace-prd.md#session-snapshot-sharing) capability stays
+- the Workspace [Session snapshot sharing](../../prd/runwield-workspace-prd.md#session-snapshot-sharing) capability stays
   undelivered and separate from Gist sharing;
-- the Workspace [Session export](../prd/runwield-workspace-prd.md#session-export) browser download stays undelivered;
+- the Workspace [Session export](../../prd/runwield-workspace-prd.md#session-export) browser download stays undelivered;
 - an export never changes the transcript (`managed-read-non-mutation.test.ts`).
 
 ## Objective
@@ -317,7 +320,7 @@ persistence is also out of scope.
 8. In `src/cmd/registry.js`, the `/export` and `/share` entries describe the complete-Session HTML/JSON export and the
    two-file Gist with the preview link. `/export` usage lists `/export`, `/export output.html`, and
    `/export output.json`, and does not list `.jsonl`.
-9. `docs/prd/runwield-core-prd.md` [Session continuity](../prd/runwield-core-prd.md#session-continuity) has a
+9. `docs/prd/runwield-core-prd.md` [Session continuity](../../prd/runwield-core-prd.md#session-continuity) has a
    requirement, **Export or share the complete Session**, with acceptance scenarios that match the delivered behavior:
     - every segment in order, plus the Session Manifest facts;
     - HTML and JSON formats, with `.jsonl` retired;
