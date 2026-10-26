@@ -29,6 +29,9 @@ workRecord:
     lastAttemptAt: "2026-09-23T16:07:59.874Z"
 status: "validated"
 validatedCommit: "c2f4c30b1ca146b20dc943e609bb27e0ead72a61"
+archivedAt: "2026-10-26T13:31:54.743Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/fix-steering-across-agent-handoffs.md"
 ---
 
 # Deliver Steering to the New Agent After Handoff
