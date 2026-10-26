@@ -24,8 +24,16 @@ origin: "internal"
 userVerifiedAt: null
 planId: "7bf7ec07-2212-4bca-b5c5-3d4ac863025e"
 epicBaseCommit: "7bef10a1ef4b075a5484c6d4a44c56cf2791fed0"
-status: "implemented"
 epicIntegrationReport: "docs/plans/attached-mode-claude-feature-preview/integration-report.md"
+status: "closed_without_verification"
+epicCompletionMode: "done_enough"
+epicDoneEnoughAt: "2026-10-26T20:41:33.994Z"
+epicDoneEnoughSummary: "Done enough for now: 14 RunWield verified and 0 User Verified of 15 child Plans, 0 active/implemented, 1 remaining."
+workRecord:
+    status: "generated"
+    recordId: "93b683d5-214d-4340-a39c-33bb9efb0560"
+    path: "docs/work-records/2026-10-26-runwield-connect-workflows-in-claude-code.md"
+    lastAttemptAt: "2026-10-26T20:41:50.203Z"
 ---
 
 # RunWield Connect for Claude Code: FEATURE Preview
