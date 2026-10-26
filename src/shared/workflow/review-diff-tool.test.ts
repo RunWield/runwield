@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import type { TextContent } from "@earendil-works/pi-ai";
 import {
     buildDiffInspectionSection,
     createReviewDiffTool,
@@ -11,7 +12,29 @@ import {
 } from "./review-diff-tool.js";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 
-import { __resetSettingsForTests } from "../settings.js";
+import "../settings.js";
+
+interface FixtureDiffParams {
+    command: string;
+    scope?: string;
+    path?: string;
+}
+
+interface FixtureDiffDetails {
+    command?: string;
+    scope?: string;
+    fileCount?: number;
+    available?: boolean;
+    path?: string;
+}
+
+interface FixtureDiffResult {
+    content: TextContent[];
+    details: FixtureDiffDetails;
+    isError?: boolean;
+}
+
+type FixtureExecute = (toolCallId: string, params: FixtureDiffParams) => Promise<FixtureDiffResult>;
 
 const SAMPLE_INLINE_DIFF = `diff --git a/src/a.js b/src/a.js
 index 1111111..2222222 100644
@@ -190,7 +213,7 @@ test("buildDiffInspectionSection documents the repair scope only when one exists
 
 test("review_diff tool responds to list command", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
-    const result = await /** @type {any} */ (tool.execute)("test-1", { command: "list" });
+    const result = await (tool.execute as FixtureExecute)("test-1", { command: "list" });
     assertStringIncludes(result.content[0].text, "src/a.js");
     assertStringIncludes(result.content[0].text, "src/b.js");
     assertEquals(result.details.command, "list");
@@ -199,7 +222,7 @@ test("review_diff tool responds to list command", async () => {
 
 test("review_diff describes full scope as the proposed branch patch", () => {
     const tool = createReviewDiffTool({ full: SAMPLE_INLINE_DIFF, repair: "" });
-    const description = /** @type {any} */ (tool).description || /** @type {any} */ (tool).promptSnippet || "";
+    const description = tool.description || tool.promptSnippet || "";
     assertStringIncludes(String(description), "entire proposed branch patch");
     assertStringIncludes(
         buildDiffInspectionSection(SAMPLE_INLINE_DIFF, { hasRepairScope: true }),
@@ -218,11 +241,11 @@ index 8888888..9999999 100644
 `;
     const tool = createReviewDiffTool({ full: SAMPLE_INLINE_DIFF, repair: repairOnly });
 
-    const full = await /** @type {any} */ (tool.execute)("scope-1", { command: "list" });
+    const full = await (tool.execute as FixtureExecute)("scope-1", { command: "list" });
     assertEquals(full.details.scope, "full");
     assertEquals(full.details.fileCount, 5);
 
-    const repair = await /** @type {any} */ (tool.execute)("scope-2", { command: "list", scope: "repair" });
+    const repair = await (tool.execute as FixtureExecute)("scope-2", { command: "list", scope: "repair" });
     assertEquals(repair.details.scope, "repair");
     assertEquals(repair.details.fileCount, 1);
     assertStringIncludes(repair.content[0].text, "src/fix.js");
@@ -230,7 +253,7 @@ index 8888888..9999999 100644
 
 test("review_diff tool explains the repair scope is absent in the first round", async () => {
     const tool = createReviewDiffTool({ full: SAMPLE_INLINE_DIFF });
-    const result = await /** @type {any} */ (tool.execute)("scope-3", { command: "list", scope: "repair" });
+    const result = await (tool.execute as FixtureExecute)("scope-3", { command: "list", scope: "repair" });
 
     assertEquals(result.details.available, false);
     assertEquals(result.isError, undefined);
@@ -239,7 +262,7 @@ test("review_diff tool explains the repair scope is absent in the first round", 
 
 test("review_diff tool responds to show command", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
-    const result = await /** @type {any} */ (tool.execute)("test-2", { command: "show", path: "src/a.js" });
+    const result = await (tool.execute as FixtureExecute)("test-2", { command: "show", path: "src/a.js" });
     assertStringIncludes(result.content[0].text, "new line");
     assertEquals(result.details.command, "show");
     assertEquals(result.details.path, "src/a.js");
@@ -247,28 +270,28 @@ test("review_diff tool responds to show command", async () => {
 
 test("review_diff tool reports error for missing path in show", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
-    const result = await /** @type {any} */ (tool.execute)("test-3", { command: "show" });
+    const result = await (tool.execute as FixtureExecute)("test-3", { command: "show" });
     assertEquals(result.isError, true);
     assertStringIncludes(result.content[0].text, "required");
 });
 
 test("review_diff tool reports error for unknown command", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
-    const result = await /** @type {any} */ (tool.execute)("test-4", { command: "unknown" });
+    const result = await (tool.execute as FixtureExecute)("test-4", { command: "unknown" });
     assertEquals(result.isError, true);
     assertStringIncludes(result.content[0].text, "unknown command");
 });
 
 test("review_diff tool reports not-found for nonexistent file", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
-    const result = await /** @type {any} */ (tool.execute)("test-5", { command: "show", path: "nonexistent.js" });
+    const result = await (tool.execute as FixtureExecute)("test-5", { command: "show", path: "nonexistent.js" });
     assertEquals(result.isError, true);
     assertStringIncludes(result.content[0].text, "not found");
 });
 
 test("review_diff tool returns no-files message for empty diff", async () => {
     const tool = createReviewDiffTool("");
-    const result = await /** @type {any} */ (tool.execute)("test-6", { command: "list" });
+    const result = await (tool.execute as FixtureExecute)("test-6", { command: "list" });
     assertEquals(result.details.fileCount, 0);
     assertStringIncludes(result.content[0].text, "No changed files");
 });
