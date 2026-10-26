@@ -6,14 +6,7 @@ import { join } from "node:path";
 import { archivePlan, loadPlan } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { openAttachedReviewRound } from "./coordinator.ts";
-import {
-    planWrittenInput,
-    readRecordBytes,
-    runOperation,
-    spawnAttachedCli,
-    submitReview,
-    withProject,
-} from "./attached-test-fixture.ts";
+import { readRecordBytes, runOperation, spawnAttachedCli, submitReview, withProject } from "./attached-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 
 test("opening and restoring a round pin the current Plan document without changing its review identity", async () => {
@@ -92,9 +85,11 @@ for (const canonicalStatus of ["approved", "ready_for_work", "in_progress"] as c
     });
 }
 
-test("Core feedback reconciles to a Planner action; its resubmitted draft Plan can open round two", async () => {
+test("Core draft feedback refreshes the pending review basis without changing status reads", async () => {
     await withProject(async (projectRoot) => {
         const workflow = await submitReview(projectRoot);
+        const first = await openAttachedReviewRound(projectRoot, workflow.workflowId);
+        assert(first.kind === "opened");
         await recordPlanEvent({
             cwd: projectRoot,
             planName: "dark-mode-toggle",
@@ -105,28 +100,18 @@ test("Core feedback reconciles to a Planner action; its resubmitted draft Plan c
         const before = await readRecordBytes(projectRoot, workflow.workflowId);
         const status = await runOperation("status", projectRoot, { workflowId: workflow.workflowId });
         assert(status.ok);
-        assertEquals(status.workflow.state, "awaiting_planning");
-        assert(status.workflow.nextAction.kind === "plan");
-        assertStringIncludes(status.workflow.nextAction.note ?? "", "Read the Plan Events");
+        assertEquals(status.workflow.state, "awaiting_review");
+        assertEquals(status.workflow.nextAction.kind, "review");
         assertEquals(await readRecordBytes(projectRoot, workflow.workflowId), before);
-        const reconciled = await openAttachedReviewRound(projectRoot, workflow.workflowId);
-        assert(reconciled.kind === "not_pending");
-        assert(reconciled.workflow.nextAction.kind === "plan");
-        const second = await runOperation(
-            "plan_written",
-            projectRoot,
-            planWrittenInput({
-                workflowId: workflow.workflowId,
-                actionId: reconciled.workflow.nextAction.actionId,
-                expectedRevision: reconciled.workflow.revision,
-                operationId: "second-submission",
-            }),
-        );
-        assert(second.ok);
         const opened = await openAttachedReviewRound(projectRoot, workflow.workflowId);
         assert(opened.kind === "opened");
-        assertEquals(opened.basis.review.round, 2);
-        assertEquals(opened.basis.attrs.status, "draft");
+        const plan = await loadPlan(projectRoot, "dark-mode-toggle");
+        assert(plan);
+        assertEquals(opened.basis.review.round, first.basis.review.round);
+        assertEquals(opened.basis.review.actionId, first.basis.review.actionId);
+        assertEquals(opened.basis.review.controllerRevision, plan.controllerRevision);
+        assert(opened.basis.review.controllerRevision !== first.basis.review.controllerRevision);
+        assertEquals(plan.attrs.status, "draft");
     });
 });
 

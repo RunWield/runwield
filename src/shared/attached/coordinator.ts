@@ -410,8 +410,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         return record.state === "plan_ready" ? record : { ...record, state: "plan_ready", pendingAction: null };
     }
     if (status === "draft") {
-        if (record.state === "awaiting_review" && plan?.controllerRevision === record.review?.controllerRevision)
-            return record;
+        if (record.state === "awaiting_review") return record;
         return {
             ...record,
             state: "awaiting_planning",
