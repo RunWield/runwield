@@ -40,6 +40,9 @@ userVerifiedAt: null
 targetBranch: "main"
 validatedCommit: "c244d7cd55944a84ffad2d347d97dbbbb80b31fc"
 status: "verified"
+archivedAt: "2026-10-26T13:51:07.730Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/conversational-review/01-plan-review-conversation.md"
 ---
 
 # Plan Review Conversation

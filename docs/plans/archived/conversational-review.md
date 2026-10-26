@@ -29,6 +29,9 @@ workRecord:
     path: "docs/work-records/2026-10-22-conversational-plan-and-code-review.md"
     lastAttemptAt: "2026-10-22T02:48:01.980Z"
 status: "verified"
+archivedAt: "2026-10-26T13:51:07.730Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/conversational-review.md"
 ---
 
 # Conversational Review

@@ -29,6 +29,9 @@ workRecord:
     path: "docs/work-records/2026-10-26-bounded-epic-integration-gate-reviews.md"
     lastAttemptAt: "2026-10-26T13:13:02.118Z"
 status: "verified"
+archivedAt: "2026-10-26T13:50:46.155Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/bound-epic-integration-gate-review-rounds.md"
 ---
 
 # Bound the Epic Integration Gate Review Rounds

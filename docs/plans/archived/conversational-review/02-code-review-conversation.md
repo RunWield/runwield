@@ -37,6 +37,9 @@ userVerifiedAt: null
 targetBranch: "main"
 validatedCommit: "234967fe6c401dbabee7a26d191566235876c33e"
 status: "verified"
+archivedAt: "2026-10-26T13:51:07.730Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/conversational-review/02-code-review-conversation.md"
 ---
 
 # Code Review Conversation
