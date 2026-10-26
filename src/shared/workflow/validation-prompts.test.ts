@@ -296,3 +296,16 @@ test("bundled reviewer-feedback engineer stops in prose on an unreachable findin
     assertStringIncludes(prompt, "end your turn in plain text");
     assertStringIncludes(prompt, "When every supplied item is settled, get one accepted `task_completed` call");
 });
+
+test("Epic verification loads the integration prompt with shared review practice and a read-only ceiling", async () => {
+    const discovery = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER);
+    const verify = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER, { reviewerMode: "verify" });
+    assertStringIncludes(discovery.systemPrompt, "one full review");
+    assertStringIncludes(verify.systemPrompt, "Do not sweep the Epic again");
+    assertStringIncludes(verify.systemPrompt, 'scope: "repair"');
+    assertStringIncludes(verify.systemPrompt, 'origin: "repair_regression"');
+    assertStringIncludes(verify.systemPrompt, "Every open ID must");
+    assertStringIncludes(verify.systemPrompt, "Your Default Is Approval");
+    assertEquals(verify.tools, discovery.tools);
+    assertEquals(verify.tools, ["read", "grep", "find", "ls", "review_diff", "review_complete", "delegate_agent"]);
+});
