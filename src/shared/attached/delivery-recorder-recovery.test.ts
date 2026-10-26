@@ -56,6 +56,7 @@ for (const timing of ["before", "after"]) {
             const error = current.nextAction.request.validationError;
             assert(error);
             const instructions = await readAttachedAction({
+                evidence: EVIDENCE,
                 projectRoot: fixture.root,
                 workflowId: workflow.workflowId,
                 actionId: current.nextAction.actionId,

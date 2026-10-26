@@ -10,6 +10,7 @@ import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
+    EVIDENCE,
     planWrittenInput,
     readRecordBytes,
     runOperation,
@@ -71,6 +72,7 @@ test("feedback and readable image paths survive loss and resubmission creates a 
         const summary = fresh.result.workflow.nextAction;
         assert(summary.kind === "plan");
         const content = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: root,
             workflowId: workflow.workflowId,
             actionId: summary.actionId,

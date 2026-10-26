@@ -1,3 +1,4 @@
+import { EVIDENCE } from "./attached-test-fixture.ts";
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal, deepStrictEqual } from "node:assert/strict";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
@@ -32,6 +33,7 @@ test("a missing command exposes the exact durable question and runs nothing unti
         equal(action.request.interaction.type, "text");
         assert(action.request.interaction.prompt);
         const prompt = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: action.actionId,

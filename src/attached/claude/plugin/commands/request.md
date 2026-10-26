@@ -13,8 +13,10 @@ Core owns host and version compatibility.
 1. Call the RunWield MCP tool `activate`. Use a new unique `operationId` and put the user's request in
    `payload.requestText`. Use `${CLAUDE_SESSION_ID}` as `payload.hostRequestId`. If that variable is not substituted,
    generate a unique identifier instead. The MCP server supplies host and adapter version evidence.
-2. Fetch current role instructions and `context` with `get_instructions` using the workflow and action IDs. Follow the returned instructions, feedback, image paths, project setup, and note. Use `workflow.workflowId`, `workflow.revision`, and
-   `workflow.nextAction.actionId` in each lifecycle call. Check that the action contract is `runwield.attached.triage/1`
+2. Fetch current role instructions and `context` with `get_instructions` using the workflow and action IDs. Follow the
+   returned instructions, feedback, image paths, project setup, and note. Use `context.requestText` and
+   `context.triageOutcome` when the conversation does not contain the request. Use `workflow.workflowId`,
+   `workflow.revision`, and `workflow.nextAction.actionId` in each lifecycle call. Check that the action contract is `runwield.attached.triage/1`
    for the Router or `runwield.attached.planner/1` for the Planner. If another contract is returned, stop and tell the
    user that Core returned an unsupported role contract.
 3. Call `triage_report` after Triage. For a FEATURE Plan, show the setup preview before writing the Plan, then call

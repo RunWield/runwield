@@ -137,11 +137,11 @@ Connect does not push a new model turn into an idle Claude session. Closing the 
 
 Use these commands in the same project, including from a new Claude Code conversation:
 
-| Command                 | Purpose                                                               |
-| ----------------------- | --------------------------------------------------------------------- |
-| `/runwield:plan-review` | Reopen the pending Plan review or retrieve its saved outcome.         |
-| `/runwield:implement`   | Start a saved ready Plan or restore its implementation handoff.       |
-| `/runwield:validate`    | Continue or restore validation, code review, recording, and delivery. |
+| Command                 | Purpose                                                                 |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `/runwield:plan-review` | Restore pending Triage, planning, or Plan review and its saved outcome. |
+| `/runwield:implement`   | Start a saved ready Plan or restore its implementation handoff.         |
+| `/runwield:validate`    | Continue or restore validation, code review, recording, and delivery.   |
 
 Do not start another `/runwield:request` to resume the same work. Core loads its saved action and revision. A review
 page hosted by the old Claude process stops when that process closes; the resume command hosts the pending review
@@ -161,7 +161,9 @@ Update the marketplace and plugin from Claude Code:
 Update Core with the installer or package manager you used. For example, rerun the Quickstart installer, or use
 `brew upgrade gandazgul/tap/wld` or `winget upgrade --id Gandazgul.RunWield --exact`. Use `claude update` for Claude Code.
 
-Core checks every evidence-carrying operation, not just activation:
+Core checks current host evidence on worker instructions, artifact and chat reads, and lifecycle operations, not just
+activation. A rejected host gets no new worker instructions. Status reports the compatibility assessment and stays
+available for recovery, but does not continue validation for a rejected host:
 
 - **Compatible:** the host version and adapter contract are in the matrix.
 - **Newer, not yet tested:** continue with a visible notice; this does not add a tested version.

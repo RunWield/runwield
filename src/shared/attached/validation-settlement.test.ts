@@ -317,3 +317,74 @@ for (const releaseBeforeSettlement of [true, false]) {
         }
     });
 }
+
+test("a lost repair-completion write restores the saved CI decision without running CI again", async () => {
+    const fixture = await attachedValidationFixture({ attrs: { validationCiAttempts: 2 } });
+    try {
+        const started = await fixture.call("start_validation", await fixture.status());
+        assert(started.ok && started.workflow.nextAction.kind === "validation");
+        assertEquals(started.workflow.nextAction.request.kind, "repair");
+        const location = locateAttachedWorkflows(fixture.root);
+        const completing = fixture.call(
+            "task_completed",
+            started.workflow,
+            {
+                actionId: started.workflow.nextAction.actionId,
+                message: "- Checked the failed command and attempted the repair.",
+            },
+            "repair-completion",
+        );
+        let durableClaim: AttachedWorkflowRecord | undefined;
+        for (let attempt = 0; attempt < 500; attempt++) {
+            const claim = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+            if (
+                claim.status === "found" &&
+                claim.record.validation?.holder?.token &&
+                claim.record.validation.operationId === "repair-completion"
+            ) {
+                durableClaim = claim.record;
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        const completed = await completing;
+        assert(durableClaim, "Observe the real durable claim before losing the final write.");
+        assert(completed.ok && completed.workflow.nextAction.kind === "validation");
+        assertEquals(completed.workflow.nextAction.request.kind, "decision");
+        assertEquals(await fixture.ciCount(), 2);
+        const after = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+        assert(after.status === "found");
+        assertEquals(
+            (
+                await writeAttachedWorkflowRecord(
+                    location,
+                    {
+                        ...durableClaim,
+                        revision: after.record.revision + 1,
+                    },
+                    after.record.revision,
+                )
+            ).status,
+            "written",
+        );
+        const recovered = await fixture.call("start_validation", await fixture.status());
+        assert(recovered.ok, JSON.stringify(recovered));
+        assertEquals(recovered.workflow.nextAction, completed.workflow.nextAction);
+        assertEquals(await fixture.ciCount(), 2);
+        const checkpoint = (await fixture.plan()).attrs.validationCheckpoint;
+        assert(checkpoint?.pendingCiDecision && checkpoint.pendingHostDecision);
+        const replay = await fixture.call(
+            "task_completed",
+            started.workflow,
+            {
+                actionId: started.workflow.nextAction.actionId,
+                message: "- Checked the failed command and attempted the repair.",
+            },
+            "repair-completion",
+        );
+        assert(replay.ok);
+        assertEquals(replay.workflow.nextAction, completed.workflow.nextAction);
+    } finally {
+        await fixture.close();
+    }
+});

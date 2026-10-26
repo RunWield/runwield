@@ -8,7 +8,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.js";
 import { addEntry, findById, listEntries } from "../worktree-registry.js";
-import { runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
+import { EVIDENCE, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows, type AttachedWorkflowRecord } from "./record-store.ts";
 import { completionInput, executionInput, implementing, readyPlan } from "./execution-test-fixture.ts";
 
@@ -79,10 +79,14 @@ test("approved handoff captures baseline, preserves invoking files, and checkpoi
 test("fresh process restores the issued worktree and current implementer instructions without a second attempt", async () => {
     await withProject(async (root) => {
         const started = await implementing(root);
-        const fresh = await spawnAttachedCli("status", root, { workflowId: started.workflow.workflowId });
+        const fresh = await spawnAttachedCli("status", root, {
+            workflowId: started.workflow.workflowId,
+            evidence: EVIDENCE,
+        });
         assert(fresh.result.ok && fresh.result.workflow.nextAction.kind === "implementation");
         assertEquals(fresh.result, compactStatus(started, null));
         const content = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: root,
             workflowId: fresh.result.workflow.workflowId,
             actionId: fresh.result.workflow.nextAction.actionId,

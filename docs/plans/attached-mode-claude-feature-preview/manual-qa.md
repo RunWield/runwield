@@ -224,3 +224,16 @@ Manual verification steps for attached-mode-claude-feature-preview/12-repair-int
 - [ ] Open Engineer and Planner role instructions for a project with a Skill override. Confirm the Skills section shows the project Skill path and description; confirm Reviewer instructions have no Skills section.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/12-repair-integration-findings-3" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/13-repair-integration-findings-4" -->
+
+## Repair integration findings 4
+
+Manual verification steps for attached-mode-claude-feature-preview/13-repair-integration-findings-4
+
+- [ ] In a fresh Claude conversation, restore a pending Triage action and confirm its saved request appears in the instructions.
+- [ ] Restore a pending Planner action and confirm the saved request and Triage outcome appear in the instructions.
+- [ ] Use a host version below the supported floor and confirm the reads provide no work content, while status remains readable and shows the compatibility notice.
+- [ ] Recover after a lost final write for a saved CI decision and confirm the same decision appears without another CI run.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/13-repair-integration-findings-4" -->

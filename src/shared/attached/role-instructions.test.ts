@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
+    EVIDENCE,
     activateInput,
     pendingTriage,
     planWrittenInput,
@@ -42,6 +43,7 @@ test("after a PLANNED_CHANGE Triage, status omits instructions and the Planner f
         assert(status.ok && status.workflow.nextAction.kind === "plan");
         assertEquals(status.instructions, undefined);
         const content = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot,
             workflowId: planning.workflowId,
             actionId: status.workflow.nextAction.actionId,
@@ -69,6 +71,7 @@ test("Planner instructions keep initial submission and feedback review in Claude
                 round === 1
                     ? handoff
                     : await readAttachedAction({
+                          evidence: EVIDENCE,
                           projectRoot,
                           workflowId: handoff.workflow.workflowId,
                           actionId: handoff.workflow.nextAction.actionId,
@@ -122,6 +125,7 @@ test("a project planner definition replaces the bundled Planner instructions on 
         const status = await runOperation("status", projectRoot, { workflowId: planning.workflowId });
         assert(status.ok && status.workflow.nextAction.kind === "plan");
         const content = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot,
             workflowId: planning.workflowId,
             actionId: status.workflow.nextAction.actionId,

@@ -10,7 +10,8 @@ import {
 } from "@modelcontextprotocol/sdk/types";
 import { readStatus, runAttachedOperation } from "../../shared/attached/coordinator.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "../../shared/attached/review-host.ts";
-import { ATTACHED_OPERATIONS, isAttachedReadOperation } from "../../shared/attached/operations.ts";
+import { ATTACHED_OPERATIONS } from "../../shared/attached/operations.ts";
+import { isBlockingCompatibility } from "../../shared/attached/compatibility.ts";
 import { actionId, compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import process from "node:process";
 import plugin from "./plugin/.claude-plugin/plugin.json" with { type: "json" };
@@ -110,18 +111,15 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
                           ),
                       )
                     : requestArguments;
-            const argumentsWithEvidence =
-                operation.name === "status" || isAttachedReadOperation(operation.name)
-                    ? statusArguments
-                    : {
-                          ...request.params.arguments,
-                          evidence: {
-                              host: client?.name ?? "claude-code",
-                              hostVersion: client?.version ?? "not-reported",
-                              adapterVersion,
-                              adapterContract,
-                          },
-                      };
+            const argumentsWithEvidence = {
+                ...statusArguments,
+                evidence: {
+                    host: client?.name ?? "claude-code",
+                    hostVersion: client?.version ?? "not-reported",
+                    adapterVersion,
+                    adapterContract,
+                },
+            };
             const inputText = JSON.stringify(argumentsWithEvidence);
             const progressToken = request.params._meta?.progressToken;
             let progress = 0;
@@ -146,8 +144,14 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
             } finally {
                 clearInterval(timer);
             }
+            const blocked =
+                coordinated.ok && "compatibility" in coordinated && coordinated.compatibility
+                    ? isBlockingCompatibility(coordinated.compatibility)
+                    : false;
             if (
                 operation.name === "status" &&
+                coordinated.ok &&
+                !blocked &&
                 typeof timeoutMs === "number" &&
                 timeoutMs > 0 &&
                 typeof waitForRevision === "number" &&
@@ -166,6 +170,7 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
                         {
                             projectRoot,
                             workflowId,
+                            evidence: argumentsWithEvidence.evidence,
                         },
                         { signal: shutdown.signal },
                     );
@@ -182,7 +187,7 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
                     }
                 }
             }
-            const canHost = !closing;
+            const canHost = !closing && !blocked;
             const review =
                 canHost && coordinated.workflow
                     ? await ensureReviewHosted(
@@ -195,7 +200,11 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
             const refreshed =
                 canHost && coordinated.workflow?.review?.status === "pending"
                     ? await readStatus(
-                          { projectRoot, workflowId: coordinated.workflow.workflowId },
+                          {
+                              projectRoot,
+                              workflowId: coordinated.workflow.workflowId,
+                              evidence: argumentsWithEvidence.evidence,
+                          },
                           { signal: shutdown.signal },
                       )
                     : null;

@@ -1,9 +1,9 @@
 ---
-description: Reopen the last RunWield Plan review
+description: Restore RunWield Triage, planning, or Plan review
 disable-model-invocation: true
 ---
 
-Reopen the RunWield Plan review in this project.
+Restore RunWield Triage, planning, or Plan review in this project.
 
 Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
@@ -16,9 +16,14 @@ Core owns host and version compatibility.
    `{ workflowId, waitForRevision: <current revision>, timeoutMs: 30000 }` while the review is pending. Core returns on a
    revision/action change or timeout; repeat with the returned revision if still pending. Do not use shell sleep or fetch
    full status.
-3. For a `plan` action, fetch its current instructions with `get_instructions` using `workflowId` and `actionId`, then
-   follow the Planner instructions and returned `context` (feedback, image paths, project setup, and note). After a cancellation, tell the user that review was
-   canceled and ask what to do next; the workflow remains open. For feedback, revise and call `plan_written` with the new
+3. For a `triage` action, fetch `get_instructions` with the workflow and action IDs, use `context.requestText` as the
+   user's request, follow the Router instructions, and call `triage_report`. Continue with the `/runwield:request` flow
+   from its returned action; do not activate another request.
+   For a `plan` action, fetch its current instructions with `get_instructions` using `workflowId` and `actionId`, then
+   follow the Planner instructions and returned `context` (feedback, image paths, project setup, and note). Use
+   `context.requestText` and `context.triageOutcome` when the conversation does not contain the request. After a
+   cancellation, tell the user that review was canceled and ask what to do next; the workflow remains open.
+   For feedback, revise and call `plan_written` with the new
    action ID and current workflow revision.
 4. For `plan_saved`, report that the Plan is Ready For Work, saved for later, and stop. Tell the user
    `/runwield:implement` starts it. For `plan_ready`, immediately call `start_execution` with the current workflow ID and revision, a new operation ID,

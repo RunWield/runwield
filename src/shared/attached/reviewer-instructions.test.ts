@@ -1,3 +1,4 @@
+import { EVIDENCE } from "./attached-test-fixture.ts";
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal } from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -135,6 +136,7 @@ for (const scope of ["home", "project"])
                 });
                 assert(result.ok && result.workflow.nextAction.kind === "validation");
                 const report = await readAttachedAction({
+                    evidence: EVIDENCE,
                     projectRoot: fixture.root,
                     workflowId: fixture.workflowId,
                     actionId: result.workflow.nextAction.actionId,

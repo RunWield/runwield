@@ -1,4 +1,13 @@
-import { activateInput, pendingTriage, runOperation, withProject } from "./attached-test-fixture.ts";
+import {
+    activateInput,
+    EVIDENCE,
+    pendingTriage,
+    runOperation,
+    withProject,
+    spawnAttachedCli,
+    triageReportInput,
+    readRecordBytes,
+} from "./attached-test-fixture.ts";
 import type { AttachedJsonObject } from "./operations.ts";
 import { test } from "node:test";
 import { ok as assert, deepStrictEqual, strictEqual as equal } from "node:assert/strict";
@@ -15,6 +24,7 @@ test("action instruction reads preserve complete Core instructions and workflow 
         const started = await fixture.call("start_validation", await fixture.status());
         assert(started.ok && started.workflow.nextAction.kind === "validation" && started.instructions);
         const envelope = {
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: started.workflow.nextAction.actionId,
@@ -37,6 +47,7 @@ test("action reads reject absent workflows and stale action IDs without returnin
     const fixture = await attachedValidationFixture();
     try {
         const missing = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: "missing-workflow",
             actionId: "missing-action",
@@ -45,6 +56,7 @@ test("action reads reject absent workflows and stale action IDs without returnin
         assert(!missing.ok);
         equal(missing.rejection.code, "workflow_not_found");
         const stale = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: "stale-action",
@@ -74,6 +86,7 @@ test("a completed reviewer action cannot fetch instructions for the next browser
         });
         assert(reviewed.ok && reviewed.workflow.nextAction.kind === "code_review");
         const stale = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: reviewerId,
@@ -82,6 +95,7 @@ test("a completed reviewer action cannot fetch instructions for the next browser
         assert(!stale.ok);
         equal(stale.rejection.code, "action_superseded");
         const decision = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: reviewed.workflow.nextAction.actionId,
@@ -90,6 +104,7 @@ test("a completed reviewer action cannot fetch instructions for the next browser
         assert(decision.ok && "request" in decision);
         deepStrictEqual(decision.request, reviewed.workflow.nextAction.request);
         const chat = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: reviewed.workflow.nextAction.actionId,
@@ -119,6 +134,7 @@ test("bounded artifact pages restore the complete UTF-8 execution report and act
             let restored = "";
             while (true) {
                 const page = await readAttachedAction({
+                    evidence: EVIDENCE,
                     projectRoot: fixture.root,
                     workflowId: fixture.workflowId,
                     actionId: action.actionId,
@@ -149,6 +165,7 @@ test("artifact reads reject invalid page limits, unavailable reports, and supers
         const started = await fixture.call("start_validation", await fixture.status());
         assert(started.ok && started.workflow.nextAction.kind === "validation");
         const envelope = {
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: started.workflow.nextAction.actionId,
@@ -181,12 +198,14 @@ test("shared read operations reject malformed envelopes without changing the pen
         const before = await runOperation("status", root, { workflowId: triage.workflowId });
         for (const name of ["get_instructions", "get_artifact", "get_pending_chat"] as const) {
             const input: AttachedJsonObject = {
+                evidence: EVIDENCE,
                 workflowId: triage.workflowId,
                 actionId: triage.actionId,
                 ...(name === "get_artifact" && { artifact: "prompt" }),
             };
             for (const invalid of [
                 {},
+                { ...input, evidence: undefined },
                 { ...input, actionId: "" },
                 { ...input, workflowId: "../escape" },
                 { ...input, extra: true },
@@ -209,5 +228,28 @@ test("shared read operations reject malformed envelopes without changing the pen
             }
         }
         deepStrictEqual(await runOperation("status", root, { workflowId: triage.workflowId }), before);
+    });
+});
+
+test("fresh processes restore the saved request for Triage and the Planner without copying it into status or receipts", async () => {
+    await withProject(async (root) => {
+        const triage = pendingTriage(await runOperation("activate", root, activateInput()));
+        const restored = await spawnAttachedCli("get_instructions", root, { ...triage, evidence: EVIDENCE });
+        assert(restored.result.ok && "context" in restored.result && restored.result.context);
+        equal(restored.result.context.requestText, "Add a dark mode toggle");
+        const planned = await runOperation("triage_report", root, triageReportInput(triage));
+        assert(planned.ok && planned.workflow.nextAction.kind === "plan");
+        const planner = await spawnAttachedCli("get_instructions", root, {
+            workflowId: triage.workflowId,
+            actionId: planned.workflow.nextAction.actionId,
+            evidence: EVIDENCE,
+        });
+        assert(planner.result.ok && "context" in planner.result && planner.result.context);
+        equal(planner.result.context.requestText, "Add a dark mode toggle");
+        deepStrictEqual(planner.result.context.triageOutcome, planned.workflow.triageOutcome);
+        const status = await spawnAttachedCli("status", root, { workflowId: triage.workflowId });
+        assert(!JSON.stringify(status.result).includes("Add a dark mode toggle"));
+        const record = JSON.parse(await readRecordBytes(root, triage.workflowId));
+        assert(!JSON.stringify(record.acceptedOperations).includes("requestText"));
     });
 });

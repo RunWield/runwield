@@ -33,6 +33,7 @@ test("Code page chat queues and replies without a decision, survives a fresh pro
         const fresh = await spawnAttachedCli("status", fixture.root, { workflowId: fixture.workflowId });
         assert(fresh.result.ok && fresh.result.workflow.nextAction.kind === "code_review");
         const chat = await readAttachedAction({
+            evidence: EVIDENCE,
             projectRoot: fixture.root,
             workflowId: fixture.workflowId,
             actionId: fresh.result.workflow.nextAction.actionId,

@@ -11,6 +11,7 @@ import { git } from "../../shared/git-test-fixture.ts";
 import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "../../shared/attached/operations.ts";
 import {
     activateInput,
+    EVIDENCE,
     CLI_PATH,
     DENO_CONFIG_PATH,
     pendingTriage,
@@ -49,7 +50,7 @@ test("separate Core processes activate, accept Triage once, and replay the saved
         assertEquals(c.result, b.result);
         assertEquals(await readRecordBytes(projectRoot, triage.workflowId), bytesAfterB);
 
-        const d = await spawnAttachedCli("status", projectRoot, { workflowId: triage.workflowId });
+        const d = await spawnAttachedCli("status", projectRoot, { workflowId: triage.workflowId, evidence: EVIDENCE });
         assertEquals(d.result, compactStatus(b.result, null));
         assertEquals(await readRecordBytes(projectRoot, triage.workflowId), bytesAfterB);
         assertEquals(await git(projectRoot, ["status", "--porcelain", "--ignored"]), "");
@@ -79,7 +80,10 @@ test("two processes racing on one revision leave exactly one accepted outcome", 
         assertEquals(conflicts.length, 1);
         assertEquals(conflicts[0].code, 1);
 
-        const status = await spawnAttachedCli("status", projectRoot, { workflowId: triage.workflowId });
+        const status = await spawnAttachedCli("status", projectRoot, {
+            workflowId: triage.workflowId,
+            evidence: EVIDENCE,
+        });
         assert(status.result.ok && accepted[0].result.ok);
         assertEquals(status.result.workflow.revision, 2);
         assertEquals(status.result, JSON.parse(JSON.stringify(compactStatus(accepted[0].result, null))));
@@ -147,6 +151,7 @@ test("CLI get_pending_chat returns the oldest pending Plan review turn", async (
             await saveAttachedReviewChat(projectRoot, workflow.workflowId, actionId, { feedback }, planRevision);
         }
         const cli = await spawnAttachedCli("get_pending_chat", projectRoot, {
+            evidence: EVIDENCE,
             workflowId: workflow.workflowId,
             actionId,
         });
