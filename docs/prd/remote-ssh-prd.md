@@ -243,8 +243,10 @@ until exit.
 **Requirement: Keep project knowledge correctly scoped (Sessions and Memory delivered).** Unrelated remote folders must
 not share Sessions because their names match. Session identity follows the
 [Core remote project locator](runwield-core-prd.md#project-context-and-initialization): exact host identity and
-canonical project root, separate from the execution cwd and temporary mount paths. An ambiguous host match never merges
-history; confirmation for ambiguous aliases remains target scope.
+canonical project root, separate from the execution cwd and temporary mount paths. A partly matching host asks once
+before the TUI opens. Yes reuses the selected saved project's identity, history, and Memory key; No keeps a separate
+target. Both answers are retained. The Core requirement defines the matching and cancellation rules; history is never
+merged without confirmation.
 
 Memory normally uses `<folder>@<hostname>-<hash>`, from the normalized resolved hostname, user, port, and canonical
 remote primary root. It excludes the host key, so a server rebuild retains memories. Worktrees share the primary root.

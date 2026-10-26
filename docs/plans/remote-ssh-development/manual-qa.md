@@ -492,3 +492,25 @@ Manual verification steps for remote-ssh-development/11-package-and-qualify-remo
 - [ ] Connect to a macOS host over SSH, if available. Confirm the launcher refuses the host before any download.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/11-package-and-qualify-remote-ssh-support" -->
+
+## Confirm a Partly Matching Remote Host: Live Evidence
+
+On 2026-10-26, matching macOS arm64 and Linux x86_64 development executables used build ID
+`a40669f1d0f40d695d60bc541161471d04dcc3f3acd544dbbefe9369177fa89f`. The production launcher ran in a real tmux PTY
+with an isolated laptop HOME. Only the HTTP model provider was synthetic. OpenSSH, runtime preparation, the personal
+mount, Session persistence, and the remote TUI were real. The IP connection used an isolated SSH configuration with
+`sct`'s port, user, identity file, and existing trusted host key.
+
+- [x] Connected through `sct` to remote scratch folder `/tmp/host-confirmation-HhxzHBzF` and saved a conversation with
+      `LIVE_HOST_CONFIRMATION_SENTINEL`.
+- [x] Connected through `47.165.36.233` to the same folder. Before the TUI opened, the host question showed the saved
+      DNS target, matching fingerprint, and address-change reason.
+- [x] Answered `1` (Yes). `/resume` listed the DNS conversation. Selecting it restored the earlier user message and
+      assistant response, with “Conversation restored.”
+- [x] Reconnected by IP. The TUI opened without another host question. The project record retained the IP identity in
+      `acceptedHosts`, and the isolated HOME still held one Memory binding with the original DNS collection name.
+- [x] Exited both IP connections through `/exit`; both launchers returned status 0.
+
+Evidence: `/var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/host-confirmation-live-btqgw2gg/` contains terminal logs,
+screens, and `evidence.json`. This check covers DNS-to-IP confirmation and resume, not live host-key rotation or a
+production model provider.

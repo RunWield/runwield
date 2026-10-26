@@ -273,6 +273,8 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     // path generated from the known identity and the local verified checksum.
     const expected = `${target.home}/.cache/runwield/runtime/${BUILD_ID}/${triple}/${metadata.sha256}/wld`;
     if (executable !== expected) throw new Error("Remote runtime returned an unexpected cache path");
+    const { confirmRemoteHost } = await import("../../shared/remote/host-confirmation.ts");
+    target = confirmRemoteHost(target);
     const { bindRemoteMemory } = await import("../../shared/remote/memory-binding.ts");
     const memoryCollection = await bindRemoteMemory(target);
     const { startRemoteControlService } = await import("../../shared/remote/control.ts");

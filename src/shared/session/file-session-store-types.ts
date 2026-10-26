@@ -74,6 +74,10 @@ export interface RemoteProjectLocator {
     root: string;
     /** Display and reconnect command only; not an identity field. */
     targetLabel?: string;
+    /** Identities the user confirmed are this project's server. */
+    acceptedHosts?: import("../remote/target.ts").RemoteHostIdentity[];
+    /** Identities the user said are a different server. */
+    refusedHosts?: import("../remote/target.ts").RemoteHostIdentity[];
 }
 
 export interface FileSessionProject {

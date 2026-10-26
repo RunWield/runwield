@@ -141,14 +141,18 @@ remote subprocess. Production-provider and platform matrices retain separate qua
 **Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
 canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
 fingerprint; the SSH alias is only a display label. A certificate connection without a reported stable fingerprint uses
-`null`, with exact hostname, user, and port matching; it does not match a known fingerprint. Any identity difference
-creates a distinct target and never merges history. The root is remote `primaryRoot`, or `gitRoot`, or `cwd` when the
+`null`, with exact hostname, user, and port matching. With the same root and user, a matching non-null key but changed
+address, or a matching address but changed key, asks once whether it is the same server. Yes uses the saved project's
+identity; No keeps a separate target. Both answers are retained. An unconfirmed identity difference never reuses history.
+Two `null` fingerprints do not prove a shared key. The root is remote `primaryRoot`, or `gitRoot`, or `cwd` when the
 preceding value is absent. A worktree shares its primary checkout's project identity while the Session keeps execution
-cwd separately. Laptop paths and temporary mount paths are not remote project identity. This does not establish a remote
-Memory binding. _Avoid_: SSH alias identity, mount root, local checkout path
+cwd separately. Laptop paths and temporary mount paths are not remote project identity. A confirmed host also uses the
+saved project's Memory key; local-project Memory sharing remains a separate choice. _Avoid_: SSH alias identity, mount
+root, local checkout path
 
 **Remote Memory key**: The normalized resolved SSH hostname, user, port, and canonical remote primary project root. It
-excludes the host key and temporary mount paths. A worktree uses its primary root. _Avoid_: Session identity, SSH alias
+excludes the host key and temporary mount paths. A confirmed host uses the saved project's key. A worktree uses its
+primary root. _Avoid_: Session identity, SSH alias
 
 **Remote Memory binding**: A saved laptop choice that maps a Remote Memory key to one Mnemoteca collection. The normal
 collection is `<folder>@<hostname>-<hash>`. An exact folder-name match to a saved local Session project asks whether it

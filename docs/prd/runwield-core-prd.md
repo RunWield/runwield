@@ -1245,16 +1245,23 @@ detector.
 
 Laptop history identifies a remote project by exact host identity plus its canonical remote project root. Host identity
 uses the effective hostname, user, and port from OpenSSH configuration and the verified host key fingerprint. The typed
-SSH alias is a display label, not identity. Aliases with all the same values reuse identity; a changed hostname, user,
-port, or fingerprint creates a distinct target and never merges history. If OpenSSH reports a host certificate but no
-stable host key fingerprint, the fingerprint is `null`; matching then uses hostname, user, port, and that `null` value.
-A `null` fingerprint does not match a known fingerprint. OpenSSH host verification still applies.
+SSH alias is a display label, not identity. Aliases with all the same values reuse identity. A partly matching identity
+asks once before the TUI opens: with the same root and user, either the non-null fingerprint matches but the hostname or
+port changed, or the hostname and port match but the fingerprint changed. The question lists each matching saved project.
+A key change shows both fingerprints and states that OpenSSH accepted the new key. Yes reuses the selected saved
+project's identity, history, and Memory key. No keeps a distinct target. Both answers are saved. Cancellation or invalid
+input stops startup without saving an answer. A different user, root, or address together with a different key never
+asks and never reuses history. If OpenSSH reports a host certificate but no stable host key fingerprint, the fingerprint
+is `null`; exact matching then uses hostname, user, port, and that `null` value. Two `null` fingerprints do not prove a
+shared key. A change between `null` and a known fingerprint at the same address requires confirmation. OpenSSH host
+verification still applies.
 
 The root is remote `primaryRoot`, then `gitRoot`, then `cwd` when the preceding value is absent. A worktree shares its
 primary checkout's project identity; each Session stores execution cwd separately. Neither temporary personal mount
 paths nor laptop paths identify the project. Local history surfaces do not treat a remote root as a laptop directory.
 Records without a remote locator remain local. Remote Memory binding is separate from Session identity and follows
-[project knowledge](#project-context-and-initialization). Ambiguous host confirmation for Sessions remains target scope.
+[project knowledge](#project-context-and-initialization). A confirmed host uses the saved project's Memory key and any
+existing collection binding.
 
 **Conversation acceptance scenarios:**
 
@@ -1264,11 +1271,17 @@ Records without a remote locator remain local. Remote Memory binding is separate
   inaccessible directory fails without creating or selecting a fallback directory.
 - Given a remote project and a same-named laptop folder with different files, conversation reads and edits use the
   remote execution cwd and leave the laptop folder unchanged.
-- Given two remote hosts with same-named folders, their Session project identities remain distinct. Two aliases reuse
-  history only if the effective hostname, user, port, fingerprint, and project root all match.
+- Given two remote hosts with same-named folders, their Session project identities remain distinct. Two aliases with
+  the same effective hostname, user, port, fingerprint, and project root reuse history without a question.
+- Given a saved DNS target and an IP target with the same user, root, and host key, Yes reuses the saved project's
+  Sessions and Memory collection. A later IP connection does not ask again.
+- Given a changed key at the same hostname and port, the question shows both fingerprints. No keeps history separate,
+  and a later connection with that identity does not ask again.
+- Given a different user or root, no confirmation appears and history stays separate, even with a matching host key.
 - Given a remote worktree, its history belongs to the primary checkout's project while tools use its own execution cwd.
-- Given a certificate connection without a reported stable fingerprint, only an exact hostname, user, port, and `null`
-  fingerprint match reuses its host identity; it never merges with fingerprint-bearing history.
+- Given a certificate connection without a reported stable fingerprint, an exact hostname, user, port, and `null`
+  fingerprint match reuses its host identity. A different hostname cannot match on `null` fingerprints alone; a change
+  between `null` and a known fingerprint at the same address asks for confirmation.
 
 - Given an exact home or listed system directory, when project startup begins, no project work starts before Continue.
   Quit, Escape, Ctrl-C, and cancellation stop startup. A later process asks again.
@@ -1298,9 +1311,10 @@ Records without a remote locator remain local. Remote Memory binding is separate
 **Delivered requirement: Keep remote personal Memory on the laptop.** Remote recall, store, delete, and core injection
 use the authenticated laptop service. Writes are acknowledged after Mnemoteca completes; retries keep one request id.
 Only the bound collection and global scope are available. Personal Memory requires no server-side Mnemoteca binary. The
-remote key is the lower-case resolved SSH hostname, user, port, and primary project root, without the host key. The
-normal collection is `<folder>@<hostname>-<hash>`. With no saved binding, an exact folder-name match to a local Session
-project asks whether it is the same project. Yes shares the local resolver’s collection; No keeps the normal remote
+remote key is the lower-case resolved SSH hostname, user, port, and primary project root, without the host key. A
+confirmed host uses the saved project's key and collection binding. The normal collection is
+`<folder>@<hostname>-<hash>`. With no saved binding, an exact folder-name match to a local Session project asks whether it
+is the same project. Yes shares the local resolver’s collection; No keeps the normal remote
 collection. Several matches are listed separately. Either answer is saved before opening the TUI, and reconnect does not
 ask again. A Memory collection without a local Session project never triggers a question. Shared Memory does not merge
 Sessions. Work Record indexes remain derived project data and use the remote project’s

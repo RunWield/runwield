@@ -23,7 +23,7 @@ dependencies:
     - "05-keep-memory-and-integrations-on-their-owning-machine"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Confirm a Partly Matching Remote Host
