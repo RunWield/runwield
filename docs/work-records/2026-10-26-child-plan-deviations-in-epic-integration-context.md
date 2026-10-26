@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "4da4c2b4-fec3-427a-80f8-deb6ec142bbf"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "e4419e07-9327-4305-91b3-7570aadffa90"
 ---
-
 # Child Plan deviations in Epic integration context
 
 ## Summary

@@ -27,13 +27,13 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "Epic Deviation Recording"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "d8f2c19c7de5f5c09a2d2362534e7432b6e97289"
 workRecord:
     status: "generated"
     recordId: "4da4c2b4-fec3-427a-80f8-deb6ec142bbf"
     path: "docs/work-records/2026-10-26-child-plan-deviations-in-epic-integration-context.md"
     lastAttemptAt: "2026-10-26T01:57:45.766Z"
+status: "verified"
 ---
 
 # Record Child Plan Deviations on the Epic
