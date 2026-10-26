@@ -503,7 +503,7 @@
     "src/tools/__tests__/docs-file-tools.test.js",
     "src/tools/__tests__/edit.test.js",
     "src/tools/__tests__/grep.test.js",
-    "src/tools/__tests__/multi-file-edit.test.js",
+    "src/tools/__tests__/multi-file-edit.test.ts",
     "src/tools/__tests__/pair-checkpoint.test.js",
     "src/tools/__tests__/plan-deviation.test.ts",
     "src/tools/__tests__/plan-written.test.js",
