@@ -262,7 +262,7 @@ case "$url" in
   *github.com/1broseidon/cymbal/releases/expanded_assets/*) file='${bashFixturePath(join(fixtureDir, "cymbal-expanded-assets.html"))}' ;;
   *github.com/1broseidon/ketch/releases/expanded_assets/*) file='${bashFixturePath(join(fixtureDir, "ketch-expanded-assets.html"))}' ;;
   *github.com/edouard-claude/snip/releases/expanded_assets/*) file='${bashFixturePath(join(fixtureDir, "snip-expanded-assets.html"))}' ;;
-  *raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh) file='${bashFixturePath(join(fixtureDir, "mnemoteca-install.sh"))}' ;;
+  *raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh) file='${bashFixturePath(join(fixtureDir, "mnemoteca-install.sh"))}' ;;
   */SHA256SUMS) file='${bashFixturePath(join(fixtureDir, "SHA256SUMS"))}' ;;
   */checksums.txt) file='${bashFixturePath(join(fixtureDir, "checksums.txt"))}' ;;
   *) file='${bashFixturePath(fixtureDir)}'/"$(basename "$url")" ;;
