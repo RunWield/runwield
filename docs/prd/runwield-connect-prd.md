@@ -330,9 +330,15 @@ Approve & Run authorizes immediate execution after readiness. Approve for Later 
 starts no execution. Claude reports that it is saved; `/runwield:implement` starts it later. If recovery finds approval
 without a saved approval action, Claude does not infer permission to run. Shared execution completes readiness when a
 crash left the Plan `approved`. A review decision also checks the saved controller revision under the Plan lock; a
-newer Core decision cannot be overwritten by a stale Attached round.
+newer Core decision cannot be overwritten by a stale Attached round. Pending draft review follows the
+[Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle): feedback does not create a separate status. Status reads
+remain read-only, and reopening refreshes the review basis without replacing the pending round.
 
 **Acceptance scenarios:**
+
+- **Core draft feedback:** Given Core feedback during a pending Attached review, the Plan stays `draft` and status
+  keeps the review open without writes. Reopening preserves the round and action identity, refreshes controller
+  evidence, and rejects approval against an older basis.
 
 - **Save for later:** After Approve for Later, status reports `plan_saved`, no execution worktree exists, and
   `/runwield:implement` starts the ready Plan. Approve & Run still reports `plan_ready` and continues immediately.
