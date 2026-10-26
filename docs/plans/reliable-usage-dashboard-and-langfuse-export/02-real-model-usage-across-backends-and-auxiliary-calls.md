@@ -99,8 +99,8 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 - Existing backend adapter boundaries — subprocesses and vendor network calls stay real external boundaries and remain
   legitimate seams.
 - `defineGitFixture` and `withProcessGlobalTestLock` for real repositories and sandboxed HOME.
-- `docs/plans/complete-tool-call-metrics.md` — a separate untouched draft. Its tool-coverage goals overlap here; its
-  advertised-tool and schema-token denominator is explicitly out of this Epic's scope and must not be added.
+- The historical **Complete Tool-Call Metrics** draft named overlapping tool-coverage goals. Its advertised-tool and
+  schema-token denominator is outside this Epic's scope and must not be added.
 
 ## Implementation Steps
 
