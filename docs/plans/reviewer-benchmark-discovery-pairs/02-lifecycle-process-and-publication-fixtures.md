@@ -22,6 +22,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "main"
 status: "reviewed"
+validatedCommit: "b74469de54340f3b6dd4eaf201dd00e7b449cd86"
 ---
 
 # Lifecycle, Process, and Publication Fixtures
