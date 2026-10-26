@@ -4,20 +4,60 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
-import { initTheme } from "@earendil-works/pi-coding-agent";
-import { __test, createRunWieldReadToolDefinition } from "../read.js";
+import {
+    initTheme,
+    type ExtensionToolContext,
+    type Theme,
+    type ToolRenderResultOptions,
+} from "@earendil-works/pi-coding-agent";
+import {
+    __test,
+    createRunWieldReadToolDefinition,
+    type DisplayImage,
+    type ReadToolArgs,
+    type ToolContentPart,
+} from "../read.js";
 
 initTheme();
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} tool
- * @param {unknown} params
- * @returns {Promise<{ content: Array<{ type: string, text?: string }>, details?: any, isError?: boolean }>}
- */
-async function executeRead(tool, params) {
-    const execute =
-        /** @type {(id: string, params: unknown, signal: AbortSignal, onUpdate: () => void, ctx: object) => Promise<any>} */ (tool
-            .execute);
+type ReadTool = ReturnType<typeof createRunWieldReadToolDefinition>;
+
+interface FixtureReadDetails {
+    blocked?: boolean;
+    runwieldDisplayImages?: DisplayImage[];
+}
+
+interface FixtureReadResult {
+    content: ToolContentPart[];
+    details?: FixtureReadDetails;
+    isError?: boolean;
+}
+
+interface FixtureRenderContext {
+    lastComponent: Text;
+    args?: ReadToolArgs;
+    showImages?: boolean;
+}
+
+type FixtureExecute = (
+    id: string,
+    params: ReadToolArgs,
+    signal: AbortSignal,
+    onUpdate: () => void,
+    ctx: Partial<ExtensionToolContext>,
+) => Promise<FixtureReadResult>;
+
+type NativeRenderContext = Parameters<NonNullable<ReadTool["renderResult"]>>[3];
+
+type FixtureRender = (
+    result: FixtureReadResult,
+    options: Pick<ToolRenderResultOptions, "expanded">,
+    theme: Partial<Theme>,
+    context: NativeRenderContext | FixtureRenderContext,
+) => Text;
+
+async function executeRead(tool: ReadTool, params: ReadToolArgs) {
+    const execute = tool.execute as FixtureExecute;
     return await execute("read-call-1", params, new AbortController().signal, () => {}, {});
 }
 
@@ -55,12 +95,12 @@ test("read wrapper renders binary/control-byte results as header-only output", a
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "blob.bin" });
-        const component = /** @type {Text} */ (tool.renderResult?.(
-            /** @type {any} */ (result),
-            /** @type {any} */ ({ expanded: true }),
-            /** @type {any} */ ({}),
-            /** @type {any} */ ({ lastComponent: new Text("stale", 0, 0) }),
-        ));
+        const component = (tool.renderResult as FixtureRender)?.(
+            result,
+            { expanded: true },
+            {},
+            { lastComponent: new Text("stale", 0, 0) },
+        );
 
         assertEquals(__test.resultHasBinaryDisplaySuppression(result), true);
         assertEquals(component.render(80), []);
@@ -76,13 +116,13 @@ test("read wrapper keeps binary display suppression after result serialization",
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "archive.zip" });
-        const serializedResult = JSON.parse(JSON.stringify(result));
-        const component = /** @type {Text} */ (tool.renderResult?.(
-            /** @type {any} */ (serializedResult),
-            /** @type {any} */ ({ expanded: true }),
-            /** @type {any} */ ({}),
-            /** @type {any} */ ({ lastComponent: new Text("stale", 0, 0) }),
-        ));
+        const serializedResult: FixtureReadResult = JSON.parse(JSON.stringify(result));
+        const component = (tool.renderResult as FixtureRender)?.(
+            serializedResult,
+            { expanded: true },
+            {},
+            { lastComponent: new Text("stale", 0, 0) },
+        );
 
         assertEquals(result.content[0].text?.startsWith("PK"), true);
         assertEquals(__test.resultHasBinaryDisplaySuppression(serializedResult), true);
@@ -117,7 +157,10 @@ test("read wrapper exposes image files to the model when upstream returns text o
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "@image.png" });
 
-        assertEquals(result.content.some((part) => part.type === "image"), true);
+        assertEquals(
+            result.content.some((part) => part.type === "image"),
+            true,
+        );
     } finally {
         await fsRm(dir, { recursive: true });
     }
@@ -125,21 +168,21 @@ test("read wrapper exposes image files to the model when upstream returns text o
 
 test("read wrapper delegates image rendering to terminal capability handling", () => {
     const tool = createRunWieldReadToolDefinition("/tmp");
-    const component = /** @type {Text} */ (tool.renderResult?.(
-        /** @type {any} */ ({
+    const component = (tool.renderResult as FixtureRender)?.(
+        {
             content: [
                 { type: "text", text: "Read image file [image/png]" },
                 { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
             ],
-        }),
-        /** @type {any} */ ({ expanded: true }),
-        /** @type {any} */ ({ fg: (/** @type {string} */ _name, /** @type {string} */ text) => text }),
-        /** @type {any} */ ({
+        },
+        { expanded: true },
+        { fg: (_name: string, text: string) => text },
+        {
             lastComponent: new Text("", 0, 0),
             args: { path: "image.png" },
             showImages: false,
-        }),
-    ));
+        },
+    );
 
     const rendered = component.render(80).join("\n");
     assertStringIncludes(rendered, "Read image file [image/png]");
@@ -153,12 +196,12 @@ test("read wrapper allows normal text files to render normally", async () => {
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "README.md" });
-        const component = /** @type {Text} */ (tool.renderResult?.(
-            /** @type {any} */ (result),
-            /** @type {any} */ ({ expanded: true }),
-            /** @type {any} */ ({ fg: (/** @type {string} */ _name, /** @type {string} */ text) => text }),
-            /** @type {any} */ ({ lastComponent: new Text("", 0, 0), args: { path: "README.md" } }),
-        ));
+        const component = (tool.renderResult as FixtureRender)?.(
+            result,
+            { expanded: true },
+            { fg: (_name: string, text: string) => text },
+            { lastComponent: new Text("", 0, 0), args: { path: "README.md" } },
+        );
 
         assertEquals(result.isError, undefined);
         assertStringIncludes(result.content[0].text || "", "# Hello");

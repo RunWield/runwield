@@ -1,38 +1,55 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { createSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import {
+    createSessionRuntimeEvent,
+    RuntimeEventTypes,
+    type RuntimeUserMessageEvent,
+} from "../../shared/session/session-runtime-events.js";
+import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { UiAPI } from "./types.js";
+import { attachTuiRuntimeAdapter, type TuiRuntimeAdapterOptions } from "./runtime-adapter.js";
 
-/** @param {string} sessionId */
-function makeRuntime(sessionId) {
-    /** @type {((event: any) => void) | null} */
-    let listener = null;
-    const runtime = /** @type {any} */ ({
+type SessionEventListener = Parameters<SessionRuntime["subscribeSessionEvents"]>[1];
+type FixtureUserMessage = Omit<RuntimeUserMessageEvent, "sessionId" | "timestamp" | "messageId">;
+type SessionReplacement = Parameters<NonNullable<TuiRuntimeAdapterOptions["onSessionReplaced"]>>[0];
+
+interface FixtureRuntimeAdapterOptions extends Omit<TuiRuntimeAdapterOptions, "runtime"> {
+    runtime: ReturnType<typeof makeRuntime> | SessionRuntime;
+}
+
+type FixtureRuntimeAdapter = (options: FixtureRuntimeAdapterOptions) => ReturnType<typeof attachTuiRuntimeAdapter>;
+
+interface FixtureUiApi extends UiAPI {
+    abortActivePrompt: () => void;
+}
+
+function makeRuntime(sessionId: string) {
+    let listener: SessionEventListener | null = null;
+    const runtime = {
         setInteractionAdapter: () => {},
-        subscribeSessionEvents: (/** @type {string} */ _id, /** @type {(event: any) => void} */ next) => {
+        subscribeSessionEvents: (_id: string, next: SessionEventListener) => {
             listener = next;
             return () => {
                 listener = null;
             };
         },
-        getSessionSnapshot: (/** @type {string} */ id) => ({
+        getSessionSnapshot: (id: string) => ({
             id,
             cwd: "/tmp",
             queuedMessages: [],
             workflowContext: null,
         }),
-        emit(/** @type {any} */ event) {
+        emit(event: FixtureUserMessage) {
             listener?.(createSessionRuntimeEvent(sessionId, event));
         },
-    });
+    };
     return runtime;
 }
 
 function makeUi() {
-    /** @type {string[]} */
-    const transcript = [];
-    const uiAPI = /** @type {import('./types.js').UiAPI} */ ({
+    const transcript: string[] = [];
+    const uiAPI: FixtureUiApi = {
         abortActivePrompt: () => {},
         appendUserMessage: (text) => transcript.push(`user:${text}`),
         appendAgentMessageStart: (agentName) => ({
@@ -47,7 +64,7 @@ function makeUi() {
         promptSelect: () => Promise.resolve(null),
         promptText: () => Promise.resolve(null),
         showModelSelector: () => {},
-    });
+    };
     return { transcript, uiAPI };
 }
 
@@ -55,9 +72,8 @@ test("TUI appends projectAggregateTranscript events across segment ids without s
     const sessionId = "runtime-session";
     const runtime = makeRuntime(sessionId);
     const { transcript, uiAPI } = makeUi();
-    /** @type {any[]} */
-    const replacements = [];
-    const adapter = attachTuiRuntimeAdapter({
+    const replacements: SessionReplacement[] = [];
+    const adapter = (attachTuiRuntimeAdapter as FixtureRuntimeAdapter)({
         runtime,
         sessionId,
         uiAPI,

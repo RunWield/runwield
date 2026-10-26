@@ -138,7 +138,9 @@ type ReviewCompleteDetails =
         integrationNotes: ReviewIntegrationNote[];
     };
 
-type ReviewCompleteResult = AgentToolResult<ReviewCompleteDetails> & { terminate: boolean };
+export type ReviewCompleteParams = Static<typeof PARAMETERS>;
+
+export type ReviewCompleteResult = AgentToolResult<ReviewCompleteDetails> & { terminate: boolean };
 
 interface ReviewCompletedToolOptions {
     hostedSession: HostedSession;

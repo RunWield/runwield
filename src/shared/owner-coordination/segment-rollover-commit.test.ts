@@ -22,13 +22,30 @@ import {
     validateSuccessorSegmentLocator,
 } from "./sessions.js";
 
+interface TranscriptUserMessage {
+    role: "user";
+    content: string;
+}
+
+interface TranscriptMessageEntry {
+    type: "message";
+    id: string;
+    message: TranscriptUserMessage;
+}
+
+type CommittedFixture = Awaited<ReturnType<typeof createCommittedFixture>>;
+
 function idFactory(prefix = "id") {
     let next = 0;
     return () => `${prefix}-${++next}`;
 }
 
-/** @param {string} cwd @param {string} piSessionId @param {string} timestamp @param {Array<Record<string, unknown>>} bodyEntries */
-async function writeTranscript(cwd, piSessionId, timestamp, bodyEntries = []) {
+async function writeTranscript(
+    cwd: string,
+    piSessionId: string,
+    timestamp: string,
+    bodyEntries: TranscriptMessageEntry[] = [],
+) {
     const sessionDir = getRunWieldSessionDir(cwd);
     await fsMkdir(sessionDir, { recursive: true });
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
@@ -43,11 +60,13 @@ async function createCommittedFixture() {
     const root = `${dir}/repo`;
     await fsMkdir(root);
     const project = registerProject(database, { root, idFactory: idFactory("project"), now: () => "t0" });
-    const firstPath = await writeTranscript(root, "pi-one", "2026-01-01T00:00:00.000Z", [{
-        type: "message",
-        id: "entry-one",
-        message: { role: "user", content: "one" },
-    }]);
+    const firstPath = await writeTranscript(root, "pi-one", "2026-01-01T00:00:00.000Z", [
+        {
+            type: "message",
+            id: "entry-one",
+            message: { role: "user", content: "one" },
+        },
+    ]);
     const session = await ensureSessionCatalogRecord(database, {
         projectId: project.projectId,
         piSessionId: "pi-one",
@@ -81,14 +100,12 @@ async function createCommittedFixture() {
     return { dir, database, root, project, session, firstSegment, firstEvidence };
 }
 
-/** @param {Awaited<ReturnType<typeof createCommittedFixture>>} fixture */
-async function cleanupFixture(fixture) {
+async function cleanupFixture(fixture: CommittedFixture) {
     fixture.database.close();
     await fsRm(fixture.dir, { recursive: true });
 }
 
-/** @param {Awaited<ReturnType<typeof createCommittedFixture>>} fixture @param {string} [piSessionId] */
-async function successorOptions(fixture, piSessionId = "pi-two") {
+async function successorOptions(fixture: CommittedFixture, piSessionId = "pi-two") {
     const path = await writeTranscript(fixture.root, piSessionId, "2026-01-01T00:00:01.000Z", []);
     const safeLocator = await validateSuccessorSegmentLocator(fixture.database, {
         projectId: fixture.project.projectId,
@@ -145,7 +162,10 @@ test("commitSegmentRolloverAndPublish seals, appends, moves activation, publishe
         assertEquals(inspected.generation?.generation, 1);
         assertEquals(inspected.generation?.currentSegmentId, "successor-segment");
         const segments = listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId);
-        assertEquals(segments.map((segment) => segment.sealedAt !== null), [true, false]);
+        assertEquals(
+            segments.map((segment) => segment.sealedAt !== null),
+            [true, false],
+        );
     } finally {
         await cleanupFixture(fixture);
     }
@@ -189,7 +209,7 @@ test("failed rollover transaction leaves no successor row, no seal, no pointer m
                     digestHex: successor.evidence.digestHex,
                     currentSegmentId: "rolled-back-segment",
                 },
-            })
+            }),
         );
         const segments = listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId);
         assertEquals(segments.length, 1);
@@ -228,34 +248,38 @@ test("rollover commit rejects stale fences, wrong predecessors, non-advancing ge
                 ownerProcessKind: "test",
                 expectedGeneration: 0,
                 expectedCurrentSegmentId: fixture.firstSegment.segmentId,
-            })
+            }),
         );
         proof = changeSessionActivationPhase(fixture.database, proof, "hydrated");
         proof = changeSessionActivationPhase(fixture.database, proof, "checkpointing");
         const successor = await successorOptions(fixture, "pi-two");
         assertThrows(
             () =>
-                commitSegmentRolloverAndPublish(fixture.database, { ...proof, fence: proof.fence + 1 }, {
-                    predecessorSegmentId: fixture.firstSegment.segmentId,
-                    predecessorEvidence: fixture.firstEvidence,
-                    successor: {
-                        runwieldSessionId: fixture.session.runwieldSessionId,
-                        projectId: fixture.project.projectId,
-                        piSessionId: successor.piSessionId,
-                        transcriptPath: successor.path,
-                        transcriptCwd: fixture.root,
-                        kind: "execution",
-                        idFactory: () => "never",
+                commitSegmentRolloverAndPublish(
+                    fixture.database,
+                    { ...proof, fence: proof.fence + 1 },
+                    {
+                        predecessorSegmentId: fixture.firstSegment.segmentId,
+                        predecessorEvidence: fixture.firstEvidence,
+                        successor: {
+                            runwieldSessionId: fixture.session.runwieldSessionId,
+                            projectId: fixture.project.projectId,
+                            piSessionId: successor.piSessionId,
+                            transcriptPath: successor.path,
+                            transcriptCwd: fixture.root,
+                            kind: "execution",
+                            idFactory: () => "never",
+                        },
+                        successorSafeLocator: successor.safeLocator,
+                        generationEvidence: {
+                            generation: 1,
+                            byteLength: successor.evidence.byteLength,
+                            terminalEntryId: successor.evidence.terminalEntryId,
+                            digestHex: successor.evidence.digestHex,
+                            currentSegmentId: "never",
+                        },
                     },
-                    successorSafeLocator: successor.safeLocator,
-                    generationEvidence: {
-                        generation: 1,
-                        byteLength: successor.evidence.byteLength,
-                        terminalEntryId: successor.evidence.terminalEntryId,
-                        digestHex: successor.evidence.digestHex,
-                        currentSegmentId: "never",
-                    },
-                }),
+                ),
             Error,
             "proof",
         );

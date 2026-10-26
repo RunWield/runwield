@@ -18,7 +18,7 @@ test("Workspace installation assets are public without exposing owner data", asy
         const response = await app(new Request("http://127.0.0.1:8787/workspace.webmanifest"));
         assertEquals(response.status, 200);
         assertStringIncludes(response.headers.get("content-type"), "application/manifest+json");
-        const manifest = await response.json();
+        const manifest: typeof WORKSPACE_MANIFEST = await response.json();
         assertEquals(manifest.start_url, "/");
         assertEquals(manifest.scope, "/");
         assertEquals(manifest.id, "/");
@@ -50,24 +50,23 @@ test("Workspace installation assets are public without exposing owner data", asy
     }
 });
 
-/** @typedef {{type: string, connected: boolean}} ConnectionMessage */
-/**
- * @typedef {Object} WorkerFetchEvent
- * @property {Request} request
- * @property {string} clientId
- * @property {(response: Promise<Response>) => void} respondWith
- * @property {(task: Promise<void>) => void} waitUntil
- */
+interface ConnectionMessage {
+    type: string;
+    connected: boolean;
+}
+
+interface WorkerFetchEvent {
+    request: Request;
+    clientId: string;
+    respondWith: (response: Promise<Response>) => void;
+    waitUntil: (task: Promise<void>) => void;
+}
 
 function workerHarness() {
-    /** @type {Map<string, (event: WorkerFetchEvent) => void>} */
-    const listeners = new Map();
-    /** @type {ConnectionMessage[]} */
-    const messages = [];
-    /** @type {Request[]} */
-    const requests = [];
-    /** @type {RequestInit[]} */
-    const forwardingOptions = [];
+    const listeners = new Map<string, (event: WorkerFetchEvent) => void>();
+    const messages: ConnectionMessage[] = [];
+    const requests: Request[] = [];
+    const forwardingOptions: RequestInit[] = [];
     let available = true;
     let networkResponse = new Response("current server content");
     const context = {
@@ -77,7 +76,7 @@ function workerHarness() {
             clients: {
                 get: () =>
                     Promise.resolve({
-                        postMessage: (/** @type {ConnectionMessage} */ message) => messages.push(message),
+                        postMessage: (message: ConnectionMessage) => messages.push(message),
                     }),
                 claim: () => Promise.resolve(),
             },
@@ -86,7 +85,7 @@ function workerHarness() {
         URL,
         Response,
         AbortSignal,
-        fetch: (/** @type {Request} */ request, /** @type {RequestInit} */ options) => {
+        fetch: (request: Request, options: RequestInit) => {
             requests.push(request);
             forwardingOptions.push(options);
             assertEquals(options.cache, "no-store");
@@ -112,14 +111,12 @@ function workerHarness() {
         online: () => {
             available = true;
         },
-        reply: (/** @type {Response} */ response) => {
+        reply: (response: Response) => {
             networkResponse = response;
         },
-        async request(/** @type {Request} */ request) {
-            /** @type {Promise<Response>[]} */
-            const responses = [];
-            /** @type {Promise<void>[]} */
-            const pending = [];
+        async request(request: Request) {
+            const responses: Promise<Response>[] = [];
+            const pending: Promise<void>[] = [];
             listeners.get("fetch")?.({
                 request,
                 clientId: "page",
@@ -137,7 +134,6 @@ function workerHarness() {
     };
 }
 
-/** @param {string} [path] */
 function navigation(path = "/projects/project/sessions/session") {
     const request = new Request(`https://workspace.test${path}`);
     Object.defineProperty(request, "mode", { value: "navigate" });
@@ -227,18 +223,24 @@ test("connection fallback is self-contained and retries without changing the rou
     );
 });
 
-/**
- * @typedef {Object} WorkerNotificationEvent
- * @property {{data: {url: string}, close: () => void}} notification
- * @property {(task: Promise<void>) => void} waitUntil
- */
+interface WorkerNotification {
+    data: WorkerNotificationData;
+    close: () => void;
+}
+
+interface WorkerNotificationData {
+    url: string;
+}
+
+interface WorkerNotificationEvent {
+    notification: WorkerNotification;
+    waitUntil: (task: Promise<void>) => void;
+}
 
 test("notification clicks focus the originating Session or reopen it, and reject external URLs", async () => {
-    /** @type {Map<string, (event: WorkerNotificationEvent) => void>} */
-    const listeners = new Map();
+    const listeners = new Map<string, (event: WorkerNotificationEvent) => void>();
     const sessionUrl = "https://workspace.test/projects/project/sessions/session";
-    /** @type {string[]} */
-    const opened = [];
+    const opened: string[] = [];
     let focused = 0;
     let closed = 0;
     let hasSessionWindow = true;
@@ -248,14 +250,13 @@ test("notification clicks focus the originating Session or reopen it, and reject
             addEventListener: listeners.set.bind(listeners),
             clients: {
                 matchAll: () => Promise.resolve(hasSessionWindow ? [{ url: sessionUrl, focus: () => focused++ }] : []),
-                openWindow: (/** @type {string} */ url) => opened.push(url),
+                openWindow: (url: string) => opened.push(url),
             },
         },
         URL,
     });
-    const click = async (/** @type {string} */ url) => {
-        /** @type {Promise<void>[]} */
-        const pending = [];
+    const click = async (url: string) => {
+        const pending: Promise<void>[] = [];
         listeners.get("notificationclick")?.({
             notification: { data: { url }, close: () => closed++ },
             waitUntil: (task) => pending.push(task),

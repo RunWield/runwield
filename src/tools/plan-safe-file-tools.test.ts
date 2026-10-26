@@ -9,8 +9,32 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import {
+    defineTool,
+    type AgentToolResult,
+    type AgentToolUpdateCallback,
+    type ExtensionToolContext,
+} from "@earendil-works/pi-coding-agent";
 import { wrapPlanSafeFileTool } from "./plan-safe-file-tools.ts";
+
+type FixtureToolSchema = Parameters<typeof defineTool>[0]["parameters"];
+
+interface FixtureWriteParams {
+    path: string;
+    content: string;
+}
+
+interface PlanSafeFixtureResult extends Pick<AgentToolResult<null>, "content"> {
+    isError?: boolean;
+}
+
+type FixtureExecute = (
+    toolCallId: string,
+    params: FixtureWriteParams,
+    signal: AbortSignal | undefined,
+    onUpdate: AgentToolUpdateCallback<null> | undefined,
+    ctx: ExtensionToolContext | undefined,
+) => Promise<PlanSafeFixtureResult>;
 
 test("Plan-safe write wrapper refuses existing canonical Plan overwrite", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plan-safe-tool-"));
@@ -22,7 +46,7 @@ test("Plan-safe write wrapper refuses existing canonical Plan overwrite", async 
                 name: "write",
                 label: "write",
                 description: "write test",
-                parameters: {},
+                parameters: {} as FixtureToolSchema,
                 execute: async () => {
                     await Promise.resolve();
                     return { content: [{ type: "text", text: "wrote" }], details: null };
@@ -30,13 +54,13 @@ test("Plan-safe write wrapper refuses existing canonical Plan overwrite", async 
             }),
             { cwd, mode: "write" },
         );
-        const result = /** @type {{ isError?: boolean }} */ (await tool.execute(
+        const result = await (tool.execute as FixtureExecute)(
             "call",
-            /** @type {any} */ ({ path: "docs/plans/demo.md", content: "# New" }),
+            { path: "docs/plans/demo.md", content: "# New" },
             undefined,
             undefined,
-            /** @type {any} */ (undefined),
-        ));
+            undefined,
+        );
         assertEquals(result.isError, true);
         assertEquals(await fsReadFile(`${cwd}/docs/plans/demo.md`, "utf8"), "# Demo\n");
     } finally {
