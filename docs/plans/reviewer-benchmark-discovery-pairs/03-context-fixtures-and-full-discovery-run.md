@@ -18,14 +18,14 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-24"
-status: "ready_for_work"
 origin: "internal"
 parentPlan: "reviewer-benchmark-discovery-pairs"
 order: 3
 dependencies:
     - "02-lifecycle-process-and-publication-fixtures"
 userVerifiedAt: null
-userVerificationNote: null
+status: "in_progress"
+targetBranch: "main"
 ---
 
 # Context Fixtures and the Full Discovery Run
