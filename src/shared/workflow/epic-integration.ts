@@ -23,6 +23,8 @@ import {
     findPlansByParent,
     loadPlan,
     saveChildFeaturePlans,
+    writePlanMarkdownWithRevisionLocked,
+    updatePlanFrontMatter,
     withPlanCatalogLock,
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
@@ -41,15 +43,30 @@ import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-
 import type { HostedSession } from "../session/hosted-session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
 import { createReviewDiffTool } from "./review-diff-tool.js";
-import { createLedger } from "./review-ledger.ts";
+import {
+    applyRoundFindings,
+    claimReviewFixes,
+    createLedger,
+    normalizeLedger,
+    openItems,
+    renderOpenItems,
+    renderResolvedItems,
+    unaccountedOpenItems,
+    type ReviewLedger,
+} from "./review-ledger.ts";
+import { readControllerRecord, StaleControllerWriteError } from "./controller-registry.ts";
+import type { EpicIntegrationReviewState } from "./controller-state.ts";
+import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {
     type OpaqueToolDefinition,
+    type ReviewerRoundMode,
     ValidationInteractionTypes,
     type ValidationReviewOutcome,
     type ValidationSessionPort,
@@ -73,6 +90,8 @@ export interface EpicChildDelivery {
     status: string;
     /** The child's work is in the Epic branch, or the user closed or accepted it. */
     settled: boolean;
+    /** An unstarted repair from an earlier integration gate run. */
+    openRepairDraft: boolean;
     /** The commits this child delivered, when its delivery evidence records them. */
     delivery?: { from: string; to: string };
 }
@@ -96,6 +115,8 @@ export interface EpicReconcileResult {
     status?: string;
     /** The Epic is `implemented` with every child settled: the integration gate should run. */
     gateReady: boolean;
+    /** Only unstarted integration repair drafts prevent strict readiness. */
+    gateRetryReady: boolean;
 }
 
 /** What one integration gate run decided. */
@@ -119,6 +140,7 @@ export interface RunEpicIntegrationGateOptions {
 }
 
 interface GateFinding {
+    id?: string;
     source: "checks" | "integration_review" | "code_review";
     title: string;
     detail: string;
@@ -188,6 +210,11 @@ async function isChildSettled(
     return child.path.startsWith(`${head}:`);
 }
 
+/** Whether a child name belongs to the integration gate repair family. */
+export function isIntegrationRepairChild(name: string): boolean {
+    return name.includes("repair-integration-findings");
+}
+
 /**
  * Read where an Epic with a branch stands: each child's delivery and the branch
  * head. Returns null for an Epic without a branch or outside Git.
@@ -222,6 +249,14 @@ export async function readEpicDeliveryState(
         .sort(compareChildPlansByOrder);
     const children = await Promise.all(
         included.map(async (child) => {
+            // A registered planning document or local closure can be newer than the branch draft.
+            if (isIntegrationRepairChild(child.name)) {
+                const location = await resolveWorkflowPlanLocation(primaryRoot, child.name, { readOnly: true });
+                const registeredDocument = location.documentRoot !== primaryRoot;
+                const localClosure =
+                    child.attrs.status === "draft" && location.plan?.attrs.status === "closed_without_verification";
+                if (location.plan && (registeredDocument || localClosure)) child = { ...child, ...location.plan };
+            }
             const evidence = child.attrs.deliveryEvidence;
             const delivery =
                 evidence?.mode === "worktree_merge" && evidence.executionCommit && evidence.targetHeadBeforeMerge
@@ -231,6 +266,7 @@ export async function readEpicDeliveryState(
                 name: child.name,
                 status: child.attrs.status,
                 settled: await isChildSettled(primaryRoot, ref, head, child),
+                openRepairDraft: isIntegrationRepairChild(child.name) && child.attrs.status === "draft",
                 ...(delivery ? { delivery } : {}),
             };
         }),
@@ -256,10 +292,10 @@ export async function readEpicDeliveryState(
  */
 export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: string): Promise<EpicReconcileResult> {
     const state = await readEpicDeliveryState(projectRoot, epicPlanName);
-    if (!state) return { state: null, gateReady: false };
+    if (!state) return { state: null, gateReady: false, gateRetryReady: false };
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const epic = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName)).plan;
-    if (!epic) return { state, gateReady: false };
+    if (!epic) return { state, gateReady: false, gateRetryReady: false };
     let status = epic.attrs.status;
 
     if (status === "ready_for_work" && state.allSettled) {
@@ -309,9 +345,9 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
                 currentStatus: "reviewed",
                 details: { triageMeta: epic.attrs },
             });
-            return { state, status: attrs.status, gateReady: false };
+            return { state, status: attrs.status, gateReady: false, gateRetryReady: false };
         }
-        if (unchanged) return { state, status, gateReady: false };
+        if (unchanged) return { state, status, gateReady: false, gateRetryReady: false };
         const attrs = await recordPlanEvent({
             cwd: primaryRoot,
             planName: epicPlanName,
@@ -321,7 +357,15 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
         });
         status = attrs.status;
     }
-    return { state, status, gateReady: status === "implemented" && state.allSettled };
+    return {
+        state,
+        status,
+        gateReady: status === "implemented" && state.allSettled,
+        gateRetryReady:
+            status === "implemented" &&
+            state.children.some((child) => !child.settled) &&
+            state.children.every((child) => child.settled || child.openRepairDraft),
+    };
 }
 
 async function epicDeliveryTarget(primaryRoot: string, epicBranch: string): Promise<string | undefined> {
@@ -438,6 +482,9 @@ async function runIntegrationReview(
     checkoutPath: string,
     diffText: string,
     request: string,
+    ledger: ReviewLedger,
+    mode: ReviewerRoundMode,
+    repairDiff?: string,
 ): Promise<{ kind: "completed"; outcome: ValidationReviewOutcome } | { kind: "paused"; reason: string }> {
     const sessionManager = port.createInMemorySessionManager(checkoutPath);
     // One review, one request identity: a regenerated nudge continues this review
@@ -448,14 +495,14 @@ async function runIntegrationReview(
         // No full-read gate: each child was read line by line in its own review, and
         // this reviewer reads selectively from the Epic outcomes and Integration Notes.
         const customTools = [
-            createReviewDiffTool({ full: diffText }, { ledger: createLedger() }) as unknown as OpaqueToolDefinition,
+            createReviewDiffTool({ full: diffText, repair: repairDiff }, { ledger }) as unknown as OpaqueToolDefinition,
         ];
         const session = await port.runIsolatedAgentSession({
             kind: "reviewer",
             agentName: AGENTS.REVIEWER,
             userRequest: prompt,
             cwd: checkoutPath,
-            reviewerMode: "integration",
+            reviewerMode: mode,
             customTools,
             sessionManager,
             controllerRequestId,
@@ -463,7 +510,14 @@ async function runIntegrationReview(
         if (session.outcome === "operational_failure") {
             return { kind: "paused", reason: session.failure.message };
         }
-        if (session.reviewOutcome) return { kind: "completed", outcome: session.reviewOutcome };
+        if (session.reviewOutcome) {
+            const omitted = unaccountedOpenItems(ledger, session.reviewOutcome.findings);
+            if (mode === "integration_verify" && omitted.length) {
+                prompt = `Account for every open finding: ${omitted.join(", ")}. Report each existing ID as fix_confirmed or fix_rejected with evidence. Do not restart discovery.`;
+                continue;
+            }
+            return { kind: "completed", outcome: session.reviewOutcome };
+        }
         prompt =
             "You have not called review_complete yet. Finish this review now by calling review_complete with your decision. Do not restart the review — use what you have already inspected.";
     }
@@ -480,12 +534,13 @@ async function runGateCodeReview(
     diffText: string,
     checkoutPath: string,
     branch: string,
+    takeover = false,
 ): Promise<
     | { kind: "approved" | "not_required" | "skipped"; mode: "none" | "ask" | "always" }
     | { kind: "changes_requested"; mode: "ask" | "always"; finding: GateFinding }
     | { kind: "paused"; reason: string }
 > {
-    const mode = getCodeReviewMode(primaryRoot);
+    const mode = takeover ? "always" : getCodeReviewMode(primaryRoot);
     if (mode === "none") return { kind: "not_required", mode };
     if (mode === "ask") {
         const offer = await port.requestInteraction({
@@ -545,9 +600,13 @@ function renderFindings(findings: GateFinding[]): string {
     };
     return findings
         .map((finding, index) =>
-            [`### ${index + 1}. ${finding.title}`, "", `Source: ${labels[finding.source]}`, "", finding.detail].join(
-                "\n",
-            ),
+            [
+                `### ${finding.id || index + 1}. ${finding.title}`,
+                "",
+                `Source: ${labels[finding.source]}`,
+                "",
+                finding.detail,
+            ].join("\n"),
         )
         .join("\n\n");
 }
@@ -569,23 +628,59 @@ function renderReport(epicPlanName: string, state: EpicDeliveryState, base: stri
     ].join("\n");
 }
 
-function reviewFindings(outcome: ValidationReviewOutcome): GateFinding[] {
-    if (outcome.approved) return [];
-    const findings = outcome.findings.filter((finding) => finding.status !== "fix_confirmed" && !finding.resolved);
-    if (findings.length === 0) {
-        return [
-            {
-                source: "integration_review",
-                title: "Integration review requested changes",
-                detail: outcome.feedback || "The reviewer did not approve the Epic.",
-            },
-        ];
-    }
-    return findings.map((finding) => ({
+function reviewFindings(ledger: ReviewLedger, outcome: ValidationReviewOutcome): GateFinding[] {
+    const findings: GateFinding[] = openItems(ledger).map((item) => ({
+        id: item.id,
         source: "integration_review",
-        title: finding.title,
-        detail: [`Requirement: ${finding.requirement}`, "", `Evidence: ${finding.evidence}`].join("\n"),
+        title: item.title,
+        detail: [
+            `Requirement: ${item.requirement}`,
+            "",
+            `Evidence: ${item.evidence}`,
+            ...(item.rejectionReason ? ["", `Fix rejected because: ${item.rejectionReason}`] : []),
+        ].join("\n"),
     }));
+    if (!outcome.approved && findings.length === 0) {
+        findings.push({
+            source: "integration_review",
+            title: "Integration review requested changes",
+            detail: outcome.feedback || "The reviewer did not approve the Epic.",
+        });
+    }
+    return findings;
+}
+
+/** Replace the Findings section without treating fenced check output as document headings. */
+function replaceRepairFindings(markdown: string, findings: GateFinding[]): string {
+    let fence = "";
+    let start = -1;
+    let end = markdown.length;
+    for (const match of markdown.matchAll(/[^\n]*(?:\n|$)/g)) {
+        const line = match[0].replace(/\r?\n$/, "");
+        const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (fence) {
+            if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) {
+                fence = "";
+            }
+            continue;
+        }
+        if (marker) {
+            fence = marker[1];
+            continue;
+        }
+        if (start < 0) {
+            if (line === "## Findings") start = match.index;
+        } else if (line.startsWith("## ")) {
+            end = match.index;
+            break;
+        }
+    }
+    if (start < 0) return markdown;
+    return markdown.slice(0, start) + `## Findings\n\n${renderFindings(findings)}\n\n` + markdown.slice(end);
+}
+
+function repairContext(state: EpicDeliveryState): string {
+    return `The integration gate checked the Epic branch \`${state.branch}\` at \`${state.head}\` and found the problems below.`;
 }
 
 /** Add a draft repair child that carries the gate's findings to Planner. */
@@ -602,16 +697,20 @@ async function addRepairChild(
         ...state.children.map((child) => Number(child.name.split("/").at(-1)?.slice(0, 2)) || 0),
         ...siblings.map((child) => (typeof child.attrs.order === "number" ? child.attrs.order : 0)),
     );
-    const repairs = siblings.filter((child) => child.name.includes("repair-integration-findings")).length;
+    const repairs = new Map(
+        [...state.children, ...siblings]
+            .filter((child) => isIntegrationRepairChild(child.name))
+            .map((child) => [child.name, child]),
+    ).size;
     const title = repairs === 0 ? "Repair integration findings" : `Repair integration findings ${repairs + 1}`;
     const content = [
         `# ${title}`,
         "",
         "## Context",
         "",
-        `The integration gate checked the Epic branch \`${state.branch}\` at \`${state.head}\` and found the problems below.`,
+        repairContext(state),
         `The full report is \`${reportRelativePath}\`. This draft was created by RunWield; plan the repair from these`,
-        "findings and the Epic. After this child is delivered, the integration gate runs again on the whole Epic.",
+        "findings and the Epic. After this child is delivered, the integration gate verifies these findings and checks the repair for regressions.",
         "",
         "## Objective",
         "",
@@ -649,6 +748,24 @@ async function addRepairChild(
         childSummary: child.attrs.summary || title,
         childAttrs: child.attrs,
     };
+}
+
+/** Give a branch draft a writable document without losing a saved checkout copy. */
+async function prepareRepairDraftDocument(primaryRoot: string, name: string) {
+    const source = await resolveWorkflowPlanLocation(primaryRoot, name, { readOnly: true });
+    if (!source.planningNotStarted) return source;
+    const writable = await prepareSessionPlanningWorktree(primaryRoot, name);
+    if (source.plan && !source.publishedSnapshot && writable.plan) {
+        await writePlanMarkdownWithRevisionLocked(
+            writable.documentRoot,
+            name,
+            writable.plan.path,
+            source.plan.markdown,
+            writable.plan.revision,
+        );
+        writable.plan = await loadPlan(writable.documentRoot, name);
+    }
+    return writable;
 }
 
 /** A temporary detached checkout of the exact Epic commit, owned and removed by the gate. */
@@ -709,7 +826,7 @@ async function prepareGateCheckout(
 /**
  * Run the integration gate on the exact Epic branch head.
  *
- * The gate runs only for an `implemented` Epic whose children are all settled.
+ * The gate runs for an `implemented` Epic whose children are settled or unstarted gate repair drafts.
  * Checks and the integration review both run so one report carries everything;
  * Code Review is offered only when both pass.
  */
@@ -720,7 +837,7 @@ export async function runEpicIntegrationGate(
     const primaryRoot = resolvePrimaryCheckoutRoot(options.projectRoot);
     const reconciled = await reconcileEpicDelivery(primaryRoot, epicPlanName);
     const state = reconciled.state;
-    if (!state || !reconciled.gateReady || !state.head) {
+    if (!state || (!reconciled.gateReady && !reconciled.gateRetryReady) || !state.head) {
         return { kind: "not_ready", reason: "Not every child of the Epic is delivered to the Epic branch yet." };
     }
     const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
@@ -734,132 +851,303 @@ export async function runEpicIntegrationGate(
         "info",
     );
 
-    const run = await withGateCheckout(primaryRoot, head, async (checkoutPath) => {
-        // Review the requirements committed with this exact Epic head, not a primary copy.
-        const reviewEpic = await loadPlan(checkoutPath, epicPlanName);
-        if (!reviewEpic)
-            return {
-                kind: "paused" as const,
-                reason: `Epic document is missing from the checked branch: ${epicPlanName}`,
-            };
-        try {
-            await prepareGateCheckout(hostedSession, checkoutPath, port);
-        } catch (error) {
-            return { kind: "paused" as const, reason: error instanceof Error ? error.message : String(error) };
-        }
-        const diffText = await runGit(primaryRoot, ["diff", ...REVIEW_DIFF_FORMAT_ARGS, base, head]);
-        const checks = await runGateChecks(options, checkoutPath);
-        if (checks.result.kind === "canceled") {
-            return { kind: "paused" as const, reason: "The project checks were canceled." };
-        }
-        if (checks.result.kind === "operational_failure") {
-            return { kind: "paused" as const, reason: checks.result.failure.message };
-        }
-        const checksSummary = checks.finding
-            ? `The project checks FAILED on this commit.\n\n${checks.finding.detail}`
-            : "The project checks passed on this commit.";
-        const review = await runIntegrationReview(
-            port,
-            checkoutPath,
-            diffText,
-            buildIntegrationReviewRequest(
+    const controller = await readControllerRecord(primaryRoot, { planName: epicPlanName, planId: epic.attrs.planId });
+    const saved = controller?.state.epicIntegrationReview;
+    const round = (saved?.round ?? state.children.filter((child) => isIntegrationRepairChild(child.name)).length) + 1;
+    let ledger = saved ? normalizeLedger(saved.ledger) : createLedger();
+    if (saved && saved.checkedCommit !== head) ledger = claimReviewFixes(ledger);
+    const mode = saved ? "integration_verify" : "integration";
+
+    const result = await withGateCheckout(
+        primaryRoot,
+        head,
+        async (checkoutPath): Promise<EpicIntegrationGateResult> => {
+            // Review the requirements committed with this exact Epic head, not a primary copy.
+            const reviewEpic = await loadPlan(checkoutPath, epicPlanName);
+            if (!reviewEpic)
+                return { kind: "paused", reason: `Epic document is missing from the checked branch: ${epicPlanName}` };
+            try {
+                await prepareGateCheckout(hostedSession, checkoutPath, port);
+            } catch (error) {
+                return { kind: "paused", reason: error instanceof Error ? error.message : String(error) };
+            }
+            const diffText = await runGit(primaryRoot, ["diff", ...REVIEW_DIFF_FORMAT_ARGS, base, head]);
+            const repairDiff = saved
+                ? await runGit(primaryRoot, ["diff", ...REVIEW_DIFF_FORMAT_ARGS, saved.checkedCommit, head])
+                : undefined;
+            const checks = await runGateChecks(options, checkoutPath);
+            if (checks.result.kind === "canceled")
+                return { kind: "paused", reason: "The project checks were canceled." };
+            if (checks.result.kind === "operational_failure")
+                return { kind: "paused", reason: checks.result.failure.message };
+            const checksSummary = checks.finding
+                ? `The project checks FAILED on this commit.\n\n${checks.finding.detail}`
+                : "The project checks passed on this commit.";
+            port.emitStatus(
+                saved
+                    ? `Verifying earlier integration findings (round ${round}).`
+                    : `Running the full integration review (round ${round}).`,
+                "info",
+            );
+            const request = buildIntegrationReviewRequest(
                 epicPlanName,
                 reviewEpic.markdown,
                 state,
                 checksSummary,
                 await filesByChild(primaryRoot, state),
-            ),
-        );
-        if (review.kind === "paused") return review;
-        const findings = [...(checks.finding ? [checks.finding] : []), ...reviewFindings(review.outcome)];
-        if (findings.length > 0) return { kind: "findings" as const, findings };
-        const codeReview = await runGateCodeReview(
-            port,
-            primaryRoot,
-            epicPlanName,
-            reviewEpic.markdown,
-            reviewEpic.attrs,
-            diffText,
-            checkoutPath,
-            state.branch,
-        );
-        if (codeReview.kind === "paused") return codeReview;
-        if (codeReview.kind === "changes_requested") {
-            return { kind: "findings" as const, findings: [codeReview.finding], codeReview };
-        }
-        return { kind: "passed" as const, codeReview };
-    });
+            );
+            const review = await runIntegrationReview(
+                port,
+                checkoutPath,
+                diffText,
+                saved
+                    ? [
+                          request,
+                          "### Open Integration Findings",
+                          renderOpenItems(ledger),
+                          "### Resolved Integration Findings",
+                          renderResolvedItems(ledger),
+                          `Verify the findings and repair diff from ${saved.checkedCommit} to ${head}; do not repeat discovery.`,
+                      ].join("\n\n")
+                    : request,
+                ledger,
+                mode,
+                repairDiff,
+            );
+            if (review.kind === "paused") return review;
+            const current = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName)).plan;
+            if (!current || current.attrs.status !== "implemented") {
+                return { kind: "not_ready", reason: "The Epic changed while the integration gate ran." };
+            }
+            if ((await refCommit(primaryRoot, state.ref)) !== head) {
+                return {
+                    kind: "not_ready",
+                    reason: "The Epic branch moved while the integration gate ran; run it again.",
+                };
+            }
+            const repairDrafts = [];
+            for (const child of state.children.filter((child) => child.openRepairDraft)) {
+                const location = await resolveWorkflowPlanLocation(primaryRoot, child.name, { readOnly: true });
+                if (!location.plan || location.plan.attrs.status !== "draft") {
+                    return {
+                        kind: "not_ready",
+                        reason: `Repair child ${child.name} changed while the integration gate ran.`,
+                    };
+                }
+                repairDrafts.push({ name: child.name, ...location, plan: location.plan });
+            }
+            repairDrafts.sort((a, b) =>
+                compareChildPlansByOrder({ name: a.name, attrs: a.plan.attrs }, { name: b.name, attrs: b.plan.attrs }),
+            );
 
-    if (run.kind === "paused") {
-        port.emitStatus(`The integration gate for ${epicPlanName} paused: ${run.reason}`, "warning");
-        return run;
-    }
+            ledger = applyRoundFindings(ledger, review.outcome.findings, round).ledger;
+            const reviewState: EpicIntegrationReviewState = { round, ledger, checkedCommit: head };
+            try {
+                await updatePlanFrontMatter(
+                    location.documentRoot,
+                    epicPlanName,
+                    { epicIntegrationReview: reviewState },
+                    {},
+                    {
+                        expectedRevision: current.revision,
+                        expectedControllerRevision: controller?.revision || 0,
+                    },
+                );
+            } catch (error) {
+                if (!(error instanceof StaleControllerWriteError)) throw error;
+                return {
+                    kind: "not_ready",
+                    reason: "The Epic review state advanced while this review ran; reload it.",
+                };
+            }
+            const findings = [...(checks.finding ? [checks.finding] : []), ...reviewFindings(ledger, review.outcome)];
+            const reportPath = getEpicArtifactPath(
+                location.documentRoot,
+                epicPlanName,
+                EPIC_INTEGRATION_REPORT_FILE_NAME,
+            );
+            const reportRelativePath = `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
+            if (findings.length) {
+                await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
+                await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, findings));
+                await recordPlanEvent({
+                    cwd: primaryRoot,
+                    planName: epicPlanName,
+                    event: "epic_integration_failed",
+                    currentStatus: "implemented",
+                    details: {
+                        triageMeta: current.attrs,
+                        failureReason: `The integration gate found ${findings.length} problem(s) on ${state.branch}.`,
+                        integrationReport: reportRelativePath,
+                    },
+                });
+            }
+            let takeover = false;
+            if (findings.length && round >= SEMANTIC_REVIEW_CYCLES) {
+                const response = await port.requestInteraction({
+                    type: ValidationInteractionTypes.SELECT,
+                    prompt: `Integration review found ${findings.length} open finding(s) after ${round} gate reviews. What next?`,
+                    options: [
+                        { value: "repair", label: "Plan another repair" },
+                        ...(!checks.finding ? [{ value: "code_review", label: "Let me review the Epic" }] : []),
+                        { value: "stop", label: "Stop" },
+                    ],
+                });
+                takeover = response.outcome === "selected" && response.value === "code_review" && !checks.finding;
+                if (!takeover && !(response.outcome === "selected" && response.value === "repair")) {
+                    return {
+                        kind: "paused",
+                        reason: `Integration review needs your decision: ${findings.map((finding) => finding.id || finding.title).join(", ")}. Report: ${reportRelativePath}.`,
+                    };
+                }
+            }
+            // Normal Code Review follows an AI pass; takeover is explicitly the user's decision over open findings.
+            const codeReview =
+                !findings.length || takeover
+                    ? await runGateCodeReview(
+                          port,
+                          primaryRoot,
+                          epicPlanName,
+                          reviewEpic.markdown,
+                          reviewEpic.attrs,
+                          diffText,
+                          checkoutPath,
+                          state.branch,
+                          takeover,
+                      )
+                    : null;
+            if (codeReview?.kind === "paused") return codeReview;
+            // A human interaction can outlive the checked branch head too.
+            const latest = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName)).plan;
+            if (
+                latest?.attrs.status !== "implemented" ||
+                JSON.stringify(latest.attrs.epicIntegrationReview) !== JSON.stringify(reviewState) ||
+                (await refCommit(primaryRoot, state.ref)) !== head
+            ) {
+                return { kind: "not_ready", reason: "The Epic changed while awaiting a decision; run the gate again." };
+            }
+            if (codeReview && codeReview.kind !== "changes_requested") {
+                const reviewedAt = codeReview.kind === "approved" ? new Date().toISOString() : null;
+                if (takeover) {
+                    reviewState.userTakeoverAt = reviewedAt;
+                    await updatePlanFrontMatter(
+                        location.documentRoot,
+                        epicPlanName,
+                        { epicIntegrationReview: reviewState },
+                        {},
+                        {
+                            expectedRevision: latest.revision,
+                        },
+                    );
+                }
+                await recordPlanEvent({
+                    cwd: primaryRoot,
+                    planName: epicPlanName,
+                    event: "epic_integration_passed",
+                    currentStatus: "implemented",
+                    details: {
+                        triageMeta: latest.attrs,
+                        integrationCommit: head,
+                        epicDeliveryTargetBranch:
+                            latest.attrs.epicDeliveryTargetBranch ||
+                            (await epicDeliveryTarget(primaryRoot, state.branch)),
+                        humanReviewMode: codeReview.mode,
+                        humanReviewDecision: codeReview.kind,
+                        humanReviewedAt: reviewedAt,
+                    },
+                });
+                for (const draft of repairDrafts) {
+                    // Branch snapshots need a writable, registered document before lifecycle writes.
+                    if (draft.planningNotStarted) await prepareRepairDraftDocument(primaryRoot, draft.name);
+                    await recordPlanEvent({
+                        cwd: primaryRoot,
+                        planName: draft.name,
+                        event: "manual_closed_without_verification",
+                        currentStatus: "draft",
+                        details: {
+                            closedWithoutVerificationReason: `The integration gate passed on ${state.branch} at ${head} after a retry; these findings no longer apply.`,
+                        },
+                    });
+                }
 
-    const current = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName)).plan;
-    if (!current || current.attrs.status !== "implemented") {
-        return { kind: "not_ready", reason: `The Epic changed while the integration gate ran.` };
-    }
-    const after = await refCommit(primaryRoot, state.ref);
-    if (after !== head) {
-        return { kind: "not_ready", reason: "The Epic branch moved while the integration gate ran; run it again." };
-    }
-
-    if (run.kind === "passed") {
-        const reviewedAt = run.codeReview.kind === "approved" ? new Date().toISOString() : null;
-        await recordPlanEvent({
-            cwd: primaryRoot,
-            planName: epicPlanName,
-            event: "epic_integration_passed",
-            currentStatus: "implemented",
-            details: {
-                triageMeta: current.attrs,
-                integrationCommit: head,
-                epicDeliveryTargetBranch:
-                    current.attrs.epicDeliveryTargetBranch || (await epicDeliveryTarget(primaryRoot, state.branch)),
-                humanReviewMode: run.codeReview.mode,
-                humanReviewDecision: run.codeReview.kind,
-                humanReviewedAt: reviewedAt,
-            },
-        });
-        port.emitStatus(
-            `${epicPlanName} is reviewed: the integration gate passed on ${state.branch} at ${head.slice(0, 12)}. ` +
-                `Merge the Epic branch or open a pull request when you are ready.`,
-            "success",
-        );
-        port.emitStatus(
-            "The Epic remains reviewed until its checked work reaches the final target branch. Its Work Record is generated after that delivery.",
-            "info",
-        );
-        return { kind: "passed", commit: head };
-    }
-
-    const reportPath = getEpicArtifactPath(location.documentRoot, epicPlanName, EPIC_INTEGRATION_REPORT_FILE_NAME);
-    const reportRelativePath = `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
-    await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
-    await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, run.findings));
-    await recordPlanEvent({
-        cwd: primaryRoot,
-        planName: epicPlanName,
-        event: "epic_integration_failed",
-        currentStatus: "implemented",
-        details: {
-            triageMeta: current.attrs,
-            failureReason: `The integration gate found ${run.findings.length} problem(s) on ${state.branch}.`,
-            integrationReport: reportRelativePath,
+                port.emitStatus(
+                    takeover
+                        ? `${epicPlanName} is reviewed by your Code Review approval. The integration review did not approve; its findings remain in the ledger.`
+                        : `${epicPlanName} is reviewed: the integration gate passed on ${state.branch} at ${head.slice(0, 12)}. Merge the Epic branch or open a pull request when you are ready.`,
+                    "success",
+                );
+                port.emitStatus(
+                    "The Epic remains reviewed until its checked work reaches the final target branch. Its Work Record is generated after that delivery.",
+                    "info",
+                );
+                return { kind: "passed", commit: head };
+            }
+            if (codeReview?.kind === "changes_requested") {
+                findings.push(codeReview.finding);
+                await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
+                await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, findings));
+                await recordPlanEvent({
+                    cwd: primaryRoot,
+                    planName: epicPlanName,
+                    event: "epic_integration_failed",
+                    currentStatus: "implemented",
+                    details: {
+                        triageMeta: latest.attrs,
+                        failureReason: "Code Review requested changes.",
+                        integrationReport: reportRelativePath,
+                    },
+                });
+            }
+            const newestDraft = repairDrafts.at(-1);
+            let repairChild: EpicContinuationResolution;
+            if (newestDraft) {
+                const writable = newestDraft.planningNotStarted
+                    ? await prepareRepairDraftDocument(primaryRoot, newestDraft.name)
+                    : newestDraft;
+                const draft = writable.plan;
+                if (!draft) throw new Error(`Repair child not found: ${newestDraft.name}`);
+                const markdown = replaceRepairFindings(
+                    draft.markdown.replace(
+                        /(^The integration gate checked the Epic branch `[^`\r\n]+` at `)[^`\r\n]+(`)/m,
+                        (_match, prefix: string, suffix: string) => `${prefix}${state.head}${suffix}`,
+                    ),
+                    findings,
+                );
+                await writePlanMarkdownWithRevisionLocked(
+                    writable.documentRoot,
+                    newestDraft.name,
+                    draft.path,
+                    markdown,
+                    draft.revision,
+                );
+                repairChild = {
+                    kind: "plan",
+                    completedPlanName: epicPlanName,
+                    parentPlanName: epicPlanName,
+                    childPlanName: newestDraft.name,
+                    childStatus: draft.attrs.status,
+                    childSummary: draft.attrs.summary,
+                    childAttrs: draft.attrs,
+                };
+            } else {
+                repairChild = await addRepairChild(
+                    location.documentRoot,
+                    epicPlanName,
+                    state,
+                    reportRelativePath,
+                    findings,
+                );
+            }
+            await ensureEpicBranch(primaryRoot, epicPlanName);
+            port.emitStatus(
+                `The integration gate found ${findings.length} problem(s) in ${epicPlanName}. RunWield ${newestDraft ? "updated" : "added"} the repair child ${repairChild.childPlanName}; Planner starts from the findings.`,
+                "warning",
+            );
+            return { kind: "findings", commit: head, reportPath: reportRelativePath, repairChild };
         },
-    });
-    const repairChild = await addRepairChild(
-        location.documentRoot,
-        epicPlanName,
-        state,
-        reportRelativePath,
-        run.findings,
     );
-    await ensureEpicBranch(primaryRoot, epicPlanName);
-    port.emitStatus(
-        `The integration gate found ${run.findings.length} problem(s) in ${epicPlanName}. ` +
-            `RunWield added the repair child ${repairChild.childPlanName}; Planner starts from the findings.`,
-        "warning",
-    );
-    return { kind: "findings", commit: head, reportPath: reportRelativePath, repairChild };
+    if (result.kind === "paused") {
+        port.emitStatus(`The integration gate for ${epicPlanName} paused: ${result.reason}`, "warning");
+    }
+    return result;
 }
