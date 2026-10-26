@@ -437,7 +437,7 @@ Linux evidence: `sct:/tmp/wld-package-qualification-GMGbHhrX/gate-final2.log`,
 `sct:/tmp/wld-remote-ssh-3zfEzZ`, `sct:/tmp/remote-package-linux-final-reports`, and
 `sct:/tmp/remote-package-linux-mount-reports`. The native driver is `/tmp/remote-package-native-qa.py` on the laptop.
 
-### Hosted qualification in progress
+### Hosted qualification passed
 
 The owner authorized commit and push on 2026-10-26. Commit `6d1124613` reached `epic/remote-ssh-development`.
 [First qualification run](https://github.com/RunWield/runwield/actions/runs/40266281678) built all four archives and
@@ -448,8 +448,34 @@ separate runner-owned upload directory. Two regression tests cover private runne
 Local SSH probes also measured `sudo` startup at 3.4–4.0 seconds, above the old three-second connection deadline;
 the gate now allows 15 seconds without changing its required mount, tool-result, Session, or cleanup checks.
 
-Hosted Linux ARM64 SSH/SSHFS support is not yet established. Run the repaired nonpublishing qualification mode from
-`epic/remote-ssh-development`, inspect both Linux gates and retained evidence, and compare their job times and
-overall qualification time with [release run 40256858840](https://github.com/RunWield/runwield/actions/runs/40256858840).
-That historical run passed its native Linux x64 check in 39 seconds and ARM64 check in 71 seconds; its
-created-to-updated interval was 13 minutes 11 seconds. It predates this SSH gate and does not qualify these changes.
+[Repaired qualification run 40268662240](https://github.com/RunWield/runwield/actions/runs/40268662240) passed against
+commit `28d16e673ac16aac3bb42390f82bbc9b097e49aa`. Its common release build ID is
+`c757d88f86095e0b4ed844af87c2c6db2384d3756ed8f29e7011c1fce53e979a`. All four native archive identity checks passed.
+The Linux SSH gates and evidence uploads passed on both hosted CPUs. Publication, package promotion, documentation
+publication, and Release Branch integration jobs were skipped.
+
+| Check                                 | Linux x64   | Linux ARM64 |
+| ------------------------------------- | ----------- | ----------- |
+| Real SSH/SSHFS step                   | 90 seconds  | 88 seconds  |
+| Complete native-package job           | 117 seconds | 120 seconds |
+| Previous release's native-package job | 39 seconds  | 71 seconds  |
+| Native-job increase                   | 78 seconds  | 49 seconds  |
+
+The overall qualification took **4 minutes 18 seconds**. The previous
+[release run 40256858840](https://github.com/RunWield/runwield/actions/runs/40256858840) had a created-to-updated
+interval of 13 minutes 11 seconds. The qualification mode omits source/Golden and other release lanes, so this is not
+a measurement of full-release overhead. Both new native jobs remained below the unchanged ten-minute limit.
+
+Both downloaded `remote-ssh-linux-<cpu>-1` artifacts contain a passing `result.json`, exactly two provider requests,
+one saved laptop Session, an actual `fuse.sshfs` mount record, and a zero exit code. The common build ID matches the
+run above. The archives contain only diagnostic files, not account homes or SSH keys. Copies and inspected results
+are in `/tmp/remote-package-hosted-evidence`; complete run/job/artifact metadata is in
+`/tmp/remote-package-hosted-repair-result.json` on the laptop. The five-file repair check passed 78 tests with no skips;
+the two new regressions bring the change's test-count delta to **+90**, with none removed. Three mutations rejected
+private-runner placement, inclusion of private files, and following evidence symlinks.
+
+Extra Fedora checks with private temporary-directory ancestors failed after the repair: one at SSH banner exchange,
+and a later retry at prerequisite setup when `dnf install` exceeded 120 seconds. They are not counted as passed.
+Direct SSH to `sct` also timed out, and the laptop's configured DNS resolver stopped answering. GitHub API and artifact checks used an alternate DNS lookup with normal TLS verification, without changing
+system DNS settings. The earlier successful Fedora checks above and the current hosted Ubuntu checks remain distinct
+pieces of evidence. Full managed CI and child 13 real-provider journeys remain separate from this package qualification.
