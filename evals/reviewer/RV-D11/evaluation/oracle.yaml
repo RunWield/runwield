@@ -1,0 +1,47 @@
+schemaVersion: 1
+scenarioId: RV-D11
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    active-project:
+        command: bun run test:oracle active-project
+        expectedFailureMarker: RV-D11-ACTIVE-PROJECT
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D11-A
+              severity: medium
+              category: stale-project-context
+              trigger: "A long-lived command host loads the commands module in one project, summarizes it, selects a second project, then summarizes again."
+              expectedBehavior: "Each summary reads notes from the project active for that operation."
+              wrongBehavior: "The module-level projectRoot retains the initial cwd, so the second operation returns the first project summary."
+              evidence:
+                  - src/commands.ts
+                  - src/store.ts
+              acceptableConcepts:
+                  - "module import captures cwd for the lifetime of the process"
+                  - "changing the active project leaves summaries bound to the previous project"
+                  - "resolve project context per operation rather than at module load"
+              nearMisses:
+                  - "The explicit-root title API is unchanged and still works for background projects."
+                  - "The first operation after module import is correct."
+                  - "A missing notes file intentionally represents an empty project."
+              proofCommand: bun run test:oracle active-project
+              expectedFailureMarker: RV-D11-ACTIVE-PROJECT
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - "The explicit-root title API is unchanged and still works for background projects."
+    - "The first operation after module import is correct."
+    - "A missing notes file intentionally represents an empty project."

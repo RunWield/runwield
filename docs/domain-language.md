@@ -630,7 +630,8 @@ primary branch; the user merges it or opens a pull request. _Avoid_: Release bra
 **Integration Notes**: What a child's Semantic Reviewer leaves for the **Integration Gate**: checks that only the
 assembled Epic can show, such as an assumption about a sibling's work. RunWield keeps them in a managed
 `### Integration Notes` subsection of the Epic's Verification Plan. They are places to look, not requirements, and they
-never block the child. _Avoid_: Integration requirements, deferred findings
+never block the child. Notes are written in the child's execution checkout and reach the Epic branch with child
+delivery. _Avoid_: Integration requirements, deferred findings
 
 **Integration Gate**: The check that finishes an Epic with an **Epic Branch** once every included child is delivered to
 it. It runs the project's checks, an integration review of the whole Epic diff, and Code Review per the `codereview`
@@ -692,7 +693,10 @@ worktree Plan edit, lifecycle edit
 autonomous or Pair style, including restored Sessions and validation repairs. The execution Agent proposes the
 superseded requirement, replacement requirement, and optional reason through `record_plan_deviation`; a typed user
 confirmation writes it to the authoritative execution Plan. Confirmed Plan Deviations supersede conflicting original
-Plan text for execution, Semantic Code Review, and Work Records. Ordinary Pair feedback, transcript text, metrics,
+Plan text for execution, Semantic Code Review, and Work Records. An Epic child's confirmed entries also appear in the
+Epic's managed `### Child Plan Deviations` subsection under its Objective. This is a projection; the child Plan stays
+the authority. The projection travels with child delivery. Integration review treats these replacements as approved
+and names affected Epic outcomes in advisories. Ordinary Pair feedback, transcript text, metrics,
 arbitrary Plan-file edits, and one-delivery Review Overrides are not Plan Deviations. _Avoid_: automatic Plan Amendment,
 checkpoint feedback, review waiver, silent Plan edit
 

@@ -8,6 +8,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.js";
 import { loadPlan, savePlan, StalePlanWriteError } from "../plan-store.js";
+import { syncEpicChildPlanDeviations } from "../shared/workflow/epic-review-context.ts";
 import { appendPlanDeviation, formatPlanDeviationForPrompt, type PlanDeviation } from "../shared/plan-deviations.ts";
 import {
     requestHostedSessionInteraction,
@@ -16,17 +17,20 @@ import {
     supportsHostedSessionInteraction,
 } from "../shared/session/session-runtime-interactions.js";
 
-const PARAMETERS = Type.Object({
-    supersededRequirement: Type.String({
-        minLength: 1,
-        description: "Exact effective Plan requirement the user's instruction replaces.",
-    }),
-    replacementRequirement: Type.String({
-        minLength: 1,
-        description: "Exact replacement requirement the user is being asked to confirm.",
-    }),
-    reason: Type.Optional(Type.String({ minLength: 1, description: "Optional concise reason for the deviation." })),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        supersededRequirement: Type.String({
+            minLength: 1,
+            description: "Exact effective Plan requirement the user's instruction replaces.",
+        }),
+        replacementRequirement: Type.String({
+            minLength: 1,
+            description: "Exact replacement requirement the user is being asked to confirm.",
+        }),
+        reason: Type.Optional(Type.String({ minLength: 1, description: "Optional concise reason for the deviation." })),
+    },
+    { additionalProperties: false },
+);
 
 export type PlanDeviationParameters = Static<typeof PARAMETERS>;
 
@@ -47,15 +51,24 @@ function deviationResult(text: string, details: PlanDeviationDetails, terminate 
     return { content: [{ type: "text", text }], details, terminate };
 }
 
+async function syncEpicProjection(executionCwd: string, planName: string): Promise<string> {
+    try {
+        const path = await syncEpicChildPlanDeviations(executionCwd, planName);
+        return path ? ` Also recorded on the Epic (${path}).` : "";
+    } catch (error) {
+        return ` The child entry is saved, but the Epic projection could not be synchronized: ${error instanceof Error ? error.message : String(error)}. Publication will retry it before sealing.`;
+    }
+}
+
 function isActiveExecutionWorkflow(
     workflow: ActiveExecutionWorkflow | null | undefined,
 ): workflow is ActiveExecutionWorkflow {
     return Boolean(
         workflow &&
-            (workflow.executionAgent === "engineer" || workflow.executionAgent === "frontend-engineer") &&
-            workflow.executionStarted !== false &&
-            !workflow.pairPauseReason &&
-            !workflow.pairStopRequested,
+        (workflow.executionAgent === "engineer" || workflow.executionAgent === "frontend-engineer") &&
+        workflow.executionStarted !== false &&
+        !workflow.pairPauseReason &&
+        !workflow.pairStopRequested,
     );
 }
 
@@ -66,11 +79,11 @@ function hasExecutionContext(workflow: ActiveExecutionWorkflow): boolean {
 function sameExecutionIdentity(before: ActiveExecutionWorkflow, after: ActiveExecutionWorkflow | null | undefined) {
     return Boolean(
         after &&
-            before.planName === after.planName &&
-            before.executionCwd === after.executionCwd &&
-            before.worktreeId === after.worktreeId &&
-            before.worktreeBranch === after.worktreeBranch &&
-            before.executionMode === after.executionMode,
+        before.planName === after.planName &&
+        before.executionCwd === after.executionCwd &&
+        before.worktreeId === after.worktreeId &&
+        before.worktreeBranch === after.worktreeBranch &&
+        before.executionMode === after.executionMode,
     );
 }
 
@@ -85,10 +98,10 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
         async execute(toolCallId, params, signal): Promise<PlanDeviationResult> {
             const workflow = hostedSession.getActiveExecutionWorkflow?.();
             if (!isActiveExecutionWorkflow(workflow)) {
-                return deviationResult(
-                    "Plan Deviation recording is inactive. The approved Plan still applies.",
-                    { decision: "inactive", reason: "plan_execution_inactive" },
-                );
+                return deviationResult("Plan Deviation recording is inactive. The approved Plan still applies.", {
+                    decision: "inactive",
+                    reason: "plan_execution_inactive",
+                });
             }
             if (!hasExecutionContext(workflow)) {
                 return deviationResult(
@@ -110,10 +123,12 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
             }
             const existing = current.attrs.planDeviations?.find((entry) => entry.id === toolCallId);
             if (existing) {
+                const epicMessage = await syncEpicProjection(executionCwd, planName);
                 return deviationResult(
-                    `This Plan Deviation was already recorded. Continue under it.\n\n${
-                        formatPlanDeviationForPrompt(existing, 1)
-                    }`,
+                    `This Plan Deviation was already recorded.${epicMessage} Continue under it.\n\n${formatPlanDeviationForPrompt(
+                        existing,
+                        1,
+                    )}`,
                     { decision: "recorded", entry: existing, alreadyCommitted: true },
                 );
             }
@@ -141,8 +156,10 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                         `Superseded requirement: ${supersededRequirement}`,
                         `Replacement requirement: ${replacementRequirement}`,
                         reason ? `Reason: ${reason}` : "",
-                        "Confirmed text will be saved in the Plan and Work Record.",
-                    ].filter(Boolean).join("\n\n"),
+                        "Confirmed text will be saved in the Plan, its Epic (for an Epic child), and the Work Record.",
+                    ]
+                        .filter(Boolean)
+                        .join("\n\n"),
                     options: [
                         { value: "confirm", label: "Confirm Plan Deviation" },
                         { value: "cancel", label: "Cancel; keep the original Plan requirement" },
@@ -160,10 +177,10 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                 hostedSession.getManagedOperationCapability?.() || null,
             );
 
-            const selectedConfirmation = response.outcome === RuntimeInteractionOutcomes.SELECTED &&
-                response.value === "confirm";
-            const canceledSelection = response.outcome === RuntimeInteractionOutcomes.SELECTED &&
-                response.value === "cancel";
+            const selectedConfirmation =
+                response.outcome === RuntimeInteractionOutcomes.SELECTED && response.value === "confirm";
+            const canceledSelection =
+                response.outcome === RuntimeInteractionOutcomes.SELECTED && response.value === "cancel";
             if (response.outcome === RuntimeInteractionOutcomes.CANCELED || canceledSelection) {
                 return deviationResult(
                     "Plan Deviation confirmation was canceled. The original Plan requirement still applies.",
@@ -228,10 +245,12 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                 }
                 throw error;
             }
+            const epicMessage = await syncEpicProjection(executionCwd, planName);
             return deviationResult(
-                `Plan Deviation recorded in the execution Plan. Reread the effective Plan projection and continue under this replacement.\n\n${
-                    formatPlanDeviationForPrompt(appended.entry, 1)
-                }`,
+                `Plan Deviation recorded in the execution Plan.${epicMessage} Reread the effective Plan projection and continue under this replacement.\n\n${formatPlanDeviationForPrompt(
+                    appended.entry,
+                    1,
+                )}`,
                 { decision: "recorded", entry: appended.entry, alreadyCommitted: appended.alreadyCommitted },
             );
         },

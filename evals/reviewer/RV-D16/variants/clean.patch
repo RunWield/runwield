@@ -1,0 +1,27 @@
+diff --git a/src/dates.ts b/src/dates.ts
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -5,3 +5,7 @@
+     const day = String(date.getDate()).padStart(2, "0");
+     return `${year}-${month}-${day}`;
+ }
++
++export function exportDateKey(timestamp: string): string {
++    return new Date(timestamp).toISOString().slice(0, 10);
++}
+diff --git a/src/summary.ts b/src/summary.ts
+--- a/src/summary.ts
++++ b/src/summary.ts
+@@ -1,6 +1,10 @@
+ import type { CalendarEvent } from "./model.ts";
+ import { writeSummary } from "./store.ts";
++import { exportDateKey } from "./dates.ts";
+ 
+-export async function exportSummary(path: string, events: CalendarEvent[]): Promise<void> {
+-    await writeSummary(path, events.map((event) => event.title).join("\n"));
++export async function exportSummary(path: string, events: CalendarEvent[], includeDates = false): Promise<void> {
++    const lines = events.map((event) =>
++        includeDates ? exportDateKey(event.startsAt) + " " + event.title : event.title,
++    );
++    await writeSummary(path, lines.join("\n"));
+ }

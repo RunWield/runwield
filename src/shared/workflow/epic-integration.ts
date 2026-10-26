@@ -425,6 +425,7 @@ function buildIntegrationReviewRequest(
         "",
         "The Objective and Verification Plan are the requirements. The `### Integration Notes` section, when present, lists",
         "places to look that the reviewers of individual children left for you.",
+        "The `### Child Plan Deviations` section, when present, lists user-confirmed replacements from child execution.",
         "",
         epicMarkdown,
     ].join("\n");
