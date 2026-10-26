@@ -3,18 +3,23 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { __test, createRunWieldGrepToolDefinition } from "../grep.js";
+import { __test, createRunWieldGrepToolDefinition, type RunWieldGrepParams } from "../grep.js";
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} tool
- * @param {unknown} params
- * @returns {Promise<{ content: Array<{ type: string, text?: string }>, details?: any }>}
- */
-async function executeGrep(tool, params) {
-    const execute =
-        /** @type {(id: string, params: unknown, signal: AbortSignal, onUpdate: () => void, ctx: object) => Promise<any>} */ (tool
-            .execute);
-    return await execute("grep-call-1", params, new AbortController().signal, () => {}, {});
+type GrepTool = ReturnType<typeof createRunWieldGrepToolDefinition>;
+type GrepToolContext = Parameters<GrepTool["execute"]>[4];
+
+interface GrepContentPart {
+    type: string;
+    text?: string;
+}
+
+interface GrepExecutionResult {
+    content: GrepContentPart[];
+}
+
+async function executeGrep(tool: GrepTool, params: RunWieldGrepParams): Promise<GrepExecutionResult> {
+    const execute = tool.execute;
+    return await execute("grep-call-1", params, new AbortController().signal, () => {}, {} as GrepToolContext);
 }
 
 test("grep wrapper exposes expected metadata and prepares paths alias", () => {
@@ -45,10 +50,7 @@ test("grep wrapper searches multiple paths passed as one string", async () => {
             join(dir, "src", "shared", "session", "chat-session.js"),
             "export function setActiveAgent() {}\n",
         );
-        await fsWriteFile(
-            join(dir, "src", "cmd", "agents.js"),
-            "const current = 'setActiveAgent';\n",
-        );
+        await fsWriteFile(join(dir, "src", "cmd", "agents.js"), "const current = 'setActiveAgent';\n");
 
         const tool = createRunWieldGrepToolDefinition(dir);
         const result = await executeGrep(tool, {
