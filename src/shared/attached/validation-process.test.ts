@@ -96,7 +96,11 @@ test("CI runs outside the Attached record lock; concurrent calls are bounded and
         assert(!concurrent.ok);
         assertEquals(concurrent.rejection.code, "workflow_busy");
         assert(Date.now() - started < 5_000, "The record lock must not span CI");
-        child.kill("SIGKILL");
+        const active = await loadAttachedWorkflowRecord(locateAttachedWorkflows(fixture.root), workflow.workflowId);
+        assert(active.status === "found" && active.record.validation?.holder);
+        // The CLI handle is the supervisor. Interrupt the worker that owns the durable claim,
+        // then wait for its supervisor to observe that exit before testing recovery.
+        process.kill(active.record.validation.holder.pid, "SIGKILL");
         await child.status;
         await collectProcessOutput(child);
         child = undefined;
