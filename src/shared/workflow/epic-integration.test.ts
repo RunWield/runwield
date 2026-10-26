@@ -481,41 +481,56 @@ test("a passing retry closes all open repair drafts without changing their bodie
     }
 });
 
-test("a findings retry updates only the newest draft and preserves its other sections", async () => {
-    const { repo, repairName } = await epicWithOpenRepairDraft();
-    await writePlan(
-        repo,
-        "epic/04-repair-integration-findings-2",
-        childAttrs(4, { status: "draft" }),
-        (await loadPlan(repo, repairName))!.body,
-    );
-    const newestName = "epic/04-repair-integration-findings-2";
-    const before = await loadPlan(repo, newestName);
-    const older = await loadPlan(repo, repairName);
-    const head = await git(repo, ["rev-parse", "epic/epic"]);
-    const result = await runEpicIntegrationGate({
-        hostedSession: gateSession().hostedSession,
-        projectRoot: repo,
-        epicPlanName: "epic",
-        semanticReviewPort: scriptedReviewer({ approved: true }),
-        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-        localCIPort: scriptedChecks({ kind: "completed", exitCode: 1, output: "New check failure $& $` $'" }),
+for (const oldFindings of [
+    "Old findings.",
+    "### Failed checks\n\n```text\nOld output.\n## Summary\nOld summary.\n```\n\n### Old review finding\n\nOld findings.",
+    "### Failed checks\n\n~~~~text\nOld output.\n~~~\n## Summary\nOld summary.\n~~~~\n\nOld findings.",
+]) {
+    test(`a findings retry replaces ${oldFindings.includes("## Summary") ? (oldFindings.includes("~~~~") ? "tilde-fenced" : "backtick-fenced") : "plain"} findings and preserves other sections`, async () => {
+        const { repo, repairName } = await epicWithOpenRepairDraft();
+        await writePlan(
+            repo,
+            "epic/04-repair-integration-findings-2",
+            childAttrs(4, { status: "draft" }),
+            (await loadPlan(repo, repairName))!.body.replace("Old findings.", oldFindings),
+        );
+        const newestName = "epic/04-repair-integration-findings-2";
+        const before = await loadPlan(repo, newestName);
+        const older = await loadPlan(repo, repairName);
+        const head = await git(repo, ["rev-parse", "epic/epic"]);
+        const result = await runEpicIntegrationGate({
+            hostedSession: gateSession().hostedSession,
+            projectRoot: repo,
+            epicPlanName: "epic",
+            semanticReviewPort: scriptedReviewer({ approved: true }),
+            workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+            localCIPort: scriptedChecks({ kind: "completed", exitCode: 1, output: "New check failure $& $` $'" }),
+        });
+        assertEquals(result.kind, "findings");
+        if (result.kind !== "findings") throw new Error("Expected retry findings");
+        assertEquals(result.repairChild.childPlanName, newestName);
+        const location = await resolveWorkflowPlanLocation(repo, newestName, { readOnly: true });
+        const after = location.plan;
+        assertEquals(after?.markdown.split("---")[1], before?.markdown.split("---")[1]);
+        assertStringIncludes(after?.body || "", head);
+        assertStringIncludes(after?.body || "", "New check failure $& $` $'");
+        for (const note of [
+            "Keep this context note.",
+            "Keep my objective.",
+            "Keep my checks.",
+            "Keep my inline note.",
+        ]) {
+            assertStringIncludes(after?.body || "", note);
+        }
+        for (const stale of ["Old findings.", "Old output.", "Old summary.", "### Old review finding"]) {
+            assertEquals(after!.body.includes(stale), false);
+        }
+        const expectedBody = before!.body.replace("old-commit", head).replace(`## Findings\n\n${oldFindings}\n\n`, "");
+        assertEquals(after!.body.replace(/## Findings\n[\s\S]*?(?=## Verification Plan)/, ""), expectedBody);
+        assertEquals((await loadPlan(repo, repairName))?.markdown, older?.markdown);
+        assertEquals((await findPlansByParent(repo, "epic")).length, 4);
     });
-    assertEquals(result.kind, "findings");
-    if (result.kind !== "findings") throw new Error("Expected retry findings");
-    assertEquals(result.repairChild.childPlanName, newestName);
-    const location = await resolveWorkflowPlanLocation(repo, newestName, { readOnly: true });
-    const after = location.plan;
-    assertEquals(after?.markdown.split("---")[1], before?.markdown.split("---")[1]);
-    assertStringIncludes(after?.body || "", head);
-    assertStringIncludes(after?.body || "", "New check failure $& $` $'");
-    for (const note of ["Keep this context note.", "Keep my objective.", "Keep my checks.", "Keep my inline note."]) {
-        assertStringIncludes(after?.body || "", note);
-    }
-    assertEquals(after?.body.includes("Old findings."), false);
-    assertEquals((await loadPlan(repo, repairName))?.markdown, older?.markdown);
-    assertEquals((await findPlansByParent(repo, "epic")).length, 4);
-});
+}
 
 test("a passing retry can close a repair draft already published on the Epic branch", async () => {
     const { repo, repairName } = await epicWithOpenRepairDraft();

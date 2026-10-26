@@ -53,11 +53,11 @@ The benchmark design already exists as proposed documents:
 
 This Plan affects these PRD capabilities in `docs/prd/agent-behavior-evaluation-prd.md`, all **Target** today:
 
-- [Semantic Reviewer scorecard](../prd/agent-behavior-evaluation-prd.md#semantic-reviewer) — this Plan delivers a
+- [Semantic Reviewer scorecard](../../prd/agent-behavior-evaluation-prd.md#semantic-reviewer) — this Plan delivers a
   one-trial baseline smoke run for a subset of the measures.
-- [Repeatable scenario runs](../prd/agent-behavior-evaluation-prd.md#repeatable-scenario-runs) — this Plan delivers
+- [Repeatable scenario runs](../../prd/agent-behavior-evaluation-prd.md#repeatable-scenario-runs) — this Plan delivers
   isolation, oracle hiding, prerequisite checks, and resume for the Reviewer only.
-- [Reports and comparison](../prd/agent-behavior-evaluation-prd.md#reports-and-comparison) — this Plan delivers a
+- [Reports and comparison](../../prd/agent-behavior-evaluation-prd.md#reports-and-comparison) — this Plan delivers a
   local report for one configuration. Paired comparison stays target.
 
 The shared End-to-End Benchmark Harness stays target. This runner is an interim, Reviewer-only owner that the shared

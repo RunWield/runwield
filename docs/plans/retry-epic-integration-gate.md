@@ -19,7 +19,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Retry the Integration Gate from the Epic Menu

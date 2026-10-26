@@ -616,6 +616,35 @@ function reviewFindings(outcome: ValidationReviewOutcome): GateFinding[] {
     }));
 }
 
+/** Replace the Findings section without treating fenced check output as document headings. */
+function replaceRepairFindings(markdown: string, findings: GateFinding[]): string {
+    let fence = "";
+    let start = -1;
+    let end = markdown.length;
+    for (const match of markdown.matchAll(/[^\n]*(?:\n|$)/g)) {
+        const line = match[0].replace(/\r?\n$/, "");
+        const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (fence) {
+            if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) {
+                fence = "";
+            }
+            continue;
+        }
+        if (marker) {
+            fence = marker[1];
+            continue;
+        }
+        if (start < 0) {
+            if (line === "## Findings") start = match.index;
+        } else if (line.startsWith("## ")) {
+            end = match.index;
+            break;
+        }
+    }
+    if (start < 0) return markdown;
+    return markdown.slice(0, start) + `## Findings\n\n${renderFindings(findings)}\n\n` + markdown.slice(end);
+}
+
 function repairContext(state: EpicDeliveryState): string {
     return `The integration gate checked the Epic branch \`${state.branch}\` at \`${state.head}\` and found the problems below.`;
 }
@@ -931,15 +960,13 @@ export async function runEpicIntegrationGate(
             : newestDraft;
         const draft = writable.plan;
         if (!draft) throw new Error(`Repair child not found: ${newestDraft.name}`);
-        const markdown = draft.markdown
-            .replace(
+        const markdown = replaceRepairFindings(
+            draft.markdown.replace(
                 /(^The integration gate checked the Epic branch `[^`\r\n]+` at `)[^`\r\n]+(`)/m,
                 (_match, prefix: string, suffix: string) => `${prefix}${state.head}${suffix}`,
-            )
-            .replace(
-                /^## Findings\r?\n[\s\S]*?(?=^## |$(?![\s\S]))/m,
-                () => `## Findings\n\n${renderFindings(run.findings)}\n\n`,
-            );
+            ),
+            run.findings,
+        );
         await writePlanMarkdownWithRevisionLocked(
             writable.documentRoot,
             newestDraft.name,
