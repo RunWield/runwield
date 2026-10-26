@@ -20,6 +20,25 @@ import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
  * @property {string} text - The full diff text for this file.
  */
 
+/** A non-empty review patch whose changed files cannot be read. */
+export class ReviewDiffParseError extends Error {
+    constructor() {
+        super("RunWield could not read the changed files from the review diff. The change was not approved.");
+        this.name = "ReviewDiffParseError";
+    }
+}
+
+/**
+ * Read the files required for approval, without treating unreadable content as an empty patch.
+ * @param {string} text
+ * @returns {DiffFileEntry[]}
+ */
+export function requiredReviewDiffFiles(text) {
+    const files = parseDiffFiles(text);
+    if (text.trim() && files.length === 0) throw new ReviewDiffParseError();
+    return files;
+}
+
 /**
  * Parse unified diff text into an array of per-file entries.
  * Handles standard diff --git headers, renames, copies, new/deleted files,
@@ -96,10 +115,15 @@ export function parseDiffFiles(diffText) {
  */
 function decodeDiffPath(path) {
     if (!path.startsWith('"')) return path;
-    const escapes = new Map([["a", "\x07"], ["b", "\b"], ["t", "\t"], ["n", "\n"], ["v", "\v"], ["f", "\f"], [
-        "r",
-        "\r",
-    ]]);
+    const escapes = new Map([
+        ["a", "\x07"],
+        ["b", "\b"],
+        ["t", "\t"],
+        ["n", "\n"],
+        ["v", "\v"],
+        ["f", "\f"],
+        ["r", "\r"],
+    ]);
     const bytes = (path.slice(1, -1).match(/\\[0-7]{3}|\\.|[^\\]+/g) || []).flatMap((part) => {
         if (/^\\[0-7]{3}$/.test(part)) return [parseInt(part.slice(1), 8)];
         const text = part.startsWith("\\") ? escapes.get(part.slice(1)) || part.slice(1) : part;
@@ -143,9 +167,9 @@ export function formatChangedFileList(entries) {
     const totalAdded = entries.reduce((sum, e) => sum + e.hunkLines.added, 0);
     const totalRemoved = entries.reduce((sum, e) => sum + e.hunkLines.removed, 0);
     const lines = [
-        `**Total:** ${entries.length} file(s), ${
-            formatByteSize(totalBytes)
-        } diff, ${totalAdded} added, ${totalRemoved} removed lines.`,
+        `**Total:** ${entries.length} file(s), ${formatByteSize(
+            totalBytes,
+        )} diff, ${totalAdded} added, ${totalRemoved} removed lines.`,
         "",
     ];
 
@@ -187,14 +211,17 @@ const LOW_REVIEW_SIGNAL_PATTERNS = [
  */
 export function summarizeDiffForReview(entries) {
     const paths = entries.map((entry) => entry.path);
-    const lowSignalOnly = entries.length > 0 &&
+    const lowSignalOnly =
+        entries.length > 0 &&
         entries.every((entry) => LOW_REVIEW_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.path)));
     const meaningfulAreas = [
-        ...new Set(entries.flatMap((entry) => {
-            if (LOW_REVIEW_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.path))) return [];
-            const [first, second] = entry.path.split("/");
-            return first === "src" && second ? [`src/${second}`] : [first || entry.path];
-        })),
+        ...new Set(
+            entries.flatMap((entry) => {
+                if (LOW_REVIEW_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.path))) return [];
+                const [first, second] = entry.path.split("/");
+                return first === "src" && second ? [`src/${second}`] : [first || entry.path];
+            }),
+        ),
     ].sort();
     const addedLines = entries.reduce((sum, entry) => sum + entry.hunkLines.added, 0);
     const removedLines = entries.reduce((sum, entry) => sum + entry.hunkLines.removed, 0);
@@ -222,7 +249,7 @@ export function getFileDiff(entries, path, options = {}) {
     }
 
     const offsetBytes = options.offsetBytes || 0;
-    const maxBytes = options.maxBytes || (64 * 1024);
+    const maxBytes = options.maxBytes || 64 * 1024;
 
     if (offsetBytes >= entry.byteLength) {
         return {
@@ -333,25 +360,32 @@ export function createReviewDiffTool(diffs, options = {}) {
             "review_diff(list|show): List changed files or read the diff for one file. Prefer 'list' first to see what changed, then 'show <path>' to inspect specific files.",
         parameters: Type.Object({
             command: StringEnum(["list", "show"]),
-            scope: Type.Optional(StringEnum(["full", "repair"], {
-                description:
-                    "Which diff to inspect. 'full' (default) shows the proposed branch patch from its common ancestor with the recorded target through current worktree files. 'repair' is only what the most recent repair changed, and is available from the second review round onward.",
-            })),
-            path: Type.Optional(Type.String({
-                description:
-                    "Required for 'show'. The file path to inspect. Accepts partial path matches for convenience.",
-            })),
-            offsetBytes: Type.Optional(Type.Integer({
-                minimum: 0,
-                description:
-                    "Byte offset into the file's diff content. Use to page through large per-file diffs. Default: 0.",
-            })),
-            maxBytes: Type.Optional(Type.Integer({
-                minimum: 256,
-                maximum: MAX_READ_BYTES,
-                description:
-                    `Maximum bytes to return for this file's diff. Default: ${MAX_READ_BYTES}. Max: ${MAX_READ_BYTES}.`,
-            })),
+            scope: Type.Optional(
+                StringEnum(["full", "repair"], {
+                    description:
+                        "Which diff to inspect. 'full' (default) shows the proposed branch patch from its common ancestor with the recorded target through current worktree files. 'repair' is only what the most recent repair changed, and is available from the second review round onward.",
+                }),
+            ),
+            path: Type.Optional(
+                Type.String({
+                    description:
+                        "Required for 'show'. The file path to inspect. Accepts partial path matches for convenience.",
+                }),
+            ),
+            offsetBytes: Type.Optional(
+                Type.Integer({
+                    minimum: 0,
+                    description:
+                        "Byte offset into the file's diff content. Use to page through large per-file diffs. Default: 0.",
+                }),
+            ),
+            maxBytes: Type.Optional(
+                Type.Integer({
+                    minimum: 256,
+                    maximum: MAX_READ_BYTES,
+                    description: `Maximum bytes to return for this file's diff. Default: ${MAX_READ_BYTES}. Max: ${MAX_READ_BYTES}.`,
+                }),
+            ),
         }),
         execute(toolCallId, rawParams) {
             /** @type {{ command: string, scope?: string, path?: string, offsetBytes?: number, maxBytes?: number }} */
@@ -360,11 +394,12 @@ export function createReviewDiffTool(diffs, options = {}) {
 
             if (scope === "repair" && !hasRepairScope) {
                 return Promise.resolve({
-                    content: [{
-                        type: "text",
-                        text:
-                            "No repair scope in this round: nothing has been repaired yet, so there is no repair diff to inspect. Use scope 'full'.",
-                    }],
+                    content: [
+                        {
+                            type: "text",
+                            text: "No repair scope in this round: nothing has been repaired yet, so there is no repair diff to inspect. Use scope 'full'.",
+                        },
+                    ],
                     details: /** @type {any} */ ({ command: params.command || "", scope, available: false }),
                 });
             }
@@ -398,9 +433,9 @@ export function createReviewDiffTool(diffs, options = {}) {
                 for (const s of summaries) {
                     const status = s.truncated ? `Trucated (max ${formatByteSize(MAX_INLINE_BYTES)} shown)` : "Yes";
                     lines.push(
-                        `| \`${s.path}\` | ${s.changeType} | ${s.hunkLines.added} | ${s.hunkLines.removed} | ${
-                            formatByteSize(s.byteLength)
-                        } | ${status} |`,
+                        `| \`${s.path}\` | ${s.changeType} | ${s.hunkLines.added} | ${s.hunkLines.removed} | ${formatByteSize(
+                            s.byteLength,
+                        )} | ${status} |`,
                     );
                 }
                 lines.push(
@@ -451,21 +486,16 @@ export function createReviewDiffTool(diffs, options = {}) {
                 if (result.truncated) {
                     content.push(
                         "",
-                        `[Diff truncated at ${
-                            formatByteSize(params.maxBytes || MAX_READ_BYTES)
-                        }. Use offsetBytes=${result.nextOffsetBytes} to read next chunk. ${
-                            formatByteSize(result.remainingBytes)
-                        } remaining.]`,
+                        `[Diff truncated at ${formatByteSize(
+                            params.maxBytes || MAX_READ_BYTES,
+                        )}. Use offsetBytes=${result.nextOffsetBytes} to read next chunk. ${formatByteSize(
+                            result.remainingBytes,
+                        )} remaining.]`,
                     );
                 }
                 content.push("", "```diff", result.content, "```");
 
-                options.inspection?.record(
-                    scope,
-                    result.entry.path,
-                    result.offsetBytes,
-                    result.nextOffsetBytes,
-                );
+                options.inspection?.record(scope, result.entry.path, result.offsetBytes, result.nextOffsetBytes);
 
                 if (options.hostedSession) {
                     publishWorkflowToolEvent({
@@ -531,10 +561,9 @@ export function buildDiffInspectionSection(diffText, options = {}) {
     const lines = [
         "### Changed Files",
         "",
-        `The ${options.scope === "repair" ? "repair" : "workflow"} diff is ${
-            formatByteSize(totalBytes)
-        } across ${entries.length} file(s). It is not inlined here —` +
-        " read it with `review_diff`.",
+        `The ${options.scope === "repair" ? "repair" : "workflow"} diff is ${formatByteSize(
+            totalBytes,
+        )} across ${entries.length} file(s). It is not inlined here —` + " read it with `review_diff`.",
         "",
         formatChangedFileList(entries),
         "",
@@ -542,9 +571,9 @@ export function buildDiffInspectionSection(diffText, options = {}) {
         "",
         `1. Start with \`review_diff(command: "list"${scopeArg})\` to see everything in this scope.`,
         `2. Read every listed file with \`review_diff(command: "show"${scopeArg}, path: "<file>")\`. Large per-file diffs come back in` +
-        " bounded chunks; page through them with `offsetBytes`.",
+            " bounded chunks; page through them with `offsetBytes`.",
         "3. Use `read`, `grep`, `find`, and `ls` for surrounding context: the current contents around changed lines," +
-        " related modules, type definitions, and tests the change touches.",
+            " related modules, type definitions, and tests the change touches.",
     ];
 
     if (options.hasRepairScope) {

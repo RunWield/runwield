@@ -24,7 +24,7 @@ import {
     recordedProjectContextPaths,
 } from "./worktree-project-context.ts";
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
-import { getWorkflowDiff } from "./workflow/git-snapshot.ts";
+import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
 import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
 import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import {
@@ -1039,7 +1039,7 @@ export async function getWorktreeStatus({ path, branch, baseTree }) {
         try {
             diff = await getWorkflowDiff(path, baseTree);
         } catch {
-            diff = await runGit(path, ["diff"]);
+            diff = await runGit(path, ["diff", ...REVIEW_DIFF_FORMAT_ARGS]);
         }
     } else {
         diff = await getWorkflowDiff(path, undefined);

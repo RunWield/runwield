@@ -31,6 +31,10 @@ interface ScriptedReview {
     advisories?: ReviewAdvisory[];
 }
 
+type TaggedReviewDiffTool = NonNullable<IsolatedAgentSessionOptions["customTools"]>[number] & {
+    __runwieldReviewDiffs: { full: string };
+};
+
 /** What the scripted reviewer saw, for assertions. */
 interface ReviewerCall {
     userRequest: string;
@@ -705,5 +709,38 @@ test("child deviations and Integration Notes travel through delivery to the bran
     } finally {
         session.dispose();
         await git(repo, ["worktree", "remove", "--force", executionRoot]);
+    }
+});
+
+test("integration review keeps readable file headers with user prefix settings", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await deliverSecondChild(repo);
+    await setCustomSetting("codereview", "none", "project", repo);
+    await git(repo, ["config", "diff.noprefix", "true"]);
+    await git(repo, ["config", "color.diff", "always"]);
+    const { hostedSession } = gateSession();
+    const reviewer = scriptedReviewer({ approved: true });
+    try {
+        const result = await runEpicIntegrationGate({
+            hostedSession,
+            projectRoot: repo,
+            epicPlanName: "epic",
+            workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+            localCIPort: scriptedChecks(PASSING_CHECKS),
+            semanticReviewPort: {
+                runIsolatedAgentSession: async (options) => {
+                    const diffTool = options.customTools?.find((tool) => tool.name === "review_diff");
+                    const full = (diffTool as TaggedReviewDiffTool).__runwieldReviewDiffs.full;
+                    const paths = parseDiffFiles(full).map((file) => file.path);
+                    assertEquals(paths.includes("first.js"), true);
+                    assertEquals(paths.includes("second.js"), true);
+                    return await reviewer.runIsolatedAgentSession(options);
+                },
+            },
+        });
+        assertEquals(result.kind, "passed");
+    } finally {
+        hostedSession.dispose();
+        await fsRm(repo, { recursive: true });
     }
 });

@@ -10,6 +10,15 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
 import { dirname, isAbsolute, join } from "node:path";
 import { assertGitRepository, GitRepositoryRequiredError } from "../git.ts";
 
+/** Stable headers and paths for every locally produced review patch. */
+export const REVIEW_DIFF_FORMAT_ARGS = [
+    "--no-color",
+    "--no-ext-diff",
+    "--no-relative",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+] as const;
+
 class GitCommandError extends Error {
     code: number;
     output: string;
@@ -144,13 +153,13 @@ export async function captureWorktreeTree(cwd: string, forcePaths: string[] = []
 
 export async function diffTrees(cwd: string, baseTree: string, currentTree: string): Promise<string> {
     await assertGitRepository(cwd, "Computing a workflow diff");
-    return await runGit(cwd, ["diff", `${baseTree}..${currentTree}`]);
+    return await runGit(cwd, ["diff", ...REVIEW_DIFF_FORMAT_ARGS, `${baseTree}..${currentTree}`]);
 }
 
 export async function getWorkflowDiff(cwd: string, baselineTree: string | undefined): Promise<string> {
     await assertGitRepository(cwd, "Computing a workflow diff");
     if (!baselineTree) {
-        return await runGit(cwd, ["diff"]);
+        return await runGit(cwd, ["diff", ...REVIEW_DIFF_FORMAT_ARGS]);
     }
 
     const currentTree = await captureWorktreeTree(cwd);

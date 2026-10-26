@@ -7,7 +7,12 @@ import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 
 import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
-import { buildDiffInspectionSection, createReviewDiffTool, parseDiffFiles } from "./review-diff-tool.js";
+import {
+    buildDiffInspectionSection,
+    createReviewDiffTool,
+    requiredReviewDiffFiles,
+    ReviewDiffParseError,
+} from "./review-diff-tool.js";
 import { ReviewInspection } from "./review-inspection.ts";
 import { loadEpicReviewContext, recordIntegrationNotes } from "./epic-review-context.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
@@ -514,8 +519,15 @@ export async function runReviewerRound(
         ? await getWorkflowDiff(context.executionCwd, state.repairBaselineTree)
         : "";
     const requiredScope = reviewMode === "discovery" ? "full" : "repair";
+    let requiredFiles;
+    try {
+        requiredFiles = requiredReviewDiffFiles(requiredScope === "full" ? diffText : repairDiffText);
+    } catch (error) {
+        if (error instanceof ReviewDiffParseError) return { kind: "failed", reason: error.message };
+        throw error;
+    }
     const inspection = new ReviewInspection(
-        parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).map((file) => ({
+        requiredFiles.map((file) => ({
             scope: requiredScope,
             path: file.path,
             byteLength: file.byteLength,

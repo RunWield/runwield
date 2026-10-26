@@ -1,3 +1,4 @@
+import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -746,7 +747,7 @@ export async function runEpicIntegrationGate(
         } catch (error) {
             return { kind: "paused" as const, reason: error instanceof Error ? error.message : String(error) };
         }
-        const diffText = await runGit(primaryRoot, ["diff", "--no-color", "--no-ext-diff", base, head]);
+        const diffText = await runGit(primaryRoot, ["diff", ...REVIEW_DIFF_FORMAT_ARGS, base, head]);
         const checks = await runGateChecks(options, checkoutPath);
         if (checks.result.kind === "canceled") {
             return { kind: "paused" as const, reason: "The project checks were canceled." };
