@@ -145,7 +145,18 @@ function withChildBlock(markdown: string, section: ChildBlockSection, childPlanN
     const bodyLines = markdown.replace(/\s+$/, "").split("\n");
     const headingIndex = bodyLines.findIndex((line) => line.trim() === section.heading);
     if (headingIndex >= 0) {
-        const after = bodyLines.slice(headingIndex + 1).findIndex((line) => /^#{2,3}\s/.test(line));
+        let managedEnd: string | null = null;
+        const after = bodyLines.slice(headingIndex + 1).findIndex((line) => {
+            if (managedEnd) {
+                if (line === managedEnd) managedEnd = null;
+                return false;
+            }
+            if (line.startsWith(`<!-- runwield:${section.markerKind}:start child="`)) {
+                managedEnd = line.replace(":start child=", ":end child=");
+                return false;
+            }
+            return /^#{2,3}\s/.test(line);
+        });
         const insertAt = after < 0 ? bodyLines.length : headingIndex + 1 + after;
         const before = bodyLines.slice(0, insertAt).join("\n").replace(/\s+$/, "");
         const rest = bodyLines.slice(insertAt).join("\n");

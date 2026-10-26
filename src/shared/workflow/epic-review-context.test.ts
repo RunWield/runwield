@@ -223,6 +223,41 @@ test("Epic projections preserve sibling blocks and repair a missing block withou
     assertStringIncludes((await loadPlan(repo, "epic"))!.markdown, aBlock);
 });
 
+for (const heading of ["## Deferred work", "### Deferred work"]) {
+    test(`child deviation blocks stay separate when a requirement contains ${heading}`, async () => {
+        const repo = await repoFixture.checkout();
+        await savePlan(repo, "epic", EPIC_BODY, { classification: "PROJECT" });
+        const replacementRequirement = `Keep title search.\n\n${heading}\n\nOmit full-text search.`;
+        await savePlan(repo, "epic/a", "# Child A", {
+            parentPlan: "epic",
+            planDeviations: [{ ...DEVIATION, replacementRequirement }],
+        });
+        await syncEpicChildPlanDeviations(repo, "epic/a");
+        await savePlan(repo, "epic/b", "# Child B", { parentPlan: "epic", planDeviations: [DEVIATION] });
+        await syncEpicChildPlanDeviations(repo, "epic/b");
+        const both = (await loadPlan(repo, "epic"))!;
+        assert(
+            both.body.indexOf('<!-- runwield:child-plan-deviations:end child="epic/a" -->') <
+                both.body.indexOf('<!-- runwield:child-plan-deviations:start child="epic/b" -->'),
+        );
+        assert(both.body.indexOf("**epic/b**") < both.body.indexOf("## Verification Plan"));
+        const child = (await loadPlan(repo, "epic/a"))!;
+        const updatedRequirement = `${replacementRequirement}\n\nKeep the existing index.`;
+        await savePlan(
+            repo,
+            "epic/a",
+            child.markdown,
+            { planDeviations: [{ ...DEVIATION, replacementRequirement: updatedRequirement }] },
+            { expectedRevision: child.revision },
+        );
+        await syncEpicChildPlanDeviations(repo, "epic/a");
+        assertEquals(
+            (await loadPlan(repo, "epic"))!.body,
+            both.body.replace(replacementRequirement, updatedRequirement),
+        );
+    });
+}
+
 for (const parent of ["missing", "standalone", "ordinary", "sequence"]) {
     test(`Epic sync writes nothing for ${parent}`, async () => {
         const repo = await repoFixture.checkout();
