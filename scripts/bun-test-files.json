@@ -513,7 +513,7 @@
     "src/tools/__tests__/review-complete.test.ts",
     "src/tools/__tests__/set-session-name.test.ts",
     "src/tools/__tests__/task-completed.test.js",
-    "src/tools/__tests__/triage-report.test.js",
+    "src/tools/__tests__/triage-report.test.ts",
     "src/tools/__tests__/user-interview-combinations.test.ts",
     "src/tools/__tests__/user-interview.test.ts",
     "src/tools/artifact-written.test.ts",
