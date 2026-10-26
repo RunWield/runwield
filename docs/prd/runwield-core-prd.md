@@ -503,9 +503,14 @@ Missing branch requirements or failed checkout setup pause the gate without crea
 marks the Epic reviewed for that commit. Integration review treats confirmed child deviations as user-approved
 replacements: a gap caused only by a deviation is not a finding. It names each affected Epic outcome and source child
 in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings. Findings go
-to an Epic report and become a draft repair child that the user reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
-implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
-an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
+to an Epic report and become a draft repair child that the user reviews like any child; its delivery runs the gate again.
+If an implemented Epic is blocked only by gate-created repair children still in draft, its load-plan menu offers
+**Retry the integration gate** and names the drafts and report. A passing retry closes all open repair drafts without
+verification, with a reason that names the checked commit; it does not delete them. New findings replace the newest
+draft's Findings and checked commit while preserving its identity and other sections. A pause leaves drafts unchanged.
+A started repair or any undelivered non-repair child blocks retry. The automatic gate still requires every child to be
+settled; it does not skip repair drafts. A later commit on the Epic branch returns the Epic to implemented. The user
+merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
 
 **Requirement: Hold and resume.** **On hold** means paused and resumable. A held Plan keeps its previous stage and an
 optional reason. **Resume from hold** checks for relevant changes or missing work, then resumes, warns, or offers
@@ -566,6 +571,13 @@ siblings active. Listings show held work separately from active and finished wor
   If that document is missing, the gate pauses instead of using the primary copy.
 - Given gate findings, the Epic report lists them and a draft repair child opens in Planner; its delivery runs the gate
   again.
+- Given an implemented Epic blocked only by an unstarted gate repair draft, including a draft only in the primary
+  checkout, load-plan offers **Retry the integration gate** and names the draft and report. A passing retry marks the
+  Epic reviewed and closes the draft without verification with a reason that names the checked commit.
+- Given new findings on a retry, the newest open repair draft receives the findings and checked commit without a new
+  child. Its Plan ID, order, status, target, and other sections stay unchanged. A paused retry changes no draft.
+- Given a started repair child or an undelivered ordinary child, no retry option is offered. An open repair draft still
+  blocks the automatic gate.
 - Given Planner moves scope into an approved, unstarted sibling, the sibling returns to draft with the change.
 - Given a child review with Integration Notes, the notes appear in the execution checkout's Epic subsection, travel
   with child delivery, and reach the branch-head integration review; the primary copy is unchanged.
