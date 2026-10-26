@@ -25,6 +25,9 @@ import {
     reconcileStoredPublication,
     startPublicationAttempt,
 } from "./publication-machine.ts";
+import { HostedSession } from "../session/hosted-session.js";
+import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
+import { assertPreMergeCandidateUnchanged } from "../worktree.js";
 import { preparePublicationRevalidation } from "./publication-revalidation.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
@@ -41,8 +44,24 @@ const repository = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "Plan"]);
 });
 
-async function fixture() {
+async function fixture(epicChild = false) {
     const projectRoot = await repository.checkout();
+    if (epicChild) {
+        await savePlan(projectRoot, "epic", "# Epic\n\n## Objective\n\nShip all outcomes.\n", {
+            classification: "PROJECT",
+            planId: "revalidation-epic",
+        });
+        const child = (await loadPlan(projectRoot, "rewrite"))!;
+        await savePlan(
+            projectRoot,
+            "rewrite",
+            child.markdown,
+            { parentPlan: "epic" },
+            { expectedRevision: child.revision },
+        );
+        await git(projectRoot, ["add", "."]);
+        await git(projectRoot, ["commit", "-m", "Epic family"]);
+    }
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "publication-revalidation-"));
     const entry = await createTestWorktreeAttempt({
         projectRoot,
@@ -143,25 +162,29 @@ test("unchanged publication and harmless empty commits keep their validation", a
     }
 });
 
-test("publication recovery uses one Plan lock spelling for aliased execution paths", {
-    skip: process.platform === "win32",
-}, async () => {
-    const f = await fixture();
-    try {
-        const parentAlias = join(dirname(f.entry.path), "parent-alias");
-        await fsSymlink(dirname(f.entry.path), parentAlias, "dir");
-        const alias = join(parentAlias, basename(f.entry.path));
-        const attempt = { ...f.attempt, executionCwd: alias, revision: f.attempt.revision + 1 };
-        await updatePublication(f.projectRoot, f.entry.id, f.attempt.revision, attempt);
-        assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
-        assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, attempt);
-        await fsWriteFile(join(alias, "feature.txt"), "changed implementation\n");
-        assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
-        assertEquals((await loadPlan(alias, f.entry.planName))?.attrs.status, "implemented");
-    } finally {
-        await f.cleanup();
-    }
-});
+test(
+    "publication recovery uses one Plan lock spelling for aliased execution paths",
+    {
+        skip: process.platform === "win32",
+    },
+    async () => {
+        const f = await fixture();
+        try {
+            const parentAlias = join(dirname(f.entry.path), "parent-alias");
+            await fsSymlink(dirname(f.entry.path), parentAlias, "dir");
+            const alias = join(parentAlias, basename(f.entry.path));
+            const attempt = { ...f.attempt, executionCwd: alias, revision: f.attempt.revision + 1 };
+            await updatePublication(f.projectRoot, f.entry.id, f.attempt.revision, attempt);
+            assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
+            assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, attempt);
+            await fsWriteFile(join(alias, "feature.txt"), "changed implementation\n");
+            assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+            assertEquals((await loadPlan(alias, f.entry.planName))?.attrs.status, "implemented");
+        } finally {
+            await f.cleanup();
+        }
+    },
+);
 
 test("publication recovery also handles pruned pre-rewrite commits", async () => {
     const f = await fixture();
@@ -197,7 +220,7 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
                 advanceStoredPublication(f.projectRoot, attempt, "target_integrated", {
                     targetBaseCommit: f.entry.baseCommit,
                     integrationCommit: f.attempt.artifactCommit,
-                })
+                }),
             );
             if (boundary !== "intent") {
                 await fsMkdir(attempt.revalidation.archiveRoot);
@@ -210,17 +233,23 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
             if (boundary === "plan_reset") {
                 const plan = await loadPlan(f.entry.path, f.entry.planName);
                 assert(plan);
-                await updatePlanFrontMatter(f.entry.path, f.entry.planName, { status: "implemented" }, {}, {
-                    expectedRevision: plan.revision,
-                });
+                await updatePlanFrontMatter(
+                    f.entry.path,
+                    f.entry.planName,
+                    { status: "implemented" },
+                    {},
+                    {
+                        expectedRevision: plan.revision,
+                    },
+                );
             }
             const moduleUrl = new URL("./publication-revalidation.ts", import.meta.url).href;
             const output = await captureForegroundProcess(process.execPath, {
                 args: runtimeSourceArgs([
                     "eval",
-                    `import {preparePublicationRevalidation} from ${
-                        JSON.stringify(moduleUrl)
-                    }; await preparePublicationRevalidation((await import("node:process")).argv.slice(2)[0], (await import("node:process")).argv.slice(2)[1]);`,
+                    `import {preparePublicationRevalidation} from ${JSON.stringify(
+                        moduleUrl,
+                    )}; await preparePublicationRevalidation((await import("node:process")).argv.slice(2)[0], (await import("node:process")).argv.slice(2)[1]);`,
                     f.projectRoot,
                     f.entry.planName,
                 ]),
@@ -270,9 +299,15 @@ test("validation overrides stale delivery claims and reruns CI after a rewrite",
             ownerPid: process.pid,
             ownerHostname: "test-host",
         });
-        await updatePlanFrontMatter(f.entry.path, f.entry.planName, { validationCheckpoint: checkpoint }, {}, {
-            expectedRevision: plan.revision,
-        });
+        await updatePlanFrontMatter(
+            f.entry.path,
+            f.entry.planName,
+            { validationCheckpoint: checkpoint },
+            {},
+            {
+                expectedRevision: plan.revision,
+            },
+        );
         const hostedSession = makeRecordedSession("publication-revalidation", makeUi());
         hostedSession.setActiveExecutionWorkflow({
             planName: f.entry.planName,
@@ -308,6 +343,62 @@ test("validation overrides stale delivery claims and reruns CI after a rewrite",
         assertEquals(current?.attrs.validationCheckpoint?.generation, "running-owner");
         assertEquals(current?.attrs.humanReviewDecision, null);
     } finally {
+        await f.cleanup();
+    }
+});
+
+test("a confirmed child deviation after sealing survives publication revalidation with its Epic projection", async () => {
+    const f = await fixture(true);
+    const hostedSession = new HostedSession({
+        id: "late-child-deviation",
+        cwd: f.projectRoot,
+        interactionAdapter: {
+            supportsInteraction: () => true,
+            requestInteraction: () => ({ outcome: "accepted", value: true }),
+        },
+    });
+    hostedSession.setActiveExecutionWorkflow({
+        planName: f.entry.planName,
+        triageMeta: { classification: "PLANNED_CHANGE" },
+        executionAgent: "engineer",
+        projectRoot: f.projectRoot,
+        executionCwd: f.entry.path,
+        executionMode: "worktree",
+        worktreeId: f.entry.id,
+        worktreeBranch: f.entry.branch,
+        executionStarted: true,
+    });
+    try {
+        const tool = createPlanDeviationTool({ hostedSession });
+        type DeviationContext = Parameters<typeof tool.execute>[4];
+        const result = await tool.execute(
+            "late-confirmation",
+            {
+                supersededRequirement: "Ship all outcomes.",
+                replacementRequirement: "Ship the selected outcome only.",
+            },
+            undefined,
+            undefined,
+            {} as DeviationContext,
+        );
+        assertEquals(result.details?.decision, "recorded");
+        const epicBefore = (await loadPlan(f.entry.path, "epic"))!.markdown;
+        assertStringIncludes(epicBefore, "Replacement requirement: Ship the selected outcome only.");
+        await assertRejects(() =>
+            assertPreMergeCandidateUnchanged({
+                worktreePath: f.entry.path,
+                sealedExecutionCommit: f.attempt.artifactCommit!,
+                allowedPlanPaths: [],
+            }),
+        );
+        assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+        const child = (await loadPlan(f.entry.path, f.entry.planName))!;
+        assertEquals(child.attrs.status, "implemented");
+        assertEquals(child.attrs.planDeviations?.[0].id, "late-confirmation");
+        assertEquals((await loadPlan(f.entry.path, "epic"))?.markdown, epicBefore);
+        assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, undefined);
+    } finally {
+        hostedSession.dispose();
         await f.cleanup();
     }
 });

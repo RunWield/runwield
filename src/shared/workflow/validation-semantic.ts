@@ -778,7 +778,7 @@ export async function runReviewerRound(
 
     if (epicContext && latestOutcome.integrationNotes?.length) {
         const written = await recordIntegrationNotes(
-            context.projectRoot,
+            context.executionCwd,
             epicContext.epicPlanName,
             args.planName,
             latestOutcome.integrationNotes,
