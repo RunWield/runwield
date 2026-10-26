@@ -28,6 +28,9 @@ workRecord:
     path: "docs/work-records/2026-10-24-production-reviewer-benchmark-and-baseline.md"
     lastAttemptAt: "2026-10-24T03:59:46.788Z"
 status: "verified"
+archivedAt: "2026-10-26T02:43:51.801Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reviewer-benchmark-smoke-runner.md"
 ---
 
 # Reviewer Benchmark Smoke Runner

@@ -2078,7 +2078,7 @@ collaboration and broader code-intelligence improvements are separate follow-up 
 - [Project runtime state](../adr/017-project-runtime-state-under-wld-internal.md)
 - [ACP compatibility](runwield-acp-protocol-prd.md) and [implementation details](../acp-implementation-details.md)
 - [Workspace requirements](runwield-workspace-prd.md) and
-  [continuation readiness Plan](../plans/workspace-session-continuation-readiness.md)
+  [continuation readiness Plan](../plans/archived/workspace-session-continuation-readiness.md)
 
 ## Success Metrics
 

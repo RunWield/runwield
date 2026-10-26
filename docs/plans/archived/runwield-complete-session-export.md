@@ -36,6 +36,9 @@ workRecord:
     path: "docs/work-records/2026-10-20-complete-session-export-and-gist-sharing.md"
     lastAttemptAt: "2026-10-20T23:45:54.469Z"
 status: "verified"
+archivedAt: "2026-10-26T02:32:32.283Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/runwield-complete-session-export.md"
 ---
 
 # Export and Share the Complete RunWield Session
