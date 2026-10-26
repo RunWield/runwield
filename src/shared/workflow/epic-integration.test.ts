@@ -933,17 +933,17 @@ for (const checksPass of [true, false]) {
         await seedReviewRound(repo, 2);
         let codeReviewOpened = false;
         hostedSession.setInteractionAdapter({
-            requestInteraction: async (request) => {
+            requestInteraction: (request) => {
                 if (request.type === "select") {
                     assertEquals(
                         request.options?.some((option) => option.value === "code_review"),
                         checksPass,
                     );
-                    return { outcome: "selected", value: checksPass ? "code_review" : "stop" };
+                    return Promise.resolve({ outcome: "selected", value: checksPass ? "code_review" : "stop" });
                 }
                 assertEquals(request.type, "code_review");
                 codeReviewOpened = true;
-                return { outcome: "accepted", _meta: { approved: true } };
+                return Promise.resolve({ outcome: "accepted", _meta: { approved: true } });
             },
         });
         const result = await runEpicIntegrationGate({
@@ -974,13 +974,13 @@ for (const takeover of [true, false]) {
         await setCustomSetting("codereview", "always", "project", repo);
         let limitPrompts = 0;
         hostedSession.setInteractionAdapter({
-            requestInteraction: async (request) => {
+            requestInteraction: (request) => {
                 if (request.type === "select") {
                     limitPrompts++;
-                    return { outcome: "selected", value: "code_review" };
+                    return Promise.resolve({ outcome: "selected", value: "code_review" });
                 }
                 assertEquals(request.type, "code_review");
-                return { outcome: "accepted", message: "Connect the seam" };
+                return Promise.resolve({ outcome: "accepted", message: "Connect the seam" });
             },
         });
         const result = await runEpicIntegrationGate({
@@ -1029,7 +1029,7 @@ test("a reviewer without a verdict pauses without consuming a round", async () =
     const result = await runEpicIntegrationGate({
         ...options,
         semanticReviewPort: {
-            runIsolatedAgentSession: async () => [],
+            runIsolatedAgentSession: () => Promise.resolve([]),
         },
     });
     assertEquals(result.kind, "paused");
@@ -1041,13 +1041,13 @@ test("project-check failures alone reach the limit without becoming ledger findi
     const { repo, options, hostedSession } = await readyGate();
     await seedReviewRound(repo, 2);
     hostedSession.setInteractionAdapter({
-        requestInteraction: async (request) => {
+        requestInteraction: (request) => {
             assertEquals(request.type, "select");
             assertEquals(
                 request.options?.map((option) => option.value),
                 ["repair", "stop"],
             );
-            return { outcome: "selected", value: "stop" };
+            return Promise.resolve({ outcome: "selected", value: "stop" });
         },
     });
     const result = await runEpicIntegrationGate({
