@@ -21,8 +21,8 @@ dependencies:
     - "01-corpus-selection-oracle-verdicts-and-edge-case-fixtures"
 userVerifiedAt: null
 targetBranch: "main"
-status: "reviewed"
 validatedCommit: "b74469de54340f3b6dd4eaf201dd00e7b449cd86"
+status: "verified"
 ---
 
 # Lifecycle, Process, and Publication Fixtures
