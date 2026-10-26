@@ -19,6 +19,12 @@ routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "1c96d22d44af1fce2b004a43ca8dc5f104de9316"
+workRecord:
+    status: "generated"
+    recordId: "8ba6e378-6e59-41f9-a43f-e245b5450e8b"
+    path: "docs/work-records/2026-10-26-stable-review-diffs-and-unreadable-patch-rejection.md"
+    lastAttemptAt: "2026-10-26T03:41:11.572Z"
 ---
 
 # Review diffs do not depend on the user's Git settings
