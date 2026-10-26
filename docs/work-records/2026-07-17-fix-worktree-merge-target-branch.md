@@ -11,15 +11,8 @@ provenance:
         - "a27652c4-f583-4618-8b9c-fc83c6f586a7"
 ---
 
-# Fix worktree merge target branch
+# Explicit worktree merge targets
 
 ## Summary
 
-Recorded each execution worktree’s source branch and used it as the explicit merge-back target. Added
-checkout-independent, concurrency-safe merge handling, target-aware recovery, and bounded Engineer-assisted conflict
-repair. Verification completed successfully.
-
-## Deviations from Plan
-
-The Engineer stopped without signaling task completion during semantic repair. Verification was subsequently completed,
-and stale worktree state was cleared before archival.
+RunWield records each execution worktree's source branch and uses it as the explicit merge-back target. Merge handling is independent of the current checkout and safe for concurrent use. Recovery respects the target and supports bounded Engineer-assisted conflict repair.

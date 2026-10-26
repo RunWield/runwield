@@ -11,14 +11,12 @@ provenance:
         - "8e55a30d-5c03-4c84-a362-4e5048f75ec9"
 ---
 
-# Structured Reviewer Completion Signal
+# Structured Reviewer completion
 
 ## Summary
 
-Implemented and verified the `review_complete` tool, replacing brittle Reviewer text parsing with structured approval
-and feedback outcomes. Validation now waits for an explicit terminal tool result, routes feedback to repair cycles, and
-treats interrupted or incomplete reviews as failures that cannot advance the workflow.
+The `review_complete` tool provides explicit approval and feedback outcomes instead of text parsing. Validation requires a terminal tool result, routes feedback to repair, and prevents interrupted or incomplete reviews from advancing the workflow.
 
 ## Future Planning Notes
 
-Use explicit terminal tools for agent workflow transitions rather than interpreting assistant text.
+Agent workflow transitions require explicit terminal tools rather than interpretation of assistant text.

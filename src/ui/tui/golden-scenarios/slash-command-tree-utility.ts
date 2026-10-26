@@ -12,11 +12,7 @@ export const slashVersionScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/version" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/version" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         typed("/version"),
         (result: Parameters<typeof assertScreenIncludes>[0]) => assertScreenIncludes(result, `runwield ${VERSION}`),
@@ -29,24 +25,26 @@ export const slashExportScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    script: [{
-        id: "guide-persists-export-session",
-        agent: "guide",
-        phase: "inquiry",
-        ordinal: 1,
-        text: "Export fixture session persisted.",
-    }],
+    script: [
+        {
+            id: "guide-persists-export-session",
+            agent: "guide",
+            phase: "inquiry",
+            ordinal: 1,
+            text: "Export fixture session persisted.",
+        },
+    ],
     actions: [
         { type: "type", text: "persist this session before export" },
         { type: "enter" },
         { type: "waitForIdle" },
-        { type: "type", text: "/export golden-slash-session.jsonl" },
+        { type: "type", text: "/export golden-slash-session.json" },
         { type: "enter" },
         { type: "waitForIdle" },
-        { type: "assertProjectFile", path: "golden-slash-session.jsonl", exists: true },
+        { type: "assertProjectFile", path: "golden-slash-session.json", exists: true },
     ],
     assertions: [
-        typed("/export golden-slash-session.jsonl"),
+        typed("/export golden-slash-session.json"),
         (result: Parameters<typeof assertScreenIncludes>[0]) => assertScreenIncludes(result, "Session exported to:"),
     ],
 };
@@ -57,11 +55,7 @@ export const slashCopyScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/copy" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/copy" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         typed("/copy"),
         (result: Parameters<typeof assertScreenIncludes>[0]) =>
@@ -75,13 +69,15 @@ export const slashReloadScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    script: [{
-        id: "guide-persists-reload-session",
-        agent: "guide",
-        phase: "inquiry",
-        ordinal: 1,
-        text: "Reload fixture session persisted.",
-    }],
+    script: [
+        {
+            id: "guide-persists-reload-session",
+            agent: "guide",
+            phase: "inquiry",
+            ordinal: 1,
+            text: "Reload fixture session persisted.",
+        },
+    ],
     actions: [
         { type: "type", text: "persist this session before reload" },
         { type: "enter" },

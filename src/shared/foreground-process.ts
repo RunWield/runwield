@@ -224,6 +224,14 @@ function terminateProcessTree(child: NativeProcess): void {
         }
         return;
     }
+    if (platform === "darwin") {
+        void stopAndKillMacProcessGroup(child);
+    } else {
+        killProcessGroup(child);
+    }
+}
+
+function killProcessGroup(child: NativeProcess): void {
     try {
         kill(-child.pid, "SIGKILL");
     } catch {
@@ -232,6 +240,39 @@ function terminateProcessTree(child: NativeProcess): void {
         } catch {
             // The process may have exited between termination and the kill.
         }
+    }
+}
+
+/** Stop forks before killing the group; Darwin can miss a child still being created during killpg. */
+async function stopAndKillMacProcessGroup(child: NativeProcess): Promise<void> {
+    const deadline = Date.now() + 1_000;
+    try {
+        while (Date.now() < deadline) {
+            kill(-child.pid, "SIGSTOP");
+            const output = await new Promise<string>((resolve, reject) => {
+                const probe = spawn("/bin/ps", ["-axo", "pgid=,state="], {
+                    cwd: "/",
+                    stdio: ["ignore", "pipe", "ignore"],
+                    timeout: 1_000,
+                    killSignal: "SIGKILL",
+                });
+                let text = "";
+                probe.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+                    text += chunk;
+                });
+                probe.once("error", reject);
+                probe.once("close", (code) => (code === 0 ? resolve(text) : reject(new Error("Process probe failed"))));
+            });
+            const members = output
+                .split("\n")
+                .map((line) => line.trim().split(/\s+/))
+                .filter(([group]) => Number(group) === child.pid);
+            if (members.length && members.every(([, state]) => /^[TZ]/.test(state || ""))) break;
+        }
+    } catch {
+        // A failed probe must not leave the owned command suspended.
+    } finally {
+        killProcessGroup(child);
     }
 }
 

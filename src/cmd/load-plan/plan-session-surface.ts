@@ -28,6 +28,7 @@ import type { ActiveExecutionWorkflow, PlanSessionSurface } from "./plan-session
  */
 interface RawReviewPayload {
     approved?: unknown;
+    conversationTurn?: boolean;
     feedback?: unknown;
     cancellationReason?: unknown;
     approvalAction?: PlanApprovalAction;
@@ -114,26 +115,31 @@ export function createPlanSessionSurface(
             });
             const responseAny = response as { _meta?: Record<string, unknown>; message?: unknown };
             const review = (responseAny._meta || {}) as RawReviewPayload;
-            const hasReviewPayload = responseAny._meta && typeof responseAny._meta === "object" &&
-                Object.keys(responseAny._meta).length > 0;
+            const hasReviewPayload =
+                responseAny._meta && typeof responseAny._meta === "object" && Object.keys(responseAny._meta).length > 0;
             const runtimeCanceled = response.outcome === RuntimeInteractionOutcomes.CANCELED && !hasReviewPayload;
             return {
                 canceled: response.outcome === RuntimeInteractionOutcomes.CANCELED,
-                cancellationReason: typeof review.cancellationReason === "string"
-                    ? review.cancellationReason
-                    : runtimeCanceled
-                    ? "runtime_cancel"
-                    : undefined,
+                cancellationReason:
+                    typeof review.cancellationReason === "string"
+                        ? review.cancellationReason
+                        : runtimeCanceled
+                          ? "runtime_cancel"
+                          : undefined,
+                conversationTurn:
+                    review.conversationTurn === true || review.sequenceDecision?.conversationTurn === true,
                 approved: review.approved === true || review.sequenceDecision?.approved === true,
-                feedback: typeof review.feedback === "string"
-                    ? review.feedback
-                    : typeof review.sequenceDecision?.feedback === "string"
-                    ? review.sequenceDecision.feedback
-                    : undefined,
+                feedback:
+                    typeof review.feedback === "string"
+                        ? review.feedback
+                        : typeof review.sequenceDecision?.feedback === "string"
+                          ? review.sequenceDecision.feedback
+                          : undefined,
                 approvalAction: review.approvalAction,
-                planAttrs: review.planAttrs && typeof review.planAttrs === "object"
-                    ? (review.planAttrs as PlanFrontMatter)
-                    : undefined,
+                planAttrs:
+                    review.planAttrs && typeof review.planAttrs === "object"
+                        ? (review.planAttrs as PlanFrontMatter)
+                        : undefined,
                 images: Array.isArray(review.images) ? review.images : undefined,
                 remoteReview: review.remoteReview === true,
                 reviewerUrl: typeof review.reviewerUrl === "string" ? review.reviewerUrl : undefined,
@@ -186,9 +192,9 @@ export async function restorePreviousAgentFlow(
 }
 
 /**
- * If a plan command was entered from Router, the plan owner should become the
- * follow-up agent. Otherwise restore the specialist the user was already using.
+ * Router and the Epic-scoped Slicer yield to the loaded Plan's owner.
+ * Otherwise restore the specialist the user was already using.
  */
 export function selectPlanFlowRestoreAgent(initialAgentName: string, planAgentName: string): string {
-    return initialAgentName === AGENTS.ROUTER ? planAgentName : initialAgentName;
+    return initialAgentName === AGENTS.ROUTER || initialAgentName === AGENTS.SLICER ? planAgentName : initialAgentName;
 }

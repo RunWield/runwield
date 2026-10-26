@@ -1,46 +1,21 @@
-# RunWield Free Use License
+MIT License
 
-Copyright (c) 2026 Carlos Ravelo.
+Copyright (c) 2026 Carlos Ravelo
 
-RunWield is source-available software. You may use it freely, but you may not distribute derivative works without
-permission.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-## Permission
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-You may:
-
-- use RunWield for personal, educational, research, internal, or commercial purposes;
-- download, install, run, and evaluate RunWield;
-- inspect the source code;
-- make local changes for your own private use;
-- fork the repository only as needed to propose contributions back to the RunWield project;
-- submit issues, pull requests, and other contributions.
-
-## Restrictions
-
-You may not, without prior written permission:
-
-- distribute modified versions of RunWield;
-- publish, sell, sublicense, host, or provide derivative works based on RunWield;
-- rebrand RunWield or offer it as a competing product or service;
-- remove copyright, license, or attribution notices;
-- use the RunWield name, logo, or branding in a way that suggests endorsement.
-
-## Contributions
-
-By submitting a contribution, you grant the project owner a perpetual, worldwide, royalty-free license to use, modify,
-distribute, sublicense, and relicense your contribution as part of RunWield.
-
-You represent that you have the right to submit the contribution.
-
-## Third-Party Software
-
-RunWield depends on third-party software that is licensed separately. Those components remain under their own license
-terms.
-
-This license applies only to RunWield itself and does not limit rights granted by third-party licenses.
-
-## No Warranty
-
-RunWield is provided "as is", without warranty of any kind. To the maximum extent permitted by law, the copyright holder is
-not liable for any claim, damages, or other liability arising from the software or its use.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

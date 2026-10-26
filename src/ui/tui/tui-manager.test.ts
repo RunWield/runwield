@@ -77,20 +77,12 @@ test("createTuiManager throws before initialization and clears state on stop", (
         restoreTitle: () => events.push("restoreTitle"),
     });
 
-    assertThrows(
-        () => manager.getTUI(),
-        Error,
-        "TUI not initialized. Call initTUI() first.",
-    );
+    assertThrows(() => manager.getTUI(), Error, "TUI not initialized. Call initTUI() first.");
 
     manager.initTUI();
     manager.stopTUI();
 
-    assertThrows(
-        () => manager.getTUI(),
-        Error,
-        "TUI not initialized. Call initTUI() first.",
-    );
+    assertThrows(() => manager.getTUI(), Error, "TUI not initialized. Call initTUI() first.");
     assertEquals(events, ["start", "install", "restoreTitle", "uninstall", "stop"]);
 });
 
@@ -154,6 +146,43 @@ test("createTuiManager clears partial state when TUI start fails", () => {
     assertThrows(() => manager.getTUI(), Error, "TUI not initialized");
     manager.stopTUI();
     assertEquals(events, ["start", "stop", "restoreTitle"]);
+});
+
+test("createTuiManager enables focus reporting inside the alternate screen", () => {
+    const writes: string[] = [];
+
+    class FakeTerminal {
+        write(data: string): void {
+            writes.push(data);
+        }
+
+        start(_onInput: InputHandler): void {}
+    }
+
+    class FakeTui {
+        constructor(private readonly terminal: FakeTerminal) {}
+
+        start(): void {
+            this.terminal.write("enter alternate screen");
+        }
+
+        stop(): void {
+            this.terminal.write("leave alternate screen");
+        }
+    }
+
+    const manager = createTuiManager({
+        TerminalCtor: FakeTerminal,
+        TuiCtor: FakeTui,
+        installCrashGuards: () => {},
+        uninstallCrashGuards: () => {},
+        restoreTitle: () => {},
+    });
+
+    manager.initTUI();
+    manager.stopTUI();
+
+    assertEquals(writes, ["enter alternate screen", "\x1b[?1004h", "\x1b[?1004l", "leave alternate screen"]);
 });
 
 test("createTuiManager enables and disables production terminal focus reporting", () => {

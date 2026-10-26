@@ -63,6 +63,7 @@ export { OWNER_CSRF_COOKIE, OWNER_DEVICE_COOKIE, OWNER_DEVICE_MAX_AGE_SECONDS } 
  * @property {ReturnType<typeof openFileSessionStore>['ensureSessionCatalogRecordAndAcquire']} ensureSessionCatalogRecordAndAcquire
  * @property {ReturnType<typeof openFileSessionStore>['findSessionByLocator']} findSessionByLocator
  * @property {ReturnType<typeof openFileSessionStore>['getSessionById']} getSessionById
+ * @property {ReturnType<typeof openFileSessionStore>['readSessionManifest']} readSessionManifest
  * @property {ReturnType<typeof openFileSessionStore>['archiveSession']} archiveSession
  * @property {ReturnType<typeof openFileSessionStore>['unarchiveSession']} unarchiveSession
  * @property {ReturnType<typeof openFileSessionStore>['listProjectSessions']} listProjectSessions
@@ -172,6 +173,8 @@ export function openOwnerCoordinationStore(options = {}) {
             const runtimeProject = projectId ? resolveSessionProject(projectId) : null;
             return sessionStore.getSessionById(runwieldSessionId, runtimeProject?.projectId);
         },
+        readSessionManifest: (runwieldSessionId, projectId) =>
+            sessionStore.readSessionManifest(runwieldSessionId, projectId),
         archiveSession: (runwieldSessionId, projectId) => {
             const project = projectId ? resolveSessionProject(projectId) : null;
             if (projectId && !project) throw new Error("Session project is unavailable");

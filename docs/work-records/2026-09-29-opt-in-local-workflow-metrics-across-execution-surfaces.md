@@ -16,13 +16,12 @@ provenance:
 
 ## Summary
 
-Delivered version-2, privacy-filtered local metrics for tool activity, exposure, model usage and cost, context, retries,
-latency, delegation, and slash commands across Pi, CLI, TUI, ACP, and Workspace paths. Recording remains off by default
-and separate by Project; missing measurements remain explicit. Focused metrics/session/backend tests (78), ACP server
-tests (65), and the zero-seam check passed.
+RunWield records privacy-filtered local metrics for tool activity, exposure, model usage and cost, context, retries, latency, delegation, and slash commands across execution surfaces. Recording is off by default and separate by Project. Missing measurements remain explicit.
+
+## Out of Scope
+
+This work does not include a dashboard, export, retention controls, or a new storage service.
 
 ## Future Planning Notes
 
-The separate dashboard/export Epic must build on this recording contract and reconcile its default-on proposal with the
-owner's confirmed default-off policy. This change did not deliver a dashboard, export, retention controls, or a new
-storage service.
+Consumers must preserve the owner’s default-off recording policy and the distinction between missing and measured values.

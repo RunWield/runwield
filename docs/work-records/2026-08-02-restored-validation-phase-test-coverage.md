@@ -12,18 +12,12 @@ provenance:
         - "d1199d77-6f61-45f0-8ded-aa43b51d613d"
 ---
 
-# Restored validation phase test coverage
+# Phase-driven validation coverage
 
 ## Summary
 
-Restored accountability for validation-loop coverage lost during the lifecycle refactor. The work added a disposition
-document covering all 47 pre-refactor tests, rewrote surviving behavior against the phase-driven `runValidationLoop`
-shape, and expanded the five scoped workflow test files from 6 to 14 tests. CI repair dispatch now uses an
-`agentTurnPort` capability without increasing legacy seams. Verification passed with
-`deno task test src/shared/workflow`, `deno task seams:check`, and `deno task ci`.
+Validation-loop tests exercise phase-driven behavior and assert persistent lifecycle outcomes. CI repair dispatch uses an Agent-turn capability without adding an injection seam. Explicit test dispositions make coverage changes traceable across structural refactors.
 
 ## Future Planning Notes
 
-Use explicit disposition tables when refactors intentionally remove or reshape large test areas; they make coverage loss
-reviewable without chasing raw test counts. For validation-loop tests, seed the Plan at the phase under test, call
-`runValidationLoop` once, and assert persisted lifecycle state rather than recreating the old multi-phase driver.
+Validation tests should begin at the phase under test and assert persisted lifecycle state. Record explicit dispositions when a refactor removes or reshapes existing coverage.

@@ -12,17 +12,12 @@ provenance:
         - "1f7db23a-c78b-4240-8431-a5451f01e303"
 ---
 
-# Delegated verification-adversary role added
+# Read-only verification-adversary delegation
 
 ## Summary
 
-The user attested verification; RunWield Workflow Validation did not establish this result. Added optional
-delegated-agent roles backed by the subagent definition registry, with `verification-adversary` as the first role. The
-role composes a delegated prompt overlay, enforces a read-only authority ceiling even when write mode is requested, and
-gives Planner/CONTEXT discoverability for adversarial Plan-check review. The user established verification: "Worked on
-it with claude code outside of RunWield".
+The user attested verification; RunWield Workflow Validation did not establish this result. Delegated Agent roles compose prompt overlays through the shared subagent registry. The verification-adversary role supports adversarial Plan-check review and enforces read-only authority even when write mode is requested. User verification note: Worked on this with Claude Code outside RunWield.
 
 ## Future Planning Notes
 
-Role overlays stayed additive to legacy delegation: omitted `role` remains the compatibility path, while specialized
-roles compose through the existing subagent loader instead of introducing a parallel prompt mechanism.
+Keep role overlays additive to ordinary delegation. Specialized roles must use the shared loader and cannot exceed their authority ceiling.

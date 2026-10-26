@@ -1,11 +1,17 @@
-import { getCwd } from "../../constants.js";
 /**
  * @module cmd/export
- * Export current interactive session to HTML (default) or JSONL.
+ * Export the complete Session to HTML (default) or JSON.
  */
 
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { renderSessionExportHtml } from "../../ui/session-export/session-export-html.ts";
 import type { CommandContext } from "../registry.js";
+
+type ExportCommandOptions = Pick<CommandContext, "sessionRuntime" | "sessionId" | "sessionStartedAt"> & {
+    uiAPI?: Pick<NonNullable<CommandContext["uiAPI"]>, "appendSystemMessage">;
+    editor?: Pick<NonNullable<CommandContext["editor"]>, "setText" | "disableSubmit">;
+};
 
 function sanitizeFilenameSegment(value: string): string {
     return value.replace(/[\\/:*?"<>|]/g, "-");
@@ -19,7 +25,7 @@ function buildDefaultExportPath(projectRoot: string, sessionStartIso: string): s
 /**
  * Handle `/export` command (slash-only).
  */
-export async function runExportCommand(argv: string[], options: CommandContext = {}): Promise<void | "failed"> {
+export async function runExportCommand(argv: string[], options: ExportCommandOptions = {}): Promise<void | "failed"> {
     const { uiAPI, editor, sessionRuntime, sessionId, sessionStartedAt } = options;
     if (!uiAPI || !sessionRuntime || !sessionId) {
         return "failed";
@@ -28,18 +34,23 @@ export async function runExportCommand(argv: string[], options: CommandContext =
     uiAPI.appendSystemMessage("");
 
     const requestedPath = argv.join(" ").trim();
-    const projectRoot = typeof sessionRuntime.getSessionSnapshot === "function"
-        ? sessionRuntime.getSessionSnapshot(sessionId)?.cwd || getCwd()
-        : getCwd();
-
-    const fallbackIso = sessionStartedAt || new Date().toISOString();
-    const outputPath = requestedPath
-        ? isAbsolute(requestedPath) ? requestedPath : join(projectRoot, requestedPath)
-        : buildDefaultExportPath(projectRoot, fallbackIso);
-
     try {
-        const filePath = await sessionRuntime.exportSession(sessionId, outputPath);
-        uiAPI.appendSystemMessage(`Session exported to: ${filePath}`);
+        if (requestedPath.toLowerCase().endsWith(".jsonl")) {
+            throw new Error("JSONL export is retired. Use a .json path to export the complete Session.");
+        }
+        const exported = await sessionRuntime.readSessionExport(sessionId);
+        const projectRoot = exported.document.session.cwd;
+        const outputPath = requestedPath
+            ? isAbsolute(requestedPath)
+                ? requestedPath
+                : join(projectRoot, requestedPath)
+            : buildDefaultExportPath(projectRoot, sessionStartedAt || new Date().toISOString());
+        const content = outputPath.toLowerCase().endsWith(".json")
+            ? JSON.stringify(exported.document, null, 2)
+            : renderSessionExportHtml(exported);
+        await mkdir(dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, content, { mode: 0o600 });
+        uiAPI.appendSystemMessage(`Session exported to: ${outputPath}`);
     } catch (error) {
         uiAPI.appendSystemMessage(
             `Failed to export session: ${error instanceof Error ? error.message : "Unknown error"}`,

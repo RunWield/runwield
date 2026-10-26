@@ -12,18 +12,12 @@ provenance:
         - "6c43c06a-1c9b-4f11-8d92-61679b424caf"
 ---
 
-# RunWield entity model documentation added
+# RunWield entity model reference
 
 ## Summary
 
-Added `docs/entity-model.md` as a source-grounded companion to `architecture.md`, with bounded Mermaid ER diagrams,
-identity/ownership/lifecycle notes, and a persistence/authority table. Updated `architecture.md` with links to the
-entity model and refreshed current workflow terminology from legacy `FEATURE` wording to `PLANNED_CHANGE` where
-appropriate. Formatting verification passed with `deno fmt --check architecture.md docs/entity-model.md`; broader code
-checks were not run because the change was documentation-only.
+The entity model reference complements architecture documentation with bounded relationship diagrams, identity and ownership rules, lifecycle notes, and a persistence-authority table. It distinguishes entity relationships from workflow control flow.
 
 ## Future Planning Notes
 
-For future architecture docs, keep entity relationships separate from control-flow/dependency diagrams and explicitly
-distinguish durable sources of truth from projections, caches, transient workflow objects, and externally owned
-lifecycle state.
+Architecture references distinguish durable sources of truth from projections, caches, transient workflow objects, and externally owned lifecycle state.

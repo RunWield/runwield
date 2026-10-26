@@ -24,8 +24,4 @@ provenance:
 
 ## Summary
 
-The Workspace Plan UI has been repaired after its React and Plannotator migration. Cards remain contained within
-responsive lifecycle columns, search lives in the board tab toolbar, and drag-and-drop exposes only valid lifecycle
-transitions while rejected drops visibly return to their source ghost. Plan details use the real Plannotator viewer and
-editor with RunWield design-system controls and theme inheritance, lifecycle buttons and body editing work end to end,
-and direct dev-server changes persist in memory without writing Plan files, keeping UI testing safe and repeatable.
+Workspace Plan cards remain contained within responsive lifecycle columns, and search lives in the board tab toolbar. Drag-and-drop exposes valid lifecycle transitions and visibly returns rejected drops to their source ghost. Plan details use the Plannotator viewer and editor with RunWield controls and theme inheritance. Direct development-server edits remain in memory without writing Plan files.

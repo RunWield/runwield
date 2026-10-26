@@ -404,6 +404,8 @@ export interface ReconcileOptions {
 }
 
 export interface RolloverOptions {
+    /** Transfer the native handle to a fresh preparing activation instead of releasing it. */
+    retainActivation?: boolean;
     predecessorSegmentId: string;
     predecessorEvidence: TranscriptEvidence;
     successor: SegmentAppendOptions;
@@ -413,6 +415,7 @@ export interface RolloverOptions {
 }
 
 export interface RolloverCommitResult extends SessionControlSnapshot {
+    successorProof?: FileActivationProof;
     predecessor: SessionTranscriptSegment;
     successor: SessionTranscriptSegment;
 }
@@ -432,6 +435,7 @@ export interface FileSessionStore {
     requireSessionProjectRoot(projectId: string): string;
     findSessionByLocator(locator: SessionLocator): CatalogedSession | null;
     getSessionById(runwieldSessionId: string, projectId?: string): CatalogedSession | null;
+    readSessionManifest(runwieldSessionId: string, projectId: string): FileSessionManifest | null;
     archiveSession(runwieldSessionId: string, projectId?: string): CatalogedSession;
     unarchiveSession(runwieldSessionId: string, projectId?: string): CatalogedSession;
     ensureSessionCatalogRecord(locator: EnsureSessionCatalogOptions): Promise<CatalogedSession>;

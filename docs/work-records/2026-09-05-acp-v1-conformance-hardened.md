@@ -12,21 +12,16 @@ provenance:
         - "28e93cd2-f201-4fd7-873c-c7ca4fbe9d5d"
 ---
 
-# ACP v1 Conformance Hardened
+# ACP v1 protocol conformance
 
 ## Summary
 
-RunWield’s ACP v1 adapter was hardened against the remaining audit gaps. It now locks the ACP SDK at 1.4.0, negotiates
-protocol version 1, reports the generated RunWield version, sends schema-valid cumulative USD usage cost, and returns
-cancellation only after Runtime settlement and pending updates. Verification passed with focused ACP/MCP tests, seams
-check, type/check gates, full CI, full test suite, and a manual negotiation check.
+The ACP v1 adapter negotiates protocol version 1, reports the generated RunWield version, and sends schema-valid cumulative USD usage cost. Cancellation returns only after Runtime settlement and pending updates.
 
-## Deferred Work
+## Out of Scope
 
-HTTP/SSE MCP, MCP prompts/resources, optional Session methods, exact context capacity, ACP v2, registry metadata, and
-broader client delegation remain out of scope.
+This work does not include HTTP/SSE MCP, MCP prompts or resources, ACP v2, or broader client delegation.
 
 ## Future Planning Notes
 
-Keep ACP v1 SDK upgrades explicit and covered by schema characterization tests. ACP cost must remain Session-cumulative,
-and cancellation completion must stay owned by Runtime settlement rather than adapter-local promises.
+Keep ACP SDK upgrades explicit and covered by schema characterization tests. ACP cost remains Session-cumulative, and Runtime settlement owns cancellation completion.

@@ -12,17 +12,12 @@ provenance:
         - "a219d9a7-0cac-4e7e-9a52-bff07b64a35e"
 ---
 
-# Split SessionRuntime into typed private owners
+# Typed private SessionRuntime owners
 
 ## Summary
 
-Replaced the 5,564-line JavaScript SessionRuntime with a 392-line TypeScript public class and cohesive private owners,
-all below 1,000 lines. The public API and behavior remain stable while the forwarding-only engine layer is gone. Added
-real coverage for workflow-aware close, managed queue lifecycle, stale Plan rejection, and restart-safe continuation;
-updated active imports, policies, ADR/PRD references, and handoff types. RunWield Workflow Validation passed for commit
-`7dba8e443795bd9e357ddd6b1062c5610fd68ffe`.
+SessionRuntime provides a TypeScript public class backed by cohesive private owners. The public API and behavior remain stable without the forwarding-only engine layer. Named owners contain Runtime state and ordering-sensitive responsibilities.
 
 ## Future Planning Notes
 
-Keep Runtime state with its named private owner and prove ordering-sensitive behavior through the public Runtime and
-filesystem, not source-text checks.
+Keep Runtime state with its named private owner and verify ordering-sensitive behavior through the public Runtime and filesystem rather than source-text checks.

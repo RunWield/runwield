@@ -11,10 +11,8 @@ provenance:
         - "4e2360fb-4fbc-419d-b79f-a7bcf77baa9e"
 ---
 
-# Replaced RTK command rewriting with Snip
+# Optional Snip command rewriting
 
 ## Summary
 
-Removed the RTK integration and replaced it with optional Snip-based rewriting for safe, simple agent bash commands.
-Added Harns-managed Snip configuration and bundled Deno fmt, lint, and test filters, updated runtime wiring and tests,
-removed RTK references, refreshed documentation, and verified the change with the full CI suite.
+The Deno-era command integration uses optional Snip rewriting for safe, simple Agent bash commands instead of RTK. RunWield manages Snip configuration and supplies Deno formatting, lint, and test output filters.

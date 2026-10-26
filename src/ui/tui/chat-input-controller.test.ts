@@ -1,15 +1,9 @@
-import { delimiter } from "node:path";
 import { test } from "node:test";
-import {
-    chmod as fsChmod,
-    mkdir as fsMkdir,
-    readdir as fsReaddir,
-    readFile as fsReadFile,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
+import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { statSync as fsStatSync } from "node:fs";
 import process from "node:process";
-import { ok as assert } from "node:assert/strict";
+import { ok as assert, throws as assertThrows } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -17,11 +11,13 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { savePlan } from "../../plan-store.js";
 import { getSettingsManager } from "../../shared/settings.js";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { type ChatInputRuntime, createChatInputController } from "./chat-input-controller.ts";
 import { createInteractiveCompositionHarness } from "./testing/interactive-composition-fixture.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
 import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
@@ -37,11 +33,6 @@ interface ResumeManagedFixture {
     projectId: string;
 }
 
-interface ClipboardFixtureCommands {
-    previousPath: string;
-    imageReadMarkerPath: string;
-}
-
 function deferredSignal(): DeferredSignal {
     let resolvePromise: () => void = () => {};
     const promise = new Promise<void>((resolve) => {
@@ -50,11 +41,7 @@ function deferredSignal(): DeferredSignal {
     return { promise, resolve: resolvePromise };
 }
 
-async function waitFor(
-    predicate: () => boolean,
-    description: string,
-    timeoutMs = 5_000,
-): Promise<void> {
+async function waitFor(predicate: () => boolean, description: string, timeoutMs = 5_000): Promise<void> {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
         if (predicate()) return;
@@ -70,7 +57,7 @@ async function waitForPath(path: string, description: string, timeoutMs = 5_000)
                 fsStatSync(path);
                 return true;
             } catch (error) {
-                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
                 throw error;
             }
         },
@@ -92,7 +79,7 @@ async function countSessionTranscripts(projectRoot: string): Promise<number> {
             if (entry.isFile() && entry.name.endsWith(".jsonl")) count++;
         }
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
         throw error;
     }
     return count;
@@ -135,6 +122,96 @@ test("composition idle waits for a real slash-command interaction to finish", as
     });
 });
 
+test("composed TUI keeps /plan-review reachable during the original browser review", async () => {
+    await withRuntimeCommandFixture(
+        "chat-input-live-plan-review-",
+        async ({ alternateRoot: projectRoot, setModelResponseFactory }) => {
+            let modelTurns = 0;
+            setModelResponseFactory(() => {
+                modelTurns++;
+                return fauxAssistantMessage(fauxText("Queued response."));
+            });
+            const urls: string[] = [];
+            const terminal = new VirtualTerminal({ columns: 180, rows: 50 });
+            const composition = await createInteractiveTuiComposition(null, {
+                browser: {
+                    open: (url: string) => {
+                        urls.push(url);
+                        return Promise.resolve(false);
+                    },
+                },
+                terminal,
+                initialAgentName: "operator",
+            });
+            try {
+                await composition.waitForIdle();
+                await savePlan(projectRoot, "target", "# Target\n\nReview this saved Plan.\n", {
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                    affectedPaths: [],
+                });
+
+                await submitText(terminal, "/load-plan target");
+                await waitFor(
+                    () => terminal.getScreenText().includes("What would you like to do?"),
+                    "loaded Plan actions",
+                );
+                terminal.input("\x1b[B");
+                terminal.pressEnter();
+                await terminal.flush();
+                await waitFor(() => urls.length === 1, "original browser review");
+
+                const reviewChanges: string[] = [];
+                const unsubscribe = composition.runtime.subscribeSessionEvents(composition.sessionId, (event) => {
+                    if (
+                        event.type === RuntimeEventTypes.INTERACTION_REQUESTED ||
+                        event.type === RuntimeEventTypes.CANCELLATION
+                    ) {
+                        reviewChanges.push(event.type);
+                    }
+                });
+                await submitText(terminal, "/plan-review");
+                // Autocomplete can consume the first Enter; the second submits the command.
+                terminal.pressEnter();
+                await terminal.flush();
+                await waitFor(
+                    () => terminal.getScreenText().includes("The current Plan review is open."),
+                    "live review command result",
+                );
+                assertStringIncludes(terminal.getScreenText(), urls[0]);
+                assertEquals(urls.length, 1);
+                await submitText(terminal, "Queue this until review ends");
+                await waitFor(
+                    () => composition.runtime.getQueuedMessages(composition.sessionId).length === 1,
+                    "queued ordinary input",
+                );
+                assertEquals(modelTurns, 0);
+                assertEquals(urls.length, 1);
+                assertEquals(reviewChanges, []);
+                unsubscribe();
+                const reviewUrl = new URL(urls[0]);
+                const token = reviewUrl.searchParams.get("token") || "";
+                const response = await fetch(
+                    new URL(`/api/review/decision?token=${encodeURIComponent(token)}`, reviewUrl.origin),
+                    {
+                        method: "POST",
+                        headers: { "content-type": "application/json", "x-runwield-review-token": token },
+                        body: JSON.stringify({ approved: true, approvalAction: "later" }),
+                    },
+                );
+                assertEquals(response.ok, true);
+                await waitFor(() => modelTurns > 0, "queued turn after review decision");
+            } finally {
+                composition.runtime.cancelSession(composition.sessionId);
+                terminal.pressEscape();
+                await composition.dispose();
+            }
+        },
+    );
+});
+
 async function seedActiveElsewhereManagedSession(
     projectRoot: string,
 ): Promise<ReturnType<typeof openOwnerCoordinationStore>> {
@@ -170,46 +247,6 @@ async function seedActiveElsewhereManagedSession(
         store.close();
         throw error;
     }
-}
-
-async function installFakeClipboardCommands(projectRoot: string): Promise<ClipboardFixtureCommands> {
-    const previousPath = process.env["PATH"] || "";
-    const binDir = `${projectRoot}/clipboard-bin`;
-    const imageReadMarkerPath = `${projectRoot}/clipboard-image-read`;
-    await fsMkdir(binDir, { recursive: true });
-    const osascriptPath = `${binDir}/osascript`;
-    await fsWriteFile(
-        osascriptPath,
-        [
-            "#!/bin/sh",
-            'script="$2"',
-            "if printf '%s' \"$script\" | grep -q 'return \"image\"'; then",
-            "  echo image",
-            "  exit 0",
-            "fi",
-            "temp_file=$(printf '%s' \"$script\" | sed -n 's/^[[:space:]]*set tempFile to \"\\(.*\\)\"$/\\1/p')",
-            'printf fixture-png > "$temp_file"',
-            "exit 0",
-            "",
-        ].join("\n"),
-    );
-    await fsChmod(osascriptPath, 0o755);
-    const base64Path = `${binDir}/base64`;
-    await fsWriteFile(
-        base64Path,
-        [
-            "#!/bin/sh",
-            "echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-            `touch "${imageReadMarkerPath}"`,
-            // Reading bytes is not paste completion: the process must exit and
-            // RunWield must attach/render the image before the user can submit it.
-            "sleep 0.2",
-            "",
-        ].join("\n"),
-    );
-    await fsChmod(base64Path, 0o755);
-    process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
-    return { previousPath, imageReadMarkerPath };
 }
 
 test("chat input controller sends accepted editor input through the real composed Runtime", async () => {
@@ -343,14 +380,12 @@ test("slash resume restores conversation after an interrupted checkpoint", async
             });
             await fsWriteFile(
                 segment.transcriptPath,
-                `${
-                    JSON.stringify({
-                        type: "custom",
-                        id: crypto.randomUUID(),
-                        customType: "runwield.request_attempt",
-                        data: { status: "failed" },
-                    })
-                }\n`,
+                `${JSON.stringify({
+                    type: "custom",
+                    id: crypto.randomUUID(),
+                    customType: "runwield.request_attempt",
+                    data: { status: "failed" },
+                })}\n`,
                 { flag: "a" },
             );
             store.markSessionUncertain(proof, { reason: "interrupted after a failed request" });
@@ -425,14 +460,15 @@ test("chat input controller queues deferred slash input for the next turn during
             await submitText(terminal, "/not-a-command args");
             await waitFor(
                 () =>
-                    composition.runtime.getQueuedMessages(composition.sessionId).some((item) =>
-                        item.text === "/not-a-command args" && item.delivery === "next_turn"
-                    ),
+                    composition.runtime
+                        .getQueuedMessages(composition.sessionId)
+                        .some((item) => item.text === "/not-a-command args" && item.delivery === "next_turn"),
                 "queued deferred slash message",
             );
-            assertEquals(composition.runtime.getQueuedMessages(composition.sessionId).map((item) => item.text), [
-                "/not-a-command args",
-            ]);
+            assertEquals(
+                composition.runtime.getQueuedMessages(composition.sessionId).map((item) => item.text),
+                ["/not-a-command args"],
+            );
             assertEquals(composition.runtime.getQueuedMessages(composition.sessionId)[0]?.delivery, "next_turn");
             releaseModel.resolve();
             await composition.waitForIdle();
@@ -493,7 +529,7 @@ test("chat input controller recalls queued steering into the editor oldest to ne
     });
 });
 
-test("chat input controller preflights pasted image attachments through the composed TUI", async () => {
+test("composed TUI reads clipboard only for explicit paste, preserving text and image submission ordering", async () => {
     await withRuntimeCommandFixture(
         "chat-input-real-image-preflight-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -506,6 +542,16 @@ test("chat input controller preflights pasted image attachments through the comp
             });
             const { composition, terminal } = await startComposition();
             try {
+                await new Promise((resolve) => setTimeout(resolve, 3300));
+                terminal.input("\x1b[200~pasted text\x1b[201~");
+                await terminal.flush();
+                await waitFor(() => terminal.getScreenText().includes("pasted text"), "bracketed text paste");
+                terminal.input("\x03");
+                const oldSessionId = composition.sessionId;
+                await submitText(terminal, "/new");
+                await waitFor(() => composition.sessionId !== oldSessionId, "Session replacement");
+                await composition.waitForIdle();
+                assertEquals(await clipboard.invocations(), []);
                 terminal.input("\x16");
                 await waitForPath(clipboard.imageReadMarkerPath, "clipboard image read");
                 // Submit while the clipboard process is still running. The input handler must
@@ -513,20 +559,32 @@ test("chat input controller preflights pasted image attachments through the comp
                 await submitText(terminal, "describe pasted image");
                 await waitFor(
                     () =>
-                        modelRequests.some((request) =>
-                            request.includes("describe pasted image") &&
-                            (request.includes("image/png") || request.includes("attachment:"))
+                        modelRequests.some(
+                            (request) =>
+                                request.includes("describe pasted image") &&
+                                (request.includes("image/png") || request.includes("attachment:")),
                         ),
                     "model request with pasted image",
                 );
                 assert(
-                    modelRequests.some((request) =>
-                        request.includes("describe pasted image") &&
-                        (request.includes("image/png") || request.includes("attachment:"))
+                    modelRequests.some(
+                        (request) =>
+                            request.includes("describe pasted image") &&
+                            (request.includes("image/png") || request.includes("attachment:")),
                     ),
                 );
+                const calls = await clipboard.invocations();
+                assertEquals(
+                    calls.map(({ operation }) => operation),
+                    ["probe", "extract", "encode"],
+                );
+                const tempPath = calls[1]!.tempPath;
+                assert(tempPath.includes("runwield-clipboard-") && tempPath.endsWith(".png"));
+                assertThrows(() => fsStatSync(tempPath), { code: "ENOENT" });
+                await new Promise((resolve) => setTimeout(resolve, 1600));
+                assertEquals(await clipboard.invocations(), calls);
             } finally {
-                process.env["PATH"] = clipboard.previousPath;
+                clipboard.restore();
                 await composition.dispose();
             }
         },
@@ -636,26 +694,30 @@ test("chat input controller shows Agy MCP setup approval action without spilling
 });
 
 test("chat input controller preserves input while model setup blocks through the composed TUI", async () => {
-    await withRuntimeCommandFixture("chat-input-real-model-block-", async () => {
-        const harness = createInteractiveCompositionHarness({});
-        try {
-            await harness.waitForScreen("Only showing models from configured providers");
-            await harness.pressKey("escape");
-            await harness.waitForScreen("No model was selected");
-            await harness.waitForComposition(20_000);
-            await harness.type("keep me");
-            await waitFor(() => harness.terminal.getScreenText().includes("keep me"), "typed blocked draft");
-            await harness.type("\r");
-            await waitFor(
-                () => harness.terminal.getScrollbackText().includes("Choose a default model"),
-                "model setup block message",
-            );
-            assertStringIncludes(harness.terminal.getScreenText(), "keep me");
-            assertStringIncludes(harness.terminal.getScrollbackText(), "Choose a default model");
-        } finally {
-            await harness.dispose();
-        }
-    }, { providerState: "provider-no-model" });
+    await withRuntimeCommandFixture(
+        "chat-input-real-model-block-",
+        async () => {
+            const harness = createInteractiveCompositionHarness({});
+            try {
+                await harness.waitForScreen("Only showing models from configured providers");
+                await harness.pressKey("escape");
+                await harness.waitForScreen("No model was selected");
+                await harness.waitForComposition(20_000);
+                await harness.type("keep me");
+                await waitFor(() => harness.terminal.getScreenText().includes("keep me"), "typed blocked draft");
+                await harness.type("\r");
+                await waitFor(
+                    () => harness.terminal.getScrollbackText().includes("Choose a default model"),
+                    "model setup block message",
+                );
+                assertStringIncludes(harness.terminal.getScreenText(), "keep me");
+                assertStringIncludes(harness.terminal.getScrollbackText(), "Choose a default model");
+            } finally {
+                await harness.dispose();
+            }
+        },
+        { providerState: "provider-no-model" },
+    );
 });
 
 test("chat input controller queues input while another surface is active", async () => {
@@ -670,10 +732,7 @@ test("chat input controller queues input while another surface is active", async
             );
             await submitText(terminal, "keep managed draft");
             await waitFor(() => terminal.getScreenText().includes("keep managed draft"), "typed managed draft");
-            assertStringIncludes(
-                terminal.getScreenText(),
-                "This conversation is running in RunWield Workspace.",
-            );
+            assertStringIncludes(terminal.getScreenText(), "This conversation is running in RunWield Workspace.");
             assertStringIncludes(terminal.getScreenText(), "keep managed draft");
             assertEquals(
                 composition.runtime.getQueuedMessages(composition.sessionId).map((message) => message.text),
@@ -870,6 +929,26 @@ test("chat input controller submits tutorial discovery as a normal Planner turn"
     });
 });
 
+test("chat input explains resource limits and restores the draft without replaying it", async () => {
+    let submissions = 0;
+    const { controller, editor, messages } = createControllerHarness({
+        promptUserTurn: () => {
+            submissions++;
+            return Promise.reject(Object.assign(new Error("Could not open socket"), { code: "EMFILE" }));
+        },
+    });
+    try {
+        await editor.onSubmit("keep this request");
+        await waitFor(() => messages.length > 0, "resource-limit guidance");
+        assertEquals(editor.getText(), "keep this request");
+        assertEquals(submissions, 1);
+        assertStringIncludes(messages[0], "open-file limit");
+        assertEquals(messages[0].includes("at async"), false);
+    } finally {
+        await controller.dispose();
+    }
+});
+
 test("chat input controller restores exact draft and previews after image preflight rejection", async () => {
     let promptCalled = false;
     const { editor, pastedImages, previewImages, messages } = createControllerHarness({
@@ -1016,4 +1095,31 @@ test("chat input controller does not queue image steering that runtime rejects",
     assertEquals(editor.getText(), "steer with image");
     assertEquals(pastedImages.length, 1);
     assert(messages.some((message) => message.includes("RunWield could not send that message")));
+});
+
+test("composed TUI reports an explicit paste with no image until the next input", async () => {
+    if (process.platform !== "darwin") return;
+    await withRuntimeCommandFixture("chat-input-empty-clipboard-", async ({ projectRoot }) => {
+        const clipboard = await installFakeClipboardCommands(projectRoot);
+        await clipboard.setHasImage(false);
+        const { composition, terminal } = await startComposition();
+        try {
+            terminal.input("\x16");
+            await waitFor(() => terminal.getScreenText().includes("No image in clipboard"), "missing image notice");
+            assertEquals(
+                (await clipboard.invocations()).map(({ operation }) => operation),
+                ["probe"],
+            );
+            terminal.typeText("keep typing");
+            await waitFor(() => terminal.getScreenText().includes("keep typing"), "responsive editor");
+            assertEquals(terminal.getScreenText().includes("No image in clipboard"), false);
+            assertEquals(
+                (await clipboard.invocations()).map(({ operation }) => operation),
+                ["probe"],
+            );
+        } finally {
+            await composition.dispose();
+            clipboard.restore();
+        }
+    });
 });

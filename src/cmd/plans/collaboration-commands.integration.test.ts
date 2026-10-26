@@ -23,7 +23,9 @@ import {
     savePlan,
     updatePlanCollaborationMetadata,
 } from "../../plan-store.js";
-import { git } from "../../shared/git-test-fixture.ts";
+import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
+import { PlanningNotStartedError } from "../../shared/workflow/plan-location.ts";
+import { listEntries } from "../../shared/worktree-registry.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { generateBearerCapability, hashCapability, MAINTAINER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
@@ -775,6 +777,59 @@ test("unshare recovers real local state when the remote Space is already deleted
             assertEquals(result.localMetadataCleared, true);
             assertEquals((await loadPlan(projectRoot, "deleted-remote"))?.attrs.collaborationState, undefined);
             assertEquals(Object.keys((await readSecretStore(getGlobalSecretStoreLocation())).records).length, 0);
+        });
+    });
+});
+
+const unstartedSharedFixture = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n" });
+
+test("unstarted shared child refuses push and unshare before changing remote revisions or secrets", async () => {
+    await withRuntimeCommandFixture("unstarted-shared-child-", async () => {
+        await withCollaborationServer(async ({ serverUrl }) => {
+            const repo = await unstartedSharedFixture.checkout();
+            await seedPlan(repo, "epic/child");
+            const shared = await sharePlanForReview({ cwd: repo, target: "epic/child", planServer: serverUrl });
+            const plan = await loadPlan(repo, "epic/child");
+            assert(plan);
+            await savePlan(repo, "epic", "# Epic\n", {
+                planId: "epic-id",
+                classification: "PROJECT",
+                status: "ready_for_work",
+                targetBranch: "epic-target",
+            });
+            await fsWriteFile(
+                plan.path,
+                injectFrontMatter(plan.body, {
+                    ...plan.attrs,
+                    parentPlan: "epic",
+                    targetBranch: "epic-target",
+                }),
+            );
+            await git(repo, ["add", "."]);
+            await git(repo, ["commit", "-m", "shared child on Epic branch"]);
+            await git(repo, ["branch", "epic-target"]);
+            await fsWriteFile(
+                plan.path,
+                (await fsReadFile(plan.path, "utf8")).replace("Initial fixture body.", "Updated fixture body."),
+            );
+            const before = await fsReadFile(plan.path, "utf8");
+            const secrets = await readSecretStore(getGlobalSecretStoreLocation());
+            const maintainer = parseCollaborationUrl(shared.maintainerUrl);
+            const client = createCollaborationClient({
+                serverUrl,
+                bearerCapability: maintainer.bearerCapability,
+                fetch: SYSTEM_COLLABORATION_FETCH,
+            });
+            const remote = await client.getSharedSpace(shared.spaceId);
+            await assertRejects(() => pushPlanRevision({ cwd: repo, target: "epic/child" }), PlanningNotStartedError);
+            await assertRejects(
+                () => unsharePlan({ cwd: repo, target: "epic/child", force: true }),
+                PlanningNotStartedError,
+            );
+            assertEquals(await client.getSharedSpace(shared.spaceId), remote);
+            assertEquals(await readSecretStore(getGlobalSecretStoreLocation()), secrets);
+            assertEquals(await fsReadFile(plan.path, "utf8"), before);
+            assertEquals(await listEntries(repo), []);
         });
     });
 });

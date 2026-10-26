@@ -1,6 +1,6 @@
 /** Chat-session-specific input and model-selection behavior. */
 
-import type { Container, Editor, TUI } from "@earendil-works/pi-tui";
+import { type Component, type Container, type Editor, Key, matchesKey, type TUI } from "@earendil-works/pi-tui";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
@@ -37,18 +37,44 @@ export function installUiApiOverrides({
     setActiveModel,
     getActiveModelState = () => ({ model: "", provider: "" }),
 }: InstallUiApiOverridesOptions): void {
+    const hiddenInput: Component = {
+        render: () => [],
+        invalidate: () => {},
+        handleInput(data) {
+            if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
+                void editor.handleInput(data);
+            }
+        },
+    };
+
+    let hiddenInputDepth = 0;
+    let editorIndex = -1;
+    let wasDisabled = false;
+
     async function runWithInlinePrompt<Result>(openPrompt: () => Promise<Result>): Promise<Result> {
-        const wasDisabled = editor.disableSubmit === true;
-        const editorIndex = container.children.indexOf(editor);
-        editor.disableSubmit = true;
-        if (editorIndex !== -1) container.children.splice(editorIndex, 1);
+        if (hiddenInputDepth === 0) {
+            wasDisabled = editor.disableSubmit === true;
+            editorIndex = container.children.indexOf(editor);
+            editor.disableSubmit = true;
+            if (editorIndex !== -1) {
+                container.children.splice(editorIndex, 1);
+                tui.setFocus(hiddenInput);
+            }
+        }
+        hiddenInputDepth++;
         tui.requestRender();
         try {
             return await openPrompt();
         } finally {
-            editor.disableSubmit = wasDisabled;
-            if (editorIndex !== -1 && !container.children.includes(editor)) {
-                container.children.splice(Math.min(editorIndex, container.children.length), 0, editor);
+            hiddenInputDepth--;
+            if (hiddenInputDepth === 0) {
+                editor.disableSubmit = wasDisabled;
+                if (editorIndex !== -1 && !container.children.includes(editor)) {
+                    container.children.splice(Math.min(editorIndex, container.children.length), 0, editor);
+                    tui.setFocus(editor);
+                }
+            } else if (!uiAPI.focusActivePrompt?.()) {
+                tui.setFocus(hiddenInput);
             }
             tui.requestRender();
         }
@@ -63,6 +89,8 @@ export function installUiApiOverrides({
         editor.disableSubmit = false;
         tui.requestRender();
     };
+
+    uiAPI.withHiddenInput = runWithInlinePrompt;
 
     const basePromptSelect = uiAPI.promptSelect.bind(uiAPI);
     uiAPI.promptSelect = (...args) => runWithInlinePrompt(() => basePromptSelect(...args));
@@ -135,7 +163,7 @@ export function installUiApiOverrides({
                             uiAPI.appendSystemMessage(
                                 activation?.status === "deferred"
                                     ? activation.message ||
-                                        `Saved ${model.provider}/${model.id} for later. The current Session was not switched.`
+                                          `Saved ${model.provider}/${model.id} for later. The current Session was not switched.`
                                     : `Switched model to ${model.provider}/${model.id}`,
                                 false,
                                 "RunWield",

@@ -63,7 +63,7 @@ export async function reopenSavedPlanReview(
     if (!projectRoot) return { kind: "missing_plan", message: "This Session's project is unavailable." };
     let location: Awaited<ReturnType<typeof resolveWorkflowPlanLocation>>;
     try {
-        location = await resolveWorkflowPlanLocation(projectRoot, reference.planName);
+        location = await resolveWorkflowPlanLocation(projectRoot, reference.planName, { readOnly: true });
     } catch (error) {
         return {
             kind: "missing_plan",
@@ -132,8 +132,8 @@ export async function reopenSavedPlanReview(
     return outcome.reviewUnanswered
         ? { kind: "unanswered", message: `Plan review ended without an answer. Use /plan-review to try again.` }
         : {
-            kind: "complete",
-            message: `Review finished for ${reference.planName}.`,
-            executionToStart: outcome.executionToStart,
-        };
+              kind: "complete",
+              message: `Review finished for ${reference.planName}.`,
+              executionToStart: outcome.executionToStart,
+          };
 }

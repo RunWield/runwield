@@ -1,9 +1,3 @@
-/**
- * @module shared/session/file-session-store
- * File-authoritative Session identity, transcript-segment manifests, and
- * single-writer coordination for every local RunWield runtime.
- */
-
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { readFileSync, statSync } from "node:fs";
@@ -246,6 +240,15 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         getSessionById(runwieldSessionId, projectId) {
             const found = manifests.resolve(runwieldSessionId, projectId);
             return found && store.getProjectById(found.manifest.projectId) ? catalogedSession(found.manifest) : null;
+        },
+        readSessionManifest(runwieldSessionId, projectId) {
+            const project = findProject(baseDir, projectId);
+            if (!project) return null;
+            // Read only the atomic primary manifest. Export must not restore descriptors or recover writers.
+            const found = manifests.readPath(manifestPath(sessionDirForProject(baseDir, project), runwieldSessionId));
+            if (found?.manifest.runwieldSessionId !== runwieldSessionId || found.manifest.projectId !== projectId)
+                return null;
+            return found.manifest;
         },
         async ensureSessionCatalogRecord(locator) {
             return (await ensureCatalogRecord(locator)).session;
@@ -631,11 +634,13 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             if (!project) throw new Error("Session project is unavailable");
             return await readCatalogSafeRootSessionLocator({
                 cwd: locator.transcriptCwd,
-                sessionDir: sessionDirForRoot(baseDir, locator.transcriptCwd),
+                sessionDir: project.remote
+                    ? sessionDirForProject(baseDir, project)
+                    : sessionDirForRoot(baseDir, locator.transcriptCwd),
                 sessionPath: locator.transcriptPath,
             });
         },
-        ...createFileSessionControl({ locks, manifests, now: options.now }),
+        ...createFileSessionControl({ baseDir, locks, manifests, now: options.now }),
     };
     return store;
 }

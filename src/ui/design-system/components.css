@@ -66,6 +66,32 @@
     opacity: 0.58;
 }
 
+/* Framed review controls, including document metadata and referenced files. */
+.rw-review-toolbar-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+    padding: 0.35rem 0.55rem;
+    background: color-mix(in oklab, var(--rw-surface-muted) 78%, transparent);
+    color: var(--rw-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition:
+        border-color 150ms ease,
+        background-color 150ms ease,
+        color 150ms ease;
+}
+
+.rw-review-toolbar-trigger:hover,
+.rw-review-toolbar-trigger:focus-visible,
+.rw-review-toolbar-trigger.active {
+    border-color: color-mix(in oklab, var(--rw-accent) 55%, var(--rw-border));
+    background: color-mix(in oklab, var(--rw-accent) 12%, var(--rw-surface));
+    color: var(--rw-text);
+}
+
 /* Compact, borderless controls keep their size across every sidebar breakpoint. */
 .rw-icon-button {
     display: inline-flex;
@@ -464,21 +490,31 @@ svg.animate-spin > * {
     border: 1px solid color-mix(in srgb, var(--primary, var(--rw-accent)) 56%, transparent) !important;
     border-radius: var(--rw-radius-control) !important;
     padding: 0.5rem 0.9rem !important;
-    background: color-mix(in srgb, var(--primary, var(--rw-accent)) 84%, var(--rw-surface-raised, transparent))
-        !important;
+    background: color-mix(
+        in srgb,
+        var(--primary, var(--rw-accent)) 84%,
+        var(--rw-surface-raised, transparent)
+    ) !important;
     color: var(--primary-foreground, var(--rw-on-accent)) !important;
     box-shadow: none !important;
     font-size: 0.78rem !important;
     font-weight: 650 !important;
     line-height: 1.2 !important;
-    transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, opacity 150ms ease !important;
+    transition:
+        border-color 150ms ease,
+        background-color 150ms ease,
+        color 150ms ease,
+        opacity 150ms ease !important;
 }
 
 .rw-modal-primary-button:hover:not(:disabled),
 .rw-modal-primary-button:focus-visible:not(:disabled) {
     border-color: color-mix(in srgb, var(--primary, var(--rw-accent)) 76%, transparent) !important;
-    background: color-mix(in srgb, var(--primary, var(--rw-accent)) 92%, var(--rw-surface-raised, transparent))
-        !important;
+    background: color-mix(
+        in srgb,
+        var(--primary, var(--rw-accent)) 92%,
+        var(--rw-surface-raised, transparent)
+    ) !important;
 }
 
 .rw-modal-primary-button:focus-visible {
@@ -548,7 +584,11 @@ svg.animate-spin > * {
     font-weight: 750;
     line-height: 1.2;
     text-decoration: none;
-    transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+    transition:
+        border-color 150ms ease,
+        background-color 150ms ease,
+        box-shadow 150ms ease,
+        color 150ms ease;
 }
 
 .rw-review-action [data-slot="button"]:hover:not(:disabled),
@@ -801,7 +841,10 @@ svg.animate-spin > * {
 .clickable-card {
     cursor: pointer;
     position: relative;
-    transition: border-color 0.15s ease, box-shadow 0.18s ease, transform 0.15s ease;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.18s ease,
+        transform 0.15s ease;
 }
 
 .clickable-card:hover {
@@ -837,8 +880,7 @@ svg.animate-spin > * {
     white-space: nowrap;
 }
 
-.status-draft,
-.status-feedback {
+.status-draft {
     background: var(--rw-surface-muted);
     border-color: var(--rw-border-strong);
     color: var(--rw-text);
@@ -1299,7 +1341,9 @@ button.danger-action:disabled {
 
 .plan-card.is-drag-source {
     border-color: var(--rw-accent-strong);
-    box-shadow: 0 26px 70px #0008, 0 0 0 2px color-mix(in srgb, var(--rw-accent) 40%, transparent);
+    box-shadow:
+        0 26px 70px #0008,
+        0 0 0 2px color-mix(in srgb, var(--rw-accent) 40%, transparent);
     opacity: 0.55;
     transform: rotate(1deg) scale(1.015);
 }
@@ -1762,7 +1806,9 @@ button.danger-action:disabled {
     margin-block: var(--rw-space-panel);
     padding: var(--rw-space-panel);
     border: 0;
-    box-shadow: inset 2px 0 var(--rw-brand), inset 0 0 0 1px var(--rw-border);
+    box-shadow:
+        inset 2px 0 var(--rw-brand),
+        inset 0 0 0 1px var(--rw-border);
     border-radius: 0;
     background: var(--rw-surface-raised);
     overflow-wrap: anywhere;
@@ -2341,5 +2387,106 @@ button.danger-action:disabled {
     }
     .rw-delivery-report-checks > div {
         margin-block: 12px;
+    }
+}
+
+/* Embedded Plan Questions reuse the interview form controls. */
+.rw-plan-question-mounted > pre,
+.rw-plan-question-mounted > button {
+    display: none;
+}
+.rw-plan-question-mounted .rw-question-card {
+    width: 100%;
+    box-sizing: border-box;
+    color: var(--rw-text);
+    font: inherit;
+}
+.rw-plan-question-mounted legend {
+    margin-bottom: 0.5rem;
+    padding: 0;
+    font-weight: 600;
+}
+.rw-plan-question-mounted .rw-question-field {
+    gap: 0.25rem;
+}
+.rw-plan-question-mounted .rw-question-option {
+    min-height: 1.75rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+.rw-plan-question-mounted .rw-plan-question-other {
+    min-height: 4.5rem;
+    padding: 0.5rem;
+    border: 0;
+    background: transparent;
+}
+.rw-plan-question-mounted textarea:focus-visible,
+.rw-plan-question-mounted input:focus-visible {
+    outline: 2px solid var(--rw-accent);
+    outline-offset: 2px;
+}
+.rw-plan-question-mounted input[type="radio"] {
+    accent-color: var(--rw-accent);
+}
+
+/* Root consent uses a compact native modal, not a destructive-operation alert. */
+.rw-confirmation-dialog {
+    max-width: min(32rem, calc(100vw - 2rem));
+    box-sizing: border-box;
+    padding: 1rem;
+    border: 1px solid var(--rw-border);
+    border-radius: 6px;
+    background: var(--rw-surface);
+    color: var(--rw-text);
+}
+.rw-confirmation-dialog::backdrop {
+    background: color-mix(in srgb, var(--rw-page-bg) 80%, transparent);
+}
+.rw-confirmation-dialog h2 {
+    font-size: 1rem;
+    margin-top: 0;
+}
+.rw-confirmation-detail {
+    overflow-wrap: anywhere;
+}
+.rw-confirmation-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+/* Review Queue: per-type inclusion for the next artifact conversation turn. */
+.rw-review-queue {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rw-space-control-y);
+    margin-bottom: var(--rw-space-control-x);
+}
+.rw-review-queue-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rw-space-control-y);
+    min-width: 0;
+    max-width: 100%;
+    padding-left: var(--rw-space-control-x);
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+    background: var(--rw-surface-muted);
+    color: var(--rw-text);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+.rw-review-queue-item[data-included="false"] {
+    background: var(--rw-surface);
+    color: var(--rw-text-muted);
+    border-style: dashed;
+}
+@media (max-width: 980px) {
+    .rw-review-queue-item .rw-icon-button {
+        min-width: 44px;
+        min-height: 44px;
     }
 }

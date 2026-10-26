@@ -82,11 +82,11 @@ async function requestBrowserQuestion(options) {
                 isApprovalAcceptedValue(options.interaction, value)
                     ? { outcome: RuntimeInteractionOutcomes.ACCEPTED, value: true, valueLabel: option.label }
                     : {
-                        outcome: RuntimeInteractionOutcomes.CANCELED,
-                        value: false,
-                        valueLabel: option.label,
-                        message: "Approval was not accepted.",
-                    },
+                          outcome: RuntimeInteractionOutcomes.CANCELED,
+                          value: false,
+                          valueLabel: option.label,
+                          message: "Approval was not accepted.",
+                      },
             );
         } else {
             answered.resolve({ outcome: RuntimeInteractionOutcomes.SELECTED, value, valueLabel: option.label });
@@ -115,8 +115,7 @@ async function requestBrowserQuestion(options) {
         await question.shutdown();
         return {
             outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
-            message:
-                `RunWield could not open the browser question page (${pageResponse.status}). Use an ACP client with form elicitation or rebuild Workspace assets.`,
+            message: `RunWield could not open the browser question page (${pageResponse.status}). Use an ACP client with form elicitation or rebuild Workspace assets.`,
         };
     }
     const abort = () =>
@@ -162,12 +161,12 @@ function buildSchema(interaction) {
                 },
                 ...(interaction.otherOptionValue
                     ? {
-                        otherAnswer: {
-                            type: "string",
-                            title: "Other answer",
-                            description: "Fill this in when you select Other. Otherwise leave it empty.",
-                        },
-                    }
+                          otherAnswer: {
+                              type: "string",
+                              title: "Other answer",
+                              description: "Fill this in when you select Other. Otherwise leave it empty.",
+                          },
+                      }
                     : {}),
             },
             required: ["answer"],
@@ -189,15 +188,20 @@ function buildSchema(interaction) {
 }
 
 /**
- * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentInterview?: (interaction: import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse> }} options
+ * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentChatQuestion?: (interaction: import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse> }} options
  * @returns {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionAdapter}
  */
-export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentInterview }) {
+export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentChatQuestion }) {
     return {
         supportsInteraction(type) {
-            return type === RuntimeInteractionTypes.SELECT || type === RuntimeInteractionTypes.TEXT ||
-                type === RuntimeInteractionTypes.APPROVAL || type === RuntimeInteractionTypes.PLAN_REVIEW ||
-                type === RuntimeInteractionTypes.CODE_REVIEW || type === RuntimeInteractionTypes.ARTIFACT_REVIEW;
+            return (
+                type === RuntimeInteractionTypes.SELECT ||
+                type === RuntimeInteractionTypes.TEXT ||
+                type === RuntimeInteractionTypes.APPROVAL ||
+                type === RuntimeInteractionTypes.PLAN_REVIEW ||
+                type === RuntimeInteractionTypes.CODE_REVIEW ||
+                type === RuntimeInteractionTypes.ARTIFACT_REVIEW
+            );
         },
         async requestInteraction(interaction, signal) {
             if (interaction.type === RuntimeInteractionTypes.PAIR_CHECKPOINT) {
@@ -250,17 +254,12 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                 };
             }
             if (!supportsFormElicitation(clientCapabilities)) {
-                if (
-                    interaction._meta?.source === "user_interview" &&
-                    (interaction.type === RuntimeInteractionTypes.SELECT ||
-                        interaction.type === RuntimeInteractionTypes.TEXT)
-                ) {
-                    return presentInterview ? await presentInterview(interaction, signal) : {
-                        outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
-                        message: "Interview chat is unavailable.",
-                    };
-                }
-                return await requestBrowserQuestion({ context, acpSessionId, interaction, signal });
+                return presentChatQuestion
+                    ? await presentChatQuestion(interaction, signal)
+                    : {
+                          outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
+                          message: "Chat questions are unavailable.",
+                      };
             }
             const response = await requestClient(context, methods.client.elicitation.create, {
                 mode: "form",

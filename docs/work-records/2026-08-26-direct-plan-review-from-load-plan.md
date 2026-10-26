@@ -12,17 +12,12 @@ provenance:
         - "5169e4f7-fbc7-4c1b-9d7d-c394581c64c3"
 ---
 
-# Direct Plan Review from load-plan
+# Direct Plan Review from Plan loading
 
 ## Summary
 
-`load-plan` now offers a separate **Review plan** action for eligible draft, feedback, and ready_for_work Plans, opening
-the Plan Review surface without first starting Planner or Architect. The shared review coordinator preserves recovery
-checks, feedback handoff, readiness, execution, validation, and PROJECT Epic routing to Slicer. Verification passed with
-seams check, targeted integration and golden scenario tests, and `deno task ci`.
+Plan loading offers a separate Review plan action for eligible Plans without first starting Planner or Architect. The shared review coordinator preserves recovery checks, canonical reload, feedback handoff, readiness, execution, and validation routing. PROJECT Epics retain their Slicer route.
 
 ## Future Planning Notes
 
-Keep direct review as a shortcut separate from planning-agent resume/review paths. Reuse the coordinator for future
-load-plan review entry points so recovery, canonical reload, lifecycle transitions, and approval routing stay
-consistent.
+Keep direct review separate from planning-Agent resume paths. Reuse the shared coordinator so lifecycle transitions and approval routing remain consistent.

@@ -11,17 +11,10 @@ provenance:
         - "f9544cf4-7c0c-4564-8e1c-52ee10369263"
 ---
 
-# Transactional Plan Lifecycle and Worktree Recovery
+# Transactional Plan lifecycle and worktree recovery
 
 ## Summary
 
-The user attested verification; RunWield Workflow Validation did not establish this result. Implemented the Core
-transactional lifecycle/worktree recovery refactor across Plan persistence, workflow transitions, worktree registry
-handling, validation/publication paths, recovery/doctor surfaces, Plan-safe writes, Workspace/review integration, Work
-Record backlink handling, and lifecycle documentation. Verification was established by the user: "Part of it was done in
-main by sol part of it in the branch by 5.5 merged by claude code a real team effort."
+The user attested verification; RunWield Workflow Validation did not establish this result. RunWield coordinates Plan persistence, lifecycle transitions, and worktree registry changes through transactional recovery. Validation, publication, Workspace, and Code Review use this lifecycle handling, including Plan-safe writes and Work Record backlinks.
 
-## Deviations from Plan
-
-Execution was not a single autonomous branch effort; the user reported part of the work was completed on main, part on
-the branch, and then merged by Claude Code.
+User note: Work was completed on main and on a branch, then merged.

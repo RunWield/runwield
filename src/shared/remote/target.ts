@@ -1,11 +1,31 @@
 import { getCwd } from "../../constants.js";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
+import { REMOTE_PYTHON_REQUIRED } from "./host-prerequisites.ts";
 /* Remote location resolution. This source is constant: only JSON on stdin contains user input.
  * OpenSSH still owns host configuration, authentication and host verification.
  */
 
-const RESOLVE_SOURCE = String.raw`import json, os, platform, subprocess, sys
+const RESOLVE_SOURCE = String.raw`import json, os, platform, shlex, shutil, stat, subprocess, sys
+
+def os_release():
+    values = {}
+    try:
+        with open('/etc/os-release') as source:
+            for line in source:
+                key, sep, value = line.strip().partition('=')
+                if sep and key in ('ID', 'ID_LIKE'):
+                    parts = shlex.split(value)
+                    values[key] = parts[0] if parts else ''
+    except (OSError, ValueError):
+        pass
+    return values
+
+def fuse_device():
+    try:
+        return stat.S_ISCHR(os.stat('/dev/fuse').st_mode)
+    except OSError:
+        return False
 
 def git(cwd, *args):
     try:
@@ -47,7 +67,8 @@ try:
         primary = os.path.realpath(os.path.dirname(common))
     elif root and common == git_dir:
         primary = root
-    print(json.dumps({'ok': True, 'cwd': cwd, 'home': home, 'os': platform.system(), 'arch': platform.machine(), 'gitRoot': root, 'gitDir': git_dir, 'gitCommonDir': common, 'primaryRoot': primary, 'isWorktree': bool(root and common and git_dir and common != git_dir)}))
+    release = os_release()
+    print(json.dumps({'ok': True, 'cwd': cwd, 'home': home, 'os': platform.system(), 'arch': platform.machine(), 'osReleaseId': release.get('ID', ''), 'osReleaseIdLike': release.get('ID_LIKE', ''), 'sshfs': shutil.which('sshfs') is not None, 'fusermount3': shutil.which('fusermount3') is not None, 'fuseDevice': fuse_device(), 'gitRoot': root, 'gitDir': git_dir, 'gitCommonDir': common, 'primaryRoot': primary, 'isWorktree': bool(root and common and git_dir and common != git_dir)}))
 except Exception as error:
     print(json.dumps({'ok': False, 'error': str(error)}))
     sys.exit(1)
@@ -76,6 +97,11 @@ export interface RemoteTarget {
     home: string;
     os: string;
     arch: string;
+    osReleaseId?: string;
+    osReleaseIdLike?: string;
+    sshfs?: boolean;
+    fusermount3?: boolean;
+    fuseDevice?: boolean;
     gitRoot: string | null;
     gitDir: string | null;
     gitCommonDir: string | null;
@@ -157,6 +183,12 @@ export async function resolveRemoteTarget(
     try {
         response = JSON.parse(stdout.trim());
     } catch {
+        if (
+            !status.success &&
+            /(?:python3[^\r\n]*(?:not found|No such file)|command not found:\s*python3\b)/i.test(stderr)
+        ) {
+            throw new Error(REMOTE_PYTHON_REQUIRED);
+        }
         throw new Error(`Remote resolution failed: ${stderr.trim() || stdout.trim() || status.code}`);
     }
     if (!status.success || !response.ok) {
@@ -171,6 +203,11 @@ export async function resolveRemoteTarget(
         home: response.home,
         os: response.os,
         arch: response.arch,
+        osReleaseId: response.osReleaseId,
+        osReleaseIdLike: response.osReleaseIdLike,
+        sshfs: response.sshfs,
+        fusermount3: response.fusermount3,
+        fuseDevice: response.fuseDevice,
         gitRoot: response.gitRoot,
         gitDir: response.gitDir,
         gitCommonDir: response.gitCommonDir,

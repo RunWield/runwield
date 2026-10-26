@@ -18,7 +18,7 @@ import {
 } from "../../shared/workflow/validation-progress.ts";
 import { createChatView } from "./chat-view.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { tuiSessionSidebarProjection } from "./session-sidebar.ts";
 
@@ -73,6 +73,7 @@ for (const legacy of [false, true]) {
             const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
             const tui = new TuiAltScreen(terminal);
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,

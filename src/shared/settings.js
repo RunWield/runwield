@@ -49,6 +49,7 @@ const RUNWIELD_CUSTOM_SETTING_KEYS = [
     "imageGeneration",
     "compactOnResumeThresholdPercent",
     "verification_command",
+    "worktree_setup_command",
     "codereview",
     "guidedReview",
     "cleanupMergedWorktrees",

@@ -398,7 +398,7 @@ export class RuntimeLifecycleLoading {
         response: import("../session-runtime-interactions.js").RuntimeInteractionResponse,
     ) {
         const record = this.services.sessionHost.getSession(sessionId)?.getActiveInteractions().get(interactionId);
-        if (!record?.answer || record.request?._meta?.source !== "user_interview") return false;
+        if (!record?.answer || !["select", "text", "approval"].includes(record.request?.type || "")) return false;
         try {
             record.answer(response, "acp");
             return true;

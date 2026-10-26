@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES, getArchivedEpicArtifactPath } from "./epic-artifacts.ts";
 import { getPlanArchiveRetentionPolicy } from "./settings.js";
-import { listWorkRecords } from "./work-records/store.js";
+import { listWorkRecords } from "./work-records/store.ts";
 
 export type ArchiveRetentionPolicy = {
     retentionDays: number;
@@ -83,10 +83,7 @@ function projectRelativePath(projectRoot: string, path: string): string {
 export async function collectArchivedPlanUnits(cwd: string): Promise<ArchivedPlanUnit[]> {
     const archivedPlans = await listArchivedPlans(cwd);
     const topLevelPlans = new Map(
-        archivedPlans.filter((plan) => !plan.name.includes("/")).map((plan) => [
-            plan.name,
-            plan,
-        ]),
+        archivedPlans.filter((plan) => !plan.name.includes("/")).map((plan) => [plan.name, plan]),
     );
     const names = new Set<string>(topLevelPlans.keys());
     const archivedDir = join(cwd, "docs", "plans", "archived");

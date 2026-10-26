@@ -11,8 +11,6 @@ import {
 import { buildActiveConversationSubmissionMessage } from ".././session-user-messages.ts";
 import {
     classifyRootSessionLocator,
-    exportRootSessionToHtml,
-    exportRootSessionToJsonl,
     getRootSessionBranchEntries,
     getRunWieldSessionMemoryBackupDir,
     listCatalogSafeRootSessionLocators,
@@ -22,12 +20,22 @@ import {
     buildProjectedSessionInfo,
     captureTranscriptEvidence,
     createReplayEvents as createProjectedReplayEvents,
-    exportProjectedTranscript,
     getProjectedLastAssistantText,
+    getCommittedTranscriptAuthorityFacts,
     inspectProjectedTranscript,
     toProjectionFailure,
 } from ".././session-transcript-projection.js";
-import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
+import {
+    projectAggregateTranscript,
+    type TranscriptEntry,
+    type VerifiedTranscriptSegment,
+} from ".././session-transcript-manifest.ts";
+import {
+    buildSessionExportDocument,
+    readCommittedSessionExport,
+    type SessionExport,
+    type SessionExportTimelineEvent,
+} from "../session-export.ts";
 import { listRecentResumableSessions } from ".././session-resume-list.ts";
 import { buildSessionContextReport } from ".././session-context-report.ts";
 import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.js";
@@ -166,7 +174,9 @@ export class RuntimeReads {
                 record.request && record.request.type !== "plan_review" && record.request.type !== "code_review",
         );
         const livePlanReview = activeInteractions.some((record) => record.request?.type === "plan_review");
-        const liveCodeReview = activeInteractions.some((record) => record.request?.type === "code_review");
+        const codeReviewUrl = session.getLiveCodeReviewUrl();
+        const liveCodeReview =
+            Boolean(codeReviewUrl) || activeInteractions.some((record) => record.request?.type === "code_review");
         const liveReview = activeInteractions.find(
             (record) => record.request?.type === "plan_review" || record.request?.type === "code_review",
         );
@@ -191,12 +201,17 @@ export class RuntimeReads {
                   ...(workflowProgressFacts.length ? { progressFacts: workflowProgressFacts } : {}),
                   canReopenPlanReview: Boolean(
                       managed &&
-                      this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId),
+                      (this.services.remotePersistence
+                          ? managed.remoteRecords?.lastPlanReview
+                          : this.services.sessionStore?.getLastPlanReview(
+                                managed.runwieldSessionId,
+                                managed.projectId,
+                            )),
                   ),
                   liveQuestion,
                   livePlanReview,
                   liveCodeReview,
-                  liveReviewUrl: liveReview?.request?.reviewUrl,
+                  liveReviewUrl: liveReview?.request?.reviewUrl || codeReviewUrl || undefined,
                   ...(baseWorkflowContext.canRun === true || activeWorkflowMeta.status === "ready_for_work"
                       ? { canRun: true }
                       : {}),
@@ -218,6 +233,9 @@ export class RuntimeReads {
                 : [];
         const planAssociations =
             activeSessionInfo?.planAssociations ||
+            (managedDormant && this.services.remotePersistence
+                ? getCommittedTranscriptAuthorityFacts({ snapshot: managed?.committedSummary }).planAssociations
+                : null) ||
             (managed && this.services.sessionStore
                 ? this.services.sessionStore
                       .listSessionPlanAssociations(managed.runwieldSessionId, managed.projectId)
@@ -556,15 +574,50 @@ export class RuntimeReads {
         cwd: string,
         planId: string,
     ): Promise<import("../plan-session-lookup.ts").PlanAssociatedSession[]> {
+        if (this.services.remotePersistence) {
+            const records = await this.remoteProjectRecords({ planId }, cwd);
+            return (
+                records?.planSessions
+                    .filter((entry) => entry.associations.some((association) => association.planId === planId))
+                    .map(({ verified: _verified, ...candidate }) => candidate) || []
+            );
+        }
         if (!this.services.sessionStore) return [];
         const { findPlanAssociatedSessions } = await import("../plan-session-lookup.ts");
         return await findPlanAssociatedSessions(this.services.sessionStore, { cwd, planId });
     }
 
     async verifyPlanAssociatedSession(candidate: import(".././plan-session-lookup.ts").PlanAssociatedSession) {
+        if (this.services.remotePersistence) {
+            const records = await this.remoteProjectRecords({
+                planId: candidate.associations.at(-1)?.planId || "",
+                sessionId: candidate.runwieldSessionId,
+            });
+            const current = records?.planSessions.find(
+                (entry) =>
+                    entry.runwieldSessionId === candidate.runwieldSessionId &&
+                    entry.piSessionId === candidate.piSessionId &&
+                    entry.associations.some((association) =>
+                        candidate.associations.some((claimed) => claimed.planId === association.planId),
+                    ),
+            );
+            return current?.verified ? { ok: true } : { ok: false, reason: "degraded" };
+        }
         if (!this.services.sessionStore) return { ok: false, reason: "degraded" };
         const { verifyPlanAssociatedSession } = await import("../plan-session-lookup.ts");
         return await verifyPlanAssociatedSession(this.services.sessionStore, candidate);
+    }
+
+    private async remoteProjectRecords(
+        query: import("../../remote/session-protocol.ts").RemotePlanSessionQuery,
+        cwd?: string,
+    ) {
+        const persistence = this.services.remotePersistence!;
+        const listed = this.services.sessionHost.listSessions().find((entry) => !cwd || entry.cwd === cwd);
+        const session = listed ? this.services.sessionHost.getSession(listed.id) : null;
+        if (session?.getManagedMetadata()) return await persistence.readSessionRecords(session, query);
+        const id = (await persistence.control.list())[0]?.id;
+        return id ? await persistence.readRecords(id, query) : null;
     }
 
     getSessionMemoryBackupDir(sessionId: string) {
@@ -695,28 +748,72 @@ export class RuntimeReads {
         return await expandPromptTemplate(templatePath, instructions);
     }
 
-    async exportSession(sessionId: string, outputPath: string) {
+    async readSessionExport(sessionId: string): Promise<SessionExport> {
         const session = this.services.sessionHost.getSession(sessionId);
-        const managed = session?.getManagedMetadata?.() || null;
-        const manager = session?.getRootSessionManager();
-        if (managed && !manager) {
-            const projected = await this.readManagedCommittedProjection(sessionId);
-            if (!projected.ok) throw new Error(projected.message);
-            if (!session) throw new Error("Runtime session has no persistence store.");
-            return await exportProjectedTranscript(
-                projected.entries,
-                {
-                    cwd: session.cwd,
-                    sessionId: managed.piSessionId,
-                },
-                outputPath,
-            );
+        if (!session) throw new Error("SessionRuntime.readSessionExport: session not found");
+        const managed = session.getManagedMetadata();
+        if (managed) {
+            if (this.services.remotePersistence) {
+                const exported = await this.services.remotePersistence.control.export(managed.runwieldSessionId);
+                return { ...exported, timeline: exported.timeline.map((event) => ({ ...event, sessionId })) };
+            }
+            const store = this.services.sessionStore;
+            if (!store) throw new Error("This Session is unavailable.");
+            try {
+                const manifest = store.readSessionManifest(managed.runwieldSessionId, managed.projectId);
+                if (!manifest) throw new Error("Session Manifest is unavailable.");
+                return await readCommittedSessionExport(manifest, sessionId);
+            } catch (error) {
+                throw new Error(toProjectionFailure(error).message);
+            }
         }
-        if (!isRuntimeRootSessionManager(manager)) {
+        const manager = session.getRootSessionManager();
+        if (manager && !isRuntimeRootSessionManager(manager)) {
             throw new Error("Runtime session has no persistence store.");
         }
-        return outputPath.toLowerCase().endsWith(".jsonl")
-            ? exportRootSessionToJsonl(manager, outputPath)
-            : await exportRootSessionToHtml(manager, outputPath);
+        const header = manager?.getHeader() || {
+            type: "session",
+            id: sessionId,
+            timestamp: new Date().toISOString(),
+            cwd: session.cwd,
+        };
+        const entries: TranscriptEntry[] = [header, ...(manager?.getBranch() || [])];
+        const verified: VerifiedTranscriptSegment[] = [
+            {
+                segmentId: sessionId,
+                ordinal: 0,
+                kind: "session",
+                label: "Session segment 1",
+                piSessionId: manager?.getSessionId() || sessionId,
+                sealed: false,
+                current: true,
+                transcriptCwd: session.cwd,
+                entries,
+            },
+        ];
+        return {
+            document: buildSessionExportDocument({
+                session: {
+                    runwieldSessionId: null,
+                    name: manager?.getSessionName() || null,
+                    cwd: session.cwd,
+                    createdAt: header.timestamp,
+                    updatedAt: null,
+                },
+                segments: verified,
+                artifacts: [],
+                planAssociations: [],
+            }),
+            timeline: createProjectedReplayEvents(sessionId, entries, { projectRoot: session.cwd }).map(
+                (event) =>
+                    ({
+                        ...event,
+                        sessionId,
+                        timestamp: event.timestamp,
+                        segmentOrdinal: 0,
+                        segmentKind: "session",
+                    }) as SessionExportTimelineEvent,
+            ),
+        };
     }
 }

@@ -67,7 +67,7 @@ wld init
 
 RunWield first asks permission to create or update three project files and explains each one:
 
-- `.wld/settings.json` stores project settings, including your chosen verification command.
+- `.wld/settings.json` stores project settings, including your chosen verification and fresh-worktree setup commands.
 - `docs/domain-language.md` records the project's terms and concepts.
 - `.gitignore` keeps RunWield's internal runtime state out of Git while preserving your other ignore rules.
 

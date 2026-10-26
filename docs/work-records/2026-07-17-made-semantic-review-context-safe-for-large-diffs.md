@@ -11,25 +11,16 @@ provenance:
         - "e45aedd3-f831-401a-8661-2df652dbb48e"
 ---
 
-# Made Semantic Review Context-Safe for Large Diffs
+# Context-safe AI review for large diffs
 
 ## Summary
 
-Added a 60 KiB inline threshold, compact changed-file review packets, and a bounded read-only review_diff tool so large
-workflow diffs no longer overflow Reviewer context. Small diffs remain inline. Reviewer errors or blank responses now
-trigger retry/cancel handling instead of sending empty feedback to Engineer. Parsing, tool behavior, large-diff
-compaction, and failure recovery received automated coverage.
+AI review keeps small diffs inline and represents large diffs with compact changed-file packets and bounded read-only exploration through review_diff. Reviewer errors or blank responses trigger retry or cancel handling rather than empty Engineer feedback.
 
-## Deviations from Plan
+## Out of Scope
 
-The initial large-diff implementation also granted memory_recall and memory_recall_global, despite the plan specifying
-no memory access.
-
-## Deferred Work
-
-Human Plannotator review still receives the complete diff and may need separate large-diff scalability work.
+This work does not bound the complete diff sent to Plannotator Code Review.
 
 ## Future Planning Notes
 
-Keep transient Reviewer permissions minimal and consider applying bounded diff exploration to human review if large
-review payloads become problematic.
+Keep transient Reviewer permissions minimal and bound diff exploration to protect model context.

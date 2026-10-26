@@ -248,7 +248,7 @@ function writeRecoveryDescriptors(manifest: FileSessionManifest): void {
     }
 }
 
-function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
+function readRecoverableManifests(sessionDir: string) {
     const recoverable = new Map<string, FileSessionManifest>();
     try {
         for (const entry of readdirSync(sessionDir, { withFileTypes: true })) {
@@ -267,7 +267,11 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    for (const [runwieldSessionId, candidate] of recoverable) {
+    return recoverable;
+}
+
+function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
+    for (const [runwieldSessionId, candidate] of readRecoverableManifests(sessionDir)) {
         const path = manifestPath(sessionDir, runwieldSessionId);
         if (pathExists(path)) {
             try {
@@ -288,9 +292,9 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
 
 export function listManifests(
     sessionDir: string,
-    recover = true,
+    readOnly = false,
 ): Array<{ path: string; manifest: FileSessionManifest }> {
-    if (recover) restoreManifestsFromRecoveryDescriptors(sessionDir);
+    if (!readOnly) restoreManifestsFromRecoveryDescriptors(sessionDir);
     const manifests: Array<{ path: string; manifest: FileSessionManifest }> = [];
     try {
         for (const entry of readdirSync(bundlesDir(sessionDir), { withFileTypes: true })) {
@@ -309,6 +313,13 @@ export function listManifests(
         }
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    if (readOnly) {
+        for (const [id, manifest] of readRecoverableManifests(sessionDir)) {
+            if (!manifests.some((item) => item.manifest.runwieldSessionId === id)) {
+                manifests.push({ path: manifestPath(sessionDir, id), manifest });
+            }
+        }
     }
     return manifests;
 }

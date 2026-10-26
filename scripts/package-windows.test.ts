@@ -11,7 +11,7 @@ import {
 import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { normalizeGitHubBlobUrl, packageWindows, sha256 } from "./package-windows.js";
+import { normalizeGitHubBlobUrl, packageWindows, sha256 } from "./package-windows.ts";
 
 async function run(command: string, args: string[], cwd?: string): Promise<string> {
     const result = await captureScriptProcess(command, { args, cwd, stdout: "piped", stderr: "piped" });

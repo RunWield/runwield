@@ -12,16 +12,14 @@ provenance:
         - "b2208e8a-cdf1-459a-a5cb-32904282528d"
 ---
 
-# Init Verification Command Confirmation
+# Init verification-command confirmation
 
 ## Summary
 
-The user attested verification; RunWield Workflow Validation did not establish this result. Init now discovers
-verification-command candidates, asks the user to confirm the project’s command, saves the result through RunWield-owned
-project settings, and supports the explicit no-verification placeholder path. The user established verification:
-Recovered, integrated, and accepted by the user with Codex before the publication state-machine migration.
+The user attested verification; RunWield Workflow Validation did not establish this result. Init discovers verification-command candidates, asks the user to confirm the Project command, and saves the result through RunWield-owned Project settings. It also supports an explicit no-verification command choice.
+
+User note: The user accepted the recovered and integrated work with Codex.
 
 ## Future Planning Notes
 
-Keep verification-command discovery conversational, but keep settings writes inside RunWield-owned settings authority so
-Init does not bypass locking, JSONC preservation, project scoping, or settings reload.
+Keep command discovery conversational and settings writes inside RunWield-owned authority so Init preserves locking, JSONC, Project scoping, and settings reload.

@@ -5,13 +5,7 @@
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import {
-    ensurePlanIdentity,
-    hashPlanBody,
-    listPlanResources,
-    loadPlan,
-    updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.js";
 import {
     generateBearerCapability,
     hashCapability,
@@ -34,6 +28,7 @@ import {
 import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { getDefaultPlanServerUrl } from "../../shared/settings.js";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
+import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansShareArgs {
@@ -101,8 +96,8 @@ async function resolveActivePlan(cwd: string, target: string) {
     }
 
     try {
-        const named = await loadPlan(cwd, target);
-        if (named) return await ensurePlanIdentity(cwd, target);
+        const { plan: named } = await resolveWorkflowPlanLocation(cwd, target, { readOnly: true });
+        if (named) return { ...named, name: target, planName: target };
     } catch (error) {
         if (error instanceof Error && /must be relative|cannot escape/.test(error.message)) {
             throw new Error(
@@ -111,12 +106,12 @@ async function resolveActivePlan(cwd: string, target: string) {
         }
     }
 
-    const resources = await listPlanResources(cwd, { backfillMissing: false });
-    const matches = resources.filter((resource) => resource.planId === target);
+    const resources = await listPlans(cwd);
+    const matches = resources.filter((resource) => resource.attrs.planId === target || resource.name === target);
     if (matches.length > 1) {
         throw new Error(`Duplicate planId values found for ${target}; repair plan front matter before continuing.`);
     }
-    if (matches.length === 1) return matches[0];
+    if (matches.length === 1) return { ...matches[0], planName: matches[0].name };
 
     throw new Error(
         `Active saved Plan not found by name or planId: ${target}. Use \`${CLI_BIN} plans\` to list active Plans.`,
@@ -146,10 +141,7 @@ function secretRecordKey(planId: string, spaceId: string): string {
 }
 
 type SecretStoreLocation =
-    | Awaited<ReturnType<typeof getProjectSecretStoreLocation>>
-    | ReturnType<
-        typeof getGlobalSecretStoreLocation
-    >;
+    Awaited<ReturnType<typeof getProjectSecretStoreLocation>> | ReturnType<typeof getGlobalSecretStoreLocation>;
 
 async function assertNoConflictingSecretRecord(
     secretStorePath: SecretStoreLocation,
@@ -171,11 +163,7 @@ async function assertNoConflictingSecretRecord(
  * @param {string} spaceId
  * @param {string} maintainerCapability
  */
-async function cleanupRemoteSpace(
-    serverUrl: string,
-    spaceId: string,
-    maintainerCapability: string,
-): Promise<void> {
+async function cleanupRemoteSpace(serverUrl: string, spaceId: string, maintainerCapability: string): Promise<void> {
     const client = createCollaborationClient({
         serverUrl,
         bearerCapability: maintainerCapability,
@@ -204,13 +192,13 @@ export interface SharedPlanReviewLink {
     reused: boolean;
 }
 
-export async function sharePlanForReview(
-    shareOptions: SharePlanForReviewOptions,
-): Promise<SharedPlanReviewLink> {
+export async function sharePlanForReview(shareOptions: SharePlanForReviewOptions): Promise<SharedPlanReviewLink> {
     const cwd = shareOptions.cwd || getCwd();
     await enterProjectRuntime(cwd);
     const target = shareOptions.target;
-    const resource = await resolveActivePlan(cwd, target);
+    const selected = await resolveActivePlan(cwd, target);
+    const location = await resolveWorkflowPlanLocation(cwd, selected.planName || selected.name);
+    const resource = await ensurePlanIdentity(location.documentRoot, selected.planName || selected.name);
     const args = {
         target,
         planServer: shareOptions.planServer,
@@ -234,10 +222,10 @@ export async function sharePlanForReview(
         const explicitSecretStorePath = shareOptions.projectSecrets ? projectSecretStore : globalSecretStore;
         const fallbackSecretStorePath = shareOptions.projectSecrets ? globalSecretStore : projectSecretStore;
         const secretRecord =
-            await getSecretRecord(explicitSecretStorePath, secretRecordKey(resource.planId, spaceId)) ||
-            await getSecretRecord(explicitSecretStorePath, resource.planId) ||
-            await getSecretRecord(fallbackSecretStorePath, secretRecordKey(resource.planId, spaceId)) ||
-            await getSecretRecord(fallbackSecretStorePath, resource.planId);
+            (await getSecretRecord(explicitSecretStorePath, secretRecordKey(resource.planId, spaceId))) ||
+            (await getSecretRecord(explicitSecretStorePath, resource.planId)) ||
+            (await getSecretRecord(fallbackSecretStorePath, secretRecordKey(resource.planId, spaceId))) ||
+            (await getSecretRecord(fallbackSecretStorePath, resource.planId));
         if (!secretRecord?.contentKey || !secretRecord?.reviewerCapability) {
             throw new Error("Shared Plan local reviewer secrets are missing; cannot reconstruct review URL.");
         }
@@ -253,12 +241,12 @@ export async function sharePlanForReview(
             }),
             maintainerUrl: secretRecord.maintainerCapability
                 ? buildCollaborationUrl({
-                    serverUrl,
-                    spaceId,
-                    contentKey: secretRecord.contentKey,
-                    bearerCapability: secretRecord.maintainerCapability,
-                    role: MAINTAINER_SCOPE,
-                })
+                      serverUrl,
+                      spaceId,
+                      contentKey: secretRecord.contentKey,
+                      bearerCapability: secretRecord.maintainerCapability,
+                      role: MAINTAINER_SCOPE,
+                  })
                 : "",
             serverUrl,
             spaceId,
@@ -274,12 +262,15 @@ export async function sharePlanForReview(
     const exportedContentKey = await exportContentKey(contentKey);
     const reviewerCapability = generateBearerCapability();
     const maintainerCapability = generateBearerCapability();
-    const payloadCiphertext = await encryptJsonPayload({
-        planId: resource.planId,
-        title: resource.attrs.summary || resource.name,
-        metadata: { ...resource.attrs },
-        body: resource.body,
-    }, contentKey);
+    const payloadCiphertext = await encryptJsonPayload(
+        {
+            planId: resource.planId,
+            title: resource.attrs.summary || resource.name,
+            metadata: { ...resource.attrs },
+            body: resource.body,
+        },
+        contentKey,
+    );
     const reviewerHash = await hashCapability(reviewerCapability);
     const maintainerHash = await hashCapability(maintainerCapability);
     const createPayload: CreateSharedSpacePayload = {
@@ -302,9 +293,7 @@ export async function sharePlanForReview(
     let secretStorePath: SecretStoreLocation | null = null;
     let localSecretKey = "";
     try {
-        created = normalizeCreateResponse(
-            await unauthenticatedClient.createSharedSpace(createPayload) as WireValue,
-        );
+        created = normalizeCreateResponse((await unauthenticatedClient.createSharedSpace(createPayload)) as WireValue);
         reviewerUrl = buildCollaborationUrl({
             serverUrl,
             spaceId: created.spaceId,
@@ -357,16 +346,19 @@ export async function sharePlanForReview(
             await cleanupRemoteSpace(serverUrl, created.spaceId, maintainerCapability);
         } catch (cleanupError) {
             console.error(
-                `[RunWield] Failed to clean up remote Shared Space ${created.spaceId}: ${
-                    redactSecrets(cleanupError, [reviewerCapability, maintainerCapability, exportedContentKey])
-                }`,
+                `[RunWield] Failed to clean up remote Shared Space ${created.spaceId}: ${redactSecrets(cleanupError, [
+                    reviewerCapability,
+                    maintainerCapability,
+                    exportedContentKey,
+                ])}`,
             );
             console.error("[RunWield] Remote space may still exist. Save this recovery maintainer URL securely:");
             console.error(maintainerUrl);
             throw new Error(
-                `Share failed after remote creation and cleanup also failed. Recovery URL was printed once. Original error: ${
-                    redactSecrets(error, [reviewerCapability, maintainerCapability, exportedContentKey])
-                }`,
+                `Share failed after remote creation and cleanup also failed. Recovery URL was printed once. Original error: ${redactSecrets(
+                    error,
+                    [reviewerCapability, maintainerCapability, exportedContentKey],
+                )}`,
             );
         }
         if (secretStorePath && localSecretKey) {
@@ -374,22 +366,22 @@ export async function sharePlanForReview(
                 if (secretStorePath) await deleteSecretRecord(secretStorePath, localSecretKey);
             } catch (secretCleanupError) {
                 throw new Error(
-                    `Share failed after remote creation; remote Shared Space ${created.spaceId} was deleted, but local secret cleanup failed for ${localSecretKey} in ${secretStorePath}. Remove that stale record before retrying. Original error: ${
-                        redactSecrets(error, [reviewerCapability, maintainerCapability, exportedContentKey])
-                    } Secret cleanup error: ${
-                        redactSecrets(secretCleanupError, [
-                            reviewerCapability,
-                            maintainerCapability,
-                            exportedContentKey,
-                        ])
-                    }`,
+                    `Share failed after remote creation; remote Shared Space ${created.spaceId} was deleted, but local secret cleanup failed for ${localSecretKey} in ${secretStorePath}. Remove that stale record before retrying. Original error: ${redactSecrets(
+                        error,
+                        [reviewerCapability, maintainerCapability, exportedContentKey],
+                    )} Secret cleanup error: ${redactSecrets(secretCleanupError, [
+                        reviewerCapability,
+                        maintainerCapability,
+                        exportedContentKey,
+                    ])}`,
                 );
             }
         }
         throw new Error(
-            `Share failed after remote creation; remote Shared Space ${created.spaceId} was deleted and local secret state was cleaned up. ${
-                redactSecrets(error, [reviewerCapability, maintainerCapability, exportedContentKey])
-            }`,
+            `Share failed after remote creation; remote Shared Space ${created.spaceId} was deleted and local secret state was cleaned up. ${redactSecrets(
+                error,
+                [reviewerCapability, maintainerCapability, exportedContentKey],
+            )}`,
         );
     }
 
@@ -440,8 +432,8 @@ export async function runPlansShareCommand(argv: string[]): Promise<void> {
         "\nWarning: anyone with the maintainer URL can pull, push, close, or unshare this Shared Space. Store these URLs securely; RunWield will not print them again.",
     );
     console.log(
-        `[RunWield] Stored local secret material outside Plan front matter/settings. API/server URL: ${
-            redactCollaborationUrl(shared.serverUrl)
-        }`,
+        `[RunWield] Stored local secret material outside Plan front matter/settings. API/server URL: ${redactCollaborationUrl(
+            shared.serverUrl,
+        )}`,
     );
 }

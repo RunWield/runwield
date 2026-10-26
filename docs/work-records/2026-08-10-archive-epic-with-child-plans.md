@@ -12,21 +12,12 @@ provenance:
         - "9c81e9a0-c2f4-47eb-ae13-285d3ae04c42"
 ---
 
-# Archive Epic With Child Plans
+# Epic and child Plan archiving
 
 ## Summary
 
-Implemented an Archive Epic action for terminal Epics. The action archives the Epic and all child Plans into
-docs/plans/archived while it keeps the folder structure. It uses shared archive-status predicates, child-first
-transactional moves, a recoverable-worktree pre-flight block, confirmation text with child and unfinished counts, safe
-active child-directory cleanup, and restore guidance. Verification passed with targeted archive and load-plan tests plus
-full CI.
-
-## Deviations from Plan
-
-CI found a broken relative link in an archived Plan document. The link was fixed as part of the verified change.
+Archive Epic moves a terminal Epic and its child Plans into archived storage while preserving their structure. Recoverable worktrees block the operation before any move, and confirmation identifies the affected children and unfinished work. Child-first moves preserve an active parent entry point if an operation needs recovery.
 
 ## Future Planning Notes
 
-For multi-Plan archive flows, do recoverable-worktree checks before the first move and archive children before the
-parent so a failed retry still has an active parent entry point.
+Check recoverable worktrees before the first archive move. Archive children before their parent so partial operations retain a recovery entry point.

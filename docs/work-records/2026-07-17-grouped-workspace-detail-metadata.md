@@ -11,10 +11,8 @@ provenance:
         - "cb44395f-4684-4a0a-a80e-f78f474f6457"
 ---
 
-# Grouped Workspace Detail Metadata
+# Grouped Workspace detail metadata
 
 ## Summary
 
-Consolidated Plan and Epic front matter into logically grouped metadata sections, removed the redundant Front matter
-summary, centralized canonical front matter keys, preserved custom metadata and worktree-path redaction, and added
-regression coverage. Full verification passed.
+Workspace groups Plan and Epic front matter into logical metadata sections without a redundant front-matter summary. Canonical keys are centralized, while custom metadata and worktree-location redaction remain intact.

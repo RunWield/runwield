@@ -1,0 +1,76 @@
+schemaVersion: 1
+scenarioId: RV-D12
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: >-
+        Only a disposable verification tree receives these files and scripts. Never copy them into a Reviewer
+        project.
+proofs:
+    seam-check:
+        command: bun run test:oracle seam-check
+        expectedFailureMarker: RV-D12-OWNED-SEAM
+    mutation-coverage:
+        command: bun run test:oracle mutation-coverage
+        expectedFailureMarker: RV-D12-MUTATION-SURVIVED
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D12-A
+              severity: high
+              category: owned-capability-injection
+              trigger: A caller supplies RegistrationDependencies replacing putEntry and withRegistryLock.
+              expectedBehavior: Registry persistence and lock acquisition remain production-owned.
+              wrongBehavior: The optional dependency bag substitutes owned mutation and locking.
+              evidence:
+                  - AGENTS.md
+                  - src/register.ts
+                  - scripts/check-seams.ts
+              acceptableConcepts:
+                  - optional bag substitutes owned registry machinery
+                  - conditional real versus fake write and lock
+              nearMisses:
+                  - CatalogPort is a required genuine network boundary and is allowed.
+              proofCommand: bun run test:oracle seam-check
+              expectedFailureMarker: RV-D12-OWNED-SEAM
+            - defectId: RV-D12-TEST-DURABILITY
+              severity: medium
+              category: durable-registration-test-coverage
+              trigger: Remove the real durable rename and run the public registration tests.
+              expectedBehavior: The success test reopens the real registry and detects a missing durable write.
+              wrongBehavior: The test substitutes a no-op write, checks the returned entry, and passes without persistence.
+              evidence:
+                  - docs/plans/cover-registration-persistence.md
+                  - tests/public.ts
+                  - src/registry.ts
+              acceptableConcepts:
+                  - test return value is not proof of durable registration
+                  - success test never reopens the registry
+                  - real temporary registry fixture detects missing persistence
+              nearMisses:
+                  - A temporary directory is an environment fixture, not an injection seam.
+              proofCommand: bun run test:oracle mutation-coverage
+              expectedFailureMarker: RV-D12-MUTATION-SURVIVED
+        validationOutcomes:
+            bun run test: pass
+            bun run seams:check: fail
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+        validationOutcomes:
+            bun run test: pass
+            bun run seams:check: pass
+cleanNearMisses:
+    - CatalogPort is a required genuine network boundary and is allowed.
+    - A temporary directory is an environment fixture, not an injection seam.
+    - >-
+        The mutation proof must fail because the durable behavior is not covered, not because of a mock call
+        count.

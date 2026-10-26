@@ -15,6 +15,7 @@ import { loadPlanBodyById, savePlan } from "../../plan-store.js";
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
 import {
     applyWorkspaceLifecycleActionInMemory,
+    loadBoard,
     loadWorkspaceDetail,
     runWorkspaceResumeCheck,
     serializePlanSummary,
@@ -33,7 +34,7 @@ import {
 import { createWorkspaceApp } from "./server.js";
 import { COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { listWorkRecords } from "../../shared/work-records/store.js";
+import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 
 import { git } from "./workspace-test-helpers.js";
@@ -87,7 +88,7 @@ test("workspace lifecycle action metadata blocks protected status movement and e
     });
     assertEquals(createCloseWithoutVerificationIntent({ planId: "p1", fromStatus: "draft", reason: "" }), null);
 
-    const allowed = parseAllowedTargetStatuses("feedback approved ready_for_work");
+    const allowed = parseAllowedTargetStatuses("approved ready_for_work");
     assertEquals(
         isAllowedDropTarget({ fromStatus: "draft", targetStatus: "approved", allowedTargetStatuses: allowed }),
         true,
@@ -102,8 +103,31 @@ test("workspace lifecycle action metadata blocks protected status movement and e
     );
     assertEquals(
         blockedDropMessage({ planName: "p1", targetStatus: "verified", allowedTargetStatuses: allowed }),
-        "p1 cannot move to verified. Available columns: feedback, approved, ready_for_work.",
+        "p1 cannot move to verified. Available columns: approved, ready_for_work.",
     );
+});
+
+test("legacy feedback Plans appear in Draft with no Feedback board column", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "legacy-feedback-board-"));
+    try {
+        await savePlan(cwd, "legacy", "# Legacy review\n", { status: "draft", classification: "FEATURE" });
+        const path = join(cwd, "docs/plans/legacy.md");
+        await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('status: "draft"', 'status: "feedback"'));
+
+        const board = await loadBoard(cwd);
+        assertEquals(
+            board.screens.active.columns.some((column) => column.status === "feedback"),
+            false,
+        );
+        const draft = board.screens.active.columns.find((column) => column.status === "draft");
+        assertEquals(
+            draft?.cards.map((card) => card.planName),
+            ["legacy"],
+        );
+        assertEquals(board.plans[0].actions.allowedManualTargetStatuses, ["approved", "ready_for_work"]);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
 });
 
 test("Workspace dev lifecycle projection uses core transitions without mutating its source Plan", () => {
@@ -251,10 +275,14 @@ test("Workspace persisted User Verification records attestation and triggers Wor
             classification: "FEATURE",
             failureReason: "Workflow Validation failed.",
         });
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "User Verified Feature",
-            summary: "Generated after the real Workspace lifecycle transition.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "User Verified Feature",
+                    summary: "Generated after the real Workspace lifecycle transition.",
+                }),
+            ),
+        ]);
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
         const app = createWorkspaceApp({
             cwd,
@@ -299,10 +327,14 @@ test("Workspace persisted close without verification triggers Work Record genera
             status: "implemented",
             classification: "FEATURE",
         });
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Manually Accepted Feature",
-            summary: "Generated after close without verification.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Manually Accepted Feature",
+                    summary: "Generated after close without verification.",
+                }),
+            ),
+        ]);
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
         const app = createWorkspaceApp({
             cwd,

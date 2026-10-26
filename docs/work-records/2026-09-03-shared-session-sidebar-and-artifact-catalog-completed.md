@@ -15,23 +15,14 @@ supersessionProposal:
           reason: "The shared Session Sidebar replaces the persistent full-width TUI validation handoff panel as the ambient validation presentation."
 ---
 
-# Shared Session Sidebar and artifact catalog completed
+# Shared Session Sidebar and artifact catalog
 
 ## Summary
 
-The user attested verification; RunWield Workflow Validation did not establish this result. The user established
-verification: "done with codex". RunWield now has the Session Sidebar direction completed with Workflow, Session, and
-Artifacts surfaces, explicit Session artifact registration, shared TUI and Workspace presentation, and a generalized
-read-only Markdown artifact path. This matters for future planning because workflow state and durable Session output now
-have one product model instead of separate TUI validation and Workspace Plan-panel behavior.
+The user attested verification; RunWield Workflow Validation did not establish this result. RunWield presents Workflow, Session, and Artifacts through a shared Session Sidebar in TUI and Workspace. Explicit Session Artifact registration and a shared read-only Markdown reader provide one model for workflow state and durable Session output.
 
-## Deviations from Plan
-
-The source Epic kept both child Plans in draft status, but the Epic itself was closed as user verified after completion
-with Codex.
+User note: Done with Codex.
 
 ## Future Planning Notes
 
-Future Session UI work should treat the Session Manifest artifact catalog and shared sidebar projection as the durable
-contract, not transcript scraping or surface-local workflow guesses. User verification was established by the user;
-RunWield Workflow Validation was not claimed as the verifier.
+Treat the Session Manifest artifact catalog and shared sidebar projection as the contract, not transcript scraping or surface-local workflow guesses.

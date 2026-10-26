@@ -16,11 +16,8 @@ provenance:
           note: Exposes load-plan completions without applying a separate UI-specific sort.
 ---
 
-# Canonical Plan List Ordering
+# Canonical Plan list ordering
 
 ## Summary
 
-Core plan listing now returns a deterministic UI-ready order: failed and implemented work first, followed by ready,
-planning, terminal, and on-hold statuses; PROJECT plans precede FEATURE plans within each status, followed by
-alphabetical plan name. The load-plan menu, command completions, and Workspace summaries preserve this shared order,
-preventing UI-specific sorting rules from drifting apart.
+Core Plan listing returns a deterministic UI-ready order: failed and implemented work first, followed by ready, planning, terminal, and on-hold statuses; PROJECT Plans precede FEATURE Plans within each status, followed by alphabetical Plan name. The load-plan menu, command completions, and Workspace summaries preserve this shared order, preventing UI-specific sorting rules from drifting apart.
