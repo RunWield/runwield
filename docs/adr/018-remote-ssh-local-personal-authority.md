@@ -4,7 +4,7 @@ status: accepted
 
 # Remote SSH with Local Personal Authority
 
-Last updated: 2026-10-24 EDT
+Last updated: 2026-10-26 EDT
 
 ## Context and Constraints
 
@@ -51,9 +51,12 @@ Split execution from personal authority:
   idle remote snapshot as authoritative. Saved Agent, model, and thinking settings therefore survive concurrent
   connections; explicit selections for the new operation apply after hydration. Recovery uses durable laptop evidence,
   never automatic effect replay.
-- Host identity consists of the effective hostname, user, port, and verified host key. Only an exact match reuses
-  history. Certificate configurations without a stable reported key use hostname, user, and port. The canonical remote
-  primary root identifies the project; execution cwd and temporary mount roots remain separate facts.
+- Host identity consists of the effective hostname, user, port, and verified host key. Exact matches reuse history.
+  A partly matching host requires a saved user confirmation before it uses the canonical saved identity for Sessions
+  and Memory. Resolving that choice once at connection startup keeps downstream identity checks exact. Neither an SSH
+  alias nor a host key alone authorizes history reuse. Certificate configurations without a stable reported key use a
+  `null` fingerprint; two missing fingerprints do not prove a shared key. The canonical remote primary root identifies
+  the project; execution cwd and temporary mount roots remain separate facts.
 - Laptop-only history views read published transcript evidence without SSH, repair writes, or a writer lock. A connected
   remote TUI can continue the same saved Session through target-scoped control operations.
 - Clipboard images use a connection-scoped authenticated byte bridge from the laptop. Ctrl+V reads the current laptop

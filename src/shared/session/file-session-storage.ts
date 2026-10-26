@@ -171,6 +171,32 @@ export function ensureRemoteProject(
     return project;
 }
 
+export function sameRemoteHost(left: RemoteHostIdentity, right: RemoteHostIdentity): boolean {
+    return (
+        left.hostname === right.hostname &&
+        left.user === right.user &&
+        left.port === right.port &&
+        left.hostKeyFingerprint === right.hostKeyFingerprint
+    );
+}
+
+/** Retain a host answer without changing the project's canonical identity. */
+export function recordRemoteHostAnswer(
+    baseDir: string,
+    project: FileSessionProject,
+    host: RemoteHostIdentity,
+    answer: "acceptedHosts" | "refusedHosts",
+): void {
+    const path = projectPath(sessionDirForProject(baseDir, project));
+    const saved = readJson<FileSessionProject>(path);
+    if (!saved.remote) throw new Error("Remote host answer requires a remote project");
+    const hosts = saved.remote[answer] || [];
+    if (hosts.some((prior) => sameRemoteHost(prior, host))) return;
+    saved.remote[answer] = [...hosts, { ...host }];
+    saved.updatedAt = isoNow();
+    writeJsonAtomically(path, saved);
+}
+
 export function sessionDirForProject(baseDir: string, project: FileSessionProject): string {
     return project.remote ? join(baseDir, project.projectId) : sessionDirForRoot(baseDir, project.currentRoot);
 }
