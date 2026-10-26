@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "61808ee1-6c9b-4194-8754-1853f49aec17"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "b12dd5b4-1f7d-49d0-86ef-dc389ed60993"
 ---
-
 # Epic integration gate retry
 
 ## Summary
