@@ -17,6 +17,27 @@ interface RepairTurnRequest {
     userRequest: string;
 }
 
+interface CiRepairArgsFixture {
+    session: {
+        setActiveWorkflow: (workflow: { planName: string }) => void;
+        getAgentDisplayName: (agent: string) => string;
+        getCurrentProgress: () => null;
+        emitStatus: (...args: never[]) => void;
+        runIndependentRepairTurn: (request: RepairTurnRequest) => Promise<{ completed: boolean }>;
+    };
+    planName: string;
+    triageMeta: { classification: string; status: string };
+}
+
+interface CiRepairContextFixture {
+    executionCwd: string;
+    projectRoot: string;
+    worktreeId: string;
+    worktreeBranch: string;
+    worktreeBaseBranch: string;
+    workflowBase: { planName: string };
+}
+
 async function runCiRepair(options: CiRepairOptions) {
     return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactory }) => {
         const projectRoot = await makeValidationProjectRoot("p", {
@@ -84,7 +105,7 @@ test("CI repair reruns CI and continues after task completion", async () => {
 
 test("CI repair prompt verifies the repair without requiring a duplicate full CI run", async () => {
     let capturedRequest = "";
-    const context = {
+    const context: CiRepairContextFixture = {
         executionCwd: "/repair-checkout",
         projectRoot: "/primary-project",
         worktreeId: "wt-ci",
@@ -92,7 +113,7 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
         worktreeBaseBranch: "main",
         workflowBase: { planName: "p" },
     };
-    const args = {
+    const args: CiRepairArgsFixture = {
         session: {
             setActiveWorkflow: () => {},
             getAgentDisplayName: () => "Validation Repair Engineer",
@@ -107,7 +128,7 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
         triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
     };
 
-    await dispatchCiRepair(args as unknown as ValidationLoopArgs, context as PhaseContext, {
+    await dispatchCiRepair(args as ValidationLoopArgs, context as PhaseContext, {
         kind: "completed",
         exitCode: 1,
         output: "broken command",
