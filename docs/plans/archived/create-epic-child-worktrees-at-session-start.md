@@ -28,6 +28,9 @@ workRecord:
     path: "docs/work-records/2026-10-16-create-plan-worktrees-only-at-session-start.md"
     lastAttemptAt: "2026-10-16T15:21:47.702Z"
 status: "verified"
+archivedAt: "2026-10-26T13:33:36.220Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/create-epic-child-worktrees-at-session-start.md"
 ---
 
 # Create Epic Child Worktrees Only When a Session Starts

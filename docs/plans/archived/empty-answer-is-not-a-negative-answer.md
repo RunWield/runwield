@@ -24,6 +24,9 @@ workRecord:
     path: "docs/work-records/2026-10-16-treat-unknown-check-results-as-inconclusive.md"
     lastAttemptAt: "2026-10-16T17:06:23.354Z"
 status: "verified"
+archivedAt: "2026-10-26T13:32:39.572Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/empty-answer-is-not-a-negative-answer.md"
 ---
 
 # An Empty Answer Is Not a Negative Answer

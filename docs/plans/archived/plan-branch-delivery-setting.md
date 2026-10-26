@@ -34,6 +34,9 @@ workRecord:
     path: "docs/work-records/2026-10-09-default-off-plan-branch-delivery-implemented.md"
     lastAttemptAt: "2026-10-09T17:17:12.873Z"
 status: "verified"
+archivedAt: "2026-10-26T13:14:10.270Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/plan-branch-delivery-setting.md"
 ---
 
 # Plan Branch Delivery Setting

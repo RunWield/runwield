@@ -25,7 +25,7 @@ import {
     resolvePlan,
     resolveSiblingChildPlanDependencies,
 } from "../../plan-store.js";
-import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
+import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { buildPlannerReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
@@ -134,7 +134,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             }
             const activeSnapshot = sessionRuntime.getSessionSnapshot(runtimeSessionId);
             if (!activeSnapshot) throw new Error("runLoadPlanCommand runtime session is missing");
-            const plans = await listPlanDocuments(activeSnapshot.cwd);
+            const plans = (await listPlanDocuments(activeSnapshot.cwd)).filter(
+                (plan) => !isPlanArchivePending(activeSnapshot.cwd, plan.name),
+            );
             if (plans.length === 0) {
                 options.uiAPI.appendSystemMessage("No plans available, start one by entering a new request");
                 clearEditor();
@@ -492,8 +494,11 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         /** @param {string} targetPlanName */
         const loadAnotherPlan = async (targetPlanName: string) => {
             skipRouterRestore = true;
-            await runLoadPlanCommand([targetPlanName], {
+            await runLoadPlanCommand(targetPlanName ? [targetPlanName] : [], {
                 ...options,
+                uiAPI,
+                sessionRuntime: runtime,
+                sessionId: activeSessionId,
             });
         };
 
@@ -564,6 +569,10 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             if (reviewResult.keepPlanAgentActive) {
                 skipRouterRestore = true;
             }
+            return;
+        }
+        if (epicResult === "archiving") {
+            await loadAnotherPlan("");
             return;
         }
         if (epicResult === "handled") {
@@ -656,16 +665,19 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                         if (!(await completeUserVerification({ projectRoot, plan, uiAPI, session }))) continue;
                         projectRoot = primaryRoot;
                     }
-                    const archived = await archivePlan(projectRoot, plan.planName, {
-                        abandonedWorktree: plan.attrs.worktreeStatus === "abandoned",
+                    const archiveRoot = projectRoot;
+                    startBackgroundArchive({
+                        projectRoot: archiveRoot,
+                        planName: plan.planName,
+                        uiAPI,
+                        archive: async () => {
+                            const archived = await archivePlan(archiveRoot, plan.planName, {
+                                abandonedWorktree: plan.attrs.worktreeStatus === "abandoned",
+                            });
+                            return `Archived ${plan.planName} to ${archived.relativePath}`;
+                        },
                     });
-                    uiAPI.appendSystemMessage(
-                        `Archived ${plan.planName} to ${archived.relativePath}`,
-                        false,
-                        "RunWield",
-                    );
-                    const nudge = await formatArchiveRetentionNudge(projectRoot);
-                    if (nudge) uiAPI.appendSystemMessage(nudge, false, "RunWield");
+                    await loadAnotherPlan("");
                     return;
                 }
                 await prepareSession();
