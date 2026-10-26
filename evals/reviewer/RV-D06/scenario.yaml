@@ -1,0 +1,19 @@
+schemaVersion: 1
+scenarioId: RV-D06
+track: discovery
+group: plan-named-edge-case
+fixtureRevision: 1
+planPath: docs/plans/rename-through-board-links.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - shared-board-links
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate

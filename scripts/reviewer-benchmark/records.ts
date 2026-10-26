@@ -1,15 +1,9 @@
 import { readFile, open } from "node:fs/promises";
 import { join } from "node:path";
+import { FIXTURE_GROUPS, SCENARIO_ID_PATTERN } from "./fixtures.ts";
 import type { FixtureDefect, VariantId } from "./fixtures.ts";
 import type { FixtureReviewResult } from "./reviewer.ts";
 
-export const SMOKE_GROUPS: Record<string, string> = {
-    "RV-D04": "correctness-beyond-plan",
-    "RV-D05": "plan-named-edge-case",
-    "RV-D12": "architecture",
-    "RV-D13": "plan-adherence",
-    "RV-M01": "multiple-defects",
-};
 export interface RunConfiguration {
     revision: string;
     dirty: boolean;
@@ -26,6 +20,8 @@ export interface BenchmarkCase {
     variant: VariantId;
     fixtureRevision: number;
     fixtureHash: string;
+    /** Absent in legacy smoke manifests. */
+    patch?: string;
     trial: 1;
     expectedDecision: "approve" | "reject";
     group: string;
@@ -87,7 +83,7 @@ export async function readRun(directory: string): Promise<SavedRun> {
     const ids = new Set<string>();
     for (const entry of manifest.cases) {
         requireRecord(
-            Boolean(entry && SMOKE_GROUPS[entry.scenarioId]) &&
+            Boolean(entry && SCENARIO_ID_PATTERN.test(entry.scenarioId)) &&
                 ["A", "B"].includes(entry.variant) &&
                 entry.caseId === `${entry.scenarioId}/${entry.variant}` &&
                 !ids.has(entry.caseId) &&
@@ -95,8 +91,9 @@ export async function readRun(directory: string): Promise<SavedRun> {
                 Number.isInteger(entry.fixtureRevision) &&
                 entry.fixtureRevision > 0 &&
                 /^[a-f0-9]{64}$/.test(entry.fixtureHash) &&
+                (entry.patch === undefined || text(entry.patch)) &&
                 ["approve", "reject"].includes(entry.expectedDecision) &&
-                text(entry.group) &&
+                FIXTURE_GROUPS.includes(entry.group) &&
                 Array.isArray(entry.defects),
             "case identity",
         );

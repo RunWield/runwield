@@ -458,6 +458,15 @@ worktree owns the document, even if the source copy changes or is removed. The r
 Plan ID; it does not replace document content. A failed creation that was rolled back does not transfer document
 ownership.
 
+**Requirement: Child selection reflects the authoritative document.** When the primary checkout is on the Epic target
+branch, child discovery and selection include its local edits and valid untracked child Plans. On any other branch,
+checkout files do not enter the target family. Registered planning and execution documents retain their content,
+lifecycle, and order authority; a saved planning document does not restore a child removed from the target catalog.
+The picker shows distinct child-relative paths without repeating the Epic parent prefix and orders children by explicit
+Front Matter `order`, never filename prefixes.
+Missing or duplicate order blocks the next-child shortcut and automatic continuation with a clear explanation; manual
+selection and reading remain available.
+
 **Requirement: Each child starts with the preceding children's published code.** Before the next child is prepared,
 Core fetches the latest Epic branch. The child's planning worktree starts from, or imports, that commit while keeping
 its saved scope and status. The refreshed commit is the child's baseline. If the Epic history was rewritten, Core
@@ -481,13 +490,20 @@ conflicting requirements or started work need the user's decision.
 
 Each child's review judges that child's own correctness, with the Epic as context. A reviewer can leave Integration
 Notes for the later integration review in the Epic's `### Integration Notes` subsection. The saved-note message names
-the parent Epic and states that the notes guide its integration review.
+the parent Epic and states that the notes guide its integration review. Integration Notes and confirmed child deviation
+blocks are written in the child's execution checkout and travel with its delivery to the Epic branch, not through a
+write to the primary checkout.
 
 **Requirement: An Epic finishes through its integration gate.** The Epic is implemented when every included child is
 delivered to the Epic branch. The integration gate then checks the exact branch head as one change: the project's
-checks, an integration review of the whole Epic diff, and Code Review per the user's `codereview` setting. A pass
-marks the Epic reviewed for that commit. Findings go to an Epic report and become a draft repair child that the user
-reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
+checks, an integration review of the whole Epic diff, and Code Review per the user's `codereview` setting. Before
+checks or review, the temporary checkout initializes submodules recursively and runs the configured
+`worktree_setup_command`. Both reviews use the Epic document from that exact branch head, not the primary checkout.
+Missing branch requirements or failed checkout setup pause the gate without creating a repair child. A pass
+marks the Epic reviewed for that commit. Integration review treats confirmed child deviations as user-approved
+replacements: a gap caused only by a deviation is not a finding. It names each affected Epic outcome and source child
+in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings. Findings go
+to an Epic report and become a draft repair child that the user reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
 implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
 an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
 
@@ -501,12 +517,21 @@ siblings active. Listings show held work separately from active and finished wor
 **Acceptance scenarios:**
 
 - Given a new Epic without its branch, starting the first child creates the branch from the latest primary branch with
-  the child drafts on it; the user's checkout is unchanged.
+  the Epic requirements and child drafts on it; the user's checkout is unchanged. Branch preparation adds a missing Epic
+  document but does not replace requirements already on the branch with a primary-checkout copy.
 - Given Planner renumbers children on the Epic branch, `/load-plan` lists the new names, excludes removed names, and
   opens the selected branch Plan without restoring stale checkout drafts. A renamed child's saved planning edits stay
   in its planning worktree.
 - Given an existing default Epic branch and completed children, but no recorded Epic target, `/load-plan` lists that
   branch's current children and opens its next child, not a stale primary-checkout name.
+- Given the primary checkout on the Epic target branch, a local child order edit and an untracked new child appear in
+  the picker and selection opens those same documents. A known older remote snapshot does not hide them. First Resume
+  planning transfers only the selected Plan to its registered planning worktree, assigns a missing ID on the copy, and
+  uses the latest target snapshot for code. Source files and the target branch are unchanged; no draft is published.
+- Given nested children `epic/frontend/setup` and `epic/backend/setup`, the picker shows `frontend/setup` and
+  `backend/setup`, not identical `setup` labels or the repeated Epic prefix.
+- Given missing or duplicate child order, the picker explains the ambiguity and offers no next-child shortcut;
+  automatic continuation blocks, while viewing an individual child still works. Filename numbers never resolve the tie.
 - Given an unstarted child, loading, selecting, viewing, or canceling creates no worktree and changes no Git refs.
 - Given completed Slicer decomposition, resuming a draft child in the same Session opens its planning worktree with
   Planner active. The handoff does not reload or restore the Epic-scoped Slicer as a selectable Agent.
@@ -519,6 +544,9 @@ siblings active. Listings show held work separately from active and finished wor
   automatically. A stale ownership reference from that failed creation does not block the retry.
 - Given an established planning document, loading keeps its saved contents and identity even when its source copy is
   removed. A missing established document is not replaced by an older source copy.
+- Given AI review rejects a child and repair then passes validation, continuation opens the next child once. A reply
+  that completes the repair succeeds and returns the replacement Session, without retrying the closed child Session.
+  Direct validation also continues once.
 - Given a child published from another checkout, preparing the next child includes that publication.
 - Given the next child already has a planning worktree with saved edits, continuation imports the published code and
   keeps those edits.
@@ -532,11 +560,17 @@ siblings active. Listings show held work separately from active and finished wor
 - Given a last child that has validated but not finished publishing, the Epic is not yet implemented.
 - Given all children delivered, a passing integration gate marks the Epic reviewed for that branch head; the primary
   branch is unchanged.
+- Given a fresh gate checkout with submodules and a configured setup command, submodules are initialized before setup,
+  and setup completes before checks or review. Setup failure pauses the gate and removes the temporary checkout.
+- Given different Epic requirements in the primary checkout and checked branch, review uses the checked branch document.
+  If that document is missing, the gate pauses instead of using the primary copy.
 - Given gate findings, the Epic report lists them and a draft repair child opens in Planner; its delivery runs the gate
   again.
 - Given Planner moves scope into an approved, unstarted sibling, the sibling returns to draft with the change.
-- Given a child review with Integration Notes, the notes appear in the Epic's subsection and reach the integration
-  review.
+- Given a child review with Integration Notes, the notes appear in the execution checkout's Epic subsection, travel
+  with child delivery, and reach the branch-head integration review; the primary copy is unchanged.
+- Given a delivered child deviation that removes an Epic outcome, integration review reports the outcome and source
+  child as an advisory, not a finding. Other integration defects still block approval.
 - Given an approved Epic, saved draft children stay drafts until finalization and their own approval.
 - Given an independently held child, holding and resuming the parent leaves it held.
 - Given enough delivered children to meet the goal, the user marks the Epic done enough and the remaining children stay
@@ -690,6 +724,14 @@ Retrying the same call returns the saved entry. Ordinary feedback and direct Pla
 Canceled, unsupported, or stale confirmation leaves the requirement as it was; a changed Plan revision or execution
 identity invalidates a pending confirmation. A host without confirmation support keeps the work and stops the turn.
 
+**Requirement: Epic readers see child deviations.** A confirmed deviation in an Epic child also appears in a managed
+`### Child Plan Deviations` subsection under the Epic's Objective. Each child has one replaceable block. The child
+Plan's `planDeviations` remains authoritative; neither the Epic's own deviation front matter nor Work Record aggregation
+uses that projection as a second source. Recording and same-call retries synchronize the block in the execution
+checkout. Publication retries synchronization before its checkpoints. A projection error does not revoke the saved
+child entry. Missing or collaboration-locked parents are left unchanged. Standalone and Sequence Plans keep ordinary
+recording without an Epic projection.
+
 **Acceptance scenarios:**
 
 - Given Pair or autonomous execution, when the user requests a conflicting requirement, the Agent asks for explicit
@@ -700,6 +742,15 @@ identity invalidates a pending confirmation. A host without confirmation support
   checkout.
 - Given a recorded replacement, reload, independent review, and the Work Record keep it.
 - Given canceled confirmation or a changed Plan revision, the effective requirement stays as it was.
+- Given an Epic child and accepted confirmation, both the child entry and its Epic block contain the exact superseded
+  requirement, replacement, optional reason, and approval time; the Epic's front matter is unchanged.
+- Given the same call retried after interruption, one child entry and one Epic block remain. A missing projection is
+  restored before publication sealing.
+- Given deviations from two children, replacing one block preserves the other and user-owned Objective text.
+- Given canceled, unsupported, or stale confirmation, the Epic stays byte-identical.
+- Given a standalone Plan or Sequence child, recording changes only the execution Plan.
+- Given child delivery, its Epic block reaches the branch-head integration review and the Epic Work Record lists the
+  child deviation once.
 
 #### Validation
 

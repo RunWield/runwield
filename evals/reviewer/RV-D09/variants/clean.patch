@@ -1,0 +1,59 @@
+diff --git a/src/lifecycle.ts b/src/lifecycle.ts
+--- a/src/lifecycle.ts
++++ b/src/lifecycle.ts
+@@ -1,6 +1,20 @@
+-import { readPlan } from "./plans.ts";
++import { runCommand } from "./commands.ts";
++import type { TransitionCommand } from "./commands.ts";
++import { readPlan, writePlan, withStatus } from "./plans.ts";
+ 
+ export async function planStatus(path: string): Promise<string> {
+     const plan = await readPlan(path);
+     return /^status: (.*)$/m.exec(plan.frontMatter)![1];
+ }
++
++export async function startValidation(path: string, command: TransitionCommand): Promise<void> {
++    const previous = await readPlan(path);
++    await writePlan(path, withStatus(previous, "validating"));
++    try {
++        await runCommand(command);
++    } catch (error) {
++        const current = await readPlan(path);
++        await writePlan(path, { ...current, frontMatter: previous.frontMatter });
++        throw error;
++    }
++}
+diff --git a/tests/public.ts b/tests/public.ts
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -2,7 +2,7 @@
+ import { mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+-import { planStatus } from "../src/lifecycle.ts";
++import { planStatus, startValidation } from "../src/lifecycle.ts";
+ import { readPlan } from "../src/plans.ts";
+ 
+ const root = await mkdtemp(join(tmpdir(), "transition-public-"));
+@@ -12,6 +12,21 @@
+     assert.equal(await planStatus(path), "approved");
+     assert.equal((await readPlan(path)).body, "# Delivery\n\nAuthor draft.\n");
+     console.log("PASS read author Plan");
++    await startValidation(path, { executable: process.execPath, args: ["-e", "process.exit(0)"] });
++    assert.equal(await planStatus(path), "validating");
++    assert.equal((await readPlan(path)).body, "# Delivery\n\nAuthor draft.\n");
++    console.log("PASS validation start persists status");
++    await writeFile(path, "---\nplanId: plan-1\nstatus: approved\n---\n# Delivery\n\nAuthor draft.\n");
++    const before = await readPlan(path);
++    await assert.rejects(
++        startValidation(path, { executable: process.execPath, args: ["-e", "process.exit(3)"] }),
++        /Transition command failed \(3\)/,
++    );
++    assert.deepEqual(await readPlan(path), before);
++    console.log("PASS failed command restores lifecycle metadata");
++    await assert.rejects(startValidation(path, { executable: "/missing-transition-command", args: [] }), /ENOENT/);
++    assert.deepEqual(await readPlan(path), before);
++    console.log("PASS unavailable command restores lifecycle metadata");
+ } finally {
+     await rm(root, { recursive: true, force: true });
+ }

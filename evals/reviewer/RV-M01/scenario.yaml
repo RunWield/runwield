@@ -1,6 +1,7 @@
 schemaVersion: 1
 scenarioId: RV-M01
 track: discovery
+group: multiple-defects
 fixtureRevision: 2
 planPath: docs/plans/configure-project-listing.md
 baselineRef: main

@@ -1,3 +1,4 @@
+import { epicChildOrderProblem } from "../../shared/workflow/epic-child-order.ts";
 import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
 /**
  * @module cmd/load-plan/plan-epic-flow
@@ -127,6 +128,8 @@ export async function handleEpicPlan({
     const children = familyChildren
         .filter((child) => isPlannedChangeClassification(child.attrs.classification))
         .sort(compareChildPlansByOrder);
+    const orderProblem = epicChildOrderProblem(children);
+    if (orderProblem) uiAPI.appendSystemMessage(orderProblem, true, "RunWield");
     const hasChildren = children.length > 0;
     const pendingPublication = (
         await Promise.all(
@@ -398,7 +401,7 @@ export async function handleEpicPlan({
         if (answer === "pick_child") {
             if (!(await ensureEpicReadinessPassed())) return "handled";
             while (true) {
-                const nextChild = children.find(isActionableNextChild);
+                const nextChild = orderProblem ? undefined : children.find(isActionableNextChild);
                 const childOptions = [
                     ...(nextChild
                         ? [

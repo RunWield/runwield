@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadFixture } from "./fixtures.ts";
 import { admitFixtures } from "./admission.ts";
-import { corpusPath, smokeIds, withFixtureCopy } from "./test-fixtures.ts";
+import { corpusPath, corpusIds, withFixtureCopy } from "./test-fixtures.ts";
 
 interface ExpectedChecks {
     variants: number;
@@ -13,14 +13,26 @@ interface ExpectedChecks {
     proofs: number;
 }
 const counts: Record<string, ExpectedChecks> = {
+    "RV-D01": { variants: 2, public: 2, proofs: 2 },
+    "RV-D02": { variants: 2, public: 2, proofs: 2 },
+    "RV-D03": { variants: 2, public: 2, proofs: 2 },
     "RV-D04": { variants: 2, public: 2, proofs: 6 },
     "RV-D05": { variants: 2, public: 2, proofs: 2 },
+    "RV-D06": { variants: 2, public: 2, proofs: 2 },
+    "RV-D07": { variants: 2, public: 2, proofs: 2 },
+    "RV-D08": { variants: 2, public: 2, proofs: 2 },
+    "RV-D09": { variants: 2, public: 2, proofs: 2 },
+    "RV-D10": { variants: 2, public: 2, proofs: 2 },
     "RV-D12": { variants: 2, public: 4, proofs: 4 },
     "RV-D13": { variants: 2, public: 2, proofs: 2 },
     "RV-M01": { variants: 1, public: 4, proofs: 8 },
 };
 
-for (const id of smokeIds) {
+test("every corpus package has explicit admission check counts", () => {
+    assert.deepEqual(Object.keys(counts).sort(), corpusIds);
+});
+
+for (const id of corpusIds) {
     test(`${id} admits all public outcomes and hidden proofs, including clean and partial repairs`, async () => {
         const before = await projectDirectories();
         const admitted = await admitFixtures([await loadFixture(join(corpusPath, id))]);
@@ -120,6 +132,40 @@ test("D12 does not accept an architecture command failure for an unrelated reaso
             'console.error("unrelated check failure"); process.exitCode = 1;\n',
         );
         await assert.rejects(admitFixtures([await loadFixture(packageDir)]), /expected OWNED_CAPABILITY_REPLACEABLE/);
+    });
+});
+
+test("D03 public validation refuses a clean twin that silently truncates a repeated cursor", async () => {
+    await withFixtureCopy("RV-D03", async (packageDir) => {
+        const path = join(packageDir, "variants/clean.patch");
+        const patch = await readFile(path, "utf8");
+        const changed = patch.replace(
+            'if (visited.has(page.nextCursor)) throw new Error("Accession API repeated a cursor");',
+            "if (visited.has(page.nextCursor)) break;",
+        );
+        assert.notEqual(changed, patch);
+        await writeFile(path, changed);
+        await assert.rejects(
+            admitFixtures([await loadFixture(packageDir)]),
+            /RV-D03 B public suite.*expected pass[\s\S]*Missing expected rejection/,
+        );
+    });
+});
+
+test("D06 proof requires signed maintainer authority despite a reviewer display hint", async () => {
+    await withFixtureCopy("RV-D06", async (packageDir) => {
+        const path = join(packageDir, "variants/clean.patch");
+        const patch = await readFile(path, "utf8");
+        const changed = patch.replace(
+            "const role = capability.role;",
+            'const role = link.displayRole === "reviewer" ? "reviewer" : capability.role;',
+        );
+        assert.notEqual(changed, patch);
+        await writeFile(path, changed);
+        await assert.rejects(
+            admitFixtures([await loadFixture(packageDir)]),
+            /RV-D06 role-promotion.*expected pass[\s\S]*Verified maintainer keeps authority with a reviewer display hint/,
+        );
     });
 });
 

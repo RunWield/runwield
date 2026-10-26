@@ -115,7 +115,7 @@ test("record_plan_deviation confirms and appends one Plan-owned entry", async ()
                 "Superseded requirement: Replace the old navigation.",
                 "Replacement requirement: Keep the existing navigation.",
                 "Reason: The user chose continuity during Pair Execution.",
-                "Confirmed text will be saved in the Plan and Work Record.",
+                "Confirmed text will be saved in the Plan, its Epic (for an Epic child), and the Work Record.",
             ].join("\n\n"),
         );
     });
@@ -300,5 +300,100 @@ test("record_plan_deviation rejects a Session without active execution", async (
         assertEquals(result.details, { decision: "inactive", reason: "plan_execution_inactive" });
         assertEquals((await loadPlan(projectRoot, "demo-plan"))?.attrs.planDeviations, undefined);
         session.dispose();
+    });
+});
+
+async function makeEpicChild(projectRoot: string, type = "epic") {
+    await savePlan(projectRoot, "epic", "# Epic\n\n## Objective\n\nReplace the old navigation.\n", {
+        classification: "PROJECT",
+        type,
+        status: "ready_for_work",
+        planId: "parent-epic",
+    });
+    const child = await makePlan(projectRoot);
+    await savePlan(
+        projectRoot,
+        "demo-plan",
+        child.markdown,
+        { parentPlan: "epic" },
+        { expectedRevision: child.revision },
+    );
+    return (await loadPlan(projectRoot, "epic"))!;
+}
+
+test("confirmed child deviations are projected on the Epic and retries repair a missing projection", async () => {
+    await withTempProject(async (projectRoot) => {
+        const epicBefore = await makeEpicChild(projectRoot);
+        const fixture = makeSession(projectRoot, [{ outcome: "accepted", value: true }]);
+        const tool = createPlanDeviationTool({ hostedSession: fixture.session });
+        const first = await executeDeviation(tool, "epic-call");
+        const projected = (await loadPlan(projectRoot, "epic"))!;
+        assertStringIncludes(projected.body, "### Child Plan Deviations");
+        assertStringIncludes(projected.body, "**demo-plan**");
+        assertStringIncludes(projected.body, "Superseded requirement: Replace the old navigation.");
+        assertStringIncludes(projected.body, "Replacement requirement: Keep the existing navigation.");
+        assertStringIncludes(JSON.stringify(first.content), "Also recorded on the Epic");
+        assertEquals(projected.attrs, epicBefore.attrs);
+        // Simulate interruption after the child save but before the Epic projection.
+        await fsWriteFile(projected.path, epicBefore.markdown);
+        const retry = await executeDeviation(tool, "epic-call");
+        assertEquals(retry.details.decision, "recorded");
+        assertEquals((await loadPlan(projectRoot, "epic"))?.markdown, projected.markdown);
+        await executeDeviation(tool, "epic-call");
+        assertEquals((await loadPlan(projectRoot, "epic"))?.markdown, projected.markdown);
+        assertEquals((await loadPlan(projectRoot, "demo-plan"))?.attrs.planDeviations?.length, 1);
+        assertEquals(fixture.requests.length, 1);
+        fixture.session.dispose();
+    });
+});
+
+for (const outcome of ["canceled", "unsupported", "stale"] as const) {
+    test(`unconfirmed child deviation leaves the Epic unchanged (${outcome})`, async () => {
+        await withTempProject(async (projectRoot) => {
+            const before = await makeEpicChild(projectRoot);
+            const fixture = makeSession(projectRoot, []);
+            fixture.session.setInteractionAdapter({
+                supportsInteraction: () => outcome !== "unsupported",
+                requestInteraction: async () => {
+                    if (outcome === "stale") {
+                        const plan = (await loadPlan(projectRoot, "demo-plan"))!;
+                        await fsWriteFile(plan.path, `${plan.markdown}\nConcurrent edit.\n`);
+                        return { outcome: "accepted", value: true };
+                    }
+                    return { outcome: "canceled" };
+                },
+            });
+            const result = await executeDeviation(createPlanDeviationTool({ hostedSession: fixture.session }), outcome);
+            assertEquals(result.details.decision, outcome);
+            assertEquals((await loadPlan(projectRoot, "epic"))?.markdown, before.markdown);
+            fixture.session.dispose();
+        });
+    });
+}
+
+test("a Sequence child's deviation stays on the child", async () => {
+    await withTempProject(async (projectRoot) => {
+        const before = await makeEpicChild(projectRoot, "sequence");
+        const fixture = makeSession(projectRoot, [{ outcome: "accepted", value: true }]);
+        const result = await executeDeviation(createPlanDeviationTool({ hostedSession: fixture.session }), "sequence");
+        assertEquals(result.details.decision, "recorded");
+        assertEquals((await loadPlan(projectRoot, "epic"))?.markdown, before.markdown);
+        fixture.session.dispose();
+    });
+});
+
+test("Epic sync errors do not revoke a recorded child deviation", async () => {
+    await withTempProject(async (projectRoot) => {
+        const epic = await makeEpicChild(projectRoot);
+        await fsWriteFile(epic.path, "---\nclassification: [broken\n---\n");
+        const fixture = makeSession(projectRoot, [{ outcome: "accepted", value: true }]);
+        const result = await executeDeviation(
+            createPlanDeviationTool({ hostedSession: fixture.session }),
+            "sync-error",
+        );
+        assertEquals(result.details.decision, "recorded");
+        assertEquals((await loadPlan(projectRoot, "demo-plan"))?.attrs.planDeviations?.length, 1);
+        assertStringIncludes(JSON.stringify(result.content), "could not be synchronized");
+        fixture.session.dispose();
     });
 });

@@ -2,24 +2,37 @@
 
 ## Status
 
-Partly materialized. The Reviewer-only smoke runner has nine admitted discovery cases in five packages. The remaining
-35 scenarios are drafts. Human review of each Plan, diff, proof, and oracle comes before paid execution.
+Partly materialized. The Reviewer-only runner has 25 admitted discovery cases in 13 packages. The remaining
+19 scenarios are drafts. Mechanical admission must pass for every selected package before any model call. After the
+paid run, the owner judges each fixture's Plan, diff, proof, and oracle together with the Reviewer's result, not as a
+pre-run requirement.
 
 | State              | Scenarios                                                | Source                                                          |
 | ------------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
 | Materialized smoke | RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, RV-M01 A | [Fixtures and run instructions](../../evals/reviewer/README.md) |
-| Draft pairs        | RV-D01–D03, RV-D06–D11, RV-D14–D16 (A/B)                 | Catalog below                                                   |
+| Materialized pairs | RV-D01–D03 A/B, RV-D06–D10 A/B                           | [Fixtures and run instructions](../../evals/reviewer/README.md) |
+| Draft pairs        | RV-D11, RV-D14–D16 (A/B)                                 | Catalog below                                                   |
 | Draft multi-defect | RV-M02–M06                                               | Catalog below                                                   |
 | Draft repair-state | RV-R01–R06                                               | Catalog below                                                   |
 
-The current runner measures the baseline only, one trial per smoke case. The
-[2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine rounds. The owner
-accepted its 13 blocking
-findings, including findings on two oracle-clean twins. Four packages are now revision 2 after repairs; these revisions
-have no paid measurements. The other 35 scenarios, candidate
-comparison, repetitions, and repair-state execution remain target.
+`--scenarios all` selects the current 25 cases by package directory, sorted by scenario ID then variant. The original
+nine-case `--scenarios smoke` selection is unchanged. The runner measures one configuration, one trial per case. The
+[2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine original rounds. The
+owner accepted its 13 blocking findings, including findings on two oracle-clean twins. Under the historical rules,
+these findings blocked semantic scoring against the original oracle. Four packages are now revision 2 after repairs;
+these revisions and the eight new revision-1 packages have no paid measurements.
 
-The catalog contains 44 scenarios:
+Post-run `oracleVerdicts` in `adjudications.json` mark each case `confirmed` or `fixture_needs_repair`, with an
+optional note. A `fixture_needs_repair` verdict or any `novel_valid` finding excludes that case from every score and
+lists it under fixtures needing repair; other cases still score. Repair the fixture and rerun it before it can score.
+Semantic scores stay pending while a counted case lacks a verdict or any of its blocking findings lacks a label.
+Older labels without verdicts remain valid but pending. See [adjudication instructions](../../evals/reviewer/README.md#human-adjudication).
+
+Completing the four remaining discovery pairs would produce 33 cases in 17 packages. That expansion is future scope,
+not a claim about the delivered corpus. Additional multi-defect fixtures, repair-state execution, candidate comparison,
+and repetitions remain target.
+
+The full target catalog contains 44 scenarios:
 
 - 16 paired discovery families with defective and clean variants: 32 scenarios;
 - 6 multi-defect discovery scenarios;
@@ -54,6 +67,10 @@ The Reviewer never sees the variant label.
 | RV-D16 | Add a summary export that needs a date helper. The Plan names only the export module.                                                                           | Edits the shared date helper outside the Plan and changes its timezone handling. An existing caller that the diff does not touch now formats dates one day off.                                 | Edits the same shared helper outside the Plan, but only adds an optional export that the new code uses. Existing callers keep the same behavior. | The verifier runs the existing caller across a timezone boundary; A shifts the date, B does not. Reject A for the regression. B must not be rejected only because it edits a file that the Plan does not name.  |
 
 ### Pair coverage
+
+Each materialized package records one of six allowed `scenario.yaml` groups: `plan-adherence`,
+`plan-named-edge-case`, `correctness-beyond-plan`, `cross-file-context`, `architecture`, or `multiple-defects`.
+The first five correspond to the discovery-pair split below; RV-M01 uses `multiple-defects`.
 
 - **Plan adherence:** RV-D13 (missing Plan step), RV-D14 (Approved Plan Deviation is the effective requirement).
 - **Plan-named edge cases:** RV-D01, RV-D02, RV-D03, RV-D05, RV-D06.
