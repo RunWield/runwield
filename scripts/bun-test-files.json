@@ -359,7 +359,7 @@
     "src/shared/session/subagent-definitions.test.ts",
     "src/shared/session/task-completion-session.test.ts",
     "src/shared/session/tool-event-title.test.ts",
-    "src/shared/session/tutorial-context-session.test.js",
+    "src/shared/session/tutorial-context-session.test.ts",
     "src/shared/session/work-record-retry.test.ts",
     "src/shared/session/workflow-context-session.test.js",
     "src/shared/settings-mascot.test.ts",
