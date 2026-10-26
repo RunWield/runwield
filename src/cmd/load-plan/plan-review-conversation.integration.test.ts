@@ -41,6 +41,23 @@ async function answer(url: string, body: ReviewAnswer) {
     assertEquals(response.status, 200, await response.text());
 }
 
+async function waitForReview<T>(presented: Promise<void>, running: T): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        await Promise.race([
+            presented,
+            Promise.resolve(running).then(() => {
+                throw new Error("Review operation settled before the expected surface opened");
+            }),
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error("Review surface did not open")), 30000);
+            }),
+        ]);
+    } finally {
+        if (timer !== undefined) clearTimeout(timer);
+    }
+}
+
 for (const source of ["tool", "saved", "epic"] as const) {
     for (const reply of ["text-only reply", "Agent error", "Escape cancellation", "unreviewable Plan"] as const) {
         test(`${source} review handles ${reply}`, async () => {
@@ -58,11 +75,14 @@ for (const source of ["tool", "saved", "epic"] as const) {
                     const initial = await ensurePlanIdentity(projectRoot, "target");
                     const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
                     const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+                    const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+                    let presentations = 0;
                     let reviewUrl = "";
                     let rounds = 0;
                     const conversations: PlanReviewConversation[] = [];
                     let transcript: TranscriptContext | undefined;
                     let agentWorking = false;
+                    const agentStarted = Promise.withResolvers<void>();
                     let releaseAgent!: () => void;
                     const agentGate = new Promise<void>((resolve) => {
                         releaseAgent = resolve;
@@ -81,6 +101,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                             if (reply === "Agent error") throw new Error("The planning provider is unavailable.");
                             if (reply === "Escape cancellation") {
                                 agentWorking = true;
+                                agentStarted.resolve();
                                 await agentGate;
                             }
                             return fauxAssistantMessage(
@@ -117,6 +138,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                                             onSurfaceReady: (surface: { url: string }) => {
                                                 reviewUrl = surface.url;
                                                 rounds++;
+                                                surfaces[presentations++].resolve();
                                             },
                                         },
                                     },
@@ -134,8 +156,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                                   })
                                 : runtime.reopenPlanReview(sessionId);
                         void running.catch(() => {});
-                        for (let i = 0; i < 300 && rounds < 1; i++)
-                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        await waitForReview(surfaces[0].promise, running);
                         assertEquals(rounds, 1);
                         const firstUrl = reviewUrl;
                         const before = await loadPlan(projectRoot, "target");
@@ -146,8 +167,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                             feedback: "Why this boundary?",
                         });
                         if (reply === "Escape cancellation") {
-                            for (let i = 0; i < 300 && !agentWorking; i++)
-                                await new Promise((resolve) => setTimeout(resolve, 10));
+                            await waitForReview(agentStarted.promise, running);
                             assert(agentWorking, "The planning provider must be working before cancellation");
                             assertEquals(runtime.cancelSession(sessionId).aborted, true);
                             releaseAgent();
@@ -183,8 +203,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                             assertEquals(status.revision, conversations[0].revision);
                             return;
                         }
-                        for (let i = 0; i < 500 && rounds < 2; i++)
-                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        await waitForReview(surfaces[1].promise, running);
                         assertEquals(rounds, 2, "An Agent turn without plan_written must leave a live review");
                         assertEquals(reviewUrl, firstUrl);
                         assertEquals(conversations[1], conversations[0]);
@@ -237,6 +256,8 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
                     const initial = await ensurePlanIdentity(projectRoot, "target");
                     const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
                     const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+                    const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+                    let presentations = 0;
                     let reviewUrl = "";
                     try {
                         const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
@@ -274,6 +295,7 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
                                             ...request._meta,
                                             onSurfaceReady: (surface: { url: string }) => {
                                                 reviewUrl = surface.url;
+                                                surfaces[presentations++].resolve();
                                             },
                                         },
                                     },
@@ -288,8 +310,7 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
                             triageMeta: initial.attrs,
                         });
                         void running.catch(() => {});
-                        for (let i = 0; i < 300 && !reviewUrl; i++)
-                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        await waitForReview(surfaces[0].promise, running);
                         assert(reviewUrl);
                         assertEquals(
                             (await loadPlan(projectRoot, "target"))?.attrs.status,
@@ -331,6 +352,8 @@ test("explicit review cancellation does not run a conversation turn or re-arm", 
             ]);
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+            const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+            let presentations = 0;
             let rounds = 0;
             let reviewUrl = "";
             const otherInteractions: string[] = [];
@@ -350,6 +373,7 @@ test("explicit review cancellation does not run a conversation turn or re-arm", 
                                     onSurfaceReady: (surface: { url: string }) => {
                                         reviewUrl = surface.url;
                                         rounds++;
+                                        surfaces[presentations++].resolve();
                                     },
                                 },
                             },
@@ -363,7 +387,7 @@ test("explicit review cancellation does not run a conversation turn or re-arm", 
                     initialRequest: "Review the Plan.",
                 });
                 void running.catch(() => {});
-                for (let i = 0; i < 300 && !reviewUrl; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+                await waitForReview(surfaces[0].promise, running);
                 assert(reviewUrl);
                 assertEquals(runtime.cancelSession(sessionId).aborted, true);
                 const result = await running;
@@ -404,6 +428,8 @@ test("saved Sequence conversation re-arms every tab without losing child readine
         setModelMessages([fauxAssistantMessage(fauxText("The Sequence and child boundaries are unchanged."))]);
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+        let presentations = 0;
         let rounds = 0;
         let reviewUrl = "";
         let documents: Array<{ planId: string; plan: string }> = [];
@@ -430,6 +456,7 @@ test("saved Sequence conversation re-arms every tab without losing child readine
                                 onSurfaceReady: (surface: { url: string }) => {
                                     reviewUrl = surface.url;
                                     rounds++;
+                                    surfaces[presentations++].resolve();
                                 },
                             },
                         },
@@ -439,7 +466,7 @@ test("saved Sequence conversation re-arms every tab without losing child readine
             });
             const running = runtime.reopenPlanReview(sessionId);
             void running.catch(() => {});
-            for (let i = 0; i < 300 && rounds < 1; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+            await waitForReview(surfaces[0].promise, running);
             assertEquals(rounds, 1);
             const firstUrl = reviewUrl;
             const before = await Promise.all(["target", "target/child"].map((name) => loadPlan(projectRoot, name)));
@@ -449,7 +476,7 @@ test("saved Sequence conversation re-arms every tab without losing child readine
                 feedback: "Why these boundaries?",
                 documents,
             });
-            for (let i = 0; i < 500 && rounds < 2; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+            await waitForReview(surfaces[1].promise, running);
             assertEquals(rounds, 2);
             assertEquals(reviewUrl, firstUrl);
             assertEquals(documents.length, 2);
@@ -488,6 +515,8 @@ test("Approve and Run after a reply-only tool turn starts execution through the 
         ]);
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+        let presentations = 0;
         let url = "";
         let rounds = 0;
         try {
@@ -504,6 +533,7 @@ test("Approve and Run after a reply-only tool turn starts execution through the 
                                 onSurfaceReady: (surface: { url: string }) => {
                                     url = surface.url;
                                     rounds++;
+                                    surfaces[presentations++].resolve();
                                 },
                             },
                         },
@@ -517,10 +547,10 @@ test("Approve and Run after a reply-only tool turn starts execution through the 
                 initialRequest: "Review the Plan.",
             });
             void running.catch(() => {});
-            for (let i = 0; i < 300 && rounds < 1; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+            await waitForReview(surfaces[0].promise, running);
             assertEquals(rounds, 1);
             await answer(url, { approved: false, conversationTurn: true, feedback: "Explain the scope." });
-            for (let i = 0; i < 500 && rounds < 2; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+            await waitForReview(surfaces[1].promise, running);
             assertEquals(rounds, 2);
             await answer(url, {
                 approved: true,
@@ -587,6 +617,8 @@ test("direct conversation revision defers Approve and Run until the review write
             ]);
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+            const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+            let presentations = 0;
             let url = "";
             let rounds = 0;
             try {
@@ -613,6 +645,7 @@ test("direct conversation revision defers Approve and Run until the review write
                                     onSurfaceReady: (surface: { url: string }) => {
                                         url = surface.url;
                                         rounds++;
+                                        surfaces[presentations++].resolve();
                                     },
                                 },
                             },
@@ -622,10 +655,10 @@ test("direct conversation revision defers Approve and Run until the review write
                 });
                 const running = runtime.reopenPlanReview(sessionId);
                 void running.catch(() => {});
-                for (let i = 0; i < 300 && rounds < 1; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+                await waitForReview(surfaces[0].promise, running);
                 assertEquals(rounds, 1);
                 await answer(url, { approved: false, conversationTurn: true, feedback: "Change the scope." });
-                for (let i = 0; i < 500 && rounds < 2; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+                await waitForReview(surfaces[1].promise, running);
                 assertEquals(rounds, 2);
                 assertEquals((await loadPlan(projectRoot, "target"))?.attrs.status, "draft");
                 await answer(url, {
@@ -678,6 +711,8 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
             ]);
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+            const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+            let presentations = 0;
             let rounds = 0;
             let reviewUrl = "";
             let documents: SequenceReviewDocument[] = [];
@@ -701,6 +736,7 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
                                     onSurfaceReady: (surface: { url: string }) => {
                                         reviewUrl = surface.url;
                                         rounds++;
+                                        surfaces[presentations++].resolve();
                                     },
                                 },
                             },
@@ -710,7 +746,7 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
                 });
                 const running = runtime.reopenPlanReview(sessionId);
                 void running.catch(() => {});
-                for (let i = 0; i < 300 && rounds < 1; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+                await waitForReview(surfaces[0].promise, running);
                 assertEquals(rounds, 1);
                 await answer(reviewUrl, {
                     approved: false,
@@ -718,7 +754,7 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
                     feedback: "Revise the child's delivery boundary.",
                     documents,
                 });
-                for (let i = 0; i < 500 && rounds < 2; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+                await waitForReview(surfaces[1].promise, running);
                 assertEquals(rounds, 2);
                 const child = documents.find((document) => document.planName === "target/child");
                 assert(child);
@@ -736,7 +772,7 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
                     feedback: "Does this cover the requested scope?",
                     documents,
                 });
-                for (let i = 0; i < 500 && rounds < 3; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+                await waitForReview(surfaces[2].promise, running);
                 assertEquals(rounds, 3);
                 await answer(reviewUrl, { approved: true, approvalAction: "later", documents });
                 await running;
