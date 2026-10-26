@@ -1,5 +1,8 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { WorkflowContext } from "./workflow-context-session.js";
+import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
 import {
     deriveWorkflowContextFromExecutionWorkflow,
     normalizeWorkflowContext,
@@ -11,18 +14,23 @@ import {
     WORKFLOW_CONTEXT_CUSTOM_TYPE,
 } from "./workflow-context-session.js";
 
-/** @param {Array<Record<string, unknown>>} entries */
-function makeSessionManager(entries = []) {
-    return /** @type {import('@earendil-works/pi-coding-agent').SessionManager} */ (/** @type {unknown} */ ({
+interface FixtureWorkflowEntry {
+    type: "custom";
+    customType: string;
+    data: WorkflowContext;
+}
+
+// Preserve the partial JavaScript fixture, including its numeric append result and entries without SDK metadata.
+function makeSessionManager(entries: FixtureWorkflowEntry[] = []) {
+    return {
         getBranch: () => entries,
-        /** @param {string} customType @param {unknown} data */
-        appendCustomEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
-    }));
+        appendCustomEntry: (customType: string, data: WorkflowContext) =>
+            entries.push({ type: "custom", customType, data }),
+    } as unknown as SessionManager;
 }
 
 test("workflow context records latest triage and suppresses duplicates", () => {
-    /** @type {Array<Record<string, unknown>>} */
-    const entries = [];
+    const entries: FixtureWorkflowEntry[] = [];
     const sessionManager = makeSessionManager(entries);
 
     recordWorkflowTriageContext(sessionManager, { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM" });
@@ -86,12 +94,11 @@ test("workflow context skips malformed latest markers and tolerates missing sess
 });
 
 test("workflow context reads are fail-open when session entry access throws", () => {
-    const sessionManager =
-        /** @type {import('@earendil-works/pi-coding-agent').SessionManager} */ (/** @type {unknown} */ ({
-            getBranch: () => {
-                throw new Error("read failed");
-            },
-        }));
+    const sessionManager = {
+        getBranch: () => {
+            throw new Error("read failed");
+        },
+    } as unknown as SessionManager;
 
     assertEquals(readPersistedWorkflowContext(sessionManager), null);
     assertEquals(recordWorkflowPlanName(sessionManager, "p"), { planName: "p" });
@@ -129,9 +136,12 @@ test("workflow context derives execution metadata with legacy feature normalizat
         { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM", planName: "fallback-plan" },
     );
     assertEquals(
-        deriveWorkflowContextFromExecutionWorkflow({
-            triageMeta: { routingIntent: "NOPE", classification: "bad", complexity: "medium" },
-        }, "docs/plans/name-only.md"),
+        deriveWorkflowContextFromExecutionWorkflow(
+            {
+                triageMeta: { routingIntent: "NOPE", classification: "bad", complexity: "medium" },
+            },
+            "docs/plans/name-only.md",
+        ),
         { planName: "name-only" },
     );
     assertEquals(
@@ -145,8 +155,7 @@ test("workflow context derives execution metadata with legacy feature normalizat
 
 test("workflow context retains validation and publication progress facts across Session projection", () => {
     const sessionManager = makeSessionManager();
-    /** @type {Array<import('../workflow/workflow-presentation.ts').WorkflowProgressFact>} */
-    const progressFacts = [
+    const progressFacts: WorkflowProgressFact[] = [
         {
             kind: "validation_checkpoint",
             phase: "semantic",
@@ -195,13 +204,15 @@ test("workflow context derives current checkpoint facts from execution metadata"
                 },
             },
         })?.progressFacts,
-        [{
-            kind: "validation_checkpoint",
-            phase: "mechanical",
-            state: "awaiting_repair",
-            repairKind: "ci",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-        }],
+        [
+            {
+                kind: "validation_checkpoint",
+                phase: "mechanical",
+                state: "awaiting_repair",
+                repairKind: "ci",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+        ],
     );
 });
 
