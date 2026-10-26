@@ -204,9 +204,9 @@ After Stable asset publication succeeds, the release workflow:
 1. Renders the Homebrew formulas from the published release assets.
 2. Runs the complete package check on macOS.
 3. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact.
-4. Pushes the verified files to `gandazgul/homebrew-tap`.
+4. Pushes the verified files to `RunWield/homebrew-tap`.
 
-The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `gandazgul/homebrew-tap`.
+The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `RunWield/homebrew-tap`.
 Publication stops if the credential is absent or any package check fails. To reproduce the check locally, use:
 
 ```bash

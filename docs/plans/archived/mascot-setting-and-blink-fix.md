@@ -48,7 +48,7 @@ The agent mascot is always visible today. Two problems:
 The user decided: the setting is honored on both surfaces, but toggling happens only through the TUI `/settings` menu or
 by editing settings files. A Workspace settings page may be built later; this Plan does not add Workspace toggle UI.
 
-Owning PRD capability: [Agent mascots](../prd/runwield-core-prd.md#agent-mascots) in `docs/prd/runwield-core-prd.md`.
+Owning PRD capability: [Agent mascots](../../prd/runwield-core-prd.md#agent-mascots) in `docs/prd/runwield-core-prd.md`.
 This Plan adds a visibility setting to that capability and fixes the TUI centering behavior its acceptance scenario
 already describes ("the mascot centered at each sidebar width").
 

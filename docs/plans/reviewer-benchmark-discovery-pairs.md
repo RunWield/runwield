@@ -90,11 +90,11 @@ is `novel_valid`. Labels cover only the Reviewer's findings; there is no way to 
 
 ## Sequence
 
-| Order | Plan                                                                                                                                                           | Delivers                                                                                                                                        |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | [01-corpus-selection-oracle-verdicts-and-edge-case-fixtures](reviewer-benchmark-discovery-pairs/01-corpus-selection-oracle-verdicts-and-edge-case-fixtures.md) | Corpus-wide selection, coverage group in `scenario.yaml`, oracle verdicts and per-case exclusion, adjudication worksheet; RV-D01, D02, D03, D06 |
-| 2     | [02-lifecycle-process-and-publication-fixtures](reviewer-benchmark-discovery-pairs/02-lifecycle-process-and-publication-fixtures.md)                           | RV-D07, D08, D09, D10                                                                                                                           |
-| 3     | [03-context-fixtures-and-full-discovery-run](reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run.md)                                 | RV-D11, D14, D15, D16; the paid run of 33 cases; the committed report                                                                           |
+| Order | Plan                                                                                                                                                                    | Delivers                                                                                                                                        |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | [01-corpus-selection-oracle-verdicts-and-edge-case-fixtures](archived/reviewer-benchmark-discovery-pairs/01-corpus-selection-oracle-verdicts-and-edge-case-fixtures.md) | Corpus-wide selection, coverage group in `scenario.yaml`, oracle verdicts and per-case exclusion, adjudication worksheet; RV-D01, D02, D03, D06 |
+| 2     | [02-lifecycle-process-and-publication-fixtures](archived/reviewer-benchmark-discovery-pairs/02-lifecycle-process-and-publication-fixtures.md)                           | RV-D07, D08, D09, D10                                                                                                                           |
+| 3     | [03-context-fixtures-and-full-discovery-run](reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run.md)                                          | RV-D11, D14, D15, D16; the paid run of 33 cases; the committed report                                                                           |
 
 ## Expected Change Surface
 
