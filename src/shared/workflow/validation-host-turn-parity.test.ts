@@ -127,10 +127,15 @@ for (const scenario of cases) {
             assertEquals(session.result.kind, scenario.options?.planOnly ? "failed" : "paused");
             assertEquals(await observable(host), await observable(core));
             if (scenario.options?.attrs?.parentPlan) {
-                const coreEpic = await loadPlan(core.root, "epic");
-                const hostEpic = await loadPlan(host.root, "epic");
+                const coreEpic = await loadPlan(core.cwd, "epic");
+                const hostEpic = await loadPlan(host.cwd, "epic");
                 assertStringIncludes(hostEpic?.body || "", "Check assembled value");
                 assertEquals(hostEpic?.body, coreEpic?.body);
+                for (const fixture of [core, host]) {
+                    const primaryEpic = await loadPlan(fixture.root, "epic");
+                    assert(primaryEpic);
+                    assert(!primaryEpic.body.includes("Check assembled value"));
+                }
             }
         } finally {
             await core.close();

@@ -8,17 +8,22 @@ import { attachedValidationFixture } from "../../../shared/attached/validation-t
 import { getExactProjectCustomSetting } from "../../../shared/settings.js";
 import { withExternalClaude, CHECKOUT } from "./runtime-test-fixture.ts";
 
-// The external host starts a real detached CI shell, as the foreground validation runner does.
+// The external host starts real CI. A shell parent keeps Linux parent-death signals
+// out of the CI process so the test can check its suspension and release after the host dies.
 const hostWithCi = `
 import {spawn} from 'node:child_process';
 import {dirname,join} from 'node:path';
 import {createInterface} from 'node:readline';
 const marker=join(dirname(process.env.CLAUDE_CONFIG_DIR),'markers');
 createInterface({input:process.stdin}).once('line',()=>{
- const child=spawn('/bin/sh',['-c', 'printf "%s\\n" "$$" >> "$1/ci-runs"; while kill -0 "$2" 2>/dev/null; do sleep 0.01; done; printf "%s\\n" "$$" >> "$1/ci-finished"', 'ci',marker,String(process.pid)],{detached:true,stdio:'ignore'});
+ const script='printf "%s\\n" "$$" >> "$1/ci-runs"; while kill -0 "$2" 2>/dev/null; do sleep 0.01; done; printf "%s\\n" "$$" >> "$1/ci-finished"';
+ const child=spawn('/bin/sh',['-c','/bin/sh -c "$1" "$0" "$2" "$3" & echo $!; wait','ci',script,marker,String(process.pid)],{detached:true,stdio:['ignore','pipe','ignore']});
  child.unref();
- const rows=[{type:'assistant',message:{content:[{type:'tool_use',id:'ci',name:'mcp__runwield__status',input:{}}]}},{type:'user',message:{content:[{type:'tool_result',tool_use_id:'ci',content:JSON.stringify({ok:true,operation:'status',ciPid:child.pid})}]}}];
+ child.stdout.once('data',bytes=>{
+ const ciPid=Number(String(bytes).trim());
+ const rows=[{type:'assistant',message:{content:[{type:'tool_use',id:'ci',name:'mcp__runwield__status',input:{}}]}},{type:'user',message:{content:[{type:'tool_result',tool_use_id:'ci',content:JSON.stringify({ok:true,operation:'status',ciPid})}]}}];
  process.stdout.write(rows.map(row=>JSON.stringify(row)).join('\\n')+'\\n');
+ });
 });
 `;
 
