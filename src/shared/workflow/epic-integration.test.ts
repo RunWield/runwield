@@ -1,4 +1,4 @@
-import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { ok as assert } from "node:assert/strict";
@@ -14,6 +14,11 @@ import { parseDiffFiles } from "./review-diff-tool.js";
 import { makeRecordedSession, makeUi } from "./validation-test-helpers.js";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildPlanEventUpdates } from "./plan-lifecycle.js";
+import { HostedSession } from "../session/hosted-session.js";
+import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
+import { checkpointExecutionWorktree } from "../worktree.js";
+import { recordIntegrationNotes, syncEpicChildPlanDeviations } from "./epic-review-context.ts";
+import type { ReviewAdvisory } from "../../tools/review-complete.ts";
 import { readEpicDeliveryState, reconcileEpicDelivery, runEpicIntegrationGate } from "./epic-integration.ts";
 
 type PlanFixtureAttribute = string | number | string[];
@@ -23,6 +28,7 @@ type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
 interface ScriptedReview {
     approved: boolean;
     findings?: Array<{ title: string; requirement: string; evidence: string; status: "new" }>;
+    advisories?: ReviewAdvisory[];
 }
 
 /** What the scripted reviewer saw, for assertions. */
@@ -152,7 +158,7 @@ function scriptedReviewer(review: ScriptedReview, calls: ReviewerCall[] = []): S
                 approved: review.approved,
                 feedback: "",
                 findings: review.findings || [],
-                advisories: [],
+                advisories: (review.advisories || []).map(({ title, detail }) => ({ title, detail })),
             };
             await executeWorkflowTestTools(options, [
                 { name: "review_diff", arguments: { command: "list" } },
@@ -598,4 +604,106 @@ test("a missing branch Epic pauses rather than reviewing the primary document", 
     assertEquals(calls, []);
     assertEquals(cwds, []);
     assertEquals((await git(repo, ["worktree", "list"])).split("\n").length, 1);
+});
+
+test("child deviations and Integration Notes travel through delivery to the branch-head integration review", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await setCustomSetting("codereview", "none", "project", repo);
+    await deliverSecondChild(repo);
+    const primaryBefore = (await loadPlan(repo, "epic"))!.markdown;
+    const executionRoot = `${repo}-child`;
+    await git(repo, ["worktree", "add", "-b", "worktree/deviation", executionRoot, "epic/epic"]);
+    const session = new HostedSession({
+        id: "epic-child-deviation",
+        cwd: repo,
+        interactionAdapter: {
+            supportsInteraction: () => true,
+            requestInteraction: () => ({ outcome: "accepted", value: true }),
+        },
+    });
+    session.setActiveExecutionWorkflow({
+        planName: "epic/01-first",
+        triageMeta: { classification: "PLANNED_CHANGE" },
+        executionAgent: "engineer",
+        executionStarted: true,
+        projectRoot: repo,
+        executionCwd: executionRoot,
+        executionMode: "worktree",
+        worktreeBranch: "worktree/deviation",
+        worktreeId: "child-deviation-attempt",
+    });
+    try {
+        const tool = createPlanDeviationTool({ hostedSession: session });
+        type DeviationContext = Parameters<typeof tool.execute>[4];
+        const result = await tool.execute(
+            "child-scope-change",
+            {
+                supersededRequirement: "Ship first and second together.",
+                replacementRequirement: "Ship first only; omit the second outcome.",
+                reason: "The user removed the second outcome.",
+            },
+            undefined,
+            undefined,
+            {} as DeviationContext,
+        );
+        assertEquals(result.details?.decision, "recorded");
+        await fsRm(join(executionRoot, "second.js"));
+        await recordIntegrationNotes(executionRoot, "epic", "epic/01-first", [
+            { check: "First is usable without second", where: "first.js" },
+        ]);
+        assertEquals((await loadPlan(repo, "epic"))?.markdown, primaryBefore);
+        // A lost projection is rebuilt before checkpointing, just as publication does.
+        const epic = (await loadPlan(executionRoot, "epic"))!;
+        await fsWriteFile(epic.path, primaryBefore);
+        assertEquals(await syncEpicChildPlanDeviations(executionRoot, "epic/01-first"), "docs/plans/epic.md");
+        await recordIntegrationNotes(executionRoot, "epic", "epic/01-first", [
+            { check: "First is usable without second", where: "first.js" },
+        ]);
+        await checkpointExecutionWorktree({
+            worktreePath: executionRoot,
+            branch: "worktree/deviation",
+            planName: "epic/01-first",
+        });
+        await git(repo, ["switch", "epic/epic"]);
+        await git(repo, ["merge", "--no-ff", "-m", "deliver deviation and notes", "worktree/deviation"]);
+        await git(repo, ["switch", "main"]);
+        assertEquals(await git(repo, ["ls-tree", "--name-only", "epic/epic", "--", "second.js"]), "");
+        const branchDoc = await git(repo, ["show", "epic/epic:docs/plans/epic.md"]);
+        assertStringIncludes(branchDoc, "Replacement requirement: Ship first only; omit the second outcome.");
+        assertStringIncludes(branchDoc, "First is usable without second");
+        assertEquals((await loadPlan(repo, "epic"))?.markdown, primaryBefore);
+
+        const calls: ReviewerCall[] = [];
+        const { hostedSession } = gateSession();
+        const gate = await runEpicIntegrationGate({
+            hostedSession,
+            projectRoot: repo,
+            epicPlanName: "epic",
+            semanticReviewPort: scriptedReviewer(
+                {
+                    approved: true,
+                    advisories: [
+                        {
+                            title: "Second outcome removed by epic/01-first",
+                            detail: "Ship first and second together is replaced by the user-confirmed child deviation.",
+                        },
+                    ],
+                },
+                calls,
+            ),
+            workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+            localCIPort: scriptedChecks(PASSING_CHECKS),
+        });
+        assertEquals(gate.kind, "passed");
+        assertStringIncludes(calls[0].userRequest, "### Child Plan Deviations");
+        assertStringIncludes(calls[0].userRequest, "lists user-confirmed replacements");
+        assertStringIncludes(
+            calls[0].userRequest,
+            "Replacement requirement: Ship first only; omit the second outcome.",
+        );
+        assertStringIncludes(calls[0].userRequest, "First is usable without second");
+    } finally {
+        session.dispose();
+        await git(repo, ["worktree", "remove", "--force", executionRoot]);
+    }
 });
