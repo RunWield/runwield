@@ -540,6 +540,9 @@ siblings active. Listings show held work separately from active and finished wor
   automatically. A stale ownership reference from that failed creation does not block the retry.
 - Given an established planning document, loading keeps its saved contents and identity even when its source copy is
   removed. A missing established document is not replaced by an older source copy.
+- Given AI review rejects a child and repair then passes validation, continuation opens the next child once. A reply
+  that completes the repair succeeds and returns the replacement Session, without retrying the closed child Session.
+  Direct validation also continues once.
 - Given a child published from another checkout, preparing the next child includes that publication.
 - Given the next child already has a planning worktree with saved edits, continuation imports the published code and
   keeps those edits.

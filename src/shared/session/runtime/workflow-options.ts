@@ -62,6 +62,8 @@ export type RuntimeValidationOptions = Partial<
     triageMeta?: RuntimeTriageInput;
     expectedGeneration?: number;
     skipPendingSegmentResume?: boolean;
+    /** The enclosing prompt owns Epic continuation after validation settles. */
+    suppressEpicContinuation?: boolean;
 };
 export type RuntimeWorkflowOptions =
     | RuntimeExecutePlanOptions
@@ -82,6 +84,7 @@ export type SemanticRepairContinuation = Omit<
     "activeWorkflow"
 > & { activeWorkflow: import("../hosted-session.js").ActiveExecutionWorkflow };
 export interface RuntimeSemanticRepairOptions {
+    suppressEpicContinuation?: boolean;
     planName: string;
     planContent?: string;
     triageMeta?: import("../../../tools/plan-written.ts").TriageMeta;

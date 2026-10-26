@@ -14,14 +14,15 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-24"
-status: "ready_for_work"
 origin: "internal"
 parentPlan: "reviewer-benchmark-discovery-pairs"
 order: 2
 dependencies:
     - "01-corpus-selection-oracle-verdicts-and-edge-case-fixtures"
 userVerifiedAt: null
-userVerificationNote: null
+targetBranch: "main"
+validatedCommit: "b74469de54340f3b6dd4eaf201dd00e7b449cd86"
+status: "verified"
 ---
 
 # Lifecycle, Process, and Publication Fixtures

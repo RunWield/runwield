@@ -644,6 +644,7 @@ export class RuntimeTurns {
                 hostedSession.id,
                 {
                     planName: validationResult.planName || workflow?.planName || options.planName || "",
+                    suppressEpicContinuation: true,
                     planContent: options.planContent,
                     triageMeta: workflow?.triageMeta || options.triageMeta || {},
                 },
