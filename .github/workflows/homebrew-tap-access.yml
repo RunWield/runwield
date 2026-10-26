@@ -14,7 +14,7 @@ jobs:
             - name: Checkout Homebrew tap repository
               uses: actions/checkout@v5
               with:
-                  repository: gandazgul/homebrew-tap
+                  repository: RunWield/homebrew-tap
                   token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
                   path: homebrew-tap
                   fetch-depth: 1

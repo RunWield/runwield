@@ -87,17 +87,17 @@ Worktrees that were already created early stay as they are. The user decided tha
 
 ### Owning requirements
 
-- [Core Epic decomposition and hold](../prd/runwield-core-prd.md#epic-decomposition-and-hold):
+- [Core Epic decomposition and hold](../../prd/runwield-core-prd.md#epic-decomposition-and-hold):
     - **Each child starts with the preceding children's published code** — strengthened. New worktrees start from the
       newest Epic branch head because creation now happens at session start.
     - Add a named requirement: a child's worktree exists only after a session starts in it.
     - Preserve: fetch-before-prepare, refresh of existing unstarted worktrees, sibling scope synchronization,
       continuation behavior, and the primary checkout staying intact.
-- [ADR-005 concurrent worktree isolation](../adr/005-concurrent-worktree-isolation.md), Lifecycle step 1 says "when a
+- [ADR-005 concurrent worktree isolation](../../adr/005-concurrent-worktree-isolation.md), Lifecycle step 1 says "when a
   targeted Epic child is opened for planning". This change makes the trigger exact: a session start, not a lookup or a
   load.
 
-The `ready_for_work` Plan [Side-Effect-Free Plan Reads](side-effect-free-plan-reads.md) has the same direction for
+The `ready_for_work` Plan [Side-Effect-Free Plan Reads](../side-effect-free-plan-reads.md) has the same direction for
 catalog reads. This Plan does not depend on it, and it does not conflict with it.
 
 ## Objective

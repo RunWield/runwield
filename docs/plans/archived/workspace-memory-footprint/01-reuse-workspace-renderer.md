@@ -13,8 +13,7 @@ collaborationRecommendation: "autonomous"
 origin: "internal"
 parentPlan: "workspace-memory-footprint"
 order: 1
-dependencies:
-    []
+dependencies: []
 userVerifiedAt: null
 createdAt: "2026-09-30T04:08:57.304Z"
 targetBranch: "main"
@@ -42,12 +41,12 @@ complete page request or the owner's historical 3 GB incident.
 
 Owning capabilities:
 
-- [Workspace Browser Sessions](../../prd/runwield-workspace-prd.md#browser-sessions): proposed addition, **Keep repeated
+- [Workspace Browser Sessions](../../../prd/runwield-workspace-prd.md#browser-sessions): proposed addition, **Keep repeated
   browser use memory-stable**. This slice covers navigation without per-request renderer retention; the next slice
   extends it to operation observation.
-- [Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): preserve
+- [Browser Plan review and workflow](../../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): preserve
   **Review the current Plan and preserve explicit execution choices**, including current content and decisions.
-- [Local Plan management](../../prd/runwield-workspace-prd.md#local-plan-management): preserve read/edit behavior,
+- [Local Plan management](../../../prd/runwield-workspace-prd.md#local-plan-management): preserve read/edit behavior,
   links, and lifecycle isolation.
 
 No requirement is removed. The requirement wording must describe observable use, not JavaScript module loading.

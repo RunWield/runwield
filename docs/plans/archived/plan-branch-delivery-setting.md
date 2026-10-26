@@ -49,7 +49,7 @@ optional, and off by default: RunWield should stop at a per-Plan branch, the way
 branch, and the user merges onward themselves.
 
 This is the simple version the user asked for instead of advancing the
-[Forge Change Request Delivery](forge-change-request-delivery.md) Epic. That Epic stays as-is and is not modified by
+[Forge Change Request Delivery](../forge-change-request-delivery.md) Epic. That Epic stays as-is and is not modified by
 this Plan.
 
 Owning capability: `docs/prd/runwield-core-prd.md#execution-validation-and-recovery`. The requirement "Verified means
@@ -212,17 +212,17 @@ No `supersedes` Work Record IDs are proposed; this is new behavior, not a replac
 
 - Automated: `deno task test` (full suite; RunWield also runs `deno task ci` after implementation). Focused new
   coverage:
-  - `src/shared/workflow/plan-branch.test.ts` (real Git fixture): default naming; creation from an explicit source
-    branch; creation from the repo default when unset; existing-branch reuse without recreation; adoption-gate
-    exclusions (Epic child with `parentPlan`, PROJECT, `plan/`-prefixed target).
-  - Settings unit tests: default false, project-over-global precedence, non-boolean values ignored.
-  - An execution-start + publication integration test (real Git fixture, setting off): branch `plan/<plan-name>` exists
-    and is based on the repo default; the worktree `baseBranch` is the Plan Branch; the Plan's front matter records
-    `targetBranch: plan/<plan-name>`; after validation the merge commit is on the Plan Branch; the source branch head is
-    unchanged; the Plan is `verified`. This test fails if the setting is added but not wired into execution start, or if
-    publication still merges into the source branch.
-  - An on-path integration test (setting true, no `targetBranch`): worktree based on the current checkout branch and
-    merged back into it — today's behavior, protected.
+    - `src/shared/workflow/plan-branch.test.ts` (real Git fixture): default naming; creation from an explicit source
+      branch; creation from the repo default when unset; existing-branch reuse without recreation; adoption-gate
+      exclusions (Epic child with `parentPlan`, PROJECT, `plan/`-prefixed target).
+    - Settings unit tests: default false, project-over-global precedence, non-boolean values ignored.
+    - An execution-start + publication integration test (real Git fixture, setting off): branch `plan/<plan-name>` exists
+      and is based on the repo default; the worktree `baseBranch` is the Plan Branch; the Plan's front matter records
+      `targetBranch: plan/<plan-name>`; after validation the merge commit is on the Plan Branch; the source branch head is
+      unchanged; the Plan is `verified`. This test fails if the setting is added but not wired into execution start, or if
+      publication still merges into the source branch.
+    - An on-path integration test (setting true, no `targetBranch`): worktree based on the current checkout branch and
+      merged back into it — today's behavior, protected.
 - Manual: in a scratch repository, run `wld settings`, toggle "Auto-merge into target branch" off (default) and on; load
   a small standalone Plan end-to-end with the setting off and confirm `git branch` shows `plan/<plan-name>`, the default
   branch is untouched, and the Plan shows Verified; then repeat with the setting on and confirm the merge lands on the
