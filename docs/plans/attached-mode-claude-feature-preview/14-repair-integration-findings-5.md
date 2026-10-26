@@ -18,6 +18,7 @@ dependencies: []
 targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "ac29444a01d6ed8383f0409caff864b878508ec2"
 ---
 
 # Repair integration findings 5
