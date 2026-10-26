@@ -442,7 +442,7 @@
     "src/shared/workflow/publication-machine.test.ts",
     "src/shared/workflow/publication-revalidation.test.ts",
     "src/shared/workflow/review-contract.test.ts",
-    "src/shared/workflow/review-diff-tool.test.js",
+    "src/shared/workflow/review-diff-tool.test.ts",
     "src/shared/workflow/semantic-repair-segment-handoff.test.ts",
     "src/shared/workflow/sequence-review.test.ts",
     "src/shared/workflow/sidebar-checkpoint.test.ts",
