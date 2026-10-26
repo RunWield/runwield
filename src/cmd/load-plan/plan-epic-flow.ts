@@ -69,7 +69,7 @@ export interface HandleEpicPlanOptions {
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan
  * @param {PlanSessionSurface} opts.session
- * @returns {Promise<"handled" | "continue" | "review" | "direct_review">}
+ * @returns {Promise<"handled" | "archiving" | "continue" | "review" | "direct_review">}
  */
 export async function handleEpicPlan({
     projectRoot,
@@ -78,7 +78,7 @@ export async function handleEpicPlan({
     runSlicerAgent,
     loadChildPlan,
     session,
-}: HandleEpicPlanOptions): Promise<"handled" | "continue" | "review" | "direct_review"> {
+}: HandleEpicPlanOptions): Promise<"handled" | "archiving" | "continue" | "review" | "direct_review"> {
     if (!isProjectPlan(plan.attrs)) return "continue";
     projectPlanType(plan.attrs);
     const sequence = isSequencePlan(plan.attrs);
@@ -322,7 +322,7 @@ export async function handleEpicPlan({
 
         if (answer === "archive_epic") {
             const archived = await archiveEpicWithChildren({ projectRoot, plan, uiAPI });
-            if (archived) return "handled";
+            if (archived) return "archiving";
             continue;
         }
 

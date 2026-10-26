@@ -26,6 +26,9 @@ workRecord:
     path: "docs/work-records/2026-10-26-epic-integration-gate-retry.md"
     lastAttemptAt: "2026-10-26T13:11:26.090Z"
 status: "verified"
+archivedAt: "2026-10-26T13:45:10.553Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/retry-epic-integration-gate.md"
 ---
 
 # Retry the Integration Gate from the Epic Menu
