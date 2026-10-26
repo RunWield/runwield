@@ -1,17 +1,21 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { runCopyCommand } from "./index.ts";
+import type { UiAPI } from "../../ui/tui/types.js";
+import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
+
+type AssistantTextReader = (() => null) | SessionRuntime["getLastAssistantText"];
 
 initRunWieldTheme();
 
 function makeUi() {
-    const messages = /** @type {string[]} */ ([]);
+    const messages: string[] = [];
     return {
         messages,
-        uiAPI: /** @type {any} */ ({
-            appendSystemMessage: (/** @type {string} */ message) => messages.push(message),
-        }),
+        uiAPI: {
+            appendSystemMessage: ((message: string) => messages.push(message)) as UiAPI["appendSystemMessage"],
+        } as UiAPI,
     };
 }
 
@@ -26,7 +30,9 @@ test("runCopyCommand obtains assistant text only through SessionRuntime", async 
     await runCopyCommand([], {
         uiAPI,
         sessionId: "copy-test",
-        sessionRuntime: /** @type {any} */ ({ getLastAssistantText: () => null }),
+        sessionRuntime: {
+            getLastAssistantText: (() => null) as AssistantTextReader,
+        } as SessionRuntime,
     });
     assertEquals(messages, ["Nothing to copy — no assistant message found."]);
 });
