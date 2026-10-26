@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "8ba6e378-6e59-41f9-a43f-e245b5450e8b"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "e3db158c-4efc-4368-9545-3b3409ef367e"
 ---
-
 # Stable review diffs and unreadable-patch rejection
 
 ## Summary
