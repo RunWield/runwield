@@ -8,21 +8,37 @@ import { test } from "node:test";
  */
 
 import { abortActiveSession } from "./session.js";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession, type DisposableLike } from "./hosted-session.js";
 
-/**
- * @param {string} id
- */
-function makeHostedSession(id) {
+interface FakeSessionOptions {
+    isStreaming?: boolean;
+    onAbort?: () => void;
+}
+
+interface FakeSession extends DisposableLike {
+    isStreaming: boolean;
+    abort: () => void;
+    clearQueue: () => void;
+    readonly _abortCalls: number;
+    readonly _clearQueueCalls: number;
+}
+
+interface WrappedFakeSession extends DisposableLike {
+    kind: "claude-cli" | "agy-cli";
+    session: FakeSession;
+}
+
+type FixtureRootSessionSetter = (
+    session: DisposableLike | WrappedFakeSession | null,
+) => ReturnType<HostedSession["setRootAgentSession"]>;
+
+function makeHostedSession(id: string) {
     return new HostedSession({ id, cwd: getCwd() });
 }
 
-/**
- * @param {{ isStreaming?: boolean, onAbort?: () => void }} [opts]
- */
-function makeFakeSession(opts = {}) {
+function makeFakeSession(opts: FakeSessionOptions = {}): FakeSession {
     const state = { isStreaming: !!opts.isStreaming, abortCalls: 0, clearQueueCalls: 0 };
-    return /** @type {any} */ ({
+    return {
         get isStreaming() {
             return state.isStreaming;
         },
@@ -43,7 +59,7 @@ function makeFakeSession(opts = {}) {
         get _clearQueueCalls() {
             return state.clearQueueCalls;
         },
-    });
+    };
 }
 
 test("abortActiveSession returns false when target root exists but is idle", () => {
@@ -115,7 +131,7 @@ test("abortActiveSession swallows errors thrown by abort() and still reports tru
 test("^abortActiveSession unwraps claude-cli execution-session wrapper and aborts the inner session$", () => {
     const hostedSession = makeHostedSession("abort-claude-wrapper");
     const inner = makeFakeSession({ isStreaming: true });
-    hostedSession.setRootAgentSession(/** @type {any} */ ({ kind: "claude-cli", session: inner }));
+    (hostedSession.setRootAgentSession as FixtureRootSessionSetter)({ kind: "claude-cli", session: inner });
 
     assertEquals(abortActiveSession(hostedSession), true);
     assertEquals(inner._abortCalls, 1);
@@ -125,7 +141,7 @@ test("^abortActiveSession unwraps claude-cli execution-session wrapper and abort
 test("abortActiveSession unwraps agy-cli execution-session wrapper and aborts the inner session", () => {
     const hostedSession = makeHostedSession("abort-agy-wrapper");
     const inner = makeFakeSession({ isStreaming: true });
-    hostedSession.setRootAgentSession(/** @type {any} */ ({ kind: "agy-cli", session: inner }));
+    (hostedSession.setRootAgentSession as FixtureRootSessionSetter)({ kind: "agy-cli", session: inner });
 
     assertEquals(abortActiveSession(hostedSession), true);
     assertEquals(inner._abortCalls, 1);

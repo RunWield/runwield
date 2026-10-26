@@ -57,6 +57,13 @@ Records list confirmed entries under `## Deviations from Plan`. Canceled, stale,
 not change the Plan. If the session is lost before the write, ask for confirmation again. If it is lost after the write,
 retrying the same tool call recovers the saved entry by tool-call identity and does not replay transcript approval.
 
+For an Epic child, RunWield also projects confirmed entries into one managed child block under `### Child Plan Deviations`
+in the Epic's Objective. The child remains authoritative; the Epic's deviation front matter stays unchanged. The block
+and Integration Notes are written in the execution checkout and travel with child delivery, not through the primary
+checkout. Retries and publication checkpoints restore a missing projection. Integration review reports outcomes changed
+only by approved deviations as advisories naming the outcome and child, not findings. Other defects and unmet replacement
+requirements remain findings. Epic Work Records collect each child entry once. Sequence children keep ordinary recording.
+
 `codereview` controls the Code Review gate after local validation and Semantic Review pass and before merge-back: `none`
 skips the gate, `ask` prompts the user, and `always` requires it.
 

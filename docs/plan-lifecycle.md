@@ -268,9 +268,18 @@ own Planner session can reshape it again. A sibling that has started stays as it
 
 Each child's Semantic Review judges only that child's correctness, with the Epic's objective and siblings as context.
 Its Integration Notes are written to a RunWield-managed `### Integration Notes` subsection of the Epic's Verification
-Plan; the Integration Reviewer reads them as places to look. The Integration Reviewer is its own subagent: it reads
-selectively from the Epic outcomes and notes instead of reading every line again, and can hand large areas to read-only
-delegates.
+Plan; the Integration Reviewer reads them as places to look. The notes are written in the child's execution checkout
+and reach the Epic branch with child delivery, without changing the primary copy.
+
+Confirmed child Plan Deviations also travel in that checkout's Epic document, under `### Child Plan Deviations` in the
+Objective. Each child has one managed block projected from its authoritative `planDeviations`; the Epic's own deviation
+front matter stays unchanged. Recording, same-call retries, and publication checkpoints synchronize the projection.
+Integration review treats the replacements as user-approved: a gap caused only by a deviation is an advisory naming the
+affected Epic outcome and child, not a finding. Other defects and unmet replacement requirements remain findings. Epic
+Work Records still collect child front matter once, not the projected blocks. Sequence containers do not get these blocks.
+
+The Integration Reviewer is its own subagent: it reads selectively from the Epic outcomes and notes instead of reading
+every line again, and can hand large areas to read-only delegates.
 
 Reading or archiving an Epic child never prepares a planning worktree for it: archive, restore, and Work Record
 generation resolve the local document read-only. Planning worktrees start only when Planner or execution starts the

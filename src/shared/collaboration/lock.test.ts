@@ -9,9 +9,22 @@ import {
     normalizeCollaborationFrontMatter,
     SHARED_PLAN_LOCK_REPAIR,
     SharedPlanLockError,
+    type CollaborationFrontMatter,
+    type CollaborationWriteOptions,
 } from "./lock.ts";
 
-const lockedAttrs = {
+interface FixtureWriteOptions extends Omit<CollaborationWriteOptions, "collaborationLockBypass"> {
+    collaborationLockBypass?: symbol | string;
+}
+
+interface FixtureFrontMatter extends Omit<CollaborationFrontMatter, "collaborationRevision"> {
+    collaborationRevision?: number | string;
+}
+
+type FixtureWriteAssertion = (attrs?: CollaborationFrontMatter, options?: FixtureWriteOptions) => void;
+type FixtureFrontMatterNormalizer = (attrs?: FixtureFrontMatter) => CollaborationFrontMatter;
+
+const lockedAttrs: CollaborationFrontMatter = {
     collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
     collaborationServerUrl: "https://plans.example.test/base",
     collaborationSpaceId: "space-1",
@@ -44,7 +57,7 @@ test("shared plan lock accepts only exported exact bypass values", () => {
     assertEquals(isCollaborationLockBypass(COLLABORATION_LOCK_BYPASS.push), true);
     assertEquals(isCollaborationLockBypass(true), false);
     assertThrows(
-        () => assertSharedPlanWriteAllowed(lockedAttrs, { collaborationLockBypass: /** @type {any} */ ("pull") }),
+        () => (assertSharedPlanWriteAllowed as FixtureWriteAssertion)(lockedAttrs, { collaborationLockBypass: "pull" }),
         SharedPlanLockError,
     );
 });
@@ -65,11 +78,11 @@ test("shared plan lock messages redact accidental URL fragments", () => {
 });
 
 test("collaboration metadata normalizes non-secret front matter values", () => {
-    const attrs = normalizeCollaborationFrontMatter({
+    const attrs = (normalizeCollaborationFrontMatter as FixtureFrontMatterNormalizer)({
         collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
         collaborationServerUrl: " https://plans.example.test/base/ ",
         collaborationSpaceId: " space-1 ",
-        collaborationRevision: /** @type {any} */ ("3"),
+        collaborationRevision: "3",
         collaborationBodyHash: " hash ",
         collaborationSyncedAt: " 2026-07-04T00:00:00.000Z ",
     });

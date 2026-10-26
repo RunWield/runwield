@@ -6,18 +6,32 @@ import {
     readPersistedTutorialContext,
     recordTutorialContext,
     TUTORIAL_CONTEXT_CUSTOM_TYPE,
+    type TutorialContext,
+    type TutorialContextCandidate,
 } from "./tutorial-context-session.ts";
 
-/** @param {Array<Record<string, unknown>>} entries */
-function makeSessionManager(entries = []) {
-    return {
-        getBranch: () => entries,
-        /** @param {string} customType @param {unknown} data */
-        appendCustomEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
-    };
+interface FixtureContextData extends Omit<TutorialContextCandidate, "shownExplanationIds"> {
+    shownExplanationIds?: TutorialContextCandidate["shownExplanationIds"] | Array<string | number>;
+    planName?: string;
 }
 
-const ENABLED_CONTEXT = {
+interface FixtureSessionEntry {
+    type: string;
+    customType: string;
+    data: FixtureContextData;
+}
+
+type TutorialSessionManager = NonNullable<Parameters<typeof recordTutorialContext>[0]>;
+
+function makeSessionManager(entries: FixtureSessionEntry[] = []) {
+    return {
+        getBranch: () => entries,
+        appendCustomEntry: (customType: string, data: TutorialContextCandidate) =>
+            entries.push({ type: "custom", customType, data }),
+    } as TutorialSessionManager;
+}
+
+const ENABLED_CONTEXT: TutorialContext = {
     version: 1,
     guidanceEnabled: true,
     shownExplanationIds: ["welcome", "plans"],
@@ -55,8 +69,7 @@ test("tutorial context normalizes and deduplicates explanation ids", () => {
 });
 
 test("tutorial context latest valid entry wins and duplicate records are suppressed", () => {
-    /** @type {Array<Record<string, unknown>>} */
-    const entries = [];
+    const entries: FixtureSessionEntry[] = [];
     const manager = makeSessionManager(entries);
     recordTutorialContext(manager, ENABLED_CONTEXT);
     recordTutorialContext(manager, ENABLED_CONTEXT);
@@ -74,30 +87,36 @@ test("tutorial context latest valid entry wins and duplicate records are suppres
 test("tutorial context fails closed for unsupported or invalid latest matching entry", () => {
     const older = { type: "custom", customType: TUTORIAL_CONTEXT_CUSTOM_TYPE, data: ENABLED_CONTEXT };
     assertEquals(
-        readPersistedTutorialContext(makeSessionManager([
-            older,
-            { type: "custom", customType: TUTORIAL_CONTEXT_CUSTOM_TYPE, data: { ...ENABLED_CONTEXT, version: 2 } },
-        ])),
+        readPersistedTutorialContext(
+            makeSessionManager([
+                older,
+                { type: "custom", customType: TUTORIAL_CONTEXT_CUSTOM_TYPE, data: { ...ENABLED_CONTEXT, version: 2 } },
+            ]),
+        ),
         null,
     );
     assertEquals(
-        readPersistedTutorialContext(makeSessionManager([
-            older,
-            {
-                type: "custom",
-                customType: TUTORIAL_CONTEXT_CUSTOM_TYPE,
-                data: { ...ENABLED_CONTEXT, shownExplanationIds: ["ok", 1] },
-            },
-        ])),
+        readPersistedTutorialContext(
+            makeSessionManager([
+                older,
+                {
+                    type: "custom",
+                    customType: TUTORIAL_CONTEXT_CUSTOM_TYPE,
+                    data: { ...ENABLED_CONTEXT, shownExplanationIds: ["ok", 1] },
+                },
+            ]),
+        ),
         null,
     );
 });
 
 test("tutorial context is absent for legacy transcripts and rejects incomplete data", () => {
     assertEquals(
-        readPersistedTutorialContext(makeSessionManager([
-            { type: "custom", customType: "runwield.workflow_context", data: { planName: "legacy" } },
-        ])),
+        readPersistedTutorialContext(
+            makeSessionManager([
+                { type: "custom", customType: "runwield.workflow_context", data: { planName: "legacy" } },
+            ]),
+        ),
         null,
     );
     assertEquals(normalizeTutorialContext({ guidanceEnabled: true }), null);
