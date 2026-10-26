@@ -532,7 +532,9 @@ uses the same guidance within each user project’s own PRD structure.
   the host conversation. Core accepts valid sections through the same record rules as Core execution, without a Core
   model turn or preset. Private host text is not copied into records, indexing, telemetry, or publication evidence.
 - **Bounded invalid recording:** Given two invalid Recorder submissions, the first returns errors for one retry; the
-  second records failure. Publication continues and the notice reports both delivery and recording outcomes.
+  second records failure. Publication continues and the notice reports both delivery and recording outcomes. If the
+  process stops after publication but before the response is saved, recovery still reports the Recorder submission as
+  rejected and delivery as complete. Retrying that submission returns the saved rejection, not success.
 - **Deferred supersession:** Given a Recorder supersession proposal, Attached delivery leaves the earlier record current
   and names `wld wr supersede` for a later user decision.
 - **Conversation-only manual checks:** Given delivered work, Claude suggests checks from the Plan without a Core Manual
