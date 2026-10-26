@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { WorkflowContext } from "./workflow-context-session.js";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
 import {
@@ -20,22 +20,21 @@ interface FixtureWorkflowEntry {
     data: WorkflowContext;
 }
 
-// Preserve the partial JavaScript fixture, including its numeric append result and entries without SDK metadata.
 function makeSessionManager(entries: FixtureWorkflowEntry[] = []) {
-    return {
-        getBranch: () => entries,
-        appendCustomEntry: (customType: string, data: WorkflowContext) =>
-            entries.push({ type: "custom", customType, data }),
-    } as unknown as SessionManager;
+    const sessionManager = SessionManager.inMemory();
+    for (const entry of entries) {
+        sessionManager.appendCustomEntry(entry.customType, entry.data);
+    }
+    return sessionManager;
 }
 
 test("workflow context records latest triage and suppresses duplicates", () => {
-    const entries: FixtureWorkflowEntry[] = [];
-    const sessionManager = makeSessionManager(entries);
+    const sessionManager = makeSessionManager();
 
     recordWorkflowTriageContext(sessionManager, { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM" });
     recordWorkflowTriageContext(sessionManager, { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM" });
 
+    const entries = sessionManager.getBranch().filter((entry) => entry.type === "custom");
     assertEquals(entries.length, 1);
     assertEquals(entries[0].customType, WORKFLOW_CONTEXT_CUSTOM_TYPE);
     assertEquals(readPersistedWorkflowContext(sessionManager), {
@@ -94,11 +93,10 @@ test("workflow context skips malformed latest markers and tolerates missing sess
 });
 
 test("workflow context reads are fail-open when session entry access throws", () => {
-    const sessionManager = {
-        getBranch: () => {
-            throw new Error("read failed");
-        },
-    } as unknown as SessionManager;
+    const sessionManager = makeSessionManager();
+    sessionManager.getBranch = () => {
+        throw new Error("read failed");
+    };
 
     assertEquals(readPersistedWorkflowContext(sessionManager), null);
     assertEquals(recordWorkflowPlanName(sessionManager, "p"), { planName: "p" });
