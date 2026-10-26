@@ -11,18 +11,26 @@ affectedPaths:
     - "src/shared/session/file-session-storage.ts"
     - "src/shared/session/file-session-control.ts"
     - "src/constants.js"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
 createdAt: "2026-10-10"
-status: "draft"
 planId: "f79cd8d2-970c-4adf-859d-f6db48ef8e1a"
+status: "user_verified"
+origin: "internal"
+userVerifiedAt: "2026-10-26T14:04:49.829Z"
+userVerificationNote: "this was done by codex"
+workRecord:
+  status: "generated"
+  recordId: "b82a93f7-bb4a-44a6-a576-858b76666183"
+  path: "docs/work-records/2026-10-26-portable-bun-runtime-and-development-toolchain.md"
+  lastAttemptAt: "2026-10-26T14:05:08.047Z"
+archivedAt: "2026-10-26T14:09:14.645Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/runtime-migration.md"
 ---
 
 # Migrate RunWield's runtime without weakening storage or isolation
 
 Current contributor commands retain the original task names; use `bun run compile --output <path>` and `bun run ci`.
-Dated checkpoints below record the transitional names used at the time. See [the task compatibility audit](bun-task-compatibility.md).
+Dated checkpoints below record the transitional names used at the time. See [the task compatibility audit](../../bun-task-compatibility.md).
 Carlos subsequently approved Bun-only test container definitions without equivalent Deno permissions; see
 [the phase-2 plan](bun-only-toolchain.md) for the current container scope.
 

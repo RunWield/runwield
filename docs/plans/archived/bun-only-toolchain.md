@@ -2,7 +2,9 @@
 classification: "PLANNED_CHANGE"
 workKind: "REFACTOR"
 complexity: "HIGH"
-status: "in-progress"
+status: "user_verified"
+userVerifiedAt: "2026-10-26T12:52:17-04:00"
+userVerificationNote: "This was implemented by Codex"
 createdAt: "2026-10-12"
 planId: "6356d270-7145-4aaa-b1ed-4a0e8e8a35b2"
 ---
@@ -142,7 +144,7 @@ checks deliberately retain Deno in separate CI lanes, as required by the accepta
 Carlos also clarified that public task names must stay the same as under Deno. All 49 names were audited; none is missing.
 Canonical commands now own implementation and are used in ordinary CI/release tooling. The sole historical build fallback
 uses `compile:bun` for immutable RC1 checkouts that lack the new named compiler. See the
-[complete argument and exception audit](bun-task-compatibility.md). Compile named arguments, test name filtering, compound
+[complete argument and exception audit](../../bun-task-compatibility.md). Compile named arguments, test name filtering, compound
 argument boundaries, and failed build prerequisite propagation have focused regression coverage.
 
 Qualification for these final changes must include the remote image's runtime files, nonroot user, absent Deno runtime,

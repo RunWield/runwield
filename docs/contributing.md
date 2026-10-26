@@ -88,7 +88,7 @@ wld snip-filters cleanup
 ## Task compatibility
 
 Use the established task names with Bun: `bun run compile`, `bun run ci`, `bun run workspace:build`, and so on.
-All 49 original Deno task names remain available. See the [complete task audit](plans/bun-task-compatibility.md) for
+All 49 original Deno task names remain available. See the [complete task audit](bun-task-compatibility.md) for
 per-task argument contracts and explicit runtime-specific exceptions.
 
 ```bash
