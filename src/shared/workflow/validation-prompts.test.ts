@@ -83,6 +83,25 @@ Implement the screen.
     assertEquals(config.prompt.includes("Plan content is supplied by the validation request"), false);
 });
 
+test("attached reviewer prompts reference the approved Plan instead of inlining it", () => {
+    const planMarker = "oversized-plan-body-".repeat(4000);
+    const config = buildSemanticReviewAttempt(
+        1,
+        undefined,
+        { semanticRound: 1, reviewLedger: { items: [], sequence: 0 }, repairBaselineTree: "", lastRepairReport: "" },
+        "discovery",
+        "diff --git a/src/app.js b/src/app.js",
+        "",
+        planMarker,
+        undefined,
+        "",
+        "docs/plans/large-plan.md",
+    );
+
+    assertStringIncludes(config.prompt, "Read the complete approved Plan at docs/plans/large-plan.md.");
+    assertEquals(config.prompt.includes(planMarker), false);
+});
+
 test("bundled discovery reviewer prompt states an approval default", async () => {
     const prompt = await readBundledPrompt("reviewer-prompt.md");
 

@@ -166,8 +166,15 @@ export function normalizeRecorderOutput(value) {
     const record = /** @type {Record<string, unknown>} */ (value);
     for (const key of Object.keys(record)) {
         if (
-            !["title", "summary", "deviationsFromPlan", "deferredWork", "futurePlanningNotes", "supersessionProposals"]
-                .includes(key)
+            ![
+                "title",
+                "summary",
+                "deviationsFromPlan",
+                "deferredWork",
+                "outOfScope",
+                "futurePlanningNotes",
+                "supersessionProposals",
+            ].includes(key)
         ) {
             throw new Error(`Recorder output field is not supported: ${key}.`);
         }
@@ -799,7 +806,8 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             };
         }
 
-        const recordId = source.attrs.validationCheckpoint?.hostRecorder?.recordId ||
+        const recordId =
+            source.attrs.validationCheckpoint?.hostRecorder?.recordId ||
             (options.idGenerator ? options.idGenerator() : crypto.randomUUID());
         declaredIds = await validateDeclaredSupersession(cwd, recordId, declaredIds);
         const sections = await generateRecorderSections(cwd, source, options, recordId, declaredIds);

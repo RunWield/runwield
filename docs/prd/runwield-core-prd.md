@@ -580,11 +580,12 @@ repair reasoning. Core keeps its existing Recorder and Manual QA turns. Attached
 Epic-child checklist artifact; its host can suggest checks after delivery without saving them or claiming they ran.
 [Connect](runwield-connect-prd.md#shared-plan-and-verification-outcomes) owns the host interaction requirements.
 
-**Attached delivery maturity:** Automated real-Git and fresh-process checks cover delivery and recovery. Headed MCP
-checks confirm feedback, a refreshed diff, approval, and pending-review restore. Live Claude Code 2.1.299 confirms fresh
-Recorder dispatch, proven publication, indexed recording, and private-conversation exclusion. Complete Claude FEATURE
-Preview release and live integrated support remain **TARGET** until child 08. Review-page chat remains child 07
-**TARGET** scope.
+**Attached delivery maturity:** Automated real-Git and fresh-process checks cover shared delivery and recovery. The
+integrated Claude headless result, tested source identity, permissions limits, and Preview release boundary are owned by
+[Connect Preview Acceptance](runwield-connect-prd.md#preview-acceptance). Attached review chat uses the host
+conversation and restores pending turns after process loss; see
+[Connect review experience](runwield-connect-prd.md#shared-plan-and-verification-outcomes). Core review chat keeps its
+existing repair Agent behavior.
 
 **Acceptance scenarios: Attached completion and recovery.**
 
@@ -1058,13 +1059,19 @@ code was supplied to the Reviewer, not that the judgment is correct.
 
 Attached Code Review uses the shared page and the project's `codeReview` mode (`none`, `ask`, or `always`). Core saves
 its pending wait with the candidate diff hash. Approval must match the current hash; changed code cannot use stale
-approval. Submitted Feedback becomes a `human_feedback` repair action for a fresh host worker. Core reruns configured
-re-verification before a new human review round. The host owns repair reasoning, not review gates.
+approval. In Core and Attached, a saved reviewed candidate that changes before approval returns to Mechanical
+Validation, configured CI, and Semantic Review before a new Code Review. Older checkpoints without candidate identity
+keep their existing continuation behavior until the next Semantic Review. Submitted Feedback becomes a `human_feedback`
+repair action for a fresh host worker. Core reruns configured re-verification before a new human review round. The host
+owns repair reasoning, not review gates.
 
 **Acceptance scenarios: Saved Attached Code Review.**
 
 - **Diff-bound approval:** Given a saved human review and a changed candidate, Core rejects the old approval and does
   not publish. A fresh process restores the pending review without inventing a decision.
+- **Changed candidate re-verification:** Given a reviewed candidate that changes before approval, the next validation
+  run reruns Mechanical Validation, configured CI, and Semantic Review before presenting a new Code Review, in Core
+  and Attached.
 - **Feedback re-verification:** Given submitted human Feedback, a fresh host worker repairs it. Core reruns configured
   re-verification, then presents the repaired diff in a new Code Review round before publication.
 
@@ -1087,7 +1094,7 @@ conversation with progress preserved; every pause explains what continuing will 
 
 When Code Review is offered, users can open it, skip it, or close the prompt to come back later. Closing keeps the
 review pending and preserves the Plan and its implementation without publishing. Loading the Plan again with `load-plan`
-and continuing validation offers the same choice again.
+and continuing validation offers the same choice again. If the reviewed code changed, validation runs again first.
 
 Canceling an open Code Review, including Escape in the terminal, leaves approval pending. Cancellation status text and
 unsubmitted draft fields never become revision feedback, approval, or counted review/revision receipts. The UI clearly

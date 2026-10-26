@@ -12,6 +12,8 @@
  * close the workflow as unsupported in this Preview.
  */
 
+import { getHomeDir } from "../../constants.js";
+import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
 import { parseRecorderSections } from "../work-records/generation.js";
@@ -44,6 +46,7 @@ import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-run
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { withOrderedTransitionResources } from "../workflow/state-transition.ts";
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
@@ -51,7 +54,15 @@ import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handle
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
+    type AttachedActionReadEnvelope,
+    type AttachedReadOperationName,
+    type AttachedLifecycleOperationName,
+    isAttachedReadOperation,
+    parseAttachedActionReadInput,
+    type ReviewReplyEnvelope,
+    parseReviewReplyInput,
     type ActivateEnvelope,
+    ATTACHED_OPERATIONS,
     ATTACHED_IMPLEMENTER_CONTRACT_VERSION,
     ATTACHED_PLANNER_CONTRACT_VERSION,
     ATTACHED_TRIAGE_CONTRACT_VERSION,
@@ -84,6 +95,8 @@ import {
     parseValidationInput,
 } from "./operations.ts";
 import {
+    scrubAttachedChat,
+    withoutAttachedChat,
     attachedValidationHolderSettled,
     type AttachedWorkflowLocation,
     type AttachedWorkflowRecord,
@@ -100,6 +113,9 @@ import { continueHostTurnValidation, reconcileConsumedHostResume } from "../work
 import { sameHostIdentity, ValidationHostRejected } from "../workflow/validation-host-contract.ts";
 import { readReviewDiff } from "../workflow/review-diff.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
+import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
+import { assessCompatibility, isBlockingCompatibility } from "./compatibility.ts";
+import { parseHostEvidence } from "./operations.ts";
 
 import process from "node:process";
 /**
@@ -145,7 +161,14 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
             const request = record.validation.request;
             if (request.kind === "recorder") return { kind: "recorder", actionId: record.validation.actionId, request };
             if (request.kind === "decision" && request.interaction.type === "code_review") {
-                return { kind: "code_review", actionId: record.validation.actionId, request };
+                return {
+                    kind: "code_review",
+                    actionId: record.validation.actionId,
+                    request,
+                    ...(record.validation.chat?.turns.find((turn) => turn.reply === undefined) && {
+                        chat: record.validation.chat.turns.find((turn) => turn.reply === undefined),
+                    }),
+                };
             }
             return { kind: "validation", actionId: record.validation.actionId, request };
         }
@@ -167,9 +190,26 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
         return { kind: "plan", ...pending, projectSetup: await projectSetupFor(record.projectRoot) };
     }
     if (record.state === "awaiting_review" && record.plan && record.review) {
-        return { kind: "review", round: record.review.round, planName: record.plan.planName };
+        return {
+            kind: "review",
+            round: record.review.round,
+            planName: record.plan.planName,
+            ...(record.review.chat?.turns.find((turn) => turn.reply === undefined) && {
+                chat: record.review.chat.turns.find((turn) => turn.reply === undefined),
+            }),
+        };
     }
     if (record.state === "plan_ready" && record.plan) {
+        if (
+            record.review?.outcome?.approvalAction !== "run" ||
+            record.review.approvalControllerRevision === undefined
+        ) {
+            return {
+                kind: "plan_saved",
+                planName: record.plan.planName,
+                guidance: "The Plan is Ready For Work, saved for later. /runwield:implement starts it.",
+            };
+        }
         return {
             kind: "plan_ready",
             planName: record.plan.planName,
@@ -231,6 +271,15 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
 
 /** Project the canonical Plan position without writing an Attached record. */
 async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<AttachedWorkflowRecord> {
+    const holder = record.validation?.holder;
+    // Core can publish and prune the registry before the active call saves its Attached receipt.
+    // Neither delivery nor Core-advance projection may take that call's claimed revision.
+    if (
+        holder &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await isLockHolderGone(JSON.stringify(holder)))
+    )
+        return record;
     if (
         !record.plan ||
         ![
@@ -293,6 +342,25 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         throw new Error(`Plan not found: ${record.plan.planName}`);
     }
     const status = archived || archivedPlan ? "archived" : plan?.attrs.status;
+    const request = record.validation?.request;
+    if (
+        record.state === "validating" &&
+        request?.kind === "decision" &&
+        request.interaction.type === "code_review" &&
+        !record.validation?.resume &&
+        !record.validation?.holder
+    ) {
+        const saved = plan?.attrs.validationCheckpoint?.pendingHostDecision;
+        if (!saved || !sameHostIdentity(saved.identity, request.identity))
+            return {
+                ...record,
+                validation: {
+                    coverage: [],
+                    reason: "The Code Review changed in Core. Call start_validation to restore the current wait.",
+                },
+            };
+    }
+
     if (
         record.state === "validating" &&
         status === "verified" &&
@@ -326,6 +394,14 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         return record.state === "implemented" ? record : { ...record, state: "implemented", pendingAction: null };
     }
     if (status === "approved" || status === "ready_for_work" || status === "ready_for_decomposition") {
+        // A later Core approval must not inherit an earlier Attached Approve & Run.
+        // This is only a projection; status never changes the saved round or Plan.
+        if (
+            record.review?.approvalControllerRevision !== undefined &&
+            record.review.approvalControllerRevision !== plan?.controllerRevision
+        ) {
+            record = { ...record, review: { ...record.review, approvalControllerRevision: undefined } };
+        }
         if (record.state === "awaiting_consent" || record.state === "implementing") return record;
         return record.state === "plan_ready" ? record : { ...record, state: "plan_ready", pendingAction: null };
     }
@@ -378,7 +454,14 @@ async function viewOf(
     record: AttachedWorkflowRecord,
     recovery: ProjectMovedRecovery | null = null,
 ): Promise<AttachedWorkflowView> {
-    if (!recovery) record = await reconcilePlanPosition(record);
+    return await projectedViewOf(recovery ? record : await reconcilePlanPosition(record), recovery);
+}
+
+/** Render one projection without reopening reconciliation during the same status read. */
+async function projectedViewOf(
+    record: AttachedWorkflowRecord,
+    recovery: ProjectMovedRecovery | null = null,
+): Promise<AttachedWorkflowView> {
     return {
         workflowId: record.workflowId,
         revision: record.revision,
@@ -487,11 +570,15 @@ async function accept(
     changes: RecordChanges,
 ): Promise<Decision> {
     const now = new Date().toISOString();
-    const next: AttachedWorkflowRecord = { ...current, ...changes, revision: current.revision + 1, updatedAt: now };
+    const next = scrubAttachedChat({ ...current, ...changes, revision: current.revision + 1, updatedAt: now });
     const result: AttachedOperationResult = { ok: true, operation, workflow: await viewOf(next) };
     next.acceptedOperations = {
-        ...current.acceptedOperations,
-        [envelope.operationId]: { result, evidence: { ...envelope.evidence, coreVersion: VERSION }, acceptedAt: now },
+        ...next.acceptedOperations,
+        [envelope.operationId]: {
+            result: withoutAttachedChat(result),
+            evidence: { ...envelope.evidence, coreVersion: VERSION },
+            acceptedAt: now,
+        },
     };
     return { result, next };
 }
@@ -540,7 +627,8 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
     if (loaded.status !== "missing") return (await replay(loaded.record)).result;
 
     const now = new Date().toISOString();
-    const evidence = { ...envelope.evidence, coreVersion: VERSION };
+    const compatibility = assessCompatibility(envelope.evidence);
+    const evidence = { ...envelope.evidence, coreVersion: VERSION, compatibility };
     const record: AttachedWorkflowRecord = {
         validation: null,
         schemaVersion: 1,
@@ -565,7 +653,12 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
         createdAt: now,
         updatedAt: now,
     };
-    const result: AttachedOperationResult = { ok: true, operation: "activate", workflow: await viewOf(record) };
+    const result: AttachedOperationResult = {
+        ok: true,
+        operation: "activate",
+        workflow: await viewOf(record),
+        compatibility,
+    };
     record.acceptedOperations[envelope.operationId] = { result, evidence, acceptedAt: now };
     return await commit(location, "activate", null, { result, next: record }, replay);
 }
@@ -854,7 +947,7 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                     status === "in_progress" &&
                     source.plan.attrs.executionMode === "non_git_in_place" &&
                     hasNonGitExecutionConsent("featurePlan", location.projectRoot);
-                if (status !== "ready_for_work" && !recoveredAttempt && !recoveredInPlace) {
+                if (status !== "approved" && status !== "ready_for_work" && !recoveredAttempt && !recoveredInPlace) {
                     throw new Error("Execution requires ready_for_work approval/readiness.");
                 }
                 const git = await probeGitRepository(location.projectRoot);
@@ -923,7 +1016,10 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
 }
 
 /** Accept only the issued action and live execution evidence, then call Core completion. */
-export async function taskCompleted(envelope: TaskCompletedEnvelope): Promise<AttachedOperationResult> {
+export async function taskCompleted(
+    envelope: TaskCompletedEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
     const loaded = await loadForOperation("task_completed", location, envelope.workflowId);
     if ("result" in loaded) return loaded.result;
@@ -932,7 +1028,7 @@ export async function taskCompleted(envelope: TaskCompletedEnvelope): Promise<At
         (Object.hasOwn(loaded.record.acceptedOperations, envelope.operationId) &&
             loaded.record.acceptedOperations[envelope.operationId].result.operation === "task_completed")
     ) {
-        return await runValidationOperation("task_completed", envelope);
+        return await runValidationOperation("task_completed", envelope, options);
     }
 
     const transaction = await transactAttachedWorkflowRecord<AttachedOperationResult>(
@@ -1057,6 +1153,7 @@ export async function openAttachedReviewRound(
             const changed =
                 review.planRevision !== current.review.planRevision ||
                 review.controllerRevision !== current.review.controllerRevision;
+            if (changed) delete review.chat;
             const next = changed ? { ...current, review, revision: current.revision + 1, updatedAt: now } : undefined;
             return {
                 result: {
@@ -1089,7 +1186,17 @@ export async function applyAttachedReviewDecision(
     workflowId: string,
     round: AttachedReviewPayloadBasis,
     decision: ReviewDecision,
-): Promise<AttachedReviewOutcome> {
+): Promise<AttachedReviewOutcome | { kind: "chat" }> {
+    if (decision.conversationTurn) {
+        await saveAttachedReviewChat(
+            projectRoot,
+            workflowId,
+            round.review.actionId,
+            decision,
+            round.review.planRevision,
+        );
+        return { kind: "chat" };
+    }
     const location = locateAttachedWorkflows(projectRoot);
     const transaction = await transactAttachedWorkflowRecord<AttachedReviewDecisionResult>(
         location,
@@ -1104,7 +1211,11 @@ export async function applyAttachedReviewDecision(
                 throw new Error("action_superseded: This review round is no longer pending.");
             }
             if (saved.status === "applied" && saved.outcome) return { result: { outcome: saved.outcome } };
-            if (current.state !== "awaiting_review" || saved.planRevision !== round.review.planRevision) {
+            if (
+                current.state !== "awaiting_review" ||
+                saved.planRevision !== round.review.planRevision ||
+                saved.controllerRevision !== round.review.controllerRevision
+            ) {
                 throw new Error("action_superseded: This reviewed document is no longer pending. Reopen the review.");
             }
             const reconciled = await reconcilePlanPosition(current);
@@ -1122,42 +1233,55 @@ export async function applyAttachedReviewDecision(
                 throw new Error("invalid_outcome: Review has no decision.");
             }
             let outcome: AttachedReviewOutcome;
+            let approvalControllerRevision: number | undefined;
             if (canceled) {
                 outcome = { kind: "canceled" };
             } else {
-                const applied = await applySharedPlanReviewDecision({
-                    cwd: round.documentRoot,
-                    planName: round.planName,
-                    planPath: round.planPath,
-                    planWithFrontMatter: round.markdown,
-                    planRevision: saved.planRevision,
-                    originalAttrs: round.attrs,
-                    trustedClassification: current.triageOutcome?.classification,
-                    trustedWorkKind: current.triageOutcome?.workKind,
-                    decision,
-                });
-                if (applied.cancellationReason || applied.recoveryRequired) {
-                    throw new Error(applied.feedback || "The Plan changed. Reload this review.");
-                }
-                if (applied.approved) {
-                    await recordPlanEvent({
-                        cwd: round.documentRoot,
-                        planName: round.planName,
-                        event: "readiness_passed",
-                        currentStatus: "approved",
-                        expectedRevision: applied.revision,
-                    });
-                    outcome = {
-                        kind: "approved",
-                        ...(applied.approvalAction && { approvalAction: applied.approvalAction }),
-                    };
-                } else {
-                    outcome = {
-                        kind: "feedback",
-                        feedback: applied.feedback ?? "",
-                        imagePaths: await loadReviewFeedbackImagePaths(decision, round.documentRoot),
-                    };
-                }
+                outcome = await withOrderedTransitionResources(
+                    round.documentRoot,
+                    [{ kind: "catalog" }, { kind: "plan", id: round.planName }],
+                    async (): Promise<AttachedReviewOutcome> => {
+                        const applied = await applySharedPlanReviewDecision({
+                            cwd: round.documentRoot,
+                            planName: round.planName,
+                            planPath: round.planPath,
+                            planWithFrontMatter: round.markdown,
+                            planRevision: saved.planRevision,
+                            expectedControllerRevision: saved.controllerRevision,
+                            originalAttrs: round.attrs,
+                            trustedClassification: current.triageOutcome?.classification,
+                            trustedWorkKind: current.triageOutcome?.workKind,
+                            decision,
+                        });
+                        if (applied.cancellationReason || applied.recoveryRequired) {
+                            throw new Error(applied.feedback || "The Plan changed. Reload this review.");
+                        }
+                        if (applied.approved) {
+                            await recordPlanEvent({
+                                cwd: round.documentRoot,
+                                planName: round.planName,
+                                event: "readiness_passed",
+                                currentStatus: "approved",
+                                expectedRevision: applied.revision,
+                            });
+                            // Read the revision while the same canonical Plan locks still cover
+                            // approval and readiness. A later read could pin a newer Core approval.
+                            const ready = await loadPlan(round.documentRoot, round.planName);
+                            if (!ready) throw new Error(`Plan not found: ${round.planName}`);
+                            approvalControllerRevision = ready.controllerRevision;
+                            return {
+                                kind: "approved",
+                                ...(applied.approvalAction && { approvalAction: applied.approvalAction }),
+                            };
+                        } else {
+                            return {
+                                kind: "feedback",
+                                feedback: applied.feedback ?? "",
+                                imagePaths: await loadReviewFeedbackImagePaths(decision, round.documentRoot),
+                            };
+                        }
+                    },
+                );
             }
             const pendingAction =
                 outcome.kind === "approved"
@@ -1180,7 +1304,7 @@ export async function applyAttachedReviewDecision(
                 ...current,
                 state: outcome.kind === "approved" ? "plan_ready" : "awaiting_planning",
                 pendingAction,
-                review: { ...saved, status: "applied", outcome },
+                review: { ...saved, status: "applied", outcome, approvalControllerRevision },
                 revision: current.revision + 1,
                 updatedAt: new Date().toISOString(),
             };
@@ -1192,7 +1316,240 @@ export async function applyAttachedReviewDecision(
     return transaction.result.outcome;
 }
 
-export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOperationResult> {
+/** Enqueue browser chat without invoking a Plan or validation decision. */
+export async function saveAttachedReviewChat(
+    projectRoot: string,
+    workflowId: string,
+    actionId: string,
+    decision: ReviewDecision,
+    planRevision?: string,
+): Promise<void> {
+    const location = locateAttachedWorkflows(projectRoot);
+    const transaction = await transactAttachedWorkflowRecord(location, workflowId, async (current) => {
+        if (!current || current.projectRoot !== location.projectRoot)
+            throw new Error("The Attached workflow cannot be restored.");
+        const reconciled = await reconcilePlanPosition(current);
+        if (reconciled !== current)
+            return {
+                result: "The Plan advanced in Core. Read status.",
+                next: scrubAttachedChat({
+                    ...reconciled,
+                    revision: current.revision + 1,
+                    updatedAt: new Date().toISOString(),
+                }),
+            };
+        const planRound =
+            current.state === "awaiting_review" &&
+            current.review?.status === "pending" &&
+            current.review.actionId === actionId;
+        const codeRound =
+            current.state === "validating" &&
+            current.validation?.actionId === actionId &&
+            current.validation.request?.kind === "decision" &&
+            current.validation.request.interaction.type === "code_review" &&
+            !current.validation.resume;
+        if (!planRound && !codeRound) throw new Error("This review round is no longer pending.");
+        if (codeRound && current.validation?.holder)
+            throw new Error("Core validation is running. Retry after it returns.");
+        if (planRound && current.plan) {
+            const { plan } = await resolveWorkflowPlanLocation(projectRoot, current.plan.planName, {
+                migrateRegistry: false,
+                readOnly: true,
+            });
+            if (!plan || plan.revision !== planRevision || current.review?.planRevision !== planRevision)
+                throw new Error("The reviewed Plan changed. Reload the review.");
+        }
+        const message = decision.feedback?.trim();
+        if (!message || message.length > 32768) throw new Error("Chat requires a message of at most 32768 characters.");
+        const source = planRound ? current.review! : current.validation!;
+        const chat = source.chat ?? { revision: 0, turns: [] };
+        const selections: AttachedJsonValue[] = JSON.parse(JSON.stringify(decision.annotations ?? []));
+        const nextChat = {
+            ...chat,
+            turns: [
+                ...chat.turns,
+                {
+                    turnId: crypto.randomUUID(),
+                    message,
+                    selections,
+                },
+            ],
+        };
+        const next = {
+            ...current,
+            ...(planRound
+                ? { review: { ...current.review!, chat: nextChat } }
+                : { validation: { ...current.validation!, chat: nextChat } }),
+            revision: current.revision + 1,
+            updatedAt: new Date().toISOString(),
+        };
+        return { result: null, next };
+    });
+    if (transaction.status === "busy") throw new Error("Another process holds this workflow. Retry.");
+    if (transaction.result) throw new Error(transaction.result);
+}
+
+type ReviewReplyDecision = Decision & { replayed?: boolean };
+
+/** Only the oldest unanswered turn of the current round can receive a reply. */
+async function reviewReply(
+    envelope: ReviewReplyEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
+    const location = locateAttachedWorkflows(envelope.projectRoot);
+    const transaction = await transactAttachedWorkflowRecord<ReviewReplyDecision>(
+        location,
+        envelope.workflowId,
+        async (current) => {
+            if (!current || current.projectRoot !== location.projectRoot)
+                return {
+                    result: {
+                        result: await rejected(
+                            "review_reply",
+                            rejection("workflow_not_found", "The workflow cannot be restored."),
+                        ),
+                    },
+                };
+            const saved = Object.hasOwn(current.acceptedOperations, envelope.operationId)
+                ? current.acceptedOperations[envelope.operationId]
+                : undefined;
+            if (saved) return { result: { result: { ...saved.result, operation: "review_reply" }, replayed: true } };
+            const reconciled = await reconcilePlanPosition(current);
+            if (reconciled !== current)
+                return {
+                    result: {
+                        result: await rejected(
+                            "review_reply",
+                            rejection("action_superseded", "The Plan advanced in Core."),
+                            reconciled,
+                        ),
+                    },
+                    next: scrubAttachedChat({
+                        ...reconciled,
+                        revision: current.revision + 1,
+                        updatedAt: new Date().toISOString(),
+                    }),
+                };
+            if (current.revision !== envelope.expectedRevision)
+                return {
+                    result: {
+                        result: await rejected(
+                            "review_reply",
+                            rejection("revision_conflict", "Read status and retry with the current revision."),
+                            current,
+                        ),
+                    },
+                };
+            const planRound = current.state === "awaiting_review" && current.review?.status === "pending";
+            const codeRound =
+                current.state === "validating" &&
+                current.validation?.request?.kind === "decision" &&
+                current.validation.request.interaction.type === "code_review" &&
+                !current.validation.resume &&
+                !current.validation.holder;
+            const source = planRound ? current.review : codeRound ? current.validation : null;
+            const turn = source?.chat?.turns.find((item) => item.reply === undefined);
+            if (!turn || turn.turnId !== envelope.payload.turnId)
+                return {
+                    result: {
+                        result: await rejected(
+                            "review_reply",
+                            rejection(
+                                "action_superseded",
+                                "This turn is answered, closed, or not the oldest pending turn.",
+                            ),
+                            current,
+                        ),
+                    },
+                };
+            if (planRound && current.plan) {
+                const { plan } = await resolveWorkflowPlanLocation(envelope.projectRoot, current.plan.planName, {
+                    migrateRegistry: false,
+                    readOnly: true,
+                });
+                if (!plan || plan.revision !== current.review?.planRevision)
+                    return {
+                        result: {
+                            result: await rejected(
+                                "review_reply",
+                                rejection("action_superseded", "The reviewed Plan changed. Reload the review."),
+                                current,
+                            ),
+                        },
+                    };
+            }
+            // Validation owns code changes. Its compare-and-write claim below rejects a concurrent enqueue, never overwrites it.
+            if (codeRound && envelope.payload.change)
+                return { result: { result: { ok: true, operation: "review_reply", workflow: await viewOf(current) } } };
+            const chat = {
+                revision: source!.chat!.revision + 1,
+                turns: source!.chat!.turns.map((item) =>
+                    item.turnId === turn.turnId ? { ...item, reply: envelope.payload.text } : item,
+                ),
+            };
+            const changes: RecordChanges =
+                planRound && envelope.payload.change
+                    ? {
+                          state: "awaiting_planning",
+                          pendingAction: {
+                              actionId: crypto.randomUUID(),
+                              role: "planner",
+                              contractVersion: ATTACHED_PLANNER_CONTRACT_VERSION,
+                              note: `The user requested this Plan change in review chat: ${envelope.payload.change.summary}. Revise the Plan, then call plan_written. No Feedback decision was recorded.`,
+                          },
+                          review: { ...current.review!, status: "revising", chat: undefined },
+                      }
+                    : {
+                          state: current.state,
+                          pendingAction: current.pendingAction,
+                          ...(planRound
+                              ? { review: { ...current.review!, chat } }
+                              : { validation: { ...current.validation!, chat } }),
+                      };
+            const accepted = await accept("review_reply", { ...envelope, payload: {} }, current, changes);
+            return { result: accepted, next: accepted.next };
+        },
+    );
+    if (transaction.status === "busy")
+        return await rejected(
+            "review_reply",
+            rejection("workflow_busy", "Another process holds this workflow. Retry."),
+        );
+    const decision = transaction.result;
+    if (
+        !decision.replayed &&
+        decision.result.ok &&
+        decision.result.workflow.nextAction.kind === "code_review" &&
+        envelope.payload.change
+    ) {
+        const result = await runValidationOperation(
+            "validation_decision",
+            {
+                ...envelope,
+                payload: {
+                    actionId: decision.result.workflow.nextAction.actionId,
+                    answer: { outcome: "feedback", message: envelope.payload.change.summary },
+                },
+            },
+            options,
+        );
+        return {
+            ...result,
+            operation: "review_reply",
+            ...(result.ok && { reviewReply: { turnId: envelope.payload.turnId, text: envelope.payload.text } }),
+        };
+    }
+    if (decision.result.ok && envelope.payload.change)
+        decision.result.reviewReply = { turnId: envelope.payload.turnId, text: envelope.payload.text };
+    return decision.result;
+}
+
+export async function readStatus(
+    envelope: StatusEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
+    if (!getHomeDir())
+        return await rejected("status", rejection("home_unavailable", "Set HOME to use Attached workflows."));
     const location = locateAttachedWorkflows(envelope.projectRoot);
     const latest = envelope.workflowId ? null : await loadLatestAttachedWorkflowRecord(location);
     const loaded = envelope.workflowId
@@ -1204,16 +1561,29 @@ export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOper
         return await rejected("status", rejection("workflow_not_found", "No Attached Workflow has this workflowId."));
     }
     const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
+    const compatibility = envelope.evidence ? assessCompatibility(envelope.evidence) : undefined;
+    if (compatibility && isBlockingCompatibility(compatibility)) {
+        return {
+            ok: true,
+            operation: "status",
+            compatibility,
+            workflow: await projectedViewOf(loaded.record, recovery),
+        };
+    }
     if (!recovery && loaded.record.state === "reviewed") {
-        const continued = await runValidationOperation("start_validation", {
-            projectRoot: envelope.projectRoot,
-            workflowId: loaded.record.workflowId,
-            expectedRevision: loaded.record.revision,
-            operationId: crypto.randomUUID(),
-            evidence: loaded.record.evidence,
-            payload: {},
-        });
-        return { ...continued, operation: "status" };
+        const continued = await runValidationOperation(
+            "start_validation",
+            {
+                projectRoot: envelope.projectRoot,
+                workflowId: loaded.record.workflowId,
+                expectedRevision: loaded.record.revision,
+                operationId: crypto.randomUUID(),
+                evidence: envelope.evidence || loaded.record.evidence,
+                payload: {},
+            },
+            options,
+        );
+        return { ...continued, operation: "status", ...(continued.ok && compatibility && { compatibility }) };
     }
     const projected = recovery ? loaded.record : await reconcilePlanPosition(loaded.record);
     if (projected.closure?.reason === "delivered" && loaded.record.state !== "closed") {
@@ -1235,15 +1605,41 @@ export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOper
         const settled = await commit(location, operation, loaded.record.revision, decision, async (winner) => ({
             result: { ok: true, operation: "status", workflow: await viewOf(winner) },
         }));
-        return { ...settled, operation: "status" };
+        return { ...settled, operation: "status", ...(settled.ok && compatibility && { compatibility }) };
     }
-    return { ok: true, operation: "status", workflow: await viewOf(projected, recovery) };
+    if (
+        projected !== loaded.record &&
+        !recovery &&
+        (loaded.record.review?.chat || loaded.record.validation?.chat || loaded.record.state === "validating")
+    ) {
+        const next = scrubAttachedChat({
+            ...projected,
+            revision: loaded.record.revision + 1,
+            updatedAt: new Date().toISOString(),
+        });
+        const written = await writeAttachedWorkflowRecord(location, next, loaded.record.revision);
+        if (written.status !== "written")
+            return await rejected("status", rejection("revision_conflict", "The workflow changed. Retry status."));
+        return {
+            ok: true,
+            operation: "status",
+            ...(compatibility && { compatibility }),
+            workflow: await projectedViewOf(next),
+        };
+    }
+    return {
+        ok: true,
+        operation: "status",
+        ...(compatibility && { compatibility }),
+        workflow: await projectedViewOf(projected, recovery),
+    };
 }
 
 async function runParsedOperation(
     name: AttachedOperationName,
     projectRoot: string,
     input: AttachedJsonValue | undefined,
+    options: AttachedOperationOptions,
 ): Promise<AttachedOperationResult> {
     if (name === "activate") {
         const parsed = parseActivateInput(projectRoot, input);
@@ -1257,13 +1653,17 @@ async function runParsedOperation(
         const parsed = parsePlanWrittenInput(projectRoot, input);
         return parsed.ok ? await planWritten(parsed.envelope) : await rejected(name, parsed.rejection);
     }
+    if (name === "review_reply") {
+        const parsed = parseReviewReplyInput(projectRoot, input);
+        return parsed.ok ? await reviewReply(parsed.envelope, options) : await rejected(name, parsed.rejection);
+    }
     if (name === "start_execution") {
         const parsed = parseStartExecutionInput(projectRoot, input);
         return parsed.ok ? await startExecution(parsed.envelope) : await rejected(name, parsed.rejection);
     }
     if (name === "task_completed") {
         const parsed = parseTaskCompletedInput(projectRoot, input);
-        return parsed.ok ? await taskCompleted(parsed.envelope) : await rejected(name, parsed.rejection);
+        return parsed.ok ? await taskCompleted(parsed.envelope, options) : await rejected(name, parsed.rejection);
     }
     if (
         ["start_validation", "review_diff", "review_complete", "validation_decision", "work_record_completed"].includes(
@@ -1271,10 +1671,12 @@ async function runParsedOperation(
         )
     ) {
         const parsed = parseValidationInput(projectRoot, input, name);
-        return parsed.ok ? await runValidationOperation(name, parsed.envelope) : await rejected(name, parsed.rejection);
+        return parsed.ok
+            ? await runValidationOperation(name, parsed.envelope, options)
+            : await rejected(name, parsed.rejection);
     }
     const parsed = parseStatusInput(projectRoot, input);
-    return parsed.ok ? await readStatus(parsed.envelope) : await rejected(name, parsed.rejection);
+    return parsed.ok ? await readStatus(parsed.envelope, options) : await rejected(name, parsed.rejection);
 }
 
 /**
@@ -1295,13 +1697,17 @@ async function withRoleInstructions(
                   ? "recorder"
                   : "reviewer-feedback-engineer";
         const cwd = action.request.cwd;
-        const text = await resolveAttachedRoleInstructions(cwd, role);
+        const roleInstructions = await resolveAttachedRoleInstructions(cwd, role);
+        const text =
+            action.request.kind === "reviewer"
+                ? `${(await loadReviewerPrompt(action.request.reviewMode, cwd)).systemPrompt}\n\n${roleInstructions}\n\n## review_complete payload schema\n\n${JSON.stringify(ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!.inputSchema.properties.payload, null, 2)}`
+                : roleInstructions;
         return {
             ...result,
             instructions: {
                 role,
                 contractVersion: "runwield.attached.validation/1",
-                text: `${text}\n\n${action.request.prompt}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
+                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
             },
         };
     }
@@ -1310,15 +1716,53 @@ async function withRoleInstructions(
     return { ...result, instructions: { role: action.role, contractVersion: action.contractVersion, text } };
 }
 
+export type AttachedReadResult =
+    | (Awaited<ReturnType<typeof readAttachedAction>> & {
+          operation: AttachedReadOperationName;
+          workflow?: never;
+          reviewReply?: never;
+      })
+    | Extract<AttachedOperationResult, { ok: false }>;
+export type AttachedCarrierResult = AttachedOperationResult | AttachedReadResult;
+
+export interface AttachedOperationOptions {
+    signal?: AbortSignal;
+}
+
 /**
  * The single entry both carriers use: JSON text in, one result object out. Because the
  * CLI and MCP carriers both pass text here, the same input gives the same result.
  */
+export function runAttachedOperation(
+    name: AttachedReadOperationName,
+    projectRoot: string,
+    inputText: string,
+    options?: AttachedOperationOptions,
+): Promise<AttachedReadResult>;
+export function runAttachedOperation(
+    name: AttachedLifecycleOperationName,
+    projectRoot: string,
+    inputText: string,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult>;
+export function runAttachedOperation(
+    name: AttachedOperationName,
+    projectRoot: string,
+    inputText: string,
+    options?: AttachedOperationOptions,
+): Promise<AttachedCarrierResult>;
 export async function runAttachedOperation(
     name: AttachedOperationName,
     projectRoot: string,
     inputText: string,
-): Promise<AttachedOperationResult> {
+    options: AttachedOperationOptions = {},
+): Promise<AttachedCarrierResult> {
+    if (!getHomeDir())
+        return {
+            ok: false,
+            operation: name,
+            rejection: rejection("home_unavailable", "Set HOME to use Attached workflows."),
+        };
     if (new TextEncoder().encode(inputText).length > MAX_ATTACHED_INPUT_BYTES) {
         return await rejected(name, rejection("payload_too_large", `Input exceeds ${MAX_ATTACHED_INPUT_BYTES} bytes.`));
     }
@@ -1328,7 +1772,127 @@ export async function runAttachedOperation(
     } catch {
         input = undefined;
     }
-    return await withRoleInstructions(projectRoot, await runParsedOperation(name, projectRoot, input));
+    if (isAttachedReadOperation(name)) {
+        const parsed = parseAttachedActionReadInput(name, projectRoot, input);
+        return parsed.ok
+            ? { ...(await readAttachedAction(parsed.envelope)), operation: name }
+            : { ok: false, operation: name, rejection: parsed.rejection };
+    }
+    if (name !== "status") {
+        const parsed = parseHostEvidence(input);
+        if (!parsed.ok) return await rejected(name, parsed.rejection);
+        const compatibility = assessCompatibility(parsed.envelope);
+        if (isBlockingCompatibility(compatibility)) {
+            return await rejected(name, rejection(compatibility.status, compatibility.message));
+        }
+        const result = await runParsedOperation(name, projectRoot, input, options);
+        return await withRoleInstructions(projectRoot, result.ok ? { ...result, compatibility } : result);
+    }
+    return await runParsedOperation(name, projectRoot, input, options);
+}
+
+/** Retrieve only the current action's host instructions, decision, or oldest queued chat turn. */
+export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
+    const compatibility = assessCompatibility(envelope.evidence);
+    if (isBlockingCompatibility(compatibility)) {
+        return { ok: false as const, rejection: rejection(compatibility.status, compatibility.message) };
+    }
+    const current = await readStatus(envelope);
+    if (!current.ok) return { ok: false as const, rejection: current.rejection };
+    const workflow = current.workflow;
+    const action = workflow.nextAction;
+    const currentActionId = "actionId" in action ? action.actionId : workflow.review?.actionId;
+    if (workflow.recovery) {
+        return {
+            ok: false as const,
+            rejection: rejection("project_moved", "Resolve the project's location before reading action content."),
+        };
+    }
+    if (currentActionId !== envelope.actionId) {
+        return {
+            ok: false as const,
+            rejection: rejection("action_superseded", "The action changed. Read compact status."),
+        };
+    }
+    const identity = { workflowId: workflow.workflowId, revision: workflow.revision, actionId: envelope.actionId };
+    if (["prompt", "execution_report", "repair_report"].includes(envelope.content)) {
+        if (
+            (envelope.offsetBytes !== undefined &&
+                (!Number.isSafeInteger(envelope.offsetBytes) || envelope.offsetBytes < 0)) ||
+            (envelope.maxBytes !== undefined &&
+                (!Number.isSafeInteger(envelope.maxBytes) || envelope.maxBytes < 4 || envelope.maxBytes > 65536))
+        ) {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", "Use offsetBytes >= 0 and maxBytes between 4 and 65536."),
+            };
+        }
+        let text: string | null | undefined;
+        if (envelope.content === "prompt") {
+            if ("request" in action && action.request.kind !== "decision") text = action.request.prompt;
+        } else if (workflow.plan) {
+            const location = await resolveWorkflowPlanLocation(
+                workflow.execution?.executionCwd || envelope.projectRoot,
+                workflow.plan.planName,
+                { migrateRegistry: false, readOnly: true },
+            );
+            text =
+                envelope.content === "execution_report"
+                    ? location.plan?.attrs.executionReport
+                    : location.plan?.attrs.validationCheckpoint?.reviewState?.lastRepairReport;
+        }
+        if (typeof text !== "string") {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", "The requested artifact is not available for this action."),
+            };
+        }
+        return { ok: true as const, ...identity, artifact: envelope.content, ...readTextPage(text, envelope) };
+    }
+    if (envelope.content === "chat") {
+        if (!("chat" in action) || !action.chat) {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", "No review chat turn is pending for this action."),
+            };
+        }
+        return { ok: true as const, ...identity, chat: action.chat };
+    }
+    if ((action.kind === "validation" || action.kind === "code_review") && action.request.kind === "decision") {
+        return { ok: true as const, ...identity, request: action.request };
+    }
+    const resolved = await withRoleInstructions(envelope.projectRoot, current);
+    if (!resolved.instructions) {
+        return {
+            ok: false as const,
+            rejection: rejection("invalid_input", "The current action has no host instructions or decision prompt."),
+        };
+    }
+    let planningContext;
+    if (action.kind === "triage" || action.kind === "plan") {
+        const loaded = await loadAttachedWorkflowRecord(
+            locateAttachedWorkflows(envelope.projectRoot),
+            workflow.workflowId,
+        );
+        if (loaded.status !== "found" || loaded.record.revision !== workflow.revision) {
+            return {
+                ok: false as const,
+                rejection: rejection("action_superseded", "The action changed. Read compact status."),
+            };
+        }
+        planningContext = {
+            requestText: loaded.record.request.text,
+            ...(action.kind === "plan" && { triageOutcome: loaded.record.triageOutcome }),
+        };
+    }
+    return {
+        ok: true as const,
+        ...identity,
+        instructions: resolved.instructions,
+        ...((action.kind === "triage" || action.kind === "plan" || action.kind === "implementation") && {
+            context: { ...action, ...planningContext },
+        }),
+    };
 }
 
 /** Persist the host claim before CI, then run Core outside the Attached record lock.
@@ -1338,6 +1902,7 @@ export async function runAttachedOperation(
 export async function runValidationOperation(
     operation: AttachedOperationName,
     envelope: AttachedValidationEnvelope | TaskCompletedEnvelope,
+    options: AttachedOperationOptions = {},
 ): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
     const loaded = await loadForOperation(operation, location, envelope.workflowId);
@@ -1429,7 +1994,13 @@ export async function runValidationOperation(
                     coverage: diff.coverage ? [...checkpoint.coverage, diff.coverage] : checkpoint.coverage,
                 },
             });
-            if (decision.result.ok) decision.result.diff = diff;
+            if (decision.result.ok) {
+                decision.result.diff = diff;
+                if (decision.next)
+                    decision.next.acceptedOperations[envelope.operationId].result = withoutAttachedChat(
+                        decision.result,
+                    );
+            }
             return await commit(location, operation, current.revision, decision, async (winner) => ({
                 result:
                     winner.acceptedOperations[envelope.operationId]?.result ??
@@ -1534,6 +2105,7 @@ export async function runValidationOperation(
             projectRoot: claimed.projectRoot,
             planName: current.plan.planName,
             resume,
+            signal: options.signal,
         });
         if (result.kind === "failed") {
             const recovered: AttachedWorkflowRecord = {

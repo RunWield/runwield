@@ -74,14 +74,12 @@ async function addActiveWorktree(dir: string): Promise<string> {
     return path;
 }
 
-for (
-    const { status, reopenFirst } of [
-        { status: "implemented", reopenFirst: false },
-        { status: "implemented", reopenFirst: true },
-        { status: "in_progress", reopenFirst: false },
-        { status: "in_progress", reopenFirst: true },
-    ] as const
-) {
+for (const { status, reopenFirst } of [
+    { status: "implemented", reopenFirst: false },
+    { status: "implemented", reopenFirst: true },
+    { status: "in_progress", reopenFirst: false },
+    { status: "in_progress", reopenFirst: true },
+] as const) {
     test(`reapproval reuses ${status} commits and dirty files (reopen first: ${reopenFirst})`, async () => {
         const fixture = await makePlanFile({
             status,
@@ -347,8 +345,7 @@ test("shared Plan review commits edited Feedback and approval notes with classif
             decision: {
                 approved: false,
                 feedback: "Keep the note.",
-                plan:
-                    `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Edited Feedback\n`,
+                plan: `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Edited Feedback\n`,
             },
         });
         const feedbackMarkdown = await fsReadFile(feedbackFixture.planPath, "utf8");
@@ -372,8 +369,7 @@ test("shared Plan review commits edited Feedback and approval notes with classif
                 approved: true,
                 feedback: "Approved.",
                 approvalAction: "decompose",
-                plan:
-                    `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Approved Project\n`,
+                plan: `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Approved Project\n`,
             },
         });
         const approvalAttrs = (await loadPlan(approvalFixture.dir, "plan"))?.attrs;
@@ -390,46 +386,87 @@ test("shared Plan review commits edited Feedback and approval notes with classif
     }
 });
 
-for (
-    const { name, original, current, matches } of [
-        {
-            name: "prose wrapping",
-            original: "Review the saved Plan.\n",
-            current: "Review the\nsaved Plan.\n",
-            matches: true,
-        },
-        {
-            name: "list wrapping",
-            original: "- Review the saved Plan.\n",
-            current: "- Review the\n  saved Plan.\n",
-            matches: true,
-        },
-        {
-            name: "table padding",
-            original: "| A | B |\n| - | - |\n| x | y |\n",
-            current: "| A   | B   |\n| --- | --- |\n| x   | y   |\n",
-            matches: true,
-        },
-        { name: "changed prose", original: "Keep the data.\n", current: "Delete the data.\n", matches: false },
-        { name: "hard breaks", original: "First  \nSecond\n", current: "First Second\n", matches: false },
-        { name: "paragraph boundaries", original: "First\n\nSecond\n", current: "First Second\n", matches: false },
-        { name: "code whitespace", original: "```text\na  b\n```\n", current: "```text\na b\n```\n", matches: false },
-        { name: "code newlines", original: "```text\na\nb\n```\n", current: "```text\na b\n```\n", matches: false },
-        { name: "inline code", original: "Run `a  b`.\n", current: "Run `a b`.\n", matches: false },
-        {
-            name: "raw HTML whitespace",
-            original: "Before <pre>a\nb</pre> after.\n",
-            current: "Before <pre>a b</pre> after.\n",
-            matches: false,
-        },
-        { name: "link destinations", original: "[Plan](one.md)\n", current: "[Plan](two.md)\n", matches: false },
-        { name: "list nesting", original: "- One\n  - Two\n", current: "- One\n- Two\n", matches: false },
-        { name: "checkbox state", original: "- [ ] Pending\n", current: "- [x] Pending\n", matches: false },
-        { name: "table content", original: "| A |\n| - |\n| x |\n", current: "| A |\n| - |\n| y |\n", matches: false },
-    ]
-) {
+for (const { name, original, current, matches } of [
+    {
+        name: "prose wrapping",
+        original: "Review the saved Plan.\n",
+        current: "Review the\nsaved Plan.\n",
+        matches: true,
+    },
+    {
+        name: "list wrapping",
+        original: "- Review the saved Plan.\n",
+        current: "- Review the\n  saved Plan.\n",
+        matches: true,
+    },
+    {
+        name: "table padding",
+        original: "| A | B |\n| - | - |\n| x | y |\n",
+        current: "| A   | B   |\n| --- | --- |\n| x   | y   |\n",
+        matches: true,
+    },
+    { name: "changed prose", original: "Keep the data.\n", current: "Delete the data.\n", matches: false },
+    { name: "hard breaks", original: "First  \nSecond\n", current: "First Second\n", matches: false },
+    { name: "paragraph boundaries", original: "First\n\nSecond\n", current: "First Second\n", matches: false },
+    { name: "code whitespace", original: "```text\na  b\n```\n", current: "```text\na b\n```\n", matches: false },
+    { name: "code newlines", original: "```text\na\nb\n```\n", current: "```text\na b\n```\n", matches: false },
+    { name: "inline code", original: "Run `a  b`.\n", current: "Run `a b`.\n", matches: false },
+    {
+        name: "raw HTML whitespace",
+        original: "Before <pre>a\nb</pre> after.\n",
+        current: "Before <pre>a b</pre> after.\n",
+        matches: false,
+    },
+    { name: "link destinations", original: "[Plan](one.md)\n", current: "[Plan](two.md)\n", matches: false },
+    { name: "list nesting", original: "- One\n  - Two\n", current: "- One\n- Two\n", matches: false },
+    { name: "checkbox state", original: "- [ ] Pending\n", current: "- [x] Pending\n", matches: false },
+    { name: "table content", original: "| A |\n| - |\n| x |\n", current: "| A |\n| - |\n| y |\n", matches: false },
+]) {
     test(`Plan review source comparison preserves ${name}`, () => {
         const attrs = parsePlanFrontMatter("# Plan\n").attrs;
         assertEquals(reviewSourceStillMatches({ attrs, body: current }, attrs, original), matches);
+    });
+}
+
+for (const stale of [true, false]) {
+    test(`shared review ${stale ? "rejects old" : "accepts current"} controller evidence on unchanged feedback status`, async () => {
+        const fixture = await makePlanFile({ status: "feedback" });
+        try {
+            const reviewed = await loadPlan(fixture.dir, "plan");
+            assert(reviewed);
+            if (stale) {
+                await recordPlanEvent({
+                    cwd: fixture.dir,
+                    planName: "plan",
+                    event: "review_feedback",
+                    currentStatus: "feedback",
+                    details: { failureReason: "New Core feedback." },
+                });
+            }
+            const before = await loadPlan(fixture.dir, "plan");
+            assert(before);
+            assertEquals(
+                before.revision,
+                reviewed.revision,
+                "Controller evidence is not part of the document revision.",
+            );
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: reviewed.path,
+                planWithFrontMatter: reviewed.markdown,
+                planRevision: reviewed.revision,
+                expectedControllerRevision: reviewed.controllerRevision,
+                originalAttrs: reviewed.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: { approved: true, approvalAction: "later" },
+            });
+            assertEquals(result.approved, !stale);
+            assertEquals(result.cancellationReason, stale ? "stale_plan_review" : undefined);
+            if (stale) assertEquals(await loadPlan(fixture.dir, "plan"), before);
+            else assertEquals((await loadPlan(fixture.dir, "plan"))?.attrs.status, "approved");
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
     });
 }

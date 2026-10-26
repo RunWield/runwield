@@ -1,4 +1,3 @@
-import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 /** Recorder turn transport. Generation, persistence and indexing remain shared. */
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
@@ -9,11 +8,20 @@ import { emitStatus } from "./validation-emit.ts";
 import type { ValidationLoopArgs } from "./validation-types.ts";
 
 interface RecorderPlanReference {
+    name: string;
     path: string;
+    planId: string;
+    scope: "planned_change" | "epic";
+    completionMode?: string;
+    closureReason?: string;
+    userVerificationNote?: string;
+    userVerifiedAt?: string;
+    children: { name: string; path: string }[];
 }
 
 interface RecorderPromptReference {
     successorRecordId: string;
+    settledSupersedes: string[];
     source: RecorderPlanReference;
 }
 
@@ -33,19 +41,37 @@ export async function runHostRecorder(
                 const source: RecorderPromptReference = JSON.parse(prompt);
                 const recordId = source.successorRecordId;
                 const workflow = args.session.getActiveWorkflow();
-                const diff = workflow?.executionMode === "worktree"
-                    ? await getWorktreeReviewDiff(cwd, workflow.worktreeBaseBranch || "")
-                    : "";
                 const evidence = await readDeliveryEvidence(
                     args.session.cwd,
                     args.planName,
                     workflow?.worktreeId || "in-place",
                 );
                 const references = JSON.stringify(
-                    { planPath: source.source.path, executionCwd: cwd, diff, evidence },
+                    {
+                        planPath: source.source.path,
+                        childPlanPaths: source.source.children.map((child) => child.path),
+                        executionCwd: cwd,
+                        diffAvailableAt: cwd,
+                        targetBranch: workflow?.worktreeBaseBranch,
+                        deliveryEvidencePaths: evidence.artifacts.map((artifact) => artifact.path),
+                    },
                     null,
                     2,
                 );
+                const task = JSON.stringify({
+                    successorRecordId: source.successorRecordId,
+                    settledSupersedes: source.settledSupersedes,
+                    source: {
+                        name: source.source.name,
+                        path: source.source.path,
+                        planId: source.source.planId,
+                        scope: source.source.scope,
+                        completionMode: source.source.completionMode,
+                        closureReason: source.source.closureReason,
+                        userVerificationNote: source.source.userVerificationNote,
+                        userVerifiedAt: source.source.userVerifiedAt,
+                    },
+                });
                 saved = {
                     recordId,
                     invalidSubmissions: 0,
@@ -56,8 +82,12 @@ export async function runHostRecorder(
                             generation: `${args.validationCheckpoint!.generation}:recorder:${recordId}:0`,
                         },
                         cwd,
-                        prompt: prompt + "\nCanonical references:\n" + references +
-                            "\nUse only the canonical Plan, execution diff and validation evidence. " +
+                        prompt:
+                            task +
+                            "\nCanonical artifact references:\n" +
+                            references +
+                            "\nRead the complete Plan and listed evidence files; inspect the execution diff at the given worktree path. " +
+                            "Read execution_report with MCP get_artifact using your workflow and action IDs; if available, continue pages until truncated is false. " +
                             "Never copy the Claude conversation. Return the work_record_completed sections to the coordinator.",
                     },
                 };

@@ -1,3 +1,4 @@
+import { compactStatus } from "./presentation.ts";
 import {
     mkdir as fsMkdir,
     writeFile as fsWriteFile,
@@ -18,6 +19,7 @@ import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import {
     activateInput,
+    EVIDENCE,
     type PendingPlanning,
     pendingTriage,
     planWrittenInput,
@@ -133,11 +135,13 @@ test("a fresh process retrieves the durable pending review before a browser is o
         assertEquals(review.outcome, undefined);
 
         const recordBeforeStatus = await readRecordBytes(projectRoot, planning.workflowId);
-        const fresh = await spawnAttachedCli("status", projectRoot, { workflowId: planning.workflowId });
+        const fresh = await spawnAttachedCli("status", projectRoot, {
+            workflowId: planning.workflowId,
+            evidence: EVIDENCE,
+        });
         assertEquals(fresh.code, 0, fresh.stderr);
         assert(fresh.result.ok);
-        assertEquals(fresh.result.workflow.review, review);
-        assertEquals(fresh.result.workflow.nextAction, { kind: "review", round: 1, planName: "dark-mode-toggle" });
+        assertEquals(fresh.result, compactStatus(submitted, null));
         assertEquals(await readRecordBytes(projectRoot, planning.workflowId), recordBeforeStatus);
     });
 });

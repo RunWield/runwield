@@ -1,13 +1,18 @@
-import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
+import { defineGitFixture } from "../git-test-fixture.ts";
+import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
+import { createGitPort } from "../git-port.ts";
+import { getWorktreeReviewDiff } from "./git-snapshot.ts";
+import { parseDiffFiles } from "./review-diff.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 import {
     attachRecorder,
@@ -170,7 +175,10 @@ test("runValidationLoop ask mode can skip human review and merge", async () => {
     assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.humanReviewDecision, "skipped");
     assertEquals(uiAPI.messages.filter((/** @type {string} */ message) => message === "Code Review skipped").length, 1);
-    assertEquals(uiAPI.messages.some((/** @type {string} */ message) => message.includes("You approved")), false);
+    assertEquals(
+        uiAPI.messages.some((/** @type {string} */ message) => message.includes("You approved")),
+        false,
+    );
 });
 
 test("runValidationLoop ask mode opens code review before merge when approved", async () => {
@@ -290,10 +298,12 @@ async function makeAwaitingReview(extra = {}) {
 
 /** @param {import("./validation-session-adapter.ts").IsolatedAgentSessionOptions} options */
 async function completedRepairMessages(options) {
-    await executeWorkflowTestTools(options, [{
-        name: "task_completed",
-        arguments: { message: "- Renamed the helper." },
-    }]);
+    await executeWorkflowTestTools(options, [
+        {
+            name: "task_completed",
+            arguments: { message: "- Renamed the helper." },
+        },
+    ]);
     return [];
 }
 
@@ -431,9 +441,10 @@ test("Code Review chat repairs rerun CI before reopening the fresh diff", async 
     assertEquals(result.kind, "paused");
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, "changes_requested");
     const evidence = await readDeliveryEvidence(projectRoot, "p", "review-chat-worktree");
-    assertEquals(evidence.entries.filter((entry) => entry.kind === "human").map((entry) => entry.outcome), [
-        "Changes requested",
-    ]);
+    assertEquals(
+        evidence.entries.filter((entry) => entry.kind === "human").map((entry) => entry.outcome),
+        ["Changes requested"],
+    );
     assertEquals(evidence.entries.filter((entry) => entry.kind === "human-revision").length, 1);
 });
 
@@ -515,45 +526,64 @@ test("your feedback goes to the engineer, then the tests, then straight back to 
 });
 
 test("asking for changes makes you the reviewer, so the reviewer agent stands down", async () => {
-    const projectRoot = await makeValidationProjectRoot("p", {
-        classification: "QUICK_FIX",
-        status: "validated_ci",
-        humanReviewMode: "always",
-        humanReviewDecision: "changes_requested",
-    });
-    const { hostedSession } = makeValidationUi();
-    hostedSession.setActiveExecutionWorkflow({
-        planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", humanReviewMode: "always" },
-        executionAgent: "engineer",
-        projectRoot,
-        executionCwd: projectRoot,
-        executionMode: "worktree",
-    });
-    let reviewerRuns = 0;
-
-    const result = await runValidationPhase({
-        hostedSession,
-        planName: "p",
-        planContent: "# p",
-        triageMeta: {
-            classification: "QUICK_FIX",
-            status: "validated_ci",
-            humanReviewMode: "always",
-            humanReviewDecision: "changes_requested",
-        },
-        semanticReviewPort: {
-            runIsolatedAgentSession: () => {
-                reviewerRuns += 1;
-                return Promise.resolve([]);
+    const projectRoot = await stoppedReviewRepository.checkout();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "human-feedback-skip-"));
+    try {
+        const entry = await createTestWorktreeAttempt({
+            projectRoot,
+            worktreeRoot,
+            planName: "p",
+            planId: "core-reviewed-candidate",
+        });
+        const original = await loadPlan(entry.path, "p");
+        assert(original);
+        await updatePlanFrontMatter(
+            entry.path,
+            "p",
+            {
+                status: "implemented",
+                validationPhase: "semantic",
+                humanReviewMode: "always",
+                humanReviewDecision: "changes_requested",
             },
-        },
-    });
-
-    assertEquals(reviewerRuns, 0, "the Semantic Code Reviewer must not sweep a diff the user already owns");
-    assertEquals(result.kind, "paused");
-    assertStringIncludes(result.reason || "", "Reopening your code review");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
+            {},
+            { expectedRevision: original.revision },
+        );
+        const plan = await loadPlan(entry.path, "p");
+        assert(plan);
+        const { hostedSession } = makeValidationUi();
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: plan.attrs,
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: entry.path,
+            executionMode: "worktree",
+            worktreeId: entry.id,
+            worktreeBranch: entry.branch,
+            worktreeBaseBranch: entry.baseBranch,
+        });
+        let reviewerRuns = 0;
+        const result = await runValidationPhase({
+            hostedSession,
+            planName: "p",
+            planContent: plan.markdown,
+            triageMeta: plan.attrs,
+            semanticReviewPort: {
+                runIsolatedAgentSession: () => {
+                    reviewerRuns += 1;
+                    return Promise.resolve([]);
+                },
+            },
+        });
+        assertEquals(reviewerRuns, 0, "the Semantic Code Reviewer must not sweep a diff the user already owns");
+        assertEquals(result.kind, "paused");
+        assertStringIncludes(result.reason || "", "Reopening your code review");
+        assertEquals((await loadPlan(entry.path, "p"))?.attrs.status, "reviewed");
+    } finally {
+        await fsRm(worktreeRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+    }
 });
 
 test("an unconfigured Plan offers human review and cancellation pauses before delivery", async () => {
@@ -586,7 +616,10 @@ test("an unconfigured Plan offers human review and cancellation pauses before de
     assertEquals(result.kind, "paused");
     assertEquals(requests.length, 1);
     assertEquals(requests[0].type, "select");
-    assertEquals(requests[0].options?.map((option) => option.value), ["open", "skip", "close"]);
+    assertEquals(
+        requests[0].options?.map((option) => option.value),
+        ["open", "skip", "close"],
+    );
     assertEquals((await loadPlan(projectRoot, "default-review"))?.attrs.status, "reviewed");
 });
 
@@ -618,10 +651,126 @@ for (const answer of [{ outcome: "canceled" }, { outcome: "selected", value: "cl
         assertEquals(result.kind, "paused");
         assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, null);
         assertEquals(
-            uiAPI.messages.some((/** @type {string} */ message) =>
-                message.includes("Code Review skipped") || message.includes("You approved")
+            uiAPI.messages.some(
+                (/** @type {string} */ message) =>
+                    message.includes("Code Review skipped") || message.includes("You approved"),
             ),
             false,
         );
     });
 }
+
+const stoppedReviewRepository = defineGitFixture(async (root) => {
+    await savePlan(root, "p", "# Resume reviewed candidate\n", {
+        planId: "core-reviewed-candidate",
+        classification: "PLANNED_CHANGE",
+        status: "implemented",
+        humanReviewMode: "always",
+    });
+    await fsWriteFile(join(root, "implementation.ts"), "export const value = 0;\n");
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "-m", "Plan and baseline"]);
+});
+
+test("Core resumes an edited reviewed candidate through CI and Semantic Review before a new Code Review", async () => {
+    const projectRoot = await stoppedReviewRepository.checkout();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "core-reviewed-candidate-"));
+    try {
+        const entry = await createTestWorktreeAttempt({
+            projectRoot,
+            worktreeRoot,
+            planName: "p",
+            planId: "core-reviewed-candidate",
+        });
+        const initial = await loadPlan(entry.path, "p");
+        assert(initial);
+        await updatePlanFrontMatter(
+            entry.path,
+            "p",
+            { humanReviewMode: "always" },
+            {},
+            { expectedRevision: initial.revision },
+        );
+        const plan = await loadPlan(entry.path, "p");
+        assert(plan);
+        await fsWriteFile(join(entry.path, "implementation.ts"), "export const value = 1;\n");
+        const uiAPI = makeUi();
+        const hostedSession = attachRecorder(new HostedSession({ id: "core-resume", cwd: projectRoot }), uiAPI);
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: plan.attrs,
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: entry.path,
+            executionMode: "worktree",
+            worktreeId: entry.id,
+            worktreeBranch: entry.branch,
+            worktreeBaseBranch: entry.baseBranch,
+        });
+        /** @type {string[]} */
+        const events = [];
+        /** @type {string[]} */
+        const diffs = [];
+        setInteraction(hostedSession, (request) => {
+            if (request.type === "code_review") {
+                events.push("code_review");
+                diffs.push(String(request._meta?.diffText));
+                return Promise.resolve({ outcome: "canceled" });
+            }
+            return Promise.resolve({ outcome: "selected", value: "stop" });
+        });
+        /** @type {import("./validation-test-helpers.js").ValidationTestArgs} */
+        const args = {
+            hostedSession,
+            planName: "p",
+            planContent: plan.markdown,
+            triageMeta: plan.attrs,
+            git: createGitPort(),
+            localCI: {
+                run: () => {
+                    events.push("ci");
+                    return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                },
+            },
+            semanticReviewPort: {
+                runIsolatedAgentSession: async (options) => {
+                    events.push("reviewer");
+                    const current = await loadPlan(entry.path, "p");
+                    assertEquals(current?.attrs.status, "implemented");
+                    assertEquals(current?.attrs.validationPhase, "semantic");
+                    assertEquals(current?.attrs.humanReviewDecision ?? null, null);
+                    const files = parseDiffFiles(await getWorktreeReviewDiff(entry.path, entry.baseBranch));
+                    await executeWorkflowTestTools(options, [
+                        ...files.map((file) => ({
+                            name: "review_diff",
+                            arguments: {
+                                command: "show",
+                                scope: "full",
+                                path: file.path,
+                                maxBytes: 65536,
+                            },
+                        })),
+                        { name: "review_complete", arguments: { approved: true } },
+                    ]);
+                    return [];
+                },
+            },
+        };
+        const first = await runValidationLoop(args);
+        assertEquals(first.kind, "paused");
+        assertEquals((await loadPlan(entry.path, "p"))?.attrs.status, "reviewed");
+        assertEquals(events, ["ci", "reviewer", "code_review"], JSON.stringify({ first, messages: uiAPI.messages }));
+        await fsWriteFile(join(entry.path, "implementation.ts"), "export const value = 9;\n");
+        assertEquals((await runValidationLoop(args)).kind, "paused");
+        assertEquals(events, ["ci", "reviewer", "code_review", "ci", "reviewer", "code_review"]);
+        assertStringIncludes(diffs[1], "+export const value = 9;");
+        assertEquals((await loadPlan(entry.path, "p"))?.attrs.status, "reviewed");
+        assertEquals(
+            uiAPI.messages.some((/** @type {string} */ message) => message.includes("code changed after review")),
+            true,
+        );
+    } finally {
+        await fsRm(worktreeRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+    }
+});

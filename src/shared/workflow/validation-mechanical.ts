@@ -32,6 +32,7 @@ import {
 
 import { renderOpenItems } from "./review-ledger.ts";
 import { runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
+import { ValidationHostShutdown } from "./validation-host-contract.ts";
 import { requestHostRepair, saveHostCheckpoint } from "./validation-host-state.ts";
 
 const ENGINEER_FOLLOW_UP_OPTIONS: UserActionOption[] = [
@@ -213,6 +214,7 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
             let commandResult = await runValidationCommand({
                 cwd: phase.context.executionCwd,
                 settingsPolicy: "exact-project",
+                signal: args.hostTurn.signal,
             });
             if (commandResult.kind === "command_missing") {
                 const response = await requestInteraction(args, {
@@ -224,11 +226,13 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                 commandResult = await runValidationCommand({
                     cwd: phase.context.executionCwd,
                     settingsPolicy: "exact-project",
+                    signal: args.hostTurn.signal,
                 });
             }
             if (commandResult.kind === "command_missing") throw new Error("Validation command is still missing.");
             ciResult = commandResult;
         } else ciResult = await args.localCI.run({ cwd: phase.context.executionCwd });
+        if (ciResult.kind === "canceled" && args.hostTurn?.signal?.aborted) throw new ValidationHostShutdown();
         if (!resumePending) {
             await recordDeliveryEvidence(
                 phase.context.projectRoot,

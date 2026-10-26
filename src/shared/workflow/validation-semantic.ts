@@ -19,7 +19,7 @@ import {
     renderResolvedItems,
     unaccountedOpenItems,
 } from "./review-ledger.ts";
-import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
+import { candidateIdentity, hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import { buildValidationUserMessage, validationReviewerPauseMessage } from "./validation-user-messages.ts";
 import type {
     IsolatedAgentSessionOutcome,
@@ -68,6 +68,25 @@ import {
     saveHostCheckpoint,
 } from "./validation-host-state.ts";
 
+/** Every pass, including human takeover and repair skips, binds the current candidate. */
+async function semanticPassedCheckpoint(args: ValidationLoopArgs, context: PhaseContext) {
+    const prior = args.validationCheckpoint || args.triageMeta.validationCheckpoint;
+    return makeValidationCheckpoint({
+        ...prior,
+        attemptId: context.worktreeId || "in-place",
+        generation: prior?.generation || crypto.randomUUID(),
+        status: "reviewed",
+        phase: "delivery",
+        state: "ready",
+        candidateIdentity: context.nonGitInPlace
+            ? undefined
+            : candidateIdentity(
+                  await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || ""),
+                  args.planName,
+              ),
+    });
+}
+
 export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
     const phase = await resolvePhaseContext(args);
     if (phase.kind === "blocked") return phase.result;
@@ -110,7 +129,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
             undefined,
-            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
+            { validationCheckpoint: await semanticPassedCheckpoint(args, context) },
         );
         return {
             kind: "paused",
@@ -156,7 +175,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
             undefined,
-            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
+            { validationCheckpoint: await semanticPassedCheckpoint(args, context) },
         );
         return {
             kind: "paused",
@@ -193,7 +212,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                     humanReviewMode: "always",
                     humanReviewDecision: null,
                     humanReviewedAt: null,
-                    ...(args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {}),
+                    validationCheckpoint: await semanticPassedCheckpoint(args, context),
                 },
             );
             return {
@@ -381,6 +400,10 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 phase: "delivery",
                 state: "ready",
                 reviewState,
+                candidateIdentity: candidateIdentity(
+                    await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || ""),
+                    args.planName,
+                ),
             });
             await recordLifecycleEvent(
                 args,
@@ -615,6 +638,7 @@ export async function runReviewerRound(
             args.planContent,
             inspection,
             epicContext?.section || "",
+            args.hostTurn ? `docs/plans/${args.planName}.md` : undefined,
         );
         const correction = nudgeReason;
         nudgeReason = undefined;
@@ -1041,6 +1065,7 @@ export function buildSemanticReviewAttempt(
     planContent = "",
     inspection?: ReviewInspection,
     epicContextSection = "",
+    planPath?: string,
 ): SemanticReviewAttempt {
     const hasRepairScope = state.repairBaselineTree.trim() !== "";
     const requiredScope = reviewMode === "verify" ? "repair" : "full";
@@ -1094,7 +1119,11 @@ export function buildSemanticReviewAttempt(
             "",
             "These are claims to verify, not proof. Check each one against the code yourself.",
             "",
-            state.lastRepairReport,
+            ...(planPath
+                ? [
+                      "Read repair_report with MCP get_artifact using your workflow and action IDs. Continue bounded pages until truncated is false.",
+                  ]
+                : [state.lastRepairReport]),
             "",
         );
     }
@@ -1107,7 +1136,9 @@ export function buildSemanticReviewAttempt(
         ...(epicContextSection ? [epicContextSection, ""] : []),
         "### Approved Plan",
         "",
-        projectEngineerPlanBody(planContent),
+        ...(planPath
+            ? [`Read the complete approved Plan at ${planPath}. Use the file read tools; the Plan is not inlined here.`]
+            : [projectEngineerPlanBody(planContent)]),
     );
     return {
         prompt: sections.join("\n"),

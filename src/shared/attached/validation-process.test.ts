@@ -1,3 +1,4 @@
+import { compactStatus } from "./presentation.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { test } from "node:test";
@@ -29,9 +30,12 @@ test("fresh CLI processes restore the same validation handoff and replay complet
         assert(first.result.ok && first.result.workflow.nextAction.kind === "validation");
         const replay = await spawnAttachedCli("start_validation", fixture.root, start);
         assertEquals(replay.result, first.result);
-        const status = await spawnAttachedCli("status", fixture.root, { workflowId: workflow.workflowId });
+        const status = await spawnAttachedCli("status", fixture.root, {
+            workflowId: workflow.workflowId,
+            evidence: EVIDENCE,
+        });
         assert(status.result.ok);
-        assertEquals(status.result.workflow.nextAction, first.result.workflow.nextAction);
+        assertEquals(status.result, compactStatus(first.result, null));
         assertEquals(await fixture.ciCount(), 1);
     } finally {
         await fixture.close();
@@ -128,7 +132,10 @@ test("fresh CLI workers complete CI repair, direct review, semantic repair, and 
     });
     try {
         let workflow = await fixture.status();
-        const call = async (name: import("./operations.ts").AttachedOperationName, payload: AttachedJsonObject) => {
+        const call = async (
+            name: import("./operations.ts").AttachedLifecycleOperationName,
+            payload: AttachedJsonObject,
+        ) => {
             const response = await spawnAttachedCli(name, fixture.root, {
                 workflowId: workflow.workflowId,
                 expectedRevision: workflow.revision,
@@ -137,7 +144,7 @@ test("fresh CLI workers complete CI repair, direct review, semantic repair, and 
                 payload,
             });
             assert(response.result.ok, JSON.stringify(response.result));
-            workflow = response.result.workflow;
+            workflow = await fixture.status();
             return response.result;
         };
         await call("start_validation", {});

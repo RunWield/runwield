@@ -22,14 +22,18 @@ import {
 import {
     type AttachedJsonObject,
     type AttachedJsonValue,
-    type AttachedOperationName,
+    type AttachedLifecycleOperationName,
     type AttachedOperationResult,
 } from "../../shared/attached/operations.ts";
+import type { AttachedReadResult } from "../../shared/attached/coordinator.ts";
 import { type AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
 
 import process from "node:process";
 
-type Carrier = (operation: AttachedOperationName, input: AttachedJsonObject) => Promise<AttachedOperationResult>;
+type Carrier = (
+    operation: AttachedLifecycleOperationName,
+    input: AttachedJsonObject,
+) => Promise<AttachedOperationResult>;
 
 function schemaObject(value: AttachedJsonValue | undefined): AttachedJsonObject {
     assert(value !== null && typeof value === "object" && !Array.isArray(value));
@@ -87,16 +91,24 @@ async function runJourney(carrier: Carrier) {
     const ids = pendingTriage(activated);
     const steps = [
         activated,
-        await carrier("status", { workflowId: ids.workflowId }),
         await carrier("triage_report", triageReportInput({ ...ids, expectedRevision: 2, operationId: "op-stale" })),
         await carrier("triage_report", triageReportInput(ids)),
         await carrier("triage_report", triageReportInput(ids)),
-        await carrier("status", { workflowId: ids.workflowId }),
     ];
-    return withoutGeneratedIds(steps, ids.workflowId);
+    return withoutGeneratedIds(steps, ids.workflowId).map((result) => {
+        const action = result.workflow?.nextAction;
+        return {
+            ok: result.ok,
+            operation: result.operation,
+            workflowId: result.workflow?.workflowId,
+            state: result.workflow?.state,
+            revision: result.workflow?.revision,
+            nextAction: action && { kind: action.kind, actionId: "actionId" in action ? action.actionId : undefined },
+        };
+    });
 }
 
-test("the CLI and the MCP server return equal result objects for the same inputs", async () => {
+test("the CLI and MCP return equal lifecycle results for the same mutation inputs", async () => {
     const cliProject = await projectFixture.checkout({ prefix: "runwield-attached-parity-cli-" });
     const mcpProject = await projectFixture.checkout({ prefix: "runwield-attached-parity-mcp-" });
     const transport = new StdioClientTransport({
@@ -127,6 +139,7 @@ test("the CLI and the MCP server return equal result objects for the same inputs
             [
                 "activate",
                 "triage_report",
+                "review_reply",
                 "status",
                 "plan_written",
                 "start_execution",
@@ -136,6 +149,9 @@ test("the CLI and the MCP server return equal result objects for the same inputs
                 "review_complete",
                 "validation_decision",
                 "work_record_completed",
+                "get_instructions",
+                "get_artifact",
+                "get_pending_chat",
             ],
         );
         for (const tool of tools.tools) {
@@ -147,11 +163,24 @@ test("the CLI and the MCP server return equal result objects for the same inputs
         assert(review);
         const reviewSchema: AttachedJsonObject = JSON.parse(JSON.stringify(review.inputSchema));
         assertReviewPayloadSchema(reviewSchema);
+        const status = tools.tools.find((tool) => tool.name === "status");
+        assert(status);
+        const statusSchema: AttachedJsonObject = JSON.parse(JSON.stringify(status.inputSchema));
+        assertEquals(schemaObject(schemaObject(statusSchema.properties).waitForRevision).type, "integer");
+        assertEquals(schemaObject(schemaObject(statusSchema.properties).timeoutMs).maximum, 30_000);
+
         const decision = tools.tools.find((tool) => tool.name === "validation_decision");
         assert(decision);
         const decisionSchema: AttachedJsonObject = JSON.parse(JSON.stringify(decision.inputSchema));
         const decisionPayload = schemaObject(schemaObject(decisionSchema.properties).payload);
-        assertEquals(schemaObject(schemaObject(decisionPayload.properties).answer).additionalProperties, false);
+        const answerSchema = schemaObject(schemaObject(decisionPayload.properties).answer);
+        assertEquals(answerSchema.additionalProperties, false);
+        const outcomeSchema = schemaObject(schemaObject(answerSchema.properties).outcome);
+        assertEquals(outcomeSchema.enum, ["text", "selected", "canceled", "approved", "feedback"]);
+        assertEquals(
+            outcomeSchema.description,
+            "Match the current interaction type: text for text questions, selected for option choices, canceled for a canceled interaction, and approved or feedback for code-review decisions.",
+        );
 
         const viaCli = await runJourney(
             async (operation, input) => (await spawnAttachedCli(operation, cliProject, input)).result,
@@ -171,70 +200,150 @@ test("the CLI and the MCP server return equal result objects for the same inputs
     }
 });
 
-test("MCP submits a Plan and records client and loaded plugin evidence without model-supplied versions", async () => {
-    const projectRoot = await projectFixture.checkout({ prefix: "runwield-attached-mcp-plan-" });
-    const pluginRoot = await fsMkdtemp(join(tmpdir(), "runwield-attached-plugin-"));
-    await fsMkdir(join(pluginRoot, ".claude-plugin"));
-    await fsWriteFile(join(pluginRoot, ".claude-plugin", "plugin.json"), JSON.stringify({ version: "9.8.7" }));
-    const bin = join(pluginRoot, "bin");
-    await fsMkdir(bin);
-    for (const opener of ["open", "xdg-open"]) {
-        await fsWriteFile(join(bin, opener), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-    }
-    const transport = new StdioClientTransport({
-        command: process.execPath,
-        args: runtimeSourceArgs([
-            "run",
-            "-A",
-            "--quiet",
-            "--no-check",
-            "--config",
-            DENO_CONFIG_PATH,
-            CLI_PATH,
-            "attached",
-            "mcp",
-        ]),
-        cwd: projectRoot,
-        env: {
-            ...{ ...process.env },
-            RUNWIELD_ATTACHED_PLUGIN_ROOT: pluginRoot,
-            PATH: `${bin}:${process.env["PATH"]}`,
+for (const adapterContract of [undefined, 0, 1])
+    test(
+        adapterContract === undefined
+            ? "MCP reports update guidance for a legacy plugin without a descriptor and keeps status available"
+            : adapterContract === 0
+              ? "MCP rejects the stale contract from the loaded plugin instead of using the bundled contract"
+              : "MCP submits a Plan and records client and loaded plugin evidence without model-supplied versions",
+        async () => {
+            const projectRoot = await projectFixture.checkout({ prefix: "runwield-attached-mcp-plan-" });
+            const pluginRoot = await fsMkdtemp(join(tmpdir(), "runwield-attached-plugin-"));
+            await fsMkdir(join(pluginRoot, ".claude-plugin"));
+            await fsWriteFile(join(pluginRoot, ".claude-plugin", "plugin.json"), JSON.stringify({ version: "9.8.7" }));
+            if (adapterContract !== undefined)
+                await fsWriteFile(join(pluginRoot, "runwield-adapter.json"), JSON.stringify({ adapterContract }));
+            const bin = join(pluginRoot, "bin");
+            await fsMkdir(bin);
+            for (const opener of ["open", "xdg-open"]) {
+                await fsWriteFile(join(bin, opener), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+            }
+            const transport = new StdioClientTransport({
+                command: process.execPath,
+                args: runtimeSourceArgs([
+                    "run",
+                    "-A",
+                    "--quiet",
+                    "--no-check",
+                    "--config",
+                    DENO_CONFIG_PATH,
+                    CLI_PATH,
+                    "attached",
+                    "mcp",
+                ]),
+                cwd: projectRoot,
+                env: {
+                    ...{ ...process.env },
+                    RUNWIELD_ATTACHED_PLUGIN_ROOT: pluginRoot,
+                    PATH: `${bin}:${process.env["PATH"]}`,
+                },
+                stderr: "pipe",
+            });
+            const client = new Client({ name: "claude-code", version: EVIDENCE.hostVersion });
+            async function call(
+                name: AttachedLifecycleOperationName,
+                input: AttachedJsonObject,
+            ): Promise<AttachedOperationResult> {
+                const { evidence: _evidence, ...argumentsWithoutEvidence } = input;
+                const result = await client.callTool({ name, arguments: argumentsWithoutEvidence });
+                return JSON.parse(JSON.stringify(result.structuredContent));
+            }
+            try {
+                await client.connect(transport);
+                const activation = await call("activate", {
+                    ...activateInput(),
+                    evidence: { ...EVIDENCE, adapterContract: 1 },
+                });
+                if (adapterContract !== 1) {
+                    assert(!activation.ok);
+                    assertEquals(activation.rejection.code, "incompatible_adapter");
+                    const status = await call("status", {});
+                    assert(!status.ok);
+                    assertEquals(status.rejection.code, "workflow_not_found");
+                    return;
+                }
+                const ids = pendingTriage(activation);
+                const triaged = await call("triage_report", triageReportInput(ids));
+                assert(triaged.ok && triaged.workflow.nextAction.kind === "plan");
+                await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
+                await fsWriteFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
+                const result = await call(
+                    "plan_written",
+                    planWrittenInput({
+                        workflowId: ids.workflowId,
+                        actionId: triaged.workflow.nextAction.actionId,
+                        expectedRevision: triaged.workflow.revision,
+                    }),
+                );
+                assert(result.ok);
+                assertEquals(result.workflow.state, "awaiting_review");
+                const record: AttachedWorkflowRecord = JSON.parse(await readRecordBytes(projectRoot, ids.workflowId));
+                for (const accepted of Object.values(record.acceptedOperations)) {
+                    assertEquals(accepted.evidence.host, "claude-code");
+                    assertEquals(accepted.evidence.hostVersion, EVIDENCE.hostVersion);
+                    assertEquals(accepted.evidence.adapterVersion, "9.8.7");
+                    assertEquals(accepted.evidence.adapterContract, 1);
+                }
+            } finally {
+                await client.close().catch(() => undefined);
+                await transport.close().catch(() => undefined);
+                await fsRm(pluginRoot, { recursive: true });
+                await fsRm(projectRoot, { recursive: true });
+            }
         },
-        stderr: "pipe",
-    });
-    const client = new Client({ name: "claude-code", version: "2.1.292" });
-    async function call(name: AttachedOperationName, input: AttachedJsonObject): Promise<AttachedOperationResult> {
-        const { evidence: _evidence, ...argumentsWithoutEvidence } = input;
-        const result = await client.callTool({ name, arguments: argumentsWithoutEvidence });
-        return JSON.parse(JSON.stringify(result.structuredContent));
-    }
-    try {
-        await client.connect(transport);
-        const ids = pendingTriage(await call("activate", activateInput()));
-        const triaged = await call("triage_report", triageReportInput(ids));
-        assert(triaged.ok && triaged.workflow.nextAction.kind === "plan");
-        await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-        await fsWriteFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
-        const result = await call(
-            "plan_written",
-            planWrittenInput({
-                workflowId: ids.workflowId,
-                actionId: triaged.workflow.nextAction.actionId,
-                expectedRevision: triaged.workflow.revision,
-            }),
-        );
-        assert(result.ok);
-        assertEquals(result.workflow.state, "awaiting_review");
-        const record: AttachedWorkflowRecord = JSON.parse(await readRecordBytes(projectRoot, ids.workflowId));
-        for (const accepted of Object.values(record.acceptedOperations)) {
-            assertEquals(accepted.evidence.host, "claude-code");
-            assertEquals(accepted.evidence.hostVersion, "2.1.292");
-            assertEquals(accepted.evidence.adapterVersion, "9.8.7");
+    );
+
+for (const hostVersion of [EVIDENCE.hostVersion, "2.1.302"]) {
+    test(`MCP supplies current host ${hostVersion} evidence on action reads and diagnostic status`, async () => {
+        const root = await projectFixture.checkout({ prefix: "runwield-attached-mcp-read-" });
+        const transport = new StdioClientTransport({
+            command: process.execPath,
+            args: runtimeSourceArgs([
+                "run",
+                "-A",
+                "--quiet",
+                "--no-check",
+                "--config",
+                DENO_CONFIG_PATH,
+                CLI_PATH,
+                "attached",
+                "mcp",
+            ]),
+            cwd: root,
+            env: Object.fromEntries(
+                Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+            stderr: "pipe",
+        });
+        const client = new Client({ name: "claude-code", version: hostVersion });
+        try {
+            const activated = await spawnAttachedCli("activate", root, activateInput());
+            const ids = pendingTriage(activated.result);
+            const before = await readRecordBytes(root, ids.workflowId);
+            await client.connect(transport);
+            const response = await client.callTool({ name: "get_instructions", arguments: ids });
+            const read: AttachedReadResult = JSON.parse(JSON.stringify(response.structuredContent));
+            if (hostVersion === EVIDENCE.hostVersion) {
+                assert(read.ok && "instructions" in read);
+                assertEquals(read.instructions.role, "router");
+            } else {
+                assert(!read.ok);
+                assertEquals(read.rejection.code, "unsupported_host_version");
+                assertEquals("instructions" in read, false);
+            }
+            const status = await client.callTool({ name: "status", arguments: { workflowId: ids.workflowId } });
+            const result: AttachedOperationResult = JSON.parse(JSON.stringify(status.structuredContent));
+            assert(result.ok);
+            assertEquals(
+                result.compatibility?.status,
+                hostVersion === EVIDENCE.hostVersion ? "compatible" : "unsupported_host_version",
+            );
+            assertEquals(await readRecordBytes(root, ids.workflowId), before);
+        } finally {
+            await client.close().catch(() => undefined);
+            await transport.close().catch(() => undefined);
+            await fsRm(root, { recursive: true });
         }
-    } finally {
-        await client.close().catch(() => undefined);
-        await transport.close().catch(() => undefined);
-        await fsRm(pluginRoot, { recursive: true });
-        await fsRm(projectRoot, { recursive: true });
-    }
-});
+    });
+}

@@ -4,9 +4,12 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../browser-port.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "./review-host.ts";
-import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
+import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
+import { attachedValidationFixture } from "./validation-test-fixture.ts";
+import { toDelivery } from "./delivery-test-fixture.ts";
+import { stopActiveReviewSurfaces } from "../../ui/review/review-launcher.ts";
 import { planWrittenInput, runOperation, submitReview, withProject } from "./attached-test-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 
 test("the production decision route acknowledges only a committed Attached outcome and reuses its page", async () => {
@@ -23,7 +26,7 @@ test("the production decision route acknowledges only a committed Attached outco
             assertEquals(unauthorized.status, 404);
             await unauthorized.text();
             const conversation = await fetch(new URL(`/api/review/conversation${url.search}`, url));
-            assertEquals(conversation.status, 404);
+            assertEquals(conversation.status, 200);
             await conversation.text();
             const oldPlan = await loadPlan(root, "dark-mode-toggle");
             assert(oldPlan);
@@ -146,6 +149,15 @@ test("the production stale-review response preserves the pending durable round",
             assertEquals(page.status, 200);
             assertStringIncludes(await page.text(), "Delete the toggle.");
             assertEquals((await (await fetch(new URL(`/api/review/revision${url.search}`, url))).json()).revision, 1);
+            for (let poll = 0; poll < 3; poll++) {
+                const status = await runOperation("status", root, { workflowId: workflow.workflowId });
+                assert(status.ok);
+                await ensureReviewHosted(root, status.workflow, NO_OPEN_BROWSER_PORT);
+                assertEquals(
+                    (await (await fetch(new URL(`/api/review/revision${url.search}`, url))).json()).revision,
+                    1,
+                );
+            }
             const accepted = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({
@@ -199,3 +211,124 @@ test("a Core-advanced browser reload returns its position without waiting on its
         }
     });
 });
+
+async function withinFiveSeconds<T>(task: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            task,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error("Review hosting exceeded five seconds")), 5000);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+for (const pollOwnsOpening of [false, true]) {
+    test(
+        pollOwnsOpening
+            ? "a Plan poll keeps its original browser port when it opens code review"
+            : "a Plan conversation poll can overlap code-review hosting and both servers close with the host",
+        async () => {
+            const fixture = await attachedValidationFixture();
+            const requests = new AbortController();
+            const codeOpening = Promise.withResolvers<void>();
+            const browserRelease = Promise.withResolvers<void>();
+            const browser = pollOwnsOpening
+                ? {
+                      async open(url: string): Promise<boolean> {
+                          if (new URL(url).pathname === "/review/code") {
+                              codeOpening.resolve();
+                              await browserRelease.promise;
+                          }
+                          return false;
+                      },
+                  }
+                : NO_OPEN_BROWSER_PORT;
+            try {
+                // Keep the real implemented Plan and worktree intact while seeding the preceding browser round.
+                await savePlan(fixture.root, "previous-plan", "# Previous Plan\n\nImplement the value.\n", {
+                    planId: "previous-plan",
+                    classification: "PLANNED_CHANGE",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                });
+                const location = locateAttachedWorkflows(fixture.root);
+                const original = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+                assert(original.status === "found");
+                assertEquals(
+                    (
+                        await writeAttachedWorkflowRecord(
+                            location,
+                            {
+                                ...original.record,
+                                revision: original.record.revision + 1,
+                                state: "awaiting_review",
+                                plan: { planId: "previous-plan", planName: "previous-plan" },
+                                review: {
+                                    round: 1,
+                                    actionId: "previous-plan-review",
+                                    planRevision: "",
+                                    controllerRevision: 0,
+                                    waitingReason: "user_decision",
+                                    status: "pending",
+                                },
+                            },
+                            original.record.revision,
+                        )
+                    ).status,
+                    "written",
+                );
+                const planReview = await ensureReviewHosted(fixture.root, await fixture.status(), browser);
+                assert(planReview);
+                const opened = await loadAttachedWorkflowRecord(location, fixture.workflowId);
+                assert(opened.status === "found");
+                assertEquals(
+                    (
+                        await writeAttachedWorkflowRecord(
+                            location,
+                            { ...original.record, revision: opened.record.revision + 1 },
+                            opened.record.revision,
+                        )
+                    ).status,
+                    "written",
+                );
+                const started = await toDelivery(fixture);
+                assert(started.workflow.nextAction.kind === "code_review");
+                const oldUrl = new URL(planReview.url);
+                const polling = fetch(new URL(`/api/review/conversation${oldUrl.search}`, oldUrl), {
+                    signal: requests.signal,
+                }).then(async (response) => {
+                    await response.text();
+                    return response.status;
+                });
+                // Cleanup can abort this request before the browser-boundary wait completes.
+                void polling.catch(() => undefined);
+                if (pollOwnsOpening) await withinFiveSeconds(codeOpening.promise);
+                const hosting = ensureReviewHosted(fixture.root, started.workflow, browser);
+                browserRelease.resolve();
+                const [status, codeReview] = await withinFiveSeconds(Promise.all([polling, hosting]));
+                assertEquals(status, 200);
+                assert(codeReview);
+                assertEquals(new URL(codeReview.url).pathname, "/review/code");
+                const page = await fetch(codeReview.url, { signal: requests.signal });
+                assertEquals(page.status, 200);
+                await page.text();
+                await withinFiveSeconds(stopHostedAttachedReviews());
+                await assertRejects(() => fetch(planReview.url, { signal: AbortSignal.timeout(5000) }));
+                await assertRejects(() => fetch(codeReview.url, { signal: AbortSignal.timeout(5000) }));
+            } finally {
+                browserRelease.resolve();
+                requests.abort();
+                // A failing handover can leave an opening blocked and a new surface outside the host map.
+                // Bound cleanup too, so that a regression reports failure instead of deadlocking the runner.
+                await withinFiveSeconds(Promise.all([stopHostedAttachedReviews(), stopActiveReviewSurfaces()])).catch(
+                    () => undefined,
+                );
+                await fixture.close();
+            }
+        },
+    );
+}

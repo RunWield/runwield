@@ -6,7 +6,8 @@ import { captureForegroundProcess } from "../captured-process.ts";
  */
 
 import { AGENTS } from "../../constants.js";
-import { PlanLockTimeoutError } from "../../plan-store.js";
+import { loadPlan, PlanLockTimeoutError } from "../../plan-store.js";
+import { requestHostRepair } from "./validation-host-state.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";
 import { emitStatus } from "./validation-emit.ts";
@@ -29,11 +30,7 @@ type AnnotatedPublicationError = Error & {
 };
 
 export type PublicationStage =
-    | "artifact_preparation"
-    | "candidate_checkpoint"
-    | "lifecycle_staging"
-    | "candidate_sealing"
-    | "git_publication";
+    "artifact_preparation" | "candidate_checkpoint" | "lifecycle_staging" | "candidate_sealing" | "git_publication";
 
 export type PublicationFailure = {
     reason: string;
@@ -161,79 +158,78 @@ export function describeMergePause(
     const kind = getMergeFailureKind(failure);
     if (kind === "primary_checkout_dirty") {
         return {
-            whatHappened:
-                `RunWield finished "${planName}" but could not add it to your ${targetBranch} branch, because your project folder has changes you have not saved to git yet — in the same files this work changes. Merging now would wipe them out.`,
-            doThis:
-                "Commit or stash these files, then pick Retry. Nothing was lost. The commits are still on the worktree branch.",
+            whatHappened: `RunWield finished "${planName}" but could not add it to your ${targetBranch} branch, because your project folder has changes you have not saved to git yet — in the same files this work changes. Merging now would wipe them out.`,
+            doThis: "Commit or stash these files, then pick Retry. Nothing was lost. The commits are still on the worktree branch.",
             details: getBlockingPaths(failure),
         };
     }
     if (kind === "runwield_runtime_tracked") {
         return {
-            whatHappened:
-                `RunWield stopped before adding "${planName}" to ${targetBranch}, because RunWield runtime files are staged, committed, or present in the publication history. Publishing them can expose local state or secrets.`,
-            doThis:
-                "Remove these paths from Git history and the index, rotate any listed collaboration secret, then pick Retry.",
+            whatHappened: `RunWield stopped before adding "${planName}" to ${targetBranch}, because RunWield runtime files are staged, committed, or present in the publication history. Publishing them can expose local state or secrets.`,
+            doThis: "Remove these paths from Git history and the index, rotate any listed collaboration secret, then pick Retry.",
             details: getBlockingPaths(failure),
         };
     }
     if (kind === "target_checked_out") {
         return {
-            whatHappened:
-                `RunWield finished "${planName}" but could not add it to your ${targetBranch} branch, because that branch is checked out somewhere else.`,
+            whatHappened: `RunWield finished "${planName}" but could not add it to your ${targetBranch} branch, because that branch is checked out somewhere else.`,
             doThis: `Switch that other checkout off ${targetBranch}, then pick Retry.`,
         };
     }
     if (kind === "permission_denied") {
         return {
-            whatHappened:
-                `Git refused permission to update the upstream ${targetBranch} branch. The validated commits remain on the worktree branch.`,
-            doThis:
-                "Restore the remote credentials or write permission, confirm with `git push --dry-run`, then pick Retry.",
+            whatHappened: `Git refused permission to update the upstream ${targetBranch} branch. The validated commits remain on the worktree branch.`,
+            doThis: "Restore the remote credentials or write permission, confirm with `git push --dry-run`, then pick Retry.",
         };
     }
     if (kind === "policy_violation" || kind === "publication_target_changed") {
         return {
-            whatHappened:
-                `Git refused to update the upstream ${targetBranch} branch because its branch rules or configured publication target changed. The validated commits remain on the worktree branch.`,
-            doThis:
-                `Inspect the remote and branch settings with \`git remote -v\` and \`git branch -vv\`, resolve the reported rule or target change, then pick Retry.`,
+            whatHappened: `Git refused to update the upstream ${targetBranch} branch because its branch rules or configured publication target changed. The validated commits remain on the worktree branch.`,
+            doThis: `Inspect the remote and branch settings with \`git remote -v\` and \`git branch -vv\`, resolve the reported rule or target change, then pick Retry.`,
         };
     }
     if (kind === "publication_push_failed" || kind === "publication_verification_failed") {
         return {
-            whatHappened:
-                `RunWield finished and validated "${planName}", but the ${targetBranch} branch could not be updated upstream.`,
-            doThis:
-                "The validated commits are safe on the worktree branch. Fix the upstream connection or branch rule, then pick Retry.",
+            whatHappened: `RunWield finished and validated "${planName}", but the ${targetBranch} branch could not be updated upstream.`,
+            doThis: "The validated commits are safe on the worktree branch. Fix the upstream connection or branch rule, then pick Retry.",
         };
     }
     const repairCwd = getMergeRepairCwd(failure) || context.executionCwd;
     if (
-        kind === "detached_merge_conflict" || kind === "current_checkout_merge_conflict" ||
-        kind === "isolated_publication_conflict" || kind === "target_sync_conflict" || kind === "content_conflict"
+        kind === "detached_merge_conflict" ||
+        kind === "current_checkout_merge_conflict" ||
+        kind === "isolated_publication_conflict" ||
+        kind === "target_sync_conflict" ||
+        kind === "content_conflict"
     ) {
         return {
-            whatHappened:
-                `RunWield could not combine "${planName}" with your ${targetBranch} branch: the same lines changed in both places, and the agent could not settle it.`,
-            doThis:
-                `Open ${repairCwd}, fix the files git marked as conflicted, run "git add" on each one, then pick Retry.`,
+            whatHappened: `RunWield could not combine "${planName}" with your ${targetBranch} branch: the same lines changed in both places, and the agent could not settle it.`,
+            doThis: `Open ${repairCwd}, fix the files git marked as conflicted, run "git add" on each one, then pick Retry.`,
         };
     }
     return {
-        whatHappened:
-            `Publication stopped because the saved publication copy for "${planName}" is incomplete. Your validated work is safe.`,
+        whatHappened: `Publication stopped because the saved publication copy for "${planName}" is incomplete. Your validated work is safe.`,
         doThis: "Update RunWield, then load this Plan again to resume publication.",
     };
 }
 
 export function publicationFailureNeedsUserAction(failure: PublicationFailure): boolean {
     const kind = getMergeFailureKind(failure);
-    return kind === "primary_checkout_dirty" || kind === "runwield_runtime_tracked" || kind === "target_checked_out" ||
-        kind === "permission_denied" || kind === "policy_violation" || kind === "publication_target_changed" ||
-        kind === "publication_push_failed" || kind === "publication_verification_failed" ||
-        kind === "detached_merge_conflict" || kind === "current_checkout_merge_conflict" ||
-        kind === "isolated_publication_conflict" || kind === "target_sync_conflict" || kind === "content_conflict";
+    return (
+        kind === "primary_checkout_dirty" ||
+        kind === "runwield_runtime_tracked" ||
+        kind === "target_checked_out" ||
+        kind === "permission_denied" ||
+        kind === "policy_violation" ||
+        kind === "publication_target_changed" ||
+        kind === "publication_push_failed" ||
+        kind === "publication_verification_failed" ||
+        kind === "detached_merge_conflict" ||
+        kind === "current_checkout_merge_conflict" ||
+        kind === "isolated_publication_conflict" ||
+        kind === "target_sync_conflict" ||
+        kind === "content_conflict"
+    );
 }
 
 /** @returns whether the repair agent reported completion. */
@@ -250,27 +246,33 @@ export async function dispatchMergeRepair(
     // not choose.
     const problem = getMergeFailureKind(failure) === "target_sync_conflict" ? "target_update" : "work_combination";
     emitStatus(args, validationMergeRepairMessage(args.planName, problem), "warning");
-    emitStatus(
-        args,
-        buildValidationUserMessage({ kind: "merge_dispatch" }),
-    );
+    emitStatus(args, buildValidationUserMessage({ kind: "merge_dispatch" }));
+    const prompt = buildValidationRepairPrompt({
+        executionCwd: context.executionCwd,
+        repairCwd,
+        worktreeId: context.worktreeId,
+        worktreeBranch: context.worktreeBranch,
+        worktreeBaseBranch: context.worktreeBaseBranch,
+        repairsNeeded: `Worktree merge failed while publishing ${args.planName}. Repair the merge or integration failure.\n\n${reason}`,
+        authorityNote:
+            "This checkout contains RunWield's in-progress publication merge. Resolve only the files Git marks as conflicted and stage each resolution. Do not commit, merge, rebase, reset, or publish; RunWield owns those steps and will continue automatically.",
+        completionInstruction:
+            "After all conflict resolutions are staged and no unmerged paths remain, call task_completed. Do not create a commit. If a conflict cannot be resolved here, leave the rest staged and end your turn in plain text naming the file and what stopped you, rather than calling task_completed.",
+    });
+    if (args.hostTurn) {
+        const plan = await loadPlan(context.executionCwd, args.planName);
+        if (!plan) throw new Error(`Plan not found: ${args.planName}`);
+        await requestHostRepair(args, context, prompt, "publication", undefined, {
+            cwd: repairCwd,
+            nextPhase: "delivery",
+            expectedStatus: plan.attrs.status,
+        });
+    }
     args.session.setActiveWorkflow({ ...context.workflowBase });
     const outcome = await args.session.runIndependentRepairTurn({
         kind: "publication",
         agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
-        userRequest: buildValidationRepairPrompt({
-            executionCwd: context.executionCwd,
-            repairCwd,
-            worktreeId: context.worktreeId,
-            worktreeBranch: context.worktreeBranch,
-            worktreeBaseBranch: context.worktreeBaseBranch,
-            repairsNeeded:
-                `Worktree merge failed while publishing ${args.planName}. Repair the merge or integration failure.\n\n${reason}`,
-            authorityNote:
-                "This checkout contains RunWield's in-progress publication merge. Resolve only the files Git marks as conflicted and stage each resolution. Do not commit, merge, rebase, reset, or publish; RunWield owns those steps and will continue automatically.",
-            completionInstruction:
-                "After all conflict resolutions are staged and no unmerged paths remain, call task_completed. Do not create a commit. If a conflict cannot be resolved here, leave the rest staged and end your turn in plain text naming the file and what stopped you, rather than calling task_completed.",
-        }),
+        userRequest: prompt,
         cwd: repairCwd,
     });
     if (!outcome.completed) return false;

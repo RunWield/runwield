@@ -18,9 +18,78 @@ import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import { findActiveByPlanName, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.js";
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
+import { candidateIdentity } from "./validation-scope.ts";
+import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 
 export const PUBLICATION_REVALIDATION_MESSAGE =
     "The source history or files changed. Checking the current work before publishing it.";
+
+export const CANDIDATE_REVALIDATION_MESSAGE =
+    "The code changed after review. Running validation and Semantic Review again before Code Review.";
+
+/** Clear stale evidence without releasing a live supervisor's ownership. */
+async function resetValidation(executionCwd: string, planName: string, attemptId: string, planId?: string) {
+    const plan = await loadPlan(executionCwd, planName);
+    if (!plan || plan.attrs.planId !== planId) throw new Error("Publication Plan identity changed.");
+    const checkpoint = plan.attrs.validationCheckpoint;
+    await updatePlanFrontMatter(
+        executionCwd,
+        planName,
+        {
+            status: "implemented",
+            validationPhase: "mechanical",
+            validatedCommit: null,
+            deliveryEvidence: null,
+            validatedAt: null,
+            verifiedAt: null,
+            failureReason: null,
+            failedAt: null,
+            validationCheckpoint:
+                checkpoint?.state === "running"
+                    ? makeValidationCheckpoint({
+                          attemptId,
+                          generation: checkpoint.generation,
+                          status: "implemented",
+                          phase: "mechanical",
+                          state: "running",
+                          ownerPid: checkpoint.ownerPid,
+                          ownerHostname: checkpoint.ownerHostname,
+                          ownerIdentity: checkpoint.ownerIdentity,
+                          lastSettledOperationId: checkpoint.lastSettledOperationId,
+                      })
+                    : null,
+            validationCiAttempts: 0,
+            validationSemanticRounds: 0,
+            humanReviewDecision: null,
+            humanReviewedAt: null,
+            worktreeStatus: "active",
+        },
+        {},
+        { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
+    );
+}
+
+/** Check the reviewed candidate before phase selection, under both Plan locks. */
+export async function prepareReviewedCandidateRevalidation(projectRoot: string, planName: string): Promise<boolean> {
+    return await withPlanLock(projectRoot, planName, async () => {
+        const entry = await findActiveByPlanName(projectRoot, planName);
+        if (!entry || entry.publication) return false;
+        return await withPlanLock(entry.path, planName, async () => {
+            const plan = await loadPlan(entry.path, planName);
+            const identity = plan?.attrs.validationCheckpoint?.candidateIdentity;
+            if (plan?.attrs.status !== "reviewed" || !identity) return false;
+            if (plan.attrs.planId !== entry.planId) throw new Error("Publication Plan identity changed.");
+            const branch = await git(entry.path, ["symbolic-ref", "--quiet", "HEAD"]);
+            if (!branch.success || branch.text !== `refs/heads/${entry.branch}`) {
+                throw new Error("The publication source checkout no longer has its recorded branch.");
+            }
+            const current = candidateIdentity(await getWorktreeReviewDiff(entry.path, entry.baseBranch), planName);
+            if (current === identity) return false;
+            await resetValidation(entry.path, planName, entry.id, entry.planId);
+            return true;
+        });
+    });
+}
 
 async function git(cwd: string, args: string[]) {
     const output = await captureForegroundProcess("git", { cwd, args });
@@ -164,43 +233,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
                 await updatePublication(projectRoot, entry.id, current.revision, attempt);
             }
             await preserveAttempt(attempt);
-            const plan = await loadPlan(executionCwd, planName);
-            if (!plan || plan.attrs.planId !== entry.planId) throw new Error("Publication Plan identity changed.");
-            const checkpoint = plan.attrs.validationCheckpoint;
-            await updatePlanFrontMatter(
-                executionCwd,
-                planName,
-                {
-                    status: "implemented",
-                    validatedCommit: null,
-                    deliveryEvidence: null,
-                    validatedAt: null,
-                    verifiedAt: null,
-                    failureReason: null,
-                    failedAt: null,
-                    validationCheckpoint:
-                        checkpoint?.state === "running"
-                            ? makeValidationCheckpoint({
-                                  attemptId: entry.id,
-                                  generation: checkpoint.generation,
-                                  status: "implemented",
-                                  phase: "mechanical",
-                                  state: "running",
-                                  ownerPid: checkpoint.ownerPid,
-                                  ownerHostname: checkpoint.ownerHostname,
-                                  ownerIdentity: checkpoint.ownerIdentity,
-                                  lastSettledOperationId: checkpoint.lastSettledOperationId,
-                              })
-                            : null,
-                    validationCiAttempts: 0,
-                    validationSemanticRounds: 0,
-                    humanReviewDecision: null,
-                    humanReviewedAt: null,
-                    worktreeStatus: "active",
-                },
-                {},
-                { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
-            );
+            await resetValidation(executionCwd, planName, entry.id, entry.planId);
             await retirePublicationForRevalidation(projectRoot, entry.id, attempt.revision);
             return attempt.revalidation!.archiveRoot;
         });

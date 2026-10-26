@@ -59,6 +59,7 @@ import {
 import { buildRunWieldDirectEditPanel } from "./plan-review-direct-edits.ts";
 import { buildPlanReviewFeedback } from "./plan-review-feedback.ts";
 import { normalizePlanReviewVersions } from "./plan-review-versions.ts";
+import { mergeSavedReviewMessages, useSavedReviewConversation } from "./use-saved-review-conversation.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 import "./plannotator.css";
 
@@ -228,6 +229,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [conversationComposer, setConversationComposer] = useState("");
     const [conversationContextAttached, setConversationContextAttached] = useState(false);
     const [plannerWorking, setPlannerWorking] = useState(false);
+    const savedPlannerWaitStarted = useRef(null);
     const [plannerError, setPlannerError] = useState("");
     const [plannerDiffBase, setPlannerDiffBase] = useState(null);
     const [plannerDiffRevision, setPlannerDiffRevision] = useState(0);
@@ -366,19 +368,21 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const primaryApprovalAction = reviewGroup
         ? PLAN_APPROVAL_ACTIONS.RUN
         : primaryPlanApprovalActionForClassification(planClassification, initialPayload.frontmatter?.type);
-    const approvalLabels = initialPayload.reviewRevisionUrl
-        ? { primary: "Approve & Ready", mobile: "Ready" }
-        : undefined;
     const outcomeCopy = initialPayload.reviewRevisionUrl
         ? submitted === "feedback"
             ? {
                   title: "Feedback sent",
                   subtitle: "Claude can retrieve your feedback. The next review round opens in this page.",
               }
-            : {
-                  title: "Approved & Ready",
-                  subtitle: "The Plan is ready for work. Execution handoff is a later Preview step.",
-              }
+            : submitted === "approved-later"
+              ? {
+                    title: "Approved for later",
+                    subtitle: "The Plan is Ready For Work. /runwield:implement starts it.",
+                }
+              : {
+                    title: "Approved & Run",
+                    subtitle: "Claude starts implementation in a RunWield worktree.",
+                }
         : reviewOutcomeCopy(
               submitted,
               planClassification,
@@ -389,7 +393,41 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const executionAgent = executionPolicy.executionAgent;
     const collaborationRecommendation = executionPolicy.collaborationRecommendation;
     const waitingForRevision = Boolean(initialPayload.reviewRevisionUrl && submitted === "feedback");
-    const reviewRevisionFields = useReviewRevision(initialPayload, waitingForRevision, setError);
+    const { fields: reviewRevisionFields, update: updateReviewRevision } = useReviewRevision(
+        initialPayload,
+        waitingForRevision,
+        setError,
+    );
+    useSavedReviewConversation(
+        initialPayload,
+        (snapshot, advanced) => {
+            if (submitted === "feedback") return;
+            updateReviewRevision(snapshot.reviewRevision);
+            setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
+            const waitStarted = savedPlannerWaitStarted.current;
+            savedPlannerWaitStarted.current = snapshot.pending ? (waitStarted ?? Date.now()) : null;
+            const timedOut = snapshot.pending && Date.now() - savedPlannerWaitStarted.current >= 180_000;
+            setPlannerWorking(snapshot.pending && !timedOut);
+            reviewGroup?.setBusy(snapshot.pending && !timedOut);
+            if (timedOut) {
+                setPlannerError(`${agentLabel} is still working. Check the terminal Session for progress.`);
+            } else if (!snapshot.pending && waitStarted !== null) {
+                setPlannerError("");
+            }
+            if (advanced) {
+                const event = snapshot.events.at(-1);
+                applyPlannerRevision({
+                    priorPlan: currentPlan(),
+                    revisedPlan: snapshot.plan,
+                    interactionId: `conversation-${snapshot.revision}`,
+                    reply: event?.delta,
+                    agentMessageId: event ? `agent-${event.messageId}` : undefined,
+                    clearAttachedContext: true,
+                });
+            }
+        },
+        setPlannerError,
+    );
     const reviewNotice = waitingForRevision
         ? { state: "info", title: outcomeCopy.title, message: outcomeCopy.subtitle }
         : initialPayload.reviewNotice;
@@ -594,15 +632,16 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         setPlannerError("");
         setError("");
         setConversationComposer("");
-        setConversationMessages((items) => [
-            ...items,
-            {
-                id: userMessageId,
-                role: "user",
-                body: message || "Review annotations",
-                ...(contextLabel && { contextLabel }),
-            },
-        ]);
+        if (!initialPayload.savedConversation)
+            setConversationMessages((items) => [
+                ...items,
+                {
+                    id: userMessageId,
+                    role: "user",
+                    body: message || "Review annotations",
+                    ...(contextLabel && { contextLabel }),
+                },
+            ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -617,7 +656,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
             const result = await submit("deny", {
                 ...buildReviewPayload(),
-                feedback: buildArtifactConversationFeedback({ message, attachedFeedback, agentLabel }),
+                feedback: initialPayload.savedConversation
+                    ? [message, attachedFeedback].filter(Boolean).join("\n\n")
+                    : buildArtifactConversationFeedback({ message, attachedFeedback, agentLabel }),
                 conversationTurn: true,
                 ...buildPlanSavePayload(),
             });
@@ -640,6 +681,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 });
                 return;
             }
+
+            if (initialPayload.savedConversation) return;
 
             if (initialPayload.conversationStatusUrl) {
                 await waitForStandaloneReview({
@@ -765,7 +808,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }
 
     function applyPlannerRevision(options) {
-        upsertPlannerReply(options.agentMessageId, options.reply);
+        if (options.reply) upsertPlannerReply(options.agentMessageId, options.reply);
         setActiveInteractionId(options.interactionId);
         if (initialPayload.interactionAnswerBaseUrl) {
             setActiveInteractionAnswerUrl(
@@ -1092,7 +1135,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                         submitting !== null || plannerWorking || waitingForRevision || reviewGroup?.busy
                                     }
                                     primaryApprovalAction={primaryApprovalAction}
-                                    approvalLabels={approvalLabels}
                                     sequenceCount={reviewGroup?.count}
                                     onApprove={submitApprove}
                                     isLoading={submitting === "approve"}
@@ -1126,7 +1168,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     submitting !== null || plannerWorking || waitingForRevision || reviewGroup?.busy
                                 }
                                 primaryApprovalAction={primaryApprovalAction}
-                                approvalLabels={approvalLabels}
                                 sequenceCount={reviewGroup?.count}
                                 onApprove={submitApprove}
                                 isLoading={submitting === "approve"}
@@ -1780,7 +1821,6 @@ function PlanReviewHeaderActions({
     setExecutionPolicy,
     disabled,
     primaryApprovalAction,
-    approvalLabels,
     onApprove,
     isLoading,
     sequenceCount,
@@ -1828,7 +1868,6 @@ function PlanReviewHeaderActions({
             <PlanApprovalSplitButton
                 sequence={sequenceCount !== undefined}
                 primaryAction={primaryApprovalAction}
-                labels={approvalLabels}
                 onApprove={onApprove}
                 disabled={disabled}
                 isLoading={isLoading}
@@ -1837,11 +1876,10 @@ function PlanReviewHeaderActions({
     );
 }
 
-function PlanApprovalSplitButton({ primaryAction, onApprove, disabled, isLoading, sequence = false, labels }) {
+function PlanApprovalSplitButton({ primaryAction, onApprove, disabled, isLoading, sequence = false }) {
     const isProject = primaryAction === PLAN_APPROVAL_ACTIONS.DECOMPOSE;
-    const primaryLabel =
-        labels?.primary || (sequence ? "Approve & Execute" : isProject ? "Approve & Slice" : "Approve & Run");
-    const primaryMobileLabel = labels?.mobile || (sequence ? "Execute" : isProject ? "Slice" : "Run");
+    const primaryLabel = sequence ? "Approve & Execute" : isProject ? "Approve & Slice" : "Approve & Run";
+    const primaryMobileLabel = sequence ? "Execute" : isProject ? "Slice" : "Run";
     const loadingLabel = isProject ? "Approving…" : "Approving…";
 
     function submitPrimary() {
