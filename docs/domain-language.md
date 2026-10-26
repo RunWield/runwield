@@ -635,8 +635,11 @@ delivery. _Avoid_: Integration requirements, deferred findings
 
 **Integration Gate**: The check that finishes an Epic with an **Epic Branch** once every included child is delivered to
 it. It runs the project's checks, an integration review of the whole Epic diff, and Code Review per the `codereview`
-setting, on the exact branch head. A pass makes the Epic `validated` for that commit; findings become a draft repair
-child that Planner starts from. _Avoid_: Epic validation run, final review
+setting, on the exact branch head. A pass makes the Epic `reviewed` for that commit; findings become a draft repair
+child that Planner starts from. When only gate repair drafts remain unstarted, the user can retry from the Epic menu.
+A pass closes those drafts without verification and records the checked commit in the reason. New findings update the
+newest draft, not a new child. The automatic gate still waits for repair delivery. _Avoid_: Epic validation run, final
+review
 
 **Sequence**: A PROJECT Plan with `type: sequence` whose brief context and complete child Plans are authored by Planner
 and reviewed together. Approve & Execute starts the first child; normal PROJECT continuation runs subsequent children in

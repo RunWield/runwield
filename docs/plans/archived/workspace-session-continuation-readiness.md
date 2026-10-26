@@ -34,8 +34,8 @@ The same developer can start or continue a conversation in Workspace, move to th
 one updated Session. Long history, previous workflow context, and an idle open screen must not prevent continuation.
 While work runs, the phone can steer it, answer its questions, queue a follow-up, or stop it.
 
-Product intent: [Workspace PRD](../prd/runwield-workspace-prd.md). Architecture:
-[ADR-015](../adr/015-file-authoritative-session-bundles.md).
+Product intent: [Workspace PRD](../../prd/runwield-workspace-prd.md). Architecture:
+[ADR-015](../../adr/015-file-authoritative-session-bundles.md).
 
 ## Resolved Gaps
 
@@ -58,7 +58,7 @@ Product intent: [Workspace PRD](../prd/runwield-workspace-prd.md). Architecture:
 
 ## Delivery Evidence
 
-See the [Work Record](../work-records/2026-09-08-workspace-session-continuation-and-steering.md) for verification.
+See the [Work Record](../../work-records/2026-09-08-workspace-session-continuation-and-steering.md) for verification.
 Implementation and automated validation are complete; this status does not claim owner acceptance testing.
 
 ## Boundaries

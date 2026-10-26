@@ -23,6 +23,7 @@ import {
     findPlansByParent,
     loadPlan,
     saveChildFeaturePlans,
+    writePlanMarkdownWithRevisionLocked,
     withPlanCatalogLock,
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
@@ -41,6 +42,7 @@ import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-
 import type { HostedSession } from "../session/hosted-session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
@@ -73,6 +75,8 @@ export interface EpicChildDelivery {
     status: string;
     /** The child's work is in the Epic branch, or the user closed or accepted it. */
     settled: boolean;
+    /** An unstarted repair from an earlier integration gate run. */
+    openRepairDraft: boolean;
     /** The commits this child delivered, when its delivery evidence records them. */
     delivery?: { from: string; to: string };
 }
@@ -96,6 +100,8 @@ export interface EpicReconcileResult {
     status?: string;
     /** The Epic is `implemented` with every child settled: the integration gate should run. */
     gateReady: boolean;
+    /** Only unstarted integration repair drafts prevent strict readiness. */
+    gateRetryReady: boolean;
 }
 
 /** What one integration gate run decided. */
@@ -188,6 +194,11 @@ async function isChildSettled(
     return child.path.startsWith(`${head}:`);
 }
 
+/** Whether a child name belongs to the integration gate repair family. */
+export function isIntegrationRepairChild(name: string): boolean {
+    return name.includes("repair-integration-findings");
+}
+
 /**
  * Read where an Epic with a branch stands: each child's delivery and the branch
  * head. Returns null for an Epic without a branch or outside Git.
@@ -222,6 +233,14 @@ export async function readEpicDeliveryState(
         .sort(compareChildPlansByOrder);
     const children = await Promise.all(
         included.map(async (child) => {
+            // A registered planning document or local closure can be newer than the branch draft.
+            if (isIntegrationRepairChild(child.name)) {
+                const location = await resolveWorkflowPlanLocation(primaryRoot, child.name, { readOnly: true });
+                const registeredDocument = location.documentRoot !== primaryRoot;
+                const localClosure =
+                    child.attrs.status === "draft" && location.plan?.attrs.status === "closed_without_verification";
+                if (location.plan && (registeredDocument || localClosure)) child = { ...child, ...location.plan };
+            }
             const evidence = child.attrs.deliveryEvidence;
             const delivery =
                 evidence?.mode === "worktree_merge" && evidence.executionCommit && evidence.targetHeadBeforeMerge
@@ -231,6 +250,7 @@ export async function readEpicDeliveryState(
                 name: child.name,
                 status: child.attrs.status,
                 settled: await isChildSettled(primaryRoot, ref, head, child),
+                openRepairDraft: isIntegrationRepairChild(child.name) && child.attrs.status === "draft",
                 ...(delivery ? { delivery } : {}),
             };
         }),
@@ -256,10 +276,10 @@ export async function readEpicDeliveryState(
  */
 export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: string): Promise<EpicReconcileResult> {
     const state = await readEpicDeliveryState(projectRoot, epicPlanName);
-    if (!state) return { state: null, gateReady: false };
+    if (!state) return { state: null, gateReady: false, gateRetryReady: false };
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const epic = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName)).plan;
-    if (!epic) return { state, gateReady: false };
+    if (!epic) return { state, gateReady: false, gateRetryReady: false };
     let status = epic.attrs.status;
 
     if (status === "ready_for_work" && state.allSettled) {
@@ -309,9 +329,9 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
                 currentStatus: "reviewed",
                 details: { triageMeta: epic.attrs },
             });
-            return { state, status: attrs.status, gateReady: false };
+            return { state, status: attrs.status, gateReady: false, gateRetryReady: false };
         }
-        if (unchanged) return { state, status, gateReady: false };
+        if (unchanged) return { state, status, gateReady: false, gateRetryReady: false };
         const attrs = await recordPlanEvent({
             cwd: primaryRoot,
             planName: epicPlanName,
@@ -321,7 +341,15 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
         });
         status = attrs.status;
     }
-    return { state, status, gateReady: status === "implemented" && state.allSettled };
+    return {
+        state,
+        status,
+        gateReady: status === "implemented" && state.allSettled,
+        gateRetryReady:
+            status === "implemented" &&
+            state.children.some((child) => !child.settled) &&
+            state.children.every((child) => child.settled || child.openRepairDraft),
+    };
 }
 
 async function epicDeliveryTarget(primaryRoot: string, epicBranch: string): Promise<string | undefined> {
@@ -588,6 +616,39 @@ function reviewFindings(outcome: ValidationReviewOutcome): GateFinding[] {
     }));
 }
 
+/** Replace the Findings section without treating fenced check output as document headings. */
+function replaceRepairFindings(markdown: string, findings: GateFinding[]): string {
+    let fence = "";
+    let start = -1;
+    let end = markdown.length;
+    for (const match of markdown.matchAll(/[^\n]*(?:\n|$)/g)) {
+        const line = match[0].replace(/\r?\n$/, "");
+        const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (fence) {
+            if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) {
+                fence = "";
+            }
+            continue;
+        }
+        if (marker) {
+            fence = marker[1];
+            continue;
+        }
+        if (start < 0) {
+            if (line === "## Findings") start = match.index;
+        } else if (line.startsWith("## ")) {
+            end = match.index;
+            break;
+        }
+    }
+    if (start < 0) return markdown;
+    return markdown.slice(0, start) + `## Findings\n\n${renderFindings(findings)}\n\n` + markdown.slice(end);
+}
+
+function repairContext(state: EpicDeliveryState): string {
+    return `The integration gate checked the Epic branch \`${state.branch}\` at \`${state.head}\` and found the problems below.`;
+}
+
 /** Add a draft repair child that carries the gate's findings to Planner. */
 async function addRepairChild(
     documentRoot: string,
@@ -602,14 +663,14 @@ async function addRepairChild(
         ...state.children.map((child) => Number(child.name.split("/").at(-1)?.slice(0, 2)) || 0),
         ...siblings.map((child) => (typeof child.attrs.order === "number" ? child.attrs.order : 0)),
     );
-    const repairs = siblings.filter((child) => child.name.includes("repair-integration-findings")).length;
+    const repairs = siblings.filter((child) => isIntegrationRepairChild(child.name)).length;
     const title = repairs === 0 ? "Repair integration findings" : `Repair integration findings ${repairs + 1}`;
     const content = [
         `# ${title}`,
         "",
         "## Context",
         "",
-        `The integration gate checked the Epic branch \`${state.branch}\` at \`${state.head}\` and found the problems below.`,
+        repairContext(state),
         `The full report is \`${reportRelativePath}\`. This draft was created by RunWield; plan the repair from these`,
         "findings and the Epic. After this child is delivered, the integration gate runs again on the whole Epic.",
         "",
@@ -649,6 +710,24 @@ async function addRepairChild(
         childSummary: child.attrs.summary || title,
         childAttrs: child.attrs,
     };
+}
+
+/** Give a branch draft a writable document without losing a saved checkout copy. */
+async function prepareRepairDraftDocument(primaryRoot: string, name: string) {
+    const source = await resolveWorkflowPlanLocation(primaryRoot, name, { readOnly: true });
+    if (!source.planningNotStarted) return source;
+    const writable = await prepareSessionPlanningWorktree(primaryRoot, name);
+    if (source.plan && !source.publishedSnapshot && writable.plan) {
+        await writePlanMarkdownWithRevisionLocked(
+            writable.documentRoot,
+            name,
+            writable.plan.path,
+            source.plan.markdown,
+            writable.plan.revision,
+        );
+        writable.plan = await loadPlan(writable.documentRoot, name);
+    }
+    return writable;
 }
 
 /** A temporary detached checkout of the exact Epic commit, owned and removed by the gate. */
@@ -709,7 +788,7 @@ async function prepareGateCheckout(
 /**
  * Run the integration gate on the exact Epic branch head.
  *
- * The gate runs only for an `implemented` Epic whose children are all settled.
+ * The gate runs for an `implemented` Epic whose children are settled or unstarted gate repair drafts.
  * Checks and the integration review both run so one report carries everything;
  * Code Review is offered only when both pass.
  */
@@ -720,7 +799,7 @@ export async function runEpicIntegrationGate(
     const primaryRoot = resolvePrimaryCheckoutRoot(options.projectRoot);
     const reconciled = await reconcileEpicDelivery(primaryRoot, epicPlanName);
     const state = reconciled.state;
-    if (!state || !reconciled.gateReady || !state.head) {
+    if (!state || (!reconciled.gateReady && !reconciled.gateRetryReady) || !state.head) {
         return { kind: "not_ready", reason: "Not every child of the Epic is delivered to the Epic branch yet." };
     }
     const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
@@ -804,6 +883,18 @@ export async function runEpicIntegrationGate(
         return { kind: "not_ready", reason: "The Epic branch moved while the integration gate ran; run it again." };
     }
 
+    const repairDrafts = [];
+    for (const child of state.children.filter((child) => child.openRepairDraft)) {
+        const location = await resolveWorkflowPlanLocation(primaryRoot, child.name, { readOnly: true });
+        if (!location.plan || location.plan.attrs.status !== "draft") {
+            return { kind: "not_ready", reason: `Repair child ${child.name} changed while the integration gate ran.` };
+        }
+        repairDrafts.push({ name: child.name, ...location, plan: location.plan });
+    }
+    repairDrafts.sort((a, b) =>
+        compareChildPlansByOrder({ name: a.name, attrs: a.plan.attrs }, { name: b.name, attrs: b.plan.attrs }),
+    );
+
     if (run.kind === "passed") {
         const reviewedAt = run.codeReview.kind === "approved" ? new Date().toISOString() : null;
         await recordPlanEvent({
@@ -821,6 +912,19 @@ export async function runEpicIntegrationGate(
                 humanReviewedAt: reviewedAt,
             },
         });
+        for (const draft of repairDrafts) {
+            // Branch snapshots need a writable, registered document before lifecycle writes.
+            if (draft.planningNotStarted) await prepareRepairDraftDocument(primaryRoot, draft.name);
+            await recordPlanEvent({
+                cwd: primaryRoot,
+                planName: draft.name,
+                event: "manual_closed_without_verification",
+                currentStatus: "draft",
+                details: {
+                    closedWithoutVerificationReason: `The integration gate passed on ${state.branch} at ${head} after a retry; these findings no longer apply.`,
+                },
+            });
+        }
         port.emitStatus(
             `${epicPlanName} is reviewed: the integration gate passed on ${state.branch} at ${head.slice(0, 12)}. ` +
                 `Merge the Epic branch or open a pull request when you are ready.`,
@@ -848,17 +952,50 @@ export async function runEpicIntegrationGate(
             integrationReport: reportRelativePath,
         },
     });
-    const repairChild = await addRepairChild(
-        location.documentRoot,
-        epicPlanName,
-        state,
-        reportRelativePath,
-        run.findings,
-    );
+    const newestDraft = repairDrafts.at(-1);
+    let repairChild: EpicContinuationResolution;
+    if (newestDraft) {
+        const writable = newestDraft.planningNotStarted
+            ? await prepareRepairDraftDocument(primaryRoot, newestDraft.name)
+            : newestDraft;
+        const draft = writable.plan;
+        if (!draft) throw new Error(`Repair child not found: ${newestDraft.name}`);
+        const markdown = replaceRepairFindings(
+            draft.markdown.replace(
+                /(^The integration gate checked the Epic branch `[^`\r\n]+` at `)[^`\r\n]+(`)/m,
+                (_match, prefix: string, suffix: string) => `${prefix}${state.head}${suffix}`,
+            ),
+            run.findings,
+        );
+        await writePlanMarkdownWithRevisionLocked(
+            writable.documentRoot,
+            newestDraft.name,
+            draft.path,
+            markdown,
+            draft.revision,
+        );
+        repairChild = {
+            kind: "plan",
+            completedPlanName: epicPlanName,
+            parentPlanName: epicPlanName,
+            childPlanName: newestDraft.name,
+            childStatus: draft.attrs.status,
+            childSummary: draft.attrs.summary,
+            childAttrs: draft.attrs,
+        };
+    } else {
+        repairChild = await addRepairChild(
+            location.documentRoot,
+            epicPlanName,
+            state,
+            reportRelativePath,
+            run.findings,
+        );
+    }
     await ensureEpicBranch(primaryRoot, epicPlanName);
     port.emitStatus(
         `The integration gate found ${run.findings.length} problem(s) in ${epicPlanName}. ` +
-            `RunWield added the repair child ${repairChild.childPlanName}; Planner starts from the findings.`,
+            `RunWield ${newestDraft ? "updated" : "added"} the repair child ${repairChild.childPlanName}; Planner starts from the findings.`,
         "warning",
     );
     return { kind: "findings", commit: head, reportPath: reportRelativePath, repairChild };
