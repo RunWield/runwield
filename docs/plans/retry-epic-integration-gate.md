@@ -20,6 +20,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "0a1a4ae1333f01a8f437834da3eb00d35254c0aa"
+workRecord:
+    status: "generated"
+    recordId: "61808ee1-6c9b-4194-8754-1853f49aec17"
+    path: "docs/work-records/2026-10-26-epic-integration-gate-retry.md"
+    lastAttemptAt: "2026-10-26T13:11:26.090Z"
 ---
 
 # Retry the Integration Gate from the Epic Menu
