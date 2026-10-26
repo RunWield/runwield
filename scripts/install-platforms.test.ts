@@ -84,7 +84,7 @@ test("install.sh preserves Mnemoteca on PATH without invoking its installer", as
         assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
         assertStringIncludes(result.stdout, "Preserving existing mnemoteca");
         const curlLog = await readCurlLog(fixture.curlLog);
-        assertEquals(curlLog.includes("raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh"), false);
+        assertEquals(curlLog.includes("raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh"), false);
     } finally {
         await fsRm(fixture.root, { recursive: true });
     }
@@ -98,7 +98,7 @@ test("install.sh preserves Mnemoteca in the install directory without invoking i
         assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
         assertStringIncludes(result.stdout, "Preserving existing mnemoteca");
         const curlLog = await readCurlLog(fixture.curlLog);
-        assertEquals(curlLog.includes("raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh"), false);
+        assertEquals(curlLog.includes("raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh"), false);
     } finally {
         await fsRm(fixture.root, { recursive: true });
     }
@@ -114,7 +114,7 @@ test("install.sh ignores a pre-rename compatibility executable when Mnemoteca is
         const result = await runInstaller(fixture, { extraPathDir: externalBin });
         assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
         const curlLog = await readCurlLog(fixture.curlLog);
-        assertEquals(curlLog.split("raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh").length - 1, 1);
+        assertEquals(curlLog.split("raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh").length - 1, 1);
         const stat = await fsStat(join(fixture.installDir, "mnemoteca"));
         assertEquals(stat.isFile(), true);
     } finally {
@@ -146,7 +146,7 @@ test("install.sh preserves archive helpers on PATH and in install dir, and rerun
         assertStringIncludes(second.stdout, "Preserving existing ketch");
         assertStringIncludes(second.stdout, "Preserving existing snip");
         const curlLog = await readCurlLog(fixture.curlLog);
-        assertEquals(curlLog.includes("raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh"), false);
+        assertEquals(curlLog.includes("raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh"), false);
         assertEquals(curlLog.includes("cymbal_"), false);
         assertEquals(curlLog.includes("ketch_"), false);
         assertEquals(curlLog.includes("snip_"), false);

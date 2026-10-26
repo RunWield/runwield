@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="${WLD_REPO:-gandazgul/runwield}"
-MNEMOTECA_REPO="${WLD_MNEMOTECA_REPO:-gandazgul/mnemoteca}"
+MNEMOTECA_REPO="${WLD_MNEMOTECA_REPO:-RunWield/mnemoteca}"
 MNEMOTECA_INSTALLER_URL="${WLD_MNEMOTECA_INSTALLER_URL:-https://raw.githubusercontent.com/${MNEMOTECA_REPO}/main/install.sh}"
 CYMBAL_REPO="${WLD_CYMBAL_REPO:-1broseidon/cymbal}"
 KETCH_REPO="${WLD_KETCH_REPO:-1broseidon/ketch}"
