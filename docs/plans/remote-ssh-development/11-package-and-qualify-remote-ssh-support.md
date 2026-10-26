@@ -42,7 +42,7 @@ dependencies:
     - "10-open-remote-reviews-in-the-local-browser"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Package the Remote Runtime for Released Builds
