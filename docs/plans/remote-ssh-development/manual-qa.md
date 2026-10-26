@@ -514,3 +514,15 @@ mount, Session persistence, and the remote TUI were real. The IP connection used
 Evidence: `/var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/host-confirmation-live-btqgw2gg/` contains terminal logs,
 screens, and `evidence.json`. This check covers DNS-to-IP confirmation and resume, not live host-key rotation or a
 production model provider.
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/12-confirm-a-partly-matching-remote-host" -->
+
+## Confirm a Partly Matching Remote Host
+
+Manual verification steps for remote-ssh-development/12-confirm-a-partly-matching-remote-host
+
+- [ ] Connect by DNS name and save a Session. Connect to the same server by IP address, choose Yes, and confirm `/resume` lists the saved Session.
+- [ ] Connect again by IP address and confirm no host question appears.
+- [ ] Connect to a host with a changed key. Confirm the question shows both fingerprints and warns that OpenSSH accepted the new key.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/12-confirm-a-partly-matching-remote-host" -->
