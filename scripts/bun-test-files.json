@@ -334,7 +334,7 @@
     "src/shared/session/session-cache-warming.test.ts",
     "src/shared/session/session-catalog.test.js",
     "src/shared/session/session-context-report.test.ts",
-    "src/shared/session/session-context-resilience.test.js",
+    "src/shared/session/session-context-resilience.test.ts",
     "src/shared/session/session-engineer-compaction.test.ts",
     "src/shared/session/session-export.test.ts",
     "src/shared/session/session-help.test.ts",
