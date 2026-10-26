@@ -11,11 +11,8 @@ provenance:
         - "6ab008c5-ee7a-40e3-9bc9-a441448d5bc5"
 ---
 
-# Added Guide and intent-based conversation routing
+# Guide and intent-based conversation routing
 
 ## Summary
 
-Introduced the read-mostly Guide agent and canonical Routing Intent handling. Non-materializing inquiries and ideation
-now route to Guide and Ideator, while execution and plan-producing workflows retain their existing behavior. Added
-legacy classification normalization, return-to-Router boundaries, agent tool-policy coverage, dispatch tests, and
-verification through the project quality gate.
+RunWield uses canonical Routing Intent handling to send inquiries that do not create artifacts to the read-mostly Guide and ideation to Ideator. Execution and Plan-producing workflows retain their behavior. Legacy classifications normalize into the routing model, with explicit boundaries for returning control to Router.

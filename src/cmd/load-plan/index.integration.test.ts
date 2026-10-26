@@ -1181,7 +1181,14 @@ test("direct review from draft approves for later without a planning turn", asyn
 for (const status of ["draft", "feedback", "approved", "ready_for_work"] as const) {
     test(`direct review menu is available for ${status} without custom shell checks`, async () => {
         await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
-            await writePlan(projectRoot, "review-without-checks", { status });
+            await writePlan(projectRoot, "review-without-checks", { status: status === "feedback" ? "draft" : status });
+            if (status === "feedback") {
+                const path = `${projectRoot}/docs/plans/review-without-checks.md`;
+                await fsWriteFile(
+                    path,
+                    (await fsReadFile(path, "utf8")).replace('status: "draft"', 'status: "feedback"'),
+                );
+            }
             const { runtime, sessionId } = await createRuntime(projectRoot);
             const ui = makeUi(["cancel"]);
             try {
@@ -1201,7 +1208,10 @@ for (const status of ["draft", "feedback", "approved", "ready_for_work"] as cons
                     ui.promptOptions[0].some((option) => option.value === continuation),
                     true,
                 );
-                assertEquals((await loadPlan(projectRoot, "review-without-checks"))?.attrs.status, status);
+                assertEquals(
+                    (await loadPlan(projectRoot, "review-without-checks"))?.attrs.status,
+                    status === "feedback" ? "draft" : status,
+                );
             } finally {
                 runtime.closeAllSessions();
             }

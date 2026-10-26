@@ -24,27 +24,8 @@ provenance:
           note: Enforces the consumer-neutral boundary and absence of the deleted two-phase activation API.
 ---
 
-# Atomic Active Agent Switching
+# Atomic active Agent switching
 
 ## Summary
 
-RunWield now performs every active-agent transition as one Runtime-owned operation. Initial activation, resumed
-sessions, explicit consumer requests, workflow transitions, and agent-requested handoffs all finish with a matching root
-Agent Session and Agent Handler before control returns or a completed `agent_changed` event is published. Handler
-construction is staged before root replacement, so construction failures preserve the previous usable pair instead of
-leaving a partially switched session.
-
-Root replacement and handler installation are committed together synchronously, including plan-worktree CWD and custom
-tool configuration. Interactive root turns can no longer rebuild or switch their own root, while disposable sub-agents
-use a separate isolated runner with their own ephemeral session. A source boundary test rejects direct root mutations,
-the removed mixed root/isolated runner, and workflow-level root-turn waterfalls.
-
-The refactor removed scheduled root swaps, pending handoff state, caller-managed apply steps, the public two-phase
-`setSessionHandler`/`ensureSessionReady` seam, and the TUI-specific agent-info setter. Agent Handlers now return
-explicit typed completion or handoff results, which SessionRuntime consumes between settled turns while preserving
-cancellation, handoff limits, session isolation, and model/tool-policy rebuild rules. TUI and ACP remain sibling
-consumers of the same semantic Runtime state and events; neither constructs handlers or reaches into root-session
-switching internals. Runtime also reference-counts busy operations across prompts, planning, Slicer, execution,
-validation, isolated agents, and compaction, preserving consumer animations without restoring a presentation call in
-Core. Full repository CI, Workspace production build, release packaging, and release-binary smoke testing verified the
-completed boundary.
+RunWield performs active Agent transitions as one Runtime-owned operation, committing the root Agent Session, handler, model policy, execution context, and tools together. Handler construction failures preserve the previous usable pair. Interactive root turns cannot switch their own root, and disposable subagents use isolated Sessions. TUI and ACP consume the same semantic Runtime state and events, while Runtime owns aggregate busy state.

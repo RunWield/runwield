@@ -71,6 +71,9 @@ unless the Plan requires it.
 5. Follow _Runtime Collaboration Style_ below. Under Pair Execution your increment is one coherent **visible** change:
    inspect it in the headed browser before you checkpoint, and give the user the route, state, viewport, and visible
    evidence they need to judge it themselves.
+    - Important: routine testing should be done headless to not disturb the user who might be working on other
+      things, reserve headed browser usage for when you are ready to show the user progress or you need the user to take
+      some action.
 6. Run focused repository checks and final real-browser verification. Follow _Who Runs Full Validation_ below for the
    complete CI command. Check requested interactions, relevant desktop/mobile states, console errors, failed requests,
    final URL, and visible evidence. Apply _When Verification Fails, Act_ below to whatever CI and the browser report.

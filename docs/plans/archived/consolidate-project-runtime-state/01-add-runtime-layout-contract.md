@@ -8,7 +8,7 @@ affectedPaths:
     - "src/shared/project-runtime-layout.ts"
     - "src/shared/runwield-owned-paths.ts"
     - "src/shared/project-runtime-layout.test.ts"
-    - "src/shared/runwield-owned-paths.test.js"
+    - "src/shared/runwield-owned-paths.test.ts"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -17,8 +17,7 @@ status: "validated"
 origin: "internal"
 parentPlan: "consolidate-project-runtime-state"
 order: 1
-dependencies:
-    []
+dependencies: []
 userVerifiedAt: null
 targetBranch: "epic/consolidate-project-runtime-state"
 ---
@@ -110,7 +109,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   catalogs/classifiers, plus a temporary combined Git-safety aggregate while legacy writers remain.
 - `../../../../src/shared/project-runtime-layout.test.ts` — prove exact normal and sandboxed path resolution from
   primary and linked selected checkouts.
-- `../../../../src/shared/runwield-owned-paths.test.js` — prove the three-way current, legacy-hazard, and trackable path
+- `../../../../src/shared/runwield-owned-paths.test.ts` — prove the three-way current, legacy-hazard, and trackable path
   matrix, including temp-file shapes.
 - `../../../domain-language.md` — define Project Runtime State, Project Internal Root, Primary-Checkout Runtime State,
   and Selected-Checkout Runtime State without claiming migration or writer cutover is active.
@@ -165,7 +164,7 @@ record. No `supersedes` relation is proposed.
 ## Verification Plan
 
 - Automated:
-  `deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/runwield-owned-paths.test.js src/constants.test.js`.
+  `deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/runwield-owned-paths.test.ts src/constants.test.ts`.
 - Automated: `deno task seams:check`.
 - Automated: `deno task ci` must pass before the next child Plan starts.
 - Path-layout proof: a real linked-worktree test calls `resolveProjectRuntimeLayout()` with the linked checkout and

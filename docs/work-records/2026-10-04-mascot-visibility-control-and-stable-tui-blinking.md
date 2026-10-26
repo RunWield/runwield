@@ -16,19 +16,12 @@ provenance:
 
 ## Summary
 
-Added a default-on `mascot` setting with project overrides, a global TUI `/settings` toggle, cache invalidation, and
-reload support. TUI and Workspace hide disabled mascots without layout gaps; hiding an active TUI mascot stops its
-timer. Stable per-mascot drawing widths prevent horizontal movement during blinking and pose changes. Updated settings,
-design-system, and PRD documentation. Focused tests passed (147), with independent reruns and desktop/mobile browser
-checks. Plan metadata records verified completion at commit `a94f7e11246bb5809716984debf3d9b585b873d9`; the execution
-report's pending-validation note predates that status.
+RunWield provides a default-on mascot setting with Project overrides, a global TUI toggle, and reload support. TUI and Workspace hide disabled mascots without layout gaps; hiding an active TUI mascot stops its timer. Stable drawing widths prevent horizontal movement during blinking and pose changes.
 
-## Deferred Work
+## Out of Scope
 
-Workspace toggle UI remains out of scope; Workspace honors settings changed through the TUI or settings files. The
-direct Workspace JSX type check still has 223 errors also found on the unchanged baseline.
+This work does not include a Workspace toggle; Workspace honors settings changed through the TUI or settings files.
 
 ## Future Planning Notes
 
-Cache merged settings used during animation and invalidate them on writes and reload. Center animated drawings using the
-maximum width across frames and poses, not each frame's width.
+Cache merged settings used during animation and invalidate them on writes and reload. Center animated drawings using the maximum width across frames and poses, not each frame’s width.

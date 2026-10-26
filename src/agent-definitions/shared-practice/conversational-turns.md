@@ -1,6 +1,6 @@
 ---
 name: Conversational Turns
-description: "How conversational agents end a turn: with a question for the user or with the work done, never with a promise. Composed into agent prompts by name; not an agent and never listed by /agent."
+description: "How conversational agents end a turn: with a question for the user or with the work done, never with a promise."
 ---
 
 ## Ending a Turn

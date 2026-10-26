@@ -12,19 +12,12 @@ provenance:
         - "8ecc1f44-d7c0-42d9-9014-507efeee6e82"
 ---
 
-# Workflow Validation now self-heals
+# Self-healing Workflow Validation
 
 ## Summary
 
-The user attested verification; RunWield Workflow Validation did not establish this result. RunWield now routes
-planned-change validation through one supervisor with durable checkpoints and generation ownership. It repairs stale
-Plan, Session, worktree, and Git state from authoritative facts, recovers safe worktree and publication interruptions,
-and makes Plans Doctor repair safe issues by default with a read-only --check mode. User established verification:
-"Marked user verified at the explicit request of the repository owner after the validated implementation was merged into
-main." The execution report also records that all Objective Checks and deno task ci passed.
+The user attested verification; RunWield Workflow Validation did not establish this result. Planned-change validation uses one supervisor with durable checkpoints and generation ownership. It reconstructs stale Plan, Session, worktree, and Git state from authoritative facts and recovers safe worktree and publication interruptions. Plans Doctor repairs safe issues by default and offers a read-only check mode. User verification note: Accepted at the repository owner's explicit request after the implementation was merged.
 
 ## Future Planning Notes
 
-Future validation and recovery work should preserve the new authority order: primary Plan, worktree registry, and Git
-proof own durable facts; Session state and execution Plan metadata are rebuildable projections. User-facing recovery
-text should stay behind plain-message builders.
+Recovery must follow authoritative evidence rather than stale Session projections. Keep owner-facing recovery text behind shared plain-message builders.

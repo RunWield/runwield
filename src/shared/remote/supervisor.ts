@@ -1,6 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import process from "node:process";
 import type { Socket } from "node:net";
 import { getCwd } from "../../constants.js";
@@ -14,12 +12,15 @@ import { realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
 
 import type { RemoteConnectionViewConfig } from "../../ui/tui/remote-connection-view.ts";
 import { terminateOwnedLinuxGroup } from "../foreground-process.ts";
+import { setChildSubreaper, terminateOwnedLinuxDescendants } from "../linux-process-group.ts";
 import { type MountHeader, mountLaptopHome, type RemoteMount, validateMountHeader } from "./sftp-mount.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "./model-proof-config.ts";
+import { verifiedRemoteHelperPath } from "./helpers.ts";
 
 export interface RemoteSupervisorHeader {
     credential: string;
     port: number;
+    reviewPort: number;
     buildId: string;
     protocol: number;
     view: RemoteConnectionViewConfig;
@@ -65,6 +66,9 @@ async function readHeader(connection: Socket): Promise<RemoteSupervisorHeader> {
                 !Number.isInteger(header.port) ||
                 header.port < 1 ||
                 header.port > 65535 ||
+                !Number.isInteger(header.reviewPort) ||
+                header.reviewPort < 1 ||
+                header.reviewPort > 65535 ||
                 !header.view ||
                 !["host", "cwd", "status", "trust", "readiness"].every(
                     (key) => typeof header.view[key as keyof RemoteConnectionViewConfig] === "string",
@@ -187,7 +191,7 @@ async function runOwnedModelProof(
 export async function runRemoteSupervisor(): Promise<void> {
     if (
         !isStandaloneExecutable() ||
-        process.argv.slice(2).length !== 2 ||
+        process.argv.slice(2).length !== 3 ||
         process.argv.slice(2)[0] !== "--remote-supervisor"
     ) {
         throw new Error("Remote supervisor requires its own compiled executable");
@@ -196,17 +200,25 @@ export async function runRemoteSupervisor(): Promise<void> {
     if (!/^[1-9]\d*$/.test(process.argv.slice(2)[1]) || setupPort > 65535) {
         throw new Error("Invalid remote supervisor control port");
     }
+    const socketDirectory = process.argv.slice(2)[2];
+    if (!/^\/tmp\/wld-remote-[a-f0-9]{32}$/.test(socketDirectory)) throw new Error("Invalid remote socket directory");
     if (process.platform !== "linux") throw new Error("Remote supervisor requires Linux");
-    const originalMode = await stty("-g");
-    await stty("-echo");
-    const socketDirectory = await mkdtemp(join(tmpdir(), "wld-remote-"));
+    process.env.PATH = await verifiedRemoteHelperPath(
+        { os: "Linux", arch: process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch },
+        process.env.PATH ?? "",
+    );
+    setChildSubreaper();
+    await mkdir(socketDirectory, { mode: 0o700 });
+    let originalMode: string | undefined;
     const socketPath = `${socketDirectory}/control.sock`;
     let listener: SocketListener;
     try {
+        originalMode = await stty("-g");
+        await stty("-echo");
         listener = await listenSocket({ path: socketPath });
     } catch (error) {
-        await fsRm(socketDirectory, { recursive: true });
-        await stty(originalMode).catch(() => undefined);
+        await fsRm(socketDirectory, { recursive: true }).catch(() => undefined);
+        if (originalMode !== undefined) await stty(originalMode).catch(() => undefined);
         throw error;
     }
     let child: NativeProcess | undefined;
@@ -223,6 +235,7 @@ export async function runRemoteSupervisor(): Promise<void> {
     const proofAbort = new AbortController();
     let setupHealthTimer: ReturnType<typeof setInterval> | undefined;
     let interrupted = false;
+    let failed = false;
     const onEarlyClosure = () => {
         interrupted = true;
         proofAbort.abort();
@@ -314,7 +327,7 @@ export async function runRemoteSupervisor(): Promise<void> {
             } catch {
                 /* Already closed. */
             }
-            await fsRm(socketDirectory, { recursive: true });
+            await fsRm(socketPath, { force: true });
         }
         if (interrupted) return;
         const { BUILD_ID, REMOTE_PROTOCOL_VERSION } = await import("../build-identity.js");
@@ -411,6 +424,10 @@ export async function runRemoteSupervisor(): Promise<void> {
             encoder.encode(
                 JSON.stringify({
                     view: header.view,
+                    review: {
+                        socketPath: `${socketDirectory}/review.sock`,
+                        origin: `http://127.0.0.1:${header.reviewPort}`,
+                    },
                     memoryCollection: header.memoryCollection,
                     connection: { port: header.port, credential: header.credential },
                     cwd: header.view.cwd,
@@ -504,15 +521,16 @@ export async function runRemoteSupervisor(): Promise<void> {
             await control(header, "shutdown").catch(() => undefined);
         }
         if (mountLost) throw new Error("Laptop personal mount lost; remote work stopped");
+    } catch (error) {
+        failed = true;
+        throw error;
     } finally {
         proofAbort.abort();
         setupHealthAbort.abort();
         if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
         if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
         if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
-        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-            process.off(signal, onEarlyClosure);
-        }
+        const workStopped = await terminateOwnedLinuxDescendants(false);
         try {
             listener.close();
         } catch {
@@ -522,6 +540,15 @@ export async function runRemoteSupervisor(): Promise<void> {
         if (personalMount) {
             await personalMount.close().catch((error) => console.error("Remote mount cleanup failed:", error));
         }
+        const helpersStopped = await terminateOwnedLinuxDescendants(true);
+        const terminationConfirmed = workStopped && helpersStopped;
+        if (!terminationConfirmed) console.error("Remote owned process termination is unconfirmed");
+        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
+            process.off(signal, onEarlyClosure);
+        }
         await stty(originalMode).catch(() => undefined);
+        if (!terminationConfirmed && !failed) {
+            await Promise.reject(new Error("Remote owned process termination is unconfirmed"));
+        }
     }
 }

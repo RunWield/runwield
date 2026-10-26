@@ -11,17 +11,12 @@ provenance:
         - "1100948b-e0c0-4559-a8f7-11f19f355f36"
 ---
 
-# Plan Review Approval Actions
+# Classification-aware Plan Review approval
 
 ## Summary
 
-Implemented classification-aware Plan Review approval actions so FEATURE Plans can approve and run, PROJECT Epics can
-approve and slice, and either can approve for later directly from the browser review surface. The selected action now
-flows through the review API, TUI adapter metadata, plan_written, and loaded-Plan re-review, with invalid or
-incompatible values safely falling back to later. Focused tests, workspace check/build, full CI, and headed browser
-checks passed.
+Browser Plan Review lets executable Plans approve and run, Epics approve and slice, and either approve for later. Approval intent flows through review and workflow handoffs; invalid or incompatible actions fall back to later.
 
 ## Future Planning Notes
 
-Approval intent is now captured atomically in Plan Review; future workflow changes should preserve the shared
-approval-action contract and avoid reintroducing post-approval TUI prompts.
+Plan Review captures approval intent atomically through a shared action contract, without a second TUI approval prompt.

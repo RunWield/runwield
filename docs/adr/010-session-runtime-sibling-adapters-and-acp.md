@@ -70,11 +70,14 @@ runtime actions, and interaction requests only.
 - The first ACP MVP carries medium complexity because it includes the shared runtime seam, not just JSON-RPC method
   handlers.
 - Rich external workflow UX can evolve incrementally on top of the interaction contract without requiring another
-  TUI-to-core refactor. Local browser question pages are adapter presentation for select, text, and approval fallback;
-  they do not create a new Session or a new workflow authority. Without native forms, only `user_interview` select/text
-  questions use ordinary ACP chat messages instead of the browser page. The ACP response for a question ends before the
-  Runtime operation does. The next ACP prompt answers through the existing broker. Command menus, approvals, and reviews
-  do not use this path.
+  TUI-to-core refactor. ACP uses native forms when the client advertises them. Otherwise, all select, text, and approval
+  questions, including command menus, use ordinary chat messages. Built-in commands and Agent turns share one live
+  operation: the ACP response for a question ends before the Runtime operation does, and the next ACP prompt answers
+  through the existing broker. This adapter presentation creates neither a new Session nor a new workflow authority.
+  The generic path avoids command-specific fallbacks and works where loopback question pages cannot be reached. Menus
+  require a number in range or a unique exact label/value match, trimmed and case-insensitive; only unmatched `cancel`
+  cancels a menu. Text and `user_interview` retain their own answer rules. Plan, Code, and Artifact Review keep browser links, and the Artifact Review feedback
+  decision keeps its browser question page.
 - Same-session turn exclusion and cancellation settlement are runtime invariants. Cancellation does not release the turn
   or permit disposal until the underlying Agent Session prompt settles; different Hosted Sessions remain independently
   promptable.

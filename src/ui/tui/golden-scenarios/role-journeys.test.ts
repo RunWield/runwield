@@ -6,7 +6,7 @@ import {
     ideationInterviewPrdScenario,
     operatorOperationScenario,
     roleJourneyScenarios,
-} from "./role-journeys.js";
+} from "./role-journeys.ts";
 
 const scenarioExportNames = new Map([
     [guideInquiryRoleJourneyScenario, "guideInquiryRoleJourneyScenario"],
@@ -19,7 +19,7 @@ for (const scenario of roleJourneyScenarios) {
     test(`golden role journey: ${scenario.name}`, async () => {
         const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
         const result = await runGoldenScenarioChildProcess({
-            scenarioModule: "src/ui/tui/golden-scenarios/role-journeys.js",
+            scenarioModule: "src/ui/tui/golden-scenarios/role-journeys.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: "timeoutMs" in scenario && typeof scenario.timeoutMs === "number" ? scenario.timeoutMs : 30000,
         });

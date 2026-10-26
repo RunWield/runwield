@@ -19,12 +19,14 @@ import { getCustomSetting } from "../shared/settings.js";
 
 interface InitVerificationCommandParams {
     command?: string;
+    setupCommand?: string;
     verificationNotImplemented?: boolean;
 }
 
 interface InitVerificationCommandDetails {
     outcome: "saved" | "rejected";
     verificationCommand?: string;
+    setupCommand?: string;
     reason?: string;
 }
 
@@ -34,18 +36,23 @@ async function executeTool(
     operation: ReturnType<typeof createInitVerificationCommandOperation>,
     params: InitVerificationCommandParams,
 ) {
-    return await operation.tool.execute(
+    return (await operation.tool.execute(
         "tool-call-1",
         params,
         undefined,
         undefined,
         EXTENSION_CONTEXT,
-    ) as AgentToolResult<InitVerificationCommandDetails>;
+    )) as AgentToolResult<InitVerificationCommandDetails>;
 }
 
 async function readProjectSettings(projectRoot: string) {
     const text = await fsReadFile(join(projectRoot, ".wld", "settings.json"), "utf8");
-    return parseJsonc(text) as { verification_command?: string; codereview?: string; nested?: { retained?: boolean } };
+    return parseJsonc(text) as {
+        verification_command?: string;
+        worktree_setup_command?: string;
+        codereview?: string;
+        nested?: { retained?: boolean };
+    };
 }
 
 test("init verification command operation saves a confirmed command in project settings", async () => {
@@ -98,6 +105,8 @@ test("init verification command operation rejects unresolved outcomes", async ()
         {},
         { command: "   " },
         { command: "deno task ci", verificationNotImplemented: true },
+        { command: " ", setupCommand: "bun install" },
+        { verificationNotImplemented: false, setupCommand: "" },
     ];
 
     for (const params of cases) {
@@ -108,9 +117,24 @@ test("init verification command operation rejects unresolved outcomes", async ()
         assertEquals(operation.getConfirmedCommand(), undefined);
     }
 
-    await assertRejects(
-        () => fsStat(join(projectRoot, ".wld", "settings.json")),
-        Error,
-        "ENOENT",
-    );
+    await assertRejects(() => fsStat(join(projectRoot, ".wld", "settings.json")), Error, "ENOENT");
 });
+
+for (const setupCommand of ["bun run install:locked", ""]) {
+    test(`the existing Init save tool accepts setup alone or both commands: ${setupCommand || "none"}`, async () => {
+        const projectRoot = await fsMkdtemp(join(tmpdir(), "init-project-commands-"));
+        const operation = createInitVerificationCommandOperation({ projectRoot });
+        await executeTool(operation, { command: "bun run ci" });
+        const setup = await executeTool(operation, { setupCommand });
+        assertEquals(setup.details, { outcome: "saved", setupCommand });
+        assertEquals(operation.getConfirmedSetupCommand(), setupCommand);
+        assertEquals(await readProjectSettings(projectRoot), {
+            verification_command: "bun run ci",
+            worktree_setup_command: setupCommand,
+        });
+        await executeTool(operation, { command: "bun run verify" });
+        assertEquals((await readProjectSettings(projectRoot)).worktree_setup_command, setupCommand);
+        const both = await executeTool(operation, { command: "bun run ci", setupCommand });
+        assertEquals(both.details, { outcome: "saved", verificationCommand: "bun run ci", setupCommand });
+    });
+}

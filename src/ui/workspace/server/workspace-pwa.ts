@@ -5,16 +5,7 @@ import { RUNWIELD_SOURCE_ROOT } from "../../../../runtime-root.js";
 import { renderRunWieldThemeCss } from "../../design-system/theme-bridge.ts";
 import { DARK_BROWSER_THEME } from "../../design-system/themes/dark.ts";
 
-export const WORKSPACE_PWA_PATHS = [
-    "/workspace.webmanifest",
-    "/workspace-worker.js",
-    "/workspace-pwa.js",
-    "/connection-required",
-    "/pwa/icon-192.png",
-    "/pwa/icon-512.png",
-    "/pwa/icon-maskable-512.png",
-    "/pwa/apple-touch-icon.png",
-];
+import { WORKSPACE_PWA_PATHS } from "./public-workspace-assets.ts";
 
 export const WORKSPACE_MANIFEST = {
     id: "/",
@@ -92,6 +83,8 @@ self.addEventListener('fetch', (event) => {
         try {
             const response = await fetch(request, {
                 cache: 'no-store',
+                referrer: request.referrer,
+                referrerPolicy: request.referrerPolicy,
                 ...(request.mode === 'navigate' ? { signal: AbortSignal.timeout(10000) } : {})
             });
             event.waitUntil(tellPage(event, response.status < 500));

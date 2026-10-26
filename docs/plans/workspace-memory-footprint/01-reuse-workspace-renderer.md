@@ -6,15 +6,14 @@ complexity: "MEDIUM"
 affectedPaths:
     - "src/ui/workspace/server.js"
     - "src/ui/workspace/workspace-local-server.test.js"
-    - "scripts/build-workspace-runtime.js"
+    - "scripts/build-workspace-runtime.ts"
     - "docs/prd/runwield-workspace-prd.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 origin: "internal"
 parentPlan: "workspace-memory-footprint"
 order: 1
-dependencies:
-    []
+dependencies: []
 userVerifiedAt: null
 createdAt: "2026-09-30T04:08:57.304Z"
 targetBranch: "main"
@@ -97,7 +96,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   reuse, concurrency, and request isolation.
 - `scripts/workspace-memory-check.ts` (new) — a repeatable isolated built-server memory experiment, extended by slice 2.
   It is a verification script, not production telemetry.
-- `scripts/build-workspace-runtime.js` and its tests — use the actual packaged artifact for verification; change
+- `scripts/build-workspace-runtime.ts` and its tests — use the actual packaged artifact for verification; change
   packaging only if the real test exposes a necessary compatibility repair.
 - `docs/prd/runwield-workspace-prd.md` — navigation memory requirement and scenarios, with operation observation still
   targeted until slice 2.
@@ -151,8 +150,8 @@ Run these focused commands from the execution checkout:
 
 ```sh
 deno task workspace:build
-deno run -A scripts/build-workspace-runtime.js
-deno run -A scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-local-server.test.js scripts/build-workspace-runtime.test.js
+deno run -A scripts/build-workspace-runtime.ts
+deno run -A scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-local-server.test.js scripts/build-workspace-runtime.test.ts
 deno run -A scripts/workspace-memory-check.ts --scenario renderer
 deno task seams:check
 ```

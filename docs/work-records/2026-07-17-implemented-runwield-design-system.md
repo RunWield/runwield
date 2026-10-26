@@ -11,19 +11,12 @@ provenance:
         - "4972a1eb-202d-4de9-8d85-9d572dc6345b"
 ---
 
-# Implemented RunWield Design System
+# Shared RunWield browser design system
 
 ## Summary
 
-Established the shared browser design-system module with reusable tokens, component styles, theme bridging, Preact
-primitives, and a Zag-backed Dialog. Workspace was migrated to consume the shared assets while preserving its
-established appearance and behavior. Automated and browser verification completed successfully.
-
-## Deferred Work
-
-Broader migration of Workspace components to the shared primitives remains optional follow-up work.
+RunWield provides shared browser tokens, component styles, theme bridging, Preact primitives, and a Zag-backed Dialog. Workspace consumes the shared assets while preserving its established appearance and behavior.
 
 ## Future Planning Notes
 
-Future Workspace and Plannotator UI should reuse the shared design-system tokens, components, and theme bridge rather
-than introducing surface-specific visual patterns.
+Workspace and Plannotator UI must reuse shared design-system tokens, components, and the theme bridge rather than introduce surface-specific visual patterns.

@@ -68,13 +68,11 @@ export const concurrentPlansIdentityScenario = {
     initialProjectFiles: [
         {
             path: "docs/plans/concurrent-a.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Concurrent A\naffectedPaths: []\nstatus: ready_for_work\nplanId: concurrent-plan-a\n---\n# Concurrent A\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Concurrent A\naffectedPaths: []\nstatus: ready_for_work\nplanId: concurrent-plan-a\n---\n# Concurrent A\n",
         },
         {
             path: "docs/plans/concurrent-b.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Concurrent B\naffectedPaths: []\nstatus: ready_for_work\nplanId: concurrent-plan-b\n---\n# Concurrent B\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Concurrent B\naffectedPaths: []\nstatus: ready_for_work\nplanId: concurrent-plan-b\n---\n# Concurrent B\n",
         },
     ],
     scriptedInteractions: [
@@ -129,14 +127,15 @@ export const concurrentPlansIdentityScenario = {
             agent: "recorder",
             phase: "work_record",
             ordinal: 1,
-            toolCalls: [{
-                name: "work_record_completed",
-                arguments: {
-                    title: "Concurrent B Work Record",
-                    summary: "Recorded the completed concurrent Plan B fixture.",
-                    deviationsFromPlan: "None.",
+            toolCalls: [
+                {
+                    name: "work_record_completed",
+                    arguments: {
+                        title: "Concurrent B Work Record",
+                        summary: "Recorded the completed concurrent Plan B fixture.",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "reviewer-approves-concurrent-b-inspects-diff",
@@ -162,9 +161,7 @@ export const concurrentPlansIdentityScenario = {
             planName: "concurrent-b",
             ordinal: 2,
             requiredTools: ["review_complete"],
-            toolCalls: [
-                { name: "review_complete", arguments: { approved: true, feedback: "Concurrent B approved." } },
-            ],
+            toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "Concurrent B approved." } }],
         },
         {
             id: "reviewer-approves-concurrent-a-inspects-diff",
@@ -190,9 +187,7 @@ export const concurrentPlansIdentityScenario = {
             planName: "concurrent-a",
             ordinal: 2,
             requiredTools: ["review_complete"],
-            toolCalls: [
-                { name: "review_complete", arguments: { approved: true, feedback: "Concurrent A approved." } },
-            ],
+            toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "Concurrent A approved." } }],
         },
     ],
     actions: [
@@ -245,9 +240,9 @@ export const concurrentPlansIdentityScenario = {
                     assert(entry.planId === "concurrent-plan-b", `Plan B registry identity drifted: ${entry.planId}`);
                 }
             }
-            const orderedNames = [...registryEntries].sort((left, right) =>
-                String(left.createdAt || "").localeCompare(String(right.createdAt || ""))
-            ).map((entry) => entry.planName);
+            const orderedNames = [...registryEntries]
+                .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")))
+                .map((entry) => entry.planName);
             if (orderedNames.includes("concurrent-b")) {
                 assert(
                     orderedNames.indexOf("concurrent-a") <= orderedNames.indexOf("concurrent-b"),
@@ -272,9 +267,9 @@ export const concurrentPlansIdentityScenario = {
             );
             assert(
                 (result.state.projectState?.registryEntries || []).length === 0,
-                `Expected fully drained registry; got ${
-                    JSON.stringify(result.state.projectState?.registryEntries || [])
-                }`,
+                `Expected fully drained registry; got ${JSON.stringify(
+                    result.state.projectState?.registryEntries || [],
+                )}`,
             );
         }),
     ],

@@ -1,0 +1,11 @@
+diff --git a/src/settings.ts b/src/settings.ts
+index e103d7b..b249b15 100644
+--- a/src/settings.ts
++++ b/src/settings.ts
+@@ -6,5 +6,5 @@ export interface ListingSettings {
+ }
+ 
+ export function loadSettings(configured: ListingConfig = {}): ListingSettings {
+-    return { filterEnabled: configured.filterEnabled || true };
++    return { filterEnabled: configured.filterEnabled ?? true };
+ }

@@ -11,16 +11,8 @@ provenance:
         - "c32ce3fa-1708-4da8-bb9d-82a75e780283"
 ---
 
-# Added branch-specific plan execution
+# Branch-specific Plan execution
 
 ## Summary
 
-Enabled plans to specify a worktreeBaseBranch used for execution worktree creation and merge-back. Target branches can
-be existing local branches, remote-only branches, or new branches created from main. Preserved legacy HEAD behavior for
-plans without a target, added reusable-worktree mismatch protection, propagated Epic targets to child FEATURE plans,
-surfaced targets in plan workflows, and updated tests and documentation. Verification passed.
-
-## Future Planning Notes
-
-Consider introducing a friendlier public target-branch field while retaining worktreeBaseBranch as internal runtime
-metadata.
+Plans can specify a worktreeBaseBranch for execution worktree creation and merge-back. Targets can be existing local branches, remote-only branches, or new branches based on main. Plans without a target retain HEAD-based behavior, reusable worktrees reject target mismatches, and Epic targets propagate to child FEATURE Plans.

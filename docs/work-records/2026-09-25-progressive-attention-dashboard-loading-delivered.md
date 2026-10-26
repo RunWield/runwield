@@ -12,15 +12,8 @@ provenance:
         - "5131a0bd-1133-45ac-8c49-fd305a27f3df"
 ---
 
-# Progressive Attention Dashboard Loading Delivered
+# Progressive attention dashboard loading
 
 ## Summary
 
-Delivered an immediate four-card dashboard with a shared progressive stream, verified partial rows, distinct loading and
-failure states, and retained rows during refresh. The JSON and sidebar contracts remain intact. Median 60-Plan read time
-fell from 990 to 497 ms for one Project and 592 to 187 ms for three Projects (five runs each). Focused tests, build and
-type checks, and desktop/mobile browser checks passed.
-
-## Deferred Work
-
-Full CI remains with RunWield’s delivery workflow.
+The attention dashboard displays its cards immediately and uses a shared progressive stream for partial rows. Loading and failure states stay distinct, and refresh retains existing rows. JSON and sidebar contracts remain intact.

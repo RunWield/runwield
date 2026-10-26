@@ -56,7 +56,7 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
 
             await test.test("help comes from the real command registry before project inspection", async () => {
                 const output = await captureConsole(() =>
-                    runInitCommand(["--help"], { sessionPort: UNEXPECTED_SESSION_PORT })
+                    runInitCommand(["--help"], { sessionPort: UNEXPECTED_SESSION_PORT }),
                 );
                 assertStringIncludes(output.logs.join("\n"), "Usage (init):");
                 assertStringIncludes(output.logs.join("\n"), "Runs a one-time agent");
@@ -94,15 +94,17 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
                 assertEquals(request, "/init");
                 assertEquals(agentName, "router");
                 assert(
-                    (await fsStat(
-                        join(
-                            homeDir,
-                            ".wld",
-                            "bundled-agent-definitions",
-                            "subagent-definitions",
-                            "init-agent-prompt.md",
-                        ),
-                    )).isFile(),
+                    (
+                        await fsStat(
+                            join(
+                                homeDir,
+                                ".wld",
+                                "bundled-agent-definitions",
+                                "subagent-definitions",
+                                "init-agent-prompt.md",
+                            ),
+                        )
+                    ).isFile(),
                 );
                 assert((await fsStat(join(homeDir, ".wld", "bundled-skills", "write-tests", "SKILL.md"))).isFile());
                 assert((await fsStat(join(homeDir, ".wld", "bundled-model-presets", "codex.json"))).isFile());
@@ -116,7 +118,9 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
                 process.chdir(projectRoot);
                 await fsWriteFile(join(projectRoot, "mod.ts"), "export const fixture = true;\n");
                 setModelMessages([
-                    fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "deno task ci" })),
+                    fauxAssistantMessage(
+                        fauxToolCall("init_save_verification_command", { command: "deno task ci", setupCommand: "" }),
+                    ),
                     fauxAssistantMessage(fauxText("Initialization inspection complete.")),
                 ]);
                 const ui = createUi();
@@ -141,55 +145,67 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
                 }
             });
 
-            await test.test("init runs the real isolated Agent, verifies its artifact, and records completion", async () => {
-                process.chdir(projectRoot);
-                setModelMessages([
-                    fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "deno task ci" })),
-                    fauxAssistantMessage(fauxToolCall("write", {
-                        path: "docs/domain-language.md",
-                        content: "# Domain Language\n\n## Fixture\n\nCurrent fixture terminology.\n",
-                    })),
-                    fauxAssistantMessage(fauxText("Initialization inspection complete.")),
-                ]);
-                const ui = createUi();
-                const runtime = createSessionRuntime();
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-                runtime.setInteractionAdapter(created.sessionId, {
-                    supportsInteraction: () => true,
-                    requestInteraction: () => ({ outcome: "selected", value: "yes" }),
-                });
-                const assistantText: string[] = [];
-                const unsubscribe = runtime.subscribeSessionEvents(created.sessionId, (event) => {
-                    if (event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA) assistantText.push(event.delta);
-                });
-                try {
-                    await runInitCommand([], {
-                        uiAPI: ui.uiAPI,
-                        sessionRuntime: runtime,
-                        sessionId: created.sessionId,
-                        sessionPort: UNEXPECTED_SESSION_PORT,
+            await test.test(
+                "init runs the real isolated Agent, verifies its artifact, and records completion",
+                async () => {
+                    process.chdir(projectRoot);
+                    setModelMessages([
+                        fauxAssistantMessage(
+                            fauxToolCall("init_save_verification_command", {
+                                command: "deno task ci",
+                                setupCommand: "",
+                            }),
+                        ),
+                        fauxAssistantMessage(
+                            fauxToolCall("write", {
+                                path: "docs/domain-language.md",
+                                content: "# Domain Language\n\n## Fixture\n\nCurrent fixture terminology.\n",
+                            }),
+                        ),
+                        fauxAssistantMessage(fauxText("Initialization inspection complete.")),
+                    ]);
+                    const ui = createUi();
+                    const runtime = createSessionRuntime();
+                    const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                    runtime.setInteractionAdapter(created.sessionId, {
+                        supportsInteraction: () => true,
+                        requestInteraction: () => ({ outcome: "selected", value: "yes" }),
                     });
+                    const assistantText: string[] = [];
+                    const unsubscribe = runtime.subscribeSessionEvents(created.sessionId, (event) => {
+                        if (event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA) assistantText.push(event.delta);
+                    });
+                    try {
+                        await runInitCommand([], {
+                            uiAPI: ui.uiAPI,
+                            sessionRuntime: runtime,
+                            sessionId: created.sessionId,
+                            sessionPort: UNEXPECTED_SESSION_PORT,
+                        });
 
-                    const state = await getCwdInitState();
-                    assertEquals(state?.path, projectRoot);
-                    assertEquals(state?.initOffered, true);
-                    assertEquals(state?.initDone, true);
-                    assertEquals(typeof state?.offeredAt, "string");
-                    assertEquals(typeof state?.doneAt, "string");
-                    assertStringIncludes(
-                        await fsReadFile(join(projectRoot, "docs", "domain-language.md"), "utf8"),
-                        "Current fixture terminology.",
-                    );
-                    assertStringIncludes(assistantText.join(""), "Initialization inspection complete.");
-                    assertEquals(ui.messages, [{
-                        message: "✅ Init complete. docs/domain-language.md has been written.",
-                        error: undefined,
-                    }]);
-                } finally {
-                    unsubscribe();
-                    runtime.closeSession(created.sessionId);
-                }
-            });
+                        const state = await getCwdInitState();
+                        assertEquals(state?.path, projectRoot);
+                        assertEquals(state?.initOffered, true);
+                        assertEquals(state?.initDone, true);
+                        assertEquals(typeof state?.offeredAt, "string");
+                        assertEquals(typeof state?.doneAt, "string");
+                        assertStringIncludes(
+                            await fsReadFile(join(projectRoot, "docs", "domain-language.md"), "utf8"),
+                            "Current fixture terminology.",
+                        );
+                        assertStringIncludes(assistantText.join(""), "Initialization inspection complete.");
+                        assertEquals(ui.messages, [
+                            {
+                                message: "✅ Init complete. docs/domain-language.md has been written.",
+                                error: undefined,
+                            },
+                        ]);
+                    } finally {
+                        unsubscribe();
+                        runtime.closeSession(created.sessionId);
+                    }
+                },
+            );
 
             await test.test("a second init reads the persisted guard and does not run another Agent", async () => {
                 process.chdir(projectRoot);

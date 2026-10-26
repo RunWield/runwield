@@ -274,9 +274,9 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   before child 04 activation.
 - **Commands:** Run
   `deno run -A scripts/run-tests.js src/shared/remote/ src/shared/models/ src/shared/settings.test.js
-  src/shared/session/skill-catalog.test.ts src/shared/session/named-invocation.test.ts
-  src/shared/session/agents-shared-practice.test.ts src/shared/session/session-prompt.test.js
-  src/shared/session/__tests__/agent-model-override.test.js src/cmd/resume/index.test.ts src/tools/see-image.test.js`
+src/shared/session/skill-catalog.test.ts src/shared/session/named-invocation.test.ts
+src/shared/session/agents-shared-practice.test.ts src/shared/session/session-prompt.test.js
+src/shared/session/__tests__/agent-model-override.test.ts src/cmd/resume/index.test.ts src/tools/see-image.test.js`
   as one shell command, plus focused provider retry/replay/temperature tests in `src/shared/session/`. Use
   `deno task seams:check` and `deno task doc-links:check`. All automated fixtures use the repository's isolated test
   runner; tests changing HOME/cwd use `withProcessGlobalTestLock`. Do not add seams for owned settings or storage.

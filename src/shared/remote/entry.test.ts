@@ -78,6 +78,7 @@ test("remote view rejects an unfinished input header", async () => {
 
 test("remote bootstrap rejects invalid control identity, cwd, and mount roots", async () => {
     const config = {
+        review: { socketPath: `/tmp/wld-remote-${"a".repeat(32)}/review.sock`, origin: "http://127.0.0.1:43127" },
         connection: { port: 1234, credential: "a".repeat(64) },
         cwd: "/remote/project",
         resources: { globalRoot: "/private/verified-mount" },
@@ -99,5 +100,27 @@ test("remote bootstrap rejects invalid control identity, cwd, and mount roots", 
             Error,
             "Invalid remote interactive configuration",
         );
+    }
+});
+
+test("remote bootstrap rejects missing or unsafe review transport before TUI startup", async () => {
+    const config = {
+        connection: { port: 1234, credential: "a".repeat(64) },
+        cwd: "/remote/project",
+        resources: { globalRoot: "/private/verified-mount" },
+        memoryCollection: "project@host-1234",
+        view: { host: "host", cwd: "/remote/project", status: "Connected", trust: "Trusted", readiness: "Ready" },
+    };
+    const valid = { socketPath: `/tmp/wld-remote-${"a".repeat(32)}/review.sock`, origin: "http://127.0.0.1:43127" };
+    for (const review of [
+        undefined,
+        null,
+        { ...valid, socketPath: "/tmp/another-owner/review.sock" },
+        { ...valid, socketPath: valid.socketPath + "\0" },
+        { ...valid, origin: "https://example.com" },
+        { ...valid, origin: "http://127.0.0.1:0" },
+        { ...valid, origin: "http://127.0.0.1:65536" },
+    ]) {
+        await assertRejects(() => parseRemoteInteractiveConfig(JSON.stringify({ ...config, review })), Error);
     }
 });

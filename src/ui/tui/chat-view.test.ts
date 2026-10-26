@@ -1,11 +1,13 @@
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
+import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Spacer, StdinBuffer, Text, TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView, findVisibleToolBlocks } from "./chat-view.ts";
 import { ToolExecutionBlock, ToolExecutionGroupBlock, UserPromptBlock } from "./blocks.js";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldTui } from "./tui.ts";
 import { installTerminalFocusState } from "./terminal-focus-state.ts";
 import { installKeybindings } from "./keybindings.ts";
@@ -42,6 +44,7 @@ test("TUI artifact shortcut opens the shared-reader picker without changing the 
         const terminal = new VirtualTerminal({ columns: 150, rows: 30 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -67,12 +70,64 @@ test("TUI artifact shortcut opens the shared-reader picker without changing the 
     });
 });
 
+for (const kind of ["select", "text"] as const) {
+    test(`chat view restores cancellation focus after an overlapping ${kind} prompt`, async () => {
+        await withSessionViewFixture(async ({ runtime, sessionId }) => {
+            const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+            const tui = new TuiAltScreen(terminal);
+            const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
+                documentLinks: null,
+                tui,
+                suppressStartupHeader: true,
+                getSessionId: () => sessionId,
+                sessionRuntime: runtime,
+                setActiveModel: () => Promise.resolve({ status: "active" }),
+            });
+            let finishReview = () => {};
+            const review = view.uiAPI.withHiddenInput!(
+                () =>
+                    new Promise<void>((resolve) => {
+                        finishReview = resolve;
+                    }),
+            );
+            try {
+                tui.start();
+                view.editor.setText("Keep this draft");
+                const cancellationFocus = tui.getFocusedComponent();
+                assert(cancellationFocus);
+                const prompt =
+                    kind === "select"
+                        ? view.uiAPI.promptSelect("Retry review?", [{ value: "retry", label: "Retry" }])
+                        : view.uiAPI.promptText("Review feedback");
+                terminal.typeText(kind === "select" ? "Retry" : "Feedback");
+                terminal.pressEnter();
+                assertEquals(await prompt, kind === "select" ? "retry" : "Feedback");
+                assertEquals(tui.getFocusedComponent() === cancellationFocus, true);
+                terminal.typeText("hidden typing");
+                await terminal.flush();
+                assertEquals(view.editor.getText(), "Keep this draft");
+                finishReview();
+                await review;
+                assertEquals(tui.getFocusedComponent() === view.editor, true);
+            } finally {
+                view.uiAPI.abortActivePrompt();
+                finishReview();
+                await review;
+                view.dispose();
+                tui.stop();
+            }
+        });
+    });
+}
+
 test("chat view reconstructs delayed mouse-wheel input without changing a draft or cancelling work", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -178,6 +233,7 @@ test("chat view shows messages appended after the first frame", async () => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -212,6 +268,7 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
             const terminal = new VirtualTerminal({ columns: 150, rows: 12 });
             const tui = new RunWieldTui(terminal);
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
@@ -279,7 +336,10 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
                 await terminal.flush();
                 const streamFrameDurationMs = performance.now() - streamFrameStart;
                 captureTerminalOutput();
-                assertEquals(retainedBlocks.map((block) => renderCounts.get(block) ?? 0), initialRenderCounts);
+                assertEquals(
+                    retainedBlocks.map((block) => renderCounts.get(block) ?? 0),
+                    initialRenderCounts,
+                );
                 assertEquals(tui.viewportTop, selectedViewportTop);
                 assertEquals(terminal.getScreenText(), selectedViewport);
 
@@ -288,7 +348,10 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
                 await terminal.flush();
                 captureTerminalOutput();
                 assertEquals(view.editor.getText(), "draft stays ready!");
-                assertEquals(retainedBlocks.map((block) => renderCounts.get(block) ?? 0), initialRenderCounts);
+                assertEquals(
+                    retainedBlocks.map((block) => renderCounts.get(block) ?? 0),
+                    initialRenderCounts,
+                );
 
                 tui.scrollToBottom();
                 tui.renderNow();
@@ -302,9 +365,15 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
                 await terminal.flush();
                 const toolFrameDurationMs = performance.now() - toolFrameStart;
                 captureTerminalOutput();
-                assertEquals(retainedBlocks.map((block) => renderCounts.get(block) ?? 0), initialRenderCounts);
+                assertEquals(
+                    retainedBlocks.map((block) => renderCounts.get(block) ?? 0),
+                    initialRenderCounts,
+                );
                 assertStringIncludes(terminal.getScreenText(), "live tool output two");
-                assertEquals(terminalSamples.every((sample) => sample.length <= terminalCaptureLimit), true);
+                assertEquals(
+                    terminalSamples.every((sample) => sample.length <= terminalCaptureLimit),
+                    true,
+                );
 
                 observations.push({
                     retainedCount,
@@ -320,16 +389,28 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
             }
         }
 
-        assertEquals(observations.map((observation) => observation.retainedCount), retainedCounts);
-        assertEquals(observations.every((observation) => observation.retainedBlockRenderCount > 0), true);
-        assertEquals(observations.every((observation) => observation.timerCallbacks > 0), true);
+        assertEquals(
+            observations.map((observation) => observation.retainedCount),
+            retainedCounts,
+        );
+        assertEquals(
+            observations.every((observation) => observation.retainedBlockRenderCount > 0),
+            true,
+        );
+        assertEquals(
+            observations.every((observation) => observation.timerCallbacks > 0),
+            true,
+        );
         assertEquals(
             observations.every((observation) =>
-                observation.frameDurationsMs.every((duration) => Number.isFinite(duration))
+                observation.frameDurationsMs.every((duration) => Number.isFinite(duration)),
             ),
             true,
         );
-        assertEquals(observations.every((observation) => observation.terminalOutputBytes > 0), true);
+        assertEquals(
+            observations.every((observation) => observation.terminalOutputBytes > 0),
+            true,
+        );
     });
 });
 
@@ -338,6 +419,7 @@ test("chat view refreshes an active tool without reformatting retained message b
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -393,6 +475,7 @@ test("chat view keeps sidebar tabs on the first row above a queued steering mess
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -430,6 +513,7 @@ test("chat view tracks quick fix validation in the workflow sidebar", async () =
         const terminal = new VirtualTerminal({ columns: 150, rows: 28 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -463,6 +547,7 @@ test("chat view keeps block backgrounds out of the sidebar when the scrollbar is
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -499,6 +584,7 @@ test("chat view keeps scrollback position during live thinking updates", async (
         const terminal = new VirtualTerminal({ columns: 80, rows: 10 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -543,6 +629,7 @@ test("chat view keeps settled tool lines cached across a keystroke", async () =>
         const terminal = new VirtualTerminal({ columns: 100, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -584,6 +671,7 @@ for (const recovery of ["ctrl+l", "focus"] as const) {
             const tui = new RunWieldTui(terminal);
             const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
@@ -639,3 +727,113 @@ for (const recovery of ["ctrl+l", "focus"] as const) {
         });
     });
 }
+
+test("idle concurrent chat views never read the clipboard across focus, replacement, and disposal", async () => {
+    if (process.platform !== "darwin") return;
+    await withSessionViewFixture(async ({ runtime, sessionId, projectRoot }) => {
+        const clipboard = await installFakeClipboardCommands(projectRoot);
+        const sessionIds = [sessionId];
+        for (let index = 0; index < 2; index++) {
+            sessionIds.push((await runtime.createInteractiveSession({ cwd: projectRoot })).sessionId);
+        }
+        const views = await Promise.all(
+            sessionIds.map(async (id) => {
+                const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+                const tui = new RunWieldTui(terminal);
+                const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
+                const view = await createChatView({
+                    browser: NO_OPEN_BROWSER_PORT,
+                    documentLinks: null,
+                    tui,
+                    suppressStartupHeader: true,
+                    getSessionId: () => id,
+                    sessionRuntime: runtime,
+                    setActiveModel: () => Promise.resolve({ status: "active" }),
+                });
+                return { terminal, tui, focus, view };
+            }),
+        );
+        try {
+            for (const { terminal, tui, view } of views) {
+                tui.start();
+                for (let index = 0; index < 3; index++) {
+                    terminal.input("\x1b[O");
+                    terminal.input("\x1b[I");
+                    tui.setFocus(null);
+                    view.focusEditor();
+                }
+            }
+            views[0]!.view.resetForSessionReplacement();
+            views[1]!.view.dispose();
+            views[1]!.tui.stop();
+            await new Promise((resolve) => setTimeout(resolve, 3300));
+            assertEquals(await clipboard.invocations(), []);
+            for (const { terminal } of views) {
+                assert(!terminal.getScreenText().includes("Image in clipboard"));
+            }
+        } finally {
+            for (let index = 0; index < views.length; index++) {
+                const { focus, view, tui } = views[index]!;
+                focus.dispose();
+                if (index !== 1) view.dispose();
+                tui.stop();
+            }
+            clipboard.restore();
+        }
+    });
+});
+
+test("an image read completing after view disposal adds no preview and requests no render", async () => {
+    await withSessionViewFixture(async ({ runtime, sessionId }) => {
+        const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+        const tui = new RunWieldTui(terminal);
+        const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
+            documentLinks: null,
+            tui,
+            suppressStartupHeader: true,
+            getSessionId: () => sessionId,
+            sessionRuntime: runtime,
+            setActiveModel: () => Promise.resolve({ status: "active" }),
+        });
+        let finishRead = (_image: { base64: string; mimeType: string }) => {};
+        const read = new Promise<{ base64: string; mimeType: string }>((resolve) => {
+            finishRead = resolve;
+        });
+        installKeybindings({
+            editor: view.editor,
+            tui,
+            uiAPI: view.uiAPI,
+            pastedImages: view.pastedImages,
+            previewImages: view.previewImages,
+            generationGuard: createGenerationGuard(),
+            dismissActivePrompt: () => {},
+            dequeueLastSubmission: () => false,
+            recallQueuedSubmissionsToEditor: () => {},
+            forceResetUI: () => {},
+            markCtrlCPendingExit: () => {},
+            isCtrlCPendingExit: () => false,
+            cycleThinkingLevel: () => {},
+            readClipboardImage: () => read,
+            cancelRuntimeSession: () => false,
+        });
+        const pending = view.editor.handleInput("\x16");
+        view.dispose();
+        // Observe render requests only after disposal; none may come from the completed paste.
+        let renders = 0;
+        const requestRender = tui.requestRender;
+        tui.requestRender = () => {
+            renders++;
+        };
+        try {
+            finishRead({ base64: "YQ==", mimeType: "image/png" });
+            await pending;
+            assertEquals(view.pastedImages, []);
+            assertEquals(view.previewImages.children.length, 0);
+            assertEquals(renders, 0);
+        } finally {
+            tui.requestRender = requestRender;
+            tui.stop();
+        }
+    });
+});

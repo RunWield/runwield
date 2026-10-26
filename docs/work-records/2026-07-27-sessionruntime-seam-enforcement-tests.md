@@ -11,16 +11,12 @@ provenance:
         - "31e4273d-63f6-4ac5-858a-422d79f60e6d"
 ---
 
-# SessionRuntime seam enforcement tests
+# SessionRuntime architecture enforcement
 
 ## Summary
 
-Added CI-enforced SessionRuntime architecture and source-order tests covering sibling adapter boundaries, public
-Runtime-only consumers, writable transcript hydration, owner-coordination mutators, read-only synchronization, stable
-Session ID hygiene, Runtime event normalization fences, and managed activation ordering. Verification passed with
-focused Deno tests and full `deno task ci`.
+Architecture checks enforce sibling adapter boundaries, public runtime consumers, transcript hydration rules, owner-coordinated mutations, read-only synchronization, stable Session identity, event normalization, and activation ordering.
 
 ## Future Planning Notes
 
-Plain Deno source-scan tests remain the preferred approach for RunWield-specific architecture seams; use narrow patterns
-and path-specific allowlists when intentional exceptions are needed.
+Source-level architecture checks require narrow patterns and explicit exceptions so intentional boundaries remain clear.

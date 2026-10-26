@@ -1,3 +1,4 @@
+import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 /** @module ui/workspace/routes/owner-api */
 
@@ -100,16 +101,28 @@ function sanitizeOwnerDashboardFrame(value) {
     const safe = {};
     for (const [key, child] of Object.entries(value)) {
         if (/(path|root|cwd|file)$/i.test(key)) continue;
-        safe[key] = (key === "href" || key === "repairHref") && typeof child === "string" &&
-                (child.startsWith("/projects/") || child === "/")
-            ? child
-            : sanitizeOwnerDashboardFrame(child);
+        safe[key] =
+            (key === "href" || key === "repairHref") &&
+            typeof child === "string" &&
+            (child.startsWith("/projects/") || child === "/")
+                ? child
+                : sanitizeOwnerDashboardFrame(child);
     }
     return safe;
 }
 
 /** @param {unknown} error */
 export function ownerErrorJson(error, status = 400) {
+    if (error instanceof DirectoryConfirmationRequired) {
+        return ownerJson(
+            {
+                code: error.code,
+                error: error.message,
+                confirmation: error.confirmation,
+            },
+            409,
+        );
+    }
     return ownerJson({ error: sanitizeOwnerError(error) }, status);
 }
 
@@ -166,13 +179,12 @@ export function pairingClaimApi(ctx) {
         if (!proof) throw new Error("Pairing browser proof is missing.");
         const claimed = ctx.state.store.claimPairingRequest(proof);
         const headers = new Headers();
-        for (
-            const header of deviceCookieHeaders({
-                credential: claimed.credential,
-                csrf: claimed.csrf,
-                publicOrigin: ctx.state.publicOrigin,
-            })
-        ) headers.append("set-cookie", header);
+        for (const header of deviceCookieHeaders({
+            credential: claimed.credential,
+            csrf: claimed.csrf,
+            publicOrigin: ctx.state.publicOrigin,
+        }))
+            headers.append("set-cookie", header);
         headers.append("set-cookie", clearBootstrapProofCookieHeader({ publicOrigin: ctx.state.publicOrigin }));
         return ownerJson({ paired: true, device: claimed.device }, 201, headers);
     } catch (error) {
@@ -278,10 +290,17 @@ export async function registerProjectApi(ctx) {
     try {
         const body = await readJson(ctx.req);
         if (!body.root) throw new Error("Project root is required.");
-        const project = ctx.state.store.registerProject({ root: String(body.root), displayName: body.displayName });
-        return ownerJson({
-            project: serializeOwnerProject(project, ctx.state.store.getProjectHealth(project.projectId)),
-        }, 201);
+        const project = ctx.state.store.registerProject({
+            root: String(body.root),
+            displayName: body.displayName,
+            directoryConfirmation: body.directoryConfirmation,
+        });
+        return ownerJson(
+            {
+                project: serializeOwnerProject(project, ctx.state.store.getProjectHealth(project.projectId)),
+            },
+            201,
+        );
     } catch (error) {
         return ownerErrorJson(error);
     }
@@ -296,7 +315,11 @@ export async function projectActionApi(ctx) {
         else if (body.action === "enable") ctx.state.store.setProjectEnabled(projectId, true);
         else if (body.action === "remove") ctx.state.store.removeProject(projectId);
         else if (body.action === "relink") {
-            ctx.state.store.relinkProject({ projectId, newRoot: String(body.newRoot || "") });
+            ctx.state.store.relinkProject({
+                projectId,
+                newRoot: String(body.newRoot || ""),
+                directoryConfirmation: body.directoryConfirmation,
+            });
         } else if (body.action === "rescan") {
             requireOwnerProjectRoot(ctx.state.store, projectId);
             const result = await ctx.state.store.catalogProjectSessions(projectId, { fullRescan: true });
@@ -318,11 +341,12 @@ export async function ownerProjectBoardApi(ctx) {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const board = await loadBoard(root);
         const requestedView = ctx.params.view || "active";
-        const view = requestedView === "closed"
-            ? "closed"
-            : requestedView === "onHold" || requestedView === "on-hold"
-            ? "onHold"
-            : "active";
+        const view =
+            requestedView === "closed"
+                ? "closed"
+                : requestedView === "onHold" || requestedView === "on-hold"
+                  ? "onHold"
+                  : "active";
         const screen = board.screens?.[view] || { columns: [] };
         return ownerJson({
             projectId: ctx.params.projectId,
@@ -366,7 +390,7 @@ export async function associatedPlanSession(store, projectId, planId) {
     let selected = "";
     let selectedAt = "";
     let selectedCurrent = false;
-    for (let page = 0;; page++) {
+    for (let page = 0; ; page++) {
         const batch = await store.listProjectSessions(projectId, {
             catalog: false,
             archiveState: "all",
@@ -374,13 +398,15 @@ export async function associatedPlanSession(store, projectId, planId) {
             pageSize: 100,
         });
         for (const session of batch.sessions) {
-            const associations = store.listSessionPlanAssociations(session.runwieldSessionId, projectId)
+            const associations = store
+                .listSessionPlanAssociations(session.runwieldSessionId, projectId)
                 .filter((entry) => entry.committedGeneration !== null);
             const association = associations.findLast((entry) => entry.planId === planId);
             if (!association) continue;
             const current = associations.at(-1)?.planId === planId;
             if (
-                !selected || (current && !selectedCurrent) ||
+                !selected ||
+                (current && !selectedCurrent) ||
                 (current === selectedCurrent && association.recordedAt > selectedAt)
             ) {
                 selected = session.runwieldSessionId;
@@ -396,8 +422,9 @@ export async function associatedPlanSession(store, projectId, planId) {
 export async function ownerProjectPlanProgressApi(ctx) {
     try {
         const url = new URL(ctx.req.url);
-        const runwieldSessionId = url.searchParams.get("session") ||
-            await associatedPlanSession(ctx.state.store, ctx.params.projectId, ctx.params.planId);
+        const runwieldSessionId =
+            url.searchParams.get("session") ||
+            (await associatedPlanSession(ctx.state.store, ctx.params.projectId, ctx.params.planId));
         const progress = await loadOwnerPlanProgress(ctx.state.store, {
             projectId: ctx.params.projectId,
             planId: ctx.params.planId,
@@ -414,19 +441,21 @@ export async function ownerProjectPlanProgressApi(ctx) {
             const planReview = request.planReview && typeof request.planReview === "object" ? request.planReview : null;
             const codeReview = request.codeReview && typeof request.codeReview === "object" ? request.codeReview : null;
             const associations = /** @type {Array<{ planId?: string, committedGeneration?: number | null }>} */ (
-                ctx.state.store.listSessionPlanAssociations?.(
-                    operation.runwieldSessionId,
-                    ctx.params.projectId,
-                ) || []
+                ctx.state.store.listSessionPlanAssociations?.(operation.runwieldSessionId, ctx.params.projectId) || []
             );
             const info = operation.runtimeSessionId
                 ? ctx.state.sessionContinuation.runtime.getSessionSnapshot(operation.runtimeSessionId)
                 : operation.sessionInfo;
             // A Session may have worked on several Plans. Only the current operation
             // or live workflow can own its prompt; historical associations are not ownership.
-            const currentPlanId = planReview?.planId || codeReview?.planId || operation.planId ||
-                info?.activeExecutionWorkflow?.triageMeta?.planId || info?.workflowContext?.planId ||
-                info?.planAssociations?.at(-1)?.planId || associations.at(-1)?.planId;
+            const currentPlanId =
+                planReview?.planId ||
+                codeReview?.planId ||
+                operation.planId ||
+                info?.activeExecutionWorkflow?.triageMeta?.planId ||
+                info?.workflowContext?.planId ||
+                info?.planAssociations?.at(-1)?.planId ||
+                associations.at(-1)?.planId;
             if (currentPlanId !== ctx.params.planId) continue;
             effectiveSessionId = operation.runwieldSessionId || effectiveSessionId;
             live = { operationId, interactionId: operation.liveInteraction.interactionId, request };
@@ -440,27 +469,29 @@ export async function ownerProjectPlanProgressApi(ctx) {
             (effectiveSessionId
                 ? inspected?.activation?.state === "idle"
                 : ["approved", "ready_for_work", "on_hold"].includes(progress.plan.status)) &&
-                progress.overall?.state !== "completed" && !progress.degraded &&
-                [
-                    "approved",
-                    "ready_for_work",
-                    "on_hold",
-                    "in_progress",
-                    "failed",
-                    "ready_for_decomposition",
-                    "implemented",
-                    "validated_ci",
-                    "reviewed",
-                    "validated",
-                ].includes(progress.plan.status),
+            progress.overall?.state !== "completed" &&
+            !progress.degraded &&
+            [
+                "approved",
+                "ready_for_work",
+                "on_hold",
+                "in_progress",
+                "failed",
+                "ready_for_decomposition",
+                "implemented",
+                "validated_ci",
+                "reviewed",
+                "validated",
+            ].includes(progress.plan.status),
         );
         const canRecover = continuable && progress.overall?.state === "needs_attention";
-        const evidence = progress.plan.status === "on_hold"
-            ? await loadPlanActionEvidence(
-                requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId),
-                ctx.params.planId,
-            )
-            : null;
+        const evidence =
+            progress.plan.status === "on_hold"
+                ? await loadPlanActionEvidence(
+                      requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId),
+                      ctx.params.planId,
+                  )
+                : null;
         return ownerJson({
             ...progress,
             sessionHref,
@@ -469,19 +500,16 @@ export async function ownerProjectPlanProgressApi(ctx) {
                     ? `${sessionHref}#interaction-${encodeURIComponent(live.interactionId)}`
                     : "",
             reviewHref: live?.request?.reviewUrl || "",
-            reviewKind: live?.request?.type === "plan_review"
-                ? "plan"
-                : live?.request?.type === "code_review"
-                ? "code"
-                : "",
+            reviewKind:
+                live?.request?.type === "plan_review" ? "plan" : live?.request?.type === "code_review" ? "code" : "",
             continueUrl: "",
             planWorkflowUrl: effectiveSessionId
-                ? `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/sessions/${
-                    encodeURIComponent(effectiveSessionId)
-                }/plan-workflow`
-                : `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/plans/${
-                    encodeURIComponent(ctx.params.planId)
-                }/workflow`,
+                ? `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/sessions/${encodeURIComponent(
+                      effectiveSessionId,
+                  )}/plan-workflow`
+                : `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/plans/${encodeURIComponent(
+                      ctx.params.planId,
+                  )}/workflow`,
             expectedRevision: evidence?.kind === "success" ? evidence.evidence.revision : null,
             recoveryUrl: "",
             canRecover,

@@ -12,19 +12,39 @@ test("artifact conversation keeps the user message and optional review context d
     assertStringIncludes(feedback, "## Architect conversation");
     assertStringIncludes(feedback, "### User message\nTighten the verification section.");
     assertStringIncludes(feedback, "### Attached review annotations\nVerification Plan: Add one browser annotation.");
-    assertStringIncludes(feedback, "call `plan_written` again");
+    assertStringIncludes(feedback, "Revise the Plan and call `plan_written`");
+    assertStringIncludes(feedback, "A reply without a revision keeps the review open.");
+    assertEquals(feedback.includes("even when"), false);
 });
 
 test("artifact conversation collects only new Planner text deltas", () => {
-    const reply = collectArtifactConversationReply([
-        { type: "assistant_text_delta", messageId: "old", delta: "Old reply" },
-        { type: "tool_start" },
-        { type: "assistant_text_delta", messageId: "new", agentName: "Planner", delta: "I tightened " },
-        { type: "assistant_text_delta", messageId: "new", agentName: "Planner", delta: "the checks." },
-    ], 1);
+    const reply = collectArtifactConversationReply(
+        [
+            { type: "assistant_text_delta", messageId: "old", delta: "Old reply" },
+            { type: "tool_start" },
+            { type: "assistant_text_delta", messageId: "new", agentName: "Planner", delta: "I tightened " },
+            { type: "assistant_text_delta", messageId: "new", agentName: "Planner", delta: "the checks." },
+        ],
+        1,
+    );
 
     assertEquals(reply, { text: "I tightened the checks.", agentName: "Planner" });
 });
+
+for (const type of ["system_status", "terminal_error"]) {
+    test(`review conversation shows ${type} errors instead of a successful unchanged reply`, () => {
+        const reply = collectArtifactConversationReply(
+            [
+                { type: "system_status", level: "error", message: "An earlier failure." },
+                { type: "assistant_text_delta", delta: "Let me explain.", messageId: "reply" },
+                { type, level: "error", message: "The planning provider is unavailable.", messageId: "failure" },
+                { type: "system_status", level: "info", message: "Review opened." },
+            ],
+            1,
+        );
+        assertEquals(reply.text, "Agent error: The planning provider is unavailable.");
+    });
+}
 
 test("Plan and Code Review conversations accept annotations without a user message", () => {
     for (const artifactKind of ["plan", "code"] as const) {
@@ -37,4 +57,13 @@ test("Plan and Code Review conversations accept annotations without a user messa
         assertEquals(feedback.includes("### User message"), false);
         assertStringIncludes(feedback, "### Continue the review");
     }
+});
+
+test("Code Review conversation can reply without editing and requires authority for scope changes", () => {
+    const feedback = buildArtifactConversationFeedback({ message: "Why use a Set?", artifactKind: "code" });
+    assertStringIncludes(feedback, "Reply in chat to explain, clarify, or ask back.");
+    assertStringIncludes(feedback, "Edit the working files only when the request needs a code change.");
+    assertStringIncludes(feedback, "A reply without an edit keeps Code Review open with the same diff.");
+    assertStringIncludes(feedback, "confirmed Plan Deviation through `record_plan_deviation`");
+    assertEquals(feedback.includes("reporting what changed"), false);
 });

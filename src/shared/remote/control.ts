@@ -1,7 +1,9 @@
+import { handleBrowserOpen } from "./browser-bridge.ts";
 import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */
 
 import { readPersonalMcpConfig } from "../mcp/config.ts";
+import { LaptopMcpBridge } from "./mcp-bridge.ts";
 import { LaptopMemoryService } from "./memory-service.ts";
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
@@ -127,16 +129,19 @@ export function startRemoteControlService(
     identity: RemoteControlIdentity,
     target?: LaptopSessionTarget,
     memoryCollection?: string,
+    reviewOrigin = "",
 ): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
     const credential = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
         byte.toString(16).padStart(2, "0"),
     ).join("");
     const memory = memoryCollection ? new LaptopMemoryService(memoryCollection) : undefined;
+    const mcp = new LaptopMcpBridge();
     let connected = false;
     let ready = false;
     let shutdown = false;
     let closed = false;
+    let closing: Promise<void> | undefined;
     let seenSinceCheck = false;
     let misses = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -277,7 +282,7 @@ export function startRemoteControlService(
             const owner = sessionOwners.get(input.operation);
             if (owner) return Response.json(owner.handle(input));
             if (!sessions) throw new Error("Stale Session operation");
-            return Response.json(sessions.handleSave(input));
+            return Response.json(await sessions.handleSave(input));
         } catch {
             return new Response(null, { status: 409 });
         }
@@ -308,11 +313,18 @@ export function startRemoteControlService(
             stopModels();
             stopSessions();
             memory?.close();
+            void mcp.close();
         }
     };
     const abort = new AbortController();
     const server = serveHttp(
-        { hostname: "127.0.0.1", port: 0, signal: abort.signal, onListen() {} },
+        {
+            hostname: "127.0.0.1",
+            port: 0,
+            signal: abort.signal,
+            onListen() {},
+            onError: () => new Response(null, { status: 503 }),
+        },
         async (request) => {
             if (closed || !equalSecret(request.headers.get("Authorization") ?? "", `Bearer ${credential}`)) {
                 return new Response(null, { status: 401 });
@@ -371,6 +383,7 @@ export function startRemoteControlService(
                 stopModels();
                 stopSessions();
                 memory?.close();
+                void mcp.close();
                 return Response.json({ shutdown: true });
             }
             if (path === "/mcp/config") {
@@ -378,18 +391,35 @@ export function startRemoteControlService(
                 if (request.method !== "GET") return new Response(null, { status: 405 });
                 try {
                     const config = await readPersonalMcpConfig();
-                    // Personal servers are listed here, not launched: their argv and credentials stay on the laptop.
+                    if (shutdown || closed || !ready) return new Response(null, { status: 403 });
                     return Response.json({
-                        ...config,
-                        servers: config.servers.map((server) => ({ ...server, command: "", args: [], env: {} })),
+                        servers: config.servers.map((server) => ({
+                            name: server.name,
+                            source: "global",
+                            location: "laptop",
+                            command: "",
+                            args: [],
+                            env: {},
+                        })),
+                        warnings: config.warnings.map((warning) => ({
+                            source: warning.source,
+                            stage: warning.stage,
+                            message: "Personal MCP configuration could not be loaded.",
+                        })),
                     });
                 } catch {
                     return new Response(null, { status: 503 });
                 }
             }
+            if (path.startsWith("/mcp/transport/")) {
+                return await mcp.handle(request, () => ready && !shutdown && !closed);
+            }
             if (path === "/memory") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
                 return memory ? await memory.handle(request) : new Response(null, { status: 404 });
+            }
+            if (path === "/browser/open") {
+                return await handleBrowserOpen(request, reviewOrigin, () => ready && !shutdown && !closed);
             }
             if (path === "/clipboard/image") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
@@ -461,9 +491,10 @@ export function startRemoteControlService(
             stopModels();
             stopSessions();
             memory?.close();
+            void mcp.close();
         },
-        async close() {
-            if (closed) return;
+        close() {
+            if (closing) return closing;
             closed = true;
             shutdown = true;
             ready = false;
@@ -471,8 +502,12 @@ export function startRemoteControlService(
             stopModels();
             stopSessions();
             memory?.close();
-            abort.abort();
-            await server.finished;
+            closing = (async () => {
+                await mcp.close();
+                abort.abort();
+                await server.finished;
+            })();
+            return closing;
         },
     };
 }

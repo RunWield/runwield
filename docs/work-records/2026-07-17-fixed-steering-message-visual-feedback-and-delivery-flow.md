@@ -9,17 +9,19 @@ createdAt: "2026-07-17T04:46:54.074Z"
 provenance:
     sourcePlans:
         - "24298e8c-0a8d-466b-bcb0-4f3f13d4879f"
+    evidence:
+        - path: "src/shared/session/session-runtime.js"
+          note: "Owns the small per-session message queue and publishes queued, consumed, and dequeued transitions."
+        - path: "src/shared/session/session-runtime-events.js"
+          note: "Defines the adapter-neutral queued-message lifecycle event contract used by current and future UIs."
+        - path: "src/ui/tui/runtime-adapter.js"
+          note: "Projects core queue snapshots and lifecycle events into TUI message blocks without owning queue state."
+        - path: "src/ui/tui/chat-session.js"
+          note: "Recalls the latest core-queued message into the editor when the user presses Up on an empty input."
 ---
 
-# Fixed steering message visual feedback and delivery flow
+# Core-owned steering queue, feedback, and delivery
 
 ## Summary
 
-Steering messages now display immediate queued feedback, transition to user messages when consumed by the LLM, retain
-image attachments, and fall back to the local submission queue when steering fails or the session is no longer
-streaming. Cancellation cleanup and local queued-message dequeue behavior were also verified.
-
-## Future Planning Notes
-
-Duplicate steering messages are still correlated by message text; consider stable message IDs if stronger tracking is
-needed.
+SessionRuntime owns queued steering messages in a per-Session array, while interfaces consume Core snapshots and queued, consumed, and dequeued lifecycle events. Messages show immediate steering feedback, become normal user messages when consumed, and retain image attachments. Up on an empty input recalls the latest Core-queued message into the editor without losing earlier entries, even when the underlying Agent API supports only whole-queue clearing. Failed steering or a Session that is no longer streaming sends messages to the local submission queue instead. Cancellation cleanup and local queue recall preserve the delivery flow.

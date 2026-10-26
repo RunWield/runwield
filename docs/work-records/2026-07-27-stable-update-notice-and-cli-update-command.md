@@ -11,21 +11,12 @@ provenance:
         - "64f0a075-fa48-4ea8-a5f9-88062541a25f"
 ---
 
-# Stable update notice and CLI update command
+# Stable update discovery and installation
 
 ## Summary
 
-Added a shared Stable release update-check module, non-blocking TUI boot update notice, and CLI-only `wld update`
-command with `wld upgrade` alias that installs through the tag-pinned public installer while preserving
-install-directory behavior. Registry, command, shared update-check, and TUI behavior are covered by tests, and
-verification passed with format, lint, targeted tests, and full `deno task ci`.
-
-## Deviations from Plan
-
-Live interactive TUI and installer checks were not run against a real installer; automated source-order, registry, and
-fake-installer tests covered those behaviors instead.
+RunWield checks Stable release metadata without blocking TUI startup. CLI-only `wld update`, with `wld upgrade` as an alias, installs through the tag-pinned public installer while preserving install-directory behavior.
 
 ## Future Planning Notes
 
-Keep update availability as cached release metadata recomputed against the current binary version, not as durable
-availability truth, and continue keeping installer execution CLI-only rather than exposing it as a slash command.
+Update availability is recomputed from cached release metadata and the current binary version, not stored as durable truth. Installer execution remains CLI-only.

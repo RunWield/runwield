@@ -49,7 +49,8 @@ export function showRemoteConnectionView(tui: TUI, config: RemoteConnectionViewC
             0,
         ),
     );
-    tui.requestRender();
+    // Paint the facts before queued exit input can stop the renderer.
+    tui.renderNow();
     return new Promise((resolve) => {
         const remove = tui.addInputListener((data) => {
             if (matchesKey(data, "q") || matchesKey(data, Key.ctrl("c")) || matchesKey(data, Key.ctrl("d"))) {

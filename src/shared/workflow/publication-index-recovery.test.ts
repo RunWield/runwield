@@ -47,12 +47,15 @@ const repository = defineGitFixture(async (root) => {
     await fsMkdir(join(root, "docs/work-records"), { recursive: true });
     await fsWriteFile(
         join(root, predecessorPath),
-        formatWorkRecordMarkdown({
-            ...recordAttrs,
-            recordId: predecessorId,
-            status: "approved",
-            provenance: { sourcePlans: ["44444444-4444-4444-8444-444444444444"] },
-        }, "# Old behavior\n\n## Summary\n\nOriginal behavior.\n"),
+        formatWorkRecordMarkdown(
+            {
+                ...recordAttrs,
+                recordId: predecessorId,
+                status: "approved",
+                provenance: { sourcePlans: ["44444444-4444-4444-8444-444444444444"] },
+            },
+            "# Old behavior\n\n## Summary\n\nOriginal behavior.\n",
+        ),
     );
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "Reviewed Plan and prior Work Record"]);
@@ -87,19 +90,28 @@ test("remote delivery retains verification through index failure and recovers in
         });
         const plan = await loadPlan(entry.path, "demo");
         assert(plan);
-        await savePlan(entry.path, "demo", plan.body, {
-            ...plan.attrs,
-            workRecord: { status: "generated", recordId: successorId, path: successorPath },
-        }, { expectedRevision: plan.revision });
+        await savePlan(
+            entry.path,
+            "demo",
+            plan.body,
+            {
+                ...plan.attrs,
+                workRecord: { status: "generated", recordId: successorId, path: successorPath },
+            },
+            { expectedRevision: plan.revision },
+        );
         await fsWriteFile(
             join(entry.path, successorPath),
-            formatWorkRecordMarkdown({
-                ...recordAttrs,
-                recordId: successorId,
-                status: "pending_verification",
-                supersedes: [predecessorId],
-                provenance: { sourcePlans: [planId] },
-            }, "# New behavior\n\n## Summary\n\nDelivered replacement behavior.\n"),
+            formatWorkRecordMarkdown(
+                {
+                    ...recordAttrs,
+                    recordId: successorId,
+                    status: "pending_verification",
+                    supersedes: [predecessorId],
+                    provenance: { sourcePlans: [planId] },
+                },
+                "# New behavior\n\n## Summary\n\nDelivered replacement behavior.\n",
+            ),
         );
         await fsWriteFile(join(entry.path, "feature.txt"), "Reviewed implementation\n");
         await git(entry.path, ["add", "."]);
@@ -160,8 +172,10 @@ test("remote delivery retains verification through index failure and recovers in
         );
         const attached = await readPublishedRecordMarkdown(root, failed.attempt, successorPath);
         assert(attached);
-        assertStringIncludes(attached, "Delivery destination: `main`");
-        assertEquals(parseWorkRecordMarkdown(attached).attrs.status, "approved");
+        const publishedRecord = parseWorkRecordMarkdown(attached);
+        const sealedRecord = parseWorkRecordMarkdown(await git(remote, ["show", `${artifactCommit}:${successorPath}`]));
+        assertEquals(publishedRecord.body.trimEnd(), sealedRecord.body);
+        assertEquals(publishedRecord.attrs.status, "approved");
         await git(root, ["remote", "add", "decoy", decoy]);
         await git(root, ["config", "branch.main.remote", "decoy"]);
         await git(root, ["config", "branch.main.merge", "refs/heads/unrelated"]);
@@ -175,14 +189,14 @@ test("remote delivery retains verification through index failure and recovers in
         const documents = index.snapshot();
         assertEquals(documents.length, 2);
         assert(
-            documents.find((document) => document.tags.includes(`work-record:${successorId}`))?.tags.includes(
-                "status:approved",
-            ),
+            documents
+                .find((document) => document.tags.includes(`work-record:${successorId}`))
+                ?.tags.includes("status:approved"),
         );
         assert(
-            documents.find((document) => document.tags.includes(`work-record:${predecessorId}`))?.tags.includes(
-                "status:superseded",
-            ),
+            documents
+                .find((document) => document.tags.includes(`work-record:${predecessorId}`))
+                ?.tags.includes("status:superseded"),
         );
         assertEquals((await loadPlan(root, "demo"))?.attrs.status, "verified");
         assertEquals(await fsReadFile(join(root, planPath), "utf8"), primaryPlan);
@@ -228,21 +242,30 @@ for (const mode of ["local", "remote"] as const) {
                 });
                 const path = `docs/work-records/${name}.md`;
                 const existing = await loadPlan(entry.path, name);
-                await savePlan(entry.path, name, `# ${name}\n`, {
-                    planId: entry.planId,
-                    classification: "PLANNED_CHANGE",
-                    status: "reviewed",
-                    workRecord: { status: "generated", recordId, path },
-                }, { expectedRevision: existing?.revision });
+                await savePlan(
+                    entry.path,
+                    name,
+                    `# ${name}\n`,
+                    {
+                        planId: entry.planId,
+                        classification: "PLANNED_CHANGE",
+                        status: "reviewed",
+                        workRecord: { status: "generated", recordId, path },
+                    },
+                    { expectedRevision: existing?.revision },
+                );
                 await fsWriteFile(
                     join(entry.path, path),
-                    formatWorkRecordMarkdown({
-                        ...recordAttrs,
-                        recordId,
-                        status: "pending_verification",
-                        supersedes,
-                        provenance: { sourcePlans: [entry.planId!] },
-                    }, `# ${name}\n\n## Summary\n\n${name} behavior.\n`),
+                    formatWorkRecordMarkdown(
+                        {
+                            ...recordAttrs,
+                            recordId,
+                            status: "pending_verification",
+                            supersedes,
+                            provenance: { sourcePlans: [entry.planId!] },
+                        },
+                        `# ${name}\n\n## Summary\n\n${name} behavior.\n`,
+                    ),
                 );
                 if (removeOriginalPlan) await fsRm(join(entry.path, planPath));
                 await fsWriteFile(join(entry.path, `${name}.txt`), `${name} implementation\n`);
@@ -301,16 +324,18 @@ for (const mode of ["local", "remote"] as const) {
             assertEquals(retried.complete, true, retried.details.join("\n"));
             assertEquals(earlierDocument(), beforeRetry);
             assert(
-                index.snapshot().find((item) => item.tags.includes(`work-record:${laterId}`))?.tags.includes(
-                    "status:approved",
-                ),
+                index
+                    .snapshot()
+                    .find((item) => item.tags.includes(`work-record:${laterId}`))
+                    ?.tags.includes("status:approved"),
             );
             // The retry still discovers its older predecessor from immutable Plan
             // linkage, but reads that predecessor's current canonical state.
             assert(
-                index.snapshot().find((item) => item.tags.includes(`work-record:${predecessorId}`))?.tags.includes(
-                    "status:superseded",
-                ),
+                index
+                    .snapshot()
+                    .find((item) => item.tags.includes(`work-record:${predecessorId}`))
+                    ?.tags.includes("status:superseded"),
             );
         } finally {
             await fsRm(root, { recursive: true });

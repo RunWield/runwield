@@ -20,6 +20,7 @@ const fixture = defineGitFixture(async (cwd) => {
 });
 interface ConversationStatus {
     revision: number;
+    reviewRevision: number;
     rawPatch: string;
     events: Array<{ delta: string; agentName: string }>;
 }
@@ -27,13 +28,13 @@ async function status(url: URL): Promise<ConversationStatus> {
     const response = await fetch(new URL(`/api/review/conversation${url.search}`, url));
     return await response.json();
 }
-async function decide(url: URL, endpoint: string, body: Record<string, string | boolean>) {
+async function decide(url: URL, endpoint: string, body: Record<string, string | boolean | number>) {
     const response = await fetch(new URL(`/api/review/${endpoint}${url.search}`, url), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
     });
-    await response.text();
+    assertEquals(response.status, 200, await response.text());
 }
 test("Engineer uses one real saved Session and refreshes its edited worktree diff", async () => {
     await withRuntimeCommandFixture("standalone-loop-", async ({ setModelResponseFactories }) => {
@@ -97,6 +98,7 @@ test("Engineer uses one real saved Session and refreshes its edited worktree dif
                                         await decide(url, "deny", {
                                             conversationTurn: true,
                                             feedback: "Make a follow-up edit",
+                                            reviewRevision: next.reviewRevision,
                                         });
                                         let refreshed = false;
                                         for (let j = 0; j < 300; j++) {
@@ -276,6 +278,48 @@ test("a changed PR head refuses submission, refreshes the diff, and stays open f
         await browserRun;
         assertEquals(forge.submissions.length, 0);
         assertStringIncludes(output.join("\n"), "head changed");
+    } finally {
+        await rm(cwd, { recursive: true });
+    }
+});
+
+test("large standalone reviews keep Guided Review manual", async () => {
+    const cwd = await fixture.checkout();
+    let browserRun = Promise.resolve();
+    try {
+        await git(cwd, ["switch", "topic"]);
+        for (let index = 0; index < 8; index++) {
+            await writeFile(`${cwd}/feature-${index}.ts`, "export const value = 1;\n".repeat(110));
+        }
+        await git(cwd, ["add", "."]);
+        await git(cwd, ["commit", "-m", "large change"]);
+        await git(cwd, ["switch", "main"]);
+        await runStandaloneReview(await resolveReviewTarget(cwd, "topic"), {
+            print: () => {},
+            browser: {
+                open: (link) => {
+                    browserRun = (async () => {
+                        const url = new URL(link);
+                        try {
+                            const html = await (await fetch(url)).text();
+                            const embedded = html.match(
+                                /<script[^>]*data-code-review-payload[^>]*>([\s\S]*?)<\/script>/,
+                            );
+                            if (!embedded) throw new Error("Review payload was not embedded");
+                            const { guidedReview } = JSON.parse(embedded[1]);
+                            assertEquals(guidedReview.autoStart, false);
+                            assertEquals(guidedReview.manualAvailable, true);
+                            assertEquals(guidedReview.score >= 4, true);
+                        } finally {
+                            await decide(url, "exit", {});
+                        }
+                    })();
+                    browserRun.catch(() => {});
+                    return Promise.resolve(true);
+                },
+            },
+        });
+        await browserRun;
     } finally {
         await rm(cwd, { recursive: true });
     }

@@ -11,16 +11,12 @@ provenance:
         - "3f6e3949-9848-41f2-b39e-03966d01c680"
 ---
 
-# Theme extension support verified
+# Dynamic theme extensions
 
 ## Summary
 
-Verified PROJECT completed dynamic theme support: the app can use Pi-backed theme discovery/switching, list and select
-themes via `/theme`, install/remove external JSON theme packages, and retain embedded `catppuccin-mocha` as the
-precedence-winning fallback. Future theme work can build on this settings-driven lifecycle instead of the prior
-hardcoded single-theme boot path.
+RunWield supports Pi-backed theme discovery, theme selection, and external JSON theme installation and removal. The embedded `catppuccin-mocha` theme remains the fallback and wins name collisions.
 
 ## Future Planning Notes
 
-Keep external theme handling JSON-only, preserve `catppuccin-mocha` as the merge floor and collision winner, and
-continue using lazy discovery so default-theme startup remains cheap.
+External themes remain JSON-only. Lazy discovery preserves inexpensive default-theme startup, and the embedded fallback remains the merge floor.

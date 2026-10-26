@@ -1,4 +1,5 @@
-import { closeSync, openSync, readSync } from "node:fs";
+import { readCommittedSessionExport } from "../session/session-export.ts";
+import { readCommittedRemoteLineage } from "./committed-session.ts";
 import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
@@ -15,12 +16,11 @@ import {
 } from "../session/file-session-storage.ts";
 import { buildProjectedSessionInfo, summarizeResumableTranscript } from "../session/session-transcript-projection.js";
 import {
-    parseRemoteSessionTranscript,
     REMOTE_SESSION_IDENTITY_ENTRY,
+    sessionDigest,
     type RemoteSessionControlRequest,
     type RemoteSessionControlResponse,
     type RemoteSessionSummary,
-    sessionDigest,
     validateSessionControlRequest,
 } from "./session-protocol.ts";
 import type { ResolvedRemoteTarget } from "./target.ts";
@@ -34,29 +34,15 @@ export interface SavedRemoteSession {
     summary: RemoteSessionSummary;
     targetLabel: string;
     contents: string;
+    currentContents?: string;
 }
 
-/** Read only the published prefix. Do not acquire a writer or repair storage in a history viewer. */
+/** History follows only the committed current segment's parent chain. Hydration remains segment-local. */
 function savedSession(project: FileSessionProject, manifest: FileSessionManifest): SavedRemoteSession | null {
     const generation = manifest.generation;
     if (!project.remote || manifest.archivedAt || !generation) return null;
-    const segment = manifest.segments.find((item) => item.segmentId === generation.currentSegmentId);
-    if (!segment) return null;
-    const file = openSync(segment.transcriptPath, "r");
-    const bytes = new Uint8Array(generation.byteLength);
-    try {
-        let offset = 0;
-        while (offset < bytes.length) {
-            const count = readSync(file, bytes, offset, bytes.length - offset, offset);
-            if (count === 0) return null;
-            offset += count;
-        }
-    } finally {
-        closeSync(file);
-    }
-    if (sessionDigest(bytes) !== generation.digestHex) return null;
-    const contents = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    const entries = parseRemoteSessionTranscript(contents);
+    const { entries, currentContents } = readCommittedRemoteLineage(manifest);
+    const contents = entries.map((entry) => JSON.stringify(entry) + "\n").join("");
     const resumed = summarizeResumableTranscript(entries);
     const info = buildProjectedSessionInfo(entries, {
         sessionId: manifest.runwieldSessionId,
@@ -77,13 +63,25 @@ function savedSession(project: FileSessionProject, manifest: FileSessionManifest
             project.remote.targetLabel ||
             `${project.remote.host.user}@${project.remote.host.hostname}:${project.remote.root}`,
         contents,
+        currentContents,
     };
 }
 
-export function listSavedRemoteSessions(baseDir = getRunWieldSessionsBaseDir()): SavedRemoteSession[] {
+interface SavedRemoteSessionScope {
+    projectIds: string[];
+    sessionId?: string;
+}
+
+export function listSavedRemoteSessions(
+    baseDir = getRunWieldSessionsBaseDir(),
+    scope?: SavedRemoteSessionScope,
+): SavedRemoteSession[] {
     const saved: SavedRemoteSession[] = [];
-    for (const project of listProjectsFromDisk(baseDir).filter((project) => project.remote)) {
-        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), false)) {
+    for (const project of listProjectsFromDisk(baseDir).filter(
+        (project) => project.remote && (!scope || scope.projectIds.includes(project.projectId)),
+    )) {
+        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), true)) {
+            if (scope?.sessionId && manifest.runwieldSessionId !== scope.sessionId) continue;
             try {
                 const session = savedSession(project, manifest);
                 if (session) saved.push(session);
@@ -110,6 +108,7 @@ export class LaptopSessionControl {
     #closed = false;
     readonly #store: FileSessionStore;
     readonly #owners = new Map<string, RemoteSessionOwner>();
+    readonly #rollovers = new Map<string, string>();
     #creating = new Set<string>();
     #admissions = new Map<string, SessionAdmission>();
     #operationAdmissions = new Map<string, string>();
@@ -127,6 +126,9 @@ export class LaptopSessionControl {
 
     #settleOperation(operation: string): void {
         this.#owners.delete(operation);
+        for (const [prior, successor] of this.#rollovers) {
+            if (successor === operation) this.#rollovers.delete(prior);
+        }
         const admissionId = this.#operationAdmissions.get(operation);
         if (admissionId) this.#settleAdmission(admissionId);
     }
@@ -138,7 +140,28 @@ export class LaptopSessionControl {
     handleSave(input: import("./session-protocol.ts").RemoteSessionRequest) {
         const owner = this.#owners.get(input.operation);
         if (!owner || this.#closed) throw new Error("Stale Session operation");
+        if (input.kind === "rollover") return this.#rollover(input, owner);
         return owner.handle(input);
+    }
+
+    async #rollover(input: import("./session-protocol.ts").RemoteSessionRequest, owner: RemoteSessionOwner) {
+        const admissionId = this.#operationAdmissions.get(input.operation);
+        const { successor, response } = await owner.handleRollover(input);
+        this.#owners.delete(input.operation);
+        this.#operationAdmissions.delete(input.operation);
+        const admission = admissionId ? this.#admissions.get(admissionId) : undefined;
+        if (this.#closed || !admission || admission.cancelled) {
+            successor.markUncertain();
+            throw new Error("Session rollover was cancelled");
+        }
+        for (const [prior, current] of this.#rollovers) {
+            if (current === input.operation) this.#rollovers.set(prior, successor.operation);
+        }
+        this.#rollovers.set(input.operation, successor.operation);
+        admission.operation = successor.operation;
+        this.#owners.set(successor.operation, successor);
+        this.#operationAdmissions.set(successor.operation, admissionId!);
+        return response;
     }
 
     #projectMatches(project: FileSessionProject): boolean {
@@ -158,7 +181,7 @@ export class LaptopSessionControl {
         for (const project of listProjectsFromDisk(this.#store.path).filter((project) =>
             this.#projectMatches(project),
         )) {
-            const found = listManifests(sessionDirForProject(this.#store.path, project), false).find(
+            const found = listManifests(sessionDirForProject(this.#store.path, project), true).find(
                 ({ manifest }) => manifest.runwieldSessionId === sessionId,
             );
             if (found) return { project, ...found };
@@ -170,13 +193,19 @@ export class LaptopSessionControl {
         validateSessionControlRequest(input);
         if (this.#closed) throw new Error("Session connection is closed");
         const store = this.#store;
+        if (input.kind === "export") {
+            const { project } = this.#locate(input.sessionId);
+            const manifest = store.readSessionManifest(input.sessionId, project.projectId);
+            if (!manifest) throw new Error("Session Manifest is unavailable.");
+            return { exported: await readCommittedSessionExport(manifest, input.sessionId) };
+        }
         if (input.kind === "list") {
             // A first interrupted turn can have saved entries but no published
             // generation yet. Connected discovery repairs it; offline viewing
             // remains a read of published evidence only.
             const projects = listProjectsFromDisk(store.path).filter((project) => this.#projectMatches(project));
             for (const project of projects) {
-                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), false)) {
+                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), true)) {
                     if (manifest.generation || (input.sessionId && input.sessionId !== manifest.runwieldSessionId)) {
                         continue;
                     }
@@ -186,24 +215,15 @@ export class LaptopSessionControl {
                     }
                 }
             }
-            const matchingIds = new Set(
-                listProjectsFromDisk(store.path)
-                    .filter((project) => this.#projectMatches(project))
-                    .flatMap((project) =>
-                        listManifests(sessionDirForProject(store.path, project), false).map(
-                            ({ manifest }) => manifest.runwieldSessionId,
-                        ),
-                    ),
-            );
             if (input.sessionId) this.#locate(input.sessionId);
             return {
-                sessions: listSavedRemoteSessions(store.path)
-                    .filter(
-                        (saved) =>
-                            matchingIds.has(saved.summary.id) &&
-                            (!input.sessionId || saved.summary.id === input.sessionId),
-                    )
-                    .map((saved) => ({ ...saved.summary, ...(input.sessionId ? { contents: saved.contents } : {}) })),
+                sessions: listSavedRemoteSessions(store.path, {
+                    projectIds: projects.map((project) => project.projectId),
+                    sessionId: input.sessionId,
+                }).map((saved) => ({
+                    ...saved.summary,
+                    ...(input.sessionId ? { contents: saved.contents } : {}),
+                })),
             };
         }
         if (input.kind === "markUncertain" && "admissionId" in input) {
@@ -225,7 +245,11 @@ export class LaptopSessionControl {
             return {};
         }
         if (input.kind === "checkpoint" || input.kind === "markUncertain") {
-            const owner = this.#owners.get(input.operation);
+            const operation =
+                input.kind === "markUncertain"
+                    ? this.#rollovers.get(input.operation) || input.operation
+                    : input.operation;
+            const owner = this.#owners.get(operation);
             if (!owner) throw new Error("Stale Session operation");
             try {
                 if (input.kind === "checkpoint") owner.checkpoint();
@@ -234,7 +258,7 @@ export class LaptopSessionControl {
                 owner.markUncertain();
                 throw error;
             } finally {
-                this.#settleOperation(input.operation);
+                this.#settleOperation(operation);
             }
             return {};
         }
@@ -263,7 +287,7 @@ export class LaptopSessionControl {
                     );
                     const directory = sessionDirForProject(store.path, project);
                     if (
-                        listManifests(directory, false).some(
+                        listManifests(directory, true).some(
                             ({ manifest }) => manifest.runwieldSessionId === input.sessionId,
                         )
                     ) {

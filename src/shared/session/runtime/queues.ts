@@ -250,6 +250,13 @@ export class RuntimeQueues {
     ): Promise<import("./types.ts").SteerSessionResult> {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) return { ok: false, queued: false, error: "not_found" };
+        if (
+            !hostedSession.isAgentTransitioning?.() &&
+            !this.getActiveSteeringTarget(hostedSession)?.isStreaming &&
+            !getRuntimeRootAgentSession(hostedSession)?.isStreaming
+        ) {
+            return { ok: true, queued: false, reason: "not_streaming" };
+        }
         const capability =
             this.managedOperations.currentCapability(sessionId) ||
             hostedSession.getManagedOperationCapability?.() ||

@@ -35,8 +35,23 @@ export interface KeybindingsContext {
     hideKeyboardHelp?: () => void;
     cycleThinkingLevel(): void;
     readClipboardImage(): Promise<{ base64: string; mimeType: string } | null>;
+    onClipboardImageMissing?(): void;
+    onInput?(): void;
     handleImagePaste?: (image: ImageAttachment) => Promise<ImageAttachment | null>;
     cancelRuntimeSession(): boolean;
+}
+
+interface KeybindingsLifecycle {
+    disposed: boolean;
+}
+
+const keybindingsLifecycles = new WeakMap<Editor, KeybindingsLifecycle>();
+
+export function disposeKeybindings(editor: Editor): void {
+    const lifecycle = keybindingsLifecycles.get(editor);
+    if (!lifecycle) return;
+    lifecycle.disposed = true;
+    keybindingsLifecycles.delete(editor);
 }
 
 function isEditorEmpty(editor: Editor): boolean {
@@ -82,6 +97,8 @@ export function installKeybindings(ctx: KeybindingsContext): (data: string) => v
         forceResetUI();
     }
 
+    const lifecycle: KeybindingsLifecycle = { disposed: false };
+    keybindingsLifecycles.set(editor, lifecycle);
     const originalHandleInput = editor.handleInput.bind(editor);
     let pendingClipboardRead: Promise<ImageAttachment | null> | null = null;
 
@@ -93,6 +110,8 @@ export function installKeybindings(ctx: KeybindingsContext): (data: string) => v
                 // The paste handler reports clipboard failures. Keep later input responsive.
             }
         }
+        if (lifecycle.disposed) return;
+        ctx.onInput?.();
         if (matchesKey(data, Key.escape)) {
             hideKeyboardHelp?.();
             await recallQueuedSubmissionsToEditor();
@@ -128,12 +147,18 @@ export function installKeybindings(ctx: KeybindingsContext): (data: string) => v
             } finally {
                 if (pendingClipboardRead === imageRead) pendingClipboardRead = null;
             }
-            if (img) {
-                pastedImages.push(img);
-                previewImages.addChild(createPastedImagePreview(img));
-                tui.requestRender();
-                if (handleImagePaste) {
-                    handleImagePaste(img).then((attachment) => {
+            if (lifecycle.disposed) return;
+            if (!img) {
+                ctx.onClipboardImageMissing?.();
+                return;
+            }
+            pastedImages.push(img);
+            previewImages.addChild(createPastedImagePreview(img));
+            tui.requestRender();
+            if (handleImagePaste) {
+                handleImagePaste(img)
+                    .then((attachment) => {
+                        if (lifecycle.disposed) return;
                         if (!attachment) {
                             const index = pastedImages.indexOf(img);
                             if (index >= 0) {
@@ -145,7 +170,9 @@ export function installKeybindings(ctx: KeybindingsContext): (data: string) => v
                             Object.assign(img, attachment);
                         }
                         tui.requestRender();
-                    }).catch((error) => {
+                    })
+                    .catch((error) => {
+                        if (lifecycle.disposed) return;
                         const index = pastedImages.indexOf(img);
                         if (index >= 0) {
                             pastedImages.splice(index, 1);
@@ -156,7 +183,6 @@ export function installKeybindings(ctx: KeybindingsContext): (data: string) => v
                         uiAPI.appendSystemMessage(`Cannot attach pasted image: ${message}`);
                         tui.requestRender();
                     });
-                }
             }
             return;
         }

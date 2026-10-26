@@ -1,4 +1,5 @@
 import process from "node:process";
+import { getLockHostname } from "../process-liveness.ts";
 import { readFile as fsReadFile, stat as fsStat, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
@@ -6,7 +7,7 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
@@ -395,3 +396,42 @@ test("repair turn without task_completed settles paused and retry starts from Me
     assertEquals(retryCiRuns, 1);
     assertEquals(secondRepairCounter.runs, 1);
 });
+
+for (const oldOwner of [false, true]) {
+    test(`validation ${oldOwner ? "reclaims a legacy checkpoint predating the current PID" : "keeps a live legacy owner"}`, async () => {
+        const projectRoot = await makeImplementedPlan();
+        const plan = await loadPlan(projectRoot, "p");
+        assertExists(plan);
+        const checkpoint = makeValidationCheckpoint({
+            attemptId: "in-place",
+            generation: crypto.randomUUID(),
+            status: "implemented",
+            phase: "mechanical",
+            state: "running",
+            ownerHostname: getLockHostname(),
+            ownerPid: process.pid,
+        });
+        if (oldOwner) checkpoint.updatedAt = new Date(Date.now() - (process.uptime() + 60) * 1000).toISOString();
+        await updatePlanFrontMatter(projectRoot, "p", { validationCheckpoint: checkpoint }, plan.attrs, {
+            expectedRevision: plan.revision,
+            expectedControllerRevision: plan.controllerRevision,
+        });
+        assertEquals((await loadPlan(projectRoot, "p"))?.attrs.validationCheckpoint, checkpoint);
+        const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
+        attachWorkflow(hostedSession, projectRoot);
+        let ciRuns = 0;
+        const result = await runValidation({
+            hostedSession,
+            projectRoot,
+            localCI: {
+                run: () => {
+                    ciRuns += 1;
+                    return Promise.resolve({ kind: "canceled", output: "test stopped after acquiring validation" });
+                },
+            },
+        });
+        assertEquals(result.kind, "paused");
+        assertEquals(ciRuns, oldOwner ? 1 : 0);
+        if (!oldOwner && result.kind === "paused") assertEquals(result.recovery?.code, "validation_owner_active");
+    });
+}

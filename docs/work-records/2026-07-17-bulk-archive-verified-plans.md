@@ -11,10 +11,8 @@ provenance:
         - "42910b23-b1a5-46f6-9312-0562840f5890"
 ---
 
-# Bulk archive verified Plans
+# Bulk archival of verified Plans
 
 ## Summary
 
-Added `wld plans archive --all --status verified [--reason <text>]` to archive all matching active Plans. The operation
-preserves single-Plan archival safeguards, processes Plans best-effort, reports successes and failures, and exits
-non-zero on partial failure. Store and CLI tests, help text, README guidance, and the archival ADR were updated.
+RunWield can archive all active Plans that match verified status, with an optional reason. Bulk archival preserves single-Plan safeguards, continues after individual failures, reports each outcome, and returns a nonzero exit status on partial failure.

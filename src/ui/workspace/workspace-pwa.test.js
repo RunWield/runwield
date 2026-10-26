@@ -66,6 +66,8 @@ function workerHarness() {
     const messages = [];
     /** @type {Request[]} */
     const requests = [];
+    /** @type {RequestInit[]} */
+    const forwardingOptions = [];
     let available = true;
     let networkResponse = new Response("current server content");
     const context = {
@@ -86,6 +88,7 @@ function workerHarness() {
         AbortSignal,
         fetch: (/** @type {Request} */ request, /** @type {RequestInit} */ options) => {
             requests.push(request);
+            forwardingOptions.push(options);
             assertEquals(options.cache, "no-store");
             if (!available) return Promise.reject(new TypeError("Network unavailable"));
             return Promise.resolve(networkResponse.clone());
@@ -102,6 +105,7 @@ function workerHarness() {
     return {
         messages,
         requests,
+        forwardingOptions,
         offline: () => {
             available = false;
         },
@@ -158,6 +162,29 @@ test("installed Workspace opens a connection page offline and retries the origin
     assert(worker.requests.every((sent) => sent.url === request.url));
 });
 
+test("Workspace worker forwards review referrers and preserves requests that suppress them", async () => {
+    const worker = workerHarness();
+    const referrer =
+        "https://workspace.test/projects/project/sessions/session/review/code?operation=review&interaction=code";
+    // Supply browser-owned Request fields that Bun's Request constructor does not retain.
+    const reviewRequest = new Request("https://workspace.test/api/file-content?path=modified.ts");
+    Object.defineProperties(reviewRequest, {
+        referrer: { value: referrer },
+        referrerPolicy: { value: "same-origin" },
+    });
+    await worker.request(reviewRequest);
+    assertEquals(worker.forwardingOptions[0].referrer, referrer);
+    assertEquals(worker.forwardingOptions[0].referrerPolicy, "same-origin");
+    const privateRequest = new Request("https://workspace.test/api/owner/dashboard");
+    Object.defineProperties(privateRequest, {
+        referrer: { value: "" },
+        referrerPolicy: { value: "no-referrer" },
+    });
+    await worker.request(privateRequest);
+    assertEquals(worker.forwardingOptions[1].referrer, "");
+    assertEquals(worker.forwardingOptions[1].referrerPolicy, "no-referrer");
+});
+
 test("failed Workspace writes are reported once, never queued or replayed", async () => {
     const worker = workerHarness();
     worker.offline();
@@ -194,7 +221,10 @@ test("connection fallback is self-contained and retries without changing the rou
     assertStringIncludes(html, "Tailscale");
     assertStringIncludes(html, "--rw-page-bg");
     assertEquals(/<(?:link|script)[^>]+(?:href|src)=/.test(html), false);
-    assertEquals(WORKSPACE_MANIFEST.icons.some((icon) => icon.purpose === "maskable"), true);
+    assertEquals(
+        WORKSPACE_MANIFEST.icons.some((icon) => icon.purpose === "maskable"),
+        true,
+    );
 });
 
 /**

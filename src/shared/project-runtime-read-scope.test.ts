@@ -8,7 +8,11 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
+import {
+    ok as assert,
+    notStrictEqual as assertNotStrictEquals,
+    strictEqual as assertStrictEquals,
+} from "node:assert/strict";
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../constants.js";
@@ -89,8 +93,9 @@ async function withTracedProject(run: (project: TracedProject) => Promise<void>)
                 listings: async () => {
                     const lines = (await fsReadFile(trace, "utf8")).trim().split("\n").filter(Boolean);
                     const events: GitTraceEvent[] = lines.map((line) => JSON.parse(line));
-                    return events.filter((event) =>
-                        event.event === "start" && event.argv?.slice(-3).join(" ") === "worktree list --porcelain"
+                    return events.filter(
+                        (event) =>
+                            event.event === "start" && event.argv?.slice(-3).join(" ") === "worktree list --porcelain",
                     ).length;
                 },
             });
@@ -109,7 +114,7 @@ async function settleGitEvidence(): Promise<void> {
 }
 
 async function recreateLegacyDebug(root: string, name: string) {
-    const directory = join(getRunWieldRuntimeDir(root), "debug");
+    const directory = join(getRunWieldRuntimeDir(await fsRealpath(root)), "debug");
     await fsMkdir(directory, { recursive: true });
     await fsWriteFile(join(directory, name), name);
 }
@@ -120,7 +125,7 @@ test("bounded runtime reads share real Git inspection and ask Git again only for
             await Promise.all([enterProjectRuntime(root), enterProjectRuntime(root)]);
             await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
         });
-        assert(await listings() <= 1);
+        assert((await listings()) <= 1);
         await settleGitEvidence();
         await enterProjectRuntime(root);
         const settled = await listings();
@@ -139,11 +144,15 @@ test("Plan lists share validation without caching Plan or controller contents", 
         }
         const before = await listings();
         assertEquals((await listPlans(root)).length, 3);
-        assert(await listings() - before <= 1);
+        assert((await listings()) - before <= 1);
         const first = await loadPlan(root, "first");
-        await writeControllerState(root, { planName: "first", planId: first?.attrs.planId }, {
-            validationCiAttempts: 2,
-        });
+        await writeControllerState(
+            root,
+            { planName: "first", planId: first?.attrs.planId },
+            {
+                validationCiAttempts: 2,
+            },
+        );
         assertEquals((await loadPlan(root, "first"))?.attrs.validationCiAttempts, 2);
         const runtimeFile = join(root, ".wld", "debug", "tracked.txt");
         await fsMkdir(join(root, ".wld", "debug"), { recursive: true });
@@ -156,9 +165,9 @@ test("Plan lists share validation without caching Plan or controller contents", 
 test("registry lists share inspection within a read and reject newly staged runtime on the next read", async () => {
     await withTracedProject(async ({ root, listings }) => {
         assertEquals(await listEntries(root), []);
-        assert(await listings() <= 1);
+        assert((await listings()) <= 1);
         assertEquals(await listEntries(root), []);
-        assert(await listings() <= 2);
+        assert((await listings()) <= 2);
         const runtimeFile = join(root, ".wld", "debug", "tracked.txt");
         await fsMkdir(join(root, ".wld", "debug"), { recursive: true });
         await fsWriteFile(runtimeFile, "newly staged runtime must be detected\n");

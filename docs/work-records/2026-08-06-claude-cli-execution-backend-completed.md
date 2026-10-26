@@ -11,12 +11,8 @@ provenance:
         - "180f60ce-4469-4d0e-b910-d042a04a6cbe"
 ---
 
-# Claude CLI execution backend completed
+# Claude CLI execution backend
 
 ## Summary
 
-Completed the Claude Code print-mode execution backend Epic to a done-enough state. All five child Plans were verified,
-adding selectable `claude-cli/*` models, Claude-backed turn execution without Pi AgentSession construction,
-RunWield-owned transcript persistence/replay, MCP-based workflow completion signals delegated to existing lifecycle
-authorities, hardened failure and continuation handling, and UI/documentation caveats for Claude CLI selection and MVP
-transcript limits.
+The Epic was closed as done enough. RunWield offers selectable Claude CLI models and Claude-backed turns without constructing a Pi AgentSession. RunWield owns transcript persistence and replay, while MCP completion signals delegate to existing lifecycle authorities. Failure handling, continuation, and model-selection guidance account for backend and transcript limits.

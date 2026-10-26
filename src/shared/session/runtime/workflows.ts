@@ -1,8 +1,11 @@
+import { retrySessionWorkRecord } from "./work-record-retry.ts";
+import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { runActiveAgentTurn } from ".././agent-switching.js";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
 import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.js";
+import { prepareSessionPlanningWorktree } from "../../workflow/session-planning-worktree.ts";
 import { executePlanAction } from "../../workflow/plan-actions.ts";
 
 import { buildSemanticRepairCiState, isRuntimeRootSessionManager } from "./support.ts";
@@ -18,79 +21,18 @@ import type { RuntimeReads } from "./reads.ts";
 import type { RuntimeAgentSettings } from "./agent-settings.ts";
 import type { RuntimeManagedSync } from "./managed-sync.ts";
 import type { RuntimeTurns } from "./turns.ts";
+import { isValidationTriageMeta } from "./workflow-options.ts";
 import type {
+    RuntimeValidationResult,
+    SemanticRepairHandoffResult,
+    SemanticRepairContinuation,
+    RuntimeSemanticRepairOptions,
     RuntimeExecutePlanOptions,
     RuntimePlanningOptions,
     RuntimeSlicerOptions,
-    RuntimeTriageInput,
     RuntimeValidationOptions,
     RuntimeWorkflowOptions,
 } from "./workflow-options.ts";
-
-type WorkflowValidationResult = import("../../workflow/validation.ts").WorkflowValidationResult;
-interface SemanticRepairHandoffResult {
-    kind: "semantic_repair_handoff";
-    planName?: string;
-    projectRoot?: string;
-    semanticRepairHandoff: NonNullable<WorkflowValidationResult["semanticRepairHandoff"]>;
-}
-type SemanticRepairContinuation =
-    & Omit<
-        import("../../workflow/execution-segment-handoff.ts").SemanticRepairSegmentContinuation,
-        "activeWorkflow"
-    >
-    & { activeWorkflow: import("../hosted-session.js").ActiveExecutionWorkflow };
-interface RuntimeSemanticRepairOptions {
-    planName: string;
-    planContent?: string;
-    triageMeta?: import("../../../tools/plan-written.ts").TriageMeta;
-}
-
-export interface RuntimeValidationResult {
-    kind?: string;
-    ok?: boolean;
-    error?: string;
-    planName?: string;
-    projectRoot?: string;
-    reason?: string;
-    executionComplete?: boolean;
-    executionContext?: import("../hosted-session.js").ActiveExecutionWorkflow;
-    executionSegmentHandoff?: import("../../workflow/execution-segment-handoff.ts").ExecutionSegmentContinuation;
-    epicContinuation?: NonNullable<WorkflowValidationResult["epicContinuation"]>;
-    semanticRepairHandoff?: WorkflowValidationResult["semanticRepairHandoff"];
-}
-
-function isValidationTriageMeta(
-    value: RuntimeTriageInput,
-): value is import("../../../tools/plan-written.ts").TriageMeta {
-    const classifications = new Set(["QUICK_FIX", "PLANNED_CHANGE", "FEATURE", "PROJECT"]);
-    const complexities = new Set(["LOW", "MEDIUM", "HIGH"]);
-    const statuses = new Set([
-        "approved",
-        "draft",
-        "feedback",
-        "ready_for_decomposition",
-        "ready_for_work",
-        "in_progress",
-        "failed",
-        "implemented",
-        "validated_ci",
-        "reviewed",
-        "validated",
-        "blocked",
-        "canceled",
-        "abandoned",
-        "superseded",
-    ]);
-    const executionAgents = new Set(["engineer", "frontend-engineer"]);
-    return value.planId !== null && value.parentPlan !== null &&
-        (value.classification === undefined ||
-            (value.classification !== null && classifications.has(value.classification))) &&
-        (value.complexity === undefined || (value.complexity !== null && complexities.has(value.complexity))) &&
-        (value.status === undefined || (value.status !== null && statuses.has(value.status))) &&
-        (!("executionAgent" in value) || value.executionAgent === undefined ||
-            (typeof value.executionAgent === "string" && executionAgents.has(value.executionAgent)));
-}
 
 type RuntimeEventsDependency = Pick<RuntimeEvents, "emitSessionEvent" | "runBusyOperation">;
 type RuntimeLifecycleDependency = Pick<
@@ -148,29 +90,15 @@ export class RuntimeWorkflows {
     }
     async retryWorkRecord(sessionId: string, planName: string) {
         const session = this.services.sessionHost.requireSession(sessionId);
-        return await this.runWorkflowOperation(session, "retryWorkRecord", {}, async () => {
-            const { retryWorkRecordForPlan } = await import("../../work-records/auto-generation.ts");
-            const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../../work-records/mnemoteca-port.ts");
-            const controller = new AbortController();
-            const interactionId = `work-record-retry:${crypto.randomUUID()}`;
-            const capabilitySignal = session.getManagedOperationCapability()?.signal;
-            const abort = () => controller.abort();
-            capabilitySignal?.addEventListener("abort", abort, { once: true });
-            if (capabilitySignal?.aborted) abort();
-            session.addActiveInteraction(interactionId, { abortController: controller });
-            try {
-                emitSystemStatus(session, `Retrying the Work Record for ${planName}.`);
-                return await retryWorkRecordForPlan({
-                    cwd: session.cwd,
-                    planName,
-                    signal: controller.signal,
-                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                });
-            } finally {
-                capabilitySignal?.removeEventListener("abort", abort);
-                session.removeActiveInteraction(interactionId);
-            }
-        }, false);
+        return await this.runWorkflowOperation(
+            session,
+            "retryWorkRecord",
+            {},
+            async () => {
+                return await retrySessionWorkRecord(session, planName);
+            },
+            false,
+        );
     }
 
     async runWorkflowOperation<T>(
@@ -182,9 +110,7 @@ export class RuntimeWorkflows {
     ): Promise<T> {
         await this.lifecycle.materializeDeferredWorkflowSession(session);
         const managed = session.getManagedMetadata?.();
-        if (!managed) {
-            return await this.events.runBusyOperation(session.id, operation);
-        }
+        if (!managed) return await this.events.runBusyOperation(session.id, operation);
         const currentCapability = this.managedOperations.currentCapability(session.id);
         if (currentCapability) {
             if (this.managedOperations.isCurrentContext(session.id, currentCapability)) {
@@ -220,16 +146,17 @@ export class RuntimeWorkflows {
         sessionId: string,
         runtime: import("../session-runtime.ts").SessionRuntime,
     ): Promise<
-        import("../../../cmd/load-plan/reopen-plan-review.ts").ReopenPlanReviewResult | {
-            kind: "busy" | "no_reference" | "live" | "starting";
-            message: string;
-            url?: string;
-        }
+        | import("../../../cmd/load-plan/reopen-plan-review.ts").ReopenPlanReviewResult
+        | {
+              kind: "busy" | "no_reference" | "live" | "starting";
+              message: string;
+              url?: string;
+          }
     > {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { kind: "no_reference", message: "This Session is not available." };
-        const active = [...session.getActiveInteractions().values()].find((entry) =>
-            entry.request?.type === "plan_review"
+        const active = [...session.getActiveInteractions().values()].find(
+            (entry) => entry.request?.type === "plan_review",
         );
         if (active) {
             return active.request?.reviewUrl
@@ -237,8 +164,10 @@ export class RuntimeWorkflows {
                 : { kind: "starting", message: "The current Plan review is starting." };
         }
         if (
-            this.reopeningPlanReviews.has(sessionId) || session.isTurnActive() ||
-            this.managedOperations.hasOperation(sessionId) || session.getActiveInteractions().size
+            this.reopeningPlanReviews.has(sessionId) ||
+            session.isTurnActive() ||
+            this.managedOperations.hasOperation(sessionId) ||
+            session.getActiveInteractions().size
         ) {
             return { kind: "busy", message: "This Session is busy with other work." };
         }
@@ -246,25 +175,36 @@ export class RuntimeWorkflows {
         const reference = managed
             ? this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId)
             : null;
-        if (!reference) return { kind: "no_reference", message: "This Session has no previous Plan review." };
+        if (!reference && !this.services.remotePersistence)
+            return { kind: "no_reference", message: "This Session has no previous Plan review." };
         this.reopeningPlanReviews.add(sessionId);
         try {
             await this.restoreDormantManagedInvariant(session);
             if (session.getRootSessionManager?.()) {
                 return { kind: "busy", message: "This Session is busy with other work." };
             }
-            const result = await this.runWorkflowOperation(session, "reopenPlanReview", {}, async () => {
-                const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
-                const current = managed
-                    ? this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId)
-                    : null;
-                if (!current) {
-                    return { kind: "no_reference" as const, message: "This Session has no previous Plan review." };
-                }
-                return await reopenSavedPlanReview(runtime, sessionId, current, (message, isError) => {
-                    emitSystemStatus(session, message, { header: "RunWield", level: isError ? "error" : "info" });
-                });
-            }, false);
+            const result = await this.runWorkflowOperation(
+                session,
+                "reopenPlanReview",
+                {},
+                async () => {
+                    const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
+                    const current = this.services.remotePersistence
+                        ? this.services.remotePersistence.records(session).lastPlanReview
+                        : managed
+                          ? this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId)
+                          : null;
+                    if (!current) {
+                        return { kind: "no_reference" as const, message: "This Session has no previous Plan review." };
+                    }
+                    const prepared = await prepareSessionPlanningWorktree(session.cwd, current.planName);
+                    session.rebindProjectRoot(prepared.documentRoot);
+                    return await reopenSavedPlanReview(runtime, sessionId, current, (message, isError) => {
+                        emitSystemStatus(session, message, { header: "RunWield", level: isError ? "error" : "info" });
+                    });
+                },
+                false,
+            );
             if ("executionToStart" in result && result.executionToStart) {
                 const { startReopenedPlanExecution } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
                 await startReopenedPlanExecution(runtime, sessionId, result.executionToStart);
@@ -281,10 +221,51 @@ export class RuntimeWorkflows {
             ) {
                 return { kind: "busy", message: "This Session is busy with other work. Try again when it is idle." };
             }
+            session.planReviewConversations.failActive(error instanceof Error ? error.message : String(error));
             throw error;
         } finally {
             this.reopeningPlanReviews.delete(sessionId);
         }
+    }
+
+    /** Re-arm inside the current managed writer, not through the idle-only command guard. */
+    async continuePlanReviewConversation(
+        sessionId: string,
+        runtime: import("../session-runtime.ts").SessionRuntime,
+        planName: string,
+        planningAgentName: string,
+    ): Promise<import("../../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
+        const session = this.services.sessionHost.requireSession(sessionId);
+        const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
+        const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
+        const location = await resolveWorkflowPlanLocation(session.cwd, planName, { readOnly: true });
+        if (!location.plan?.attrs.planId) throw new Error(`Plan ${planName} is unavailable for review.`);
+        const result = await reopenSavedPlanReview(
+            runtime,
+            sessionId,
+            {
+                planName,
+                planId: location.plan.attrs.planId,
+                planningAgentName,
+                requestedAt: new Date().toISOString(),
+            },
+            (message, isError) =>
+                emitSystemStatus(session, message, { header: "RunWield", level: isError ? "error" : "info" }),
+        );
+        // Hand execution back to the workflow owner. Segment rollover must run
+        // only after the current review writer has released its activation.
+        if (result.executionToStart) {
+            const options = result.executionToStart.options;
+            return {
+                outcome: "approved_execute",
+                planName: options.planName,
+                triageMeta: options.triageMeta,
+                feedback: options.reviewFeedback,
+                images: options.reviewImages,
+            };
+        }
+        if (result.kind !== "complete" && result.kind !== "unanswered") throw new Error(result.message);
+        return { outcome: result.kind === "unanswered" ? "canceled" : "saved", planName };
     }
 
     async runPlanAction(
@@ -338,7 +319,8 @@ export class RuntimeWorkflows {
             !session.getRootSessionManager?.() ||
             this.managedOperations.hasOperation(session.id) ||
             session.isTurnActive()
-        ) return false;
+        )
+            return false;
         const activation = this.services.sessionStore?.inspectSessionActivation(managed.runwieldSessionId);
         if (activation?.activation?.state === "active") return false;
         console.error("[RunWield] recovered_orphaned_managed_hydration");
@@ -356,31 +338,33 @@ export class RuntimeWorkflows {
         const { findPlanEvidenceById } = await import("../../../plan-store.js");
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
         const { createPlanWrittenTool } = await import("../../../tools/plan-written.ts");
-        const { claimWorkflowToolEvent, settleWorkflowToolEvent } = await import(
-            "../../workflow/workflow-tool-events.ts"
-        );
+        const { claimWorkflowToolEvent, settleWorkflowToolEvent } =
+            await import("../../workflow/workflow-tool-events.ts");
         const plan = await findPlanEvidenceById(session.cwd, planId);
         const agentName = plan.attrs.classification === "PROJECT" ? AGENTS.ARCHITECT : AGENTS.PLANNER;
         const reviewed = await this.managedOperations.runManagedStandaloneMutation(
             sessionId,
             "workflow_operation",
             async (activeSession) => {
-                const current = await findPlanEvidenceById(activeSession.cwd, planId);
-                if (!["approved", "ready_for_work"].includes(current.attrs.status || "")) {
+                const selected = await findPlanEvidenceById(activeSession.cwd, planId);
+                const prepared = await prepareSessionPlanningWorktree(activeSession.cwd, selected.planName);
+                const current = prepared.plan;
+                if (!current || !["approved", "ready_for_work"].includes(current.attrs.status || "")) {
                     throw new Error("Plan changed. Refresh before opening review.");
                 }
+                activeSession.rebindProjectRoot(prepared.documentRoot);
                 const toolCallId = crypto.randomUUID();
                 const tool = createPlanWrittenTool({ hostedSession: activeSession, agentName });
                 const result = await tool.execute(
                     toolCallId,
-                    { planName: current.planName },
+                    { planName: selected.planName },
                     undefined,
                     undefined,
                     {} as import("@earendil-works/pi-coding-agent").ExtensionToolContext,
                 );
                 const event = claimWorkflowToolEvent(activeSession, { kinds: ["plan_written"], owningSession: null });
                 if (event?.kind !== "plan_written") {
-                    throw new Error(result.content.map((item) => item.type === "text" ? item.text : "").join("\n"));
+                    throw new Error(result.content.map((item) => (item.type === "text" ? item.text : "")).join("\n"));
                 }
                 settleWorkflowToolEvent(activeSession, event);
                 return event.payload as import("../../workflow/workflow-tool-events.ts").PlanWrittenEventPayload;
@@ -389,18 +373,36 @@ export class RuntimeWorkflows {
         );
         if (isManagedOperationFailure(reviewed)) throw new Error(reviewed.error);
         let outcome = reviewed;
-        if (outcome.outcome === "feedback") {
+        const conversationTurn = outcome.outcome === "conversation";
+        if (outcome.outcome === "feedback" || conversationTurn) {
             outcome = await this.runPlanningAgent(sessionId, {
                 agentName,
                 planName: plan.planName,
                 triageMeta: outcome.triageMeta || plan.attrs,
                 associationPurpose: "review",
-                initialRequest:
-                    `Revise docs/plans/${plan.planName}.md using this review feedback, then submit it with plan_written.\n\n${
-                        outcome.feedback || ""
-                    }`,
+                initialRequest: conversationTurn
+                    ? buildPlanConversationRequest({ planName: plan.planName, feedback: outcome.feedback })
+                    : `Revise docs/plans/${plan.planName}.md using this review feedback, then submit it with plan_written.
+
+${outcome.feedback || ""}`,
                 images: outcome.images,
+            }).catch((error: Error) => {
+                if (!conversationTurn) throw error;
+                emitSystemStatus(session, error.message, { level: "error" });
+                return { outcome: "no_call" as const };
             });
+            if (conversationTurn && outcome.outcome === "no_call") {
+                outcome = await this.runWorkflowOperation(
+                    session,
+                    "continuePlanReviewConversation",
+                    {},
+                    async () => {
+                        const { rearmPlanReviewConversation } = await import("../session-runtime.ts");
+                        return await rearmPlanReviewConversation(session, plan.planName, agentName);
+                    },
+                    false,
+                );
+            }
         }
         if (outcome.outcome === "approved_decompose") {
             return await this.runSlicerAgent(sessionId, {
@@ -423,19 +425,18 @@ export class RuntimeWorkflows {
         });
         if (result.error) throw new Error(result.error);
         if (!result.executionComplete) return result;
-        return await this.runValidation(sessionId, {
-            planName: approved.planName,
-            planContent: approved.markdown,
-            triageMeta: approved.attrs,
-            executionContext: result.executionContext,
-            trigger: "execution_completion",
-        }) || result;
+        return (
+            (await this.runValidation(sessionId, {
+                planName: approved.planName,
+                planContent: approved.markdown,
+                triageMeta: approved.attrs,
+                executionContext: result.executionContext,
+                trigger: "execution_completion",
+            })) || result
+        );
     }
 
-    async executePlan(
-        sessionId: string,
-        options: RuntimeExecutePlanOptions,
-    ): Promise<RuntimeValidationResult> {
+    async executePlan(sessionId: string, options: RuntimeExecutePlanOptions): Promise<RuntimeValidationResult> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.executePlan: session not found");
         return await this.events.runBusyOperation(sessionId, async () => {
@@ -450,10 +451,13 @@ export class RuntimeWorkflows {
             const pendingResult = await this.resumePendingExecutionSegmentHandoff(session, options);
             if (pendingResult) return pendingResult;
             const prepared = await this.runWorkflowOperation(session, "prepareExecutePlan", options, async () => {
+                session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../workflow/workflow.js");
                 const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
                 const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
-                const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "");
+                const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
+                    readOnly: true,
+                });
                 if (options.triageMeta?.planId && location.plan?.attrs.planId !== options.triageMeta.planId) {
                     throw new Error("Plan identity changed. Refresh before continuing execution.");
                 }
@@ -470,13 +474,12 @@ export class RuntimeWorkflows {
                         details: { triageMeta: location.plan.attrs },
                     });
                 }
-                return await executePlan(
-                    {
-                        ...options,
-                        hostedSession: session,
-                        prepareSegmentHandoff: !interrupted,
-                    },
-                );
+                return await executePlan({
+                    ...options,
+                    hostedSession: session,
+                    prepareSegmentHandoff: !interrupted,
+                    resumePreviousRequest: interrupted,
+                });
             });
             if (!prepared?.executionSegmentHandoff) {
                 if (prepared?.error) {
@@ -490,7 +493,7 @@ export class RuntimeWorkflows {
                 continuation: prepared.executionSegmentHandoff,
                 expectedGeneration: latestManaged.generation,
             });
-            return await this.resumePendingExecutionSegmentHandoff(session, options) || prepared;
+            return (await this.resumePendingExecutionSegmentHandoff(session, options)) || prepared;
         });
     }
 
@@ -533,12 +536,10 @@ export class RuntimeWorkflows {
                     );
                 }
                 const { executePreparedPlanSegmentHandoff } = await import("../../workflow/workflow.js");
-                return await executePreparedPlanSegmentHandoff(
-                    {
-                        continuation: resolved.continuation,
-                        hostedSession: activeSession,
-                    },
-                );
+                return await executePreparedPlanSegmentHandoff({
+                    continuation: resolved.continuation,
+                    hostedSession: activeSession,
+                });
             },
             { activateAgent: false },
         );
@@ -548,13 +549,20 @@ export class RuntimeWorkflows {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.runPlanningAgent: session not found");
         return await this.runWorkflowOperation(session, "runPlanningAgent", options, async () => {
+            session.planReviewConversations.canceled = false;
             const { runPlanningAgent } = await import("../../workflow/workflow.js");
             const manager = session.getRootSessionManager();
-            return await runPlanningAgent({
-                ...options,
-                hostedSession: session,
-                sessionManager: isRuntimeRootSessionManager(manager) ? manager : undefined,
-            });
+            try {
+                const result = await runPlanningAgent({
+                    ...options,
+                    hostedSession: session,
+                    sessionManager: isRuntimeRootSessionManager(manager) ? manager : undefined,
+                });
+                return session.planReviewConversations.canceled ? { outcome: "canceled" as const } : result;
+            } catch (error) {
+                if (session.planReviewConversations.canceled) return { outcome: "canceled" as const };
+                throw error;
+            }
         });
     }
 
@@ -581,18 +589,12 @@ export class RuntimeWorkflows {
     ) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.runEpicIntegrationGate: session not found");
-        return await this.runWorkflowOperation(
-            session,
-            "runEpicIntegrationGate",
-            options,
-            () => runEpicGateInSession(session, session.cwd, options.epicPlanName),
+        return await this.runWorkflowOperation(session, "runEpicIntegrationGate", options, () =>
+            runEpicGateInSession(session, session.cwd, options.epicPlanName),
         );
     }
 
-    async runValidation(
-        sessionId: string,
-        options: RuntimeValidationOptions,
-    ): Promise<RuntimeValidationResult | null> {
+    async runValidation(sessionId: string, options: RuntimeValidationOptions): Promise<RuntimeValidationResult | null> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.runValidation: session not found");
         if (!options.planName) throw new Error("SessionRuntime.runValidation: Plan name is required");
@@ -616,9 +618,7 @@ export class RuntimeWorkflows {
             planContent = plan.markdown;
             triageMeta = plan.attrs;
             const { SYSTEM_SEMANTIC_REVIEW_PORT } = await import("../../workflow/validation.ts");
-            const { runWorkflowValidationToStableBoundary } = await import(
-                "../../workflow/validation-supervisor.ts"
-            );
+            const { runWorkflowValidationToStableBoundary } = await import("../../workflow/validation-supervisor.ts");
             const { createGitPort } = await import("../../git-port.ts");
             const { systemLocalCIPort } = await import("../../workflow/validation-local-ci.ts");
             const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../../work-records/mnemoteca-port.ts");
@@ -627,18 +627,16 @@ export class RuntimeWorkflows {
                 localCI: systemLocalCIPort,
                 workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
             };
-            const latestResult = await runWorkflowValidationToStableBoundary(
-                {
-                    ...options,
-                    planName,
-                    planContent,
-                    triageMeta,
-                    hostedSession: session,
-                    ...validationPorts,
-                    semanticReviewPort: SYSTEM_SEMANTIC_REVIEW_PORT,
-                    supportsSemanticRepairHandoff: true,
-                },
-            );
+            const latestResult = await runWorkflowValidationToStableBoundary({
+                ...options,
+                planName,
+                planContent,
+                triageMeta,
+                hostedSession: session,
+                ...validationPorts,
+                semanticReviewPort: SYSTEM_SEMANTIC_REVIEW_PORT,
+                supportsSemanticRepairHandoff: true,
+            });
             return latestResult;
         });
         if (result.kind === "semantic_repair_handoff" && result.semanticRepairHandoff) {
@@ -727,6 +725,7 @@ export class RuntimeWorkflows {
         const projectRoot = workflow.projectRoot || session.cwd;
         const executionCwd = workflow.executionCwd || session.cwd;
         const runRepair = async () => {
+            session.getManagedOperationCapability?.()?.assertLive();
             const planId = continuation.plan?.planId || workflow.triageMeta?.planId || options.triageMeta?.planId;
             const planName = continuation.plan?.planName || options.planName;
             if (planId && planName && session.getManagedOperationCapability?.()) {
@@ -735,15 +734,15 @@ export class RuntimeWorkflows {
             session.setActiveExecutionWorkflow(continuation.activeWorkflow);
             const { buildValidationRepairPrompt } = await import("../../workflow/validation-repair-prompt.ts");
             const { getWorktreeReviewDiff } = await import("../../workflow/git-snapshot.ts");
-            const { createReviewDiffTool, buildDiffInspectionSection } = await import(
-                "../../workflow/review-diff-tool.js"
-            );
-            const { acknowledgeTaskCompletion, claimPendingTaskCompletion } = await import(
-                "../task-completion-session.ts"
-            );
-            const diffText = workflow.executionMode === "non_git_in_place" || workflow.nonGitInPlace
-                ? continuation.repair.diffText
-                : await getWorktreeReviewDiff(executionCwd, workflow.worktreeBaseBranch || "");
+            const { createReviewDiffTool, buildDiffInspectionSection } =
+                await import("../../workflow/review-diff-tool.js");
+            const { acknowledgeTaskCompletion, claimPendingTaskCompletion } =
+                await import("../task-completion-session.ts");
+            const diffText =
+                workflow.executionMode === "non_git_in_place" || workflow.nonGitInPlace
+                    ? continuation.repair.diffText
+                    : await getWorktreeReviewDiff(executionCwd, workflow.worktreeBaseBranch || "");
+            session.getManagedOperationCapability?.()?.assertLive();
             await runActiveAgentTurn({
                 hostedSession: session,
                 agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
@@ -767,6 +766,8 @@ export class RuntimeWorkflows {
                 }),
                 cwd: executionCwd,
                 dispatchKind: "validation_repair",
+                resumePreviousRequest: alreadyManaged,
+                taskId: continuation.activeWorkflow.planName,
                 subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
                 customTools: [createReviewDiffTool({ full: diffText }, { hostedSession: session })],
             });
@@ -774,12 +775,10 @@ export class RuntimeWorkflows {
             const completed = Boolean(acceptedCompletion);
             const report = acceptedCompletion?.report || "";
             if (acceptedCompletion) acknowledgeTaskCompletion(session, acceptedCompletion);
-            session.setActiveExecutionWorkflow(
-                {
-                    ...continuation.activeWorkflow,
-                    lastRepairReport: report,
-                },
-            );
+            session.setActiveExecutionWorkflow({
+                ...continuation.activeWorkflow,
+                lastRepairReport: report,
+            });
             if (!completed) {
                 const { emitRunWieldSystemStatus, getCurrentValidationProgress, updateValidationProgress } =
                     await import("../../workflow/validation-progress.ts");
@@ -799,9 +798,7 @@ export class RuntimeWorkflows {
                     reason: "Semantic repair segment paused before task_completed.",
                 };
             }
-            const { recordValidationRepairCompletion } = await import(
-                "../../workflow/validation-supervisor.ts"
-            );
+            const { recordValidationRepairCompletion } = await import("../../workflow/validation-supervisor.ts");
             await recordValidationRepairCompletion({
                 projectRoot: executionCwd,
                 planName: continuation.plan.planName,
@@ -819,10 +816,7 @@ export class RuntimeWorkflows {
             : await this.runWorkflowOperation(session, "semanticRepairSegment", options, runRepair);
         if (repairResult?.kind === "semantic_repair_completed") {
             const { loadPlan } = await import("../../../plan-store.js");
-            const completedPlan = await loadPlan(
-                executionCwd,
-                continuation.plan.planName || options.planName,
-            );
+            const completedPlan = await loadPlan(executionCwd, continuation.plan.planName || options.planName);
             if (!completedPlan) throw new Error("Completed semantic repair Plan is unavailable.");
             const refreshedWorkflow = {
                 ...(session.getActiveExecutionWorkflow?.() || continuation.activeWorkflow),
@@ -856,32 +850,39 @@ export class RuntimeWorkflows {
         let currentOldSession = oldSession;
         let latestSessionId;
         while (currentContinuation) {
-            const { resolveEpicContinuation, runEpicChildContinuation } = await import(
-                "../../workflow/epic-continuation.ts"
-            );
+            const { resolveEpicContinuation, runEpicChildContinuation } =
+                await import("../../workflow/epic-continuation.ts");
             let resolution: import("../../workflow/epic-continuation.ts").EpicContinuationResolution =
-                currentContinuation.resolution || await resolveEpicContinuation({
+                currentContinuation.resolution ||
+                (await resolveEpicContinuation({
                     cwd: currentContinuation.projectRoot,
                     completedPlanName: currentContinuation.completedPlanName,
-                });
+                }));
             const epicName = resolution.reason === "no_remaining_children" ? resolution.parentPlanName : undefined;
             const root = currentContinuation.projectRoot;
-            if (epicName && await isEpicGateReadyAfterChildren(currentOldSession, root, epicName)) {
+            if (epicName && (await isEpicGateReadyAfterChildren(currentOldSession, root, epicName))) {
                 // The last child is delivered: the Epic finishes through its integration gate.
-                const gate = await this.runWorkflowOperation(currentOldSession, "runEpicIntegrationGate", {
-                    epicPlanName: epicName,
-                }, () => runEpicGateInSession(currentOldSession, root, epicName));
+                const gate = await this.runWorkflowOperation(
+                    currentOldSession,
+                    "runEpicIntegrationGate",
+                    {
+                        epicPlanName: epicName,
+                    },
+                    () => runEpicGateInSession(currentOldSession, root, epicName),
+                );
                 if (gate.kind === "findings") resolution = gate.repairChild;
             }
             if (
-                !["plan", "readiness_execute", "execute"].includes(resolution.kind) || !resolution.childPlanName ||
+                !["plan", "readiness_execute", "execute"].includes(resolution.kind) ||
+                !resolution.childPlanName ||
                 !resolution.parentPlanName
             ) {
-                const message = resolution.kind === "blocked"
-                    ? `Epic continuation stopped at ${resolution.childPlanName || "next child"}: ${
-                        resolution.reason || "blocked"
-                    }.`
-                    : `Epic continuation complete: ${resolution.reason || "no remaining work"}.`;
+                const message =
+                    resolution.kind === "blocked"
+                        ? `Epic continuation stopped at ${resolution.childPlanName || "next child"}: ${
+                              resolution.reason || "blocked"
+                          }.`
+                        : `Epic continuation complete: ${resolution.reason || "no remaining work"}.`;
                 emitSystemStatus(currentOldSession, message, {
                     level: resolution.kind === "blocked" ? "warning" : "success",
                     header: "RunWield",
@@ -929,8 +930,8 @@ export class RuntimeWorkflows {
             if (!nextManaged) throw new Error("Epic continuation destination is not managed");
             const nextManager = newSession.getRootSessionManager();
             const nextResult:
-                | Awaited<ReturnType<typeof runEpicChildContinuation>>
-                | import("./types.ts").ManagedOperationRunFailure = await this.managedOperations.runManagedOperation(
+                Awaited<ReturnType<typeof runEpicChildContinuation>> | import("./types.ts").ManagedOperationRunFailure =
+                await this.managedOperations.runManagedOperation(
                     newSessionId,
                     {
                         name: "workflow_operation",

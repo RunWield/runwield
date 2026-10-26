@@ -11,10 +11,8 @@ provenance:
         - "f5a19074-1b92-4bfe-b99f-0e4ec8c6d7c2"
 ---
 
-# Added keyboard help TUI block
+# Transient TUI keyboard help
 
 ## Summary
 
-Implemented and verified transient keyboard help in the TUI. Pressing `?` in an empty input toggles a help block above
-the editor while preserving literal question marks in non-empty requests. Help dismisses on Escape, ordinary input, or
-submission, and `Ctrl+O` remains dedicated to tool-output expansion.
+Pressing `?` in an empty TUI input toggles keyboard help above the editor; non-empty input preserves literal question marks. Escape, ordinary input, or submission dismisses help, while `Ctrl+O` remains dedicated to tool-output expansion.

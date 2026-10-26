@@ -1,5 +1,5 @@
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { getRunWieldRuntimeDir } from "../constants.js";
@@ -26,7 +26,7 @@ async function archiveContents(path: string): Promise<string[]> {
     const result: string[] = [];
     for (const entry of await readdir(path, { withFileTypes: true })) {
         const child = join(path, entry.name);
-        if (entry.isDirectory()) result.push(...await archiveContents(child));
+        if (entry.isDirectory()) result.push(...(await archiveContents(child)));
         else result.push(await readFile(child, "utf8"));
     }
     return result.sort();
@@ -35,7 +35,7 @@ async function archiveContents(path: string): Promise<string[]> {
 test("returning legacy controller writes recover reports while preserving decisions and source evidence", async () => {
     const root = await fixture.checkout();
     try {
-        const legacy = join(getRunWieldRuntimeDir(root), "controller", "plans", "plan.json");
+        const legacy = join(getRunWieldRuntimeDir(await realpath(root)), "controller", "plans", "plan.json");
         const current = {
             version: 1,
             revision: 5,

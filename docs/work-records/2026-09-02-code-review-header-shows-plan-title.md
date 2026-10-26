@@ -12,20 +12,12 @@ provenance:
         - "584d0b85-8b6a-47b3-850f-9dd30d275679"
 ---
 
-# Code Review Header Shows Plan Title
+# Plan identity in Code Review headers
 
 ## Summary
 
-Code Review now shows the producing Plan title in the header for both standalone and Workspace review paths. The title
-is derived from the first non-empty level-one Plan heading, falls back safely, travels through the TUI and Workspace
-payloads, and remains accessible while long titles ellipsize without hiding review actions. Verification passed with
-targeted tests, project checks, seams check, full test suite, and headed browser checks.
-
-## Deviations from Plan
-
-Browser checks used this worktree's dev server on port 5175 because port 5173 was already in use by another checkout.
+Standalone and Workspace Code Review show the producing Plan title in the header. The title comes from the first non-empty top-level Plan heading, uses a safe fallback, and travels through existing launch payloads. Long titles remain accessible without hiding review actions.
 
 ## Future Planning Notes
 
-For future review-surface identity fields, project the smallest stable display value from workflow code and transport it
-through existing launch payloads instead of making browser UI parse Plan markdown.
+Project the smallest stable display value from workflow code through existing launch payloads instead of making browser UI parse Plan Markdown.

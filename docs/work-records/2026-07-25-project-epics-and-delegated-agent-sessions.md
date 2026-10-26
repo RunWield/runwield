@@ -9,19 +9,15 @@ createdAt: "2026-07-25T22:09:07.422Z"
 provenance:
     sourcePlans:
         - "dfe26cae-9d6f-47cc-a555-8aaf9ecc24e5"
+        - "1b4a45ba-665c-48e0-9af1-b1b2a29d9df3"
 ---
 
-# PROJECT Epics and Delegated Agent Sessions
+# PROJECT Epics and delegated Agent Sessions
 
 ## Summary
 
-Completed the cleanup that makes `classification: PROJECT` the sole Epic signal, retires legacy PROJECT task-table/DAG
-execution machinery, and introduces bounded foreground `delegate_agent` sessions for isolated read/write work. Active
-code, prompts, Workspace behavior, and documentation now align around PROJECT Plans as non-executable Epic containers
-and delegated children as capability-limited, context-isolated helpers.
+PROJECT classification alone identifies non-executable Epics, without legacy task-table or task-DAG execution. Approval leads to decomposition or child selection rather than Engineer execution of the Epic; executable child Plans remain the delivery unit. Foreground delegated Agent Sessions provide bounded, context-isolated read or write work under parent ownership.
 
 ## Future Planning Notes
 
-Future PROJECT work should assume Epic behavior from classification alone and avoid reintroducing `type: epic`, task
-scheduling, or executable PROJECT containers. Delegated Agent Sessions are foreground, lease-limited helpers: up to
-three readers or one writer, no recursive delegation, no commits, and parent ownership of all results and edits.
+PROJECT Plans must not require an additional Epic type marker or become executable containers. Epic container readiness is distinct from executable Plan readiness. The foreground delegation design uses lease-limited helpers with up to three readers or one exclusive writer, prohibits recursive delegation and commits, and leaves results and edits with the parent.
