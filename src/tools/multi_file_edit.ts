@@ -19,35 +19,23 @@ import {
     writePlanMarkdownWithRevision,
 } from "../plan-store.js";
 
-const fileEditSchema = Type.Object(
-    {
-        path: Type.String({
-            description: "Path to the file for this replacement, relative to root or the session cwd.",
-        }),
-        oldText: Type.String({
-            description: "Exact text to replace in this file. It must match one unique, non-overlapping region.",
-        }),
-        newText: Type.String({ description: "Replacement text for oldText." }),
-    },
-    { additionalProperties: false },
-);
+const fileEditSchema = Type.Object({
+    path: Type.String({ description: "Path to the file for this replacement, relative to root or the session cwd." }),
+    oldText: Type.String({
+        description: "Exact text to replace in this file. It must match one unique, non-overlapping region.",
+    }),
+    newText: Type.String({ description: "Replacement text for oldText." }),
+}, { additionalProperties: false });
 
-const PARAMETERS = Type.Object(
-    {
-        root: Type.Optional(
-            Type.String({
-                description:
-                    "Optional base directory for relative edit paths. Defaults to the session working directory.",
-            }),
-        ),
-        edits: Type.Array(fileEditSchema, {
-            minItems: 1,
-            description:
-                "One or more replacements. Use edit instead when there is exactly one replacement in one file.",
-        }),
-    },
-    { additionalProperties: false },
-);
+const PARAMETERS = Type.Object({
+    root: Type.Optional(Type.String({
+        description: "Optional base directory for relative edit paths. Defaults to the session working directory.",
+    })),
+    edits: Type.Array(fileEditSchema, {
+        minItems: 1,
+        description: "One or more replacements. Use edit instead when there is exactly one replacement in one file.",
+    }),
+}, { additionalProperties: false });
 
 interface MultiFileEdit {
     path: string;
@@ -278,8 +266,8 @@ function applyEdits(normalizedContent: string, edits: MultiFileEdit[], path: str
     let newContent = normalizedContent;
     for (let i = matches.length - 1; i >= 0; i--) {
         const match = matches[i];
-        newContent =
-            newContent.substring(0, match.index) + match.newText + newContent.substring(match.index + match.length);
+        newContent = newContent.substring(0, match.index) + match.newText +
+            newContent.substring(match.index + match.length);
     }
 
     if (normalizedContent === newContent) {
@@ -297,18 +285,20 @@ const prepareMultiFileEditArguments: PrepareArgumentsFunction = (input) => {
     if (!isInputRecord(input)) return input as MultiFileEditParams;
 
     const args = input;
-    const topLevelPath =
-        typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : undefined;
+    const topLevelPath = typeof args.path === "string"
+        ? args.path
+        : typeof args.file_path === "string"
+        ? args.file_path
+        : undefined;
 
     if (Array.isArray(args.edits)) {
         const edits = args.edits.map((rawEdit) => {
             if (!isInputRecord(rawEdit)) return rawEdit;
-            const editPath =
-                typeof rawEdit.path === "string"
-                    ? rawEdit.path
-                    : typeof rawEdit.file_path === "string"
-                      ? rawEdit.file_path
-                      : topLevelPath;
+            const editPath = typeof rawEdit.path === "string"
+                ? rawEdit.path
+                : typeof rawEdit.file_path === "string"
+                ? rawEdit.file_path
+                : topLevelPath;
             return {
                 path: editPath,
                 oldText: rawEdit.oldText,
@@ -386,12 +376,11 @@ export function createMultiFileEditTool(cwd: string) {
                         try {
                             await fsStat(absolutePath);
                         } catch (err) {
-                            const msg =
-                                err instanceof Error && "code" in err && err.code === "ENOENT"
-                                    ? `Could not find file: ${filePath}`
-                                    : `Could not access file: ${filePath}. ${coerceErrorMessage(
-                                          err instanceof Error ? err : String(err),
-                                      )}`;
+                            const msg = err instanceof Error && "code" in err && err.code === "ENOENT"
+                                ? `Could not find file: ${filePath}`
+                                : `Could not access file: ${filePath}. ${
+                                    coerceErrorMessage(err instanceof Error ? err : String(err))
+                                }`;
                             throw new Error(msg);
                         }
 
@@ -440,12 +429,11 @@ export function createMultiFileEditTool(cwd: string) {
                 const replacementNoun = replacementCount === 1 ? "replacement" : "replacements";
                 const fileNoun = fileCount === 1 ? "file" : "files";
                 return {
-                    content: [
-                        {
-                            type: "text" as const,
-                            text: `Successfully applied ${replacementCount} ${replacementNoun} across ${fileCount} ${fileNoun}.`,
-                        },
-                    ],
+                    content: [{
+                        type: "text" as const,
+                        text:
+                            `Successfully applied ${replacementCount} ${replacementNoun} across ${fileCount} ${fileNoun}.`,
+                    }],
                     details: { diff: diffSections.join("\n\n"), firstChangedLine },
                 };
             } catch (err) {

@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "e4419e07-9327-4305-91b3-7570aadffa90"
 ---
-
 # Child Plan deviations in Epic integration context
 
 ## Summary

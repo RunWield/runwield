@@ -38,6 +38,12 @@ interface CiRepairContextFixture {
     workflowBase: { planName: string };
 }
 
+type CiRepairDispatch = (
+    args: ValidationLoopArgs | CiRepairArgsFixture,
+    context: PhaseContext | CiRepairContextFixture,
+    result: Parameters<typeof dispatchCiRepair>[2],
+) => ReturnType<typeof dispatchCiRepair>;
+
 async function runCiRepair(options: CiRepairOptions) {
     return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactory }) => {
         const projectRoot = await makeValidationProjectRoot("p", {
@@ -128,7 +134,7 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
         triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
     };
 
-    await dispatchCiRepair(args as ValidationLoopArgs, context as PhaseContext, {
+    await (dispatchCiRepair as CiRepairDispatch)(args, context, {
         kind: "completed",
         exitCode: 1,
         output: "broken command",
