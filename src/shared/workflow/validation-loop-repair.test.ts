@@ -6,12 +6,45 @@ import { loadPlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { ensureRootAgentSession } from "../session/session.js";
 import { dispatchCiRepair } from "./validation-mechanical.ts";
+import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
 
-/**
- * @param {{ reportCompletion: boolean }} options
- */
-async function runCiRepair(options) {
+interface CiRepairOptions {
+    reportCompletion: boolean;
+}
+
+interface RepairTurnRequest {
+    userRequest: string;
+}
+
+interface CiRepairArgsFixture {
+    session: {
+        setActiveWorkflow: (workflow: { planName: string }) => void;
+        getAgentDisplayName: (agent: string) => string;
+        getCurrentProgress: () => null;
+        emitStatus: (...args: never[]) => void;
+        runIndependentRepairTurn: (request: RepairTurnRequest) => Promise<{ completed: boolean }>;
+    };
+    planName: string;
+    triageMeta: { classification: string; status: string };
+}
+
+interface CiRepairContextFixture {
+    executionCwd: string;
+    projectRoot: string;
+    worktreeId: string;
+    worktreeBranch: string;
+    worktreeBaseBranch: string;
+    workflowBase: { planName: string };
+}
+
+type CiRepairDispatch = (
+    args: ValidationLoopArgs | CiRepairArgsFixture,
+    context: PhaseContext | CiRepairContextFixture,
+    result: Parameters<typeof dispatchCiRepair>[2],
+) => ReturnType<typeof dispatchCiRepair>;
+
+async function runCiRepair(options: CiRepairOptions) {
     return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactory }) => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "PLANNED_CHANGE",
@@ -34,7 +67,7 @@ async function runCiRepair(options) {
         setModelResponseFactory(() =>
             options.reportCompletion
                 ? fauxAssistantMessage(fauxToolCall("task_completed", { message: "- CI repair completed." }))
-                : fauxAssistantMessage(fauxText("CI repair remains incomplete."))
+                : fauxAssistantMessage(fauxText("CI repair remains incomplete.")),
         );
         let ciRuns = 0;
         const result = await runValidationLoop({
@@ -78,7 +111,7 @@ test("CI repair reruns CI and continues after task completion", async () => {
 
 test("CI repair prompt verifies the repair without requiring a duplicate full CI run", async () => {
     let capturedRequest = "";
-    const context = {
+    const context: CiRepairContextFixture = {
         executionCwd: "/repair-checkout",
         projectRoot: "/primary-project",
         worktreeId: "wt-ci",
@@ -86,13 +119,13 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
         worktreeBaseBranch: "main",
         workflowBase: { planName: "p" },
     };
-    const args = {
+    const args: CiRepairArgsFixture = {
         session: {
             setActiveWorkflow: () => {},
             getAgentDisplayName: () => "Validation Repair Engineer",
             getCurrentProgress: () => null,
             emitStatus: () => {},
-            runIndependentRepairTurn: (/** @type {{ userRequest: string }} */ request) => {
+            runIndependentRepairTurn: (request: RepairTurnRequest) => {
                 capturedRequest = request.userRequest;
                 return Promise.resolve({ completed: true });
             },
@@ -101,11 +134,11 @@ test("CI repair prompt verifies the repair without requiring a duplicate full CI
         triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
     };
 
-    await dispatchCiRepair(
-        /** @type {any} */ (args),
-        /** @type {any} */ (context),
-        { kind: "completed", exitCode: 1, output: "broken command" },
-    );
+    await (dispatchCiRepair as CiRepairDispatch)(args, context, {
+        kind: "completed",
+        exitCode: 1,
+        output: "broken command",
+    });
 
     assertStringIncludes(capturedRequest, "Repair checkout: `/repair-checkout`");
     assertStringIncludes(capturedRequest, ".wld/settings.json");
