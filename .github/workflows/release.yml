@@ -691,7 +691,7 @@ jobs:
               with:
                   name: remote-ssh-${{ matrix.asset }}-${{ github.run_attempt }}
                   include-hidden-files: true
-                  path: ${{ runner.temp }}/wld-remote-ssh-*/
+                  path: ${{ runner.temp }}/wld-remote-ssh-evidence-*/
                   if-no-files-found: warn
 
     homebrew-check:

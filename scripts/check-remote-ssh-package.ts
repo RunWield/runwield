@@ -5,7 +5,7 @@
 import { equal, ok } from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
-import { appendFile, chmod, copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -152,13 +152,38 @@ finally:
   os.waitpid(pid,0)
 `;
 
+export async function createQualificationWorkspace() {
+    // RUNNER_TEMP and TMPDIR can have private ancestors that the server account cannot traverse.
+    const root = await mkdtemp("/tmp/wld-remote-ssh-");
+    await chmod(root, 0o755);
+    const evidence = await mkdtemp(join(process.env.RUNNER_TEMP || tmpdir(), "wld-remote-ssh-evidence-"));
+    return { root, evidence };
+}
+
+export async function retainQualificationEvidence(root: string, evidence: string): Promise<void> {
+    const names = new Set([
+        "server-account.json",
+        "sshd.log",
+        "pty-error.log",
+        "terminal.log",
+        "provider.jsonl",
+        "active-mounts.log",
+        "remaining-processes.log",
+        "exit-code",
+        "result.json",
+    ]);
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+        if (entry.isFile() && names.has(entry.name)) await copyFile(join(root, entry.name), join(evidence, entry.name));
+    }
+}
+
 export async function main(args = process.argv.slice(2)): Promise<void> {
     const { directory, version, suffix } = qualificationArguments(args);
     equal(process.platform, "linux", "SSH archive qualification requires Linux; it cannot be skipped on other systems");
     ok(["x64", "arm64"].includes(process.arch), "Only Linux x64 and ARM64 are supported");
-    const root = await mkdtemp(join(process.env.RUNNER_TEMP || tmpdir(), "wld-remote-ssh-"));
-    console.log(`SSH qualification evidence: ${root}`);
-    await chmod(root, 0o755); // The disposable server account must traverse to its own HOME.
+    const { root, evidence } = await createQualificationWorkspace();
+    console.log(`SSH qualification workspace: ${root}`);
+    console.log(`SSH qualification evidence: ${evidence}`);
     const originalHome = process.env.HOME;
     const originalProfile = process.env.USERPROFILE;
     const home = join(root, "laptop");
@@ -227,7 +252,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
                 "PATH=/usr/bin:/bin",
                 "sh",
                 "-c",
-                `cd '${remoteHome}' && ${shell}`,
+                `set -eu; cd '${remoteHome}'; ${shell}`,
             );
         equal(
             runRemote("command -v cymbal || command -v ketch || true"),
@@ -303,7 +328,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         const sshConfig = join(root, "ssh_config");
         await writeFile(
             sshConfig,
-            `Host qualification\n HostName 127.0.0.1\n Port ${port}\n User ${account}\n IdentityFile ${root}/client-key\n IdentitiesOnly yes\n BatchMode yes\n StrictHostKeyChecking yes\n UserKnownHostsFile ${root}/known_hosts\n GlobalKnownHostsFile /dev/null\n ConnectTimeout 3\n ProxyCommand sudo -n nsenter --net=/proc/${serverPid}/ns/net /usr/bin/python3 ${proxy} %p\n`,
+            `Host qualification\n HostName 127.0.0.1\n Port ${port}\n User ${account}\n IdentityFile ${root}/client-key\n IdentitiesOnly yes\n BatchMode yes\n StrictHostKeyChecking yes\n UserKnownHostsFile ${root}/known_hosts\n GlobalKnownHostsFile /dev/null\n ConnectTimeout 15\n ProxyCommand sudo -n nsenter --net=/proc/${serverPid}/ns/net /usr/bin/python3 ${proxy} %p\n`,
         );
         const hostKey = (await readFile(join(root, "host-key.pub"), "utf8")).trim();
         await writeFile(join(root, "known_hosts"), `[127.0.0.1]:${port} ${hostKey}\n`);
@@ -478,7 +503,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
                 sessions: sessions.length,
             }),
         );
-        console.log(`SSH qualification passed: ${metadata.target}. Evidence: ${root}`);
+        console.log(`SSH qualification passed: ${metadata.target}. Evidence: ${evidence}`);
     } finally {
         try {
             terminal?.kill("SIGTERM");
@@ -516,7 +541,8 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
             else process.env.HOME = originalHome;
             if (originalProfile === undefined) delete process.env.USERPROFILE;
             else process.env.USERPROFILE = originalProfile;
-            console.log(`SSH qualification evidence retained: ${root}`);
+            await retainQualificationEvidence(root, evidence);
+            console.log(`SSH qualification evidence retained: ${evidence}`);
         }
     }
 }

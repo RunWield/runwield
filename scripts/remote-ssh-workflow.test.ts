@@ -12,6 +12,7 @@ interface WorkflowStep {
     run?: string;
     if?: string;
     env?: Record<string, string>;
+    with?: Record<string, string | boolean>;
 }
 interface WorkflowJob {
     if?: string;
@@ -161,6 +162,8 @@ test("qualification keeps candidate archive and native gates but avoids unrelate
     equal(install.run, "bun run install:locked");
     match(ssh.run!, /bun scripts\/check-remote-ssh-package.ts release-upload/);
     ok(native.steps!.indexOf(install) < native.steps!.indexOf(ssh));
-    match(step("native-package-check", "Retain SSH qualification evidence").if!, /always\(\)/);
+    const evidence = step("native-package-check", "Retain SSH qualification evidence");
+    match(evidence.if!, /always\(\)/);
+    equal(evidence.with!.path, "${{ runner.temp }}/wld-remote-ssh-evidence-*/");
     match(workflow.jobs.release.if!, /needs.native-package-check.result == 'success'/);
 });

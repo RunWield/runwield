@@ -327,7 +327,9 @@ against the candidate release archives before publication. Published-release rec
 identity checks but does not retroactively require private remote helpers from immutable historical binaries. Each SSH check uses a disposable account, network-isolated loopback OpenSSH, real SSHFS, and a synthetic
 provider. The second model request must contain a remote-only sentinel read by the real tool. The gate checks one
 laptop-owned Session, no saved server transcript, private helpers and MIT notices, and normal process/mount cleanup.
-Missing FUSE fails the gate; it is not optional. Evidence is retained as `remote-ssh-<asset>` workflow artifacts.
+Missing FUSE fails the gate; it is not optional. The shared fixture uses `/tmp` so the disposable server account can
+traverse its ancestors. Only runner-owned diagnostic logs and results are uploaded, not account homes or SSH keys.
+Evidence is retained as `remote-ssh-<asset>-<attempt>` workflow artifacts.
 
 For local Linux qualification with passwordless sudo:
 

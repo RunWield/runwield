@@ -437,11 +437,19 @@ Linux evidence: `sct:/tmp/wld-package-qualification-GMGbHhrX/gate-final2.log`,
 `sct:/tmp/wld-remote-ssh-3zfEzZ`, `sct:/tmp/remote-package-linux-final-reports`, and
 `sct:/tmp/remote-package-linux-mount-reports`. The native driver is `/tmp/remote-package-native-qa.py` on the laptop.
 
-### Hosted qualification still required
+### Hosted qualification in progress
 
-The changed workflow has not reached GitHub. No qualification dispatch of these bytes has run, and hosted Linux ARM64
-SSH/SSHFS support is not yet established. After permitted delivery, dispatch the nonpublishing qualification mode
-from `epic/remote-ssh-development`, inspect both Linux gates and retained evidence, and compare their job times and
+The owner authorized commit and push on 2026-10-26. Commit `6d1124613` reached `epic/remote-ssh-development`.
+[First qualification run](https://github.com/RunWield/runwield/actions/runs/40266281678) built all four archives and
+passed their native identity checks. Both Linux SSH gates failed before starting SSH: the disposable account could
+not traverse the runner's private temporary-directory ancestors. Evidence upload also tried to traverse private
+server files. The gate now places the shared fixture in `/tmp` and copies only diagnostic logs and results into a
+separate runner-owned upload directory. Two regression tests cover private runner ancestors and evidence isolation.
+Local SSH probes also measured `sudo` startup at 3.4–4.0 seconds, above the old three-second connection deadline;
+the gate now allows 15 seconds without changing its required mount, tool-result, Session, or cleanup checks.
+
+Hosted Linux ARM64 SSH/SSHFS support is not yet established. Run the repaired nonpublishing qualification mode from
+`epic/remote-ssh-development`, inspect both Linux gates and retained evidence, and compare their job times and
 overall qualification time with [release run 40256858840](https://github.com/RunWield/runwield/actions/runs/40256858840).
 That historical run passed its native Linux x64 check in 39 seconds and ARM64 check in 71 seconds; its
 created-to-updated interval was 13 minutes 11 seconds. It predates this SSH gate and does not qualify these changes.
