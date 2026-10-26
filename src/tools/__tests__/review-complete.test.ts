@@ -1,21 +1,36 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { HostedSession } from "../../shared/session/hosted-session.js";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { createReviewCompletedTool } from "../review-complete.ts";
+import { RuntimeEventTypes, type RuntimeAssistantTextDeltaEvent } from "../../shared/session/session-runtime-events.js";
+import { createReviewCompletedTool, type ReviewCompleteParams, type ReviewCompleteResult } from "../review-complete.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
+
+interface RejectedOutcome {
+    outcome: "rejected";
+}
+
+interface CompletedFixtureResult extends Omit<ReviewCompleteResult, "details"> {
+    details: Exclude<ReviewCompleteResult["details"], RejectedOutcome>;
+}
+
+interface RejectedFixtureResult extends Omit<ReviewCompleteResult, "details"> {
+    details: Extract<ReviewCompleteResult["details"], RejectedOutcome>;
+}
+
+type CompletedFixtureExecute = (toolCallId: string, params: ReviewCompleteParams) => Promise<CompletedFixtureResult>;
+type RejectedFixtureExecute = (toolCallId: string, params: ReviewCompleteParams) => Promise<RejectedFixtureResult>;
 
 const REVIEW_PROJECT_ROOT = makeToolProjectFixture("runwield-review-complete-");
 
 for (const approved of [true, false]) {
     test(`review_complete emits one semantic result when approved=${approved}`, async () => {
         await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-            const events = /** @type {any[]} */ ([]);
+            const events: RuntimeAssistantTextDeltaEvent[] = [];
             const hostedSession = new HostedSession({ id: `review-${approved}`, cwd: projectRoot });
-            hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+            hostedSession.setEventSink({ emit: (event: RuntimeAssistantTextDeltaEvent) => events.push(event) });
             const tool = createReviewCompletedTool({ hostedSession, agentName: "reviewer" });
 
-            const result = await /** @type {any} */ (tool.execute)("call", {
+            const result = await (tool.execute as CompletedFixtureExecute)("call", {
                 approved,
                 feedback: approved ? "ship it" : "fix the boundary",
             });
@@ -35,11 +50,10 @@ for (const approved of [true, false]) {
     });
 }
 
-/** @param {string} id */
-function makeReviewTool(id) {
-    const events = /** @type {any[]} */ ([]);
+function makeReviewTool(id: string) {
+    const events: RuntimeAssistantTextDeltaEvent[] = [];
     const hostedSession = new HostedSession({ id, cwd: REVIEW_PROJECT_ROOT });
-    hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+    hostedSession.setEventSink({ emit: (event: RuntimeAssistantTextDeltaEvent) => events.push(event) });
     const tool = createReviewCompletedTool({ hostedSession, agentName: "reviewer" });
     return { tool, events };
 }
@@ -50,7 +64,7 @@ test("review_complete does not report resolved findings as outstanding issues", 
     // Observed live: the Reviewer narrated a resolved item alongside a new one in
     // free-text feedback, and it rendered under "issues found" — reporting finished
     // work as still broken, which makes a converging loop look stuck.
-    const result = await /** @type {any} */ (tool.execute)("call", {
+    const result = await (tool.execute as CompletedFixtureExecute)("call", {
         approved: false,
         feedback: "- The model-availability facade is cold-empty.\n- R1-1 is fixed: the mutation queue now serializes.",
         findings: [
@@ -69,7 +83,7 @@ test("review_complete does not report resolved findings as outstanding issues", 
 test("review_complete falls back to prose only when no findings are supplied", async () => {
     const { tool, events } = makeReviewTool("review-prose-fallback");
 
-    await /** @type {any} */ (tool.execute)("call", {
+    await (tool.execute as CompletedFixtureExecute)("call", {
         approved: false,
         feedback: "fix the boundary",
     });
@@ -81,7 +95,7 @@ test("review_complete falls back to prose only when no findings are supplied", a
 test("review_complete refuses to approve while a finding is unresolved", async () => {
     const { tool } = makeReviewTool("review-approve-with-open");
 
-    const result = await /** @type {any} */ (tool.execute)("call", {
+    const result = await (tool.execute as RejectedFixtureExecute)("call", {
         approved: true,
         findings: [{ title: "Still missing the guard" }],
     });
