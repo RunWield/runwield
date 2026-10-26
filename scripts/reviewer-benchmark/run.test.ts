@@ -184,6 +184,8 @@ test("a batch saves exact production findings and actual configuration, then ref
 test("a timed-out case settles before a fresh case and resume retries only the unfinished case", async () => {
     await withRuntimeCommandFixture("benchmark-batch-resume-", async (runtime) => {
         const selected = await selectCases("RV-D04");
+        // The stalled provider determines timeout behavior. Healthy reviews still run the real inspection tools.
+        const timeoutMs = 10000;
         let settled = false;
         const stall: FauxResponseFactory = async (_context, options) => {
             await new Promise<void>((resolve) => {
@@ -202,8 +204,6 @@ test("a timed-out case settles before a fresh case and resume retries only the u
             }),
         ]);
         const out = join(runtime.projectRoot, "resume-results");
-        // The stalled model waits for cancellation; successful reviews need room for real Git and Session work.
-        const timeoutMs = 5000;
         const first = await runBenchmark(selected, { out, timeoutMs });
         assert.deepEqual(
             first.results.map((row) => row.kind),
