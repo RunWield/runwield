@@ -387,7 +387,7 @@
     "src/shared/session/root-session.test.js",
     "src/shared/session/runtime-portable-tools.test.ts",
     "src/shared/session/runtime-portable-turn.test.ts",
-    "src/shared/session/segment-rollover.test.js",
+    "src/shared/session/segment-rollover.test.ts",
     "src/shared/session/session-cache-warming.test.ts",
     "src/shared/session/session-catalog.test.js",
     "src/shared/session/session-context-report.test.ts",

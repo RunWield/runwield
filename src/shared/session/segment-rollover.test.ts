@@ -6,7 +6,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
-import { HostedSession } from "./hosted-session.js";
+import { type SessionManagerExtensions, HostedSession } from "./hosted-session.js";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.js";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
@@ -17,15 +17,17 @@ import {
     recordSegmentLineageEvidence,
 } from "./workflow-context-session.js";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
+import type { ActiveExecutionWorkflow } from "../types.js";
+import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";
+
+type ManagedFixture = Awaited<ReturnType<typeof createManagedFixture>>;
 
 function idFactory(prefix = "id") {
     let next = 0;
     return () => `${prefix}-${++next}`;
 }
 
-/** @param {import('./tutorial-context-session.ts').TutorialContext | null} [tutorialContext] */
-async function createManagedFixture(tutorialContext = null) {
+async function createManagedFixture(tutorialContext: TutorialContext | null = null) {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-rollover-"));
     const root = join(dir, "repo");
     await fsMkdir(root);
@@ -35,7 +37,7 @@ async function createManagedFixture(tutorialContext = null) {
     manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text: "before" }] });
     const piSessionId = manager.getSessionId();
     const transcriptPath = await resolveCreatedRootSessionPath(root, manager);
-    await Promise.resolve((/** @type {{ dispose?: () => void | Promise<void> }} */ (manager)).dispose?.());
+    await Promise.resolve((manager as SessionManagerExtensions).dispose?.());
     await syncTranscriptFileAndParent(transcriptPath);
     const session = await store.ensureSessionCatalogRecord({
         projectId: project.projectId,
@@ -87,14 +89,12 @@ async function createManagedFixture(tutorialContext = null) {
     return { dir, root, store, project, session, segment, hosted };
 }
 
-/** @param {Awaited<ReturnType<typeof createManagedFixture>>} fixture */
-async function cleanupFixture(fixture) {
+async function cleanupFixture(fixture: ManagedFixture) {
     fixture.store.close();
     await fsRm(fixture.dir, { recursive: true });
 }
 
-/** @param {Awaited<ReturnType<typeof createManagedFixture>>} fixture */
-async function readProjection(fixture) {
+async function readProjection(fixture: ManagedFixture) {
     const state = fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId);
     assert(state.generation);
     return await projectAggregateTranscript({
@@ -121,9 +121,7 @@ test("a successor row without a committed generation degrades the aggregate proj
             });
             const successorManager = await createRootSessionManager("new", fixture.root);
             const successorPath = await resolveCreatedRootSessionPath(fixture.root, successorManager);
-            await Promise.resolve(
-                (/** @type {{ dispose?: () => void | Promise<void> }} */ (successorManager)).dispose?.(),
-            );
+            await Promise.resolve((successorManager as SessionManagerExtensions).dispose?.());
             await syncTranscriptFileAndParent(successorPath);
             await fixture.store.appendSessionTranscriptSegment({
                 runwieldSessionId: fixture.session.runwieldSessionId,
@@ -161,8 +159,7 @@ test("segment rollover keeps aggregate projection readable and rolls managed met
             planId: null,
         };
         const fixture = await createManagedFixture(tutorialContext);
-        /** @type {import('../types.js').ActiveExecutionWorkflow} */
-        const workflow = {
+        const workflow: ActiveExecutionWorkflow = {
             planName: "follow-up",
             triageMeta: {},
             executionAgent: "engineer",
@@ -182,7 +179,10 @@ test("segment rollover keeps aggregate projection readable and rolls managed met
             });
             const after = await readProjection(fixture);
             assert(after.ok);
-            assertEquals(after.events.map((event) => event.type), before.events.map((event) => event.type));
+            assertEquals(
+                after.events.map((event) => event.type),
+                before.events.map((event) => event.type),
+            );
             const managed = fixture.hosted.getManagedMetadata();
             assert(managed);
             assertEquals(managed.piSessionId, result.piSessionId);
@@ -198,9 +198,7 @@ test("segment rollover keeps aggregate projection readable and rolls managed met
             assertEquals(readPersistedPendingSegmentContinuation(successorManager), { next: "engineer" });
             assertEquals(readPersistedTutorialContext(successorManager), tutorialContext);
             assertEquals(readExecutionWorkflowSnapshot(successorManager), { version: 1, workflow });
-            await Promise.resolve(
-                (/** @type {{ dispose?: () => void | Promise<void> }} */ (successorManager)).dispose?.(),
-            );
+            await Promise.resolve((successorManager as SessionManagerExtensions).dispose?.());
             const postProof = fixture.store.acquireSessionActivation({
                 runwieldSessionId: managed.runwieldSessionId,
                 projectId: managed.projectId,
@@ -295,19 +293,13 @@ test("segment rollover uses one generic continuation path for execution and sema
                     ...tutorialContext,
                     shownExplanationIds: ["welcome", "plans"],
                 });
-                await Promise.resolve(
-                    (/** @type {{ dispose?: () => void | Promise<void> }} */ (sessionManager)).dispose?.(),
-                );
+                await Promise.resolve((sessionManager as SessionManagerExtensions).dispose?.());
             }
             assertEquals(
-                fixture.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId).map((segment) =>
-                    segment.kind
-                ),
-                [
-                    "planning",
-                    "execution",
-                    "semantic_repair",
-                ],
+                fixture.store
+                    .listSessionTranscriptSegments(fixture.session.runwieldSessionId)
+                    .map((segment) => segment.kind),
+                ["planning", "execution", "semantic_repair"],
             );
         } finally {
             await cleanupFixture(fixture);
@@ -330,7 +322,10 @@ test("consecutive rollovers preserve one unsealed current segment and continuous
                 });
             }
             const segments = fixture.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId);
-            assertEquals(segments.map((segment) => segment.ordinal), [0, 1, 2, 3]);
+            assertEquals(
+                segments.map((segment) => segment.ordinal),
+                [0, 1, 2, 3],
+            );
             assertEquals(segments.filter((segment) => !segment.sealedAt).length, 1);
             const generations = fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId);
             assertEquals(generations.generation?.generation, 3);
@@ -356,16 +351,17 @@ test("orphan rollover candidates are identifiable and discardable before any row
                 lineageGroupKey: fixture.segment.segmentId,
             });
             recordPendingSegmentContinuation(orphanManager, { pending: true });
-            await Promise.resolve(
-                (/** @type {{ dispose?: () => void | Promise<void> }} */ (orphanManager)).dispose?.(),
-            );
+            await Promise.resolve((orphanManager as SessionManagerExtensions).dispose?.());
             await syncTranscriptFileAndParent(orphanPath);
             const candidates = await fixture.store.findOrphanRolloverCandidates({
                 runwieldSessionId: fixture.session.runwieldSessionId,
                 projectId: fixture.project.projectId,
                 transcriptCwd: fixture.root,
             });
-            assertEquals(candidates.map((candidate) => candidate.transcriptPath), [orphanPath]);
+            assertEquals(
+                candidates.map((candidate) => candidate.transcriptPath),
+                [orphanPath],
+            );
             await fixture.store.discardOrphanRolloverCandidate({
                 runwieldSessionId: fixture.session.runwieldSessionId,
                 transcriptPath: orphanPath,
