@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "4082e02d-d083-4e39-a051-4a7176c7a25a"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "DOCUMENTATION"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "e0d548d5-c6f0-412c-90c4-0f76be5f47ff"
 ---
-
 # Plan backlog cleanup
 
 ## Summary
