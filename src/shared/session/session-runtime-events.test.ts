@@ -1,5 +1,6 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
+import type { RuntimeAgentChangedEvent, RuntimeSystemStatusEvent } from "./session-runtime-events.js";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import {
@@ -117,8 +118,8 @@ test("Runtime event factory supplies shared identity defaults and rejects partia
         rootHandoff: true,
     });
     assertEquals(agentChangedEvent.type, RuntimeEventTypes.AGENT_CHANGED);
-    assertEquals(/** @type {any} */ (agentChangedEvent).displayName, "Operator");
-    assertEquals(/** @type {any} */ (agentChangedEvent).rootHandoff, true);
+    assertEquals((agentChangedEvent as RuntimeAgentChangedEvent).displayName, "Operator");
+    assertEquals((agentChangedEvent as RuntimeAgentChangedEvent).rootHandoff, true);
 
     assertThrows(
         () =>
@@ -162,14 +163,11 @@ test("Runtime event factory supplies shared identity defaults and rejects partia
     );
     assertThrows(
         () =>
-            createSessionRuntimeEvent(
-                "session-1",
-                /** @type {any} */ ({
-                    type: RuntimeEventTypes.AGENT_CHANGED,
-                    agentName: "operator",
-                    rootHandoff: "yes",
-                }),
-            ),
+            createSessionRuntimeEvent("session-1", {
+                type: RuntimeEventTypes.AGENT_CHANGED,
+                agentName: "operator",
+                rootHandoff: "yes",
+            }),
         TypeError,
         "rootHandoff must be boolean",
     );
@@ -195,11 +193,11 @@ test("Runtime accepts complete validation progress snapshots on system status", 
         },
     });
     assertEquals(event.type, RuntimeEventTypes.SYSTEM_STATUS);
-    assertEquals(/** @type {any} */ (event).validationProgress?.kind, "workflow");
+    assertEquals((event as RuntimeSystemStatusEvent).validationProgress?.kind, "workflow");
 });
 
 test("Runtime rejects malformed validation progress snapshots", () => {
-    const base = /** @type {any} */ ({
+    const base = {
         type: RuntimeEventTypes.SYSTEM_STATUS,
         message: "bad",
         validationProgress: {
@@ -215,7 +213,7 @@ test("Runtime rejects malformed validation progress snapshots", () => {
                 merge: "skipped",
             },
         },
-    });
+    };
     assertThrows(
         () =>
             createSessionRuntimeEvent("session-1", {
@@ -365,26 +363,23 @@ test("Runtime event factory validates session replacement events", () => {
 
     assertThrows(
         () =>
-            createSessionRuntimeEvent(
-                "old-session",
-                /** @type {any} */ ({
-                    type: RuntimeEventTypes.SESSION_REPLACED,
-                    oldSessionId: "old-session",
-                    newSessionId: "new-session",
-                    reason: "manual",
-                    parentPlanName: "epic",
-                    completedPlanName: "epic/01-done",
-                    childPlanName: "epic/02-next",
-                    action: "execute",
-                }),
-            ),
+            createSessionRuntimeEvent("old-session", {
+                type: RuntimeEventTypes.SESSION_REPLACED,
+                oldSessionId: "old-session",
+                newSessionId: "new-session",
+                reason: "manual",
+                parentPlanName: "epic",
+                completedPlanName: "epic/01-done",
+                childPlanName: "epic/02-next",
+                action: "execute",
+            }),
         TypeError,
         "reason is invalid",
     );
 });
 
 test("Runtime attention reasons use shared notification vocabulary without TUI-only compaction", () => {
-    for (const reason of /** @type {const} */ (["agentStopped", "planWritten", "userInterview"])) {
+    for (const reason of ["agentStopped", "planWritten", "userInterview"]) {
         const event = createSessionRuntimeEvent("session-1", {
             type: RuntimeEventTypes.ATTENTION_REQUESTED,
             reason,
@@ -394,13 +389,10 @@ test("Runtime attention reasons use shared notification vocabulary without TUI-o
     }
     assertThrows(
         () =>
-            createSessionRuntimeEvent(
-                "session-1",
-                /** @type {any} */ ({
-                    type: RuntimeEventTypes.ATTENTION_REQUESTED,
-                    reason: "compactionFinished",
-                }),
-            ),
+            createSessionRuntimeEvent("session-1", {
+                type: RuntimeEventTypes.ATTENTION_REQUESTED,
+                reason: "compactionFinished",
+            }),
         TypeError,
         "reason is invalid",
     );
@@ -419,16 +411,13 @@ test("Runtime sync state event is sanitized and validated", () => {
     assertEquals(event.owningSurfaceKind, "workspace");
     assertThrows(
         () =>
-            createSessionRuntimeEvent(
-                "session-1",
-                /** @type {any} */ ({
-                    type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
-                    status: "current",
-                    localGeneration: 1,
-                    latestGeneration: 1,
-                    ownerInstanceId: "secret",
-                }),
-            ),
+            createSessionRuntimeEvent("session-1", {
+                type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
+                status: "current",
+                localGeneration: 1,
+                latestGeneration: 1,
+                ownerInstanceId: "secret",
+            }),
         TypeError,
         "ownerInstanceId",
     );

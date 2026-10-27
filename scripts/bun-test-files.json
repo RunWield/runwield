@@ -402,7 +402,7 @@
     "src/shared/session/session-provider-retry.test.js",
     "src/shared/session/session-replay.test.ts",
     "src/shared/session/session-resume-list.test.ts",
-    "src/shared/session/session-runtime-events.test.js",
+    "src/shared/session/session-runtime-events.test.ts",
     "src/shared/session/session-runtime-method-policy.test.ts",
     "src/shared/session/session-runtime-structure.test.ts",
     "src/shared/session/session-runtime.test.js",
