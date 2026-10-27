@@ -13,7 +13,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { encodeCwdForSessionDir } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { manifestPath } from "./file-session-storage.ts";
 
 async function evidence(path: string) {
@@ -36,15 +36,13 @@ test("the latest Plan review reference survives segment rollover and descriptor 
     const nextPath = join(sessionDir, "2026-01-01T00-01-00-000Z_second.jsonl");
     await fsWriteFile(
         firstPath,
-        `${
-            JSON.stringify({
-                type: "session",
-                version: 3,
-                id: "first",
-                timestamp: "2026-01-01T00:00:00.000Z",
-                cwd: projectRoot,
-            })
-        }\n`,
+        `${JSON.stringify({
+            type: "session",
+            version: 3,
+            id: "first",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            cwd: projectRoot,
+        })}\n`,
     );
     const store = openFileSessionStore({ baseDir });
     try {
@@ -73,15 +71,13 @@ test("the latest Plan review reference survives segment rollover and descriptor 
         proof = store.changeSessionActivationPhase(proof, "checkpointing");
         await fsWriteFile(
             nextPath,
-            `${
-                JSON.stringify({
-                    type: "session",
-                    version: 3,
-                    id: "second",
-                    timestamp: "2026-01-01T00:01:00.000Z",
-                    cwd: projectRoot,
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "session",
+                version: 3,
+                id: "second",
+                timestamp: "2026-01-01T00:01:00.000Z",
+                cwd: projectRoot,
+            })}\n`,
         );
         const safe = await store.validateSuccessorSegmentLocator({
             projectId: project.projectId,
@@ -102,7 +98,7 @@ test("the latest Plan review reference survives segment rollover and descriptor 
                 idFactory: () => "next-segment",
             },
             successorSafeLocator: safe,
-            generationEvidence: { generation: 0, currentSegmentId: "next-segment", ...await evidence(nextPath) },
+            generationEvidence: { generation: 0, currentSegmentId: "next-segment", ...(await evidence(nextPath)) },
         });
         assertEquals(rollover.successor.segmentId, "next-segment");
         assertEquals(store.getLastPlanReview(session.runwieldSessionId, project.projectId), reference);

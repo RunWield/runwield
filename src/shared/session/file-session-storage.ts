@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
 import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
 export { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
-import { encodeCwdForSessionDir } from "./session-directory-name.ts";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import type { FileSessionManifest, FileSessionProject } from "./file-session-store-types.ts";
 
 export const FILE_SESSION_STORE_VERSION = 1;
@@ -95,8 +95,9 @@ export function ensureProject(
     const stat = statSync(enteredRoot);
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
     const canonicalRoot = realpathSync.native(enteredRoot);
-    const existing = listProjectsFromDisk(baseDir).find((project) =>
-        resolve(project.currentRoot) === resolve(canonicalRoot) || resolve(project.registeredRoot) === enteredRoot
+    const existing = listProjectsFromDisk(baseDir).find(
+        (project) =>
+            resolve(project.currentRoot) === resolve(canonicalRoot) || resolve(project.registeredRoot) === enteredRoot,
     );
     if (existing) return existing;
     const sessionDir = sessionDirForRoot(baseDir, canonicalRoot);
@@ -152,16 +153,19 @@ export function findProject(baseDir: string, projectId: string): FileSessionProj
 }
 
 export function rootEvidence(project: FileSessionProject) {
-    return [{
-        enteredRoot: project.registeredRoot,
-        canonicalRoot: project.currentRoot,
-        rootState: "current",
-    }];
+    return [
+        {
+            enteredRoot: project.registeredRoot,
+            canonicalRoot: project.currentRoot,
+            rootState: "current",
+        },
+    ];
 }
 
 export function catalogedSession(manifest: FileSessionManifest) {
     const first = manifest.segments[0];
-    const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId) ||
+    const current =
+        manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId) ||
         manifest.segments.at(-1);
     if (!first || !current) throw new Error("Session manifest has no transcript segment");
     return {
@@ -391,7 +395,8 @@ export class FileSessionManifestCache {
         if (
             recovery.version !== FILE_SESSION_STORE_VERSION ||
             !recovery.segments.some((segment) => resolve(segment.transcriptPath) === resolvedTranscriptPath)
-        ) return null;
+        )
+            return null;
         const project = this.#project(recovery.projectId);
         if (!project) return null;
         const path = manifestPath(sessionDirForRoot(this.#baseDir, project.currentRoot), recovery.runwieldSessionId);
@@ -402,10 +407,7 @@ export class FileSessionManifestCache {
         return { path, manifest: structuredClone(recovery) };
     }
 
-    resolve(
-        runwieldSessionId: string,
-        projectId?: string,
-    ): { path: string; manifest: FileSessionManifest } | null {
+    resolve(runwieldSessionId: string, projectId?: string): { path: string; manifest: FileSessionManifest } | null {
         const cached = this.#manifests.get(runwieldSessionId);
         if (cached) return this.#readRestoringPath(cached.path);
         if (projectId) {

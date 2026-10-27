@@ -66,6 +66,24 @@ ample for our Router-only usage.
 
 ---
 
+## Core, Connect, and Workspace
+
+**RunWield Core** owns local workflow truth. **RunWield Connect** brings those gates into an external agent host.
+**RunWield Workspace** provides the browser Session and collaboration surfaces.
+
+The Claude Code **FEATURE Preview** keeps the conversation and every model call in Claude Code. Core needs no model
+credentials or RunWield account. After the Preview is published to the default branch, install it in Claude Code:
+
+```text
+/plugin marketplace add gandazgul/runwield
+/plugin install runwield@runwield
+```
+
+Until then, use the local marketplace install in the [Connect guide](docs/user-documentation/connect-claude-code.md).
+The guide lists tested versions, evidence limits, recovery commands, and how to disable or uninstall. Connect is not
+stable support and claims no other host. Unlike Core's Session flow below, Connect suggests manual checks in Claude
+rather than saving a Manual QA checklist.
+
 ## The problem
 
 Most coding harnesses optimize for getting an agent typing as fast as possible. Chat, and hope.

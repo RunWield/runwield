@@ -39,6 +39,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
  * @property {ReviewPlanSave} [planSave]
+ * @property {number} [reviewRevision]
  *
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
@@ -46,11 +47,26 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [classification]
  * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
+ * @property {number} [reviewRevision]
  *
  * @typedef {Object} ReviewRequestState
  * @property {string} cwd
  * @property {string} [reviewToken]
  * @property {ReviewPayload} [reviewPayload]
+ * @property {ReviewDecisionSink} [onDecision]
+ * @property {boolean} [keepConversationTurns]
+ *
+ * @typedef {Object} ReviewDecisionReceipt
+ * @property {string} operationId Core-created durable operation identity.
+ * @property {string} workflowId
+ * @property {string} actionId
+ * @property {string} attemptId
+ * @property {string} generation
+ * @property {string} decisionKey Candidate-bound validation decision identity.
+ *
+ * @callback ReviewDecisionSink
+ * @param {ReviewDecision} decision
+ * @returns {Promise<void | ReviewDecisionReceipt>}
  *
  * @typedef {Object} ReviewRequestContext
  * @property {Request} req
@@ -240,6 +256,16 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
+    if (
+        ctx.state?.reviewPayload?.reviewRevision !== undefined &&
+        body?.reviewRevision !== ctx.state.reviewPayload.reviewRevision
+    ) {
+        return jsonError(
+            "stale_sequence_review",
+            "This browser page shows a superseded review revision. Reload it.",
+            409,
+        );
+    }
     const decision = createDecision(body || {});
     if (decision instanceof Response) return decision;
     if (ctx.state?.reviewPayload?.sequenceDocuments && !decision.exit) {
@@ -250,10 +276,19 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
-    if (!resolveReviewDecision(token, decision)) {
+    /** @type {void | ReviewDecisionReceipt} */
+    let receipt = undefined;
+    if (ctx.state?.onDecision) {
+        try {
+            receipt = await ctx.state.onDecision(decision);
+        } catch (error) {
+            return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
+        }
+    }
+    if (!(decision.conversationTurn && ctx.state?.keepConversationTurns) && !resolveReviewDecision(token, decision)) {
         return jsonError("review_not_found", "Review expired or completed.", 404);
     }
-    return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, ...receipt }, { headers: { "cache-control": "no-store" } });
 }
 
 /**

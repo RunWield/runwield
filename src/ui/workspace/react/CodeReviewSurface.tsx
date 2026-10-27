@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
@@ -28,6 +29,7 @@ import { PlanReviewSettings } from "./PlanReviewSettings.tsx";
 import { WorkspaceHeaderActionsPortal } from "./WorkspaceHeaderActionsPortal.tsx";
 import { ReviewContextBar } from "./ReviewContextBar.tsx";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
+import { mergeSavedReviewMessages, useSavedReviewConversation } from "./use-saved-review-conversation.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { editHunksToAnnotations, editorCommentToAnnotation } from "./code-review-edit-suggestions.ts";
@@ -180,6 +182,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
     const [error, setError] = useState("");
+    const { fields: reviewRevisionFields, update: updateReviewRevision } = useReviewRevision(
+        initialPayload,
+        submitted === "feedback",
+        setError,
+    );
     const [viewedFiles, setViewedFiles] = useState(new Set());
     const [fileNavigationTarget, setFileNavigationTarget] = useState(null);
     const [allFilesContentFits, setAllFilesContentFits] = useState(false);
@@ -792,6 +799,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     function buildReviewPayload() {
         const workflowAnnotations = toWorkflowAnnotations(annotations);
         return {
+            ...reviewRevisionFields,
             feedback: feedbackMarkdown,
             annotations: workflowAnnotations,
         };
@@ -855,7 +863,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     async function submitFeedback() {
-        if (conversationEnabled) {
+        if (conversationEnabled && initialPayload.agentTurnOwner !== "host") {
             setRightSidebarView("agent");
             await sendAgentMessage(true);
             return;
@@ -877,6 +885,28 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setRightSidebarView("agent");
         setAgentError("");
     }
+
+    useSavedReviewConversation(
+        initialPayload,
+        (snapshot, advanced) => {
+            if (submitted === "feedback") return;
+            updateReviewRevision(snapshot.reviewRevision);
+            setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
+            setAgentWorking(snapshot.pending);
+            if (advanced) {
+                const event = snapshot.events.at(-1);
+                applyAgentRevision({
+                    rawPatch: snapshot.rawPatch,
+                    reviewStatus: snapshot.reviewStatus || null,
+                    interactionId: `conversation-${snapshot.revision}`,
+                    reply: event?.delta,
+                    agentMessageId: event ? `agent-${event.messageId}` : undefined,
+                    clearAttachedContext: true,
+                });
+            }
+        },
+        setAgentError,
+    );
 
     async function sendAgentMessage(attachAnnotations = false) {
         const message = conversationComposer.trim();
@@ -910,17 +940,18 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setAgentError("");
         setError("");
         setConversationComposer("");
-        setConversationMessages((items) => [
-            ...items,
-            {
-                id: userMessageId,
-                role: "user",
-                body: message || "Review annotations",
-                ...(attachedFeedback && {
-                    contextLabel,
-                }),
-            },
-        ]);
+        if (!initialPayload.savedConversation)
+            setConversationMessages((items) => [
+                ...items,
+                {
+                    id: userMessageId,
+                    role: "user",
+                    body: message || "Review annotations",
+                    ...(attachedFeedback && {
+                        contextLabel,
+                    }),
+                },
+            ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -936,13 +967,16 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             }
 
             await submit("deny", {
+                ...reviewRevisionFields,
                 approved: false,
-                feedback: buildArtifactConversationFeedback({
-                    message,
-                    attachedFeedback,
-                    agentLabel,
-                    artifactKind: "code",
-                }),
+                feedback: initialPayload.savedConversation
+                    ? [message, attachedFeedback].filter(Boolean).join("\n\n")
+                    : buildArtifactConversationFeedback({
+                          message,
+                          attachedFeedback,
+                          agentLabel,
+                          artifactKind: "code",
+                      }),
                 annotations: toWorkflowAnnotations(sentAnnotations),
                 conversationTurn: true,
             });
@@ -959,6 +993,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     clearAttachedContext: Boolean(attachedFeedback),
                     sentAnnotations,
                 });
+                return;
+            }
+
+            if (initialPayload.savedConversation) {
+                if (queuedConversation) clearSentAnnotations(sentAnnotations);
                 return;
             }
 
@@ -1060,7 +1099,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     function applyAgentRevision(options) {
-        upsertAgentReply(options.agentMessageId, options.reply);
+        if (options.reply) upsertAgentReply(options.agentMessageId, options.reply);
         const nextFiles = parseDiffToFiles(options.rawPatch);
         const nextFileIndex = nextFiles.findIndex((file) => file.path === currentFile?.path);
         setActiveFileIndex(nextFileIndex < 0 ? 0 : nextFileIndex);
@@ -1084,19 +1123,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             setFileNavigationTarget(null);
         }
         if (queuedConversation) {
-            const sent = new Map((options.sentAnnotations || []).map((item) => [item.id, item]));
-            setAnnotations((items) =>
-                items.flatMap((item) => {
-                    const delivered = sent.get(item.id);
-                    if (!delivered) return [item];
-                    const remaining = hasAnnotationNote(delivered) ? withoutAnnotationNote(item) : { ...item };
-                    remaining.images = (item.images || []).filter(
-                        (image) => !delivered.images?.some((sentImage) => sentImage.path === image.path),
-                    );
-                    return hasAnnotationInput(remaining) ? [remaining] : [];
-                }),
-            );
-            setExcludedQueueTypes([]);
+            if (options.sentAnnotations) clearSentAnnotations(options.sentAnnotations);
         } else if (options.clearAttachedContext || initialPayload.standaloneReview) {
             setAnnotations([]);
             setSelectedAnnotationId(null);
@@ -1104,6 +1131,22 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             setPendingSelection(null);
             setConversationContextAttached(false);
         }
+    }
+
+    function clearSentAnnotations(sentAnnotations) {
+        const sent = new Map(sentAnnotations.map((item) => [item.id, item]));
+        setAnnotations((items) =>
+            items.flatMap((item) => {
+                const delivered = sent.get(item.id);
+                if (!delivered) return [item];
+                const remaining = hasAnnotationNote(delivered) ? withoutAnnotationNote(item) : { ...item };
+                remaining.images = (item.images || []).filter(
+                    (image) => !delivered.images?.some((sentImage) => sentImage.path === image.path),
+                );
+                return hasAnnotationInput(remaining) ? [remaining] : [];
+            }),
+        );
+        setExcludedQueueTypes([]);
     }
 
     function upsertAgentReply(messageId, body) {
@@ -1511,7 +1554,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                 </div>
                                 {rightSidebarView === "annotations" ? (
                                     <>
-                                        {!queuedConversation &&
+                                        {(!queuedConversation || initialPayload.agentTurnOwner === "host") &&
                                             (standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
                                                 <div className="rw-review-feedback-action rw-review-action">
                                                     <FeedbackButton

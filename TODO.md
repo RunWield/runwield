@@ -34,13 +34,13 @@ I would order the overlapping group like this:
 
 6. flag-test-seam-risks-during-init.md - done
 
-7. Optional before foundation: guided-validation-repair.md - done
+7. Optional before foundation: guided repair - delivered through Engineer follow-up and Code Review
 
 8. simplify-validation-and-lifecycle-messages.md Better after the error/repair model is stable. - done
 
-9. plan-packages-and-independent-validation.md - in progress
+9. Package storage proposal removed; the [Plan Store PRD](docs/prd/plan-store-prd.md) owns storage direction.
 
-10. plan-package-frontend-experience-planning.md
+10. Package frontend proposal removed; shipped journey guidance remains in the Agent instructions.
 
 11. epic-branch-publication-workflow.md
 

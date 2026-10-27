@@ -1,23 +1,6 @@
-/**
- * @module shared/workflow/validation-session-adapter
- * The only session/Pi-coupled module in the session-independent validation engine.
- *
- * Implements {@link ValidationSessionPort} over the real HostedSession machinery:
- * workflow state, phase position, progress panel, interactions, escape-cancel
- * registration, completion-gated repair turns, isolated Agent sessions, display
- * names, and post-verification handoffs. The engine never imports Pi/session
- * modules; everything it needs arrives through the port this module builds.
- *
- * The opaque handle casts happen here and only here: `SessionManagerHandle` and
- * `OpaqueToolDefinition` are phantom-branded, and the Pi `SessionManager` /
- * `ToolDefinition` values are cast to them exactly once per boundary crossing.
- * Accepted tools carry workflow outcomes. Provider failure metadata is handled
- * separately and can never count as review feedback or repair completion.
- */
-
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { HostedSession } from "../session/hosted-session.js";
+import { type AgentMessage } from "@earendil-works/pi-agent-core";
+import { type HostedSession } from "../session/hosted-session.js";
 import { runIsolatedAgentSession } from "../session/session.js";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
@@ -36,22 +19,23 @@ import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { renderOpenItems } from "./review-ledger.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { createReviewDiffTool } from "./review-diff-tool.js";
+import { type ReviewInspection } from "./review-inspection.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
 import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.js";
-import type {
-    AgentTurnOutcome,
-    IndependentRepairTurnRequest,
-    IsolatedAgentSessionOutcome,
-    IsolatedAgentSessionRequest,
-    OpaqueToolDefinition,
-    SessionManagerHandle,
-    ValidationSessionPort,
+import {
+    type AgentTurnOutcome,
+    type IndependentRepairTurnRequest,
+    type IsolatedAgentSessionOutcome,
+    type IsolatedAgentSessionRequest,
+    type ValidationReviewData,
+    type ValidationSessionPort,
 } from "./validation-ports.ts";
 import {
     classifyValidationOperationalError,
@@ -59,6 +43,22 @@ import {
     type ValidationOperation,
     type ValidationOperationalFailure,
 } from "./validation-operational-errors.ts";
+import process from "node:process";
+/**
+ * @module shared/workflow/validation-session-adapter
+ * The only session/Pi-coupled module in the session-independent validation engine.
+ *
+ * Implements {@link ValidationSessionPort} over the real HostedSession machinery:
+ * workflow state, phase position, progress panel, interactions, escape-cancel
+ * registration, completion-gated repair turns, isolated Agent sessions, display
+ * names, and post-verification handoffs. The engine never imports Pi/session
+ * modules; everything it needs arrives through the port this module builds.
+ *
+ * This adapter builds executable tools from request data and owns the Pi
+ * SessionManager for each reviewer round, including every nudge in that round.
+ * Accepted tools carry workflow outcomes. Provider failure metadata is handled
+ * separately and can never count as review feedback or repair completion.
+ */
 
 /**
  * The options shape the pre-existing isolated-session boundary takes.
@@ -207,36 +207,15 @@ function readReviewerProviderFailure(messages: AgentMessage[]): ValidationOperat
     return undefined;
 }
 
-type ReviewDiffToolOptions = Parameters<typeof createReviewDiffTool>[1];
-type ReviewDiffToolWithOptions = ToolDefinition & {
-    __runwieldReviewDiffs?: Parameters<typeof createReviewDiffTool>[0];
-    __runwieldReviewOptions?: ReviewDiffToolOptions;
-};
-type QaChecklistToolOptions = Parameters<typeof createQaChecklistGeneratedTool>[0];
-type QaChecklistToolWithOptions = ToolDefinition & { __runwieldQaChecklistOptions?: QaChecklistToolOptions };
-
-function bindReviewDiffTools(hostedSession: HostedSession, customTools: OpaqueToolDefinition[]): ToolDefinition[] {
-    return (customTools as unknown as ToolDefinition[]).flatMap((tool) => {
-        const tagged = tool as ReviewDiffToolWithOptions;
-        if (tagged.name !== "review_diff" || tagged.__runwieldReviewDiffs === undefined) return tool;
-        const options: ReviewDiffToolOptions = { ...tagged.__runwieldReviewOptions, hostedSession };
-        return [
-            createReviewDiffTool(tagged.__runwieldReviewDiffs, options),
-            createReviewCompletedTool({
-                hostedSession,
-                inspection: options.inspection,
-                ledger: options.ledger,
-            }),
-        ];
-    });
-}
-
-function bindQaChecklistTools(hostedSession: HostedSession, customTools: OpaqueToolDefinition[]): ToolDefinition[] {
-    return (customTools as unknown as ToolDefinition[]).map((tool) => {
-        const tagged = tool as QaChecklistToolWithOptions;
-        if (tagged.name !== "qa_checklist_generated" || !tagged.__runwieldQaChecklistOptions) return tool;
-        return createQaChecklistGeneratedTool({ ...tagged.__runwieldQaChecklistOptions, hostedSession });
-    });
+function buildReviewTools(
+    hostedSession: HostedSession,
+    review: ValidationReviewData,
+    ledger?: import("./review-ledger.ts").ReviewLedger,
+): ToolDefinition[] {
+    const hasRepairScope = review.hasRepairScope ?? (review.requiredScope === "repair" || Boolean(review.repairDiff));
+    const diffs = hasRepairScope ? { full: review.fullDiff, repair: review.repairDiff } : { full: review.fullDiff };
+    const options = { hostedSession, inspection: review.inspection, ledger };
+    return [createReviewDiffTool(diffs, options), createReviewCompletedTool(options)];
 }
 
 /**
@@ -255,8 +234,14 @@ async function runIsolatedRequest(
     hostedSession: HostedSession,
     isolatedSessions: SemanticReviewPort,
     request: IsolatedAgentSessionRequest,
+    reviewerManagers: WeakMap<ReviewInspection, SessionManager>,
 ): Promise<IsolatedAgentSessionOutcome> {
     if (request.kind === "reviewer") {
+        let manager = reviewerManagers.get(request.review.inspection);
+        if (!manager) {
+            manager = SessionManager.inMemory(request.cwd);
+            reviewerManagers.set(request.review.inspection, manager);
+        }
         const result = await runValidationAgentUntilEvent(
             isolatedSessions,
             {
@@ -278,11 +263,10 @@ async function runIsolatedRequest(
                     request.reviewerMode === "integration" || request.reviewerMode === "integration_verify"
                         ? [...INTEGRATION_REVIEWER_SUBAGENT_TOOLS]
                         : [...REVIEWER_SUBAGENT_TOOLS],
-                customTools: bindReviewDiffTools(hostedSession, request.customTools),
+                customTools: buildReviewTools(hostedSession, request.review, request.ledger),
                 includeEditFallback: false,
                 ...(request.controllerRequestId ? { controllerRequestId: request.controllerRequestId } : {}),
-                sessionManager:
-                    (request.sessionManager as unknown as SessionManager) || SessionManager.inMemory(request.cwd),
+                sessionManager: manager,
             },
             "review_complete",
         );
@@ -315,9 +299,7 @@ async function runIsolatedRequest(
         };
     }
     if (request.kind === "manual_qa") {
-        const manualQaManager = request.sessionManager
-            ? (request.sessionManager as unknown as SessionManager)
-            : SessionManager.inMemory(request.cwd);
+        const manualQaManager = SessionManager.inMemory(request.cwd);
         const { event: qaEvent } = await runValidationAgentUntilEvent(
             isolatedSessions,
             {
@@ -326,7 +308,7 @@ async function runIsolatedRequest(
                 userRequest: request.userRequest,
                 cwd: request.cwd,
                 subAgentDefinition: { id: SUBAGENTS.MANUAL_QA },
-                customTools: bindQaChecklistTools(hostedSession, request.customTools),
+                customTools: [createQaChecklistGeneratedTool({ ...request.manualQa, hostedSession })],
                 includeEditFallback: false,
                 sessionManager: manualQaManager,
             },
@@ -347,11 +329,9 @@ async function runIsolatedRequest(
             relativePath: payload.artifactPath,
         };
     }
-    const repairManager = request.sessionManager
-        ? (request.sessionManager as unknown as SessionManager)
-        : request.conversationTurn
-          ? SessionManager.inMemory(request.cwd)
-          : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
+    const repairManager = request.conversationTurn
+        ? SessionManager.inMemory(request.cwd)
+        : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
     if (!request.conversationTurn) await prepareRepairInvocation(hostedSession, request.cwd);
     // An automatic repair is fresh non-generated work, not a continuation of the completed task.
     hostedSession.backgroundTasks.resumeDelivery();
@@ -365,7 +345,7 @@ async function runIsolatedRequest(
             ...(request.images ? { images: request.images } : {}),
             cwd: request.cwd,
             subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
-            customTools: bindReviewDiffTools(hostedSession, request.customTools),
+            customTools: buildReviewTools(hostedSession, request.review),
             resumePreviousRequest: hasUnfinishedRepairAttempt(repairManager),
             sessionManager: repairManager,
         },
@@ -398,7 +378,7 @@ async function runIsolatedRequest(
         agentName: request.agentName,
         planName: hostedSession.getActiveExecutionWorkflow()?.planName,
     });
-    if (!request.sessionManager && report.completed) {
+    if (report.completed) {
         clearPendingRepairManager(hostedSession, request.cwd, request.userRequest);
     }
     return {
@@ -429,6 +409,7 @@ async function acceptedRepairOutcome(
             planName: workflow.planName,
             repairGeneration: workflow.validationRepairGeneration,
             report: payload.message,
+            owner: { pid: process.pid, hostname: getLockHostname() },
         });
     }
     settleWorkflowToolEvent(hostedSession, event);
@@ -462,6 +443,8 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
         status: plan.attrs.status,
         phase: "mechanical",
         state: "awaiting_repair",
+        ownerPid: prior?.ownerPid,
+        ownerHostname: prior?.ownerHostname,
         repairKind: reviewState ? "semantic" : "ci",
         repairGeneration,
         reviewState,
@@ -483,6 +466,7 @@ export function createValidationSessionPort(
     } = {},
 ): ValidationSessionPort {
     const isolatedSessions = semanticReviewPort || SYSTEM_SEMANTIC_REVIEW_PORT;
+    const reviewerManagers = new WeakMap<ReviewInspection, SessionManager>();
     return {
         cwd: hostedSession.cwd,
         getActiveWorkflow: () => hostedSession.getActiveExecutionWorkflow?.() || null,
@@ -613,12 +597,11 @@ export function createValidationSessionPort(
             );
             return acceptedRepairOutcome(hostedSession, event);
         },
-        createInMemorySessionManager: (cwd) => SessionManager.inMemory(cwd) as unknown as SessionManagerHandle,
         runIsolatedAgentSession: async <K extends IsolatedAgentSessionRequest["kind"]>(
             request: Extract<IsolatedAgentSessionRequest, { kind: K }>,
         ): Promise<Extract<IsolatedAgentSessionOutcome, { kind: K }>> => {
             try {
-                const outcome = await runIsolatedRequest(hostedSession, isolatedSessions, request);
+                const outcome = await runIsolatedRequest(hostedSession, isolatedSessions, request, reviewerManagers);
                 return outcome as Extract<IsolatedAgentSessionOutcome, { kind: K }>;
             } catch (error) {
                 const failureError = error instanceof Error ? error : new Error(String(error));

@@ -35,7 +35,7 @@ import { getAgentDisplayName } from "../shared/session/agents.js";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
 /** Known CLI / slash command names. Defined alongside the registry so adding a new command only touches one file. */
-/** @type {Readonly<{ROUTER: string, ONBOARD: string, AGENT: string, MODEL: string, LOGIN: string, LOGOUT: string, STATUS: string, EXPORT: string, SHARE: string, LOAD_PLAN: string, REVIEW: string, PLAN_REVIEW: string, RESUME: string, NEW: string, NAME: string, SESSION: string, PLANS: string, WR: string, SLEEP: string, HELP: string, VERSION: string, UPDATE: string, QUIT: string, EXIT: string, INIT: string, THEME: string, INSTALL: string, REMOVE: string, COMPACT: string, SETTINGS: string, RELOAD: string, SNIP_FILTERS: string, COPY: string, CONTEXT: string, ACP: string, MCP: string, WORKSPACE: string, REMOTE: string}>} */
+/** @type {Readonly<{ROUTER: string, ONBOARD: string, AGENT: string, MODEL: string, LOGIN: string, LOGOUT: string, STATUS: string, EXPORT: string, SHARE: string, LOAD_PLAN: string, REVIEW: string, PLAN_REVIEW: string, RESUME: string, NEW: string, NAME: string, SESSION: string, PLANS: string, WR: string, SLEEP: string, HELP: string, VERSION: string, UPDATE: string, QUIT: string, EXIT: string, INIT: string, THEME: string, INSTALL: string, REMOVE: string, COMPACT: string, SETTINGS: string, RELOAD: string, SNIP_FILTERS: string, COPY: string, CONTEXT: string, ACP: string, MCP: string, WORKSPACE: string, REMOTE: string, ATTACHED: string}>} */
 export const COMMAND_NAMES = Object.freeze({
     ROUTER: "router",
     ONBOARD: "onboard",
@@ -75,6 +75,7 @@ export const COMMAND_NAMES = Object.freeze({
     MCP: "mcp",
     WORKSPACE: "workspace",
     REMOTE: "remote",
+    ATTACHED: "attached",
 });
 
 /** @param {...string} parts */
@@ -149,6 +150,29 @@ export const commandRegistry = {
         execute: async (args) => {
             const { runRemoteCommand } = await import("./remote/index.ts");
             await runRemoteCommand(args);
+        },
+        surfaces: ["cli"],
+    },
+    [COMMAND_NAMES.ATTACHED]: {
+        name: COMMAND_NAMES.ATTACHED,
+        displayName: "Attached Workflow",
+        description: "Coordinate an Attached Workflow for an External Agent Host",
+        summary: "Start, continue, and inspect one Attached Workflow through bounded JSON operations.",
+        usage: [
+            `${bin("attached activate < input.json")}`,
+            `${bin("attached triage_report < input.json")}`,
+            `${bin("attached status < input.json")}`,
+            `${bin("attached plan_written < input.json")}`,
+            `${bin("attached mcp")}`,
+        ],
+        notes: [
+            "Each operation reads one JSON object from stdin, prints one JSON result, and exits; rejections exit with code 1.",
+            "attached mcp serves the same operations as MCP tools over stdio for RunWield Connect host adapters.",
+            "Records live under ~/.wld/attached/. Activation and Triage write nothing to the repository.",
+        ],
+        execute: async (args) => {
+            const { runAttachedCommand } = await import("./attached/index.ts");
+            await runAttachedCommand(args);
         },
         surfaces: ["cli"],
     },

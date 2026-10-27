@@ -125,7 +125,7 @@ import {
     remotePersonalResourcesActive,
 } from "../remote/personal-resources.ts";
 import { getBundledAgentDefsPath } from "./agent-assets.ts";
-import { expandSkill, listSkills } from "./skill-catalog.ts";
+import { expandSkill, listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.js";
 import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.js";
@@ -135,7 +135,7 @@ import { createSessionContextProjection, estimateContextTextTokens } from "./ses
 import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
-import { sanitizeSessionName } from "./session-name.ts";
+import { sanitizeSessionName } from "../session-name.ts";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 /** @returns {string | null} */
@@ -1709,13 +1709,9 @@ export async function assembleFinalSystemPromptWithContextProjection(
     const skillItems = [];
     if (hasSkillsPlaceholder) {
         try {
-            const skills = await listSkills({ cwd });
-            const visibleSkills = skills.filter(
-                (skill) => skill.name && skill.description && !skill.disableModelInvocation,
-            );
+            const visibleSkills = await listVisibleSkillCatalog(cwd);
             skillsBlock = visibleSkills
-                .map((skill) => {
-                    const line = `- ${skill.name} - ${skill.description} (read: ${skill.path})`;
+                .map(({ skill, line }) => {
                     const item = createContextProjectionItem(skill.name, line, {
                         name: skill.name,
                         path: skill.path,

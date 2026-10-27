@@ -14,7 +14,7 @@ import { createOwnerWorkspaceApp } from "./server.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
 import { setCustomSetting } from "../../shared/settings.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { encodeCwdForSessionDir } from "../../shared/session/root-session.js";
+import { encodeCwdForSessionDir } from "../../shared/project-directory-key.ts";
 import { basename, join } from "node:path";
 
 test("Owner command observations require authentication, catalog names, and a registered Project", async () => {

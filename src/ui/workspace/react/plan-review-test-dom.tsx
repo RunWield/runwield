@@ -56,7 +56,8 @@ async function reviewModule() {
     return await modulePromise;
 }
 
-export async function withReview(verify, reviewedPlan, overrides = {}) {
+export async function withReview(verify, reviewedPlan, options = {}) {
+    const overrides = options.payload || options;
     const browser = new Window({ url: "http://localhost/review" });
     browser.document.fonts = new browser.EventTarget();
     const names = [
@@ -123,13 +124,13 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
             confirmations.push(message);
             return confirmResult;
         };
-        globalThis.fetch = (url, options) => {
-            if (options?.method === "POST") {
+        globalThis.fetch = (url, requestOptions) => {
+            if (requestOptions?.method === "POST") {
                 if (rejectNext) {
                     rejectNext = false;
                     return Promise.resolve(Response.json({ error: "Connection lost. Try again." }, { status: 503 }));
                 }
-                const decision = JSON.parse(options.body);
+                const decision = JSON.parse(requestOptions.body);
                 submitted.push(decision.response?._meta || decision);
                 revision++;
                 if (pendingReply) {
@@ -171,13 +172,15 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
             if (String(url) === "/detail") return Promise.resolve(Response.json({ plan: { markdown: nextPlan } }));
             if (String(url) === "/status") {
                 const response = () =>
-                    Response.json({
-                        revision: rearmError ? revision - 1 : revision,
-                        error: revision > 0 ? rearmError : undefined,
-                        plan: nextPlan,
-                        sequenceDocuments: nextDocuments,
-                        events: statusEvents,
-                    });
+                    Response.json(
+                        options.conversation?.() || {
+                            revision: rearmError ? revision - 1 : revision,
+                            error: revision > 0 ? rearmError : undefined,
+                            plan: nextPlan,
+                            sequenceDocuments: nextDocuments,
+                            events: statusEvents,
+                        },
+                    );
                 if (heldStatus && revision > 0) return heldStatus.then(response);
                 return Promise.resolve(response());
             }
@@ -219,7 +222,7 @@ export async function withReview(verify, reviewedPlan, overrides = {}) {
             const panel = container.querySelector('[role="tabpanel"]:not([hidden])') || container;
             const opener = panel.querySelector('[aria-label="Open annotations sidebar"]');
             if (opener) await act(() => opener.click());
-            const chat = panel.querySelector('button[role="tab"][title="Planner"]');
+            const chat = panel.querySelector(`button[role="tab"][title="${payload.agentLabel || "Planner"}"]`);
             if (chat) await act(() => chat.click());
         };
         await mount();

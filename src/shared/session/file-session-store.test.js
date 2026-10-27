@@ -8,7 +8,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertFalse, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { classifyRootSessionLocator, encodeCwdForSessionDir } from "./root-session.js";
+import { classifyRootSessionLocator } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { catalogLockPath, lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
 
@@ -60,9 +61,7 @@ test("Core catalogs every local Session without creating a Workspace database", 
         assertEquals(first.sessions[0].transcriptPath, transcriptPath);
         assertEquals(
             store.listSessionTranscriptSegments(first.sessions[0].runwieldSessionId).map((item) => item.kind),
-            [
-                "planning",
-            ],
+            ["planning"],
         );
         assertFalse(await exists(join(fixture.rootDir, "owner-coordination.sqlite3")));
         const stableId = first.sessions[0].runwieldSessionId;
@@ -315,11 +314,7 @@ test("created and loaded Sessions do not scan unrelated Session manifests", asyn
         await mkdir(siblingRoot);
         const canonicalSiblingRoot = await realpath(siblingRoot);
         const siblingSessionDir = join(fixture.sessionBaseDir, encodeCwdForSessionDir(canonicalSiblingRoot));
-        const siblingTranscript = await writeTranscript(
-            siblingSessionDir,
-            canonicalSiblingRoot,
-            "sibling-session",
-        );
+        const siblingTranscript = await writeTranscript(siblingSessionDir, canonicalSiblingRoot, "sibling-session");
         const seedStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const siblingProject = seedStore.ensureRuntimeProject({ root: canonicalSiblingRoot, now: () => TIMESTAMP });
         const sibling = await seedStore.ensureSessionCatalogRecord({
@@ -548,13 +543,9 @@ test("recovery descriptor retains the initial writer baseline when the manifest 
             ownerProcessKind: "test",
             expectedGeneration: null,
         });
-        await writeFile(
-            transcriptPath,
-            `${JSON.stringify({ type: "message", message: { role: "user" } })}\n`,
-            {
-                flag: "a",
-            },
-        );
+        await writeFile(transcriptPath, `${JSON.stringify({ type: "message", message: { role: "user" } })}\n`, {
+            flag: "a",
+        });
         const manifestPath = join(
             fixture.sessionDir,
             ".runwield",
@@ -590,20 +581,18 @@ test("transcript lineage reconstructs one ordered Session without a database or 
         const planningPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "planning");
         await writeFile(
             planningPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "committed-plan",
-                        planName: "committed-plan",
-                        purpose: "planning",
-                        segmentId: "planning-segment",
-                        segmentKind: "planning",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "committed-plan",
+                    planName: "committed-plan",
+                    purpose: "planning",
+                    segmentId: "planning-segment",
+                    segmentKind: "planning",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n`,
             { flag: "a" },
         );
         const executionPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "execution", {
@@ -616,20 +605,18 @@ test("transcript lineage reconstructs one ordered Session without a database or 
         });
         await writeFile(
             executionPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "continuation-boundary-plan",
-                        planName: "continuation-boundary-plan",
-                        purpose: "planning",
-                        segmentId: "execution-segment",
-                        segmentKind: "execution",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n${JSON.stringify({ type: "custom", customType: "runwield.pending_segment_continuation", data: {} })}\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "continuation-boundary-plan",
+                    planName: "continuation-boundary-plan",
+                    purpose: "planning",
+                    segmentId: "execution-segment",
+                    segmentKind: "execution",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n${JSON.stringify({ type: "custom", customType: "runwield.pending_segment_continuation", data: {} })}\n`,
             { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -689,20 +676,18 @@ test("lineage recovery ignores uncommitted current root transcript associations"
         });
         await writeFile(
             transcriptPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "tail-plan",
-                        planName: "tail-plan",
-                        purpose: "planning",
-                        segmentId: "planning-segment",
-                        segmentKind: "planning",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "tail-plan",
+                    planName: "tail-plan",
+                    purpose: "planning",
+                    segmentId: "planning-segment",
+                    segmentKind: "planning",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n`,
             { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -755,16 +740,21 @@ test("malformed lineage is blocked instead of cataloged as a legacy Session", as
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "malformed-lineage");
         await writeFile(
             transcriptPath,
-            `${
-                JSON.stringify({ type: "custom", customType: "runwield.segment_lineage", data: { segmentId: "only" } })
-            }\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.segment_lineage",
+                data: { segmentId: "only" },
+            })}\n`,
             { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
         const result = await store.listProjectSessions(project.projectId);
         assertEquals(result.sessions, []);
-        assertEquals(result.diagnostics.map((item) => item.code), ["lineage_recovery_blocked"]);
+        assertEquals(
+            result.diagnostics.map((item) => item.code),
+            ["lineage_recovery_blocked"],
+        );
         store.close();
     } finally {
         await rm(fixture.rootDir, { recursive: true });
@@ -791,20 +781,21 @@ test("conflicting lineage entries fail closed", async () => {
         );
         await writeFile(
             transcriptPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.segment_lineage",
-                    data: { ...firstLineage, runwieldSessionId: "different-session" },
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.segment_lineage",
+                data: { ...firstLineage, runwieldSessionId: "different-session" },
+            })}\n`,
             { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
         const result = await store.listProjectSessions(project.projectId);
         assertEquals(result.sessions, []);
-        assertEquals(result.diagnostics.map((item) => item.code), ["lineage_recovery_blocked"]);
+        assertEquals(
+            result.diagnostics.map((item) => item.code),
+            ["lineage_recovery_blocked"],
+        );
         store.close();
     } finally {
         await rm(fixture.rootDir, { recursive: true });
@@ -936,9 +927,10 @@ test("initial recovery retains the writer baseline after activation becomes unce
         });
         await writeFile(
             transcriptPath,
-            `${await readFile(transcriptPath, "utf8")}${
-                JSON.stringify({ type: "custom", customType: "writer-output" })
-            }\n`,
+            `${await readFile(transcriptPath, "utf8")}${JSON.stringify({
+                type: "custom",
+                customType: "writer-output",
+            })}\n`,
         );
         store.markSessionUncertain(proof, { reason: "agent activation failed" });
 
@@ -1035,7 +1027,7 @@ async function exists(path) {
         await stat(path);
         return true;
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -1273,11 +1265,10 @@ test("Session archive filters apply before pagination and totals", async () => {
             assertEquals(second.sessions.length, 1);
             assertEquals(first.hasNext, true);
             assertEquals(second.hasNext, false);
-            assertEquals([...first.sessions, ...second.sessions].map((item) => Boolean(item.archivedAt)), [
-                archiveState === "archived",
-                archiveState === "archived",
-                archiveState === "archived",
-            ]);
+            assertEquals(
+                [...first.sessions, ...second.sessions].map((item) => Boolean(item.archivedAt)),
+                [archiveState === "archived", archiveState === "archived", archiveState === "archived"],
+            );
         }
         assertEquals((await store.listProjectSessions(project.projectId, { archiveState: "all", all: true })).total, 6);
     } finally {

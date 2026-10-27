@@ -12,13 +12,14 @@
  * The types here are engine-owned. Where they mirror a session type
  * (`RuntimeValidationProgress`, `RuntimeInteractionRequest`, `ActiveExecutionWorkflow`)
  * they are structural subsets, assignable both ways at the adapter boundary. The
- * opaque handles (`SessionManagerHandle`, `OpaqueToolDefinition`) are phantom-branded:
- * the single cast from the Pi types happens inside `validation-session-adapter.ts`.
+ * review and Manual QA requests carry data; executable tools and session managers
+ * belong to `validation-session-adapter.ts`.
  */
 
 import type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "../../tools/review-complete.ts";
 import type { ValidationOperationalFailure } from "./validation-operational-errors.ts";
 import type { ReviewLedger } from "./review-ledger.ts";
+import type { ReviewDiffScope, ReviewInspection } from "./review-inspection.ts";
 
 /** The phase that should run next for a Plan. */
 export type ValidationPhaseName = "mechanical" | "semantic" | "delivery";
@@ -86,6 +87,8 @@ export type ValidationWorkflowState = {
     worktreeBaseCommit?: string;
     nonGitInPlace?: boolean;
     validationContinuation?: boolean;
+    /** Durable validation attempt claimed by the supervisor. */
+    validationGeneration?: string;
     /** Consume-once identity for the semantic repair currently owned by the checkpoint. */
     validationRepairGeneration?: string;
     semanticRound?: number;
@@ -174,17 +177,28 @@ export type IndependentRepairTurnRequest = {
     cwd: string;
 };
 
-/**
- * An isolated Agent session request.
- *
- * Discriminated by role: the reviewer (Semantic Code Review rounds) and the
- * Reviewer-Feedback Engineer (repair dispatch) have different tooling and different
- * outcome shapes. The engine passes opaque handles; the adapter casts them to the Pi
- * types exactly once.
- */
 /** Which reviewer prompt runs: a Plan's discovery or verification round, or the Epic integration gate. */
 export type ReviewerRoundMode = "discovery" | "verify" | "integration" | "integration_verify";
 
+/** Diff data and observed reads for one round. The inspection also identifies its Session context. */
+export type ValidationReviewData = {
+    fullDiff: string;
+    repairDiff: string;
+    /** A repair can make no changes and still supply a valid empty repair scope. */
+    hasRepairScope?: boolean;
+    requiredScope: ReviewDiffScope;
+    inspection: ReviewInspection;
+};
+
+/** Manual QA artifact destination. The adapter owns the recording tool. */
+export type ValidationManualQaData = {
+    projectRoot: string;
+    epicPlanName: string;
+    childPlanName: string;
+    childHeading: string;
+};
+
+/** Isolated Agent requests carry data, never executable tools or session handles. */
 export type IsolatedAgentSessionRequest =
     | {
           kind: "reviewer";
@@ -192,32 +206,27 @@ export type IsolatedAgentSessionRequest =
           userRequest: string;
           cwd: string;
           reviewerMode: ReviewerRoundMode;
-          customTools: OpaqueToolDefinition[];
-          sessionManager: SessionManagerHandle;
-          /**
-           * Stable identity for one unfinished review. Automatic retries and corrective
-           * nudges of that review reuse it, so their model-turn budget is cumulative.
-           */
+          review: ValidationReviewData;
+          ledger: ReviewLedger;
+          /** Identity reused for retries of one unfinished review. */
           controllerRequestId?: string;
       }
     | {
           kind: "feedback_engineer";
-          /** A reply may end in plain text; patch identity decides whether validation restarts. */
+          /** Plain-text replies keep the review open when the candidate is unchanged. */
           conversationTurn?: boolean;
           agentName: string;
           userRequest: string;
           cwd: string;
           images?: Array<{ base64: string; mimeType: string }>;
-          customTools: OpaqueToolDefinition[];
-          sessionManager?: SessionManagerHandle;
+          review: ValidationReviewData;
       }
     | {
           kind: "manual_qa";
           agentName: string;
           userRequest: string;
           cwd: string;
-          customTools: OpaqueToolDefinition[];
-          sessionManager?: SessionManagerHandle;
+          manualQa: ValidationManualQaData;
       };
 
 /**
@@ -261,23 +270,6 @@ export type IsolatedAgentSessionOutcome =
           outcome: "operational_failure";
           failure: ValidationOperationalFailure;
       };
-
-/**
- * Opaque handle for a Pi `ToolDefinition`.
- *
- * Phantom-branded so the engine cannot build or inspect one; it only passes the
- * review-diff tools it creates through {@link createReviewDiffTool} and hands the
- * handle across the port.
- */
-export type OpaqueToolDefinition = { readonly __opaqueToolDefinition: unique symbol };
-
-/**
- * Opaque handle for a Pi `SessionManager`.
- *
- * Phantom-branded so the engine never imports the Pi type. The adapter casts the
- * real SessionManager to this exactly once per boundary crossing.
- */
-export type SessionManagerHandle = { readonly __opaqueSessionManager: unique symbol };
 
 /** Post-verification handoffs the engine requests once a Plan is verified. */
 export type PostVerificationHandoffParams = {
@@ -351,7 +343,6 @@ export type ValidationSessionPort = {
     /** Continue the most recent focused repair session with its existing context. */
     continueLastRepairTurn(userRequest: string): Promise<AgentTurnOutcome | null>;
     /** Isolated Agent sessions: Semantic Reviewer and Reviewer-Feedback Engineer. */
-    createInMemorySessionManager(cwd: string): SessionManagerHandle;
     runIsolatedAgentSession<K extends IsolatedAgentSessionRequest["kind"]>(
         request: Extract<IsolatedAgentSessionRequest, { kind: K }>,
     ): Promise<Extract<IsolatedAgentSessionOutcome, { kind: K }>>;

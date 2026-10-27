@@ -31,6 +31,8 @@ fix the failing parser test
 
 - [Quickstart](quickstart.md) — install, authenticate, initialize a project, and run your first request.
 - [Workspace](workspace.md) — use RunWield in a browser or on your phone.
+- [Connect for Claude Code](connect-claude-code.md) — keep the conversation and model calls in Claude Code, with Core
+  workflow gates. Core needs no model credentials for Connect; this FEATURE Preview has its own tested scope.
 
 ## Use RunWield
 
