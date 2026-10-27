@@ -428,6 +428,49 @@ for (const { name, original, current, matches } of [
     });
 }
 
+for (const stale of [true, false]) {
+    test(`shared review ${stale ? "rejects old" : "accepts current"} controller evidence on unchanged draft status`, async () => {
+        const fixture = await makePlanFile({ status: "draft" });
+        try {
+            const reviewed = await loadPlan(fixture.dir, "plan");
+            assert(reviewed);
+            if (stale) {
+                await recordPlanEvent({
+                    cwd: fixture.dir,
+                    planName: "plan",
+                    event: "review_feedback",
+                    currentStatus: "draft",
+                    details: { failureReason: "New Core feedback." },
+                });
+            }
+            const before = await loadPlan(fixture.dir, "plan");
+            assert(before);
+            assertEquals(
+                before.revision,
+                reviewed.revision,
+                "Controller evidence is not part of the document revision.",
+            );
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: reviewed.path,
+                planWithFrontMatter: reviewed.markdown,
+                planRevision: reviewed.revision,
+                expectedControllerRevision: reviewed.controllerRevision,
+                originalAttrs: reviewed.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: { approved: true, approvalAction: "later" },
+            });
+            assertEquals(result.approved, !stale);
+            assertEquals(result.cancellationReason, stale ? "stale_plan_review" : undefined);
+            if (stale) assertEquals(await loadPlan(fixture.dir, "plan"), before);
+            else assertEquals((await loadPlan(fixture.dir, "plan"))?.attrs.status, "approved");
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
+    });
+}
+
 for (const status of ["draft", "approved", "ready_for_work", "ready_for_decomposition"] as const) {
     test(`conversation preserves ${status} bytes, revision, and lifecycle evidence`, async () => {
         const fixture = await makePlanFile({ status });

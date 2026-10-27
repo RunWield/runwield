@@ -17,7 +17,7 @@ import process from "node:process";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { encodeCwdForSessionDir } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 test("the latest Plan review is readable from another store before the writer settles", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
@@ -29,15 +29,13 @@ test("the latest Plan review is readable from another store before the writer se
     const transcriptPath = join(transcriptDir, "2026-01-01T00-00-00-000Z_pi-session.jsonl");
     await fsWriteFile(
         transcriptPath,
-        `${
-            JSON.stringify({
-                type: "session",
-                version: 3,
-                id: "pi-session",
-                timestamp: "2026-01-01T00:00:00.000Z",
-                cwd: projectRoot,
-            })
-        }\n`,
+        `${JSON.stringify({
+            type: "session",
+            version: 3,
+            id: "pi-session",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            cwd: projectRoot,
+        })}\n`,
     );
     const writer = openFileSessionStore({ baseDir, now: () => "2026-01-02T00:00:00.000Z" });
     const reader = openFileSessionStore({ baseDir });
@@ -73,11 +71,14 @@ test("the latest Plan review is readable from another store before the writer se
         // A second store sees the atomic manifest update while the first writer still owns the lock.
         assertEquals(reader.getLastPlanReview(session.runwieldSessionId, project.projectId), first);
         assertThrows(() =>
-            writer.recordLastPlanReview({ ...proof, fence: proof.fence + 1 }, {
-                planId: "bad",
-                planName: "bad",
-                planningAgentName: "planner",
-            })
+            writer.recordLastPlanReview(
+                { ...proof, fence: proof.fence + 1 },
+                {
+                    planId: "bad",
+                    planName: "bad",
+                    planningAgentName: "planner",
+                },
+            ),
         );
         assertEquals(reader.getLastPlanReview(session.runwieldSessionId, project.projectId), first);
         const second = writer.recordLastPlanReview(proof, {
@@ -112,15 +113,13 @@ test("a Plan review reference survives a writer process crash before settlement"
     const transcriptPath = join(transcriptDir, "2026-01-01T00-00-00-000Z_pi-session.jsonl");
     await fsWriteFile(
         transcriptPath,
-        `${
-            JSON.stringify({
-                type: "session",
-                version: 3,
-                id: "pi-session",
-                timestamp: "2026-01-01T00:00:00.000Z",
-                cwd: projectRoot,
-            })
-        }\n`,
+        `${JSON.stringify({
+            type: "session",
+            version: 3,
+            id: "pi-session",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            cwd: projectRoot,
+        })}\n`,
     );
     const script = `
         import { openFileSessionStore } from ${JSON.stringify(import.meta.resolve("./file-session-store.ts"))};
@@ -167,7 +166,9 @@ test("a Plan review reference survives a writer process crash before settlement"
         if (!ready) {
             try {
                 worker.kill("SIGKILL");
-            } catch { /* Worker already stopped. */ }
+            } catch {
+                /* Worker already stopped. */
+            }
             const result = await collectProcessOutput(worker);
             throw new Error(`Writer never recorded the review: ${new TextDecoder().decode(result.stderr)}`);
         }
@@ -183,7 +184,9 @@ test("a Plan review reference survives a writer process crash before settlement"
     } finally {
         try {
             worker.kill("SIGKILL");
-        } catch { /* Worker already stopped. */ }
+        } catch {
+            /* Worker already stopped. */
+        }
         await fsRm(root, { recursive: true });
     }
 });

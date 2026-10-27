@@ -29,6 +29,10 @@ first-party plugins. A Connect plugin lets users explicitly invoke RunWield work
 while that host retains the conversation and makes every model call. _Avoid_: Plugin mode, always-on RunWield, trial
 mode
 
+**Compatibility Matrix**: Core-owned, versioned data of tested External Agent Host versions, adapter contracts,
+capabilities, and limits for a Connect adapter. Activation checks it; only acceptance evidence adds tested entries.
+_Avoid_: support list, capability manifest
+
 **Attached Mode**: The internal architecture underlying RunWield Connect, in which an External Agent Host makes every
 model call and users invoke RunWield explicitly for individual user requests. Use RunWield Connect in customer-facing
 product language. _Avoid_: Public product name, RunWield Execution Backend
@@ -36,6 +40,31 @@ product language. _Avoid_: Public product name, RunWield Execution Backend
 **Attached Workflow**: The per-request RunWield workflow active inside an External Agent Host through RunWield Connect,
 with RunWield governing durable workflow truth while the host performs agent reasoning and execution. _Avoid_: Attached
 Mode, Managed Mode, RunWield Session
+
+**Attached Workflow Coordinator**: The Core runtime that advances Attached Workflows through short `wld attached`
+operations. It is a sibling of `SessionRuntime`: it loads the Attached Workflow Record, checks it, makes at most one
+change, saves, and exits. It never creates a Session, calls a model, or stores a host transcript. _Avoid_: Attached
+adapter, attached Session, host bridge
+
+**Attached Workflow Record**: The durable file that holds one Attached Workflow's state, revision, pending host action,
+accepted operation results, and binding evidence. It lives under `~/.wld/attached/`, keyed by the primary checkout root.
+It references its Plan but does not own it. The same Plan can be opened and run with `wld`. _Avoid_: Attached Session,
+host transcript, controller record
+
+**Attached Review Round**: The durable pending-review identity on an Attached Workflow Record: round, action ID, actual
+reviewed Plan revision, and waiting reason. It keeps a browser decision and its outcome recoverable across process loss.
+Core Plan review remains the authority for approval, Feedback, and readiness. _Avoid_: review promise, session-scoped
+review
+
+**Attached Execution Handoff**: The durable handoff of a Core-prepared execution directory, Plan path, issued action,
+and current implementer role instructions to an External Agent Host worker. The Attached Workflow Record references
+RunWield's registry and baseline evidence; it does not own a second worktree lifecycle. The host worker returns a bullet
+report to the coordinating conversation, which submits Core's `task_completed` contract. With remembered non-Git
+consent, the directory is the current checkout rather than a worktree. _Avoid_: worker session, host worktree
+
+**Attached Role Instructions**: The effective layered agent instructions Core returns with a pending host action. They
+are resolved for each response from project, home, and bundled definitions and are not saved in the Attached Workflow
+Record. _Avoid_: generated Skill, role contract copy
 
 **Headless Mode**: The non-interactive RunWield execution surface that emits machine-readable Agent Session events for
 external hosts. _Avoid_: TUI mode, batch wrapper, remote UI
@@ -678,11 +707,13 @@ express. Plan Status still selects the validation phase. Session workflow state 
 cleared when validation ends, review reopens, or the implementation attempt is replaced. _Avoid_: Second status, Session
 state
 
-**Session-Independent Validation Engine**: The Workflow Validation sequencing, convergence policy, and gate predicates
-run on a session-independent engine (`src/shared/workflow/validation-engine.ts` and its phase modules) that consumes
-Pi/session turn machinery only through a narrow `ValidationSessionPort`. The Core Session runtime's `validation.ts`
-builds that port over the HostedSession machinery; other runtimes can drive the same engine by implementing the port.
-_Avoid_: Second validation implementation, session-coupled engine
+**Session-Independent Validation Engine**: Workflow Validation sequencing, convergence policy, and gate predicates run
+on the shared engine (`src/shared/workflow/validation-engine.ts` and its phase modules). Its supervisor and local CI
+command runner also work without a Session. Core's `validation.ts` builds `ValidationSessionPort` over HostedSession;
+`validation-host-turn.ts` uses the same supervisor and engine but returns typed reviewer, repair, and decision requests
+instead of in-process waits. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
+Host-turn validation stops at `reviewed`, before delivery. _Avoid_: Second validation implementation, session-coupled
+engine
 
 **Mechanical Validation**: RunWield's automated command validation loop. In no-plan QUICK_FIX work it runs local CI only
 without semantic review or Plan status transitions; inside Workflow Validation for executable Plans it runs the
@@ -849,6 +880,10 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   truth, review, validation, recovery evidence, Work Records, and organizational memory.
 - An **Attached Workflow** persists structured evidence and durable artifacts without copying the host conversation into
   a **Session Transcript**.
+- One **Attached Workflow Record** exists for each **Attached Workflow**. It is not a **Session**. Only the **Attached
+  Workflow Coordinator** writes it.
+- An **Attached Workflow Record** references **Plan** and worktree truth and never copies it. It stores the
+  **Compatibility Matrix** activation assessment as evidence, not authority.
 - An **Aggregate Transcript Projection** emits no part of a generation until every included **Sealed Session Transcript
   Segment** and the current committed segment prefix have verified.
 - A **Verified Plan** has the same meaning in **RunWield Connect** and **RunWield Core**, regardless of which

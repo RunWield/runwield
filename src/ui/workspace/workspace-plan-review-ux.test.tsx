@@ -481,8 +481,8 @@ test("Plan reviews recover unfinished work and send direct edits as feedback", a
     assertStringIncludes(surface, "Restore draft");
     assertStringIncludes(surface, "persistReviewDraftLocally");
     assertStringIncludes(surface, "directEdits={directEditPanel}");
-    assertMatch(surface, /disabled=\{\s*!hasGroupFeedback \|\| submitting !== null \|\| plannerWorking\s*\}/);
-    assertStringIncludes(surface, "plannerWorking || reviewGroup?.busy}");
+    assertMatch(surface, /disabled=\{\s*!hasGroupFeedback \|\|\s*submitting !== null \|\|/);
+    assertMatch(surface, /plannerWorking \|\| waitingForRevision \|\|\s*reviewGroup\?\.busy\s*\}/);
     assertStringIncludes(surface, "buildPlanReviewFeedback");
 });
 

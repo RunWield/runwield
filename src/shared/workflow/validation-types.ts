@@ -23,7 +23,9 @@ type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuat
 
 /** The engine's result shape, mirroring the public entry's `WorkflowValidationResult`. */
 export type WorkflowValidationResult = {
-    kind: "verified" | "paused" | "failed" | "semantic_repair_handoff";
+    kind: "verified" | "paused" | "failed" | "semantic_repair_handoff" | "host_request";
+    hostRequest?: import("./validation-host-contract.ts").ValidationHostRequest;
+    workRecord?: PlanFrontMatter["workRecord"];
     planName: string;
     projectRoot: string;
     classification?: string;
@@ -106,6 +108,7 @@ export type ValidationLoopArgs = {
     localCI: ValidationLocalCIPort;
     workRecordMnemotecaPort: WorkRecordMnemotecaPort;
     supportsSemanticRepairHandoff?: boolean;
+    hostTurn?: import("./validation-host-contract.ts").ValidationHostTurn;
     /** Durable phase claimed by the validation supervisor. */
     continuationPhase?: ValidationCheckpointPhase;
     /** Durable attempt record claimed by the validation supervisor. */
@@ -146,10 +149,7 @@ export type PublicationOutcome = {
     recorded: boolean;
 };
 
-export type UserActionChoice =
-    | "engineer_follow_up"
-    | "retry"
-    | "stop";
+export type UserActionChoice = "engineer_follow_up" | "retry" | "stop";
 
 export type UserActionOption = {
     value: UserActionChoice;
@@ -205,3 +205,8 @@ export const PHASE_STATUS: Record<import("./validation-ports.ts").ValidationPhas
 export const MAX_AGENT_MERGE_REPAIRS = 2;
 
 export type { PlanEvent, PlanEventStatus, PlanFrontMatter, PlanStatus, RecordPlanEventArgs, RecordPlanEventResult };
+
+/** The first two semantic rounds discover defects; later rounds verify repairs. */
+export function semanticReviewMode(round: number): "discovery" | "verify" {
+    return round <= 2 ? "discovery" : "verify";
+}

@@ -283,6 +283,16 @@ recoverably incomplete and retry with:
 gh release edit <tag> --notes-file <notes-file>
 ```
 
+## Connect plugin versions
+
+Bump `version` in `src/attached/claude/plugin/.claude-plugin/plugin.json` whenever plugin files change. Claude Code
+caches plugins by version. Bump `adapterContract` in `runwield-adapter.json` only when Core and the plugin can no
+longer use the same protocol; update Core's supported contracts and guidance in the same change.
+
+Add tested host versions to the Core Compatibility Matrix only with passing live acceptance results. Keep each saved
+result's source identity and disclosed limits. Do not treat a headless permissions-bypassed run as default-permissions
+proof. Update the [Claude guide](user-documentation/connect-claude-code.md) with the matrix.
+
 ## Stable documentation publication
 
 Stable docs are qualified release artifacts. Before publication, `docs-artifact` prepares one documentation commit,

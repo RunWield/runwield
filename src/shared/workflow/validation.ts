@@ -11,6 +11,14 @@
  */
 
 import * as engine from "./validation-engine.ts";
+import { runValidationAttempt, type ValidationTrigger } from "./validation-supervisor.ts";
+import { loadPlan } from "../../plan-store.js";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
+import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { emitProgress, emitStatus } from "./validation-emit.ts";
+import { getCurrentValidationProgress } from "./validation-progress.ts";
+import { validationUserMessage } from "./validation-user-messages.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import type { SemanticReviewPort } from "./validation-session-adapter.ts";
@@ -67,6 +75,11 @@ export type ValidationLoopArgs = {
     continuationPhase?: ValidationCheckpointPhase;
     /** Durable attempt record selected by the validation supervisor. */
     validationCheckpoint?: ValidationCheckpoint;
+};
+
+export type ContinueWorkflowValidationArgs = ValidationLoopArgs & {
+    trigger?: ValidationTrigger;
+    taskCompletionId?: string;
 };
 
 type MechanicalValidationArgs = {
@@ -130,4 +143,124 @@ export function createEngineValidationArgs(args: ValidationLoopArgs): EngineVali
         continuationPhase: args.continuationPhase,
         validationCheckpoint: args.validationCheckpoint,
     };
+}
+
+function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
+    return resolvePrimaryCheckoutRoot(args.executionContext?.projectRoot || args.hostedSession.cwd);
+}
+
+async function validationPlanCwd(args: ContinueWorkflowValidationArgs): Promise<string> {
+    const projectRoot = validationProjectRoot(args);
+    const attempt = await findWorktreeByPlanName(projectRoot, args.planName);
+    if (attempt) return attempt.path;
+    return (await resolveWorkflowPlanLocation(projectRoot, args.planName)).documentRoot;
+}
+
+function presentPausedProgress(args: ContinueWorkflowValidationArgs, result: WorkflowValidationResult): void {
+    if (result.kind !== "paused" || result.continueValidation) return;
+    const engine = createEngineValidationArgs(args);
+    const current = engine.session.getCurrentProgress();
+    const message = result.reason || validationUserMessage("retry_pause");
+    if (!current) {
+        emitStatus(engine, message, "warning");
+        return;
+    }
+    if (current.outcome !== "running") return;
+    emitProgress(engine, message, "warning", {
+        outcome: "paused",
+        stage: "terminal",
+        message,
+        checks: {
+            ci: current.checks.ci === "running" ? "canceled" : current.checks.ci,
+            semanticReview: current.checks.semanticReview === "running" ? "canceled" : current.checks.semanticReview,
+            humanReview: current.checks.humanReview === "running" ? "canceled" : current.checks.humanReview,
+            merge: current.checks.merge === "running" ? "canceled" : current.checks.merge,
+        },
+    });
+}
+
+/** Compose the Core Session port over the shared validation attempt owner. */
+export async function continueWorkflowValidation(
+    args: ContinueWorkflowValidationArgs,
+): Promise<WorkflowValidationResult> {
+    const result = await runValidationAttempt({
+        projectRoot: validationProjectRoot(args),
+        planName: args.planName,
+        trigger: args.trigger,
+        taskCompletionId: args.taskCompletionId,
+        buildEngineArgs: (claim) =>
+            createEngineValidationArgs({
+                ...args,
+                planContent: claim.planContent,
+                triageMeta: claim.triageMeta,
+                continuationPhase: claim.checkpoint.nextPhase,
+                validationCheckpoint: claim.checkpoint,
+            }),
+    });
+    if (
+        result.recovery?.code !== "validation_owner_active" &&
+        result.recovery?.code !== "task_completion_already_settled"
+    ) {
+        const settledPlan = await loadPlan(await validationPlanCwd(args), args.planName);
+        if (settledPlan) {
+            const progress = getCurrentValidationProgress(args.hostedSession);
+            const active = args.hostedSession.getActiveExecutionWorkflow();
+            const triageMeta = settledPlan.attrs as TriageMeta;
+            if (active) args.hostedSession.setActiveExecutionWorkflow({ ...active, triageMeta });
+            args.hostedSession.setWorkflowExecutionContext?.({ planName: args.planName, triageMeta });
+            if (progress) {
+                args.hostedSession.replaceWorkflowContext?.(
+                    {
+                        ...args.hostedSession.getWorkflowContext(),
+                        validationProgress: progress,
+                    },
+                    { persist: true },
+                );
+            }
+        }
+    }
+    if (result.kind === "verified") args.hostedSession.clearActiveExecutionWorkflow();
+    if (
+        result.recovery?.code !== "validation_owner_active" &&
+        result.recovery?.code !== "task_completion_already_settled"
+    )
+        presentPausedProgress(args, result);
+    return result;
+}
+
+/**
+ * Continue across successful phase boundaries until validation either finishes
+ * or reaches a boundary that needs an Agent or the user. The execution Plan is
+ * reloaded between phases because it is the durable phase authority once work
+ * has started.
+ */
+export async function runWorkflowValidationToStableBoundary(
+    initialArgs: ContinueWorkflowValidationArgs,
+): Promise<WorkflowValidationResult> {
+    let args = initialArgs;
+    let result = await continueWorkflowValidation(args);
+    // A resumed run can first consume its durable recovery checkpoint before
+    // advancing through Mechanical Validation, semantic review, optional human
+    // review, and publication. Bound the loop above that complete phase count;
+    // explicit decisions below still stop immediately at Agent/user boundaries.
+    for (let phase = 0; phase < 5; phase += 1) {
+        if (result?.kind !== "paused" || !result.continueValidation) break;
+        const planCwd = await validationPlanCwd(args);
+        const plan = await loadPlan(planCwd, args.planName).catch(() => null);
+        const status = String(plan?.attrs.status || "");
+        if (!plan) break;
+        if (
+            status !== "validated_ci" &&
+            status !== "reviewed" &&
+            !(status === "implemented" && plan.attrs.validationPhase === "semantic")
+        )
+            break;
+        args = {
+            ...args,
+            planContent: plan.markdown,
+            triageMeta: plan.attrs as ContinueWorkflowValidationArgs["triageMeta"],
+        };
+        result = await continueWorkflowValidation(args);
+    }
+    return result;
 }

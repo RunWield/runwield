@@ -4,6 +4,8 @@ import { test } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 
+import ts from "typescript";
+
 const REPO_ROOT = join(dirname(fromFileUrl(import.meta.url)), "../../..");
 
 function repoPath(path: string): string {
@@ -40,10 +42,9 @@ const RAW_LIFECYCLE_PATTERNS: [string, RegExp][] = [
 
 function isInsideSemanticTransitionApply(text: string, index: number): boolean {
     const window = text.slice(Math.max(0, index - 5000), index);
-    return /run(?:Recovery|ValidationOutcome|ExecutionPreparation|ImplementationCheckpoint|Archive|PlanFrontMatter|ReviewReopen|PlanLifecycleEvent|PlanReviewDecision)Transition\s*\([\s\S]*(?:recover|settle|prepare|checkpoint|move|reopen|record|decide|apply)\s*:\s*async/
-        .test(
-            window,
-        );
+    return /run(?:Recovery|ValidationOutcome|ExecutionPreparation|ImplementationCheckpoint|Archive|PlanFrontMatter|ReviewReopen|PlanLifecycleEvent|PlanReviewDecision)Transition\s*\([\s\S]*(?:recover|settle|prepare|checkpoint|move|reopen|record|decide|apply)\s*:\s*async/.test(
+        window,
+    );
 }
 
 test("high-level lifecycle callers use Plan Lifecycle APIs instead of raw Plan status writes", async () => {
@@ -101,4 +102,100 @@ test("Agent Plan creation uses create-if-absent instead of rename-over writes", 
     const text = await fsReadFile(repoPath("src/tools/plan-safe-file-tools.ts"), "utf8");
     assertEquals(/atomicWriteTextFileIfAbsent\s*\(/.test(text), true);
     assertEquals(/atomicWriteTextFile\s*\(/.test(text), false);
+});
+
+/** Includes static imports, re-exports, dynamic imports, and import-type expressions. */
+function importSpecifiers(text: string, file: string): string[] {
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    const imports: string[] = [];
+    function visit(node: ts.Node): void {
+        if (
+            (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+            node.moduleSpecifier &&
+            ts.isStringLiteral(node.moduleSpecifier)
+        ) {
+            imports.push(node.moduleSpecifier.text);
+        }
+        if (
+            ts.isImportTypeNode(node) &&
+            ts.isLiteralTypeNode(node.argument) &&
+            ts.isStringLiteral(node.argument.literal)
+        ) {
+            imports.push(node.argument.literal.text);
+        }
+        if (
+            ts.isCallExpression(node) &&
+            node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+            node.arguments[0] &&
+            ts.isStringLiteral(node.arguments[0])
+        ) {
+            imports.push(node.arguments[0].text);
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(source);
+    return imports;
+}
+
+async function moduleGraphOffenders(root: string, forbidden: RegExp): Promise<string[]> {
+    const pending = [repoPath(root)];
+    const visited = new Set<string>();
+    const offenders = new Set<string>();
+    while (pending.length) {
+        const file = pending.pop()!;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        if (forbidden.test(file)) offenders.add(file);
+        const text = await fsReadFile(file, "utf8");
+        for (const specifier of importSpecifiers(text, file)) {
+            if (forbidden.test(specifier)) offenders.add(specifier);
+            if (specifier.startsWith("node:") || specifier.startsWith("bun:")) continue;
+            const resolved = Bun.resolveSync(specifier, dirname(file));
+            if (/\.[cm]?[jt]sx?$/.test(resolved)) pending.push(resolved);
+        }
+    }
+    return [...offenders].sort();
+}
+
+test("pure review diff graph excludes Pi, the tool wrapper, and HostedSession", async () => {
+    assertEquals(
+        await moduleGraphOffenders(
+            "src/shared/workflow/review-diff.ts",
+            /@earendil-works\/|review-diff-tool\.js$|hosted-session\.js$/,
+        ),
+        [],
+    );
+});
+
+test("pure review outcome graph excludes Pi, the completion tool, and HostedSession", async () => {
+    assertEquals(
+        await moduleGraphOffenders(
+            "src/shared/workflow/review-outcome.ts",
+            /@earendil-works\/|tools\/review-complete\.ts$|hosted-session\.js$/,
+        ),
+        [],
+    );
+});
+
+test("validation supervisor does not import Session composition", async () => {
+    const file = repoPath("src/shared/workflow/validation-supervisor.ts");
+    const imports = importSpecifiers(await fsReadFile(file, "utf8"), file);
+    assertEquals(
+        imports.filter((specifier) =>
+            /(?:^|\/)(?:validation\.ts|validation-session-adapter\.ts|hosted-session\.js)$/.test(specifier),
+        ),
+        [],
+    );
+});
+
+test("host-turn composition has no validation policy, CI invocation, or model construction", async () => {
+    const text = await fsReadFile(repoPath("src/shared/workflow/validation-host-turn.ts"), "utf8");
+    assertEquals(
+        /\b(?:runValidationLoop|applyRoundFindings|unaccountedOpenItems|decideValidationRecovery|recordLifecycleEvent|recordDeliveryEvidence|runValidationCommand|runLocalCI|createAgentSession|createValidationSessionPort)\s*\(/.test(
+            text,
+        ),
+        false,
+    );
+    assertEquals(/new\s+(?:HostedSession|AgentSession)\s*\(/.test(text), false);
+    assertEquals(/\brunValidationAttempt\s*\(/.test(text), true);
 });

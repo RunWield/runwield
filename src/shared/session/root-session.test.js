@@ -17,7 +17,6 @@ import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     createRootSessionManager,
-    encodeCwdForSessionDir,
     getRootSessionBranchEntries,
     getRunWieldSessionDir,
     getRunWieldSessionsBaseDir,
@@ -29,6 +28,7 @@ import {
     readCatalogSafeRootSessionLocator,
     resolveCreatedRootSessionPath,
 } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 test("root-session path containment accepts children but rejects sibling prefixes", () => {
     const base = join("root", "sessions");

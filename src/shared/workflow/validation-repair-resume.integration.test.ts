@@ -1,8 +1,8 @@
-import process from "node:process";
-import { getLockHostname } from "../process-liveness.ts";
 import { readFile as fsReadFile, stat as fsStat, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { getLockHostname } from "../process-liveness.ts";
+import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -12,10 +12,11 @@ import { HostedSession } from "../session/hosted-session.js";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
-import type { SemanticReviewPort } from "./validation-session-adapter.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { type SemanticReviewPort } from "./validation-session-adapter.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { attachRecorder, makeStubGitPort, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
+import process from "node:process";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
 
@@ -205,7 +206,42 @@ test("mechanical failure state is durable before CI repair dispatch", async () =
         hostedSession,
         projectRoot,
         localCI: { run: () => Promise.resolve({ kind: "completed", exitCode: 1, output: "type error" }) },
-        semanticReviewPort: makeRepairPort({ completed: false }, repairCounter),
+        semanticReviewPort: makeRepairPort(
+            {
+                completed: false,
+                onRun: async () => {
+                    const saved = await loadPlan(projectRoot, "p");
+                    assertExists(saved);
+                    const checkpoint = saved.attrs.validationCheckpoint;
+                    assertExists(checkpoint);
+                    assertEquals(checkpoint.state, "awaiting_repair");
+                    assertEquals(checkpoint.ownerPid, process.pid);
+                    assertEquals(checkpoint.ownerHostname, getLockHostname());
+                    const repairGeneration = checkpoint.repairGeneration;
+                    assertExists(repairGeneration);
+                    await assertRejects(() =>
+                        recordValidationRepairCompletion({
+                            projectRoot,
+                            planName: "p",
+                            repairGeneration,
+                            report: "A second caller must not complete an inline repair.",
+                        }),
+                    );
+                    const active = await runValidation({
+                        hostedSession,
+                        projectRoot,
+                        localCI: {
+                            run: () => {
+                                throw new Error("A second validation owner must not run CI.");
+                            },
+                        },
+                    });
+                    assertEquals(active.recovery?.code, "validation_owner_active");
+                    assertEquals((await loadPlan(projectRoot, "p"))?.controllerRevision, saved.controllerRevision);
+                },
+            },
+            repairCounter,
+        ),
     });
 
     const plan = await loadPlan(projectRoot, "p");
@@ -238,7 +274,15 @@ test("CI repair completion reloads the execution-tree settings command before va
         hostedSession,
         projectRoot,
         localCI: {
-            run: (args) => runLocalCI(args),
+            run: async (args) => {
+                if (repairCounter.runs > 0) {
+                    const repaired = await loadPlan(projectRoot, "p");
+                    assertEquals(repaired?.attrs.validationCheckpoint?.state, "ready");
+                    assertEquals(repaired?.attrs.validationCheckpoint?.ownerPid, process.pid);
+                    assertEquals(repaired?.attrs.validationCheckpoint?.ownerHostname, getLockHostname());
+                }
+                return await runLocalCI(args);
+            },
         },
         semanticReviewPort: makeRepairPort(
             {

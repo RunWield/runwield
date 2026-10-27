@@ -3,7 +3,7 @@
  * Helpers for RunWield terminal tab/window titles.
  */
 
-import { formatSessionTerminalTitle, sanitizeSessionName } from "../../shared/session/session-name.ts";
+import { formatSessionTerminalTitle, sanitizeSessionName } from "../../shared/session-name.ts";
 import { getTUI } from "./tui.ts";
 
 export { sanitizeSessionName };

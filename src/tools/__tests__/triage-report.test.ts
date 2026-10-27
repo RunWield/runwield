@@ -4,7 +4,8 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import type { Static, TextContent } from "@earendil-works/pi-ai";
 import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.js";
-import { createTriageReportTool, type TriageReportDetails } from "../triage-report.ts";
+import { createTriageReportTool } from "../triage-report.ts";
+import type { TriageOutcome } from "../../shared/workflow/triage-outcome.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 type TriageTool = ReturnType<typeof createTriageReportTool>;
@@ -13,7 +14,7 @@ type FixtureTriageEvent = Partial<Pick<RuntimeSystemStatusEvent, "message">>;
 
 interface FixtureTriageResult {
     content: TextContent[];
-    details: TriageReportDetails;
+    details: TriageOutcome;
     terminate: boolean;
 }
 

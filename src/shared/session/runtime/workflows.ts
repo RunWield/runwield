@@ -614,7 +614,7 @@ ${outcome.feedback || ""}`,
             planContent = plan.markdown;
             triageMeta = plan.attrs;
             const { SYSTEM_SEMANTIC_REVIEW_PORT } = await import("../../workflow/validation.ts");
-            const { runWorkflowValidationToStableBoundary } = await import("../../workflow/validation-supervisor.ts");
+            const { runWorkflowValidationToStableBoundary } = await import("../../workflow/validation.ts");
             const { createGitPort } = await import("../../git-port.ts");
             const { systemLocalCIPort } = await import("../../workflow/validation-local-ci.ts");
             const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../../work-records/mnemoteca-port.ts");

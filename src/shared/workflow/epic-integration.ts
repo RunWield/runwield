@@ -48,7 +48,7 @@ import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
-import { createReviewDiffTool } from "./review-diff-tool.js";
+import { ReviewInspection } from "./review-inspection.ts";
 import {
     applyRoundFindings,
     claimReviewFixes,
@@ -65,8 +65,8 @@ import type { EpicIntegrationReviewState } from "./controller-state.ts";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {
-    type OpaqueToolDefinition,
     type ReviewerRoundMode,
+    type ValidationReviewData,
     ValidationInteractionTypes,
     type ValidationReviewOutcome,
     type ValidationSessionPort,
@@ -486,26 +486,26 @@ async function runIntegrationReview(
     mode: ReviewerRoundMode,
     repairDiff?: string,
 ): Promise<{ kind: "completed"; outcome: ValidationReviewOutcome } | { kind: "paused"; reason: string }> {
-    const sessionManager = port.createInMemorySessionManager(checkoutPath);
-    // One review, one request identity: a regenerated nudge continues this review
-    // rather than starting a fresh model budget.
+    // Integration reads are selective; an empty inspection keeps that policy.
+    const review: ValidationReviewData = {
+        fullDiff: diffText,
+        repairDiff: repairDiff || "",
+        hasRepairScope: repairDiff !== undefined,
+        requiredScope: mode === "integration_verify" ? "repair" : "full",
+        inspection: new ReviewInspection([]),
+    };
     const controllerRequestId = `request:${crypto.randomUUID()}`;
     let prompt = request;
     for (let attempt = 1; attempt <= MAX_REVIEWER_ATTEMPTS; attempt++) {
-        // No full-read gate: each child was read line by line in its own review, and
-        // this reviewer reads selectively from the Epic outcomes and Integration Notes.
-        const customTools = [
-            createReviewDiffTool({ full: diffText, repair: repairDiff }, { ledger }) as unknown as OpaqueToolDefinition,
-        ];
         const session = await port.runIsolatedAgentSession({
             kind: "reviewer",
             agentName: AGENTS.REVIEWER,
             userRequest: prompt,
             cwd: checkoutPath,
             reviewerMode: mode,
-            customTools,
-            sessionManager,
             controllerRequestId,
+            review,
+            ledger,
         });
         if (session.outcome === "operational_failure") {
             return { kind: "paused", reason: session.failure.message };

@@ -4,18 +4,21 @@ import { type Static, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
-import { sanitizeSessionName } from "../shared/session/session-name.ts";
+import { sanitizeSessionName } from "../shared/session-name.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
 
 export const SET_SESSION_NAME_TOOL_NAME = "set_session_name";
 
-const PARAMETERS = Type.Object({
-    name: Type.String({
-        minLength: 1,
-        description:
-            "Short 3-6 word Session Name suitable for /session display and the terminal tab title. Use a concise noun phrase, not a sentence.",
-    }),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        name: Type.String({
+            minLength: 1,
+            description:
+                "Short 3-6 word Session Name suitable for /session display and the terminal tab title. Use a concise noun phrase, not a sentence.",
+        }),
+    },
+    { additionalProperties: false },
+);
 
 type SetSessionNameParams = Static<typeof PARAMETERS>;
 

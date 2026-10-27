@@ -20,7 +20,7 @@ import { HostedSession } from "../session/hosted-session.js";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { runWorkflowValidationToStableBoundary } from "./validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";

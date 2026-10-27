@@ -33,6 +33,7 @@ import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { executePlan, executePreparedPlanSegmentHandoff } from "./plan-executor.ts";
+import { ReviewInspection } from "./review-inspection.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { buildExecutionSegmentContinuation } from "./execution-segment-handoff.ts";
 
@@ -715,7 +716,12 @@ for (const confirmed of [false, true]) {
                         userRequest:
                             "Code Review conversation turn: confirm keeping navigation instead of replacing it.",
                         cwd: projectRoot,
-                        customTools: [],
+                        review: {
+                            fullDiff: "",
+                            repairDiff: "",
+                            requiredScope: "full",
+                            inspection: new ReviewInspection([]),
+                        },
                     });
                     assertEquals(result.outcome, "completed");
                     if (result.outcome !== "completed") throw new Error("Expected conversation reply.");
