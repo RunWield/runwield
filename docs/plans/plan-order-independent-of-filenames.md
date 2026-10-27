@@ -22,6 +22,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "cc2904e92e87d22418dacc8d9d4fcdb18f8ab2ae"
+workRecord:
+    status: "generated"
+    recordId: "1357718d-3f80-4e75-bb42-b23d3d0cbb0c"
+    path: "docs/work-records/2026-10-27-plan-ordering-independent-of-filenames.md"
+    lastAttemptAt: "2026-10-27T21:58:49.371Z"
 ---
 
 # Plan Order Independent of Filenames
