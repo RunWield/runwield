@@ -674,7 +674,7 @@
     "src/ui/tui/golden-scenarios/validation-workflow-semantic-round-limit-human-review.test.ts",
     "src/ui/tui/golden-scenarios/validation-workflow-semantic-round-limit-stop.test.ts",
     "src/ui/tui/golden-scenarios/validation-workflow-semantic-round-limit.test.ts",
-    "src/ui/tui/keybindings.test.js",
+    "src/ui/tui/keybindings.test.ts",
     "src/ui/tui/managed-session-sync.test.ts",
     "src/ui/tui/markdown-latex.test.ts",
     "src/ui/tui/mermaid-markdown.test.ts",

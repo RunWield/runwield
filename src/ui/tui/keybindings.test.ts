@@ -1,8 +1,63 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { Image } from "@earendil-works/pi-tui";
+import { type Component, Image } from "@earendil-works/pi-tui";
 import { initRunWieldTheme } from "../theme/theme.js";
-import { installKeybindings } from "./keybindings.ts";
+import { type KeybindingsContext, installKeybindings } from "./keybindings.ts";
+
+import type { ImageAttachment } from "../../shared/session/types.js";
+
+interface FixtureEditor extends Pick<
+    KeybindingsContext["editor"],
+    "handleInput" | "setText" | "getText" | "insertTextAtCursor"
+> {
+    isEditorEmpty?: () => boolean;
+}
+
+type FixturePreviewChild = Component | string;
+type ContextOverrides = Partial<
+    Omit<KeybindingsContext, "editor" | "tui" | "uiAPI" | "pastedImages" | "previewImages" | "generationGuard">
+>;
+
+interface FixturePreviewImages extends Pick<KeybindingsContext["previewImages"], "addChild" | "removeChild"> {
+    children: FixturePreviewChild[];
+}
+
+interface FixtureStats {
+    systemMessages: string[];
+    originalInputs: string[];
+    readonly renderCount: number;
+    readonly text: string;
+    readonly newlineCount: number;
+    readonly toolToggles: number;
+    readonly keyboardHelpRequests: number;
+    readonly keyboardHelpHides: number;
+    readonly thinkingCycles: number;
+    readonly promptDismissals: number;
+    readonly runtimeCancels: number;
+    readonly resets: number;
+    readonly invalidations: number;
+    readonly dequeues: number;
+    readonly recalls: number;
+    dequeueResult: boolean;
+}
+
+interface FixtureContext extends Omit<
+    KeybindingsContext,
+    "editor" | "tui" | "uiAPI" | "previewImages" | "generationGuard"
+> {
+    editor: FixtureEditor;
+    tui: Pick<KeybindingsContext["tui"], "requestRender">;
+    uiAPI: Pick<KeybindingsContext["uiAPI"], "appendSystemMessage" | "toggleToolOutputsExpanded">;
+    previewImages: FixturePreviewImages;
+    generationGuard: Pick<KeybindingsContext["generationGuard"], "invalidateAll">;
+    stats: FixtureStats;
+}
+
+type FixtureInstaller = (context: FixtureContext) => ReturnType<typeof installKeybindings>;
+type FixtureKeybindingInstaller = typeof installKeybindings & FixtureInstaller;
+
+// The partial editor fixture exposes a hook that is private in the SDK Editor type.
+const installFixtureKeybindings = installKeybindings as FixtureKeybindingInstaller;
 
 const RAW_KEY = {
     escape: "\x1b",
@@ -16,15 +71,9 @@ const RAW_KEY = {
     up: "\x1b[A",
 };
 
-/**
- * @param {object} [overrides]
- * @returns {any}
- */
-function makeContext(overrides = {}) {
-    /** @type {string[]} */
-    const systemMessages = [];
-    /** @type {string[]} */
-    const originalInputs = [];
+function makeContext(overrides: ContextOverrides = {}): FixtureContext {
+    const systemMessages: string[] = [];
+    const originalInputs: string[] = [];
     let renderCount = 0;
     let text = "";
     let newlineCount = 0;
@@ -41,40 +90,38 @@ function makeContext(overrides = {}) {
     let pendingExit = false;
     let dequeueResult = false;
 
-    const editor = {
-        handleInput: (/** @type {string} */ data) => originalInputs.push(data),
-        setText: (/** @type {string} */ value) => {
+    const editor: FixtureEditor = {
+        handleInput: (data: string) => originalInputs.push(data),
+        setText: (value: string) => {
             text = value;
         },
         getText: () => text,
-        insertTextAtCursor: (/** @type {string} */ value) => {
+        insertTextAtCursor: (value: string) => {
             if (value === "\n") newlineCount++;
             else text += value;
         },
         isEditorEmpty: () => text.length === 0,
     };
-    const previewImages = {
-        children: /** @type {any[]} */ ([]),
-        /** @param {any} child */
-        addChild(child) {
+    const previewImages: FixturePreviewImages = {
+        children: [],
+        addChild(child: FixturePreviewChild) {
             this.children.push(child);
         },
-        /** @param {any} child */
-        removeChild(child) {
+        removeChild(child: FixturePreviewChild) {
             const index = this.children.indexOf(child);
             if (index >= 0) this.children.splice(index, 1);
         },
     };
-    const ctx = {
+    const ctx: FixtureContext = {
         editor,
         tui: { requestRender: () => renderCount++ },
         uiAPI: {
-            appendSystemMessage: (/** @type {string} */ message) => systemMessages.push(message),
+            appendSystemMessage: (message: string) => systemMessages.push(message),
             toggleToolOutputsExpanded: () => {
                 toolToggles++;
             },
         },
-        pastedImages: /** @type {any[]} */ ([]),
+        pastedImages: [],
         previewImages,
         generationGuard: { invalidateAll: () => invalidations++ },
         cancelRuntimeSession: () => {
@@ -150,8 +197,7 @@ function makeContext(overrides = {}) {
             get recalls() {
                 return recalls;
             },
-            /** @param {boolean} value */
-            set dequeueResult(value) {
+            set dequeueResult(value: boolean) {
                 dequeueResult = value;
             },
         },
@@ -161,8 +207,7 @@ function makeContext(overrides = {}) {
 
 test("installKeybindings recalls queued submissions before Escape cancellation", async () => {
     let runtimeCancelCalls = 0;
-    /** @type {string[]} */
-    const events = [];
+    const events: string[] = [];
     const ctx = makeContext({
         recallQueuedSubmissionsToEditor: () => {
             events.push("recall");
@@ -174,7 +219,7 @@ test("installKeybindings recalls queued submissions before Escape cancellation",
             return true;
         },
     });
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.escape);
 
@@ -192,7 +237,7 @@ test("installKeybindings Ctrl+C clears input and pasted previews without cancell
     ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
     ctx.previewImages.children.push("preview");
     ctx.editor.setText("draft");
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.ctrlC);
 
@@ -207,7 +252,7 @@ test("installKeybindings Ctrl+C clears input and pasted previews without cancell
 
 test("installKeybindings toggles tool groups on Ctrl+O", async () => {
     const ctx = makeContext();
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.ctrlO);
 
@@ -218,7 +263,7 @@ test("installKeybindings toggles tool groups on Ctrl+O", async () => {
 
 test("installKeybindings requests keyboard help only for exact empty-editor question mark", async () => {
     const ctx = makeContext();
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput("?");
     ctx.editor.setText("why");
@@ -235,7 +280,7 @@ test("installKeybindings requests keyboard help only for exact empty-editor ques
 
 test("installKeybindings hides keyboard help on Esc and forwarded input", async () => {
     const ctx = makeContext();
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.escape);
     await ctx.editor.handleInput("x");
@@ -250,7 +295,7 @@ test("installKeybindings handles newline, image removal, thinking cycle, queue r
     ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
     ctx.previewImages.children.push("preview");
     ctx.stats.dequeueResult = true;
-    const original = installKeybindings(ctx);
+    const original = installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.shiftEnter);
     await ctx.editor.handleInput(RAW_KEY.altEnter);
@@ -273,7 +318,7 @@ test("installKeybindings checks editor emptiness through public getText", async 
     ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
     ctx.previewImages.children.push("preview");
     ctx.stats.dequeueResult = true;
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.backspace);
     await ctx.editor.handleInput(RAW_KEY.up);
@@ -287,7 +332,7 @@ test("installKeybindings checks editor emptiness through public getText", async 
 test("installKeybindings asks dequeue callback for up-arrow even without submission queue", async () => {
     const ctx = makeContext();
     ctx.stats.dequeueResult = true;
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.up);
 
@@ -298,21 +343,20 @@ test("installKeybindings asks dequeue callback for up-arrow even without submiss
 test("installKeybindings previews pasted images before paste processing finishes", async () => {
     initRunWieldTheme();
     let finishPasteProcessing = () => {};
-    const pasteProcessingDone = new Promise((resolve) => {
+    const pasteProcessingDone = new Promise<void>((resolve) => {
         finishPasteProcessing = () => resolve(undefined);
     });
-    /** @type {any[]} */
-    const handled = [];
+    const handled: ImageAttachment[] = [];
     const ctx = makeContext({
         readClipboardImage: () => Promise.resolve({ base64: "YQ==", mimeType: "image/png" }),
-        handleImagePaste: async (/** @type {any} */ image) => {
+        handleImagePaste: async (image: ImageAttachment) => {
             handled.push(image);
             await pasteProcessingDone;
             Object.assign(image, { ref: "attachment:abc" });
             return image;
         },
     });
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.ctrlV);
 
@@ -330,14 +374,14 @@ test("installKeybindings previews pasted images before paste processing finishes
 
 test("installKeybindings removes previews when handleImagePaste blocks", async () => {
     let finishPasteProcessing = () => {};
-    const pasteProcessingDone = new Promise((resolve) => {
+    const pasteProcessingDone = new Promise<null>((resolve) => {
         finishPasteProcessing = () => resolve(null);
     });
     const ctx = makeContext({
         readClipboardImage: () => Promise.resolve({ base64: "YQ==", mimeType: "image/png" }),
         handleImagePaste: () => pasteProcessingDone,
     });
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.ctrlV);
     assertEquals(ctx.pastedImages, [{ base64: "YQ==", mimeType: "image/png" }]);
@@ -356,7 +400,7 @@ test("installKeybindings reports pasted image handler failures instead of throwi
         readClipboardImage: () => Promise.resolve({ base64: "YQ==", mimeType: "image/png" }),
         handleImagePaste: () => Promise.reject(new Error("managed_unsupported")),
     });
-    installKeybindings(ctx);
+    installFixtureKeybindings(ctx);
 
     await ctx.editor.handleInput(RAW_KEY.ctrlV);
     assertEquals(ctx.pastedImages, [{ base64: "YQ==", mimeType: "image/png" }]);
@@ -376,7 +420,7 @@ test("Ctrl-V reports a missing image only when the explicit read returns no imag
             readClipboardImage: () => Promise.resolve(image),
             onClipboardImageMissing: () => missing++,
         });
-        installKeybindings(ctx);
+        installFixtureKeybindings(ctx);
         await ctx.editor.handleInput(RAW_KEY.ctrlV);
         assertEquals(missing, image ? 0 : 1);
         assertEquals(ctx.previewImages.children.length, image ? 1 : 0);
