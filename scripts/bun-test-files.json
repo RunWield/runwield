@@ -454,7 +454,7 @@
     "src/shared/workflow/delivery-report.test.ts",
     "src/shared/workflow/epic-branch-planning.integration.test.ts",
     "src/shared/workflow/epic-branch.test.ts",
-    "src/shared/workflow/epic-continuation.test.js",
+    "src/shared/workflow/epic-continuation.test.ts",
     "src/shared/workflow/epic-deviation-publication.integration.test.ts",
     "src/shared/workflow/epic-integration.test.ts",
     "src/shared/workflow/epic-review-context.test.ts",
