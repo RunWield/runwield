@@ -183,7 +183,10 @@ draft. Body edits keep Markdown usable from the CLI and keep lifecycle fields as
 Manual board moves record the owner's choices without claiming automated review or verification. Users can reflect
 externally started or completed work, close without verification, or hold work. Failure and hold offer recovery or
 resume. Plan, Epic, and filtered-view links survive renaming; local links need a running Workspace, and sharing access
-stays explicit. Lifecycle rules follow [Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle).
+stays explicit. Lifecycle rules follow [Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle). Plan naming and child
+ordering follow [Core Plan authoring](runwield-core-prd.md#plan-authoring-and-external-adoption): child navigation uses
+Front Matter `order`, not filenames. Status columns remain separate and preserve child order within each column.
+Top-level board and sidebar priorities and dashboard activity-date sorting remain unchanged.
 
 **Requirement: A clean board layout.** The local board shows its W. logo and heading; the board embedded in a Project
 shows only the board. View tabs and search share the header row, with search after the tabs. Columns use separators,
@@ -196,6 +199,8 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 - When the owner moves or manually closes work, the board records that choice without claiming verification; failure
   and hold offer recovery or resume.
 - When a Plan or Epic is renamed, its existing links resolve and child progress stays visible.
+- Given children with mixed legacy numbered and descriptive names, changing only their `order` fields changes child
+  navigation order without changing their links or status columns.
 
 ### Shared Plan collaboration
 

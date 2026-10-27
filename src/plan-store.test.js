@@ -1034,6 +1034,7 @@ testWithFs("listPlans sorts by status, classification, then name", async () => {
             await savePlan(cwd, name, `# ${name}`, {
                 classification: /** @type {any} */ (classification),
                 status: /** @type {any} */ (status),
+                order: 100 - plans.findIndex((plan) => plan[0] === name),
             });
         }
 
@@ -1508,7 +1509,7 @@ testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order a
                 title: "Load child FEATURES",
                 summary: "Let load-plan execute child features",
                 affectedPaths: ["src/cmd/load-plan/index.ts"],
-                dependencies: ["project-breakdown-epic/01-preserve-epic-and-child-metadata"],
+                dependencies: ["project-breakdown-epic/preserve-epic-and-child-metadata"],
                 workKind: "DOCUMENTATION",
                 content: "# Load child FEATURES\n\n## Context\nDraft slice",
             },
@@ -1517,8 +1518,8 @@ testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order a
         assertEquals(
             results.map((result) => ({ name: result.name, action: result.action })),
             [
-                { name: "project-breakdown-epic/01-preserve-epic-and-child-metadata", action: "created" },
-                { name: "project-breakdown-epic/02-load-child-features", action: "created" },
+                { name: "project-breakdown-epic/preserve-epic-and-child-metadata", action: "created" },
+                { name: "project-breakdown-epic/load-child-features", action: "created" },
             ],
         );
         assertEquals(results[0].metadata, {
@@ -1535,7 +1536,7 @@ testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order a
             targetBranch: "feature-base",
         });
 
-        const first = await loadPlan(cwd, "project-breakdown-epic/01-preserve-epic-and-child-metadata");
+        const first = await loadPlan(cwd, "project-breakdown-epic/preserve-epic-and-child-metadata");
         assertEquals(first?.attrs.classification, "PLANNED_CHANGE");
         assertEquals(first?.attrs.status, "draft");
         assertEquals(first?.attrs.parentPlan, "project-breakdown-epic");
@@ -1549,8 +1550,8 @@ testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order a
         assertEquals(first?.attrs.devServerHmr, true);
         assertEquals(first?.attrs.targetBranch, "feature-base");
 
-        const second = await loadPlan(cwd, "project-breakdown-epic/02-load-child-features");
-        assertEquals(second?.attrs.dependencies, ["project-breakdown-epic/01-preserve-epic-and-child-metadata"]);
+        const second = await loadPlan(cwd, "project-breakdown-epic/load-child-features");
+        assertEquals(second?.attrs.dependencies, ["project-breakdown-epic/preserve-epic-and-child-metadata"]);
         assertEquals(second?.attrs.workKind, "DOCUMENTATION");
     } finally {
         await fsRm(cwd, { recursive: true });
@@ -1588,7 +1589,7 @@ testWithFs("saveChildFeaturePlans rejects invalid child policies before writing 
             Error,
             "Invalid collaborationRecommendation: sometimes",
         );
-        assertEquals(await loadPlan(cwd, "project-breakdown-epic/01-valid-child"), null);
+        assertEquals(await loadPlan(cwd, "project-breakdown-epic/valid-child"), null);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -1638,7 +1639,7 @@ testWithFs("saveChildFeaturePlans updates existing drafts at stable child paths"
         ]);
 
         assertEquals(results[0].action, "updated");
-        const loaded = await loadPlan(cwd, "epic-a/01-write-draft-plans");
+        const loaded = await loadPlan(cwd, "epic-a/write-draft-plans");
         assertEquals(loaded?.attrs.summary, "Updated summary");
         assertEquals(loaded?.body.trim(), "# Write Draft Plans\n\n## Context\nUpdated summary\n\nUpdated content");
     } finally {
@@ -1705,7 +1706,7 @@ testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async
                     { ...validChild, title: "Same child" },
                 ]),
             Error,
-            "Duplicate child plan name: epic-a/01-same-child",
+            "Duplicate child plan name: epic-a/same-child",
         );
         await assertRejects(
             () =>
@@ -2558,8 +2559,8 @@ testWithFs("saveChildFeaturePlans rejects stale expected child revisions", async
                 content: "# Original",
             },
         ]);
-        const child = await loadPlan(cwd, "epic/01-child");
-        await updatePlanFrontMatterForTest(cwd, "epic/01-child", { complexity: "HIGH" });
+        const child = await loadPlan(cwd, "epic/child");
+        await updatePlanFrontMatterForTest(cwd, "epic/child", { complexity: "HIGH" });
         await assertRejects(
             () =>
                 saveChildFeaturePlans(
@@ -2575,11 +2576,11 @@ testWithFs("saveChildFeaturePlans rejects stale expected child revisions", async
                             content: "# Overwrite",
                         },
                     ],
-                    { expectedRevisions: { "epic/01-child": child?.revision || "missing" } },
+                    { expectedRevisions: { "epic/child": child?.revision || "missing" } },
                 ),
             StalePlanWriteError,
         );
-        assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.complexity, "HIGH");
+        assertEquals((await loadPlan(cwd, "epic/child"))?.attrs.complexity, "HIGH");
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -2899,7 +2900,7 @@ testWithFs(
                     content: "# Child updated",
                 },
             ]);
-            assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.tickets, [
+            assertEquals((await loadPlan(cwd, "epic/child"))?.attrs.tickets, [
                 {
                     url: "https://example.com/tickets/CHILD-1",
                 },
@@ -2915,7 +2916,7 @@ testWithFs(
                     content: "# Child cleared",
                 },
             ]);
-            assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.tickets, undefined);
+            assertEquals((await loadPlan(cwd, "epic/child"))?.attrs.tickets, undefined);
         } finally {
             await fsRm(cwd, { recursive: true });
         }
@@ -3340,3 +3341,133 @@ test("Plan replacement preserves open readers and publishes the complete new Pla
         await fsRm(root, { recursive: true });
     }
 });
+
+testWithFs("child reorder keeps descriptive paths, identity, and dependency references", async () => {
+    const cwd = await makeTempDirectory({ prefix: "child-reorder-" });
+    try {
+        const children = [
+            { title: "Zulu", order: 2, summary: "Zulu", affectedPaths: [], dependencies: [], content: "# Zulu" },
+            {
+                title: "Alpha",
+                order: 10,
+                summary: "Alpha",
+                affectedPaths: [],
+                dependencies: ["zulu"],
+                content: "# Alpha",
+            },
+        ];
+        const written = await saveChildFeaturePlans(cwd, "epic", children);
+        assertEquals(
+            written.map((child) => child.name),
+            ["epic/zulu", "epic/alpha"],
+        );
+        const before = await ensurePlanIdentity(cwd, "epic/zulu");
+        assertEquals(
+            (await findPlansByParent(cwd, "epic")).map((child) => child.name),
+            ["epic/zulu", "epic/alpha"],
+        );
+        await saveChildFeaturePlans(
+            cwd,
+            "epic",
+            children.map((child) => ({ ...child, order: child.order === 2 ? 10 : 2 })),
+        );
+        assertEquals(
+            (await findPlansByParent(cwd, "epic")).map((child) => child.name),
+            ["epic/alpha", "epic/zulu"],
+        );
+        assertEquals((await loadPlan(cwd, "epic/zulu"))?.attrs.planId, before.planId);
+        assertEquals((await loadPlan(cwd, "epic/alpha"))?.attrs.dependencies, ["zulu"]);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("child regeneration reuses a unique legacy path regardless of its prefix", async () => {
+    const cwd = await makeTempDirectory({ prefix: "legacy-child-" });
+    try {
+        await savePlan(cwd, "epic/99-zulu", "# Old", { parentPlan: "epic", order: 99, planId: "legacy-zulu" });
+        const written = await saveChildFeaturePlans(cwd, "epic", [
+            { title: "Zulu", order: 2, summary: "Zulu", affectedPaths: [], dependencies: [], content: "# Zulu" },
+        ]);
+        assertEquals(
+            written.map((child) => child.name),
+            ["epic/99-zulu"],
+        );
+        assertEquals((await loadPlan(cwd, "epic/99-zulu"))?.attrs.planId, "legacy-zulu");
+        assertEquals((await loadPlan(cwd, "epic/99-zulu"))?.attrs.order, 2);
+        assertEquals(await loadPlan(cwd, "epic/zulu"), null);
+        const states = resolveSiblingChildPlanDependencyStates(
+            "epic",
+            ["zulu", "99-zulu", "epic/99-zulu", "legacy-zulu"],
+            await findPlansByParent(cwd, "epic"),
+        );
+        assertEquals(
+            states.map((state) => state.planName),
+            Array(4).fill("epic/99-zulu"),
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("ambiguous legacy children and duplicate slugs fail before any writes", async () => {
+    const cwd = await makeTempDirectory({ prefix: "ambiguous-child-" });
+    try {
+        for (const prefix of ["01", "02"]) await savePlan(cwd, `epic/${prefix}-zulu`, "# Old", { parentPlan: "epic" });
+        const child = {
+            title: "Zulu",
+            order: 3,
+            summary: "Zulu",
+            affectedPaths: [],
+            dependencies: [],
+            content: "# Changed",
+        };
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "epic", [{ ...child, title: "New" }, child]),
+            Error,
+            "Ambiguous legacy",
+        );
+        assertEquals(await loadPlan(cwd, "epic/new"), null);
+        assertEquals((await loadPlan(cwd, "epic/01-zulu"))?.body.trim(), "# Old");
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "other", [child, { ...child, title: "Zulu!", order: 4 }]),
+            Error,
+            "Duplicate child",
+        );
+        assertEquals(await loadPlan(cwd, "other/zulu"), null);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+for (const status of /** @type {const} */ (["in_progress", "validated"])) {
+    testWithFs(`child regeneration cannot overwrite a ${status} legacy child`, async () => {
+        const cwd = await makeTempDirectory({ prefix: "started-legacy-child-" });
+        try {
+            await savePlan(cwd, "epic/99-zulu", "# Delivered", {
+                parentPlan: "epic",
+                status,
+                planId: "keep-id",
+                order: 99,
+            });
+            const before = await loadPlan(cwd, "epic/99-zulu");
+            const child = {
+                title: "Zulu",
+                order: 2,
+                summary: "New",
+                affectedPaths: [],
+                dependencies: [],
+                content: "# Replaced",
+            };
+            await assertRejects(
+                () => saveChildFeaturePlans(cwd, "epic", [{ ...child, title: "First" }, child]),
+                Error,
+                "non-draft child",
+            );
+            assertEquals((await loadPlan(cwd, "epic/99-zulu"))?.markdown, before?.markdown);
+            assertEquals(await loadPlan(cwd, "epic/first"), null);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
+}

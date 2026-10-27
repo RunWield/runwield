@@ -16,6 +16,8 @@ affectedPaths:
 devServerCommand: null
 devServerUrl: null
 devServerHmr: null
+# For a child Plan, set parentPlan and numeric order. Use a descriptive filename and heading without ordinal prefixes.
+# Reorder by changing order, not the filename; keep existing numbered names valid.
 # Optional: source branch and intended onward destination when explicitly requested by the user.
 # targetBranch: "feature/base-branch"
 # RunWield records the actual landing as deliveryBranch during execution preparation; do not author it here.

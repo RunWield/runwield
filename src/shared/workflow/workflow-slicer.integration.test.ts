@@ -77,116 +77,110 @@ async function saveEpic(projectRoot: string, status: PlanStatus = "approved"): P
     });
 }
 
-async function executeFinalizeTool(
-    tool: ToolDefinition,
-    params: SlicerFinalizeParams,
-): Promise<SlicerFinalizeResult> {
-    return await tool.execute(
+async function executeFinalizeTool(tool: ToolDefinition, params: SlicerFinalizeParams): Promise<SlicerFinalizeResult> {
+    return (await tool.execute(
         `slicer-finalize-${crypto.randomUUID()}`,
         params,
         new AbortController().signal,
         () => {},
         {} as ToolExecutionContext,
-    ) as SlicerFinalizeResult;
+    )) as SlicerFinalizeResult;
 }
 
 test("Slicer starts a clean context phase and receives persisted Epic and child evidence", async () => {
-    await withRuntimeCommandFixture(
-        "workflow-slicer-agent-",
-        async ({ projectRoot, setModelResponseFactory }) => {
-            await saveEpic(projectRoot);
-            await savePlan(projectRoot, "epic-a/01-child", "# Child", {
-                classification: "PLANNED_CHANGE",
-                status: "draft",
-                parentPlan: "epic-a",
-                order: 1,
-                summary: "Child slice",
-                affectedPaths: ["src/child.ts"],
-                tickets: [{ url: "https://tracker.example/TICKET-1" }],
-            });
-            let modelContext = "";
-            setModelResponseFactory((context) => {
-                modelContext = JSON.stringify(context.messages);
-                return fauxAssistantMessage(fauxText("The Epic needs another decomposition turn."));
-            });
-            const fixture = createSessionFixture(projectRoot);
-            fixture.sessionManager.appendMessage({
-                role: "user",
-                content: [{ type: "text", text: "architect deliberation that must be omitted" }],
-                timestamp: Date.now(),
+    await withRuntimeCommandFixture("workflow-slicer-agent-", async ({ projectRoot, setModelResponseFactory }) => {
+        await saveEpic(projectRoot);
+        await savePlan(projectRoot, "epic-a/01-child", "# Child", {
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            parentPlan: "epic-a",
+            order: 1,
+            summary: "Child slice",
+            affectedPaths: ["src/child.ts"],
+            tickets: [{ url: "https://tracker.example/TICKET-1" }],
+        });
+        let modelContext = "";
+        setModelResponseFactory((context) => {
+            modelContext = JSON.stringify(context.messages);
+            return fauxAssistantMessage(fauxText("The Epic needs another decomposition turn."));
+        });
+        const fixture = createSessionFixture(projectRoot);
+        fixture.sessionManager.appendMessage({
+            role: "user",
+            content: [{ type: "text", text: "architect deliberation that must be omitted" }],
+            timestamp: Date.now(),
+        });
+
+        try {
+            const result = await runSlicerAgent({
+                planName: "epic-a",
+                triageMeta: {
+                    classification: "PROJECT",
+                    complexity: "HIGH",
+                    summary: "Epic A",
+                    affectedPaths: ["src/epic.ts"],
+                },
+                reviewFeedback: "Keep the approved boundary.",
+                reviewImages: [{ base64: "YXBwcm92ZWQ=", mimeType: "image/png" }],
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
             });
 
-            try {
-                const result = await runSlicerAgent({
-                    planName: "epic-a",
-                    triageMeta: {
-                        classification: "PROJECT",
-                        complexity: "HIGH",
-                        summary: "Epic A",
-                        affectedPaths: ["src/epic.ts"],
-                    },
-                    reviewFeedback: "Keep the approved boundary.",
-                    reviewImages: [{ base64: "YXBwcm92ZWQ=", mimeType: "image/png" }],
-                    hostedSession: fixture.hostedSession,
-                    sessionManager: fixture.sessionManager,
-                });
-
-                assertEquals(result, { ok: true });
-                assertEquals(fixture.hostedSession.getRootAgentName(), "slicer");
-                assertStringIncludes(modelContext, "Keep the approved boundary.");
-                assertStringIncludes(modelContext, "Direct Ticket references: https://tracker.example/TICKET-1");
-                assertEquals(modelContext.includes("architect deliberation that must be omitted"), false);
-                assertEquals(
-                    fixture.sessionManager.buildSessionContext().messages.some((message) =>
-                        message.role === "compactionSummary" &&
-                        JSON.stringify(message).includes("Slicer phase context boundary")
+            assertEquals(result, { ok: true });
+            assertEquals(fixture.hostedSession.getRootAgentName(), "slicer");
+            assertStringIncludes(modelContext, "Keep the approved boundary.");
+            assertStringIncludes(modelContext, "Direct Ticket references: https://tracker.example/TICKET-1");
+            assertEquals(modelContext.includes("architect deliberation that must be omitted"), false);
+            assertEquals(
+                fixture.sessionManager
+                    .buildSessionContext()
+                    .messages.some(
+                        (message) =>
+                            message.role === "compactionSummary" &&
+                            JSON.stringify(message).includes("Slicer phase context boundary"),
                     ),
-                    true,
-                );
-            } finally {
-                fixture.hostedSession.dispose();
-            }
-        },
-    );
+                true,
+            );
+        } finally {
+            fixture.hostedSession.dispose();
+        }
+    });
 });
 
 test("Slicer restores the prior Agent and reports an external model failure", async () => {
-    await withRuntimeCommandFixture(
-        "workflow-slicer-failure-",
-        async ({ projectRoot, settingsPath }) => {
-            await saveEpic(projectRoot);
-            await fsWriteFile(
-                settingsPath,
-                JSON.stringify({ defaultProvider: "missing-fixture-provider", defaultModel: "missing-model" }),
-            );
-            __resetSettingsForTests();
-            const fixture = createSessionFixture(projectRoot);
-            fixture.sessionManager.appendMessage({
-                role: "user",
-                content: [{ type: "text", text: "architect handoff" }],
-                timestamp: Date.now(),
-            });
-            const statuses: string[] = [];
-            fixture.hostedSession.setEventSink((event: SessionRuntimeEvent) => {
-                if (event.type === "system_status") statuses.push(event.message);
+    await withRuntimeCommandFixture("workflow-slicer-failure-", async ({ projectRoot, settingsPath }) => {
+        await saveEpic(projectRoot);
+        await fsWriteFile(
+            settingsPath,
+            JSON.stringify({ defaultProvider: "missing-fixture-provider", defaultModel: "missing-model" }),
+        );
+        __resetSettingsForTests();
+        const fixture = createSessionFixture(projectRoot);
+        fixture.sessionManager.appendMessage({
+            role: "user",
+            content: [{ type: "text", text: "architect handoff" }],
+            timestamp: Date.now(),
+        });
+        const statuses: string[] = [];
+        fixture.hostedSession.setEventSink((event: SessionRuntimeEvent) => {
+            if (event.type === "system_status") statuses.push(event.message);
+        });
+
+        try {
+            const result = await runSlicerAgent({
+                planName: "epic-a",
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
             });
 
-            try {
-                const result = await runSlicerAgent({
-                    planName: "epic-a",
-                    hostedSession: fixture.hostedSession,
-                    sessionManager: fixture.sessionManager,
-                });
-
-                assertEquals(result.ok, false);
-                assertStringIncludes(result.error ?? "", "Unknown settings default model");
-                assertEquals(fixture.hostedSession.getRootAgentName(), "architect");
-                assert(statuses.some((status) => status.includes("Slicer failed: Unknown settings default model")));
-            } finally {
-                fixture.hostedSession.dispose();
-            }
-        },
-    );
+            assertEquals(result.ok, false);
+            assertStringIncludes(result.error ?? "", "Unknown settings default model");
+            assertEquals(fixture.hostedSession.getRootAgentName(), "architect");
+            assert(statuses.some((status) => status.includes("Slicer failed: Unknown settings default model")));
+        } finally {
+            fixture.hostedSession.dispose();
+        }
+    });
 });
 
 test("Slicer finalize commits child Plans and the Epic lifecycle transition together", async () => {
@@ -195,24 +189,26 @@ test("Slicer finalize commits child Plans and the Epic lifecycle transition toge
         const tool = createSlicerFinalizeTool({ planName: "epic-a", cwd: projectRoot });
         const result = await executeFinalizeTool(tool, {
             confirmation: "yes, finalize",
-            children: [{
-                order: 1,
-                title: "Child",
-                summary: "Child summary",
-                affectedPaths: ["src/child.ts"],
-                dependencies: [],
-                tickets: [{ url: "https://tracker.example/TICKET-2" }],
-                executionAgent: "engineer",
-                collaborationRecommendation: "autonomous",
-                workKind: "DOCUMENTATION",
-                content: "# Child",
-            }],
+            children: [
+                {
+                    order: 1,
+                    title: "Child",
+                    summary: "Child summary",
+                    affectedPaths: ["src/child.ts"],
+                    dependencies: [],
+                    tickets: [{ url: "https://tracker.example/TICKET-2" }],
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                    workKind: "DOCUMENTATION",
+                    content: "# Child",
+                },
+            ],
         });
 
         assertEquals(result.details.status, "ready_for_work");
-        assertEquals(result.details.children, ["epic-a/01-child"]);
+        assertEquals(result.details.children, ["epic-a/child"]);
         const epic = await loadPlan(projectRoot, "epic-a");
-        const child = await loadPlan(projectRoot, "epic-a/01-child");
+        const child = await loadPlan(projectRoot, "epic-a/child");
         assertEquals(epic?.attrs.status, "ready_for_work");
         assertEquals(child?.attrs.parentPlan, "epic-a");
         assertEquals(child?.attrs.targetBranch, "feature-base");
@@ -245,59 +241,53 @@ test("Slicer finalize reuses existing children and is idempotent after the Epic 
 });
 
 test("openSlicerDecomposition reads the persisted Plan and invokes the real Slicer machinery", async () => {
-    await withRuntimeCommandFixture(
-        "workflow-slicer-open-",
-        async ({ projectRoot, setModelMessages }) => {
-            const planPath = await saveEpic(projectRoot);
-            setModelMessages([fauxAssistantMessage(fauxText("Continue decomposing the persisted Epic."))]);
-            const fixture = createSessionFixture(projectRoot);
+    await withRuntimeCommandFixture("workflow-slicer-open-", async ({ projectRoot, setModelMessages }) => {
+        const planPath = await saveEpic(projectRoot);
+        setModelMessages([fauxAssistantMessage(fauxText("Continue decomposing the persisted Epic."))]);
+        const fixture = createSessionFixture(projectRoot);
 
-            try {
-                const result = await openSlicerDecomposition({
-                    planName: "epic-a",
-                    planPath,
-                    hostedSession: fixture.hostedSession,
-                    sessionManager: fixture.sessionManager,
-                });
+        try {
+            const result = await openSlicerDecomposition({
+                planName: "epic-a",
+                planPath,
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+            });
 
-                assertEquals(result, { ok: true, slicerInvoked: true });
-                assertEquals(fixture.hostedSession.getRootAgentName(), "slicer");
-            } finally {
-                fixture.hostedSession.dispose();
-            }
-        },
-    );
+            assertEquals(result, { ok: true, slicerInvoked: true });
+            assertEquals(fixture.hostedSession.getRootAgentName(), "slicer");
+        } finally {
+            fixture.hostedSession.dispose();
+        }
+    });
 });
 
 test("openSlicerDecomposition returns the real Slicer model failure at the Slicer stage", async () => {
-    await withRuntimeCommandFixture(
-        "workflow-slicer-open-failure-",
-        async ({ projectRoot, settingsPath }) => {
-            const planPath = await saveEpic(projectRoot);
-            await fsWriteFile(
-                settingsPath,
-                JSON.stringify({ defaultProvider: "missing-fixture-provider", defaultModel: "missing-model" }),
-            );
-            __resetSettingsForTests();
-            const fixture = createSessionFixture(projectRoot);
+    await withRuntimeCommandFixture("workflow-slicer-open-failure-", async ({ projectRoot, settingsPath }) => {
+        const planPath = await saveEpic(projectRoot);
+        await fsWriteFile(
+            settingsPath,
+            JSON.stringify({ defaultProvider: "missing-fixture-provider", defaultModel: "missing-model" }),
+        );
+        __resetSettingsForTests();
+        const fixture = createSessionFixture(projectRoot);
 
-            try {
-                const result = await openSlicerDecomposition({
-                    planName: "epic-a",
-                    planPath,
-                    hostedSession: fixture.hostedSession,
-                    sessionManager: fixture.sessionManager,
-                });
+        try {
+            const result = await openSlicerDecomposition({
+                planName: "epic-a",
+                planPath,
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+            });
 
-                assertEquals(result.ok, false);
-                if (result.ok) throw new Error("Expected Slicer failure");
-                assertEquals(result.stage, "slicer");
-                assertStringIncludes(result.error ?? "", "Unknown settings default model");
-            } finally {
-                fixture.hostedSession.dispose();
-            }
-        },
-    );
+            assertEquals(result.ok, false);
+            if (result.ok) throw new Error("Expected Slicer failure");
+            assertEquals(result.stage, "slicer");
+            assertStringIncludes(result.error ?? "", "Unknown settings default model");
+        } finally {
+            fixture.hostedSession.dispose();
+        }
+    });
 });
 
 test("beginSlicerContextPhase leaves an already-active Slicer boundary unchanged", async () => {
@@ -332,5 +322,57 @@ test("beginSlicerContextPhase leaves an already-active Slicer boundary unchanged
         } finally {
             fixture.hostedSession.dispose();
         }
+    });
+});
+
+test("Slicer restores earlier child writes when a later reserved child fails", async () => {
+    await withRuntimeCommandFixture("slicer-name-rollback-", async ({ projectRoot }) => {
+        await saveEpic(projectRoot);
+        const result = await executeFinalizeTool(createSlicerFinalizeTool({ planName: "epic-a", cwd: projectRoot }), {
+            confirmation: "Finalize these children",
+            children: ["Working", "Manual QA"].map((title, index) => ({
+                title,
+                order: index + 1,
+                summary: title,
+                dependencies: [],
+                affectedPaths: [],
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+                content: `# ${title}`,
+            })),
+        });
+        assertStringIncludes(result.details.error, "reserved");
+        assertEquals(await loadPlan(projectRoot, "epic-a/working"), null);
+        assertEquals((await loadPlan(projectRoot, "epic-a"))?.attrs.status, "approved");
+    });
+});
+
+test("Slicer rolls back an updated legacy draft when a later child fails", async () => {
+    await withRuntimeCommandFixture("slicer-legacy-rollback-", async ({ projectRoot }) => {
+        await saveEpic(projectRoot);
+        await savePlan(projectRoot, "epic-a/99-working", "# Original body\n", {
+            parentPlan: "epic-a",
+            order: 99,
+            planId: "legacy-working",
+            dependencies: ["earlier"],
+        });
+        const before = await loadPlan(projectRoot, "epic-a/99-working");
+        const result = await executeFinalizeTool(createSlicerFinalizeTool({ planName: "epic-a", cwd: projectRoot }), {
+            confirmation: "Finalize these children",
+            children: ["Working", "Manual QA"].map((title, index) => ({
+                title,
+                order: index + 1,
+                summary: title,
+                dependencies: [],
+                affectedPaths: [],
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+                content: `# ${title}`,
+            })),
+        });
+        assertStringIncludes(result.details.error, "reserved");
+        assertEquals((await loadPlan(projectRoot, "epic-a/99-working"))?.markdown, before?.markdown);
+        assertEquals(await loadPlan(projectRoot, "epic-a/working"), null);
+        assertEquals((await loadPlan(projectRoot, "epic-a"))?.attrs.status, "approved");
     });
 });

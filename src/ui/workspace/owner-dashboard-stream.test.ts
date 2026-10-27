@@ -17,7 +17,7 @@ import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp } from "./server.js";
-import { loadOwnerDashboard, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
+import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
 
 type StreamFrame = {
     type: string;
@@ -716,5 +716,35 @@ test("archived Sessions stay under Plans in dashboard and sidebar but leave stan
     } finally {
         await continuation.close();
         await fixture.cleanup();
+    }
+});
+
+test("top-level sidebar priority stays ahead of explicit Plan order in both readers", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "sidebar-order-priority-"));
+    const root = join(dir, "project");
+    await fsMkdir(root);
+    const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+    try {
+        store.registerProject({ root, displayName: "Priority" });
+        await savePlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
+        await savePlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
+        const continuation = {
+            operations: new Map(),
+            async listSessions() {
+                return { sessions: [] };
+            },
+        };
+        for (const projects of [
+            (await loadOwnerDashboard(store, continuation)).projects,
+            await loadOwnerSidebar(store, continuation),
+        ]) {
+            assertEquals(
+                projects[0].plans.map((plan) => plan.planId),
+                ["ready-id", "held-id"],
+            );
+        }
+    } finally {
+        store.close();
+        await fsRm(dir, { recursive: true });
     }
 });
