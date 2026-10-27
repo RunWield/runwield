@@ -19,7 +19,10 @@ import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import type { LocalSecretRecord } from "./protocol.js";
 import {
+    type SecretStoreLocation,
+    type SecretStoreDocument,
     assertCompatiblePullSecretRecord,
     deleteCompatibleSecretRecords,
     deleteSecretRecord,
@@ -40,17 +43,7 @@ import {
 
 const gitFixture = defineCommittedGitFixture({ "README.md": "# Collaboration secrets fixture\n" });
 
-/**
- * @typedef {Object} TestSecretStore
- * @property {"global"} owner
- * @property {string} path
- */
-
-/**
- * @param {string} path
- * @returns {TestSecretStore}
- */
-function testSecretStore(path) {
+function testSecretStore(path: string): SecretStoreLocation {
     return { owner: "global", path };
 }
 
@@ -170,10 +163,7 @@ test("project secret path honors sandbox routing", async () => {
     const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
     try {
         process.env["WLD_TEST_SANDBOX_HOME"] = sandboxHome;
-        assertEquals(
-            getProjectSecretStorePath(dir),
-            resolveProjectRuntimeLayout(dir).primary.projectSecretStorePath,
-        );
+        assertEquals(getProjectSecretStorePath(dir), resolveProjectRuntimeLayout(dir).primary.projectSecretStorePath);
         assert(getProjectSecretStorePath(dir).startsWith(sandboxHome));
     } finally {
         if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
@@ -264,11 +254,7 @@ test("deleteCompatibleSecretRecords clears pair and legacy records across stores
 
         assertEquals(
             deleted.map((entry) => `${entry.path}:${entry.key}`).sort(),
-            [
-                `${globalPath}:plan-1`,
-                `${globalPath}:plan-1:space-1`,
-                `${projectPath}:plan-1`,
-            ].sort(),
+            [`${globalPath}:plan-1`, `${globalPath}:plan-1:space-1`, `${projectPath}:plan-1`].sort(),
         );
         assertEquals(await getSecretRecord(testSecretStore(globalPath), "plan-1"), undefined);
         assertEquals(await getSecretRecord(testSecretStore(globalPath), "plan-1:space-1"), undefined);
@@ -485,9 +471,12 @@ test("ensureProjectSecretStoreIgnored protects the primary managed runtime block
                 await git(primaryCheckout, ["check-ignore", ".wld/internal/collaboration-secrets.json.token.tmp"]),
                 ".wld/internal/collaboration-secrets.json.token.tmp",
             );
-            for (
-                const path of [".wld/settings.json", ".wld/agents/a.md", ".wld/skills/s/SKILL.md", ".wld/prompts/a.md"]
-            ) {
+            for (const path of [
+                ".wld/settings.json",
+                ".wld/agents/a.md",
+                ".wld/skills/s/SKILL.md",
+                ".wld/prompts/a.md",
+            ]) {
                 await assertRejects(() => git(primaryCheckout, ["check-ignore", path]));
             }
         } finally {
@@ -510,10 +499,10 @@ test("redactSecretStoreValue redacts local secret fields", () => {
 test("writeSecretStore validates records before persisting", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-secrets-invalid-"));
     try {
-        const document = /** @type {import("./secrets.js").SecretStoreDocument} */ ({
+        const document: SecretStoreDocument = {
             schemaVersion: 1,
-            records: { bad: /** @type {any} */ ({}) },
-        });
+            records: { bad: {} as LocalSecretRecord },
+        };
         await assertRejects(() => writeSecretStore(testSecretStore(join(dir, "store.json")), document));
     } finally {
         await fsRm(dir, { recursive: true });
