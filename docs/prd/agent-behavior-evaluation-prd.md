@@ -66,9 +66,14 @@ round 1 and an empty ledger. It does not run outer workflow lifecycle or Deliver
 The [one-trial baseline](../evaluation/reviewer-benchmark-results/2026-10-baseline-smoke.md) completed RV-D04 A/B,
 RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A: nine complete rounds, mechanical decisions 7/9, and clean approval
 2/4. The owner accepted all 13 findings; under the historical scoring rules, the original oracle needed corrections
-before semantic scoring. Four fixture packages are now revision 2 after repairs; the paid baseline measures revision 1
+before semantic scoring. Seven fixture packages are now revision 2 and RV-D08 is revision 3 after repairs; the paid baseline measures revision 1
 only. The [full discovery report](../evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md) records one
-trial on all 33 current cases, pending adjudication. Changed smoke fixtures cannot show a trend against the baseline.
+trial on all 33 cases before the revision-2 repairs to RV-D06–D08 and RV-D10. Current fixtures retain their planted A
+defects while checking conflicting authority hints, truthful cancellation settlement, recorded completion delivery, and
+fresh retry diagnostics. RV-D08 revision 3 checks exactly one validation-owned consumption and transition for
+recorded, live, and recovered repairs. Its defective public suite fails with a declared assertion while its clean twin
+passes. The saved run does not measure these repaired revisions. Changed smoke fixtures cannot show a
+trend against the baseline.
 Mechanical decision accuracy and clean approval are separate from finding quality. Evidence-path matches are
 suggestions, never recall.
 
