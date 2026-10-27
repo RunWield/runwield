@@ -28,7 +28,7 @@ targetBranch: "main"
 deliveryBranch: "main"
 routingIntent: "PLANNED_CHANGE"
 sessionName: "Pending Plan Cleanup"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Prune the Pending Plan Backlog
