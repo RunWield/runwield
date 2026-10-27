@@ -32,7 +32,7 @@ archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs/02-lifecycle-pr
 
 ## Context
 
-Second of three Plans in [Reviewer Benchmark: All Discovery Pairs](../../reviewer-benchmark-discovery-pairs.md). Plan 1
+Second of three Plans in [Reviewer Benchmark: All Discovery Pairs](../reviewer-benchmark-discovery-pairs.md). Plan 1
 made the corpus directory the authority, so this Plan adds packages only. No runner code changes.
 
 These four pairs are the hardest to build. Each defect depends on timing, process, file, or Git state, and each proof

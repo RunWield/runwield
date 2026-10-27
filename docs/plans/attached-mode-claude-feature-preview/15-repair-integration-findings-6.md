@@ -2,16 +2,14 @@
 classification: "PLANNED_CHANGE"
 workKind: "BUG_FIX"
 complexity: "MEDIUM"
-affectedPaths:
-  []
+affectedPaths: []
 executionAgent: "engineer"
 createdAt: "2026-10-26T20:36:00.308Z"
 status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
 order: 15
-dependencies:
-  []
+dependencies: []
 targetBranch: "epic/attached-mode-claude-feature-preview"
 planId: "f1562dd5-70d7-4561-8679-abafc1631e12"
 ---

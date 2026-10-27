@@ -27,6 +27,9 @@ userVerifiedAt: null
 targetBranch: "main"
 validatedCommit: "ba7f47a74d9f6ed43ea9e5d9c7e63514a47b855e"
 status: "verified"
+archivedAt: "2026-10-26T23:50:50.075Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reviewer-benchmark-discovery-pairs/03-context-fixtures-and-full-discovery-run.md"
 ---
 
 # Context Fixtures and the Full Discovery Run

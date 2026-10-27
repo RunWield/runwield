@@ -46,7 +46,7 @@ Working an Epic in slices is harder than it should be. Three problems show up on
   later child completes read as defects.
 
 This Plan was the Epic assembly child of
-[Plan Packages and Independent Validation](../plan-packages-and-independent-validation.md). The owner split it out to ship
+Plan Packages and Independent Validation (removed on 2026-10-26). The owner split it out to ship
 first, so the Plan Packages Epic itself runs on the new flow. It uses today's machinery only: no Plan Packages, no
 `validation.md`, no Validator. Plan Packages later upgrades the integration gate's checks to Validator running the Epic
 contract.
