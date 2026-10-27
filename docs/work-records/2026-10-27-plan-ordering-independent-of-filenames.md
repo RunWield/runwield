@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "1357718d-3f80-4e75-bb42-b23d3d0cbb0c"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "443c871e-f69d-414e-a55a-9a4ba0f2c3c2"
 ---
-
 # Plan ordering independent of filenames
 
 ## Summary
