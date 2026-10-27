@@ -346,6 +346,17 @@ test("a new commit on the Epic branch makes a passed gate stale", async () => {
 test("integration findings produce a report and a draft repair child on the Epic branch", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await deliverSecondChild(repo);
+    // This child exists only on the target branch. Its filename must not allocate order 100.
+    await git(repo, ["switch", "epic/epic"]);
+    await writePlan(repo, "epic/99-target-only", childAttrs(40, { status: "user_verified" }), "# Target only");
+    await git(repo, ["add", "docs/plans/epic/99-target-only.md"]);
+    await git(repo, ["commit", "-m", "target-only child"]);
+    await git(repo, ["switch", "main"]);
+    assertEquals(
+        (await readEpicDeliveryState(repo, "epic"))?.children.find((child) => child.name === "epic/99-target-only")
+            ?.order,
+        40,
+    );
     const head = await git(repo, ["rev-parse", "epic/epic"]);
     const { hostedSession } = gateSession();
 
@@ -383,7 +394,8 @@ test("integration findings produce a report and a draft repair child on the Epic
     assertEquals(repair?.attrs.status, "draft");
     assertEquals(repair?.attrs.parentPlan, "epic");
     assertEquals(repair?.attrs.targetBranch, "epic/epic");
-    assertEquals(repair?.attrs.order, 3);
+    assertEquals(repair?.attrs.order, 41);
+    assertEquals(repairName, "epic/repair-integration-findings");
     assertStringIncludes(repair?.markdown || "", "second.js never calls first.js");
     const onBranch = await git(repo, ["ls-tree", "-r", "--name-only", "epic/epic", "docs/plans/epic"]);
     assertStringIncludes(onBranch, `${repairName}.md`.replace(/^/, "docs/plans/"));
@@ -1348,4 +1360,28 @@ test("project-check failures alone reach the limit without becoming ledger findi
     assertEquals(saved?.round, 3);
     assertEquals(saved?.ledger.items, []);
     assertEquals((await readEpicDeliveryState(repo, "epic"))?.children.length, 2);
+});
+
+test("repair names do not reuse a surviving repair after an earlier member is removed", async () => {
+    const { repo } = await epicWithPendingSecondChild();
+    await deliverSecondChild(repo);
+    await git(repo, ["switch", "epic/epic"]);
+    const oldName = "epic/99-repair-integration-findings-2";
+    await writePlan(repo, oldName, childAttrs(40, { status: "user_verified" }), "# Keep delivered repair\n");
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "surviving repair"]);
+    const before = await git(repo, ["show", `epic/epic:docs/plans/${oldName}.md`]);
+    await git(repo, ["switch", "main"]);
+    const result = await runEpicIntegrationGate({
+        hostedSession: gateSession().hostedSession,
+        projectRoot: repo,
+        epicPlanName: "epic",
+        semanticReviewPort: scriptedReviewer({ approved: true }),
+        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+        localCIPort: scriptedChecks({ kind: "completed", exitCode: 1, output: "repair required" }),
+    });
+    if (result.kind !== "findings") throw new Error(`Expected findings, got ${result.kind}`);
+    assertEquals(result.repairChild.childPlanName, "epic/repair-integration-findings-3");
+    assertEquals((await loadPlan(repo, "epic/repair-integration-findings-3"))?.attrs.order, 41);
+    assertEquals(await git(repo, ["show", `epic/epic:docs/plans/${oldName}.md`]), before);
 });

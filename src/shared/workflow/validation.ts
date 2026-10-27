@@ -188,14 +188,7 @@ export async function continueWorkflowValidation(
         planName: args.planName,
         trigger: args.trigger,
         taskCompletionId: args.taskCompletionId,
-        buildEngineArgs: (claim) =>
-            createEngineValidationArgs({
-                ...args,
-                planContent: claim.planContent,
-                triageMeta: claim.triageMeta,
-                continuationPhase: claim.checkpoint.nextPhase,
-                validationCheckpoint: claim.checkpoint,
-            }),
+        runtime: { kind: "core", args },
     });
     if (
         result.recovery?.code !== "validation_owner_active" &&

@@ -340,7 +340,11 @@ decisions.
 **Requirement: Generated Plans are easy to read.** Planner starts each section with its main point, keeps one idea per
 short paragraph, and uses lists for separate points. Implementation Steps and the Verification Plan stay exact. Planner
 can mark the few points a reader must not miss with a WARNING, NOTE, or TIP callout. Callouts are optional authoring
-guidance; Plans in any style stay valid.
+guidance; Plans in any style stay valid. New Plan filenames and headings are descriptive, without ordinal prefixes.
+Child sequence belongs in Front Matter `order`. Reordering keeps filenames, Plan IDs, and dependency references stable;
+existing numbered filenames remain valid. Top-level menus keep status/type priority. Child menus and child-filtered
+completions use numeric `order`, independent of filenames and status. Display fallbacks for missing or equal orders do
+not authorize automatic execution.
 
 **Requirement: Domain reasoning fits the user's project.** For changes that affect domain behavior, Architect and
 Planner identify the relevant concepts, identities, rules, owners, consistency needs, and external translations in the
@@ -364,6 +368,13 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given an adopted Plan, loading it again keeps its age, identity, and decisions.
 - Given a new Plan from Planner, each section leads with its point, the key risk is easy to find, and every step and
   verification item is exact.
+- Given new child Plans, their filenames have no generated ordinal prefix; changing only `order` changes child menu
+  position without changing their paths, Plan IDs, or prerequisite references.
+- Given an existing numbered child draft, regeneration keeps its path when it is the unique legacy name match;
+  ambiguous matches and attempts to regenerate non-draft children are rejected before writes. Filename digits never
+  supply missing order metadata.
+- Given top-level Plans with explicit orders, their menus retain status/type priority; child-filtered completions use
+  child order instead.
 - Given a change to domain rules, the Epic or Plan names their owners and consistency needs and carries them into
   verification in the project's conventions.
 - Given a consequential architectural choice, the Epic names affected dependencies, lasting effects, and what changing
@@ -472,7 +483,9 @@ branch, child discovery and selection include its local edits and valid untracke
 checkout files do not enter the target family. Registered planning and execution documents retain their content,
 lifecycle, and order authority; a saved planning document does not restore a child removed from the target catalog.
 The picker shows distinct child-relative paths without repeating the Epic parent prefix and orders children by explicit
-Front Matter `order`, never filename prefixes.
+Front Matter `order`, never filename prefixes. Mixed numbered and descriptive child names follow that same rule,
+including when statuses differ. Generated integration repairs take their next order from child metadata, including
+children available only on the target branch, not from filename digits.
 Missing or duplicate order blocks the next-child shortcut and automatic continuation with a clear explanation; manual
 selection and reading remain available.
 

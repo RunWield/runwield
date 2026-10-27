@@ -2163,14 +2163,21 @@ for (const orders of [
         await withRuntimeCommandFixture("runwield-child-picker-", async ({ projectRoot }) => {
             await writePlan(projectRoot, "long-parent-prefix", { classification: "PROJECT", status: "ready_for_work" });
             for (const [index, order] of orders.entries()) {
-                await writePlan(projectRoot, `long-parent-prefix/0${index + 1}-distinct`, {
-                    status: "draft",
+                await writePlan(projectRoot, `long-parent-prefix/${index === 0 ? "99-first" : "middle"}`, {
+                    status: orders[0] === 2 && index === 1 ? "ready_for_work" : "draft",
                     parentPlan: "long-parent-prefix",
                     ...(order === undefined ? {} : { order }),
                 });
             }
+            if (orders[0] === 2) {
+                await writePlan(projectRoot, "long-parent-prefix/01-last", {
+                    parentPlan: "long-parent-prefix",
+                    order: 10,
+                    status: "failed",
+                });
+            }
             const { runtime, sessionId } = await createRuntime(projectRoot);
-            const ui = makeUi(["pick_child", "long-parent-prefix/01-distinct", "view", "back", null, null]);
+            const ui = makeUi(["pick_child", "long-parent-prefix/99-first", "view", "back", null, null]);
             try {
                 await runLoadPlanCommand(["long-parent-prefix"], {
                     sessionRuntime: runtime,
@@ -2180,13 +2187,16 @@ for (const orders of [
                 });
                 const options =
                     ui.promptOptions.find((items) =>
-                        items.some((item) => item.value === "long-parent-prefix/01-distinct"),
+                        items.some((item) => item.value === "long-parent-prefix/99-first"),
                     ) || [];
                 assertEquals(options.length > 0, true);
                 const next = options.find((item) => item.value === "__next_child__");
                 if (orders[0] === 2) {
-                    assertStringIncludes(next?.label || "", "02-distinct");
-                    assertEquals(options[1].value, "long-parent-prefix/02-distinct");
+                    assertStringIncludes(next?.label || "", "middle");
+                    assertEquals(
+                        options.filter((item) => item.value !== "__next_child__").map((item) => item.value),
+                        ["long-parent-prefix/middle", "long-parent-prefix/99-first", "long-parent-prefix/01-last"],
+                    );
                 } else {
                     assertEquals(next, undefined);
                     assertStringIncludes(ui.messages.join("\n"), "order");
@@ -2197,7 +2207,34 @@ for (const orders of [
                         .every((item) => !item.label.includes("long-parent-prefix/")),
                     true,
                 );
-                assertStringIncludes(ui.messages.join("\n"), "Planned Change: long-parent-prefix/01-distinct");
+                assertStringIncludes(ui.messages.join("\n"), "Planned Change: long-parent-prefix/99-first");
+                if (orders[0] === 2) {
+                    const last = await loadPlan(projectRoot, "long-parent-prefix/01-last");
+                    if (!last) throw new Error("Expected last child");
+                    await updatePlanFrontMatter(
+                        projectRoot,
+                        "long-parent-prefix/01-last",
+                        { order: 0 },
+                        {},
+                        { expectedRevision: last.revision },
+                    );
+                    const reopened = makeUi(["pick_child", "long-parent-prefix/99-first", "view", "back", null, null]);
+                    await runLoadPlanCommand(["long-parent-prefix"], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: reopened.uiAPI,
+                        editor: reopened.editor,
+                    });
+                    const reordered =
+                        reopened.promptOptions.find((items) =>
+                            items.some((item) => item.value === "long-parent-prefix/99-first"),
+                        ) || [];
+                    assertEquals(
+                        reordered.filter((item) => item.value !== "__next_child__").map((item) => item.value),
+                        ["long-parent-prefix/01-last", "long-parent-prefix/middle", "long-parent-prefix/99-first"],
+                    );
+                    assertStringIncludes(reopened.messages.join("\n"), "Planned Change: long-parent-prefix/99-first");
+                }
             } finally {
                 runtime.closeAllSessions();
             }

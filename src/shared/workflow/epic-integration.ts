@@ -87,6 +87,7 @@ const CHECK_OUTPUT_TAIL = 6000;
 /** One child as the Epic sees it. */
 export interface EpicChildDelivery {
     name: string;
+    order?: number;
     status: string;
     /** The child's work is in the Epic branch, or the user closed or accepted it. */
     settled: boolean;
@@ -264,6 +265,7 @@ export async function readEpicDeliveryState(
                     : undefined;
             return {
                 name: child.name,
+                order: child.attrs.order,
                 status: child.attrs.status,
                 settled: await isChildSettled(primaryRoot, ref, head, child),
                 openRepairDraft: isIntegrationRepairChild(child.name) && child.attrs.status === "draft",
@@ -694,15 +696,18 @@ async function addRepairChild(
     const siblings = await findPlansByParent(documentRoot, epicPlanName);
     const highestOrder = Math.max(
         0,
-        ...state.children.map((child) => Number(child.name.split("/").at(-1)?.slice(0, 2)) || 0),
+        ...state.children.map((child) => child.order ?? 0),
         ...siblings.map((child) => (typeof child.attrs.order === "number" ? child.attrs.order : 0)),
     );
-    const repairs = new Map(
-        [...state.children, ...siblings]
-            .filter((child) => isIntegrationRepairChild(child.name))
-            .map((child) => [child.name, child]),
-    ).size;
-    const title = repairs === 0 ? "Repair integration findings" : `Repair integration findings ${repairs + 1}`;
+    const repairNumber =
+        Math.max(
+            0,
+            ...[...state.children, ...siblings].map((child) => {
+                const match = child.name.match(/\/(?:\d{2,}-)?repair-integration-findings(?:-(\d+))?$/);
+                return match ? Number(match[1] || 1) : 0;
+            }),
+        ) + 1;
+    const title = repairNumber === 1 ? "Repair integration findings" : `Repair integration findings ${repairNumber}`;
     const content = [
         `# ${title}`,
         "",

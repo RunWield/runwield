@@ -1,6 +1,6 @@
 /** @module ui/workspace/server/owner-dashboard */
 
-import { isSequencePlan } from "../../../plan-store.js";
+import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.js";
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadPlanSummaries } from "./plan-adapter.js";
@@ -12,6 +12,8 @@ import { withProjectRuntimeReadScope } from "../../../shared/project-runtime-lay
 type DashboardCategory = "needs-you" | "ready" | "in-progress" | "recently-finished";
 
 type PlanAttrs = {
+    parentPlan?: string;
+    order?: number;
     status?: string;
     classification?: string;
     type?: string;
@@ -435,6 +437,34 @@ function sidebarPlan(project: SidebarProject, plan: OwnerPlan, sessions: Session
     };
 }
 
+/** Keep priority-ranked slots, but fill each parent's slots in child order. */
+function orderSidebarChildren(plans: OwnerPlan[]): OwnerPlan[] {
+    const siblings = new Map<string, OwnerPlan[]>();
+    for (const plan of plans) {
+        const parent = plan.attrs?.parentPlan;
+        if (!parent) continue;
+        const group = siblings.get(parent) || [];
+        group.push(plan);
+        siblings.set(parent, group);
+    }
+    for (const group of siblings.values()) {
+        group.sort((left, right) =>
+            compareChildPlansByOrder(
+                { name: left.name || left.planName || left.planId, attrs: left.attrs || {} },
+                { name: right.name || right.planName || right.planId, attrs: right.attrs || {} },
+            ),
+        );
+    }
+    const positions = new Map<string, number>();
+    return plans.map((plan) => {
+        const parent = plan.attrs?.parentPlan;
+        if (!parent) return plan;
+        const index = positions.get(parent) || 0;
+        positions.set(parent, index + 1);
+        return siblings.get(parent)![index];
+    });
+}
+
 function recentTime(item: DashboardItem): number {
     return Date.parse(item.recentAt || "") || 0;
 }
@@ -837,7 +867,7 @@ async function projectPayload(
     return {
         ...project,
         root,
-        plans: plansForSidebar.map((plan) =>
+        plans: orderSidebarChildren(plansForSidebar).map((plan) =>
             sidebarPlan(project, plan, associatedSessionsByPlan.get(plan.planId) || []),
         ),
         hasMorePlans: plansForSidebar.length > 5,
@@ -988,7 +1018,7 @@ export async function loadOwnerSidebar(
                     );
                     projects[index] = {
                         ...project,
-                        plans: plansForSidebar.map((plan) =>
+                        plans: orderSidebarChildren(plansForSidebar).map((plan) =>
                             sidebarPlan(project, plan, associations.get(plan.planId) || []),
                         ),
                         hasMorePlans: plansForSidebar.length > 5,

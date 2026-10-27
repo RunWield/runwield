@@ -56,13 +56,16 @@ export type ValidationAttemptClaim = {
     triageMeta: ValidationLoopArgs["triageMeta"];
 };
 
+type ValidationRuntime =
+    { kind: "core"; args: import("./validation.ts").ValidationLoopArgs } | { kind: "host"; signal?: AbortSignal };
+
 export type RunValidationAttemptArgs = {
     hostResume?: ValidationHostResume;
     projectRoot: string;
     planName: string;
     trigger?: ValidationTrigger;
     taskCompletionId?: string;
-    buildEngineArgs(claim: ValidationAttemptClaim): ValidationLoopArgs;
+    runtime: ValidationRuntime;
 };
 
 class ValidationAlreadyRunningError extends Error {}
@@ -508,8 +511,22 @@ async function continueValidationAttempt(
             };
         }
         claim = claimed;
+        // Select only product-owned compositions. Core is loaded lazily so a
+        // host validation attempt does not load the Session runtime.
+        const composition =
+            args.runtime.kind === "core"
+                ? (await import("./validation.ts")).createEngineValidationArgs(args.runtime.args)
+                : (await import("./validation-host-turn.ts")).createHostTurnValidationArgs(
+                      {
+                          projectRoot: args.projectRoot,
+                          planName: args.planName,
+                          resume: args.hostResume,
+                          signal: args.runtime.signal,
+                      },
+                      claim,
+                  );
         const engineArgs = {
-            ...args.buildEngineArgs(claim),
+            ...composition,
             planName: args.planName,
             planContent: claim.planContent,
             triageMeta: claim.triageMeta,
