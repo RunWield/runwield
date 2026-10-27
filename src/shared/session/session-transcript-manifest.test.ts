@@ -10,6 +10,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
+import type { PersistedActiveAgentState } from "./active-agent-session.js";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
@@ -26,30 +27,46 @@ import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
 import { getRunWieldSessionDir } from "./root-session.js";
 
+interface FixtureTranscriptMessage {
+    role: "user" | "assistant";
+    content: string;
+}
+
+interface FixtureMessageEntry {
+    type: "message";
+    id: string;
+    timestamp: string;
+    message: FixtureTranscriptMessage;
+}
+
+interface FixtureActiveAgentEntry {
+    type: "custom";
+    id: string;
+    customType: string;
+    data: PersistedActiveAgentState;
+}
+
+type FixtureBodyEntry = FixtureMessageEntry | FixtureActiveAgentEntry;
+
 function idFactory(prefix = "id") {
     let next = 0;
     return () => `${prefix}-${++next}`;
 }
 
-/** @param {string} cwd @param {string} piSessionId @param {string} timestamp @param {Array<Record<string, unknown>>} bodyEntries */
-async function writeTranscript(cwd, piSessionId, timestamp, bodyEntries) {
+async function writeTranscript(cwd: string, piSessionId: string, timestamp: string, bodyEntries: FixtureBodyEntry[]) {
     const sessionDir = getRunWieldSessionDir(cwd);
     await fsMkdir(sessionDir, { recursive: true });
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
-    const entries = [
-        { type: "session", id: piSessionId, cwd, timestamp },
-        ...bodyEntries,
-    ];
+    const entries = [{ type: "session", id: piSessionId, cwd, timestamp }, ...bodyEntries];
     await fsWriteFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     return { path, entries };
 }
 
-/**
- * @param {Array<Record<string, unknown>> | null} [firstBodyEntries]
- * @param {Array<Record<string, unknown>> | null} [secondBodyEntries]
- */
-async function createTwoSegmentFixture(firstBodyEntries = null, secondBodyEntries = null) {
-    const firstEntries = firstBodyEntries || [
+async function createTwoSegmentFixture(
+    firstBodyEntries: FixtureBodyEntry[] | null = null,
+    secondBodyEntries: FixtureBodyEntry[] | null = null,
+) {
+    const firstEntries: FixtureBodyEntry[] = firstBodyEntries || [
         {
             type: "message",
             id: "duplicate",
@@ -57,7 +74,7 @@ async function createTwoSegmentFixture(firstBodyEntries = null, secondBodyEntrie
             message: { role: "user", content: "first" },
         },
     ];
-    const secondEntries = secondBodyEntries || [
+    const secondEntries: FixtureBodyEntry[] = secondBodyEntries || [
         {
             type: "message",
             id: "duplicate",
@@ -111,8 +128,9 @@ async function createTwoSegmentFixture(firstBodyEntries = null, secondBodyEntrie
     return { dir, database, root, session, firstSegment, firstEvidence, first, second, secondSegment, generation };
 }
 
-/** @param {Awaited<ReturnType<typeof createTwoSegmentFixture>>} fixture */
-async function cleanupFixture(fixture) {
+type TwoSegmentFixture = Awaited<ReturnType<typeof createTwoSegmentFixture>>;
+
+async function cleanupFixture(fixture: TwoSegmentFixture) {
     fixture.database.close();
     await fsRm(fixture.dir, { recursive: true });
 }
@@ -128,10 +146,13 @@ test("aggregate projection adds safe segment context without exposing segment ev
             segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
         });
         assert(projected.ok);
-        assertEquals(projected.events.map((event) => event.eventId), [
-            `${fixture.firstSegment.segmentId}:duplicate:user_message:0`,
-            `${fixture.secondSegment.segmentId}:duplicate:assistant_text_delta:0`,
-        ]);
+        assertEquals(
+            projected.events.map((event) => event.eventId),
+            [
+                `${fixture.firstSegment.segmentId}:duplicate:user_message:0`,
+                `${fixture.secondSegment.segmentId}:duplicate:assistant_text_delta:0`,
+            ],
+        );
         assertEquals(projected.snapshot.name, null);
         assertEquals(projected.snapshot.sessionStats, {
             userMessages: 1,
@@ -139,10 +160,13 @@ test("aggregate projection adds safe segment context without exposing segment ev
             toolCalls: 0,
             compactionCount: 0,
         });
-        assertEquals(projected.events.map((event) => [event.segmentOrdinal, event.segmentKind]), [
-            [0, "planning"],
-            [1, "execution"],
-        ]);
+        assertEquals(
+            projected.events.map((event) => [event.segmentOrdinal, event.segmentKind]),
+            [
+                [0, "planning"],
+                [1, "execution"],
+            ],
+        );
         assertEquals(projected.segments, [
             { ordinal: 0, kind: "planning", label: "Planning segment 1", sealed: true, current: false },
             { ordinal: 1, kind: "execution", label: "Execution segment 2", sealed: false, current: true },
@@ -224,10 +248,10 @@ test("aggregate projection reads segments from each segment transcript directory
         });
 
         assert(projected.ok);
-        assertEquals(projected.events.map((event) => event.eventId), [
-            "segment-1:first:user_message:0",
-            "segment-2:second:assistant_text_delta:0",
-        ]);
+        assertEquals(
+            projected.events.map((event) => event.eventId),
+            ["segment-1:first:user_message:0", "segment-2:second:assistant_text_delta:0"],
+        );
     } finally {
         await fsRm(dir, { recursive: true });
     }
@@ -280,9 +304,12 @@ test("aggregate projection carries active Agent state across segment boundaries"
         });
         assert(projected.ok);
         assertEquals(
-            projected.events.map((
-                event,
-            ) => [event.type, event.eventId, event.message || event.delta || "", event.agentName || ""]),
+            projected.events.map((event) => [
+                event.type,
+                event.eventId,
+                event.message || event.delta || "",
+                event.agentName || "",
+            ]),
             [
                 [
                     "assistant_text_delta",
@@ -326,9 +353,8 @@ test("aggregate projection fails closed with zero events when sealed segment evi
                 runtimeSessionId: "runtime-1",
                 generation: fixture.generation,
                 segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
-                cursorEventId: mutate === "missing"
-                    ? `${fixture.firstSegment.segmentId}:duplicate:user_message:0`
-                    : null,
+                cursorEventId:
+                    mutate === "missing" ? `${fixture.firstSegment.segmentId}:duplicate:user_message:0` : null,
             });
             assertEquals(projected.ok, false, mutate);
             assertEquals(projected.events, [], mutate);
@@ -425,9 +451,10 @@ test("aggregate projection resumes across a segment boundary", async () => {
             cursorEventOrdinal: 0,
         });
         assert(projected.ok);
-        assertEquals(projected.events.map((event) => event.eventId), [
-            `${fixture.secondSegment.segmentId}:duplicate:assistant_text_delta:0`,
-        ]);
+        assertEquals(
+            projected.events.map((event) => event.eventId),
+            [`${fixture.secondSegment.segmentId}:duplicate:assistant_text_delta:0`],
+        );
     } finally {
         await cleanupFixture(fixture);
     }
