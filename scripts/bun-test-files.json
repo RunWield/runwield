@@ -353,7 +353,7 @@
     "src/shared/session/session-state-imports.test.ts",
     "src/shared/session/session-subscribers.test.js",
     "src/shared/session/session-temperature.test.ts",
-    "src/shared/session/session-transcript-manifest.test.js",
+    "src/shared/session/session-transcript-manifest.test.ts",
     "src/shared/session/session-transcript-projection.test.js",
     "src/shared/session/session-user-messages.test.ts",
     "src/shared/session/skill-catalog.test.ts",
