@@ -509,7 +509,7 @@
     "src/shared/workflow/state-transition.test.js",
     "src/shared/workflow/transition-recovery.test.ts",
     "src/shared/workflow/triage-outcome.test.ts",
-    "src/shared/workflow/validation-ci-recovery.test.js",
+    "src/shared/workflow/validation-ci-recovery.test.ts",
     "src/shared/workflow/validation-command.test.ts",
     "src/shared/workflow/validation-completion-gating.test.ts",
     "src/shared/workflow/validation-host-turn-decisions.test.ts",
