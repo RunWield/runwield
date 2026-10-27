@@ -3,7 +3,7 @@ import process from "node:process";
 import { delimiter, join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
+import { type WorkflowMetricsFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent } from "../../cmd/guided-review/protocol.ts";
 import { createReviewWorkspaceApp } from "./server.js";
@@ -13,6 +13,59 @@ import {
     reviewAgentApi,
     runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
+
+import type { StandaloneReviewPayload } from "../review/review-launcher.ts";
+import type { AiReviewValue } from "../../shared/standalone-review/ai-review.ts";
+import type { GuidedReviewJobStatus } from "./react/guided-review-status.ts";
+
+interface CommandFixture {
+    output?: string;
+    error?: string;
+    exitCode?: number;
+    wait?: boolean;
+    frames?: string[];
+    gatePath?: string;
+}
+
+type ReviewFixturePayload = {
+    rawPatch: string;
+    gitRef?: string;
+    standaloneReview?: StandaloneReviewPayload;
+    agentCwd?: string;
+};
+
+type StandaloneReviewFixturePayload = ReviewFixturePayload & Required<Pick<ReviewFixturePayload, "standaloneReview">>;
+
+interface ReviewLaunchBody {
+    provider: string;
+}
+
+interface ReviewJob extends GuidedReviewJobStatus {
+    id: string;
+    cwd: string;
+    status: string;
+    elapsedMs: number;
+}
+
+interface ReviewLaunchResponse {
+    job: ReviewJob;
+}
+
+interface ReviewJobsResponse {
+    jobs: ReviewJob[];
+}
+
+interface ReviewProvider {
+    id: string;
+    available: boolean;
+}
+
+interface ReviewCapabilities {
+    providers: ReviewProvider[];
+}
+
+type AiFixtureRun = (fixture: WorkflowMetricsFixture) => Promise<void>;
+type ReviewFixtureApp = ReturnType<typeof createApp>;
 
 const PATCH =
     "diff --git a/src/a.js b/src/a.js\n--- a/src/a.js\n+++ b/src/a.js\n@@ -1 +1,2 @@\n export const a = 1;\n+export const b = 2;\n";
@@ -33,21 +86,11 @@ const RESULT = {
     ],
 };
 
-function shellQuote(value) {
+function shellQuote(value: string) {
     return process.platform === "win32" ? `"${value}"` : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-/**
- * @typedef {Object} CommandFixture
- * @property {string} [output]
- * @property {string} [error]
- * @property {number} [exitCode]
- * @property {boolean} [wait]
- * @property {string[]} [frames]
- * @property {string} [gatePath]
- */
-/** @param {string} root @param {CommandFixture} fixture */
-async function commandScript(root, fixture = {}) {
+async function commandScript(root: string, fixture: CommandFixture = {}) {
     const script = join(root, `command-${crypto.randomUUID()}.mjs`);
     await writeFile(
         script,
@@ -70,8 +113,7 @@ process.exitCode = fixture.exitCode || 0;
     return script;
 }
 
-/** @param {(fixture: import("../../testing/workflow-metrics-fixture.ts").WorkflowMetricsFixture) => Promise<void>} run */
-async function withAiFixture(run) {
+async function withAiFixture(run: AiFixtureRun) {
     await withWorkflowMetricsFixture(async (fixture) => {
         const keys = ["RUNWIELD_AI_REVIEW_COMMAND", "RUNWIELD_AI_REVIEW_MODEL", "PATH"];
         const previous = keys.map((key) => process.env[key]);
@@ -89,7 +131,7 @@ async function withAiFixture(run) {
     });
 }
 
-async function waitForFile(path) {
+async function waitForFile(path: string) {
     for (let attempt = 0; attempt < 500; attempt++) {
         try {
             return await readFile(path, "utf8");
@@ -100,7 +142,7 @@ async function waitForFile(path) {
     throw new Error(`Fixture did not write ${path}`);
 }
 
-function reviewPayload() {
+function reviewPayload(): StandaloneReviewFixturePayload {
     return {
         rawPatch: PATCH,
         gitRef: "topic",
@@ -113,12 +155,12 @@ function reviewPayload() {
     };
 }
 
-function createApp(cwd, payload = reviewPayload()) {
+function createApp(cwd: string, payload: ReviewFixturePayload = reviewPayload()) {
     const app = createReviewWorkspaceApp({ cwd, token: "ai-review-token", reviewType: "code", reviewPayload: payload });
     const handler = app.handler();
     return {
         cleanup: app.cleanup,
-        request(path, method = "GET", body) {
+        request(path: string, method = "GET", body?: ReviewLaunchBody) {
             return handler(
                 new Request(`http://localhost${path}`, {
                     method,
@@ -131,7 +173,7 @@ function createApp(cwd, payload = reviewPayload()) {
     };
 }
 
-async function waitForResult(app, id) {
+async function waitForResult(app: ReviewFixtureApp, id: string) {
     for (let attempt = 0; attempt < 500; attempt++) {
         const response = await app.request(`/api/ai-review/${id}`);
         if (response.status !== 202) return response;
@@ -146,7 +188,7 @@ test("standalone AI review is authenticated and returns placed annotations and a
         try {
             assertEquals((await app.handler(new Request("http://localhost/api/ai-review/missing"))).status, 401);
             assertEquals((await app.request("/api/ai-review/missing")).status, 404);
-            const capabilities = await (await app.request("/api/agents/capabilities")).json();
+            const capabilities: ReviewCapabilities = await (await app.request("/api/agents/capabilities")).json();
             assertEquals(capabilities.providers.find((provider) => provider.id === "ai-review")?.available, true);
             assertEquals(
                 capabilities.providers.some((provider) => provider.id === "guide"),
@@ -154,10 +196,10 @@ test("standalone AI review is authenticated and returns placed annotations and a
             );
             const launch = await app.request("/api/agents/jobs", "POST", { provider: "ai-review" });
             assertEquals(launch.status, 202);
-            const { job } = await launch.json();
+            const { job }: ReviewLaunchResponse = await launch.json();
             const response = await waitForResult(app, job.id);
             assertEquals(response.status, 200);
-            const result = await response.json();
+            const result: AiReviewValue = await response.json();
             assertEquals(result.specSource, "PR description");
             assertEquals(result.counts, { standards: 0, spec: 0, tests: 1 });
             assertEquals(result.annotations[0].scope, "line");
@@ -170,7 +212,7 @@ test("standalone AI review is authenticated and returns placed annotations and a
             assertStringIncludes(prompt, "git show topic:<path>");
             assertStringIncludes(prompt, "Base: main");
             assertStringIncludes(prompt, "PR description: test b.");
-            const { jobs } = await (await app.request("/api/agents/jobs")).json();
+            const { jobs }: ReviewJobsResponse = await (await app.request("/api/agents/jobs")).json();
             assertEquals(jobs[0].status, "done");
             assertEquals(jobs[0].elapsedMs >= 0, true);
             assertEquals(jobs[0].usageState, "unavailable");
@@ -197,7 +239,9 @@ test("AI review uses the lazy worktree checkout and reports no findings without 
         payload.agentCwd = worktree;
         const app = createApp(projectRoot, payload);
         try {
-            const { job } = await (await app.request("/api/agents/jobs", "POST", { provider: "ai-review" })).json();
+            const { job }: ReviewLaunchResponse = await (
+                await app.request("/api/agents/jobs", "POST", { provider: "ai-review" })
+            ).json();
             assertEquals(job.cwd, worktree);
             const response = await waitForResult(app, job.id);
             assertEquals(response.status, 200);
@@ -219,7 +263,7 @@ test("validation review excludes AI review and rejects its launch and unknown pr
     await withAiFixture(async ({ projectRoot }) => {
         const app = createApp(projectRoot, { rawPatch: PATCH });
         try {
-            const capabilities = await (await app.request("/api/agents/capabilities")).json();
+            const capabilities: ReviewCapabilities = await (await app.request("/api/agents/capabilities")).json();
             assertEquals(
                 capabilities.providers.some((provider) => provider.id === "ai-review"),
                 false,
@@ -252,7 +296,9 @@ for (const failure of [
             process.env.RUNWIELD_AI_REVIEW_COMMAND = `${shellQuote(process.execPath)} ${shellQuote(script)}`;
             const app = createApp(projectRoot);
             try {
-                const { job } = await (await app.request("/api/agents/jobs", "POST", { provider: "ai-review" })).json();
+                const { job }: ReviewLaunchResponse = await (
+                    await app.request("/api/agents/jobs", "POST", { provider: "ai-review" })
+                ).json();
                 const response = await waitForResult(app, job.id);
                 assertEquals(response.status, 422);
                 assertStringIncludes((await response.json()).error, failure.message);
@@ -273,11 +319,13 @@ test("a running AI review returns 202 and DELETE cancels it", async () => {
         process.env.RUNWIELD_AI_REVIEW_COMMAND = `${shellQuote(process.execPath)} ${shellQuote(script)}`;
         const app = createApp(projectRoot);
         try {
-            const { job } = await (await app.request("/api/agents/jobs", "POST", { provider: "ai-review" })).json();
+            const { job }: ReviewLaunchResponse = await (
+                await app.request("/api/agents/jobs", "POST", { provider: "ai-review" })
+            ).json();
             assertEquals((await app.request(`/api/ai-review/${job.id}`)).status, 202);
             await waitForFile(join(projectRoot, "prompt.txt"));
             assertEquals((await app.request(`/api/agents/jobs/${job.id}`, "DELETE")).status, 200);
-            const { jobs } = await (await app.request("/api/agents/jobs")).json();
+            const { jobs }: ReviewJobsResponse = await (await app.request("/api/agents/jobs")).json();
             assertEquals(jobs[0].status, "killed");
         } finally {
             await app.cleanup();
@@ -323,7 +371,7 @@ test("AI review snapshots the launch patch and uses wld ai-review with usage and
                 url,
                 state,
             );
-            const { job } = await response.json();
+            const { job }: ReviewLaunchResponse = await response.json();
             payload.rawPatch = "";
             const info = state.jobs.get(job.id).info;
             for (let attempt = 0; attempt < 500 && info.usageState !== "available"; attempt++) {
@@ -336,7 +384,7 @@ test("AI review snapshots the launch patch and uses wld ai-review with usage and
             await writeFile(gatePath, "release");
             await state.jobs.get(job.id).done;
             const resultUrl = new URL(`http://localhost/api/ai-review/${job.id}`);
-            const result = await (await reviewAgentApi(new Request(resultUrl), resultUrl, state)).json();
+            const result: AiReviewValue = await (await reviewAgentApi(new Request(resultUrl), resultUrl, state)).json();
             assertEquals(result.annotations[0].scope, "line");
             assertEquals(JSON.parse(await readFile(join(projectRoot, "args.json"), "utf8")), ["ai-review"]);
             assertEquals(info.status, "done");

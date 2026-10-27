@@ -775,7 +775,7 @@
     "src/ui/workspace/session-continuation.integration.test.ts",
     "src/ui/workspace/session-navigation.integration.test.ts",
     "src/ui/workspace/shutdown-continuation.integration.test.ts",
-    "src/ui/workspace/standalone-ai-review.test.js",
+    "src/ui/workspace/standalone-ai-review.test.ts",
     "src/ui/workspace/standalone-review-refresh.test.tsx",
     "src/ui/workspace/workspace-board.test.js",
     "src/ui/workspace/workspace-code-review-ux.test.tsx",
