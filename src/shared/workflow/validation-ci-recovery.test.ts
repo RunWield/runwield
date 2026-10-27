@@ -5,7 +5,7 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { type PlanFrontMatterInput, loadPlan, savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { ensureRootAgentSession } from "../session/session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
@@ -19,52 +19,63 @@ import {
     runValidationPhase,
 } from "./validation-test-helpers.js";
 
-/** @returns {import("./validation-session-adapter.ts").SemanticReviewPort} */
-function repairPort(outcomes = ["completed"]) {
+import type { SemanticReviewPort } from "./validation-session-adapter.ts";
+import type { UiAPI } from "../../ui/tui/types.js";
+import type { ActiveExecutionWorkflow } from "../types.js";
+import type { LocalCIPort } from "./validation-local-ci.ts";
+
+type RepairMessages = Awaited<ReturnType<SemanticReviewPort["runIsolatedAgentSession"]>>;
+type ImplementedPlanAttrs = PlanFrontMatterInput & Partial<Pick<ActiveExecutionWorkflow, "executionAgent">>;
+
+interface ValidationPromptUi extends Pick<UiAPI, "promptSelect"> {
+    promptSelections: string[];
+}
+
+interface IncompleteRepairFixture extends Awaited<ReturnType<typeof makeImplementedRun>> {
+    prompts: string[];
+}
+
+type IncompleteRepairRun = (fixture: IncompleteRepairFixture) => Promise<void>;
+
+function repairPort(outcomes = ["completed"]): SemanticReviewPort {
     let call = 0;
     return {
         runIsolatedAgentSession: async (options) => {
             const outcome = outcomes[Math.min(call, outcomes.length - 1)];
             call += 1;
             if (outcome === "completed") {
-                await executeWorkflowTestTools(options, [{
-                    name: "task_completed",
-                    arguments: { message: `Repair turn ${call} completed.` },
-                }]);
+                await executeWorkflowTestTools(options, [
+                    {
+                        name: "task_completed",
+                        arguments: { message: `Repair turn ${call} completed.` },
+                    },
+                ]);
             }
-            return Promise.resolve(
-                /** @type {any} */ (
-                    outcome === "completed"
-                        ? [{
-                            role: "toolResult",
-                            toolName: "task_completed",
-                            toolCallId: `repair-${call}`,
-                            content: [],
-                            isError: false,
-                            timestamp: Date.now(),
-                            details: { outcome: "task_completed", message: `Repair turn ${call} completed.` },
-                        }]
-                        : []
-                ),
+            return Promise.resolve<RepairMessages>(
+                outcome === "completed"
+                    ? [
+                          {
+                              role: "toolResult",
+                              toolName: "task_completed",
+                              toolCallId: `repair-${call}`,
+                              content: [],
+                              isError: false,
+                              timestamp: Date.now(),
+                              details: { outcome: "task_completed", message: `Repair turn ${call} completed.` },
+                          },
+                      ]
+                    : [],
             );
         },
     };
 }
 
 function makeValidationUi(cwd = getCwd()) {
-    const uiAPI = makeUi();
+    const uiAPI: ValidationPromptUi = makeUi();
     return { uiAPI, hostedSession: attachRecorder(new HostedSession({ id: "validation-repair-test", cwd }), uiAPI) };
 }
 
-/** @typedef {{ label: string }} PromptOption */
-/** @typedef {{ promptSelections: string[], promptSelect: (prompt: string, options: PromptOption[]) => Promise<string> }} ValidationPromptUi */
-
-/**
- * @param {ValidationPromptUi} uiAPI
- * @param {string[]} labels
- * @param {string} value
- */
-function selectAndCaptureOptions(uiAPI, labels, value) {
+function selectAndCaptureOptions(uiAPI: ValidationPromptUi, labels: string[], value: string) {
     uiAPI.promptSelect = (_prompt, options) => {
         uiAPI.promptSelections.push("prompted");
         labels.splice(0, labels.length, ...options.map((option) => option.label));
@@ -72,12 +83,11 @@ function selectAndCaptureOptions(uiAPI, labels, value) {
     };
 }
 
-/**
- * @param {import("../session/hosted-session.js").HostedSession} hostedSession
- * @param {"engineer" | "frontend-engineer"} agentName
- * @param {string} cwd
- */
-async function primeRepairAgentRoot(hostedSession, agentName, cwd) {
+async function primeRepairAgentRoot(
+    hostedSession: HostedSession,
+    agentName: ActiveExecutionWorkflow["executionAgent"],
+    cwd: string,
+) {
     await ensureRootAgentSession({
         hostedSession,
         agentName,
@@ -85,10 +95,7 @@ async function primeRepairAgentRoot(hostedSession, agentName, cwd) {
     });
 }
 
-/**
- * @param {{ executionAgent?: "engineer" | "frontend-engineer" } & Record<string, unknown>} [attrs]
- */
-async function makeImplementedRun(attrs = {}) {
+async function makeImplementedRun(attrs: ImplementedPlanAttrs = {}) {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "implemented",
@@ -108,18 +115,9 @@ async function makeImplementedRun(attrs = {}) {
     return { projectRoot, hostedSession, uiAPI };
 }
 
-/**
- * @typedef {Awaited<ReturnType<typeof makeImplementedRun>> & { prompts: string[] }} IncompleteRepairFixture
- */
-
-/**
- * @param {string} prefix
- * @param {{ executionAgent?: "engineer" | "frontend-engineer" } & Record<string, unknown>} attrs
- * @param {(fixture: IncompleteRepairFixture) => Promise<void>} run
- */
-async function withIncompleteRepairModel(prefix, attrs, run) {
+async function withIncompleteRepairModel(prefix: string, attrs: ImplementedPlanAttrs, run: IncompleteRepairRun) {
     await withRuntimeCommandFixture(prefix, async ({ setModelResponseFactory }) => {
-        const prompts = /** @type {string[]} */ ([]);
+        const prompts: string[] = [];
         setModelResponseFactory((context) => {
             prompts.push(JSON.stringify(context));
             return fauxAssistantMessage(fauxText("Repair remains incomplete."));
@@ -165,7 +163,7 @@ test("runValidationLoop offers a way out when the repair rounds for CI are spent
         validationCiAttempts: 2,
     });
     const { hostedSession, uiAPI } = makeValidationUi();
-    const offeredOptions = /** @type {string[]} */ ([]);
+    const offeredOptions: string[] = [];
     selectAndCaptureOptions(uiAPI, offeredOptions, "stop");
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
@@ -288,7 +286,7 @@ test("stopped validation can return control to the Engineer session", async () =
         executionCwd: projectRoot,
         nonGitInPlace: true,
     });
-    const offeredOptions = /** @type {string[]} */ ([]);
+    const offeredOptions: string[] = [];
     selectAndCaptureOptions(uiAPI, offeredOptions, "engineer_follow_up");
 
     const result = await runValidationPhase({
@@ -312,10 +310,8 @@ test("stopped validation can return control to the Engineer session", async () =
 
 test("runValidationPhase keeps canonical progress when a stale checkpoint still names Mechanical Validation", async () => {
     await withIncompleteRepairModel("validation-repair-rerun-", {}, async ({ projectRoot, hostedSession }) => {
-        /** @type {number[]} */
-        const ciExitCodes = [];
-        /** @type {import("./validation-local-ci.ts").LocalCIPort} */
-        const localCI = {
+        const ciExitCodes: number[] = [];
+        const localCI: LocalCIPort = {
             run: () => {
                 ciExitCodes.push(1);
                 return Promise.resolve({ kind: "completed", exitCode: 1, output: "type error" });
@@ -352,10 +348,16 @@ test("runValidationPhase keeps canonical progress when a stale checkpoint still 
             phase: "mechanical",
             state: "running",
         });
-        await savePlan(projectRoot, "p", advanced.body, {
-            ...advanced.attrs,
-            validationCheckpoint: checkpoint,
-        }, { expectedRevision: advanced.revision });
+        await savePlan(
+            projectRoot,
+            "p",
+            advanced.body,
+            {
+                ...advanced.attrs,
+                validationCheckpoint: checkpoint,
+            },
+            { expectedRevision: advanced.revision },
+        );
 
         // The lifecycle event is the durable proof that CI passed, so the lagging
         // checkpoint cannot send the Plan back to the build. Validation carries on at
