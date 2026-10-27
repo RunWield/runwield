@@ -8,16 +8,17 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { loadPlan, updatePlanStatus } from "../../plan-store.js";
+import { type PlanFrontMatterInput, loadPlan, updatePlanStatus } from "../../plan-store.js";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 
-/**
- * @param {string} cwd
- * @param {string} name
- * @param {Record<string, unknown>} attrs
- */
-async function writePlan(cwd, name, attrs) {
+import type { HostedSession } from "../session/hosted-session.js";
+import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.js";
+
+type CapturedStatusEvent = Pick<RuntimeSystemStatusEvent, "type" | "message" | "header" | "level">;
+type CapturedStatusSession = Pick<HostedSession, "cwd" | "getEventSink">;
+
+async function writePlan(cwd: string, name: string, attrs: PlanFrontMatterInput) {
     const path = join(cwd, "docs", "plans", `${name}.md`);
     await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
@@ -234,14 +235,10 @@ test("resolveEpicContinuation requires dependencies to be verified", async () =>
     assertEquals(result.reason, "dependency_missing");
 });
 
-/**
- * @param {string} cwd
- * @param {string[]} events
- */
-function makeFakeHostedSession(cwd, events) {
+function makeFakeHostedSession(cwd: string, events: CapturedStatusEvent[]): CapturedStatusSession {
     return {
         cwd,
-        getEventSink: () => (/** @type {any} */ event) => events.push(event),
+        getEventSink: () => (event: CapturedStatusEvent) => events.push(event),
     };
 }
 
@@ -273,10 +270,9 @@ test("presentEpicChildPlan shows the loading notice and the same details as the 
         ].join("\n"),
     );
 
-    /** @type {any[]} */
-    const events = [];
+    const events: CapturedStatusEvent[] = [];
     const session = makeFakeHostedSession(cwd, events);
-    const plan = await presentEpicChildPlan(/** @type {any} */ (session), "epic/02-next");
+    const plan = await presentEpicChildPlan(session as HostedSession, "epic/02-next");
 
     assertEquals(Boolean(plan), true);
     const statuses = events.filter((event) => event.type === "system_status");
@@ -291,10 +287,9 @@ test("presentEpicChildPlan shows the loading notice and the same details as the 
 
 test("presentEpicChildPlan warns and returns null when the child Plan is missing", async () => {
     const cwd = await makeProject();
-    /** @type {any[]} */
-    const events = [];
+    const events: CapturedStatusEvent[] = [];
     const session = makeFakeHostedSession(cwd, events);
-    const plan = await presentEpicChildPlan(/** @type {any} */ (session), "epic/99-missing");
+    const plan = await presentEpicChildPlan(session as HostedSession, "epic/99-missing");
 
     assertEquals(plan, null);
     const statuses = events.filter((event) => event.type === "system_status");
