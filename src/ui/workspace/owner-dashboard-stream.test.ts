@@ -730,8 +730,8 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
         await savePlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
         const continuation = {
             operations: new Map(),
-            async listSessions() {
-                return { sessions: [] };
+            listSessions() {
+                return Promise.resolve({ sessions: [] });
             },
         };
         for (const projects of [
@@ -748,3 +748,45 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
         await fsRm(dir, { recursive: true });
     }
 });
+
+for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
+    test(`${reader.name} keeps sibling order ahead of sidebar priority`, async () => {
+        const dir = await fsMkdtemp(join(tmpdir(), "sidebar-child-order-"));
+        const root = join(dir, "project");
+        await fsMkdir(root);
+        const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+        try {
+            store.registerProject({ root, displayName: "Children" });
+            for (const child of [
+                { name: "z-first", order: 1, status: "on_hold" },
+                { name: "a-last", order: 10, status: "ready_for_work" },
+                { name: "b-unordered", status: "draft" },
+            ]) {
+                await savePlan(root, `epic/${child.name}`, `# ${child.name}`, {
+                    planId: child.name,
+                    parentPlan: "epic",
+                    order: child.order,
+                    status: child.status,
+                });
+            }
+            await savePlan(root, "unrelated", "# Unrelated", {
+                planId: "unrelated",
+                status: "draft",
+            });
+            const result = await reader(store, {
+                operations: new Map(),
+                listSessions() {
+                    return Promise.resolve({ sessions: [] });
+                },
+            });
+            const projects = Array.isArray(result) ? result : result.projects;
+            assertEquals(
+                projects[0].plans.filter((plan) => plan.planId !== "unrelated").map((plan) => plan.planId),
+                ["z-first", "a-last", "b-unordered"],
+            );
+        } finally {
+            store.close();
+            await fsRm(dir, { recursive: true });
+        }
+    });
+}

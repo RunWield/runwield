@@ -7,7 +7,7 @@ import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
 /** Session-free composition. Validation policy remains in the shared attempt owner and engine. */
-import { runValidationAttempt } from "./validation-supervisor.ts";
+import { runValidationAttempt, type ValidationAttemptClaim } from "./validation-supervisor.ts";
 import type { ValidationProgressRecord, ValidationSessionPort, ValidationWorkflowState } from "./validation-ports.ts";
 import type { HostTurnValidationResult, ValidationHostResume } from "./validation-host-contract.ts";
 import { createGitPort } from "../git-port.ts";
@@ -56,6 +56,28 @@ function createHostTurnPort(cwd: string): ValidationSessionPort {
         getAgentDisplayName,
         async handoffVerifiedPublication() {},
         runPostVerificationHandoffs: unexpected,
+    };
+}
+
+/** Build the concrete Session-free engine composition for a claimed attempt. */
+export function createHostTurnValidationArgs(
+    args: ContinueHostTurnValidationArgs,
+    claim: ValidationAttemptClaim,
+): ValidationLoopArgs {
+    return {
+        planName: args.planName,
+        planContent: claim.planContent,
+        triageMeta: claim.triageMeta,
+        session: createHostTurnPort(args.projectRoot),
+        git: createGitPort(),
+        localCI: {
+            run() {
+                throw new Error("Host-turn CI is owned by the engine.");
+            },
+        },
+        workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+        supportsSemanticRepairHandoff: true,
+        hostTurn: { resume: args.resume, signal: args.signal },
     };
 }
 
@@ -143,21 +165,7 @@ export async function continueHostTurnValidation(
         projectRoot: args.projectRoot,
         planName: args.planName,
         hostResume: args.resume,
-        buildEngineArgs: (claim) => ({
-            planName: args.planName,
-            planContent: claim.planContent,
-            triageMeta: claim.triageMeta,
-            session: createHostTurnPort(args.projectRoot),
-            git: createGitPort(),
-            localCI: {
-                run() {
-                    throw new Error("Host-turn CI is owned by the engine.");
-                },
-            },
-            workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-            supportsSemanticRepairHandoff: true,
-            hostTurn: { resume: args.resume, signal: args.signal },
-        }),
+        runtime: { kind: "host", signal: args.signal },
     });
     if (result.kind === "host_request" && result.hostRequest) {
         return { kind: "host_request", request: result.hostRequest };

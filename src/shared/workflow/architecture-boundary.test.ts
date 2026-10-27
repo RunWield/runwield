@@ -177,9 +177,13 @@ test("pure review outcome graph excludes Pi, the completion tool, and HostedSess
     );
 });
 
-test("validation supervisor does not import Session composition", async () => {
+test("validation supervisor does not eagerly load Session composition", async () => {
     const file = repoPath("src/shared/workflow/validation-supervisor.ts");
-    const imports = importSpecifiers(await fsReadFile(file, "utf8"), file);
+    const text = await fsReadFile(file, "utf8");
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    const imports = source.statements
+        .filter(ts.isImportDeclaration)
+        .flatMap((node) => (ts.isStringLiteral(node.moduleSpecifier) ? [node.moduleSpecifier.text] : []));
     assertEquals(
         imports.filter((specifier) =>
             /(?:^|\/)(?:validation\.ts|validation-session-adapter\.ts|hosted-session\.js)$/.test(specifier),

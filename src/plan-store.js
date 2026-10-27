@@ -3649,7 +3649,7 @@ export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {
 /**
  * Compare Epic child plans by explicit order first, then canonical name.
  *
- * @template {{ name: string, attrs: PlanFrontMatter }} T
+ * @template {{ name: string, attrs: Pick<PlanFrontMatter, "order"> }} T
  * @param {T} a
  * @param {T} b
  * @returns {number}

@@ -23,11 +23,13 @@ export const routerArchitectSlicerScenario = {
     composedTui: true,
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 90000,
-    reviewDecisions: [{
-        approved: true,
-        feedback: "The PROJECT architecture is ready to decompose.",
-        approvalAction: "decompose",
-    }],
+    reviewDecisions: [
+        {
+            approved: true,
+            feedback: "The PROJECT architecture is ready to decompose.",
+            approvalAction: "decompose",
+        },
+    ],
     script: [
         {
             id: "router-classifies-project",
@@ -36,15 +38,17 @@ export const routerArchitectSlicerScenario = {
             ordinal: 1,
             requiredTools: ["triage_report"],
             thinking: "This cross-cutting subsystem belongs with Architect.",
-            toolCalls: [{
-                name: "triage_report",
-                arguments: {
-                    routingIntent: "PROJECT",
-                    complexity: "HIGH",
-                    summary: "Golden PROJECT routing journey.",
-                    sessionName: "golden routed project",
+            toolCalls: [
+                {
+                    name: "triage_report",
+                    arguments: {
+                        routingIntent: "PROJECT",
+                        complexity: "HIGH",
+                        summary: "Golden PROJECT routing journey.",
+                        sessionName: "golden routed project",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "architect-writes-epic",
@@ -53,14 +57,16 @@ export const routerArchitectSlicerScenario = {
             ordinal: 1,
             requiredTools: ["write"],
             thinking: "Write the agreed Epic architecture before requesting review.",
-            toolCalls: [{
-                name: "write",
-                arguments: {
-                    path: "docs/plans/routed-epic.md",
-                    content:
-                        "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Golden routed Epic\naffectedPaths: []\nstatus: draft\n---\n# Golden Routed Epic\n\nArchitecture agreed with the user.\n",
+            toolCalls: [
+                {
+                    name: "write",
+                    arguments: {
+                        path: "docs/plans/routed-epic.md",
+                        content:
+                            "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Golden routed Epic\naffectedPaths: []\nstatus: draft\n---\n# Golden Routed Epic\n\nArchitecture agreed with the user.\n",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "architect-submits-epic",
@@ -78,22 +84,26 @@ export const routerArchitectSlicerScenario = {
             ordinal: 1,
             requiredTools: ["slicer_finalize_decomposition"],
             thinking: "Turn the approved architecture into an executable child Plan.",
-            toolCalls: [{
-                name: "slicer_finalize_decomposition",
-                arguments: {
-                    confirmation: "User confirmed the routed PROJECT decomposition.",
-                    children: [{
-                        title: "Routed child",
-                        order: 1,
-                        summary: "First executable slice from the routed Epic",
-                        dependencies: [],
-                        affectedPaths: [],
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
-                        content: "# Routed child\n\nExecutable Golden child.\n",
-                    }],
+            toolCalls: [
+                {
+                    name: "slicer_finalize_decomposition",
+                    arguments: {
+                        confirmation: "User confirmed the routed PROJECT decomposition.",
+                        children: [
+                            {
+                                title: "Routed child",
+                                order: 1,
+                                summary: "First executable slice from the routed Epic",
+                                dependencies: [],
+                                affectedPaths: [],
+                                executionAgent: "engineer",
+                                collaborationRecommendation: "autonomous",
+                                content: "# Routed child\n\nExecutable Golden child.\n",
+                            },
+                        ],
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "slicer-closes-routed-decomposition",
@@ -108,7 +118,7 @@ export const routerArchitectSlicerScenario = {
         { type: "enter" },
         { type: "waitForPlanStatus", planName: "routed-epic", statuses: ["ready_for_work"], timeoutMs: 60000 },
         { type: "waitForIdle", timeoutMs: 30000 },
-        { type: "captureProjectState", planNames: ["routed-epic", "routed-epic/01-routed-child"] },
+        { type: "captureProjectState", planNames: ["routed-epic", "routed-epic/routed-child"] },
     ],
     assertions: [
         (result: RoutedGoldenResult) => {
@@ -122,7 +132,7 @@ export const routerArchitectSlicerScenario = {
         (result: RoutedGoldenResult) => {
             const plans = result.state.projectState?.plans || [];
             const epic = plans.find((entry) => entry.name === "routed-epic");
-            const child = plans.find((entry) => entry.name === "routed-epic/01-routed-child");
+            const child = plans.find((entry) => entry.name === "routed-epic/routed-child");
             assert(epic?.attrs?.status === "ready_for_work", `Expected decomposed Epic; got ${epic?.attrs?.status}`);
             assert(child?.attrs?.classification === "PLANNED_CHANGE", "Expected Slicer to create a Planned Change.");
             assert(child?.attrs?.parentPlan === "routed-epic", "Expected child to retain its routed Epic parent.");
