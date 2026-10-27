@@ -729,7 +729,7 @@
     "src/ui/workspace/integrations/review-collapse-state.test.ts",
     "src/ui/workspace/owner-dashboard-loading.test.tsx",
     "src/ui/workspace/owner-dashboard-stream.test.ts",
-    "src/ui/workspace/owner-dashboard-ui.test.js",
+    "src/ui/workspace/owner-dashboard-ui.test.ts",
     "src/ui/workspace/owner-dashboard-zero-projects.test.ts",
     "src/ui/workspace/owner-epic-live-review.integration.test.ts",
     "src/ui/workspace/owner-pairing-persistence.test.ts",
