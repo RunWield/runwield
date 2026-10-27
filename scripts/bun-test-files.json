@@ -239,7 +239,7 @@
     "src/shared/collaboration/crypto.test.ts",
     "src/shared/collaboration/lock.test.ts",
     "src/shared/collaboration/protocol.test.ts",
-    "src/shared/collaboration/secrets.test.js",
+    "src/shared/collaboration/secrets.test.ts",
     "src/shared/collaboration/urls.test.ts",
     "src/shared/epic-artifacts.test.ts",
     "src/shared/extensions/wld-extension-manifest.test.ts",
