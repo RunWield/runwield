@@ -19,13 +19,22 @@ affectedPaths:
     - "src/ui/workspace/"
     - "src/testing/"
 createdAt: "2026-08-28T16:06:55-04:00"
-status: "ready_for_work"
 origin: "internal"
 userVerifiedAt: null
 targetBranch: "project/forge-change-request-delivery"
+status: "draft"
 ---
 
 # Forge Change Request Delivery
+
+> [!WARNING]
+> **Architect re-review required before resuming**
+>
+> This Epic was first planned on 2026-08-28 under the Deno toolchain. Since then, RunWield moved to Bun and TypeScript
+> and shipped the Plan Branch delivery setting (`plans.autoMergeIntoTargetBranch`), Epic branches, the integration gate,
+> and the `reviewed` checkpoint status. Its 13 stale child Plans were deleted on 2026-10-26 because Forge is not a current
+> priority. Before work resumes, Architect must re-review this Epic against the current code and PRDs and decompose it
+> again.
 
 ## Context
 
@@ -364,7 +373,7 @@ conform to the same application state model rather than create parallel lifecycl
 - Automated: run focused Plan-store, Slicer, Ticket Reference, Work Record, validation, publication, recovery, TUI, and
   Workspace tests through `deno run -A scripts/run-tests.js <test paths>`; run `deno task seams:check`; run
   `deno task
-  ci` for the integrated branch. Tests that change `HOME` or current working directory must use the project
+ci` for the integrated branch. Tests that change `HOME` or current working directory must use the project
   process lock, and Git scenarios must use real isolated fixtures.
 - Automated: run multi-process restart matrices that stop after each Forge side effect and each local receipt write,
   then prove idempotent change-request discovery, no duplicate metadata, retained repair state, exact merge/finalization

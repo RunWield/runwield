@@ -13,16 +13,28 @@ affectedPaths:
     - "docs/prd/plan-store-prd.md"
     - "docs/validation-authority.md"
     - "TODO.md"
+planDeviations:
+    - id: "call_29851ade7bfb4878a4ee24cd81828898|fc_061d82cb739e466c016adfe6e6edc0819695a87f990a3cf356"
+      supersededRequirement: "Move forge-change-request-delivery to Draft on the Workspace Plan board. This is the manual_status_change board action, not a front matter edit. Lifecycle operations belong to the owner on the primary checkout before execution starts."
+      replacementRequirement: "The Engineer is authorized to complete the remaining lifecycle preconditions, including returning forge-change-request-delivery to Draft through RunWield's supported lifecycle operation, and to make the completed preconditions available to the existing execution checkout. Do not hand-edit protected lifecycle metadata or discard user work."
+      reason: "The owner completed the abandonment and archive steps but cannot perform the board action, and explicitly authorized the Engineer to complete the remaining operations."
+      approvedAt: "2026-10-26T23:49:00.773Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-26"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
-routingIntent: "PLANNED_CHANGE"
-sessionName: "Pending Plan Cleanup"
 targetBranch: "main"
 deliveryBranch: "main"
+routingIntent: "PLANNED_CHANGE"
+sessionName: "Pending Plan Cleanup"
+status: "reviewed"
+validatedCommit: "387da82116d1dccb0e71b2200dad6fb269f72178"
+workRecord:
+    status: "generated"
+    recordId: "4082e02d-d083-4e39-a051-4a7176c7a25a"
+    path: "docs/work-records/2026-10-27-plan-backlog-cleanup.md"
+    lastAttemptAt: "2026-10-27T00:18:01.094Z"
 ---
 
 # Prune the Pending Plan Backlog

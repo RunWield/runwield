@@ -19,6 +19,10 @@ createdAt: "2026-09-08T09:29:42-04:00"
 status: "feedback"
 origin: "internal"
 userVerifiedAt: null
+archivedAt: "2026-10-26T23:51:25.743Z"
+archiveReason: "Delivered; Work Record 2026-09-08-main-checkout-and-worktree-recovery-repair"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/fix-recovery-worktree-discard-cleanup.md"
 ---
 
 # Make Worktree Discard Cleanup Safe and Complete
@@ -179,4 +183,4 @@ inputs, and a branch checkout race after directory removal. A `/load-plan` integ
 and cleanup retry after the branch is merged. These tests exercise the production command and Git operations; no
 separate manual TUI run was required.
 
-See [the repair record](../work-records/2026-09-08-main-checkout-and-worktree-recovery-repair.md).
+See [the repair record](../../work-records/2026-09-08-main-checkout-and-worktree-recovery-repair.md).
