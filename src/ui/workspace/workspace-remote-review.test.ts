@@ -7,7 +7,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
+import "./server/plan-adapter.js";
 
 import { createWorkspaceApp } from "./server.js";
 
@@ -16,6 +16,7 @@ import {
     normalizeRemoteCommentPayload,
     remoteCommentToPlannotatorAnnotation,
 } from "./react/remote-review-payload.js";
+import type { RemoteCommentRecord, RemoteSelectionMeta } from "./react/remote-review-payload.js";
 import { RemoteCommentStateList } from "./react/RemoteCommentStateList.tsx";
 
 test("remote review legacy anchors stay in Plannotator sidebar without fallback highlighting metadata", () => {
@@ -59,7 +60,7 @@ test("remote review Plannotator sidebar does not expose delete controls", async 
 });
 
 test("remote review comment panel renders closed read-only controls and revision-scoped comments", () => {
-    const revisionOneComment = {
+    const revisionOneComment: RemoteCommentRecord = {
         id: "comment-rev-1",
         resolved: false,
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -78,7 +79,7 @@ test("remote review comment panel renders closed read-only controls and revision
     };
     const closedMarkup = renderToStaticMarkup(
         React.createElement(RemoteCommentStateList, {
-            comments: /** @type {any} */ ([revisionOneComment]),
+            comments: [revisionOneComment],
             selectedId: "comment-rev-1",
             closed: true,
             pendingId: null,
@@ -95,7 +96,7 @@ test("remote review comment panel renders closed read-only controls and revision
 
     const revisionTwoMarkup = renderToStaticMarkup(
         React.createElement(RemoteCommentStateList, {
-            comments: /** @type {any} */ ([revisionTwoComment]),
+            comments: [revisionTwoComment],
             selectedId: "comment-rev-2",
             closed: false,
             pendingId: null,
@@ -110,7 +111,7 @@ test("remote review comment panel renders closed read-only controls and revision
 });
 
 test("remote review comment panel renders tampered and missing-anchor placeholders", () => {
-    const unreadableComment = {
+    const unreadableComment: RemoteCommentRecord = {
         id: "unreadable-comment",
         resolved: false,
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -122,7 +123,7 @@ test("remote review comment panel renders tampered and missing-anchor placeholde
         anchorMissing: false,
         unreadable: true,
     };
-    const missingAnchorComment = {
+    const missingAnchorComment: RemoteCommentRecord = {
         id: "missing-anchor-comment",
         resolved: false,
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -136,7 +137,7 @@ test("remote review comment panel renders tampered and missing-anchor placeholde
     };
     const unreadableMarkup = renderToStaticMarkup(
         React.createElement(RemoteCommentStateList, {
-            comments: /** @type {any} */ ([unreadableComment, missingAnchorComment]),
+            comments: [unreadableComment, missingAnchorComment],
             selectedId: "unreadable-comment",
             closed: false,
             pendingId: null,
@@ -149,7 +150,7 @@ test("remote review comment panel renders tampered and missing-anchor placeholde
 
     const missingAnchorMarkup = renderToStaticMarkup(
         React.createElement(RemoteCommentStateList, {
-            comments: /** @type {any} */ ([unreadableComment, missingAnchorComment]),
+            comments: [unreadableComment, missingAnchorComment],
             selectedId: "missing-anchor-comment",
             closed: false,
             pendingId: null,
@@ -228,18 +229,16 @@ test("remote review payload helper maps encrypted comments to Plannotator annota
     assertEquals(annotation.type, "COMMENT");
     assertEquals(annotation.author, "Alice");
     assertEquals(annotation.text, "Looks good");
-    assertEquals(/** @type {{ textOffset: number }} */ (annotation.startMeta).textOffset, 4);
+    assertEquals((annotation.startMeta as RemoteSelectionMeta).textOffset, 4);
 });
 
 test("remote review comment payload helper rejects tampered or unsupported payloads", () => {
-    for (
-        const value of [
-            null,
-            { schemaVersion: 2, type: "comment", displayName: "Alice", body: "Body", originalText: "x", anchor: {} },
-            { schemaVersion: 1, type: "comment", displayName: "Alice", body: "Body", originalText: "x", anchor: null },
-            { schemaVersion: 1, type: "global_comment", displayName: "", body: "Body", originalText: "", anchor: null },
-        ]
-    ) {
+    for (const value of [
+        null,
+        { schemaVersion: 2, type: "comment", displayName: "Alice", body: "Body", originalText: "x", anchor: {} },
+        { schemaVersion: 1, type: "comment", displayName: "Alice", body: "Body", originalText: "x", anchor: null },
+        { schemaVersion: 1, type: "global_comment", displayName: "", body: "Body", originalText: "", anchor: null },
+    ]) {
         let failed = false;
         try {
             normalizeRemoteCommentPayload(value);
