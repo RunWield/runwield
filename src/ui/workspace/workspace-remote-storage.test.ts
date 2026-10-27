@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { DatabaseSync } from "../../shared/sqlite.ts";
 
-import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
+import "./server/plan-adapter.js";
 
-import { createWorkspaceApp } from "./server.js";
+import { type RemoteWorkspaceApp, createWorkspaceApp } from "./server.js";
 
 import { hashCapability } from "../../shared/collaboration/capabilities.ts";
 import { openRemoteDatabase } from "./server/remote-db.ts";
@@ -18,9 +18,13 @@ import { jsonRequest, readJsonResponse } from "./workspace-test-helpers.js";
 
 test("remote Workspace mode isolates local Plan Board and local APIs", async () => {
     const app = createWorkspaceApp({ mode: "remote" }).handler();
-    for (
-        const path of ["/", "/api/plans", "/api/board", "/api/plans/plan-1/body", "/api/plans/plan-1/lifecycle-action"]
-    ) {
+    for (const path of [
+        "/",
+        "/api/plans",
+        "/api/board",
+        "/api/plans/plan-1/body",
+        "/api/plans/plan-1/lifecycle-action",
+    ]) {
         const method = path.includes("body") || path.includes("lifecycle") ? "POST" : "GET";
         const response = await app(new Request(`http://localhost${path}`, { method }));
         assertEquals(response.status, 404);
@@ -30,21 +34,23 @@ test("remote Workspace mode isolates local Plan Board and local APIs", async () 
 test("remote Shared Space API enforces capabilities, ciphertext storage, lifecycle, and delete", async () => {
     const reviewerCapability = "reviewer-secret-capability";
     const maintainerCapability = "maintainer-secret-capability";
-    const workspaceApp = createWorkspaceApp({ mode: "remote" });
+    const workspaceApp = createWorkspaceApp({ mode: "remote" }) as RemoteWorkspaceApp;
     const adapter = workspaceApp.adapter;
     const database = adapter.database;
     const app = workspaceApp.handler();
     try {
         const reviewerHash = await hashCapability(reviewerCapability);
         const maintainerHash = await hashCapability(maintainerCapability);
-        const createResponse = await app(jsonRequest("http://localhost/api/spaces", {
-            planId: "plan-1",
-            initialRevision: { payloadCiphertext: "cipher:initial-plan-body" },
-            capabilities: [
-                { scope: "reviewer", capabilityHash: reviewerHash },
-                { scope: "maintainer", capabilityHash: maintainerHash },
-            ],
-        }));
+        const createResponse = await app(
+            jsonRequest("http://localhost/api/spaces", {
+                planId: "plan-1",
+                initialRevision: { payloadCiphertext: "cipher:initial-plan-body" },
+                capabilities: [
+                    { scope: "reviewer", capabilityHash: reviewerHash },
+                    { scope: "maintainer", capabilityHash: maintainerHash },
+                ],
+            }),
+        );
         assertEquals(createResponse.status, 201);
         const created = await readJsonResponse(createResponse);
         const spaceId = created.spaceId;
@@ -60,25 +66,31 @@ test("remote Shared Space API enforces capabilities, ciphertext storage, lifecyc
         assertEquals(reviewerRead.status, 200);
         assertEquals((await readJsonResponse(reviewerRead)).latestRevision, 1);
 
-        const reviewerAppendRevision = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/revisions`,
-            { payloadCiphertext: "cipher:revision-2", expectedRevision: 2 },
-            reviewerCapability,
-        ));
+        const reviewerAppendRevision = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/revisions`,
+                { payloadCiphertext: "cipher:revision-2", expectedRevision: 2 },
+                reviewerCapability,
+            ),
+        );
         assertEquals(reviewerAppendRevision.status, 403);
 
-        const conflict = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/revisions`,
-            { payloadCiphertext: "cipher:revision-2", expectedRevision: 3 },
-            maintainerCapability,
-        ));
+        const conflict = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/revisions`,
+                { payloadCiphertext: "cipher:revision-2", expectedRevision: 3 },
+                maintainerCapability,
+            ),
+        );
         assertEquals(conflict.status, 409);
 
-        const appendRevision = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/revisions`,
-            { payloadCiphertext: "cipher:revision-2", expectedRevision: 2 },
-            maintainerCapability,
-        ));
+        const appendRevision = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/revisions`,
+                { payloadCiphertext: "cipher:revision-2", expectedRevision: 2 },
+                maintainerCapability,
+            ),
+        );
         assertEquals(appendRevision.status, 201);
 
         const revision = await app(
@@ -89,11 +101,13 @@ test("remote Shared Space API enforces capabilities, ciphertext storage, lifecyc
         assertEquals(revision.status, 200);
         assertEquals((await readJsonResponse(revision)).revision.payloadCiphertext, "cipher:revision-2");
 
-        const appendComment = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/revisions/2/comments`,
-            { ciphertext: "cipher:comment-body" },
-            reviewerCapability,
-        ));
+        const appendComment = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/revisions/2/comments`,
+                { ciphertext: "cipher:comment-body" },
+                reviewerCapability,
+            ),
+        );
         assertEquals(appendComment.status, 201);
         const commentId = (await readJsonResponse(appendComment)).comment.id;
 
@@ -104,46 +118,54 @@ test("remote Shared Space API enforces capabilities, ciphertext storage, lifecyc
         );
         assertEquals((await readJsonResponse(revisionOneComments)).comments.length, 0);
 
-        const resolveComment = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/comments/${commentId}/state`,
-            { action: "resolve" },
-            reviewerCapability,
-        ));
+        const resolveComment = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/comments/${commentId}/state`,
+                { action: "resolve" },
+                reviewerCapability,
+            ),
+        );
         assertEquals(resolveComment.status, 200);
         assertEquals((await readJsonResponse(resolveComment)).comment.resolved, true);
 
-        const reopenComment = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/comments/${commentId}/state`,
-            { action: "reopen" },
-            reviewerCapability,
-        ));
+        const reopenComment = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/comments/${commentId}/state`,
+                { action: "reopen" },
+                reviewerCapability,
+            ),
+        );
         assertEquals(reopenComment.status, 200);
         assertEquals((await readJsonResponse(reopenComment)).comment.resolved, false);
 
-        const closeResponse = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/lifecycle`,
-            { action: "close" },
-            maintainerCapability,
-        ));
+        const closeResponse = await app(
+            jsonRequest(`http://localhost/api/spaces/${spaceId}/lifecycle`, { action: "close" }, maintainerCapability),
+        );
         assertEquals(closeResponse.status, 200);
         assertEquals((await readJsonResponse(closeResponse)).status, "closed");
 
-        const closedComment = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/revisions/2/comments`,
-            { ciphertext: "cipher:late-comment" },
-            reviewerCapability,
-        ));
+        const closedComment = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/revisions/2/comments`,
+                { ciphertext: "cipher:late-comment" },
+                reviewerCapability,
+            ),
+        );
         assertEquals(closedComment.status, 409);
-        const closedState = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/comments/${commentId}/state`,
-            { action: "resolve" },
-            reviewerCapability,
-        ));
+        const closedState = await app(
+            jsonRequest(
+                `http://localhost/api/spaces/${spaceId}/comments/${commentId}/state`,
+                { action: "resolve" },
+                reviewerCapability,
+            ),
+        );
         assertEquals(closedState.status, 409);
 
-        const rows = database.handle.prepare(
-            "SELECT payload_ciphertext AS value FROM space_revisions UNION ALL SELECT ciphertext AS value FROM space_comments UNION ALL SELECT capability_hash AS value FROM space_capabilities",
-        ).all();
+        const rows = database.handle
+            .prepare(
+                "SELECT payload_ciphertext AS value FROM space_revisions UNION ALL SELECT ciphertext AS value FROM space_comments UNION ALL SELECT capability_hash AS value FROM space_capabilities",
+            )
+            .all();
         const storedText = JSON.stringify(rows);
         assertEquals(storedText.includes("reviewer-secret-capability"), false);
         assertEquals(storedText.includes("maintainer-secret-capability"), false);
@@ -151,29 +173,27 @@ test("remote Shared Space API enforces capabilities, ciphertext storage, lifecyc
         assertEquals(storedText.includes("Alice"), false);
         assertEquals(storedText.includes("original text"), false);
 
-        const invalidPlaintext = await app(jsonRequest("http://localhost/api/spaces", {
-            planId: "plan-2",
-            body: "plaintext plan body",
-            initialRevision: { payloadCiphertext: "cipher:plan" },
-            capabilities: [
-                { scope: "reviewer", capabilityHash: reviewerHash },
-                { scope: "maintainer", capabilityHash: maintainerHash },
-            ],
-        }));
+        const invalidPlaintext = await app(
+            jsonRequest("http://localhost/api/spaces", {
+                planId: "plan-2",
+                body: "plaintext plan body",
+                initialRevision: { payloadCiphertext: "cipher:plan" },
+                capabilities: [
+                    { scope: "reviewer", capabilityHash: reviewerHash },
+                    { scope: "maintainer", capabilityHash: maintainerHash },
+                ],
+            }),
+        );
         assertEquals(invalidPlaintext.status, 400);
 
-        const reviewerDelete = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/lifecycle`,
-            { action: "delete" },
-            reviewerCapability,
-        ));
+        const reviewerDelete = await app(
+            jsonRequest(`http://localhost/api/spaces/${spaceId}/lifecycle`, { action: "delete" }, reviewerCapability),
+        );
         assertEquals(reviewerDelete.status, 403);
 
-        const deleteResponse = await app(jsonRequest(
-            `http://localhost/api/spaces/${spaceId}/lifecycle`,
-            { action: "delete" },
-            maintainerCapability,
-        ));
+        const deleteResponse = await app(
+            jsonRequest(`http://localhost/api/spaces/${spaceId}/lifecycle`, { action: "delete" }, maintainerCapability),
+        );
         assertEquals(deleteResponse.status, 200);
 
         const deletedRead = await app(
@@ -188,7 +208,7 @@ test("remote Shared Space API enforces capabilities, ciphertext storage, lifecyc
 });
 
 test("remote requests over configured JSON body limit are rejected before writes", async () => {
-    const workspaceApp = createWorkspaceApp({ mode: "remote", maxRequestBytes: 64 });
+    const workspaceApp = createWorkspaceApp({ mode: "remote", maxRequestBytes: 64 }) as RemoteWorkspaceApp;
     const adapter = workspaceApp.adapter;
     const database = adapter.database;
     const app = workspaceApp.handler();
@@ -210,9 +230,7 @@ test("remote requests over configured JSON body limit are rejected before writes
             }),
         );
         assertEquals(streamed.status, 413);
-        const count = /** @type {{ count: number }} */ (
-            database.handle.prepare("SELECT COUNT(*) AS count FROM shared_spaces").get()
-        );
+        const count = database.handle.prepare("SELECT COUNT(*) AS count FROM shared_spaces").get()!;
         assertEquals(Number(count.count), 0);
     } finally {
         adapter.close();
@@ -311,9 +329,7 @@ test("remote retention cleanup removes expired Shared Spaces across bounded batc
         insertRevision.run("active-space", "cipher:plan", "2026-01-10T00:00:00.000Z");
 
         assertEquals(adapter.cleanupExpiredSharedSpaces(), 205);
-        const count = /** @type {{ count: number }} */ (
-            database.handle.prepare("SELECT COUNT(*) AS count FROM shared_spaces").get()
-        );
+        const count = database.handle.prepare("SELECT COUNT(*) AS count FROM shared_spaces").get()!;
         assertEquals(Number(count.count), 1);
         assertEquals(adapter.getSharedSpace("active-space").spaceId, "active-space");
     } finally {
@@ -352,57 +368,62 @@ test("remote schema migration preserves v1 rows and rejects newer schemas", () =
         const fixture = new DatabaseSync(dbPath);
         fixture.exec("PRAGMA foreign_keys = ON");
         fixture.exec(REMOTE_SCHEMA_V1_SQL);
-        fixture.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(
-            1,
-            "2026-01-01T00:00:00.000Z",
-        );
-        fixture.prepare(
-            "INSERT INTO shared_spaces(id, plan_id, status, latest_revision, created_at, updated_at) VALUES (?, ?, 'open', 2, ?, ?)",
-        ).run("space-v1", "plan-v1", "2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z");
-        fixture.prepare(
-            "INSERT INTO space_revisions(space_id, revision, payload_ciphertext, created_at) VALUES (?, ?, ?, ?)",
-        ).run("space-v1", 1, "cipher:revision-1", "2026-01-01T00:00:00.000Z");
-        fixture.prepare(
-            "INSERT INTO space_revisions(space_id, revision, payload_ciphertext, created_at) VALUES (?, ?, ?, ?)",
-        ).run("space-v1", 2, "cipher:revision-2", "2026-01-02T00:00:00.000Z");
-        fixture.prepare(
-            "INSERT INTO space_comments(id, space_id, revision, ciphertext, resolved, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
-        ).run(
-            "comment-v1",
-            "space-v1",
-            1,
-            "cipher:comment-v1",
-            "2026-01-01T12:00:00.000Z",
-            "2026-01-01T13:00:00.000Z",
-        );
-        fixture.prepare(
-            "INSERT INTO space_capabilities(space_id, scope, capability_hash, created_at) VALUES (?, ?, ?, ?)",
-        ).run("space-v1", "reviewer", "sha256:reviewer-v1", "2026-01-01T00:00:00.000Z");
-        fixture.prepare(
-            "INSERT INTO space_capabilities(space_id, scope, capability_hash, created_at) VALUES (?, ?, ?, ?)",
-        ).run("space-v1", "maintainer", "sha256:maintainer-v1", "2026-01-01T00:00:00.000Z");
+        fixture
+            .prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)")
+            .run(1, "2026-01-01T00:00:00.000Z");
+        fixture
+            .prepare(
+                "INSERT INTO shared_spaces(id, plan_id, status, latest_revision, created_at, updated_at) VALUES (?, ?, 'open', 2, ?, ?)",
+            )
+            .run("space-v1", "plan-v1", "2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z");
+        fixture
+            .prepare(
+                "INSERT INTO space_revisions(space_id, revision, payload_ciphertext, created_at) VALUES (?, ?, ?, ?)",
+            )
+            .run("space-v1", 1, "cipher:revision-1", "2026-01-01T00:00:00.000Z");
+        fixture
+            .prepare(
+                "INSERT INTO space_revisions(space_id, revision, payload_ciphertext, created_at) VALUES (?, ?, ?, ?)",
+            )
+            .run("space-v1", 2, "cipher:revision-2", "2026-01-02T00:00:00.000Z");
+        fixture
+            .prepare(
+                "INSERT INTO space_comments(id, space_id, revision, ciphertext, resolved, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+            )
+            .run(
+                "comment-v1",
+                "space-v1",
+                1,
+                "cipher:comment-v1",
+                "2026-01-01T12:00:00.000Z",
+                "2026-01-01T13:00:00.000Z",
+            );
+        fixture
+            .prepare("INSERT INTO space_capabilities(space_id, scope, capability_hash, created_at) VALUES (?, ?, ?, ?)")
+            .run("space-v1", "reviewer", "sha256:reviewer-v1", "2026-01-01T00:00:00.000Z");
+        fixture
+            .prepare("INSERT INTO space_capabilities(space_id, scope, capability_hash, created_at) VALUES (?, ?, ?, ?)")
+            .run("space-v1", "maintainer", "sha256:maintainer-v1", "2026-01-01T00:00:00.000Z");
         fixture.close();
 
         const migrated = openRemoteDatabase({ dbPath });
-        const row = /** @type {{ expires_at: string | null, latest_revision: number }} */ (
-            migrated.handle.prepare("SELECT expires_at, latest_revision FROM shared_spaces WHERE id = ?").get(
-                "space-v1",
-            )
-        );
+        const row = migrated.handle
+            .prepare("SELECT expires_at, latest_revision FROM shared_spaces WHERE id = ?")
+            .get("space-v1")!;
         assertEquals(row.expires_at, null);
         assertEquals(Number(row.latest_revision), 2);
         assertEquals(
-            migrated.handle.prepare(
-                "SELECT payload_ciphertext FROM space_revisions WHERE space_id = ? AND revision = 1",
-            ).get("space-v1"),
+            migrated.handle
+                .prepare("SELECT payload_ciphertext FROM space_revisions WHERE space_id = ? AND revision = 1")
+                .get("space-v1"),
             {
                 payload_ciphertext: "cipher:revision-1",
             },
         );
         assertEquals(
-            migrated.handle.prepare(
-                "SELECT payload_ciphertext FROM space_revisions WHERE space_id = ? AND revision = 2",
-            ).get("space-v1"),
+            migrated.handle
+                .prepare("SELECT payload_ciphertext FROM space_revisions WHERE space_id = ? AND revision = 2")
+                .get("space-v1"),
             {
                 payload_ciphertext: "cipher:revision-2",
             },
@@ -415,27 +436,26 @@ test("remote schema migration preserves v1 rows and rejects newer schemas", () =
             },
         );
         assertEquals(
-            migrated.handle.prepare("SELECT capability_hash FROM space_capabilities WHERE space_id = ? AND scope = ?")
+            migrated.handle
+                .prepare("SELECT capability_hash FROM space_capabilities WHERE space_id = ? AND scope = ?")
                 .get("space-v1", "reviewer"),
             {
                 capability_hash: "sha256:reviewer-v1",
             },
         );
         assertEquals(
-            migrated.handle.prepare("SELECT capability_hash FROM space_capabilities WHERE space_id = ? AND scope = ?")
+            migrated.handle
+                .prepare("SELECT capability_hash FROM space_capabilities WHERE space_id = ? AND scope = ?")
                 .get("space-v1", "maintainer"),
             {
                 capability_hash: "sha256:maintainer-v1",
             },
         );
-        const version = /** @type {{ version: number }} */ (
-            migrated.handle.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()
-        );
+        const version = migrated.handle.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()!;
         assertEquals(Number(version.version), 2);
-        migrated.handle.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(
-            99,
-            "2026-01-01T00:00:00.000Z",
-        );
+        migrated.handle
+            .prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)")
+            .run(99, "2026-01-01T00:00:00.000Z");
         migrated.close();
 
         let failed = false;

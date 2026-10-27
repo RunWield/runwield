@@ -793,7 +793,7 @@
     "src/ui/workspace/workspace-pwa.test.ts",
     "src/ui/workspace/workspace-remote-review.test.ts",
     "src/ui/workspace/workspace-remote-server.test.ts",
-    "src/ui/workspace/workspace-remote-storage.test.js",
+    "src/ui/workspace/workspace-remote-storage.test.ts",
     "src/ui/workspace/workspace-renderer-lifecycle.test.ts",
     "src/ui/workspace/workspace-review.test.js",
     "src/ui/workspace/workspace-search-ux.test.tsx",
