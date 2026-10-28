@@ -29,6 +29,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { ensurePlansDir, loadPlan } from "../../plan-store.js";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
+import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.js";
 import { runRootTurn } from "../session/session.js";
 import { getAgentDisplayName } from "../session/agents.js";
@@ -559,8 +560,9 @@ export async function dispatchPostTriage({
             });
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            const executionOwner =
-                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
+            const executionOwner = resolvePlanExecutionRuntimeAgent(
+                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta),
+            );
             await recordMetric({
                 category: "execution",
                 event: "feature_project_outcome",
@@ -584,8 +586,9 @@ export async function dispatchPostTriage({
             return;
         }
 
-        const executionOwner =
-            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
+        const executionOwner = resolvePlanExecutionRuntimeAgent(
+            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta),
+        );
         const executionDecision = decidePostExecution(executionResult, {
             planName,
             triageMeta: decisionTriageMeta,

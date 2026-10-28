@@ -306,6 +306,8 @@ test("Plan Engineer reaches a real Pair checkpoint through production dispatch",
             assertEquals(result.executionContext?.executionAgent, "engineer");
             assertEquals(result.executionComplete, false);
             assertEquals(result.checkpointPending, true);
+            assertEquals(fixture.hostedSession.getRootAgentName(), "plan-engineer");
+            assertEquals(fixture.agentChanges.includes("engineer"), false);
             assertEquals((await loadPlan(projectRoot, "paired-feature"))?.attrs.executionAgent, "engineer");
         } finally {
             fixture.hostedSession.dispose();
@@ -397,6 +399,7 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                     },
                 });
                 assertEquals(execution.executionComplete, false);
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "plan-engineer");
                 assertEquals(
                     await runtime
                         .promptUserTurn(sessionId, {

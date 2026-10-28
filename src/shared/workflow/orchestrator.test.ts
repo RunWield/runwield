@@ -87,9 +87,9 @@ function publishPlanOutcome(
     });
 }
 
-function triageToolResult(details: DispatchPostTriageArgs["triage"]): ToolResultMessage<
-    DispatchPostTriageArgs["triage"]
-> {
+function triageToolResult(
+    details: DispatchPostTriageArgs["triage"],
+): ToolResultMessage<DispatchPostTriageArgs["triage"]> {
     return {
         role: "toolResult",
         toolCallId: crypto.randomUUID(),
@@ -204,14 +204,15 @@ test("dispatchPostTriage routes conversational intents through real Agent sessio
             localCI: ci.port,
         });
 
-        assertEquals([guide.hostedSession.getRootAgentName(), ideator.hostedSession.getRootAgentName()], [
-            "guide",
-            "ideator",
-        ]);
-        assertEquals(ci.calls, []);
-        const metrics = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim().split("\n").map(
-            (line) => JSON.parse(line),
+        assertEquals(
+            [guide.hostedSession.getRootAgentName(), ideator.hostedSession.getRootAgentName()],
+            ["guide", "ideator"],
         );
+        assertEquals(ci.calls, []);
+        const metrics = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
         assertEquals(
             metrics.filter((metric) => metric.event === "dispatch_selected").map((metric) => metric.agentName),
             ["guide", "ideator"],
@@ -251,9 +252,11 @@ test("QUICK_FIX completion runs real Mechanical Validation around the CI port", 
         await initializeGitProject(projectRoot);
         setModelMessages([
             taskCompleted("Updated the settings save action."),
-            fauxAssistantMessage(fauxToolCall("manual_qa_completed", {
-                checklistMarkdown: "Manual verification steps\n- [ ] Save settings and reload.",
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("manual_qa_completed", {
+                    checklistMarkdown: "Manual verification steps\n- [ ] Save settings and reload.",
+                }),
+            ),
         ]);
         const fixture = createSessionFixture(projectRoot);
         const ci = defineLocalCIFixture([{ kind: "completed", exitCode: 0, output: "ok" }]);
@@ -277,9 +280,9 @@ test("QUICK_FIX completion runs real Mechanical Validation around the CI port", 
         assertEquals(fixture.hostedSession.getRootAgentName(), "engineer");
         assertEquals(listPendingTaskCompletions(fixture.hostedSession), []);
         assertEquals(
-            fixture.sessionManager.getBranch().some((entry) =>
-                entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"
-            ),
+            fixture.sessionManager
+                .getBranch()
+                .some((entry) => entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"),
             true,
         );
         fixture.hostedSession.dispose();
@@ -335,7 +338,10 @@ test("non-Git QUICK_FIX cancellation stops before creating an Agent session", as
             localCI: ci.port,
         });
 
-        assertEquals(interactions.map((request) => request.type), ["select"]);
+        assertEquals(
+            interactions.map((request) => request.type),
+            ["select"],
+        );
         assertEquals(fixture.hostedSession.getRootAgentName(), null);
         assertEquals(fixture.hostedSession.getActiveExecutionWorkflow(), null);
         assertEquals(ci.calls, []);
@@ -472,7 +478,7 @@ test("PROJECT approval runs the real readiness transition and Slicer", async () 
     });
 });
 
-test("approved planned work executes through real lifecycle machinery and pauses with Engineer", async () => {
+test("approved planned work executes through real lifecycle machinery and pauses with Plan Engineer", async () => {
     await withRuntimeCommandFixture("orchestrator-feature-", async ({ projectRoot, setModelMessages }) => {
         await savePlan(projectRoot, "feature-a", "# Feature A", {
             classification: "PLANNED_CHANGE",
@@ -515,79 +521,139 @@ test("approved planned work executes through real lifecycle machinery and pauses
         const plan = await loadPlan(projectRoot, "feature-a");
         assertEquals(plan?.attrs.status, "in_progress");
         assertEquals(plan?.attrs.executionMode, "non_git_in_place");
-        assertEquals(fixture.hostedSession.getRootAgentName(), "engineer");
+        assertEquals(fixture.hostedSession.getRootAgentName(), "plan-engineer");
         assertEquals(fixture.hostedSession.getActiveExecutionWorkflow()?.planName, "feature-a");
-        assertEquals(interactions.map((request) => request.type), ["select"]);
+        assertEquals(
+            interactions.map((request) => request.type),
+            ["select"],
+        );
+        assertEquals(ci.calls, []);
+        fixture.hostedSession.dispose();
+    });
+});
+
+test("a Pair checkpoint keeps Plan Engineer active while waiting for feedback", async () => {
+    await withRuntimeCommandFixture("orchestrator-pair-", async ({ projectRoot, setModelMessages }) => {
+        await savePlan(projectRoot, "feature-a", "# Feature A", {
+            classification: "PLANNED_CHANGE",
+            complexity: "MEDIUM",
+            summary: "Feature A",
+            affectedPaths: ["src/feature.ts"],
+            status: "ready_for_work",
+            executionAgent: "engineer",
+            collaborationRecommendation: "pair",
+        });
+        const interactions: RuntimeInteractionRequest[] = [];
+        const fixture = createSessionFixture(projectRoot, (request) => {
+            interactions.push(request);
+            if (request.type === "plan_review") {
+                return { outcome: "accepted", _meta: { approved: true, approvalAction: "run" } };
+            }
+            if (request.type === "select") return { outcome: "selected", value: "proceed" };
+            return { outcome: "canceled" };
+        });
+        setModelMessages([
+            fauxAssistantMessage(fauxText("Plan submitted for execution.")),
+            fauxAssistantMessage(fauxToolCall("pair_checkpoint", { action: "report", summary: "Increment ready." })),
+        ]);
+        publishPlanOutcome(fixture.hostedSession, "approved_execute", "feature-a");
+        const ci = defineLocalCIFixture();
+
+        await dispatchPostTriage({
+            hostedSession: fixture.hostedSession,
+            triage: {
+                routingIntent: "PLANNED_CHANGE",
+                classification: "PLANNED_CHANGE",
+                complexity: "MEDIUM",
+                summary: "Feature A",
+            },
+            userRequest: "Build Feature A.",
+            images: [],
+            sessionManager: fixture.sessionManager,
+            localCI: ci.port,
+        });
+
+        const plan = await loadPlan(projectRoot, "feature-a");
+        assertEquals(plan?.attrs.status, "in_progress");
+        assertEquals(plan?.attrs.executionMode, "non_git_in_place");
+        assertEquals(fixture.hostedSession.getRootAgentName(), "plan-engineer");
+        assertEquals(fixture.hostedSession.getActiveExecutionWorkflow()?.planName, "feature-a");
+        assertEquals(
+            interactions.map((request) => request.type),
+            ["select"],
+        );
+        assertEquals(fixture.hostedSession.getActiveExecutionWorkflow()?.pairCheckpointCount, 1);
         assertEquals(ci.calls, []);
         fixture.hostedSession.dispose();
     });
 });
 
 test("completed planned work runs the real validation lifecycle around external ports", async () => {
-    await withRuntimeCommandFixture(
-        "orchestrator-feature-validated-",
-        async ({ projectRoot, setModelMessages }) => {
-            await fsMkdir(`${projectRoot}/.wld`, { recursive: true });
-            await fsWriteFile(
-                `${projectRoot}/.wld/settings.json`,
-                JSON.stringify({ codereview: "none", workRecords: { autoGenerateOnPlanCompletion: false } }),
-            );
-            await savePlan(projectRoot, "feature-validated", "# Validated Feature", {
+    await withRuntimeCommandFixture("orchestrator-feature-validated-", async ({ projectRoot, setModelMessages }) => {
+        await fsMkdir(`${projectRoot}/.wld`, { recursive: true });
+        await fsWriteFile(
+            `${projectRoot}/.wld/settings.json`,
+            JSON.stringify({ codereview: "none", workRecords: { autoGenerateOnPlanCompletion: false } }),
+        );
+        await savePlan(projectRoot, "feature-validated", "# Validated Feature", {
+            classification: "PLANNED_CHANGE",
+            complexity: "MEDIUM",
+            summary: "Validated Feature",
+            affectedPaths: ["implemented.txt"],
+            status: "ready_for_work",
+            executionAgent: "engineer",
+        });
+        const fixture = createSessionFixture(projectRoot, (request) => {
+            if (request.type === "plan_review") {
+                return { outcome: "accepted", _meta: { approved: true, approvalAction: "run" } };
+            }
+            if (request.type === "select") return { outcome: "selected", value: "proceed" };
+            return { outcome: "canceled" };
+        });
+        setModelMessages([
+            fauxAssistantMessage(fauxText("Plan submitted for execution.")),
+            fauxAssistantMessage(
+                fauxToolCall("write", {
+                    path: "implemented.txt",
+                    content: "implemented\n",
+                }),
+            ),
+            taskCompleted("Implemented and checked the fixture feature."),
+            fauxAssistantMessage(
+                fauxToolCall("manual_qa_completed", {
+                    checklistMarkdown: "Manual verification steps\n- [ ] Inspect implemented.txt.",
+                }),
+            ),
+        ]);
+        publishPlanOutcome(fixture.hostedSession, "approved_execute", "feature-validated");
+        const ci = defineLocalCIFixture([{ kind: "completed", exitCode: 0, output: "fixture CI passed" }]);
+
+        const result = await dispatchPostTriage({
+            hostedSession: fixture.hostedSession,
+            triage: {
+                routingIntent: "PLANNED_CHANGE",
                 classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Validated Feature",
-                affectedPaths: ["implemented.txt"],
-                status: "ready_for_work",
-                executionAgent: "engineer",
-            });
-            const fixture = createSessionFixture(projectRoot, (request) => {
-                if (request.type === "plan_review") {
-                    return { outcome: "accepted", _meta: { approved: true, approvalAction: "run" } };
-                }
-                if (request.type === "select") return { outcome: "selected", value: "proceed" };
-                return { outcome: "canceled" };
-            });
-            setModelMessages([
-                fauxAssistantMessage(fauxText("Plan submitted for execution.")),
-                fauxAssistantMessage(fauxToolCall("write", {
-                    path: "implemented.txt",
-                    content: "implemented\n",
-                })),
-                taskCompleted("Implemented and checked the fixture feature."),
-                fauxAssistantMessage(fauxToolCall("manual_qa_completed", {
-                    checklistMarkdown: "Manual verification steps\n- [ ] Inspect implemented.txt.",
-                })),
-            ]);
-            publishPlanOutcome(fixture.hostedSession, "approved_execute", "feature-validated");
-            const ci = defineLocalCIFixture([{ kind: "completed", exitCode: 0, output: "fixture CI passed" }]);
+            },
+            userRequest: "Build and validate the feature.",
+            images: [],
+            sessionManager: fixture.sessionManager,
+            localCI: ci.port,
+        });
 
-            const result = await dispatchPostTriage({
-                hostedSession: fixture.hostedSession,
-                triage: {
-                    routingIntent: "PLANNED_CHANGE",
-                    classification: "PLANNED_CHANGE",
-                    complexity: "MEDIUM",
-                    summary: "Validated Feature",
-                },
-                userRequest: "Build and validate the feature.",
-                images: [],
-                sessionManager: fixture.sessionManager,
-                localCI: ci.port,
-            });
-
-            assertEquals(result?.kind, "verified");
-            assertEquals((await loadPlan(projectRoot, "feature-validated"))?.attrs.status, "verified");
-            assertEquals(await fsReadFile(`${projectRoot}/implemented.txt`, "utf8"), "implemented\n");
-            assertEquals(ci.calls, [projectRoot]);
-            assertEquals(
-                fixture.sessionManager.getBranch().some((entry) =>
-                    entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"
-                ),
-                true,
-            );
-            fixture.hostedSession.dispose();
-        },
-    );
+        assertEquals(result?.kind, "verified");
+        assertEquals((await loadPlan(projectRoot, "feature-validated"))?.attrs.status, "verified");
+        assertEquals(await fsReadFile(`${projectRoot}/implemented.txt`, "utf8"), "implemented\n");
+        assertEquals(ci.calls, [projectRoot]);
+        assertEquals(
+            fixture.sessionManager
+                .getBranch()
+                .some((entry) => entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"),
+            true,
+        );
+        fixture.hostedSession.dispose();
+    });
 });
 
 test("Router session names are persisted and emitted before specialist dispatch", async () => {

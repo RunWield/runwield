@@ -1420,7 +1420,8 @@ noninteractive hosts work autonomously. In Pair mode, the execution Agent implem
 reports it in the normal conversation, and ends the turn. The user can ask questions while implementation stays
 paused, request a revision, continue,
 switch to autonomous work, or stop with work preserved, through the normal composer. Iteration keeps the same
-workflow, worktree, tools, attempt, and conversation.
+workflow, execution Agent, worktree, tools, attempt, and conversation. A checkpoint does not switch Plan Engineer to
+the Quick Fix Engineer.
 
 **Requirement: Readable checkpoint reports.** Reports use Markdown with bold section titles and blank lines between
 sections, with evidence, diagnostics, and proposed next increments in separate sections. The TUI shows reports
@@ -1440,6 +1441,7 @@ or feedback text.
 - Given Pair on TUI, Workspace, or ACP, when an increment is ready, its report ends the turn and the conversation
   accepts questions, revisions, continuation, autonomous switching, or Stop.
 - Given a report with evidence, diagnostics, and a next increment, the TUI shows it rendered and expanded.
+- Given a Plan Engineer checkpoint, Plan Engineer stays active while waiting for feedback and after continuation.
 - Given an open checkpoint, only a later accepted user turn resolves it.
 - Given a final increment, Workflow Validation starts after the user accepts it and the Agent submits completion again.
 - Given a stopped Pair execution, work and workflow state stay available for a later resume.
