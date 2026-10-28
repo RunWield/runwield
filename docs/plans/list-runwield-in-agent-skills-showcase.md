@@ -14,7 +14,7 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "in_progress"
+status: "implemented"
 ---
 
 # List RunWield in the Agent Skills Client Showcase
