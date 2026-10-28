@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
 import { setExactProjectCustomSetting } from "../../src/shared/settings.js";
 import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.js";
-import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.js";
+import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";
 import { loadFixture } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
 import type { MaterializedProject } from "./materialize.ts";

@@ -11,7 +11,7 @@ import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testi
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";
 import type { ReviewFinding, ReviewAdvisory } from "../../tools/review-complete.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
-import { parseDiffFiles } from "./review-diff-tool.js";
+import { parseDiffFiles } from "./review-diff-tool.ts";
 import { makeRecordedSession, makeUi } from "./validation-test-helpers.js";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildPlanEventUpdates, recordPlanEvent } from "./plan-lifecycle.js";

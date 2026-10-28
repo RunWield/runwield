@@ -3,10 +3,26 @@ import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
 import { createReviewDiffReader } from "./review-diff.ts";
-/** @typedef {import('./review-diff.ts').DiffFileEntry} DiffFileEntry */
-/** @typedef {import('./review-diff.ts').DiffFileSummary} DiffFileSummary */
-/** @typedef {import('./review-diff.ts').DiffReviewStats} DiffReviewStats */
-/** @typedef {import('./review-diff.ts').DiffInspectionOptions} DiffInspectionOptions */
+import type { HostedSession } from "../session/hosted-session.js";
+import type { ReviewInspection } from "./review-inspection.ts";
+import type { ReviewLedger } from "./review-ledger.ts";
+import type { ReviewDiffTexts } from "./review-diff.ts";
+
+export type {
+    DiffFileEntry,
+    DiffFileSummary,
+    DiffReviewStats,
+    DiffInspectionOptions,
+    ReviewDiffTexts,
+    ReviewDiffDetails,
+} from "./review-diff.ts";
+
+export interface ReviewDiffToolOptions {
+    hostedSession?: HostedSession;
+    inspection?: ReviewInspection;
+    ledger?: ReviewLedger;
+}
+
 // Preserve the existing imports used by Session prompt builders and callers.
 export {
     buildDiffInspectionSection,
@@ -31,11 +47,8 @@ export {
  * changed and answers "did the repair fix the open findings without breaking
  * something". Round one has no repair scope.
  *
- * @param {string | { full: string, repair?: string }} diffs - Workflow diff text, or per-scope diff texts.
- * @param {ReviewDiffToolOptions} [options]
- * @returns {ReturnType<typeof defineTool>}
  */
-export function createReviewDiffTool(diffs, options = {}) {
+export function createReviewDiffTool(diffs: string | ReviewDiffTexts, options: ReviewDiffToolOptions = {}) {
     const readDiff = createReviewDiffReader(diffs);
     const hasRepairScope = typeof diffs !== "string" && typeof diffs?.repair === "string";
     const MAX_READ_BYTES = 64 * 1024;
@@ -105,10 +118,3 @@ export function createReviewDiffTool(diffs, options = {}) {
     Object.assign(tool, { __runwieldReviewDiffs: diffs, __runwieldReviewOptions: options });
     return tool;
 }
-
-/**
- * @typedef {Object} ReviewDiffToolOptions
- * @property {import('../session/hosted-session.js').HostedSession} [hostedSession]
- * @property {import('./review-inspection.ts').ReviewInspection} [inspection]
- * @property {import('./review-ledger.ts').ReviewLedger} [ledger]
- */

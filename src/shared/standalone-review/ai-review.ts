@@ -1,5 +1,5 @@
 import { expandSkill } from "../session/skill-catalog.ts";
-import { parseDiffFiles } from "../workflow/review-diff-tool.js";
+import { parseDiffFiles } from "../workflow/review-diff-tool.ts";
 
 interface AiReviewPromptOptions {
     mode: string;

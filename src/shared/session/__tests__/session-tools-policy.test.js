@@ -36,7 +36,7 @@ import {
     composeClaudeCliBridgedTools,
     resolveEffectiveSessionToolNames,
 } from "../session.js";
-import { createReviewDiffTool } from "../../workflow/review-diff-tool.js";
+import { createReviewDiffTool } from "../../workflow/review-diff-tool.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";
 
 let helperRoot = "";

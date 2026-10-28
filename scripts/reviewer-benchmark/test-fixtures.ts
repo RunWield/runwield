@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
-import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.js";
+import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";
 import { cp, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
