@@ -25,11 +25,29 @@ import {
     steerRootSessionWithTarget,
 } from "./session.js";
 import { ensureBundledAgentDefFile, getBundledAgentDefsPath } from "./agent-assets.ts";
-import { HostedSession } from "./hosted-session.js";
+import { type DisposableLike, HostedSession } from "./hosted-session.js";
 import { getAgentDisplayName, listAvailableAgents } from "./agents.js";
 import { getCustomSetting } from "../settings.js";
 import { loadPlan } from "../../plan-store.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+
+type PromptAgentDefinition = Parameters<typeof assembleFinalSystemPrompt>[0];
+type PromptCustomTools = Parameters<typeof assembleFinalSystemPrompt>[2];
+type SteeringImages = Parameters<AgentSession["steer"]>[1];
+
+interface SteeringCall {
+    text: string;
+    images?: SteeringImages;
+}
+
+interface SteeringSessionFixture extends DisposableLike {
+    steer: (...args: Parameters<AgentSession["steer"]>) => Promise<void>;
+    isStreaming: boolean;
+    model?: Pick<NonNullable<AgentSession["model"]>, "input"> &
+        Partial<Pick<NonNullable<AgentSession["model"]>, "contextWindow">>;
+}
 
 test("two project roots keep local catalogs settings and Plans isolated", async () => {
     const alpha = await fsMkdtemp(join(tmpdir(), "runwield-project-alpha-"));
@@ -334,7 +352,7 @@ test("assembleFinalSystemPrompt fills tools, instruction files, skills, and bund
             );
 
             const prompt = await assembleFinalSystemPrompt(
-                /** @type {any} */ ({
+                {
                     systemPrompt: [
                         "Tools:",
                         "{{AVAILABLE_TOOLS}}",
@@ -349,15 +367,15 @@ test("assembleFinalSystemPrompt fills tools, instruction files, skills, and bund
                         "Bundled:",
                         "{{BUNDLED_AGENT_DEFS_DIR}}",
                     ].join("\n"),
-                }),
+                } as PromptAgentDefinition,
                 ["read", "custom_tool", "unknown_tool"],
-                /** @type {any[]} */ ([
+                [
                     {
                         name: "custom_tool",
                         description: "custom description",
                         promptSnippet: "custom snippet",
                     },
-                ]),
+                ] as PromptCustomTools,
                 projectRoot,
                 "",
                 { homeDir: tempHome },
@@ -378,15 +396,14 @@ test("assembleFinalSystemPrompt fills tools, instruction files, skills, and bund
 });
 
 test("steerRootSession sends image content only while root is streaming", async () => {
-    /** @type {Array<{ text: string, images?: unknown[] }>} */
-    const steerCalls = [];
-    const session = /** @type {any} */ ({
+    const steerCalls: SteeringCall[] = [];
+    const session: SteeringSessionFixture = {
         isStreaming: false,
-        steer: (/** @type {string} */ text, /** @type {unknown[]} */ images) => {
+        steer: (text: string, images: SteeringImages) => {
             steerCalls.push({ text, images });
             return Promise.resolve();
         },
-    });
+    };
 
     const hostedSession = new HostedSession({ id: "steer-catalog", cwd: getCwd() });
     assertEquals(await steerRootSession(hostedSession, "queued"), false);
@@ -410,23 +427,23 @@ test("steerRootSession sends image content only while root is streaming", async 
 });
 
 test("steerActiveSessionWithTarget prefers streaming foreground target and keeps root helper root-only", async () => {
-    const calls = /** @type {string[]} */ ([]);
-    const root = /** @type {any} */ ({
+    const calls: string[] = [];
+    const root: SteeringSessionFixture = {
         isStreaming: true,
         model: { input: ["text"] },
-        steer(/** @type {string} */ text) {
+        steer(text: string) {
             calls.push(`root:${text}`);
             return Promise.resolve();
         },
-    });
-    const foreground = /** @type {any} */ ({
+    };
+    const foreground: SteeringSessionFixture = {
         isStreaming: true,
         model: { input: ["text"] },
-        steer(/** @type {string} */ text) {
+        steer(text: string) {
             calls.push(`foreground:${text}`);
             return Promise.resolve();
         },
-    });
+    };
     const hostedSession = new HostedSession({ id: "active-steer-catalog", cwd: getCwd() });
     hostedSession.setRootAgentSession(root);
     const targetId = hostedSession.pushSteeringTargetSession(foreground);
