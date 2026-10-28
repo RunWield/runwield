@@ -4,46 +4,57 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { createTuiInteractionAdapter as createAdapter } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter as createAdapterImplementation } from "./runtime-interaction-adapter.js";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 import { ToolExecutionBlock } from "./blocks.js";
 import { initRunWieldTheme } from "../theme/theme.js";
 
+import type { SelectOption, UiAPI } from "./types.js";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
+import type { ReviewSurface } from "../review/review-launcher.ts";
+
+interface ReviewUiState {
+    busyValues?: boolean[];
+    outputs?: string[];
+    ended?: boolean[];
+}
+
+type InteractionFixtureUi = Pick<UiAPI, "promptSelect" | "promptText" | "setBusy" | "startToolExecution"> &
+    Partial<Pick<UiAPI, "abortActivePrompt">>;
+type FixtureAdapterFactory = (
+    uiAPI: InteractionFixtureUi,
+    ports: Parameters<typeof createAdapterImplementation>[1],
+) => ReturnType<typeof createAdapterImplementation>;
+
+const createAdapter = createAdapterImplementation as FixtureAdapterFactory;
+
+type PromptResolver = (value: string | null) => void;
+type ReviewLink = Pick<ReviewSurface, "url">;
+
 initRunWieldTheme();
 
-/** @param {import('./types.js').UiAPI} uiAPI */
-function createTuiInteractionAdapter(uiAPI) {
+function createTuiInteractionAdapter(uiAPI: InteractionFixtureUi) {
     return createAdapter(uiAPI, { browser: NO_OPEN_BROWSER_PORT });
 }
 
-/**
- * @typedef {Object} ReviewUiState
- * @property {boolean[]} [busyValues]
- * @property {string[]} [outputs]
- * @property {boolean[]} [ended]
- */
-/**
- * @param {string | null} selection
- * @param {ReviewUiState} [state]
- */
-function makeUi(selection, state = {}) {
-    return /** @type {any} */ ({
+function makeUi(selection: string | null, state: ReviewUiState = {}): InteractionFixtureUi {
+    return {
         promptSelect: () => Promise.resolve(selection),
         promptText: () => Promise.resolve(null),
-        setBusy: (/** @type {boolean} */ busy) => state.busyValues?.push(busy),
+        setBusy: (busy: boolean) => state.busyValues?.push(busy),
         startToolExecution: () => ({
-            setOutput: (/** @type {string} */ text) => state.outputs?.push(text),
-            endExecution: (/** @type {boolean} */ error) => state.ended?.push(error),
+            setOutput: (text: string) => state.outputs?.push(text),
+            endExecution: (error: boolean) => state.ended?.push(error),
             startTime: 0,
         }),
-    });
+    };
 }
 
 test("TUI Plan review resumes progress after feedback and review failures", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-review-progress-"));
-    const busyValues = /** @type {boolean[]} */ ([]);
+    const busyValues: boolean[] = [];
     const scripted = createScriptedReviewBrowser("deny", { feedback: "Add a test" });
     const adapter = createAdapter(makeUi(null, { busyValues }), { browser: scripted.browser });
     try {
@@ -55,7 +66,7 @@ test("TUI Plan review resumes progress after feedback and review failures", asyn
             type: RuntimeInteractionTypes.PLAN_REVIEW,
             prompt: "Review the Plan",
             _meta: { cwd, planName: "plan", planPath: getStoredPlanPath(cwd, "plan") },
-        };
+        } satisfies RuntimeInteractionRequest;
         const response = await adapter.requestInteraction(request);
         assertEquals(response.outcome, "selected");
         assertEquals(response._meta?.feedback, "Add a test");
@@ -70,16 +81,16 @@ test("TUI Plan review resumes progress after feedback and review failures", asyn
 });
 
 test("TUI interaction adapter closes a question answered on another surface", async () => {
-    let resolvePrompt = /** @type {(value: string | null) => void} */ (() => {});
+    let resolvePrompt: PromptResolver = () => {};
     let promptClosed = false;
-    const uiAPI = /** @type {any} */ ({
+    const uiAPI: InteractionFixtureUi = {
         promptSelect: () => new Promise((resolve) => (resolvePrompt = resolve)),
         promptText: () => Promise.resolve(null),
         abortActivePrompt: () => {
             promptClosed = true;
             resolvePrompt(null);
         },
-    });
+    };
     const adapter = createTuiInteractionAdapter(uiAPI);
     const controller = new AbortController();
     const responsePromise = adapter.requestInteraction(
@@ -161,20 +172,15 @@ test("TUI interaction adapter advertises browser-backed review capabilities", ()
 
 test("TUI interaction adapter confirms Plan Deviations explicitly", async () => {
     let prompt = "";
-    let options = /** @type {Array<{ value: string, label: string }>} */ ([]);
-    const adapter = createTuiInteractionAdapter(
-        /** @type {any} */ ({
-            promptSelect: (
-                /** @type {string} */ value,
-                /** @type {Array<{ value: string, label: string }>} */ promptOptions,
-            ) => {
-                prompt = value;
-                options = promptOptions;
-                return Promise.resolve("confirm");
-            },
-            promptText: () => Promise.resolve(null),
-        }),
-    );
+    let options: SelectOption[] = [];
+    const adapter = createTuiInteractionAdapter({
+        promptSelect: (value: string, promptOptions: SelectOption[]) => {
+            prompt = value;
+            options = promptOptions;
+            return Promise.resolve("confirm");
+        },
+        promptText: () => Promise.resolve(null),
+    });
 
     const response = await adapter.requestInteraction({
         type: "plan_deviation_confirmation",
@@ -210,15 +216,13 @@ test("TUI interaction adapter confirms Plan Deviations explicitly", async () => 
 test("TUI interaction adapter shows the full Plan Deviation confirmation prompt", async () => {
     let prompt = "";
     const tail = "This persistence warning must stay visible.";
-    const adapter = createTuiInteractionAdapter(
-        /** @type {any} */ ({
-            promptSelect: (/** @type {string} */ value) => {
-                prompt = value;
-                return Promise.resolve("confirm");
-            },
-            promptText: () => Promise.resolve(null),
-        }),
-    );
+    const adapter = createTuiInteractionAdapter({
+        promptSelect: (value: string) => {
+            prompt = value;
+            return Promise.resolve("confirm");
+        },
+        promptText: () => Promise.resolve(null),
+    });
 
     await adapter.requestInteraction({
         type: "plan_deviation_confirmation",
@@ -246,18 +250,16 @@ test("TUI interaction adapter returns canceled Plan Deviation confirmation", asy
 
 test("TUI interaction adapter does not open a form for Pair checkpoints", async () => {
     let promptCount = 0;
-    const adapter = createTuiInteractionAdapter(
-        /** @type {any} */ ({
-            promptSelect: () => {
-                promptCount += 1;
-                return Promise.resolve("continue");
-            },
-            promptText: () => {
-                promptCount += 1;
-                return Promise.resolve("feedback");
-            },
-        }),
-    );
+    const adapter = createTuiInteractionAdapter({
+        promptSelect: () => {
+            promptCount += 1;
+            return Promise.resolve("continue");
+        },
+        promptText: () => {
+            promptCount += 1;
+            return Promise.resolve("feedback");
+        },
+    });
 
     const response = await adapter.requestInteraction({
         type: "pair_checkpoint",
@@ -273,14 +275,14 @@ test("TUI interaction adapter does not open a form for Pair checkpoints", async 
 
 test("TUI code review exposes each real surface URL without browser opening and clears settled links", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-tui-code-link-"));
-    const state = {
-        busyValues: /** @type {boolean[]} */ ([]),
-        outputs: /** @type {string[]} */ ([]),
-        ended: /** @type {boolean[]} */ ([]),
+    const state: Required<ReviewUiState> = {
+        busyValues: [],
+        outputs: [],
+        ended: [],
     };
     const scripted = createScriptedReviewBrowser("decision", { approved: true }, false);
     const adapter = createAdapter(makeUi(null, state), { browser: scripted.browser });
-    const callbacks = /** @type {string[]} */ ([]);
+    const callbacks: string[] = [];
     try {
         // A resumed review creates a new surface; direct review has no caller callback.
         for (const hasCallback of [true, false]) {
@@ -291,9 +293,7 @@ test("TUI code review exposes each real surface URL without browser opening and 
                     planName: "feature",
                     diffText: "diff --git a/a b/a\n",
                     executionCwd: cwd,
-                    onSurfaceReady: hasCallback
-                        ? (/** @type {{url: string}} */ surface) => callbacks.push(surface.url)
-                        : undefined,
+                    onSurfaceReady: hasCallback ? (surface: ReviewLink) => callbacks.push(surface.url) : undefined,
                 },
             });
             assertEquals(response.outcome, "accepted");
@@ -331,7 +331,7 @@ test("TUI keeps the waiting message and clickable Code Review link visible until
                     planName: "feature",
                     diffText: "diff --git a/a b/a\n",
                     executionCwd: cwd,
-                    onSurfaceReady: (/** @type {{url: string}} */ surface) => {
+                    onSurfaceReady: (surface: ReviewLink) => {
                         for (const width of [60, 120]) {
                             const rendered = block.render(width).join("\n");
                             assertStringIncludes(rendered, "Waiting for Code Review");
@@ -357,10 +357,10 @@ test("TUI keeps the waiting message and clickable Code Review link visible until
 
 test("TUI code review closes the live link and restores progress on cancellation", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-tui-code-cancel-"));
-    const state = {
-        busyValues: /** @type {boolean[]} */ ([]),
-        outputs: /** @type {string[]} */ ([]),
-        ended: /** @type {boolean[]} */ ([]),
+    const state: Required<ReviewUiState> = {
+        busyValues: [],
+        outputs: [],
+        ended: [],
     };
     const controller = new AbortController();
     const adapter = createAdapter(makeUi(null, state), { browser: NO_OPEN_BROWSER_PORT });
@@ -391,10 +391,10 @@ test("TUI code review closes the live link and restores progress on cancellation
 });
 
 test("TUI review setup failure closes its block as an error", async () => {
-    const state = {
-        busyValues: /** @type {boolean[]} */ ([]),
-        outputs: /** @type {string[]} */ ([]),
-        ended: /** @type {boolean[]} */ ([]),
+    const state: Required<ReviewUiState> = {
+        busyValues: [],
+        outputs: [],
+        ended: [],
     };
     const adapter = createAdapter(makeUi(null, state), { browser: NO_OPEN_BROWSER_PORT });
     await assertRejects(
