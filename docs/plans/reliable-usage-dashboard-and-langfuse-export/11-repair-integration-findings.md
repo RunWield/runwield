@@ -28,143 +28,106 @@ Resolve every finding below on the Epic branch.
 
 ## Findings
 
-### 1. Project checks fail on the Epic branch
-
-Source: Project checks
-
-Exit code 1.
-
-```text
-$ bun scripts/check-bun-runtime.ts && bun scripts/run-ci.ts
-ci workspace:check failed, read the failure log here: /var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/ci-workspace-check-failure-54739f14-136d-4da1-88d9-2c81846251d6.log
-ci lint failed, read the failure log here: /var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/ci-lint-failure-5ffb65dd-90ed-4822-a669-92526b744543.log
-ci check failed, read the failure log here: /var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/ci-check-failure-1c9973f9-cb0b-42a6-bf4f-dfda6328a94e.log
-ci workspace:build failed, read the failure log here: /var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/ci-workspace-build-failure-de95a30a-df0c-44cc-8d4f-5e4747782729.log
-ci submodules:check failed, read the failure log here: /var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/ci-submodules-check-failure-a94a93ec-11b8-4aaa-a3ff-c2429f9465fc.log
-ci docs:check failed, read the failure log here: /var/folders/hw/zrm0bqr90xz63nflnb2g_qqr0000gn/T/ci-docs-check-failure-8e79578d-cb3f-4368-99eb-d4a719d83a11.log
-CI failed tasks:
-- submodules:check: exit 1
-- check: exit 1
-- workspace:check: exit 1
-- lint: exit 1
-- docs:check: exit 1
-- workspace:build: exit 1
-error: script "ci" exited with code 1
-```
-
-### 2. Local measurement is opt-in — finding withdrawn
-
-Source: Integration review; corrected by the owner.
-
-Disposition: Not applicable. Default-off recording is required, not a defect. Do not enable recording by default.
-
-Requirement: Local recording is opt-in. With `workflowMetrics` off or unset, write no metrics. Preserve explicit
-settings and scope precedence. Display the effective recording state; export requires separate approval and stays
-off until approved.
-
-The original review used a superseded default-on requirement. The Core PRD's
-[Local workflow metrics](../../prd/runwield-core-prd.md#local-workflow-metrics) capability defines the current policy.
-
-### 3. Recording controls do not commit collection boundaries
+### R2-1. Different Project roots can share one measurement journal
 
 Source: Integration review
 
-Requirement: Normal recording controls must record epoch changes atomically with appends. Disabled intervals must remain gaps after re-enabling.
+Requirement: Use a collision-resistant canonical Project identity. Reports, clear actions, and export grants must remain Project-specific.
 
-Evidence: src/ui/workspace/server/owner-usage-settings.ts::mutateUsageSettings('recording') calls the ordinary setCustomSetting writer. src/shared/settings.js::setCustomSetting neither acquires the journal guard nor writes a collection marker. metrics-journal.ts creates boundaries only when an append observes changed settings. Disable and re-enable with no intervening append leaves the old epoch unchanged and loses the disabled interval.
+Evidence: metrics.js:getWorkflowMetricsFilePath uses encodeCwdForSessionDir. session-directory-name.ts:5–7 maps both /tmp/a-b and /tmp/a/b to --tmp-a-b--. The new usage-reporting.ts:projectIdentity hashes that same directory name and reads all its rows. metrics-export-scheduler.ts:scanProject does not check the row's cwdHash. Thus, reporting or clearing Project A includes Project B, and an export grant for A can export B's measurements.
 
-### 4. Model settlements do not retain their start-time recording permission
-
-Source: Integration review
-
-Requirement: An invocation is eligible only if recording was enabled at its start and remains in the same collection epoch.
-
-Evidence: src/shared/workflow/execution-metrics.ts::ExecutionMetricsRecorder captures historyEpoch but no collection epoch or start-time enablement. Each recordModelUsage call reaches metrics.js::recordWorkflowMetric, which samples current permission again. An invocation started while disabled can finish after enablement and persist usage. An invocation spanning a recorded disable/re-enable boundary can also persist under the new epoch.
-
-### 5. Initial-epoch observations can restore cleared history
+### R2-2. Recording controls do not commit collection boundaries
 
 Source: Integration review
 
-Requirement: Clear must reject delayed observations from the previous history, including writes from another process.
+Requirement: Normal recording controls must change collection epochs atomically with journal authorization. Disable/re-enable periods must remain gaps.
 
-Evidence: src/shared/workflow/metrics-journal.ts:462–476 exempts historyEpoch='initial' from both history-boundary checks. Writer A can capture the initial epoch, pause, then resume after writer B creates and clears the journal. The collection epoch can still match, so A's pre-clear observation is appended to the new history.
+Evidence: owner-usage-settings.ts:mutateUsageSettings('recording') calls setCustomSetting only. settings.js:setCustomSetting writes configuration without the journal lock or an epoch marker. metrics-journal.ts:appendWorkflowMetric detects changes lazily. Disable and re-enable between appends leaves the old epoch unchanged and no disabled-period evidence. A setting write can also occur after an append's enabled check because the two operations use different locks.
 
-### 6. Distinct Projects can share reporting, deletion, and export history
-
-Source: Integration review
-
-Requirement: Use a collision-resistant canonical Project key. Reports, clear operations, and export grants must stay within their authorized Projects.
-
-Evidence: metrics.js::getWorkflowMetricsFilePath still uses encodeCwdForSessionDir. src/shared/session/session-directory-name.ts maps both /a-b and /a/b to --a-b-- for short paths. The added usage-reporting.ts reads and clears this shared journal; metrics-export-scheduler.ts scans it without checking cwdHash. Registering or approving one Project can therefore report, delete, or export the other Project's observations.
-
-### 7. A failed usage append can produce complete zero reporting
+### R2-3. Model settlements use current consent instead of invocation-start consent
 
 Source: Integration review
 
-Requirement: Storage failure must remain fail-honest: disclose missing evidence and never claim complete coverage for data that was not saved.
+Requirement: An invocation is eligible only if recording was enabled at its start and its collection epoch remains current.
 
-Evidence: src/shared/workflow/execution-metrics.ts::recordModelUsage updates deduplication and usageCoverage before writing, then ignores the persisted result. settleExecution can subsequently save coverage.usage='complete'. usage-reporting.ts:615–624 adds missing-usage exclusions only for partial/unavailable settlement. If the usage append fails before writing bytes and settlement succeeds, the report can show zero usage with no exclusion.
+Evidence: execution-metrics.ts:ExecutionMetricsRecorder captures historyEpoch but not collection enablement or collectionEpoch. metrics.js:recordWorkflowMetric resolves both from current settings for each fresh row. Pi reconciles entries at execution settlement in session.js:4735 and 5060. Starting with recording off, then enabling before settlement, records the earlier disabled work. The same omission lets late backend settlements cross collection epochs.
 
-### 8. Export dispatch can occur after clear or revoke completes
-
-Source: Integration review
-
-Requirement: Under the control lock, persist intent and dispatch the authorized worker request. Clear or revoke must prevent later dispatch; only already-dispatched work may continue.
-
-Evidence: src/shared/workflow/metrics-export-scheduler.ts:347–400 releases configuration and journal locks after saving intent, then awaits buildMetricsExportObservation before calling callExporter. Another process can clear history or revoke consent during those crypto awaits. The scheduler then dispatches the retained observation and credentials without another check. This is not an already-dispatched request.
-
-### 9. Guided Review exports operations that started before consent
+### R2-4. The initial-history exception allows stale writes after clear
 
 Source: Integration review
 
-Requirement: Export starts with operations begun after the durable approval boundary, not old operations that finish later.
+Requirement: Clear must reject delayed observations from an older history epoch, including observations from another process.
 
-Evidence: src/ui/workspace/routes/api/review-agent-handlers.js::recordGuideJobMetric constructs the external Guided Review recorder only in the completion path and writes no execution_started record. metrics-export-scheduler.ts::scanProject uses the settlement row offset when no start exists. A custom Guided Review command started before destination approval is therefore exported if it finishes afterward. Capturing history only at completion also lets that operation write after an intervening clear.
+Evidence: metrics-journal.ts:462–478 exempts invocation.historyEpoch === 'initial' from both history checks. Writer A can capture initial, writer B can create nonempty history, and clear can then replace that history while preserving the collection epoch. When A resumes, both history guards are bypassed and its pre-clear observation is appended to the new history.
 
-### 10. Missing agy usage becomes complete zero cost
-
-Source: Integration review
-
-Requirement: Missing cost must not become measured zero. Zero requires source evidence.
-
-Evidence: src/shared/session/backends/agy-cli/execution-session.ts:566–595 replaces absent token buckets with zero for pricing and sets costAvailability='complete' whenever a catalog model exists. The parser supplies a non-null usage object even when a result omits all usage. That result becomes calculated cost 0; usage-reporting.ts counts it, and packages/langfuse-exporter/exporter.ts exports native cost_details.total=0.
-
-### 11. Partial token measurements are exported as native totals
+### R2-5. External Guided Review captures its history boundary after the work finishes
 
 Source: Integration review
 
-Requirement: Partial token categories must remain metadata with availability flags, without native complete totals or pricing inference.
+Requirement: Clear must discard delayed settlements from the old history. Auxiliary invocations must establish measurement identity before use.
 
-Evidence: packages/langfuse-exporter/exporter.ts::map constructs usage_details from any available buckets, even when measurementAvailability='partial'. Its read-back matcher explicitly accepts a derived total equal to the known-bucket sum. Thus an incomplete agy observation can contribute a native total; usage_complete=false metadata does not prevent it.
+Evidence: review-agent-handlers.js:addGuideJobUsage retains usage while the command runs, but recordGuideJobMetric creates ExecutionMetricsRecorder only at settlement (lines 314–336). A clear between a usage frame and settlement causes the recorder to capture the new history epoch. The old usage subtotal then enters the cleared history.
 
-### 12. Unavailable model timing becomes native zero latency
-
-Source: Integration review
-
-Requirement: Missing timing must remain unavailable; native destination metrics must not imply measured latency.
-
-Evidence: packages/langfuse-exporter/exporter.ts:305–310 substitutes occurredAt for both start and end when observed timing is missing. It still emits a GENERATION with these timestamps, and matches requires the same timestamps on read-back. A model observation without measured timing becomes a zero-duration native generation despite timing_measured=false.
-
-### 13. A missing approved directory blocks allowlist edits
+### R2-6. Export dispatch occurs after its authorization locks are released
 
 Source: Integration review
 
-Requirement: Workspace must provide working explicit Project export controls while preserving separate grants for unavailable Projects.
+Requirement: Persist intent and dispatch the authorized worker request under the control lock. Clear or revoke must prevent requests that have not yet been dispatched.
 
-Evidence: src/ui/workspace/server/owner-usage-settings.ts::preserveUnavailableRoots retains unavailable approved roots during Project edits. src/shared/workflow/metrics-export-grants.ts::saveDestinationGrant then calls realpathSync on every retained root before checking the existing grant. If one directory was deleted or moved, saving changes for the remaining Projects fails.
+Evidence: metrics-export-scheduler.ts:346–401 returns the saved intent from withExportConfigurationLock/withWorkflowMetricJournalLock, releases both locks, awaits buildMetricsExportObservation, and only then calls callExporter. Another process can complete clear or revoke during this gap. The saved row and credentials are still sent without another authorization check. The confirm path has the same gap.
 
-### 14. Worktree aliases can falsely show that export stopped
-
-Source: Integration review
-
-Requirement: Worktrees share one Project identity, and Workspace must accurately show the approved export Projects.
-
-Evidence: owner-usage-settings.ts maps one canonical grant root to every matching registration. UsageSettings.tsx::DestinationPanel initializes projectIds only once, and mutation success updates view without resetting that selection. With primary and worktree registrations selected, unchecking one and saving retains the canonical grant through the other. The unchecked row continues to say 'Not exported' after success, although its measurements remain exportable.
-
-### 15. Ongoing workflow reporting ignores repair completion
+### R2-7. Export eligibility admits auxiliary work started before approval
 
 Source: Integration review
 
-Requirement: The report must label ongoing work as of its latest observed workflow event, while counting one repair per round.
+Requirement: Export must include only operations started after the grant boundary, not old operations that complete later.
 
-Evidence: src/shared/workflow/validation-supervisor.ts:262–273 emits repair_round_finished after committing repair completion. The latestWorkflows event list in usage-reporting.ts:491–502 omits that event. If work stops before the next validation observation, the ongoing report retains the earlier repair-start timestamp and link instead of the latest completion observation.
+Evidence: metrics-export-scheduler.ts:144–159 excludes only executions with an execution_started row before the grant offset. SessionContextMetricsRecorder in execution-metrics.ts:32–115 never writes that start for its internal usage recorder. A manual compaction started before approval therefore records model_usage after approval and is exported. External Guided Review also has no pre-invocation start row. Missing start evidence currently authorizes export instead of excluding uncertain eligibility.
+
+### R2-8. Claude steering drops usage from later results in the same process
+
+Source: Integration review
+
+Requirement: Supported Claude work must contribute once, without losing later cumulative or distinct turn totals.
+
+Evidence: claude-cli/execution-session.ts now sends steering into the active process and permits further results while steering remains pending. stream-parser.ts:259 gives every result the sourceId claude_turn_total. execution-metrics.ts:1170–1171 rejects every later observation with that sourceId. The first result is retained even when later results contain additional usage.
+
+### R2-9. The report ignores observed model completion time
+
+Source: Integration review
+
+Requirement: Usage must belong to its completion day and the correct half-open reporting period.
+
+Evidence: usage-reporting.ts:261–262 uses completedAt or ts, but not endedAt. agy-cli/execution-session.ts records usageEndedAt when usage arrives, then passes it as endedAt only after process and bridge cleanup. execution-metrics.ts supplies no observedAt for this path, so ts becomes recording time. If cleanup crosses midnight or a period boundary, the report assigns the usage to the wrong day.
+
+### R2-10. A failed usage append can still produce complete coverage
+
+Source: Integration review
+
+Requirement: Storage failure must remain fail-honest: missing persisted usage must produce degraded coverage, not a complete zero.
+
+Evidence: execution-metrics.ts:recordModelUsage sets usageCoverage and marks sourceId reconciled before awaiting recordWorkflowMetric, then ignores its persisted result. settleExecution can subsequently save coverage.usage='complete' after a failed model_usage append. usage-reporting.ts adds missing-usage exclusions only when execution_finished declares partial or unavailable coverage. A failed usage write followed by a successful settlement can therefore report zero usage with no observation exclusions.
+
+### R2-11. Vision failures have no measurement start or incomplete observation
+
+Source: Integration review
+
+Requirement: RunWield-started auxiliary calls must have identities before invocation and expose incomplete measurement when settlement evidence is missing.
+
+Evidence: see-image.ts calls completeSimpleFn before creating a usage observation. Error or aborted responses throw before onModelUsage runs, and there is no start observation. session.js:onModelUsage creates a fallback recorder only after successful completion. A failed or interrupted vision request therefore leaves no pending measurement or unavailable-usage evidence, even when the response contains usage.
+
+### R2-12. Crash recovery leaves revoked destinations permanently in flight
+
+Source: Integration review
+
+Requirement: Process loss must change unfinished export attempts to uncertain delivery, and clear must distinguish actual in-flight requests.
+
+Evidence: metrics-export-scheduler.ts:runMetricsExportCycle recovers sending/confirming ledger entries only while iterating current grants. Revoke removes the grant. If the sender then dies before settlement, that ledger is never recovered. metrics-export-ledger.ts:metricsDeliveryInFlightForJournal still counts its sending/confirming entry, so later clears continue to report delivery in flight after restart.
+
+### R2-13. Settings documentation still claims that reporting and upload do not exist
+
+Source: Integration review
+
+Requirement: Update settings documentation to describe the delivered Usage report and optional export without contradictory capability claims.
+
+Evidence: docs/user-documentation/settings.md:541–542 says metrics are record-only, there is no reporting UI or analytics sync, and nothing is uploaded. The same file later documents Usage and destination export controls. The obsolete statement gives incorrect guidance about the assembled feature.
