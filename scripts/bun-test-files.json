@@ -597,7 +597,7 @@
     "src/tools/plan-safe-file-tools.test.ts",
     "src/tools/plan-written.test.ts",
     "src/tools/qa-checklist-generated.test.ts",
-    "src/tools/see-image.test.js",
+    "src/tools/see-image.test.ts",
     "src/tools/work-record-read.test.ts",
     "src/tools/work-record-search.test.ts",
     "src/ui/design-system/components/react/RunWieldMascot.test.tsx",
