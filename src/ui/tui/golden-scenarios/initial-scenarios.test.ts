@@ -27,6 +27,18 @@ import {
 import { GoldenScenarioActor, runGoldenScenario } from "../testing/mod.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 
+type InitialGoldenScenario = (typeof initialGoldenScenarios)[number];
+
+interface ChildFailurePayload {
+    artifactDir?: string;
+    heartbeatArtifactDir?: string;
+}
+
+interface ChildProcessFailure extends Error {
+    artifactDir?: string;
+    childPayload?: ChildFailurePayload;
+}
+
 /**
  * Remove the artifact root a failed child retained.
  *
@@ -36,17 +48,15 @@ import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
  * root rather than `artifactDir` is deliberate: scenario artifacts nest inside
  * it, so the narrower path strands its own parent.
  *
- * @param {unknown} error
  */
-async function removeChildHeartbeatArtifact(error) {
-    const childPayload = /** @type {{ childPayload?: { heartbeatArtifactDir?: unknown } }} */ (error || {})
-        .childPayload;
+async function removeChildHeartbeatArtifact(error: ChildProcessFailure | undefined) {
+    const childPayload = ((error || {}) as ChildProcessFailure).childPayload;
     const root = childPayload?.heartbeatArtifactDir;
     if (typeof root !== "string" || !root) return;
     await fsRm(root, { recursive: true }).catch(() => {});
 }
 
-const scenarioExportNames = new Map([
+const scenarioExportNames = new Map<InitialGoldenScenario, string>([
     [routerToGuideInquiryScenario, "routerToGuideInquiryScenario"],
     [escapeCancellationScenario, "escapeCancellationScenario"],
     [helpSlashCommandScenario, "helpSlashCommandScenario"],
@@ -203,7 +213,7 @@ test("golden scenario child process failure reports retained diagnostics artifac
         Error,
         "artifactDir=",
     );
-    const artifactDir = /** @type {Error & { artifactDir?: string }} */ (error).artifactDir;
+    const artifactDir = (error as ChildProcessFailure).artifactDir;
     assert(artifactDir, "Expected child failure to expose artifactDir on the thrown error.");
     try {
         const diagnostics = await fsReadFile(`${artifactDir}/child-diagnostics.json`, "utf8");
@@ -226,7 +236,7 @@ test("golden scenario timeout retains child heartbeat diagnostics", async () => 
         Error,
         "timeout",
     );
-    const childPayload = /** @type {Error & { childPayload?: { artifactDir?: string } }} */ (error).childPayload;
+    const childPayload = (error as ChildProcessFailure).childPayload;
     const artifactDir = childPayload?.artifactDir;
     assert(artifactDir, "Expected timeout failure to expose child heartbeat artifactDir.");
     try {
@@ -243,7 +253,7 @@ test("golden scenario timeout retains child heartbeat diagnostics", async () => 
         );
     } finally {
         await removeChildHeartbeatArtifact(error);
-        const parentArtifactDir = /** @type {Error & { artifactDir?: string }} */ (error).artifactDir;
+        const parentArtifactDir = (error as ChildProcessFailure).artifactDir;
         if (parentArtifactDir) await fsRm(parentArtifactDir, { recursive: true }).catch(() => {});
     }
 });
@@ -260,7 +270,7 @@ test("golden scenario child crash surfaces substantive scenario diagnostics", as
         Error,
         "childArtifactDir=",
     );
-    const childPayload = /** @type {Error & { childPayload?: { artifactDir?: string } }} */ (error).childPayload;
+    const childPayload = (error as ChildProcessFailure).childPayload;
     const artifactDir = childPayload?.artifactDir;
     assert(artifactDir, "Expected child scenario failure to expose scenario artifactDir.");
     try {
@@ -274,7 +284,7 @@ test("golden scenario child crash surfaces substantive scenario diagnostics", as
         assert(diagnostics.state && typeof diagnostics.state === "object", "Expected durable state diagnostics.");
     } finally {
         await removeChildHeartbeatArtifact(error);
-        const parentArtifactDir = /** @type {Error & { artifactDir?: string }} */ (error).artifactDir;
+        const parentArtifactDir = (error as ChildProcessFailure).artifactDir;
         if (parentArtifactDir) await fsRm(parentArtifactDir, { recursive: true }).catch(() => {});
     }
 });
@@ -313,7 +323,7 @@ test("golden runner writes diagnostic artifacts on failure", async () => {
             Error,
             "Unknown scenario action",
         );
-        const entries = [];
+        const entries: string[] = [];
         for await (const entry of await fsReaddir(artifactRoot, { withFileTypes: true })) entries.push(entry.name);
         assertEquals(entries.length, 1);
     } finally {

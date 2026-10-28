@@ -636,7 +636,7 @@
     "src/ui/tui/generation-guard.test.ts",
     "src/ui/tui/golden-scenarios/concurrent-workflow.test.ts",
     "src/ui/tui/golden-scenarios/coverage.test.ts",
-    "src/ui/tui/golden-scenarios/initial-scenarios.test.js",
+    "src/ui/tui/golden-scenarios/initial-scenarios.test.ts",
     "src/ui/tui/golden-scenarios/load-plan-epic-workflow.test.ts",
     "src/ui/tui/golden-scenarios/load-plan-recovery-workflow.test.ts",
     "src/ui/tui/golden-scenarios/load-plan-review-workflow.test.ts",
