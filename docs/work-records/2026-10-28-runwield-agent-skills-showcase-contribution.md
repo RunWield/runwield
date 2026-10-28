@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "b5931345-126c-4cea-8328-4e0b4985fe1f"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "DOCUMENTATION"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "159c72dd-aa8d-4909-9d99-084d907bf499"
 ---
-
 # RunWield Agent Skills showcase contribution
 
 ## Summary
