@@ -85,7 +85,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 7. [ ] **Needs Plan — Make review match its promised checks.** Require the second whole-change review, distinguish
        reading changed code from listing filenames, and retain useful human-review conversation through repair and
        checks. Evidence: [semantic review](src/shared/workflow/validation-semantic.ts),
-       [diff inspection](src/shared/workflow/review-diff-tool.js),
+       [diff inspection](src/shared/workflow/review-diff-tool.ts),
        [human review](src/shared/workflow/validation-human-review.ts).
 
 8. [ ] **Needs Plan — Retain image access across Session handoffs.** Planning attachments must remain available after

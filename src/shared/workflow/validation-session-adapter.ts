@@ -23,7 +23,7 @@ import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { renderOpenItems } from "./review-ledger.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
-import { createReviewDiffTool } from "./review-diff-tool.js";
+import { createReviewDiffTool } from "./review-diff-tool.ts";
 import { type ReviewInspection } from "./review-inspection.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";

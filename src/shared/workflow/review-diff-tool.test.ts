@@ -9,7 +9,7 @@ import {
     parseDiffFiles,
     requiredReviewDiffFiles,
     ReviewDiffParseError,
-} from "./review-diff-tool.js";
+} from "./review-diff-tool.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 
 import "../settings.js";

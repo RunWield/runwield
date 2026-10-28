@@ -3,7 +3,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { HostedSession } from "../session/hosted-session.js";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
-import { createReviewDiffTool, parseDiffFiles } from "./review-diff-tool.js";
+import { createReviewDiffTool, parseDiffFiles } from "./review-diff-tool.ts";
 import { ReviewInspection } from "./review-inspection.ts";
 import { applyRoundFindings, claimReviewFixes, createLedger, normalizeLedger, openItems } from "./review-ledger.ts";
 import { buildSemanticReviewAttempt, reviewFindingMetrics } from "./validation-semantic.ts";

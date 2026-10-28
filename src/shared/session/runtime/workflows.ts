@@ -730,7 +730,7 @@ ${outcome.feedback || ""}`,
             const { buildValidationRepairPrompt } = await import("../../workflow/validation-repair-prompt.ts");
             const { getWorktreeReviewDiff } = await import("../../workflow/git-snapshot.ts");
             const { createReviewDiffTool, buildDiffInspectionSection } =
-                await import("../../workflow/review-diff-tool.js");
+                await import("../../workflow/review-diff-tool.ts");
             const { acknowledgeTaskCompletion, claimPendingTaskCompletion } =
                 await import("../task-completion-session.ts");
             const diffText =

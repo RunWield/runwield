@@ -23,7 +23,7 @@ import {
     WorktreeReviewComparisonError,
     WorktreeReviewTargetError,
 } from "./git-snapshot.ts";
-import { parseDiffFiles } from "./review-diff-tool.js";
+import { parseDiffFiles } from "./review-diff-tool.ts";
 import { getWorktreeStatus } from "../worktree.js";
 import { GitRepositoryRequiredError } from "../git.ts";
 

@@ -139,7 +139,7 @@ together. Inject failures at actual external persistence/process boundaries and 
 
 ### A5 — The semantic diff gate proves a tool event, not sufficient inspection
 
-**Source-confirmed; contract concern.** [review_diff](../../src/shared/workflow/review-diff-tool.js#L349) emits an event
+**Source-confirmed; contract concern.** [review_diff](../../src/shared/workflow/review-diff-tool.ts#L349) emits an event
 for `list`, including the empty-diff result with `hasDiff:false`. The
 [adapter](../../src/shared/workflow/validation-session-adapter.ts#L279) records only `Boolean(diffEvent)`, and the
 [review consumer](../../src/shared/workflow/validation-semantic.ts#L522) accepts that or `trustedClaudeMcpReview`. The

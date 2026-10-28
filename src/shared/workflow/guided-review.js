@@ -4,7 +4,7 @@
  */
 
 import { isPlannedChangeClassification } from "../../constants.js";
-import { parseDiffFiles, summarizeDiffForReview } from "./review-diff-tool.js";
+import { parseDiffFiles, summarizeDiffForReview } from "./review-diff-tool.ts";
 
 export const GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION = "1.0";
 export const GUIDED_REVIEW_SECTION_ROLES = [
@@ -26,7 +26,7 @@ export const GUIDED_REVIEW_SECTION_ROLES = [
  * @property {boolean} recommended
  * @property {number} score
  * @property {string[]} reasons
- * @property {import("./review-diff-tool.js").DiffReviewStats} stats
+ * @property {import("./review-diff-tool.ts").DiffReviewStats} stats
  */
 
 /**
@@ -35,7 +35,7 @@ export const GUIDED_REVIEW_SECTION_ROLES = [
  * @property {boolean} autoStart
  * @property {boolean} manualAvailable
  * @property {string[]} reasons
- * @property {import("./review-diff-tool.js").DiffReviewStats} stats
+ * @property {import("./review-diff-tool.ts").DiffReviewStats} stats
  * @property {number} score
  */
 

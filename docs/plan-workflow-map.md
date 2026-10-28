@@ -356,7 +356,7 @@ The diff gate currently proves that a `review_diff` event occurred, not that the
 alone emits that event, and the Claude trust path can bypass it. See audit A5.
 
 Sources: [semantic phase and round runner](../src/shared/workflow/validation-semantic.ts),
-[review_complete](../src/tools/review-complete.ts), [diff tool](../src/shared/workflow/review-diff-tool.js),
+[review_complete](../src/tools/review-complete.ts), [diff tool](../src/shared/workflow/review-diff-tool.ts),
 [Review Issue ledger](../src/shared/workflow/review-ledger.ts),
 [managed repair continuation](../src/shared/session/runtime/workflows.ts),
 [repair receipt](../src/shared/workflow/validation-supervisor.ts).
