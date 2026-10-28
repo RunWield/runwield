@@ -15,6 +15,12 @@ routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "1e1e148ddb2defbca4f93f23e71d5836f54f4873"
+workRecord:
+    status: "generated"
+    recordId: "b5931345-126c-4cea-8328-4e0b4985fe1f"
+    path: "docs/work-records/2026-10-28-runwield-agent-skills-showcase-contribution.md"
+    lastAttemptAt: "2026-10-28T17:40:56.802Z"
 ---
 
 # List RunWield in the Agent Skills Client Showcase
