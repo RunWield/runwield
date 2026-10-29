@@ -374,6 +374,62 @@ test("spawnForegroundShell observes an abort immediately after spawn returns", {
 });
 
 test(
+    "macOS cancellation finishes when the owning runtime is force-killed during shutdown",
+    { skip: platform !== "darwin" },
+    async () => {
+        const directory = await mkdtemp(join(tmpdir(), "runwield-fg-owner-exit-"));
+        const pidFile = join(directory, "pids");
+        const worker = spawnForegroundProcess({
+            command: execPath,
+            args: [
+                "--eval",
+                `import { spawnForegroundShell } from ${JSON.stringify(new URL("./foreground-process.ts", import.meta.url).href)};
+                const controller = new AbortController();
+                spawnForegroundShell({
+                    command: 'sleep 30 & echo $$ $! > "$PID_FILE"; wait',
+                    cwd: ${JSON.stringify(directory)},
+                    env: { PID_FILE: ${JSON.stringify(pidFile)} },
+                    signal: controller.signal,
+                });
+                process.stdin.resume();
+                process.stdin.on("end", () => { controller.abort(); process.kill(process.pid, "SIGKILL"); });`,
+            ],
+            cwd: getCwd(),
+            stdin: "piped",
+        });
+        const output = Promise.all([readAll(worker.stdout), readAll(worker.stderr)]);
+        const writer = worker.stdin!.getWriter();
+        let pids: number[] = [];
+        try {
+            const deadline = Date.now() + 10_000;
+            while (!pids.length && Date.now() < deadline) {
+                const text = await readFile(pidFile, "utf8").catch(() => "");
+                if (text.trim()) pids = text.trim().split(/\s+/).map(Number);
+                else await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            assertEquals(pids.length, 2);
+            assert(pids.every((pid) => pid > 0 && processAlive(pid)));
+            await writer.close();
+            assertEquals(await worker.done, { exitCode: 137, terminatedBy: null });
+            for (const pid of pids) {
+                assertEquals(await waitForProcessDeath(pid), true, `Owned process ${pid} survived its runtime`);
+            }
+        } finally {
+            if (pids[0]) {
+                try {
+                    kill(-pids[0], "SIGKILL");
+                } catch {
+                    /* The owned group already exited. */
+                }
+            }
+            worker.kill();
+            await Promise.allSettled([worker.done, output]);
+            await rm(directory, { recursive: true });
+        }
+    },
+);
+
+test(
     "macOS Stop closes inherited pipes when cancellation races a shell fork",
     { skip: platform !== "darwin", timeout: 60_000 },
     async () => {
