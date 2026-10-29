@@ -108,3 +108,5 @@ single-host compatibility restriction are replaced with deliberate multi-host be
 2. [Package the Codex workflow](connect-codex/package-codex-workflow.md)
 3. [Prove Codex execution and recovery](connect-codex/prove-codex-execution-and-recovery.md)
 4. [Document Codex support](connect-codex/document-codex-support.md)
+5. [Repair catalog identity collisions](connect-codex/repair-catalog-identity-collisions.md) — added after Linux PR CI
+   exposed an enumeration-order defect in existing Plan identity protection.
