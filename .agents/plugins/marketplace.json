@@ -1,0 +1,20 @@
+{
+    "name": "runwield",
+    "interface": {
+        "displayName": "RunWield"
+    },
+    "plugins": [
+        {
+            "name": "runwield",
+            "source": {
+                "source": "local",
+                "path": "./src/attached/codex/plugin"
+            },
+            "policy": {
+                "installation": "AVAILABLE",
+                "authentication": "ON_INSTALL"
+            },
+            "category": "Developer Tools"
+        }
+    ]
+}

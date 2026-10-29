@@ -30,8 +30,8 @@ export const ATTACHED_HOSTS: Record<AttachedHostId, AttachedHost> = {
         agentLabel: "Codex",
         // Observed in Codex CLI 0.164.0-alpha.11.1's MCP initialize request.
         clientNames: ["codex-mcp-client"],
-        implementEntrypoint: "$runwield implement",
-        reviewEntrypoint: "$runwield resume",
+        implementEntrypoint: "$runwield:run implement",
+        reviewEntrypoint: "$runwield:run resume",
         updatePlugin:
             "Update the RunWield plugin through Codex's plugin settings or reinstall it from its marketplace.",
         updateHost: "Update Codex through the desktop app or the package manager used to install the CLI.",

@@ -104,6 +104,7 @@
     "src/attached/codex/acceptance/host.test.ts",
     "src/attached/codex/acceptance/import-boundary.test.ts",
     "src/attached/codex/mcp.test.ts",
+    "src/attached/codex/plugin.test.ts",
     "src/cli-context-files.test.ts",
     "src/cli-onboarding.test.ts",
     "src/cli-startup.test.ts",
