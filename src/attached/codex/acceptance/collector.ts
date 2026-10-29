@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { field, map, type Check, type HostObservation, type JsonMap } from "./evidence.ts";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { extractYaml } from "../../../shared/front-matter.ts";
 
 export interface CollectedEvidence {
@@ -216,9 +217,22 @@ function workflow(snapshot: JsonMap): JsonMap | null {
 }
 function invokingCheckoutUnchanged(before: JsonMap, after: JsonMap): boolean {
     const planName = field(workflow(after), "plan", "planName");
+    // The disposable fixture starts without .gitignore; Core may add exactly its documented runtime block.
+    const setupIgnore =
+        !snapshotFiles(before).some((file) => file.path === "fixture/.gitignore") &&
+        snapshotFiles(after).some(
+            (file) =>
+                file.path === "fixture/.gitignore" &&
+                file.sha256 ===
+                    createHash("sha256")
+                        .update(
+                            "# BEGIN RunWield owned runtime state\n.wld/internal/\n# END RunWield owned runtime state\n",
+                        )
+                        .digest("hex"),
+        );
     const owned = (path: string) =>
-        path === ".gitignore" ||
-        path.startsWith(".wld/") ||
+        (path === ".gitignore" && setupIgnore) ||
+        path.startsWith(".wld/internal/") ||
         (typeof planName === "string" && path === `docs/plans/${planName}.md`);
     const source = (snapshot: JsonMap) =>
         snapshotFiles(snapshot)
@@ -299,7 +313,7 @@ export async function assessDurableArtifacts(root: string): Promise<Check[]> {
         {
             id: "invoking-checkout-preserved",
             outcome: invokingCheckoutUnchanged(before, final) ? "pass" : "fail",
-            detail: "Delivery preserves invoking source and Git state, allowing only the current Plan, Core lifecycle files, and .gitignore setup.",
+            detail: "Delivery preserves invoking source and Git state, allowing only the current Plan, .wld/internal/ lifecycle files, and the exact Core .gitignore setup block.",
         },
     ];
     const record = workflow(final);

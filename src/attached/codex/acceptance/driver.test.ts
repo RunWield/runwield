@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { parseCodexAcceptanceArgs } from "../../../../scripts/connect-codex-acceptance.ts";
 import { runAcceptance } from "./driver.ts";
 import { runLiveAcceptance } from "./live.ts";
+import { AcceptanceWorld } from "./world.ts";
+import { resolveValidationCommand } from "../../../shared/workflow/validation-local-ci.ts";
 
 test("acceptance CLI admits only explicit executable, output, and retention options", () => {
     equal(parseCodexAcceptanceArgs(["--codex", "/test/codex", "--out", "/test/evidence", "--keep"]), {
@@ -17,6 +19,23 @@ test("acceptance CLI admits only explicit executable, output, and retention opti
     });
     throws(() => parseCodexAcceptanceArgs(["--out"]), /requires/);
     throws(() => parseCodexAcceptanceArgs(["--unsupported"]), /Unrecognized/);
+});
+test("fixture tracks its approved project command before the inactive source baseline", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "codex-command-baseline-"));
+    const world = new AcceptanceWorld({ root: join(parent, "world"), codex: "unused", checkout: parent });
+    try {
+        await world.create();
+        const expected = JSON.stringify({ verification_command: "sh ./check.sh" }, null, 2);
+        equal(world.git(["show", "HEAD:.wld/settings.json"]), expected);
+        equal(world.git(["status", "--porcelain=v1", "--untracked-files=all"]), "");
+        equal(await resolveValidationCommand(world.fixture, "exact-project"), "sh ./check.sh");
+        equal(await resolveValidationCommand(world.fixture, "ordinary-project"), "sh ./check.sh");
+        equal(await readFile(join(world.fixture, ".wld/settings.json"), "utf8"), expected);
+        equal(world.git(["status", "--porcelain=v1", "--untracked-files=all"]), "");
+    } finally {
+        await world.close();
+        await rm(parent, { recursive: true, force: true });
+    }
 });
 test("unavailable host leaves blocked evidence and no tested-version claim", async () => {
     const parent = await mkdtemp(join(tmpdir(), "codex-acceptance-test-"));

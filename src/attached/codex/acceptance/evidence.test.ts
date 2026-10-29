@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import { deepStrictEqual as equal, ok as assert } from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { coreResult, toolObservation } from "./evidence.ts";
 import {
     assessHandshake,
@@ -235,11 +236,18 @@ test("inspect-only review state does not prove the browser listener has been res
     equal(hostedReview({ ...state, review: { url: "http://127.0.0.1/review?token=fixture" } }, "code_review"), false);
 });
 test("durable evidence rejects original-checkout edits and altered validation commands", () => {
+    const userSource = [
+        "fixture/.wld/settings.json",
+        "fixture/.wld/agents/reviewer.md",
+        "fixture/.wld/skills/example/SKILL.md",
+        "fixture/.wld/prompts/reviewer.md",
+    ];
     const before = {
         git: { head: "baseline-commit", branch: "main", status: "" },
         files: [
             { path: "fixture/check.sh", sha256: "baseline" },
             { path: "fixture/README.md", sha256: "readme" },
+            ...userSource.map((path) => ({ path, sha256: `original-${path}` })),
         ],
     };
     const implemented = {
@@ -258,7 +266,14 @@ test("durable evidence rejects original-checkout edits and altered validation co
             { path: "runwield-home/.wld/worktrees/fixture/greet.sh" },
             { path: "runwield-home/.wld/worktrees/fixture/check.sh", sha256: "baseline" },
             ...before.files,
-            { path: "fixture/.gitignore", sha256: "core-ignore" },
+            {
+                path: "fixture/.gitignore",
+                sha256: createHash("sha256")
+                    .update(
+                        "# BEGIN RunWield owned runtime state\n.wld/internal/\n# END RunWield owned runtime state\n",
+                    )
+                    .digest("hex"),
+            },
             { path: "fixture/.wld/internal/layout.json", sha256: "core-layout" },
             { path: "fixture/docs/plans/greeting.md", sha256: "core-plan" },
         ],
@@ -269,7 +284,7 @@ test("durable evidence rejects original-checkout edits and altered validation co
             .outcome,
         "fail",
     );
-    for (const path of ["fixture/README.md", "fixture/check.sh"]) {
+    for (const path of ["fixture/README.md", "fixture/check.sh", ...userSource]) {
         equal(
             assessExecution(before, {
                 ...implemented,
@@ -285,6 +300,21 @@ test("durable evidence rejects original-checkout edits and altered validation co
             "fail",
         );
     }
+    for (const path of userSource) {
+        const beforeCreation = { ...before, files: before.files.filter((file) => file.path !== path) };
+        const unchanged = { ...implemented, files: implemented.files.filter((file) => file.path !== path) };
+        equal(assessExecution(beforeCreation, unchanged).outcome, "pass");
+        equal(assessExecution(beforeCreation, implemented).outcome, "fail");
+    }
+    equal(
+        assessExecution(before, {
+            ...implemented,
+            files: implemented.files.map((file) =>
+                file.path === "fixture/.gitignore" ? { ...file, sha256: "arbitrary-ignore-change" } : file,
+            ),
+        }).outcome,
+        "fail",
+    );
     for (const change of [{ head: "wrong-commit" }, { branch: "wrong-branch" }, { status: "M  README.md\n" }])
         equal(assessExecution(before, { ...implemented, git: { ...implemented.git, ...change } }).outcome, "fail");
     equal(
