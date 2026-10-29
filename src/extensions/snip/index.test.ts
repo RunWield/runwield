@@ -9,25 +9,52 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import snipExtension, { __testing } from "./index.ts";
 
-/** @param {string} command @param {string | null} [failureLabel] */
-function expectedRewrite(command, failureLabel = null) {
+import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
+
+type SnipToolCall = Pick<ToolCallEvent, "toolName" | "input">;
+type SnipHandlerResult = ToolCallEventResult | void;
+type SnipHandler = (
+    event: SnipToolCall,
+    ctx: Partial<ExtensionContext>,
+) => SnipHandlerResult | Promise<SnipHandlerResult>;
+
+interface SnipRegistration {
+    on(event: "tool_call", handler: SnipHandler): void;
+}
+
+type SnipInstaller = (pi: SnipRegistration) => void;
+type DirectoryContents = Record<string, string>;
+
+interface ShellCase {
+    name: string;
+    command: string;
+    wrap: boolean;
+    syntaxOnly?: boolean;
+    subdirectory?: boolean;
+}
+
+interface ShellObservation {
+    code: Awaited<ReturnType<typeof captureForegroundProcess>>["code"];
+    stdout: string;
+    stderr: string;
+    files: DirectoryContents;
+}
+function expectedRewrite(command: string, failureLabel: string | null = null) {
     return __testing.withFilteredSnipStderr(command, failureLabel);
 }
 
 function setup() {
-    /** @type {Map<string, (event: any, ctx: any) => any>} */
-    const handlers = new Map();
+    const handlers = new Map<string, SnipHandler>();
 
-    const pi = /** @type {import('@earendil-works/pi-coding-agent').ExtensionAPI} */ ({
+    const pi: SnipRegistration = {
         on(event, handler) {
             handlers.set(event, handler);
         },
-    });
+    };
 
-    snipExtension(pi);
+    (snipExtension as SnipInstaller)(pi);
 
-    /** @param {string} event */
-    const getHandler = (event) => handlers.get(event);
+    const getHandler = (event: string) => handlers.get(event);
     return { getHandler };
 }
 
@@ -208,9 +235,7 @@ test("snip leaves the historical for/do/done command valid and unchanged (syntax
     assertEquals(rewritten, null);
 });
 
-/** @typedef {{ name: string, command: string, wrap: boolean, syntaxOnly?: boolean, subdirectory?: boolean }} ShellCase */
-/** @type {ShellCase[]} */
-const shellCases = [
+const shellCases: ShellCase[] = [
     {
         name: "for loop with pipeline and fallback",
         command: 'for f in a b; do printf "%s\\n" "$f" | grep a || :; done',
@@ -280,11 +305,8 @@ const shellCases = [
     { name: "exactly once side effect", command: "sh -c 'printf x >> count; printf done; exit 7'", wrap: true },
 ];
 
-/** @typedef {Record<string, string>} DirectoryContents */
-/** @param {string} path @returns {Promise<DirectoryContents>} */
-async function directoryContents(path) {
-    /** @type {DirectoryContents} */
-    const result = {};
+async function directoryContents(path: string): Promise<DirectoryContents> {
+    const result: DirectoryContents = {};
     for (const entry of await readdir(path, { withFileTypes: true })) {
         const child = join(path, entry.name);
         if (entry.isDirectory()) {
@@ -331,7 +353,7 @@ for (const fixture of shellCases) {
         if (fixture.syntaxOnly) return;
         const root = await mkdtemp(join(tmpdir(), "snip-shell-"));
         try {
-            const observations = [];
+            const observations: ShellObservation[] = [];
             for (const [index, command] of [fixture.command, rewritten ?? fixture.command].entries()) {
                 const cwd = join(root, `run-${index}`);
                 await mkdir(join(cwd, "sub"), { recursive: true });
@@ -363,7 +385,7 @@ for (const fixture of shellCases) {
             assertEquals(observations[1], observations[0]);
             const log = join(root, "calls");
             assertEquals(
-                await fsReadFile(log, "utf8").catch((error) => {
+                await fsReadFile(log, "utf8").catch((error: NodeJS.ErrnoException) => {
                     if (error.code === "ENOENT") return "";
                     throw error;
                 }),
