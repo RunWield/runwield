@@ -43,7 +43,7 @@ hosts.
 Keep this document as current product guidance. Fold lasting requirements from completed feature PRDs here;
 implementation steps belong in Plans, architectural choices in ADRs, and delivery evidence in Work Records.
 
-Last updated: 2026-09-11
+Last updated: 2026-10-29
 
 ## Objective
 
@@ -106,7 +106,7 @@ RunWield Connect primarily serves:
 
 - existing Claude Code users who want stronger planning, review, verification, recovery, and project memory without
   replacing Claude Code;
-- existing Codex users with the same need after the Claude integration proves the shared contract;
+- existing Codex desktop and CLI users who want the same workflow through their host's native skill and plugin UI;
 - teams evaluating RunWield who want to begin within familiar tools before using Core directly or adopting Workspace;
 - users who prefer to remain permanently on Connect and accept host-specific UX or enforcement limitations while keeping
   RunWield's verification semantics intact.
@@ -632,6 +632,11 @@ questions, implementation actions, and accepted results. No always-running servi
 delivery actions use shared Core recovery, with automated fresh-process checks and headed MCP review restore.
 [Preview Acceptance](#preview-acceptance) owns the integrated evidence and release boundary.
 
+The Codex adapter uses the same saved actions and recovery authority. Its one explicit `$runwield:run` skill selects
+start or resume from the user's intent; a resume first presents the latest open local workflow's Plan and current step.
+[Cross-host continuation](#compatibility-and-honest-availability) owns the required originating-host disclosure and
+artifact-based handoff. Shared runtime tests do not qualify either Codex surface's complete live journey.
+
 **Requirement: Start with necessary setup and preserve work after interruption.**
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
@@ -650,7 +655,7 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 - A persistent local service may be added later for performance or cross-client continuity, but it is not part of the
   acquisition prerequisite.
 
-- Closing Claude stops running Core checks. The next resume runs interrupted checks again without recording a failure
+- Closing the host stops running Core checks. The next resume runs interrupted checks again without recording a failure
   for the stopped run.
 - Process loss must preserve Plans, implementation work, completed results, and useful recovery evidence.
 - RunWield must distinguish safe continuation from uncertain external side effects.
@@ -672,6 +677,7 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 - When host or Core processes stop, saved Plans and work remain available for useful continuation or explicit retry.
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.
+  Codex uses its single RunWield skill for the saved step instead of requiring separate commands or an internal ID.
 - **Saved planning context:** Given process loss before Triage or planning completes, `/runwield:plan-review` restores
   the pending action. `get_instructions` returns the saved explicit request and, for the Planner, the saved Triage
   outcome. A new conversation does not need the old conversation's text.
@@ -786,7 +792,11 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 - RunWield Connect is a supported destination for users who never adopt another RunWield surface.
 - Connect journeys stay in the External Agent Host and its browser review surface. They must not require users to
-  operate the `wld` CLI or TUI. The Claude Preview restores review through `/runwield:plan-review` and host tools.
+  operate the `wld` CLI or TUI. Claude restores review through `/runwield:plan-review` and host tools; Codex uses the
+  explicitly invoked RunWield skill. Compatible local Core on PATH is the shared installation prerequisite.
+- Each host guide documents native installation, activation, continuation, updates, disabling and removal. It separates
+  source-checkout use from published marketplace and released binary availability. Codex desktop and CLI qualification
+  remain separate; success in one does not establish the other.
 - Primary product outcomes are successful verified work, retained use, and trustworthy recovery.
 - Movement to direct Core use or Workspace is a secondary organic outcome.
 - Product-family messaging may explain genuine integration and collaboration advantages but must not reserve feasible
@@ -796,6 +806,9 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 - Given a user who stays permanently in their external host, when an applicable workflow is supported, they receive its
   full feasible behavior without being forced into Workspace or direct Core use.
+- Given a Codex desktop or CLI user, when they follow the [Codex guide](../user-documentation/connect-codex.md), they
+  can identify the native entrypoint, local Core prerequisite, current qualification limits, and recovery path without
+  adopting Core's Session interface or configuring another model provider.
 - When adoption is evaluated, successful verified work, recovery, and retained use matter directly; conversion is not
   manufactured by removing feasible features.
 
@@ -853,11 +866,13 @@ RunWield Connect for Claude Code becomes stable only when:
 
 ### Stage 3: Additional External Agent Hosts
 
-Add adapters sequentially:
+Codex has a native package for desktop and CLI using the shared host-aware coordinator. Both surfaces remain available
+for qualification, with no complete live workflow in the Compatibility Matrix. The
+[Codex guide](../user-documentation/connect-codex.md) distinguishes implemented behavior, observed package/protocol
+behavior, and unproven user journeys. This does not make the package available on a published branch or released Core
+binary before that publication occurs.
 
-1. Codex
-2. OpenCode
-3. Pi
+OpenCode and Pi remain later adapter targets, in that order.
 
 Each adapter begins with a capability-disclosed Preview and reaches stable status only after meeting the same applicable
 product semantics. Later adapters must reuse the host-neutral Core contract rather than copy the Claude implementation.

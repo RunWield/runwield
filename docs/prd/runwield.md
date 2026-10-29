@@ -89,6 +89,13 @@ Connect is a first-class way to use RunWield, not a deliberately weakened trial 
 requirements live in [runwield-connect-prd.md](runwield-connect-prd.md). That document retains **attached mode** and
 **Attached Workflow** as internal architectural terms while using RunWield Connect as the public product name.
 
+The Claude Code FEATURE Preview has recorded live acceptance with explicit source and permission limits. The Codex
+adapter targets desktop and CLI through the native `$runwield:run` skill and the same Core coordinator; both surfaces
+remain unqualified for a complete live workflow. Installation, continuation across hosts, and qualification evidence belong to
+the [Connect capabilities](runwield-connect-prd.md#capability-requirements) and the
+[Codex guide](../user-documentation/connect-codex.md). Available source code does not imply published package or Stable
+release availability.
+
 When RunWield Core owns the Session and invokes another harness non-interactively, such as Claude Code through
 `claude -p` or Antigravity CLI, that harness is an **Execution Backend** alongside Pi. Execution Backends are Core
 capabilities, not RunWield Connect plugins or separately branded product modes.

@@ -17,6 +17,7 @@ export const PUBLIC_DOCS = [
     "user-documentation/index.md",
     "user-documentation/quickstart.md",
     "user-documentation/connect-claude-code.md",
+    "user-documentation/connect-codex.md",
     "user-documentation/workspace.md",
     "user-documentation/usage.md",
     "user-documentation/workflows.md",

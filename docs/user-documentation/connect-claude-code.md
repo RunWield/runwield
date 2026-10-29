@@ -4,8 +4,9 @@ RunWield Connect brings Plan review, isolated implementation, validation, and de
 this conversation and every model call. RunWield Core owns the Plan, workflow gates, recovery, and delivery evidence.
 RunWield Workspace is the separate browser product for RunWield Sessions and collaboration.
 
-This is a **FEATURE Preview**, not stable Claude Code support. Only Claude Code is a supported host. Other hosts
-reject with `unsupported_host` before workflow changes; other request types are outside this Preview.
+This is a **FEATURE Preview**, not stable Claude Code support. The separate [Codex adapter](connect-codex.md) is
+available for qualification and does not inherit Claude's tested scope. Other hosts reject with `unsupported_host`
+before workflow changes; other request types are outside this Preview.
 
 ## Tested scope
 
@@ -149,6 +150,11 @@ again. Closing Claude also stops running Core checks. `/runwield:validate` runs 
 recording a failure for the stopped run. Work already accepted by Core remains recorded. A stale action, changed diff,
 or process interruption cannot supply a new approval or duplicate an accepted outcome.
 
+These commands also continue a Codex-started workflow in the same local repository. Before continuing, Claude shows
+the saved Plan name and current step, including the originating host when it changes. If no Plan exists yet, it shows
+the request summary. The same saved work and execution directory continue without importing Codex conversation
+history. To switch from Claude to Codex, use the [RunWield skill](connect-codex.md#resume-or-switch-hosts).
+
 ## Update and version messages
 
 Update the marketplace and plugin from Claude Code:
@@ -209,5 +215,6 @@ copy of your host conversation.
 - **ACP:** an external client connects to a RunWield-owned Session. Core still runs the Agent turns. See
   [Using RunWield](usage.md).
 
-This Preview covers one FEATURE journey in Claude Code. It does not claim stable support, other External Agent Hosts,
-other Routing Intents, `/runwield:init`, hooks, or enforced host role restrictions.
+This Preview covers one FEATURE journey in Claude Code. Its acceptance evidence does not qualify Codex or any other
+External Agent Host. It does not claim stable support, other Routing Intents, `/runwield:init`, hooks, or enforced host
+role restrictions.
