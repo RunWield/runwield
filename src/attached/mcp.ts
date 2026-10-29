@@ -30,7 +30,7 @@ export interface AttachedAdapterManifest {
 const MAX_STATUS_WAIT_MS = 30_000;
 const STATUS_POLL_INTERVAL_MS = 200;
 
-/** Serve coordinator operations over stdio until the host closes the stream. */
+/** Serve coordinator operations over stdio until the host disconnects or signals shutdown. */
 export async function runAttachedMcpServer(
     projectRoot: string,
     version: string,
@@ -251,19 +251,27 @@ export async function runAttachedMcpServer(
             resolve();
         };
     });
-    // The SDK transport handles data/error, but does not close itself on stdin EOF.
-    const closeOnEnd = () => void transport.close();
-    process.stdin.once("end", closeOnEnd);
+    // Hosts may close stdin or signal only this process while Core owns detached CI.
+    // Both must reach cancellation and drain before the CLI can exit.
+    const closeFromHost = () => {
+        if (closing) return;
+        closing = true;
+        shutdown.abort();
+        void transport.close();
+    };
+    process.stdin.once("end", closeFromHost);
+    process.on("SIGTERM", closeFromHost);
+    process.on("SIGINT", closeFromHost);
     try {
         await server.connect(transport);
         await closed;
     } finally {
-        process.stdin.off("end", closeOnEnd);
+        process.stdin.off("end", closeFromHost);
         closing = true;
         shutdown.abort();
-        await stopHostedAttachedReviews();
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
+            await stopHostedAttachedReviews();
             await Promise.race([
                 Promise.allSettled([...inFlight]),
                 new Promise<void>((resolve) => {
@@ -272,6 +280,8 @@ export async function runAttachedMcpServer(
             ]);
         } finally {
             clearTimeout(timer);
+            process.off("SIGTERM", closeFromHost);
+            process.off("SIGINT", closeFromHost);
         }
     }
 }
