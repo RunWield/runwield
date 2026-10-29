@@ -27,19 +27,20 @@ This repair preserves existing Plan identity and document authority; it does not
 
 ## Objective
 
-Registered authority overlays its own Plan by name and cannot hide another Plan's conflicting ID. Catalog listing,
-identity preparation, and explicit backfill reject collisions consistently, independent of filesystem enumeration.
+When a same-name Plan is present, registered authority overlays that Plan before considering an ID fallback. Another
+Plan's conflicting ID remains visible to identity preparation and explicit backfill, independent of filesystem
+enumeration. Existing rename behavior remains intact.
 
 ## Approach
 
-Preserve unrelated catalog entries while resolving the registered Plan's document authority. Apply the same ownership
-rule when an authority is missing or archived. Keep collision detection in the existing Plan store and identity paths;
-do not add injection seams, duplicate catalogs, or new lifecycle policy.
+Prefer an exact name match while resolving document authority, including missing or archived authority. Preserve the
+existing ID fallback for renamed documents when no same-name row exists. Keep collision detection in the existing Plan
+store and identity paths; do not add injection seams, duplicate catalogs, or new lifecycle policy.
 
 ## Implementation Steps
 
 - Reproduce the CI failure with real Git/Plan fixtures whose creation order exposes the unrelated Plan first.
-- Narrow authority replacement/removal to the registered Plan while retaining conflicting entries for identity checks.
+- Prefer the same-name row during authority replacement/removal, retaining conflicting entries for identity checks.
 - Cover both enumeration orders and explicit backfill modes; reject without changing either source document.
 - Preserve missing-authority recovery behavior and update the owning Core acceptance scenario.
 - Run focused identity/catalog regressions and static checks, obtain independent three-axis review, then merge into the
