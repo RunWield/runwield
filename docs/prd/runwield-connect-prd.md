@@ -892,6 +892,30 @@ targets.
 - Disabling the Connect plugin leaves canonical Plans, Work Records, and recovery evidence intact while restoring
   ordinary host behavior.
 
+### Codex acceptance
+
+The Codex adapter must qualify its own host behavior. Claude evidence does not qualify Codex. The acceptance runner
+separates native installed-package protocol checks from real ephemeral host skill execution with explicit package configuration.
+Neither scope alone proves the desktop UI journey or permits a tested-version compatibility entry.
+
+- Native qualification must observe the actual MCP client identity and version, installed tool discovery, stale-action
+  and transcript rejection, and restoration after process loss and plugin reinstallation in disposable repositories.
+- Live qualification must observe Codex-owned model calls, execution in Core's checkout, real validation and recovery,
+  direct independent reviewer reads, repairs, browser decisions, publication and Work Records. Parent reads and worker
+  prose cannot substitute for fresh-context, candidate-bound review evidence.
+- Worktree isolation preserves invoking source bytes, branch, HEAD and protected Git status through delivery. Only the
+  current Plan, Core lifecycle files and `.gitignore` setup may change in the invoking checkout.
+- The live runner correlates worker threads with native spawn events. It records spawn settings, identifiers
+  and diff-byte receipts, while discarding raw conversation content and disabling inherited MCP servers for the run.
+- Saved summaries identify the exact source digest, adapter, host surface, permissions and remaining gaps. Missing
+  authentication, incomplete provenance and unavailable desktop evidence remain explicitly unproven. Raw conversation
+  text and credentials do not belong in committed summaries or Core artifacts.
+
+**Acceptance scenarios:** A protocol-only passing result cannot qualify a complete Codex version. A missing executable
+or absent/rejected host authentication produces blocked, unproven evidence without storing account details or raw errors.
+A completed parent review or inherited-context worker without independently observed fresh worker reads fails qualification.
+A private transcript sentinel found in durable artifacts fails qualification even when the workflow delivered.
+
 ### Stable Product Outcomes
 
 Measure:
