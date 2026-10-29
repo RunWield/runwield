@@ -146,10 +146,15 @@ Core-owned adapter-contract and host-version preflight, and ordinary Plan submis
 marketplace from a local checkout. The [Claude guide](../user-documentation/connect-claude-code.md) gives the commands
 and tested scope. The [acceptance evidence](#preview-acceptance) identifies the source snapshot and permissions used.
 
+The Codex package exposes one explicit `$runwield:run` Skill for new work and continuation in the desktop app and CLI.
+Its native repository marketplace bundles the Skill and local MCP configuration, with a one-hour tool timeout and
+installed adapter metadata. It requires compatible Core on `PATH` and the host's own model access. Installing the
+package does not establish complete workflow acceptance; Codex's desktop and CLI evidence must be qualified separately.
+
 `wld attached activate` binds one host request to one Attached Workflow Record. Current Router instructions are
 available explicitly by action ID. `triage_report` hands a FEATURE request to the Planner; `plan_written` assigns the
 Plan ID and Triage front matter. The Plan stays an ordinary draft that Core can open and execute. Claude starts the
-plugin MCP server and lists its tools when the plugin loads; before a tool call, Core inspects no prompt or repository
+plugin MCP server and lists its tools when the plugin loads; Codex does the same. Before a tool call, Core inspects no prompt or repository
 and writes no workflow state.
 
 **Requirement: Keep CLI and MCP operations equivalent.**
@@ -171,6 +176,21 @@ and MCP. Invalid read arguments return an `invalid_input` rejection through eith
 - The host returns to ordinary behavior after the workflow reaches an outcome.
 - Existing RunWield closure and recovery choices govern an active workflow; Connect does not introduce a separate
   partially governed lifecycle.
+
+**Requirement: Offer one explicit Codex entrypoint for starting and continuing work.**
+
+`$runwield:run <request>` starts a new request; `$runwield:run resume` restores the most recent open workflow in the repository.
+The Skill uses the user's intent and asks only when new work versus continuation is ambiguous. Native Skill policy
+disables implicit invocation. Resume uses durable status, does not require an internal workflow ID for ordinary use,
+and never silently activates new work when no workflow is found. Approve for Later stops the current run; a later
+explicit resume or implementation request can start that saved Plan.
+
+**Requirement: Make cross-host continuation recognizable.**
+
+Before continuing in Codex, show the Plan name, current step, and originating host. Before planning, identify the saved
+request instead. A workflow started in Claude Code may continue in Codex using its existing action, revision, Plan,
+and execution directory. The explicit resume authorizes this handoff without a second host-switch confirmation. Fetch
+canonical artifacts and current role instructions; do not import another host's transcript or restart its workflow.
 
 The user installs the first-party RunWield Connect plugin through the External Agent Host's normal extension mechanism.
 Installation must establish or obtain compatible local RunWield Core dependencies without requiring separate model
@@ -215,6 +235,15 @@ Initialization is optional and may occur before or after the first Attached Work
   unrelated conversations and later ordinary prompts remain unaffected.
 - When the user disables or uninstalls the adapter, ordinary host behavior returns and canonical project artifacts
   remain intact.
+- Given the Codex plugin installed, ordinary prompts do not implicitly invoke its Skill. Explicit `$runwield:run` new-work
+  requests activate only their named request; the package adds no hooks or permission changes.
+- Given an open workflow and a fresh Codex conversation, `$runwield:run resume` finds it through repository-scoped status,
+  shows its Plan or request, current step, and originating host, then continues the saved action. Missing conversation
+  context does not create a replacement workflow.
+- Given a workflow originating in Claude Code, an explicit Codex resume preserves the Plan and pending worktree/action
+  identity while Codex performs subsequent model calls. The user sees the handoff before the next worker is dispatched.
+- Given no open workflow, a Codex resume reports that result and does not call `activate`. Given ambiguous start/resume
+  intent, the Skill asks a concise question before changing workflow state.
 
 <a id="host-owned-model-execution"></a>
 
