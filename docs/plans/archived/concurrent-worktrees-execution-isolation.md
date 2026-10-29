@@ -287,7 +287,7 @@ few ADR details discovered during review.
    - Merge conflict leaves the worktree and branch intact.
    - Remove can preserve or delete branch as configured.
 
-4. `src/shared/worktree-registry.test.js`
+4. `src/shared/worktree-registry.test.ts`
    - Add/update/remove/list/find entries.
    - Atomic write preserves existing registry on failure.
    - Stale lock cleanup works.

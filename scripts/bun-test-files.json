@@ -561,7 +561,7 @@
     "src/shared/worktree-merge.test.js",
     "src/shared/worktree-project-context.test.ts",
     "src/shared/worktree-registry-restore.test.ts",
-    "src/shared/worktree-registry.test.js",
+    "src/shared/worktree-registry.test.ts",
     "src/shared/worktree-runtime-state-isolation.test.ts",
     "src/testing/assertions.test.ts",
     "src/testing/home-sandbox.test.ts",

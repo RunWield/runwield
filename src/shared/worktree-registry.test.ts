@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "./worktree-registry.js";
 import { open as fsOpen } from "node:fs/promises";
 import {
     lstat as fsLstat,
@@ -36,8 +37,10 @@ import {
     WorktreeRegistryAmbiguityError,
 } from "./worktree-registry.js";
 
-/** @param {number} ms */
-function delay(ms) {
+type MigrationIssue = Pick<WorktreeRegistryEntry, "id"> &
+    Pick<NonNullable<WorktreeRegistryEntry["migrationIssue"]>, "reason">;
+
+function delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -59,11 +62,7 @@ test("only unstarted planning worktrees can advance their baseline", async () =>
     assertEquals((await findById(repo, initial.id))?.baseCommit, "published");
 });
 
-/**
- * @param {Partial<import('./worktree-registry.js').WorktreeRegistryEntry>} [overrides]
- * @returns {import('./worktree-registry.js').WorktreeRegistryEntry}
- */
-function entry(overrides = {}) {
+function entry(overrides: Partial<WorktreeRegistryEntry> = {}): WorktreeRegistryEntry {
     return {
         id: "wt-1",
         planName: "demo-plan",
@@ -127,18 +126,15 @@ test("exact-path worktree registry locking serializes on the requested lock file
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     let releaseFirst = () => {};
     let firstReady = () => {};
-    /** @type {Promise<void>} */
-    const firstReadyPromise = new Promise((resolve) => {
+    const firstReadyPromise = new Promise<void>((resolve) => {
         firstReady = () => resolve();
     });
-    /** @type {Promise<void>} */
-    const releaseFirstPromise = new Promise((resolve) => {
+    const releaseFirstPromise = new Promise<void>((resolve) => {
         releaseFirst = () => resolve();
     });
     try {
         const lockPath = join(projectRoot, ".wld", "exact-worktrees.lock");
-        /** @type {string[]} */
-        const events = [];
+        const events: string[] = [];
         const first = withWorktreeRegistryLockAtPath(lockPath, async () => {
             events.push("first-start");
             await fsLstat(lockPath);
@@ -231,16 +227,13 @@ test("linked checkout registry operations share the primary internal store, lock
 
             let releaseFirst = () => {};
             let firstReady = () => {};
-            /** @type {Promise<void>} */
-            const firstReadyPromise = new Promise((resolve) => {
+            const firstReadyPromise = new Promise<void>((resolve) => {
                 firstReady = () => resolve();
             });
-            /** @type {Promise<void>} */
-            const releaseFirstPromise = new Promise((resolve) => {
+            const releaseFirstPromise = new Promise<void>((resolve) => {
                 releaseFirst = () => resolve();
             });
-            /** @type {string[]} */
-            const events = [];
+            const events: string[] = [];
             const first = withWorktreeRegistryLock(root, async () => {
                 events.push("first-start");
                 await fsLstat(join(primaryRoot, ".wld", "internal", "worktrees.lock"));
@@ -310,17 +303,15 @@ test("worktree registry rejects immutable identity updates", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await addEntry(projectRoot, entry({ baseTree: "tree-1" }));
-        for (
-            const updates of [
-                { baseBranch: "other" },
-                { baseRef: "refs/heads/main" },
-                { baseCommit: "def456" },
-                { baseTree: "tree-2" },
-                { branch: "runwield/worktree/other" },
-            ]
-        ) {
+        for (const updates of [
+            { baseBranch: "other" },
+            { baseRef: "refs/heads/main" },
+            { baseCommit: "def456" },
+            { baseTree: "tree-2" },
+            { branch: "runwield/worktree/other" },
+        ]) {
             await assertRejects(
-                () => updateEntry(projectRoot, "wt-1", /** @type {any} */ (updates)),
+                () => updateEntry(projectRoot, "wt-1", updates),
                 Error,
                 "Worktree registry identity field cannot be updated",
             );
@@ -567,7 +558,7 @@ test("worktree registry migration classifies duplicate live legacy attempts for 
             ),
         );
         assertEquals(
-            issues.issues.map((/** @type {{ id: string }} */ issue) => issue.id),
+            issues.issues.map((issue: MigrationIssue) => issue.id),
             ["legacy-1", "legacy-2"],
         );
     } finally {
@@ -613,7 +604,7 @@ test("registry migration keeps distinct execution documents ambiguous", async ()
             ),
         );
         assertEquals(
-            issues.issues.map((/** @type {{ reason: string }} */ issue) => issue.reason),
+            issues.issues.map((issue: MigrationIssue) => issue.reason),
             ["ambiguous_plan_name", "ambiguous_plan_name"],
         );
         for (const root of [firstPath, secondPath]) {
