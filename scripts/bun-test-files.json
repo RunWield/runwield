@@ -422,7 +422,7 @@
     "src/shared/session/workflow-context-session.test.ts",
     "src/shared/settings-mascot.test.ts",
     "src/shared/settings-plan-delivery.test.ts",
-    "src/shared/settings.test.js",
+    "src/shared/settings.test.ts",
     "src/shared/snip-filters.test.ts",
     "src/shared/socket-listener.test.ts",
     "src/shared/sqlite.test.ts",
