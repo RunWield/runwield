@@ -1,3 +1,4 @@
+import type { WorkspaceLifecyclePayload } from "./routes/api/handlers.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -39,13 +40,19 @@ import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test
 
 import { git } from "./workspace-test-helpers.js";
 
-/**
- * @param {(request: Request) => Promise<Response>} app
- * @param {string} cwd
- * @param {string} planId
- * @param {Record<string, unknown>} payload
- */
-async function postLifecycle(app, cwd, planId, payload) {
+type WorkspacePlanCard = ReturnType<typeof serializePlanSummary>;
+type WorkspaceRequestHandler = ReturnType<ReturnType<typeof createWorkspaceApp>["handler"]>;
+
+interface LifecycleRequestFixture extends WorkspaceLifecyclePayload {
+    holdReason?: string;
+}
+
+async function postLifecycle(
+    app: WorkspaceRequestHandler,
+    cwd: string,
+    planId: string,
+    payload: LifecycleRequestFixture,
+) {
     const detail = await loadWorkspaceDetail(cwd, planId);
     return await app(
         new Request(`http://localhost/api/plans/${planId}/lifecycle-action`, {
@@ -121,7 +128,7 @@ test("legacy feedback Plans appear in Draft with no Feedback board column", asyn
         );
         const draft = board.screens.active.columns.find((column) => column.status === "draft");
         assertEquals(
-            draft?.cards.map((card) => card.planName),
+            draft?.cards.map((card: WorkspacePlanCard) => card.planName),
             ["legacy"],
         );
         assertEquals(board.plans[0].actions.allowedManualTargetStatuses, ["approved", "ready_for_work"]);
