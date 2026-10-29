@@ -287,7 +287,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 ## Verification Plan
 
 - Automated: run
-  `deno run -A scripts/run-tests.js src/shared/attached/ src/attached/claude/ src/shared/workflow/workflow.test.js src/shared/workflow/execution-progress.test.ts src/shared/workflow/implementation-checkpoint-completion.test.ts src/shared/workflow/architecture-boundary.test.ts src/shared/workflow/authority-continuation.integration.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/worktree-registry.test.js src/tools/`.
+  `deno run -A scripts/run-tests.js src/shared/attached/ src/attached/claude/ src/shared/workflow/workflow.test.js src/shared/workflow/execution-progress.test.ts src/shared/workflow/implementation-checkpoint-completion.test.ts src/shared/workflow/architecture-boundary.test.ts src/shared/workflow/authority-continuation.integration.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/worktree-registry.test.ts src/tools/`.
 - Automated (new focused tests, real Git fixtures via `defineGitFixture` and real validation project roots; no new
   injection seam): `start_execution` from `plan_ready` creates a registered worktree with a captured baseline, records
   `execution_started` (Plan → `in_progress`), materializes the Plan in the worktree, and leaves the invoking checkout

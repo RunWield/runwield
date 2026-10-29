@@ -252,7 +252,7 @@ after asynchronous work settles. Allow only the tested search service's derived 
 Focused commands (include new focused test files beside these owners):
 
 ```sh
-deno run -A scripts/run-tests.js src/plan-store.test.js src/plan-store-locks.test.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-read-scope.test.ts src/shared/worktree-registry.test.js
+deno run -A scripts/run-tests.js src/plan-store.test.js src/plan-store-locks.test.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-read-scope.test.ts src/shared/worktree-registry.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/controller-registry.integration.test.ts src/shared/workflow/planning-worktree.test.ts src/cmd/plans src/cmd/load-plan
 deno run -A scripts/run-tests.js src/ui/workspace/server src/ui/workspace/owner-workspace.test.js src/ui/workspace/owner-dashboard-stream.test.ts
 deno task seams:check
