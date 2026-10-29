@@ -384,7 +384,7 @@
     "src/shared/session/read-session-artifact.test.ts",
     "src/shared/session/request-dispatch.test.ts",
     "src/shared/session/root-session-locator-classifier.test.ts",
-    "src/shared/session/root-session.test.js",
+    "src/shared/session/root-session.test.ts",
     "src/shared/session/runtime-portable-tools.test.ts",
     "src/shared/session/runtime-portable-turn.test.ts",
     "src/shared/session/segment-rollover.test.ts",
