@@ -169,3 +169,13 @@ Manual verification steps for reliable-usage-dashboard-and-langfuse-export/10-en
 - [ ] Clear usage during the journey. Confirm Sessions, Plans, and worktrees remain, and inspect the report and Langfuse data for private content.
 
 <!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance" -->
+
+<!-- runwield:manual-qa:start child="reliable-usage-dashboard-and-langfuse-export/11-repair-integration-findings" -->
+
+## Repair integration findings
+
+Manual verification steps for reliable-usage-dashboard-and-langfuse-export/11-repair-integration-findings
+
+- [ ] In Workspace Usage settings, enable recording, run one Pi turn, then turn recording off and on; confirm the Usage page shows the turn and a gap for the off period.
+
+<!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/11-repair-integration-findings" -->

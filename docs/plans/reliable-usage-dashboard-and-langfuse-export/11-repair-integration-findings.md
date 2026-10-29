@@ -32,6 +32,7 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 sessionName: "Metrics Epic Review Fixes"
 status: "reviewed"
+validatedCommit: "7c4c4f2db949c04440332fdb166166ba12b013c0"
 ---
 
 # Repair integration findings
