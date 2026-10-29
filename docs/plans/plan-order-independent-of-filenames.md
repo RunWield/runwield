@@ -129,7 +129,7 @@ Use Bun 1.4.3 and run `bun run install:locked` before checks. Run focused tests 
 - `bun scripts/run-tests.js src/cmd/load-plan/index.integration.test.ts src/shared/workflow/epic-integration.test.ts`
 - `bun scripts/run-tests.js src/shared/session/agents-shared-practice.test.ts src/shared/session/subagent-definitions.test.ts`
 - `bun scripts/run-tests.js src/cmd/load-plan/getArgumentCompletions.test.ts src/acp/server.test.js src/shared/workflow/sequence-review.test.ts`
-- `bun scripts/run-tests.js src/ui/workspace/workspace-board.test.js src/ui/workspace/owner-dashboard-stream.test.ts src/ui/workspace/owner-dashboard-ui.test.js`
+- `bun scripts/run-tests.js src/ui/workspace/workspace-board.test.ts src/ui/workspace/owner-dashboard-stream.test.ts src/ui/workspace/owner-dashboard-ui.test.js`
 - Run affected continuation tests through the same isolated runner if those paths change.
 - `bun run doc-links:check`
 
