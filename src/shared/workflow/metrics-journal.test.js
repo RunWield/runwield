@@ -578,7 +578,7 @@ test("recording control rejects an old capture across unobserved off and on gene
         const fresh = invocation(path);
         assertEquals(fresh.epoch === old.epoch, false);
         assertEquals((await appendWorkflowMetric(path, projectRoot, metric, fresh)).persisted, true);
-        assertEquals((await readJournal(path)).filter((row) => row.event === "collection_epoch").length, 2);
+        assertEquals((await readJournal(path)).filter((row) => row.event === "collection_epoch").length, 3);
     });
 });
 

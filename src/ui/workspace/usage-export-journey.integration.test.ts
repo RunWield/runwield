@@ -230,7 +230,7 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                         }, {}),
                         {
                             model_usage: 9,
-                            execution_finished: 7,
+                            execution_finished: 8, // Includes the external guide's auxiliary execution.
                             tool_call_finished: 3,
                             validation_attempt: 2,
                             repair_round_finished: 1,
@@ -333,7 +333,7 @@ console.log("JOURNEY_RESULT:"+JSON.stringify(await readJourneyReport(${JSON.stri
                     assertEquals((await readMetricsExportStatus())[0].counts, {
                         pending: 0,
                         accepted: 0,
-                        confirmed: 23,
+                        confirmed: 24,
                         unconfirmed: 1,
                         rejected: 0,
                     });

@@ -89,19 +89,37 @@ export function readWorkflowMetricLegacyAdoption(filePath: string): WorkflowMetr
     }
 }
 
+interface RecordingBoundary {
+    generation: string;
+    ts: string;
+    enabled: boolean;
+}
+
 interface RecordingState {
     generation: string;
+    boundaries?: RecordingBoundary[];
 }
 
 function recordingDirectory(): string {
     return join(getHomeDir(), ".wld", "workflow-metrics");
 }
 
-function readRecordingGeneration(): string | undefined {
+function readRecordingState(): RecordingState | undefined {
     try {
         const state: RecordingState = JSON.parse(readFileSync(join(recordingDirectory(), "recording.json"), "utf8"));
         if (typeof state.generation !== "string" || !state.generation) throw new Error("invalid_recording_generation");
-        return state.generation;
+        if (
+            state.boundaries !== undefined &&
+            (!Array.isArray(state.boundaries) ||
+                !state.boundaries.every(
+                    (boundary) =>
+                        typeof boundary.generation === "string" &&
+                        Number.isFinite(Date.parse(boundary.ts)) &&
+                        typeof boundary.enabled === "boolean",
+                ))
+        )
+            throw new Error("invalid_recording_boundaries");
+        return state;
     } catch (error) {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
         throw error;
@@ -132,10 +150,16 @@ export async function setWorkflowMetricsRecording(enabled: boolean): Promise<voi
     try {
         const { getCustomSetting, setCustomSetting } = await import("../settings.js");
         const saved = getCustomSetting("workflowMetrics", "global");
+        const previous = readRecordingState();
+        const boundary = { generation: crypto.randomUUID(), ts: new Date().toISOString(), enabled };
         // Commit first: process loss can add a boundary, but cannot erase one.
+        // Retain every control, including periods with no Project appends.
         replaceSynced(
             join(recordingDirectory(), "recording.json"),
-            JSON.stringify({ generation: crypto.randomUUID() }) + "\n",
+            JSON.stringify({
+                generation: boundary.generation,
+                boundaries: [...(previous?.boundaries ?? []), boundary],
+            }) + "\n",
         );
         await setCustomSetting(
             "workflowMetrics",
@@ -226,7 +250,7 @@ export function resolveCollectionEpoch(
         if (tail.more) return { ...state, collectionEpoch: { id: "recovering", enabled: false } };
         scanJournalLines(tail.bytes.subarray(0, tail.end), state);
     }
-    const generation = projectOverride ? undefined : readRecordingGeneration();
+    const generation = projectOverride ? undefined : readRecordingState()?.generation;
     if (generation && generation !== state.recordingGeneration) {
         return {
             ...state,
@@ -654,11 +678,38 @@ export async function appendWorkflowMetric<T>(
             return { ...failedRecord, persisted: false, reason: "recovery_pending" };
         }
         materializeHistory(state);
-        const generation = !hasWorkflowMetricsEnablementOverride(
+        const recording = !hasWorkflowMetricsEnablementOverride(
             getCustomSetting("workflowMetrics", "project", projectRoot),
         )
-            ? readRecordingGeneration()
+            ? readRecordingState()
             : undefined;
+        const generation = recording?.generation;
+        if (generation && generation !== state.recordingGeneration) {
+            const boundaries = recording.boundaries ?? [];
+            const previous = boundaries.findIndex((boundary) => boundary.generation === state.recordingGeneration);
+            const pending = boundaries.slice(previous + 1);
+            const historyStartedAt =
+                state.historyStartedAt ?? (state.journalBytes === 0 ? new Date().toISOString() : undefined);
+            const historyStart = historyStartedAt ? Date.parse(historyStartedAt) : -Infinity;
+            for (const [index, boundary] of pending.entries()) {
+                // New and cleared histories retain only the state at their collection start.
+                const beforeStart = Date.parse(boundary.ts) < historyStart;
+                const next = pending[index + 1];
+                if (beforeStart && next && Date.parse(next.ts) <= historyStart) continue;
+                state.collectionEpoch = { id: `gen:${boundary.generation}`, enabled: boundary.enabled };
+                state.recordingGeneration = boundary.generation;
+                entries.push({
+                    v: 1,
+                    event: "collection_epoch",
+                    ts: beforeStart ? historyStartedAt : boundary.ts,
+                    collectionEpoch: state.collectionEpoch.id,
+                    enabled: boundary.enabled,
+                    historyEpoch: state.historyEpoch,
+                    initialHistoryEpoch: state.initialHistoryEpoch,
+                    recordingGeneration: state.recordingGeneration,
+                });
+            }
+        }
         const generationChanged = !!generation && generation !== state.recordingGeneration;
         if (
             generationChanged ||

@@ -1,3 +1,4 @@
+import { setSystemTime } from "bun:test";
 import { getCwd } from "../../constants.js";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
@@ -22,6 +23,7 @@ import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { UsageReporter, usageProjectIdentityForRoot } from "./usage-reporting.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { setCustomSetting } from "../settings.js";
+import { setWorkflowMetricsRecording } from "./metrics-journal.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 
 interface FixtureRow {
@@ -1142,3 +1144,260 @@ test("completion timestamps put historical agy usage in the correct day and half
         assertEquals(after.totals.tokens.value, 29);
     });
 });
+
+for (const priorRecordingCycle of [false, true]) {
+    test(`new Project history does not inherit earlier host coverage (prior cycle: ${priorRecordingCycle})`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+            await fsRm(join(projectRoot, ".wld", "settings.json"));
+            try {
+                setSystemTime(new Date("2026-11-01T00:00:00Z"));
+                await setWorkflowMetricsRecording(true);
+                if (priorRecordingCycle) {
+                    setSystemTime(new Date("2026-11-02T00:00:00Z"));
+                    await setWorkflowMetricsRecording(false);
+                    setSystemTime(new Date("2026-11-03T00:00:00Z"));
+                    await setWorkflowMetricsRecording(true);
+                }
+                setSystemTime(new Date("2026-11-04T00:00:00Z"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "new-history",
+                                seq: 0,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                setSystemTime(new Date("2026-11-05T00:00:00Z"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "new-history-watermark",
+                                seq: 0,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                const reporter = new UsageReporter();
+                const range = { start: "2026-11-01", end: "2026-11-05" };
+                const report = reporter.query([projectRoot], range, "UTC");
+                assertEquals(
+                    report.daily.map((day) => day.gaps),
+                    [["not_yet_collected"], ["not_yet_collected"], ["not_yet_collected"], []],
+                );
+                assertEquals(
+                    report.daily.map((day) => day.tokens),
+                    [null, null, null, 0],
+                );
+                // Recovery and later writes must retain the same collection start.
+                await fsRm(join(dirname(getWorkflowMetricsFilePath(projectRoot)), "state.json"));
+                setSystemTime(new Date("2026-11-05T00:00:00Z"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "new-history",
+                                seq: 1,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                assertEquals(reporter.query([projectRoot], range, "UTC").daily, report.daily);
+            } finally {
+                setSystemTime();
+            }
+        });
+    });
+}
+
+for (const rebuildCheckpoint of [false, true]) {
+    test(`recording off/on without appends preserves report gaps (rebuild: ${rebuildCheckpoint})`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+            await fsRm(join(projectRoot, ".wld", "settings.json"));
+            try {
+                setSystemTime(new Date("2026-11-01T00:00:00Z"));
+                await setWorkflowMetricsRecording(true);
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "recording-gaps",
+                                seq: 0,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                const reporter = new UsageReporter();
+                const range = { start: "2026-11-01", end: "2026-11-06" };
+                reporter.query([projectRoot], range, "UTC");
+                setSystemTime(new Date("2026-11-02T00:00:00Z"));
+                await setWorkflowMetricsRecording(false);
+                setSystemTime(new Date("2026-11-03T00:00:00Z"));
+                await setWorkflowMetricsRecording(true);
+                setSystemTime(new Date("2026-11-04T12:00:00Z"));
+                await setWorkflowMetricsRecording(false);
+                setSystemTime(new Date("2026-11-04T13:00:00Z"));
+                await setWorkflowMetricsRecording(true);
+                setSystemTime(new Date("2026-11-06T00:00:00Z"));
+                const path = getWorkflowMetricsFilePath(projectRoot);
+                if (rebuildCheckpoint) await fsRm(join(dirname(path), "state.json"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "recording-gaps",
+                                seq: 1,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                const report = reporter.query([projectRoot], range, "UTC");
+                assertEquals(
+                    report.daily.map((day) => day.gaps),
+                    [[], ["disabled"], [], ["disabled"], []],
+                );
+                assertEquals(
+                    report.daily.map((day) => day.tokens),
+                    [0, null, 0, null, 0],
+                );
+                // Repeated appends must not replay the same boundaries again.
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "recording-gaps",
+                                seq: 2,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                assertEquals(reporter.query([projectRoot], range, "UTC").daily, report.daily);
+            } finally {
+                setSystemTime();
+            }
+        });
+    });
+}
+
+for (const rebuildCheckpoint of [false, true]) {
+    test(`existing global recording history retains its first off/on gap (rebuild: ${rebuildCheckpoint})`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+            await fsRm(join(projectRoot, ".wld", "settings.json"));
+            await setCustomSetting("workflowMetrics", true, "global");
+            try {
+                setSystemTime(new Date("2026-11-01T00:00:00Z"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "existing-history",
+                                seq: 0,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                const reporter = new UsageReporter();
+                const range = { start: "2026-11-01", end: "2026-11-04" };
+                reporter.query([projectRoot], range, "UTC");
+                setSystemTime(new Date("2026-11-02T00:00:00Z"));
+                await setWorkflowMetricsRecording(false);
+                setSystemTime(new Date("2026-11-03T00:00:00Z"));
+                await setWorkflowMetricsRecording(true);
+                setSystemTime(new Date("2026-11-04T00:00:00Z"));
+                const path = getWorkflowMetricsFilePath(projectRoot);
+                if (rebuildCheckpoint) await fsRm(join(dirname(path), "state.json"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "existing-history",
+                                seq: 1,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                const report = reporter.query([projectRoot], range, "UTC");
+                assertEquals(
+                    report.daily.map((day) => day.gaps),
+                    [[], ["disabled"], []],
+                );
+                assertEquals(
+                    report.daily.map((day) => day.tokens),
+                    [0, null, 0],
+                );
+                // Neither a repeated append nor checkpoint recovery may replay the interval twice.
+                if (rebuildCheckpoint) await fsRm(join(dirname(path), "state.json"));
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            row("command_dispatched", new Date().toISOString(), {
+                                category: "command",
+                                recorderId: "existing-history",
+                                seq: 2,
+                            }),
+                            projectRoot,
+                        )
+                    ).persisted,
+                );
+                assertEquals(reporter.query([projectRoot], range, "UTC").daily, report.daily);
+            } finally {
+                setSystemTime();
+            }
+        });
+    });
+}
+
+for (const clearWhileDisabled of [false, true]) {
+    test(`recording gap respects a history clear (disabled at clear: ${clearWhileDisabled})`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+            await fsRm(join(projectRoot, ".wld", "settings.json"));
+            try {
+                setSystemTime(new Date("2026-11-01T00:00:00Z"));
+                await setWorkflowMetricsRecording(true);
+                assert((await recordWorkflowMetric({ category: "command", event: "before" }, projectRoot)).persisted);
+                setSystemTime(new Date("2026-11-02T00:00:00Z"));
+                await setWorkflowMetricsRecording(false);
+                if (!clearWhileDisabled) {
+                    setSystemTime(new Date("2026-11-03T00:00:00Z"));
+                    await setWorkflowMetricsRecording(true);
+                }
+                setSystemTime(new Date("2026-11-04T00:00:00Z"));
+                const reporter = new UsageReporter();
+                assert((await reporter.clear([projectRoot]))[0].persisted);
+                setSystemTime(new Date("2026-11-05T00:00:00Z"));
+                if (clearWhileDisabled) await setWorkflowMetricsRecording(true);
+                setSystemTime(new Date("2026-11-06T00:00:00Z"));
+                assert((await recordWorkflowMetric({ category: "command", event: "after" }, projectRoot)).persisted);
+                const report = reporter.query([projectRoot], { start: "2026-11-04", end: "2026-11-06" }, "UTC");
+                assertEquals(
+                    report.daily.map((day) => day.gaps),
+                    clearWhileDisabled ? [["disabled"], []] : [[], []],
+                );
+                assertEquals(
+                    report.daily.map((day) => day.tokens),
+                    clearWhileDisabled ? [null, 0] : [0, 0],
+                );
+            } finally {
+                setSystemTime();
+            }
+        });
+    });
+}

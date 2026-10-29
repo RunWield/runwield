@@ -177,6 +177,21 @@ test("real absolute-directory install, owner approval, grant, journal, and worke
                     await setCustomSetting("workflowMetrics", true, "project", project);
                     let seq = 0;
                     const record = async (partial = false) => {
+                        const executionId = `local-execution-${seq}`;
+                        const started = await recordWorkflowMetric(
+                            {
+                                v: 2,
+                                recorderId: "langfuse-test",
+                                seq: seq++,
+                                eventId: crypto.randomUUID(),
+                                event: "execution_started",
+                                category: "execution",
+                                sessionId: "local-session",
+                                executionId,
+                            },
+                            project,
+                        );
+                        assert(started.persisted, started.reason || "Execution start was not persisted");
                         const recorded = await recordWorkflowMetric(
                             {
                                 v: 2,
@@ -186,7 +201,7 @@ test("real absolute-directory install, owner approval, grant, journal, and worke
                                 event: "model_usage",
                                 category: "model_usage",
                                 sessionId: "local-session",
-                                executionId: "local-execution",
+                                executionId,
                                 backend: partial ? "agy-cli" : "pi",
                                 provider: "google",
                                 model: "gemini-3.8-flash",
