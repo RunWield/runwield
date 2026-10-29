@@ -231,12 +231,20 @@ test("shared read operations reject malformed envelopes without changing the pen
     });
 });
 
-test("fresh processes restore the saved request for Triage and the Planner without copying it into status or receipts", async () => {
+test("fresh processes restore the complete request while status and receipts retain only its bounded preview", async () => {
     await withProject(async (root) => {
-        const triage = pendingTriage(await runOperation("activate", root, activateInput()));
+        const opening = "Add a dark mode toggle. ";
+        const sensitiveTail = "private-activation-tail-not-for-compact-status";
+        const requestText = `${opening}${"Preserve the existing settings behavior. ".repeat(20)}${sensitiveTail}`;
+        const triage = pendingTriage(
+            await runOperation("activate", root, {
+                ...activateInput(),
+                payload: { requestText, hostRequestId: "bounded-request-restore" },
+            }),
+        );
         const restored = await spawnAttachedCli("get_instructions", root, { ...triage, evidence: EVIDENCE });
         assert(restored.result.ok && "context" in restored.result && restored.result.context);
-        equal(restored.result.context.requestText, "Add a dark mode toggle");
+        equal(restored.result.context.requestText, requestText);
         const planned = await runOperation("triage_report", root, triageReportInput(triage));
         assert(planned.ok && planned.workflow.nextAction.kind === "plan");
         const planner = await spawnAttachedCli("get_instructions", root, {
@@ -245,11 +253,25 @@ test("fresh processes restore the saved request for Triage and the Planner witho
             evidence: EVIDENCE,
         });
         assert(planner.result.ok && "context" in planner.result && planner.result.context);
-        equal(planner.result.context.requestText, "Add a dark mode toggle");
+        equal(planner.result.context.requestText, requestText);
         deepStrictEqual(planner.result.context.triageOutcome, planned.workflow.triageOutcome);
         const status = await spawnAttachedCli("status", root, { workflowId: triage.workflowId });
-        assert(!JSON.stringify(status.result).includes("Add a dark mode toggle"));
+        assert(status.result.ok);
+        const summary = status.result.workflow.requestSummary;
+        assert(typeof summary === "string");
+        assert(summary.startsWith(opening));
+        equal(Array.from(summary).length, 160);
+        assert(summary.endsWith("..."));
+        const statusText = JSON.stringify(status.result);
+        assert(!statusText.includes(requestText));
+        assert(!statusText.includes(sensitiveTail));
+        assert(!statusText.includes('"requestText"'));
         const record = JSON.parse(await readRecordBytes(root, triage.workflowId));
-        assert(!JSON.stringify(record.acceptedOperations).includes("requestText"));
+        equal(record.request.text, requestText);
+        const receiptsText = JSON.stringify(record.acceptedOperations);
+        assert(receiptsText.includes(summary));
+        assert(!receiptsText.includes('"requestText"'));
+        assert(!receiptsText.includes(requestText));
+        assert(!receiptsText.includes(sensitiveTail));
     });
 });
