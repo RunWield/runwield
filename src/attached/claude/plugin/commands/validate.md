@@ -9,10 +9,18 @@ Show any returned `compatibility` notice to the user before continuing. On `unsu
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
 Core owns host and version compatibility.
 
-1. Call MCP `status` with the known workflow ID, or `{}`. Status is compact by default. For `implemented` or
-   `validation_recovery`, call `start_validation` with a new operation ID, the current workflow ID and revision, and
-   `payload: {}`. Core runs the configured checks. Do not run the complete command yourself. Keep waiting while Core sends
-   progress.
+1. First call MCP `status` with `{ workflowId, inspectOnly: true }` when the workflow ID is known, or
+   `{ inspectOnly: true }` to inspect the most recent open workflow in this repository without advancing it.
+   Show `workflow.plan.planName` (or `workflow.requestSummary` before a Plan exists), the current step from
+   `workflow.nextAction`, and the originating host from `workflow.originHost` before continuing. If no workflow exists,
+   report that result and stop; do not activate a new request. If the user requested only inspection, stop after this
+   summary. The explicit resume authorizes continuing a workflow started in Codex without another host-switch
+   confirmation. Preserve its Plan, action, revision, and execution directory; do not import the other host's transcript.
+   Only after showing this summary, call ordinary `status` with that `workflowId` to continue. Do not fetch role
+   instructions, start checks, or dispatch a worker before the summary. Status is compact by default.
+   For `implemented` or `validation_recovery`, call `start_validation` with a new operation ID, the current workflow
+   ID and revision, and `payload: {}`. Core runs the configured checks. Do not run the complete command yourself. Keep
+   waiting while Core sends progress.
 2. For `validation`, read the action kind, ID, revision, cwd, and artifact references. Core owns all validation policy.
    Never change rounds, finding identities, budgets, or gate outcomes yourself. For a worker, check contract
    `runwield.attached.validation/1`.

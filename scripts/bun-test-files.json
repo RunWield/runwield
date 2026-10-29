@@ -100,6 +100,7 @@
     "src/attached/claude/mcp-validation.test.ts",
     "src/attached/claude/mcp.test.ts",
     "src/attached/codex/mcp.test.ts",
+    "src/attached/codex/plugin.test.ts",
     "src/cli-context-files.test.ts",
     "src/cli-onboarding.test.ts",
     "src/cli-startup.test.ts",

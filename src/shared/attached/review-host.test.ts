@@ -55,6 +55,7 @@ test("Codex browser review and restored chat identify the coordinating host", as
                 const url = new URL(hosted.url);
                 const conversation = await (await fetch(new URL(`/api/review/conversation${url.search}`, url))).json();
                 assertEquals(conversation.agentLabel, "Codex");
+                assertStringIncludes(hosted.guidance, "$runwield:run implement");
                 assertEquals(hosted.guidance.includes("/runwield:implement"), false);
                 await stopHostedAttachedReviews();
             }
