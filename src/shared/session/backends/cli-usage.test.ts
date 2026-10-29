@@ -396,7 +396,7 @@ for (const fixture of fixtures) {
                     assert(Date.parse(turn.startedAt) <= Date.parse(turn.endedAt));
                     assert(Date.parse(turn.endedAt) <= afterTurn);
                     assert(Date.parse(turn.endedAt) <= Date.parse(turn.ts));
-                    if (fixture.backend === "agy-cli") assert(Date.parse(turn.endedAt) < Date.parse(turn.ts));
+                    if (fixture.backend === "agy-cli") assertEquals(turn.ts, turn.endedAt);
                     for (const alternative of rows.filter((record) => record.aggregationBasis === "alternative")) {
                         assertEquals(alternative.inputCacheBasis, "excludes_cache");
                         assertEquals(

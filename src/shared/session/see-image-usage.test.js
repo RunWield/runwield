@@ -15,13 +15,22 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { getModelRegistry } from "../models/model-registry.ts";
 import { buildAgentSession, runIsolatedAgentSession } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
+import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
 
 /** @typedef {import('../../cmd/testing/runtime-command-fixture.ts').RuntimeCommandFixture} VisionFixture */
-/** @typedef {{ event: string, sessionId: string, executionId: string, requestId: string | null, turnId: string | null, model: string, usageKind: string, aggregationBasis: string, inputTokens: number, cacheReadTokens: number, costAmount: number, collectionEpoch: string }} VisionMetric */
+/** @typedef {Object} VisionCoverage
+ * @property {string} usage
+ */
+/** @typedef {{ dispatchKind: string, userInitiated: boolean, measurementAvailability: string, coverage: VisionCoverage, unavailableReason: string | null, event: string, sessionId: string, executionId: string, requestId: string | null, turnId: string | null, model: string, usageKind: string, aggregationBasis: string, inputTokens: number, cacheReadTokens: number, costAmount: number, collectionEpoch: string }} VisionMetric */
 
-/** @param {VisionFixture} fixture */
-async function configureVision(fixture) {
+/** @typedef {Object} VisionScenario
+ * @property {"error" | "aborted"} [stopReason]
+ * @property {boolean} [throws]
+ * @property {() => Promise<void>} [duringVision]
+ */
+/** @param {VisionFixture} fixture @param {VisionScenario} [scenario] */
+async function configureVision(fixture, scenario = {}) {
     const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
     settings.visionFallback = { model: "runtime-command-fixture/fixture-model" };
     settings.workflowMetrics = true;
@@ -80,10 +89,25 @@ async function configureVision(fixture) {
         totalTokens: 32,
         cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0.3, total: 0.6 },
     };
+    if (scenario.stopReason) visionReply.stopReason = scenario.stopReason;
+    if (scenario.stopReason === "aborted") Reflect.deleteProperty(visionReply, "usage");
     const visionStream = () => {
+        if (scenario.throws) throw new Error("private network failure");
         const result = createAssistantMessageEventStream();
-        queueMicrotask(() => {
-            result.push({ type: "done", reason: "stop", message: visionReply });
+        queueMicrotask(async () => {
+            try {
+                await scenario.duringVision?.();
+            } catch (error) {
+                const failed = fauxAssistantMessage(fauxText(""), {
+                    stopReason: "error",
+                    errorMessage: String(error),
+                });
+                result.push({ type: "error", reason: "error", error: failed });
+                result.end();
+                return;
+            }
+            if (scenario.stopReason) result.push({ type: "error", reason: scenario.stopReason, error: visionReply });
+            else result.push({ type: "done", reason: "stop", message: visionReply });
             result.end();
         });
         return result;
@@ -179,3 +203,56 @@ test("local see_image links vision usage to the active execution, request and tu
         }
     });
 });
+
+for (const failure of ["error", "aborted", "thrown"]) {
+    test(`local see_image ${failure} settles an auxiliary request with incomplete usage`, async () => {
+        await withRuntimeCommandFixture("vision-failure-usage-", async (fixture) => {
+            const cleanup = await configureVision(fixture, {
+                throws: failure === "thrown",
+                stopReason: failure === "error" ? "error" : failure === "aborted" ? "aborted" : undefined,
+                duringVision: async () => {
+                    const rows = await readMetrics(fixture);
+                    assertEquals(rows.filter((row) => row.event === "execution_started").length, 1);
+                },
+            });
+            const { session } = await buildAgentSession({
+                cwd: fixture.projectRoot,
+                agentName: "guide",
+                toolNames: [],
+                modelOverride: "vision-usage-primary/text-only",
+            });
+            try {
+                await session.prompt("Describe shot.png");
+                const rows = await readMetrics(fixture);
+                const starts = rows.filter((row) => row.event === "execution_started");
+                const usages = rows.filter((row) => row.event === "model_usage");
+                const finishes = rows.filter((row) => row.event === "execution_finished");
+                assertEquals(starts.length, 1);
+                assertEquals(starts[0].dispatchKind, "auxiliary");
+                assertEquals(starts[0].userInitiated, false);
+                assertEquals(usages.length, 1);
+                assertEquals(usages[0].executionId, starts[0].executionId);
+                assertEquals(usages[0].measurementAvailability, failure === "error" ? "partial" : "unavailable");
+                assertEquals(usages[0].inputTokens, failure === "error" ? 23 : null);
+                assertEquals(finishes.length, 1);
+                assertEquals(finishes[0].executionId, starts[0].executionId);
+                assertEquals(finishes[0].coverage.usage === "complete", false);
+                assertEquals(String(usages[0].unavailableReason).includes("private"), false);
+                const now = Date.now();
+                const report = new UsageReporter().query(
+                    [fixture.projectRoot],
+                    {
+                        start: new Date(now).toISOString().slice(0, 10),
+                        end: new Date(now + 86400000).toISOString().slice(0, 10),
+                    },
+                    "UTC",
+                );
+                assertEquals(report.totals.activeDays, 0);
+                assert(report.totals.tokens.exclusions > 0);
+            } finally {
+                session.dispose();
+                cleanup();
+            }
+        });
+    });
+}

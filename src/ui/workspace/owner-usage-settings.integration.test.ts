@@ -1,7 +1,8 @@
+import lockfile from "proper-lockfile";
 import { test } from "node:test";
-import { ok as assert } from "node:assert/strict";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { ok as assert, rejects } from "node:assert/strict";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import type { MetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
@@ -14,6 +15,12 @@ import {
 import { getCustomSetting, setCustomSetting } from "../../shared/settings.js";
 import { readMetricsExportGrants } from "../../shared/workflow/metrics-export-grants.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/workflow/metrics-export-scheduler.ts";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { ExecutionMetricsRecorder } from "../../shared/workflow/execution-metrics.ts";
+import { openNativeFileLock } from "../../shared/native-file-lock.ts";
+import { encodeCwdForSessionDir } from "../../shared/session/root-session.js";
+import type { OwnerUsageReport } from "./server/owner-usage.ts";
+import { resolveCollectionEpoch, setWorkflowMetricsRecording } from "../../shared/workflow/metrics-journal.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import type { UsageSettingsRequest, UsageSettingsResponse, UsageSettingsView } from "./server/owner-usage-settings.ts";
@@ -385,5 +392,187 @@ test("global recording preserves object settings and Project overrides while ena
         assert(
             queryUsageReport([otherRoot], { start: "2020-01-01", end: "2030-01-01" }, "UTC").totals.tokens.value > 0,
         );
+    });
+});
+
+test("owner recording control fences captures across off and on without an intervening append", async () => {
+    await withSettingsFixture(async (f) => {
+        const root = join(f.project, "ordinary");
+        await mkdir(root);
+        f.store.registerProject({ root, displayName: "Ordinary" });
+        assertEquals((await f.post("recording", { enabled: true })).status, 200);
+        const path = getWorkflowMetricsFilePath(root);
+        const metric = {
+            v: 2,
+            category: "command",
+            event: "command_started",
+            recorderId: "control",
+            seq: 0,
+            command: "help",
+        };
+        assertEquals((await recordWorkflowMetric(metric, root)).persisted, true);
+        const state = resolveCollectionEpoch(path, true);
+        const capture = {
+            collectionEnabledAtCall: true,
+            collectionEpoch: state.collectionEpoch.id,
+            historyEpoch: state.historyEpoch,
+        };
+        assertEquals((await f.post("recording", { enabled: false })).status, 200);
+        assertEquals((await f.post("recording", { enabled: true })).status, 200);
+        const stale = await recordWorkflowMetric({ ...metric, ...capture, seq: 1 }, root);
+        assertEquals(stale.persisted, false);
+        assertEquals(stale.reason, "collection_boundary");
+        const fresh = await recordWorkflowMetric({ ...metric, seq: 2 }, root);
+        assertEquals(fresh.persisted, true);
+        assert(fresh.collectionEpoch !== capture.collectionEpoch);
+    });
+});
+
+for (const surface of ["report", "settings"]) {
+    test(`busy legacy adoption keeps owner ${surface} available without authorizing export`, async () => {
+        await withSettingsFixture(async (f) => {
+            await f.grant();
+            await f.record();
+            const exporterKey = (await f.get()).exporters[0].exporterKey;
+            const consent = getCustomSetting("metricsExport", "global");
+            const path = getWorkflowMetricsFilePath(f.project);
+            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(f.project));
+            await rename(dirname(path), legacy);
+            const guard = openNativeFileLock(join(legacy, ".journal.guard"));
+            assert(guard.tryLockSync(true));
+            async function report() {
+                const response = await f.app.handler()(
+                    new Request(`${origin}/api/owner/usage?start=2020-01-01&end=2030-01-01`, { headers: f.headers }),
+                );
+                assertEquals(response.status, 200);
+                return (await response.json()) as OwnerUsageReport;
+            }
+            try {
+                if (surface === "report") {
+                    const view = await report();
+                    assertEquals(view.projects[0].coverage.unavailable, true);
+                    assertEquals(view.totals.tokens.value, 0);
+                } else {
+                    const settings = await f.get();
+                    assertEquals(settings.exportAvailable, false);
+                    assert(settings.unavailableReason);
+                    assertEquals(
+                        (
+                            await f.post("create", {
+                                exporterKey,
+                                endpoint: f.endpoint(),
+                                externalProject: "vendor-project",
+                                allowInsecureLocalEndpoint: true,
+                                projectIds: [f.projectId],
+                            })
+                        ).status,
+                        400,
+                    );
+                    assertEquals(getCustomSetting("metricsExport", "global"), consent);
+                }
+                assertEquals(f.requests, []);
+            } finally {
+                guard.close();
+            }
+            const recovered = await report();
+            assertEquals(recovered.projects[0].coverage.unavailable, false);
+            assertEquals(recovered.totals.tokens.value, 6);
+            assertEquals((await f.get()).destinations.length, 1);
+        });
+    });
+}
+
+test("empty Project recording settings inherit global generations and UI attribution", async () => {
+    await withSettingsFixture(async (f) => {
+        await setCustomSetting("workflowMetrics", {}, "project", f.project);
+        await setCustomSetting("workflowMetrics", { enabled: false }, "global");
+        assertEquals((await f.post("recording", { enabled: true })).status, 200);
+        const stale = new ExecutionMetricsRecorder({ projectRoot: f.project });
+        await stale.recordExecutionStart();
+        assertEquals((await f.post("recording", { enabled: false })).status, 200);
+        assertEquals((await f.get()).recording.projects[0].enabled, false);
+        assertEquals((await f.post("recording", { enabled: true })).status, 200);
+        await stale.recordModelUsage({
+            sourceId: "stale",
+            usageKind: "request",
+            aggregationBasis: "request",
+            inputTokens: 99,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+        });
+        const fresh = new ExecutionMetricsRecorder({ projectRoot: f.project });
+        await fresh.recordExecutionStart();
+        await fresh.recordModelUsage({
+            sourceId: "fresh",
+            usageKind: "request",
+            aggregationBasis: "request",
+            inputTokens: 7,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+        });
+        await stale.settleExecution("succeeded");
+        await fresh.settleExecution("succeeded");
+        assertEquals(
+            queryUsageReport([f.project], { start: "2020-01-01", end: "2030-01-01" }, "UTC").totals.inputTokens.value,
+            7,
+        );
+        assertEquals((await f.get()).recording.projects[0].setBy, "global");
+        let expected = 7;
+        for (const override of [true, false, { enabled: true }, { enabled: false }]) {
+            await setCustomSetting("workflowMetrics", override, "project", f.project);
+            const capture = new ExecutionMetricsRecorder({ projectRoot: f.project });
+            await capture.recordExecutionStart();
+            assertEquals((await f.post("recording", { enabled: false })).status, 200);
+            assertEquals((await f.post("recording", { enabled: true })).status, 200);
+            await capture.recordModelUsage({
+                inputTokens: 7,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+            });
+            await capture.settleExecution("succeeded");
+            const enabled = typeof override === "boolean" ? override : override.enabled;
+            if (enabled) expected += 7;
+            const setting = (await f.get()).recording.projects[0];
+            assertEquals([setting.setBy, setting.enabled], ["project", enabled]);
+            assertEquals(
+                queryUsageReport([f.project], { start: "2020-01-01", end: "2030-01-01" }, "UTC").totals.inputTokens
+                    .value,
+                expected,
+            );
+        }
+    });
+});
+
+test("a failed settings write after generation commit rejects old captures without disabling fresh work", async () => {
+    await withSettingsFixture(async (f) => {
+        const root = join(f.project, "ordinary");
+        await mkdir(root);
+        await setWorkflowMetricsRecording(true);
+        const stale = new ExecutionMetricsRecorder({ projectRoot: root });
+        await stale.recordExecutionStart();
+        const generationPath = join(f.home, ".wld", "workflow-metrics", "recording.json");
+        const before = await readFile(generationPath, "utf8");
+        const release = lockfile.lockSync(join(f.home, ".wld", "settings.json"), { realpath: false });
+        try {
+            await rejects(() => setWorkflowMetricsRecording(false), /already being held/);
+        } finally {
+            release();
+        }
+        assertEquals(getCustomSetting("workflowMetrics", "global"), true);
+        const observation = { inputTokens: 7, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+        await stale.recordModelUsage(observation);
+        const fresh = new ExecutionMetricsRecorder({ projectRoot: root });
+        await fresh.recordExecutionStart();
+        await fresh.recordModelUsage(observation);
+        await stale.settleExecution("succeeded");
+        await fresh.settleExecution("succeeded");
+        assertEquals(
+            queryUsageReport([root], { start: "2020-01-01", end: "2030-01-01" }, "UTC").totals.inputTokens.value,
+            7,
+        );
+        assert((await readFile(generationPath, "utf8")) !== before);
     });
 });

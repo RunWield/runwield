@@ -1,9 +1,10 @@
 import { closeSync, fstatSync, fsyncSync, openSync, readSync, writeSync } from "node:fs";
 import { openNativeFileLock, type NativeFileLock } from "../native-file-lock.ts";
 import { syncParentDirectory, writeTextAtomically } from "../private-json-file.ts";
-import { readFileSync, truncateSync, rmSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, truncateSync, rmSync, mkdirSync, statSync, existsSync, renameSync } from "node:fs";
 /** Durable, content-free Project measurement journal. */
 import { dirname, join } from "node:path";
+import { getHomeDir } from "../../constants.js";
 import lockfile from "proper-lockfile";
 import { metricsDeliveryInFlightForJournal } from "./metrics-export-ledger.ts";
 
@@ -40,6 +41,8 @@ interface JournalEpochState {
     collectionEpoch: { id: string; enabled: boolean };
     historyEpoch: string;
     historyStartedAt?: string;
+    initialHistoryEpoch?: string;
+    recordingGeneration?: string;
     journalBytes?: number;
     journalLines?: number;
     recoveryBytes?: number[];
@@ -56,6 +59,123 @@ export function isWorkflowMetricsEnabled<T>(setting: T) {
             "enabled" in setting &&
             setting.enabled === true)
     );
+}
+
+/** Only explicit Project consent is independent of the host recording generation. */
+export function hasWorkflowMetricsEnablementOverride<T>(setting: T): boolean {
+    return (
+        typeof setting === "boolean" ||
+        (setting !== null &&
+            typeof setting === "object" &&
+            !Array.isArray(setting) &&
+            Object.hasOwn(setting, "enabled") &&
+            "enabled" in setting &&
+            typeof setting.enabled === "boolean")
+    );
+}
+
+export interface WorkflowMetricLegacyAdoption {
+    historyEpoch: string;
+    offset: number;
+}
+
+/** The adoption history is a durable identity, retained across later clears. */
+export function readWorkflowMetricLegacyAdoption(filePath: string): WorkflowMetricLegacyAdoption | undefined {
+    try {
+        return JSON.parse(readFileSync(join(dirname(filePath), "legacy-adoption.json"), "utf8"));
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+        throw error;
+    }
+}
+
+interface RecordingBoundary {
+    generation: string;
+    ts: string;
+    enabled: boolean;
+}
+
+interface RecordingState {
+    generation: string;
+    boundaries?: RecordingBoundary[];
+}
+
+function recordingDirectory(): string {
+    return join(getHomeDir(), ".wld", "workflow-metrics");
+}
+
+function readRecordingState(): RecordingState | undefined {
+    try {
+        const state: RecordingState = JSON.parse(readFileSync(join(recordingDirectory(), "recording.json"), "utf8"));
+        if (typeof state.generation !== "string" || !state.generation) throw new Error("invalid_recording_generation");
+        if (
+            state.boundaries !== undefined &&
+            (!Array.isArray(state.boundaries) ||
+                !state.boundaries.every(
+                    (boundary) =>
+                        typeof boundary.generation === "string" &&
+                        Number.isFinite(Date.parse(boundary.ts)) &&
+                        typeof boundary.enabled === "boolean",
+                ))
+        )
+            throw new Error("invalid_recording_boundaries");
+        return state;
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+        throw error;
+    }
+}
+
+/** Lock order is journal → recording. The control takes only the recording guard. */
+async function acquireRecordingLock(exclusive: boolean, deadline: number): Promise<NativeFileLock> {
+    const directory = recordingDirectory();
+    mkdirSync(directory, { recursive: true });
+    const guard = openNativeFileLock(join(directory, "recording.guard"));
+    try {
+        while (!guard.tryLockSync(exclusive)) {
+            if (Date.now() >= deadline) throw new Error("lock_timeout");
+            await new Promise((resolve) => setTimeout(resolve, Math.min(20, deadline - Date.now())));
+        }
+        if (Date.now() >= deadline) throw new Error("lock_timeout");
+        return guard;
+    } catch (error) {
+        guard.close();
+        throw error;
+    }
+}
+
+/** Commit consent and a host-wide boundary together. Failure is retryable by the control. */
+export async function setWorkflowMetricsRecording(enabled: boolean): Promise<void> {
+    const guard = await acquireRecordingLock(true, Date.now() + 1000);
+    try {
+        const { getCustomSetting, setCustomSetting } = await import("../settings.js");
+        const saved = getCustomSetting("workflowMetrics", "global");
+        const previous = readRecordingState();
+        const boundary = { generation: crypto.randomUUID(), ts: new Date().toISOString(), enabled };
+        // Commit first: process loss can add a boundary, but cannot erase one.
+        // Retain every control, including periods with no Project appends.
+        replaceSynced(
+            join(recordingDirectory(), "recording.json"),
+            JSON.stringify({
+                generation: boundary.generation,
+                boundaries: [...(previous?.boundaries ?? []), boundary],
+            }) + "\n",
+        );
+        await setCustomSetting(
+            "workflowMetrics",
+            saved && typeof saved === "object" && !Array.isArray(saved) ? { ...saved, enabled } : enabled,
+            "global",
+        );
+    } finally {
+        guard.close();
+    }
+}
+
+/** Materialize the initial history while retaining its pre-first-write alias. */
+function materializeHistory(state: JournalEpochState): void {
+    if (state.historyEpoch !== "initial") return;
+    state.historyEpoch = crypto.randomUUID();
+    state.initialHistoryEpoch = state.historyEpoch;
 }
 
 /** Identity of the next observed enabled interval, captured before queueing. */
@@ -88,6 +208,9 @@ function scanJournalLines(bytes: Uint8Array, state: JournalEpochState): number[]
                 state.outcomeEventOffsets ??= {};
                 state.outcomeEventOffsets[record.eventId] = offset;
             }
+            if (record.event === "history_epoch") delete state.initialHistoryEpoch;
+            if (typeof record.initialHistoryEpoch === "string") state.initialHistoryEpoch = record.initialHistoryEpoch;
+            if (typeof record.recordingGeneration === "string") state.recordingGeneration = record.recordingGeneration;
             if (typeof record.historyEpoch === "string") state.historyEpoch = record.historyEpoch;
             if (record.event === "history_epoch" && typeof record.ts === "string") state.historyStartedAt = record.ts;
             if (
@@ -107,19 +230,34 @@ function scanJournalLines(bytes: Uint8Array, state: JournalEpochState): number[]
 }
 
 /** Read the latest durable epoch, not a process-local settings cache. */
-export function resolveCollectionEpoch(filePath: string, enabledAtCall = false): JournalEpochState {
+export function resolveCollectionEpoch(
+    filePath: string,
+    enabledAtCall = false,
+    projectOverride = false,
+): JournalEpochState {
+    let state: JournalEpochState | undefined;
     try {
-        const intent = JSON.parse(readFileSync(join(dirname(filePath), "clear.json"), "utf8"));
-        return intent.state;
+        const intent: JournalClearIntent = JSON.parse(readFileSync(join(dirname(filePath), "clear.json"), "utf8"));
+        state = intent.state;
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    const state = readJournalState(filePath);
-    const tail = readUncheckedTail(filePath, state);
-    // An incomplete rebuild cannot authorize an observation. The locked writer
-    // advances recovery; a later invocation captures the recovered epoch.
-    if (tail.more) return { ...state, collectionEpoch: { id: "recovering", enabled: false } };
-    scanJournalLines(tail.bytes.subarray(0, tail.end), state);
+    if (!state) {
+        state = readJournalState(filePath);
+        const tail = readUncheckedTail(filePath, state);
+        // An incomplete rebuild cannot authorize an observation. The locked writer
+        // advances recovery; a later invocation captures the recovered epoch.
+        if (tail.more) return { ...state, collectionEpoch: { id: "recovering", enabled: false } };
+        scanJournalLines(tail.bytes.subarray(0, tail.end), state);
+    }
+    const generation = projectOverride ? undefined : readRecordingState()?.generation;
+    if (generation && generation !== state.recordingGeneration) {
+        return {
+            ...state,
+            recordingGeneration: generation,
+            collectionEpoch: { id: `gen:${generation}`, enabled: enabledAtCall },
+        };
+    }
     if (enabledAtCall && !state.collectionEpoch.enabled) {
         return { ...state, collectionEpoch: { id: enabledEpoch(state.collectionEpoch.id), enabled: true } };
     }
@@ -188,7 +326,7 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
     const tornBytes = tail.bytes.length - tail.end;
     state.journalBytes = tail.offset + tail.end;
     if (tornBytes || corruptLines.length) {
-        if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
+        materializeHistory(state);
         const gap =
             JSON.stringify({
                 v: 1,
@@ -198,6 +336,7 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
                 tornBytes,
                 corruptLines,
                 historyEpoch: state.historyEpoch,
+                initialHistoryEpoch: state.initialHistoryEpoch,
             }) + "\n";
         const end = tail.offset + tail.end;
         replaceSynced(intentPath, JSON.stringify({ end, gap }));
@@ -316,8 +455,116 @@ function finishHistoryClear(filePath: string): void {
     removeSynced(intentPath);
 }
 
+interface LegacyMeasurementRow {
+    v: number;
+    event: string;
+    cwdHash?: string;
+    historyEpoch?: string;
+}
+
+/**
+ * Adopt under the old OS guard. Publish a collision split by atomic directory rename,
+ * so a crash cannot expose copied rows before their durable export boundary exists.
+ */
+export function adoptLegacyWorkflowMetricJournal(filePath: string, legacyPath: string, hashes: string[]): void {
+    const directory = dirname(filePath);
+    if (existsSync(directory) || !existsSync(legacyPath)) return;
+    let guard: NativeFileLock;
+    try {
+        guard = openNativeFileLock(join(dirname(legacyPath), ".journal.guard"));
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT" && existsSync(directory)) return;
+        throw error;
+    }
+    try {
+        // Synchronous readers must not block the host event loop behind another writer.
+        if (!guard.tryLockSync(true)) throw new Error("lock_timeout");
+        if (existsSync(directory)) return;
+        if (!existsSync(legacyPath)) throw new Error("legacy_journal_unavailable");
+        finishHistoryClear(legacyPath);
+        const state = readJournalState(legacyPath);
+        const deadline = Date.now() + 1000;
+        do {
+            repairJournalTail(legacyPath, state);
+            if (Date.now() >= deadline) throw new Error("lock_timeout");
+        } while (state.recoveryBytes);
+        // Preserve the checkpoint bytes when no recovery was needed.
+        const text = readFileSync(legacyPath, "utf8");
+        const lines = text.split("\n").filter(Boolean);
+        const rows = lines.map((line) => {
+            try {
+                const row: LegacyMeasurementRow = JSON.parse(line);
+                return row && typeof row.event === "string" ? row : undefined;
+            } catch {
+                return undefined;
+            }
+        });
+        const controls = new Set(["collection_epoch", "history_epoch", "measurement_gap"]);
+        const belongs = (row: LegacyMeasurementRow | undefined): row is LegacyMeasurementRow =>
+            !!row && typeof row.cwdHash === "string" && hashes.includes(row.cwdHash);
+        if (rows.every((row) => !!row && (controls.has(row.event) || belongs(row)))) {
+            renameSync(dirname(legacyPath), directory);
+            syncParentDirectory(directory);
+            return;
+        }
+        const historyEpoch = crypto.randomUUID();
+        const ts = new Date().toISOString();
+        const marker = JSON.stringify({
+            v: 1,
+            event: "measurement_gap",
+            ts,
+            reason: "legacy_shared_journal",
+            historyEpoch,
+        });
+        const copied = rows.filter(belongs).map((row) => JSON.stringify({ ...row, historyEpoch }));
+        const content = [marker, ...copied].join("\n") + "\n";
+        const offset = new TextEncoder().encode(content).length;
+        const staging = `${directory}.adopting-${crypto.randomUUID()}`;
+        mkdirSync(staging, { mode: 0o700 });
+        try {
+            writeSynced(join(staging, "metrics.jsonl"), content);
+            replaceSynced(
+                join(staging, "state.json"),
+                JSON.stringify({
+                    v: 1,
+                    historyEpoch,
+                    collectionEpoch: state.collectionEpoch,
+                    journalBytes: offset,
+                    journalLines: copied.length + 1,
+                }) + "\n",
+            );
+            // The grant reader fences every start that lacks this adoption identity.
+            // Later approvals capture the identity and keep their own offsets.
+            replaceSynced(
+                join(staging, "legacy-adoption.json"),
+                JSON.stringify({
+                    legacyHistoryEpoch: state.historyEpoch,
+                    historyEpoch,
+                    offset,
+                }) + "\n",
+            );
+            renameSync(staging, directory);
+            syncParentDirectory(directory);
+        } finally {
+            rmSync(staging, { recursive: true, force: true });
+        }
+    } catch (error) {
+        if (
+            error instanceof Error &&
+            "code" in error &&
+            ["ENOENT", "ENOTEMPTY", "EEXIST"].includes(String(error.code)) &&
+            existsSync(directory)
+        )
+            return;
+        throw error;
+    } finally {
+        guard.close();
+    }
+}
+
 /** Run a short authorization under the same guard as append and clear.
- * The callback must not perform network I/O or acquire an export send lock.
+ * The callback must not await network I/O; may hand an authorized request to a pre-spawned worker.
+ * It must not acquire an export send lock.
  */
 export async function withWorkflowMetricJournalLock<T>(
     filePath: string,
@@ -332,7 +579,7 @@ export async function withWorkflowMetricJournalLock<T>(
             repairJournalTail(filePath, state);
             // A first grant also needs a stable history identity. Otherwise the first
             // append looks like a post-grant clear and bypasses execution start checks.
-            if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
+            materializeHistory(state);
             replaceSynced(join(dirname(filePath), "state.json"), JSON.stringify(state) + "\n");
             if (lock.compromised) throw new Error("journal_unavailable");
             if (!state.recoveryBytes) return await run(state.historyEpoch);
@@ -356,11 +603,11 @@ function resumeJournalRecovery(filePath: string): void {
 }
 
 /** Remove only one Project's measurement history; failure is explicit and retryable. */
-export async function clearWorkflowMetricJournal(filePath: string): Promise<JournalResult> {
+export async function clearWorkflowMetricJournal(filePath: string, projectRoot: string): Promise<JournalResult> {
     try {
         return await withWorkflowMetricJournalLock(filePath, async () => {
             const previous = readJournalState(filePath);
-            const deliveryInFlight = await metricsDeliveryInFlightForJournal(filePath).catch(() => true);
+            const deliveryInFlight = await metricsDeliveryInFlightForJournal(projectRoot).catch(() => true);
             const historyEpoch = crypto.randomUUID();
             const historyStartedAt = new Date().toISOString();
             const marker =
@@ -371,12 +618,14 @@ export async function clearWorkflowMetricJournal(filePath: string): Promise<Jour
                     historyEpoch,
                     collectionEpoch: previous.collectionEpoch.id,
                     enabled: previous.collectionEpoch.enabled,
+                    recordingGeneration: previous.recordingGeneration,
                 }) + "\n";
             const state: JournalEpochState = {
                 v: 1,
                 historyEpoch,
                 historyStartedAt,
                 collectionEpoch: previous.collectionEpoch,
+                recordingGeneration: previous.recordingGeneration,
                 journalBytes: new TextEncoder().encode(marker).length,
                 journalLines: 1,
             };
@@ -408,14 +657,16 @@ export async function appendWorkflowMetric<T>(
         historyEpoch: invocation.historyEpoch,
     };
     let lock: JournalLock | undefined;
+    let recordingLock: NativeFileLock | undefined;
     try {
-        const { getMergedCustomSetting } = await import("../settings.js");
+        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.js");
         // Do not create a journal for an opt-out installation.
-        if (!invocation.enabled && invocation.epoch === "initial") {
+        if (!invocation.enabled && (invocation.epoch === "initial" || !existsSync(filePath))) {
             return { ...failedRecord, persisted: false, reason: "disabled" };
         }
         const directory = dirname(filePath);
         lock = await acquireJournalLock(filePath, invocation.deadline);
+        recordingLock = await acquireRecordingLock(false, invocation.deadline);
         finishHistoryClear(filePath);
         const enabled = isWorkflowMetricsEnabled(getMergedCustomSetting("workflowMetrics", projectRoot));
         const state = readJournalState(filePath);
@@ -426,16 +677,55 @@ export async function appendWorkflowMetric<T>(
             resumeJournalRecovery(filePath);
             return { ...failedRecord, persisted: false, reason: "recovery_pending" };
         }
-        if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
+        materializeHistory(state);
+        const recording = !hasWorkflowMetricsEnablementOverride(
+            getCustomSetting("workflowMetrics", "project", projectRoot),
+        )
+            ? readRecordingState()
+            : undefined;
+        const generation = recording?.generation;
+        if (generation && generation !== state.recordingGeneration) {
+            const boundaries = recording.boundaries ?? [];
+            const previous = boundaries.findIndex((boundary) => boundary.generation === state.recordingGeneration);
+            const pending = boundaries.slice(previous + 1);
+            const historyStartedAt =
+                state.historyStartedAt ?? (state.journalBytes === 0 ? new Date().toISOString() : undefined);
+            const historyStart = historyStartedAt ? Date.parse(historyStartedAt) : -Infinity;
+            for (const [index, boundary] of pending.entries()) {
+                // New and cleared histories retain only the state at their collection start.
+                const beforeStart = Date.parse(boundary.ts) < historyStart;
+                const next = pending[index + 1];
+                if (beforeStart && next && Date.parse(next.ts) <= historyStart) continue;
+                state.collectionEpoch = { id: `gen:${boundary.generation}`, enabled: boundary.enabled };
+                state.recordingGeneration = boundary.generation;
+                entries.push({
+                    v: 1,
+                    event: "collection_epoch",
+                    ts: beforeStart ? historyStartedAt : boundary.ts,
+                    collectionEpoch: state.collectionEpoch.id,
+                    enabled: boundary.enabled,
+                    historyEpoch: state.historyEpoch,
+                    initialHistoryEpoch: state.initialHistoryEpoch,
+                    recordingGeneration: state.recordingGeneration,
+                });
+            }
+        }
+        const generationChanged = !!generation && generation !== state.recordingGeneration;
         if (
+            generationChanged ||
             enabled !== state.collectionEpoch.enabled ||
             (state.collectionEpoch.id === "initial" && invocation.enabled && !enabled)
         ) {
             // The pending enabled identity is shared by calls made after enablement.
             state.collectionEpoch = {
-                id: enabled ? enabledEpoch(state.collectionEpoch.id) : crypto.randomUUID(),
+                id: generationChanged
+                    ? `gen:${generation}`
+                    : enabled
+                      ? enabledEpoch(state.collectionEpoch.id)
+                      : crypto.randomUUID(),
                 enabled,
             };
+            if (generationChanged) state.recordingGeneration = generation;
             entries.push({
                 v: 1,
                 event: "collection_epoch",
@@ -443,6 +733,8 @@ export async function appendWorkflowMetric<T>(
                 collectionEpoch: state.collectionEpoch.id,
                 enabled,
                 historyEpoch: state.historyEpoch,
+                initialHistoryEpoch: state.initialHistoryEpoch,
+                recordingGeneration: state.recordingGeneration,
             });
         }
         if (entries.length) {
@@ -459,15 +751,14 @@ export async function appendWorkflowMetric<T>(
         ) {
             return { ...failedRecord, persisted: false, reason: "collection_boundary" };
         }
-        if (
-            invocation.historyEpoch &&
-            invocation.historyEpoch !== "initial" &&
-            invocation.historyEpoch !== state.historyEpoch
-        ) {
+        const initialAlias =
+            invocation.historyEpoch === "initial" &&
+            (state.historyEpoch === "initial" || state.historyEpoch === state.initialHistoryEpoch);
+        if (invocation.historyEpoch && !initialAlias && invocation.historyEpoch !== state.historyEpoch) {
             return { ...failedRecord, persisted: false, reason: "history_boundary" };
         }
         if (
-            invocation.historyEpoch !== "initial" &&
+            !initialAlias &&
             state.historyStartedAt &&
             record !== null &&
             typeof record === "object" &&
@@ -504,7 +795,12 @@ export async function appendWorkflowMetric<T>(
             }
         }
         const observationOffset = state.journalBytes;
-        const saved = { ...record, collectionEpoch: state.collectionEpoch.id, historyEpoch: state.historyEpoch };
+        const saved = {
+            ...record,
+            collectionEpoch: state.collectionEpoch.id,
+            historyEpoch: state.historyEpoch,
+            ...(state.initialHistoryEpoch ? { initialHistoryEpoch: state.initialHistoryEpoch } : {}),
+        };
         writeSynced(filePath, JSON.stringify(saved) + "\n", true);
         state.journalBytes = statSync(filePath).size;
         state.journalLines = (state.journalLines ?? 0) + 1;
@@ -525,6 +821,7 @@ export async function appendWorkflowMetric<T>(
             reason: error instanceof Error && error.message === "lock_timeout" ? "lock_timeout" : "storage_failure",
         };
     } finally {
+        recordingLock?.close();
         lock?.close();
     }
 }

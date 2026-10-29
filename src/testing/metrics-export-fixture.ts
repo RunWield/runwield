@@ -169,7 +169,9 @@ export async function withMetricsExportFixture(run: (fixture: MetricsExportFixtu
                                 ? "execution"
                                 : event === "tool_call_finished"
                                   ? "tool_usage"
-                                  : "model_usage",
+                                  : event === "publication_confirmed" || event === "workflow_abandoned"
+                                    ? "recovery"
+                                    : "model_usage",
                             executionId,
                             sessionId: "raw-session-id",
                             planId: "raw-plan-id",

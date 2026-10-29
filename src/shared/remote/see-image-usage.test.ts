@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
+import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 
 test("bounded remote see_image records vision requests, not verification turns", async (t) => {
@@ -33,6 +34,18 @@ test("bounded remote see_image records vision requests, not verification turns",
         let visionResponse = fauxAssistantMessage(fauxText("remote vision"));
         let networkFailure = false;
         const stream: ProviderStreams["streamSimple"] = (model) => {
+            if (model.id === "vision") {
+                const now = Date.now();
+                const pending = new UsageReporter().query(
+                    [fixture.projectRoot],
+                    {
+                        start: new Date(now).toISOString().slice(0, 10),
+                        end: new Date(now + 86400000).toISOString().slice(0, 10),
+                    },
+                    "UTC",
+                );
+                assertEquals(pending.projects[0].incomplete.length, 1);
+            }
             if (model.id === "vision" && networkFailure) throw new Error("Network unavailable");
             const result = createAssistantMessageEventStream();
             const reply =
@@ -119,8 +132,8 @@ test("bounded remote see_image records vision requests, not verification turns",
                     assertStringIncludes(JSON.stringify(session.messages), "remote vision");
                     const journal = await fixture.readMetrics();
                     assertEquals(
-                        journal.some((record) => record.event === "execution_started"),
-                        false,
+                        journal.filter((record) => record.event === "execution_started").length,
+                        journal.filter((record) => record.event === "model_usage").length,
                     );
                     const records = journal.filter((record) => record.event === "model_usage");
                     assertEquals(records.length, 1);
@@ -148,8 +161,8 @@ test("bounded remote see_image records vision requests, not verification turns",
                     assertStringIncludes(JSON.stringify(session.messages), "vision without usage");
                     const journal = await fixture.readMetrics();
                     assertEquals(
-                        journal.some((record) => record.event === "execution_started"),
-                        false,
+                        journal.filter((record) => record.event === "execution_started").length,
+                        journal.filter((record) => record.event === "model_usage").length,
                     );
                     const records = journal.filter((record) => record.event === "model_usage");
                     assertEquals(records.length, 2);
@@ -167,15 +180,15 @@ test("bounded remote see_image records vision requests, not verification turns",
                     await session.prompt("Describe shot.png without cost");
                     const journal = await fixture.readMetrics();
                     assertEquals(
-                        journal.some((record) => record.event === "execution_started"),
-                        false,
+                        journal.filter((record) => record.event === "execution_started").length,
+                        journal.filter((record) => record.event === "model_usage").length,
                     );
                     const records = journal.filter((record) => record.event === "model_usage");
                     assertEquals(records.length, 3);
                     assertEquals(records[2].costAmount, null);
                     assertEquals(records[2].costSource, "unavailable");
                 });
-                await t.test("errored remote vision does not add fabricated usage", async () => {
+                await t.test("errored remote vision retains partial response usage", async () => {
                     visionResponse = fauxAssistantMessage(fauxText(""), {
                         stopReason: "error",
                         errorMessage: "Provider failed",
@@ -183,16 +196,59 @@ test("bounded remote see_image records vision requests, not verification turns",
                     await session.prompt("Describe shot.png with provider error");
                     assertEquals(
                         (await fixture.readMetrics()).filter((record) => record.event === "model_usage").length,
-                        3,
+                        4,
                     );
+                    const rows = await fixture.readMetrics();
+                    const usage = rows.filter((row) => row.event === "model_usage").at(-1)!;
+                    assertEquals(usage.measurementAvailability, "partial");
+                    assertEquals(usage.unavailableReason, "source_unavailable");
                 });
-                await t.test("remote network failure does not add fabricated usage", async () => {
+                await t.test("aborted remote vision records unavailable usage", async () => {
+                    visionResponse = fauxAssistantMessage(fauxText(""), { stopReason: "aborted" });
+                    Reflect.deleteProperty(visionResponse, "usage");
+                    await session.prompt("Describe shot.png with abort");
+                    const rows = await fixture.readMetrics();
+                    const usage = rows.filter((row) => row.event === "model_usage").at(-1)!;
+                    assertEquals(usage.measurementAvailability, "unavailable");
+                    assertEquals(usage.unavailableReason, "source_unavailable");
+                });
+                await t.test("remote network failure records incomplete usage", async () => {
                     networkFailure = true;
                     await session.prompt("Describe shot.png with network error");
                     assertEquals(
                         (await fixture.readMetrics()).filter((record) => record.event === "model_usage").length,
-                        3,
+                        6,
                     );
+                    const rows = await fixture.readMetrics();
+                    const usage = rows.filter((row) => row.event === "model_usage").at(-1)!;
+                    // The upstream runtime turns the thrown provider error into an error
+                    // response with zero usage. It must never be complete measurement.
+                    assertEquals(usage.measurementAvailability === "complete", false);
+                    assertEquals(usage.unavailableReason, "source_unavailable");
+                    const starts = rows.filter((row) => row.event === "execution_started");
+                    const finishes = rows.filter((row) => row.event === "execution_finished");
+                    assertEquals(starts.length, 6);
+                    assertEquals(finishes.length, 6);
+                    assertEquals(new Set(starts.map((row) => row.executionId)).size, 6);
+                    for (const start of starts) {
+                        assertEquals(start.dispatchKind, "auxiliary");
+                        assertEquals(start.userInitiated, false);
+                        assertEquals(
+                            finishes.some((finish) => finish.executionId === start.executionId),
+                            true,
+                        );
+                    }
+                    const now = Date.now();
+                    const report = new UsageReporter().query(
+                        [fixture.projectRoot],
+                        {
+                            start: new Date(now).toISOString().slice(0, 10),
+                            end: new Date(now + 86400000).toISOString().slice(0, 10),
+                        },
+                        "UTC",
+                    );
+                    assertEquals(report.totals.activeDays, 0);
+                    assertEquals(report.totals.tokens.exclusions > 0, true);
                 });
             } finally {
                 session.dispose();

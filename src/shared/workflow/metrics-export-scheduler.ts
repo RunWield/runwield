@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync, readdirSync } from "node:fs";
 import { readFileSync } from "node:fs";
 /** Journal discovery, serialized authorization, bounded delivery, and public status. */
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import {
     resolveApprovedMetricsExporters,
 } from "../extensions/metrics-exporter.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath, MeasurementProjectUnavailableError } from "./metrics.js";
 import { resolveCollectionEpoch, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import {
     grantMatchesExporter,
@@ -32,6 +32,7 @@ import {
 } from "./metrics-export-record.ts";
 import {
     exportDestinationDirectory,
+    metricsExportDirectory,
     replaceExportFile,
     tryExportLock,
     withExportConfigurationLock,
@@ -50,7 +51,7 @@ interface ProjectCursor {
     startOffset: number;
     historyEpoch: string;
     offset: number;
-    excludedExecutions?: string[];
+    startedExecutions?: string[];
     pending: PendingPosition[];
 }
 interface CursorFile {
@@ -132,7 +133,7 @@ function scanProject(
         previous.startEpoch === project.historyEpoch &&
         previous.startOffset === project.offset &&
         previous.historyEpoch === epoch &&
-        previous.excludedExecutions
+        previous.startedExecutions
             ? structuredClone(previous)
             : {
                   grantId: grant.grantId,
@@ -142,23 +143,18 @@ function scanProject(
                   offset: epoch === project.historyEpoch ? project.offset : 0,
                   pending: [],
               };
-    // Only a recorded start before consent excludes an execution. Auxiliary
-    // recorders without starts use the row offset, like rows without execution IDs.
-    cursor.excludedExecutions ??=
-        epoch === project.historyEpoch
-            ? readRows(getWorkflowMetricsFilePath(project.projectRoot), 0, false, project.offset)
-                  .filter(({ row }) => row.v === 2 && row.historyEpoch === epoch && row.event === "execution_started")
-                  .flatMap(({ row }) => (row.executionId ? [row.executionId] : []))
-            : [];
-    const excludedExecutions = new Set(cursor.excludedExecutions);
+    cursor.startedExecutions ??= [];
+    const startedExecutions = new Set(cursor.startedExecutions);
     for (const positioned of readRows(getWorkflowMetricsFilePath(project.projectRoot), cursor.offset)) {
         cursor.offset = positioned.end;
         const row = positioned.row;
         if (row.v !== 2 || row.historyEpoch !== epoch) continue;
-        if (isExportableMetric(row) && (!row.executionId || !excludedExecutions.has(row.executionId))) {
+        if (row.event === "execution_started" && row.executionId) startedExecutions.add(row.executionId);
+        if (isExportableMetric(row) && (!row.executionId || startedExecutions.has(row.executionId))) {
             cursor.pending.push({ offset: positioned.offset, eventId: row.eventId });
         }
     }
+    cursor.startedExecutions = [...startedExecutions];
     return cursor;
 }
 function rowAt(path: string, position: PendingPosition, epoch: string): MetricsJournalRow | null {
@@ -176,68 +172,156 @@ function code(value?: string): string | undefined {
           ? value
           : "unrecognized";
 }
-function callExporter(
-    entryPath: string,
-    method: "deliver" | "confirm",
-    observation: MetricsExportObservation,
-    context: MetricsExportContext,
-    signal?: AbortSignal,
-): Promise<WorkerResult> {
-    return new Promise((resolve) => {
-        const worker = new Worker(new URL("./metrics-exporter-worker.ts", import.meta.url).href, { type: "module" });
-        let finished = false;
-        const finish = (result: WorkerResult) => {
-            if (finished) return;
-            finished = true;
-            clearTimeout(timer);
-            signal?.removeEventListener("abort", abort);
-            worker.terminate();
-            resolve(result);
-        };
-        const abort = () => finish({ outcome: "uncertain", code: "shutdown" });
-        const timer = setTimeout(
-            () => finish({ outcome: "uncertain", code: "deadline" }),
-            Math.max(0, context.deadline - Date.now()),
-        );
-        worker.onerror = (event) => {
+/** A pre-spawned worker has no authority until the locked dispatch hands it a request. */
+export class PreparedMetricsExportRequest {
+    private worker = new Worker(new URL("./metrics-exporter-worker.ts", import.meta.url).href, { type: "module" });
+    private stop = () => this.worker.terminate();
+    private dispatched = false;
+    private canceled = false;
+    constructor(
+        readonly exporter: InstalledMetricsExporter,
+        readonly method: "deliver" | "confirm",
+        readonly row: MetricsJournalRow,
+        private observation: MetricsExportObservation,
+        private signal?: AbortSignal,
+    ) {
+        this.worker.onerror = (event) => {
             event.preventDefault();
-            finish({ outcome: "uncertain", code: "worker_exit" });
+            this.cancel();
         };
-        worker.onmessageerror = () => finish({ outcome: "uncertain", code: "malformed_result" });
-        worker.onmessage = ({ data }) => {
-            const result: WorkerResult = data;
-            if (
-                !result ||
-                typeof result !== "object" ||
-                (method === "deliver" &&
-                    !(
-                        result.outcome === "accepted" ||
-                        result.outcome === "uncertain" ||
-                        (result.outcome === "not_accepted" &&
-                            ["retryable", "needs_correction", "permanent"].includes(result.retry ?? ""))
-                    )) ||
-                (method === "confirm" &&
-                    !["present", "not_found_yet", "mismatch", "unsupported"].includes(result.status ?? ""))
-            ) {
-                finish({ outcome: "uncertain", code: "malformed_result" });
-            } else {
-                finish({
-                    outcome: result.outcome,
-                    retry: result.retry,
-                    code: code(result.code),
-                    status: result.status,
-                });
-            }
-        };
-        signal?.addEventListener("abort", abort, { once: true });
-        if (signal?.aborted) {
-            abort();
-            return;
+        signal?.addEventListener("abort", this.cancel, { once: true });
+        if (signal?.aborted) this.cancel();
+    }
+    cancel = () => {
+        this.canceled = true;
+        this.signal?.removeEventListener("abort", this.cancel);
+        this.stop();
+    };
+    dispatch(context: MetricsExportContext): Promise<WorkerResult> {
+        if (this.dispatched || this.canceled || this.signal?.aborted) {
+            this.cancel();
+            return Promise.resolve({ outcome: "uncertain", code: "shutdown" });
         }
-        const request: MetricsExporterRequest = { entryPath, method, observation, context };
-        worker.postMessage(request);
-    });
+        this.dispatched = true;
+        return new Promise((resolve) => {
+            let finished = false;
+            const finish = (result: WorkerResult) => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                this.cancel();
+                resolve(result);
+            };
+            this.stop = () => {
+                this.worker.terminate();
+                if (!finished) finish({ outcome: "uncertain", code: "shutdown" });
+            };
+            const timer = setTimeout(
+                () => finish({ outcome: "uncertain", code: "deadline" }),
+                Math.max(0, context.deadline - Date.now()),
+            );
+            this.worker.onerror = (event) => {
+                event.preventDefault();
+                finish({ outcome: "uncertain", code: "worker_exit" });
+            };
+            this.worker.onmessageerror = () => finish({ outcome: "uncertain", code: "malformed_result" });
+            this.worker.onmessage = ({ data }) => {
+                const result: WorkerResult = data;
+                if (
+                    !result ||
+                    typeof result !== "object" ||
+                    (this.method === "deliver" &&
+                        !(
+                            result.outcome === "accepted" ||
+                            result.outcome === "uncertain" ||
+                            (result.outcome === "not_accepted" &&
+                                ["retryable", "needs_correction", "permanent"].includes(result.retry ?? ""))
+                        )) ||
+                    (this.method === "confirm" &&
+                        !["present", "not_found_yet", "mismatch", "unsupported"].includes(result.status ?? ""))
+                ) {
+                    finish({ outcome: "uncertain", code: "malformed_result" });
+                } else {
+                    finish({
+                        outcome: result.outcome,
+                        retry: result.retry,
+                        code: code(result.code),
+                        status: result.status,
+                    });
+                }
+            };
+            const request: MetricsExporterRequest = {
+                entryPath: this.exporter.entryPath,
+                method: this.method,
+                observation: this.observation,
+                context,
+            };
+            try {
+                this.worker.postMessage(request);
+            } catch {
+                finish({ outcome: "uncertain", code: "worker_exit" });
+            }
+        });
+    }
 }
+
+interface DispatchOptions {
+    prepared: PreparedMetricsExportRequest;
+    grant: MetricsExportDestinationGrant;
+    project: MetricsExportProjectStart;
+    path: string;
+    position: PendingPosition;
+    historyEpoch: string;
+    projectRef: string;
+    journalRef: string;
+    previous?: MetricsDeliveryItem;
+    signal?: AbortSignal;
+    deadlineMs?: number;
+}
+/** Caller holds configuration and journal locks. Never await pending until both locks are released. */
+export function authorizeAndDispatchMetricsExport(options: DispatchOptions, epoch: string) {
+    const { prepared, grant, project, path, position, previous } = options;
+    const row = rowAt(path, position, epoch);
+    if (
+        epoch !== options.historyEpoch ||
+        options.signal?.aborted ||
+        !metricsExporterStillApproved(prepared.exporter) ||
+        !currentProject(grant, project) ||
+        !row ||
+        row.eventId !== prepared.row.eventId ||
+        row.historyEpoch !== prepared.row.historyEpoch
+    ) {
+        prepared.cancel();
+        return null;
+    }
+    const credentials = readMetricsExportCredentials(grant.destinationId);
+    const intent: MetricsDeliveryItem =
+        prepared.method === "confirm" && previous
+            ? { ...previous, confirming: true, confirmations: previous.confirmations + 1 }
+            : {
+                  eventId: row.eventId,
+                  attemptId: crypto.randomUUID(),
+                  grantId: grant.grantId,
+                  projectRef: options.projectRef,
+                  journalRef: options.journalRef,
+                  historyEpoch: epoch,
+                  offset: position.offset,
+                  state: "sending",
+                  at: new Date().toISOString(),
+                  credentialsRevision: credentials.revision,
+                  attempts: (previous?.attempts ?? 0) + 1,
+                  confirmations: 0,
+              };
+    appendMetricsExportLedger(grant.destinationId, intent);
+    const pending = prepared.dispatch({
+        endpoint: grant.endpoint,
+        externalProject: grant.externalProject,
+        credentials: credentials.credentials,
+        deadline: Date.now() + (options.deadlineMs ?? METRICS_EXPORT_DEADLINE_MS),
+    });
+    return { intent, pending };
+}
+
 /** Inventory can use asynchronous package APIs. Cancel it without holding authorization locks. */
 async function findApprovedExporter(
     grant: MetricsExportDestinationGrant,
@@ -292,9 +376,56 @@ function retainPending(item: MetricsDeliveryItem): boolean {
     return item.state === "pending" || (item.state === "rejected" && item.retry === "needs_correction");
 }
 
+function recoverAbandonedDeliveries(destinationId: string) {
+    const ledger = readMetricsExportLedger(destinationId);
+    for (const [key, item] of ledger) {
+        if (item.state !== "sending" && !item.confirming) continue;
+        const lost: MetricsDeliveryItem =
+            item.state === "sending"
+                ? {
+                      ...item,
+                      state: "unconfirmed",
+                      code: "process_lost",
+                      at: new Date().toISOString(),
+                  }
+                : { ...item, confirming: false };
+        appendMetricsExportLedger(destinationId, lost);
+        ledger.set(key, lost);
+    }
+    return ledger;
+}
+function recoverAllDestinations(): void {
+    let entries;
+    try {
+        entries = readdirSync(join(metricsExportDirectory(), "destinations"), { withFileTypes: true });
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+        throw error;
+    }
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const lock = tryExportLock(join(exportDestinationDirectory(entry.name), ".send.lock"));
+        if (!lock) continue;
+        try {
+            recoverAbandonedDeliveries(entry.name);
+        } finally {
+            lock.close();
+        }
+    }
+}
+
 export async function runMetricsExportCycle(options: CycleOptions = {}): Promise<void> {
     if (remotePersonalResourcesActive() || options.signal?.aborted) return;
-    const grants = readMetricsExportGrants();
+    recoverAllDestinations();
+    let grants: MetricsExportDestinationGrant[];
+    try {
+        grants = readMetricsExportGrants();
+    } catch (error) {
+        // Another process can hold the legacy adoption guard during discovery.
+        // Leave consent and delivery positions intact for the next cycle.
+        if (error instanceof MeasurementProjectUnavailableError) return;
+        throw error;
+    }
     if (!grants.length) return;
     const identity = await readMetricsExportHostIdentity();
     for (const grant of grants) {
@@ -303,21 +434,7 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
         const lock = tryExportLock(join(directory, ".send.lock"));
         if (!lock) continue;
         try {
-            const ledger = readMetricsExportLedger(grant.destinationId);
-            for (const [key, item] of ledger) {
-                if (item.state !== "sending" && !item.confirming) continue;
-                const lost: MetricsDeliveryItem =
-                    item.state === "sending"
-                        ? {
-                              ...item,
-                              state: "unconfirmed",
-                              code: "process_lost",
-                              at: new Date().toISOString(),
-                          }
-                        : { ...item, confirming: false };
-                appendMetricsExportLedger(grant.destinationId, lost);
-                ledger.set(key, lost);
-            }
+            const ledger = recoverAbandonedDeliveries(grant.destinationId);
             const cursors = readCursor(grant.destinationId);
             for (const project of grant.projects) {
                 if (options.signal?.aborted || !currentProject(grant, project)) break;
@@ -343,66 +460,53 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                     }
                     const exporter = await findApprovedExporter(grant, options.signal);
                     if (!exporter || options.signal?.aborted) continue;
-                    // Configuration edits use configuration -> journal ordering too. Revoke cannot
-                    // commit between the final consent read and the durable intent.
-                    const authorized = await withExportConfigurationLock(
-                        () =>
-                            withWorkflowMetricJournalLock(
-                                path,
-                                (epoch) => {
-                                    if (epoch !== cursor.historyEpoch || options.signal?.aborted) return null;
-                                    const fresh = currentProject(grant, project);
-                                    if (!metricsExporterStillApproved(exporter) || !fresh) return null;
-                                    const row = rowAt(path, position, epoch);
-                                    if (!row) return null;
-                                    const credentials = readMetricsExportCredentials(grant.destinationId);
-                                    const intent: MetricsDeliveryItem = {
-                                        eventId: row.eventId,
-                                        attemptId: crypto.randomUUID(),
-                                        grantId: grant.grantId,
-                                        projectRef,
-                                        journalRef,
-                                        historyEpoch: epoch,
-                                        offset: position.offset,
-                                        state: "sending",
-                                        at: new Date().toISOString(),
-                                        credentialsRevision: credentials.revision,
-                                        attempts: (previous?.attempts ?? 0) + 1,
-                                        confirmations: 0,
-                                    };
-                                    appendMetricsExportLedger(grant.destinationId, intent);
-                                    ledger.set(key, intent);
-                                    return { row, exporter, credentials, intent };
-                                },
-                                options.signal,
-                            ),
+                    const candidate = rowAt(path, position, cursor.historyEpoch);
+                    const observation = candidate
+                        ? await buildMetricsExportObservation(candidate, project.projectRoot, identity)
+                        : null;
+                    if (!candidate || !observation) continue;
+                    const prepared = new PreparedMetricsExportRequest(
+                        exporter,
+                        "deliver",
+                        candidate,
+                        observation,
                         options.signal,
                     );
-                    if (!authorized) continue;
-                    const observation = await buildMetricsExportObservation(
-                        authorized.row,
-                        project.projectRoot,
-                        identity,
-                    );
-                    if (!observation) throw new Error("Invalid export candidate");
-                    const context: MetricsExportContext = {
-                        endpoint: grant.endpoint,
-                        externalProject: grant.externalProject,
-                        credentials: authorized.credentials.credentials,
-                        deadline: Date.now() + (options.deadlineMs ?? METRICS_EXPORT_DEADLINE_MS),
-                    };
-                    let result: WorkerResult;
+                    let authorized;
                     try {
-                        result = await callExporter(
-                            authorized.exporter.entryPath,
-                            "deliver",
-                            observation,
-                            context,
+                        // Lock order: send -> configuration -> journal. Dispatch is synchronous;
+                        // only the returned object's pending field waits for network I/O.
+                        authorized = await withExportConfigurationLock(
+                            () =>
+                                withWorkflowMetricJournalLock(
+                                    path,
+                                    (epoch) =>
+                                        authorizeAndDispatchMetricsExport(
+                                            {
+                                                prepared,
+                                                grant,
+                                                project,
+                                                path,
+                                                position,
+                                                historyEpoch: cursor.historyEpoch,
+                                                projectRef,
+                                                journalRef,
+                                                previous,
+                                                ...options,
+                                            },
+                                            epoch,
+                                        ),
+                                    options.signal,
+                                ),
                             options.signal,
                         );
                     } catch {
-                        result = { outcome: "uncertain", code: "worker_exit" };
+                        prepared.cancel();
+                        throw new Error("Export authorization failed");
                     }
+                    if (!authorized) continue;
+                    ledger.set(key, authorized.intent);
+                    const result = await authorized.pending;
                     const settlement: MetricsDeliveryItem = {
                         ...authorized.intent,
                         state:
@@ -448,57 +552,46 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                         ? await buildMetricsExportObservation(candidate, project.projectRoot, identity)
                         : null;
                     if (!observation) continue;
-                    const authorized = await withExportConfigurationLock(
-                        () =>
-                            withWorkflowMetricJournalLock(
-                                path,
-                                (epoch) => {
-                                    if (
-                                        epoch !== item.historyEpoch ||
-                                        options.signal?.aborted ||
-                                        !metricsExporterStillApproved(exporter)
-                                    )
-                                        return null;
-                                    const row = rowAt(path, { offset: item.offset, eventId: item.eventId }, epoch);
-                                    if (!row) return null;
-                                    if (!currentProject(grant, project) || options.signal?.aborted) return null;
-                                    // Count the check before I/O, so a crash cannot evade the three-check cap.
-                                    const intent: MetricsDeliveryItem = {
-                                        ...item,
-                                        confirming: true,
-                                        confirmations: item.confirmations + 1,
-                                    };
-                                    appendMetricsExportLedger(grant.destinationId, intent);
-                                    ledger.set(key, intent);
-                                    return {
-                                        exporter,
-                                        observation,
-                                        intent,
-                                        credentials: readMetricsExportCredentials(grant.destinationId).credentials,
-                                    };
-                                },
-                                options.signal,
-                            ),
+                    const prepared = new PreparedMetricsExportRequest(
+                        exporter,
+                        "confirm",
+                        candidate!,
+                        observation,
                         options.signal,
                     );
-                    if (!authorized) continue;
-                    let result: WorkerResult;
+                    let authorized;
                     try {
-                        result = await callExporter(
-                            authorized.exporter.entryPath,
-                            "confirm",
-                            authorized.observation,
-                            {
-                                endpoint: grant.endpoint,
-                                externalProject: grant.externalProject,
-                                credentials: authorized.credentials,
-                                deadline: Date.now() + (options.deadlineMs ?? METRICS_EXPORT_DEADLINE_MS),
-                            },
+                        authorized = await withExportConfigurationLock(
+                            () =>
+                                withWorkflowMetricJournalLock(
+                                    path,
+                                    (epoch) =>
+                                        authorizeAndDispatchMetricsExport(
+                                            {
+                                                prepared,
+                                                grant,
+                                                project,
+                                                path,
+                                                position: { offset: item.offset, eventId: item.eventId },
+                                                historyEpoch: item.historyEpoch,
+                                                projectRef,
+                                                journalRef,
+                                                previous: item,
+                                                ...options,
+                                            },
+                                            epoch,
+                                        ),
+                                    options.signal,
+                                ),
                             options.signal,
                         );
                     } catch {
-                        result = { status: "not_found_yet" };
+                        prepared.cancel();
+                        throw new Error("Export authorization failed");
                     }
+                    if (!authorized) continue;
+                    ledger.set(key, authorized.intent);
+                    const result = await authorized.pending;
                     const confirmation: MetricsDeliveryItem = {
                         ...authorized.intent,
                         confirming: false,

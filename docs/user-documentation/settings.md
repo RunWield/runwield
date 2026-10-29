@@ -518,7 +518,7 @@ These keys are read by RunWield outside the upstream Pi `SettingsManager` schema
 | `workRecords.autoGenerateOnPlanCompletion` | boolean           | default `true`                                  | global + project | Writes a Work Record when a Plan finishes. Only `false` turns it off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `mascot`                                   | boolean           | default `true`                                  | global + project | Hides the agent mascot in TUI and Workspace when false.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `notifications`                            | object            | enabled by default                              | global + project | Attention notifications. TUI uses terminal BEL/OSC for agent stops, `plan_written`, `user_interview`, and `/compact`. Workspace uses browser alerts for live `agentStopped` events. Focused surfaces stay quiet by default.                                                                                                                                                                                                                                                                                                            |
-| `workflowMetrics`                          | boolean or object | default disabled                                | global + project | Opt-in local-only JSONL workflow metrics under `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked worktrees write to the primary project file. Accepts `true` or `{ "enabled": true }`.                                                                                                                                                                                                                                                                                                                            |
+| `workflowMetrics`                          | boolean or object | default disabled                                | global + project | Opt-in local JSONL workflow metrics under `~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl`. Linked worktrees write to the primary project file. Accepts `true` or `{ "enabled": true }`.                                                                                                                                                                                                                                                                                                                       |
 | `planServerUrl`                            | string            | unset                                           | global + project | Default Plan Server for `wld plans share`. See [`planServerUrl`](#planserverurl).                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `enableExternalSkills`                     | boolean           | default `true`                                  | global           | When true, RunWield includes project `.agents/skills` and home `~/.agents/skills`. When false, it omits both folders. External skills cannot conflict with bundled names or aliases.                                                                                                                                                                                                                                                                                                                                                   |
 | `enableExternalGlobalAgentsMd`             | boolean           | default `true`                                  | global           | When true, global prompt loading includes `~/.agents/AGENTS.md` after `~/.wld/RUNWIELD.md` and `~/.wld/AGENTS.md`.                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -538,21 +538,32 @@ writes no metrics until you turn it on. Either form enables it:
 { "workflowMetrics": { "enabled": true } }
 ```
 
-Metrics are record-only in this release. RunWield has no reporting UI, CLI summary, or analytics sync. Nothing is
-uploaded, and nothing is backfilled for activity before you enabled the setting.
+The Workspace Usage page reports collected usage and lets you clear selected Project history. Recording stays local
+unless you separately approve an exporter package and grant export to a destination for selected Projects. Recording
+alone does not authorize upload. Activity before enablement is not backfilled.
+
+The Workspace recording control commits a collection boundary. Work started while recording was off, or before a
+later recording boundary or history clear, cannot enter the new history. Direct settings-file edits are observed when
+Core next records activity.
 
 #### Where records go
 
 RunWield appends one JSON object per line to:
 
 ```text
-~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl
+~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl
 ```
 
-`<encoded-project-root>` uses the same directory encoding as persisted sessions. Linked execution worktrees write to the
-primary project's file, so one project has one metrics file.
+`<project-basename>-<sha256-root>` uses a sanitized basename of at most 40 characters and the full SHA-256 of the
+primary checkout's real path. Linked execution worktrees write to the primary Project's file. Different roots have
+separate histories, reports, clear actions, and export grants.
 
-There is no retention period or cleanup job. The file stays until you delete it.
+Core adopts a legacy journal at first use. An unshared journal keeps its bytes and grant offsets. If a legacy directory
+contains rows from different Projects, Core copies only attributable rows into separate histories and marks a gap. These
+copied rows appear in reports but are not exported under an existing grant.
+
+There is no automatic retention period. Use Clear history on the Usage page to remove selected Project measurements.
+Clear preserves Sessions, Plans, settings, and delivery fences; it cannot recall an export request already dispatched.
 
 #### What is recorded
 
@@ -593,8 +604,9 @@ links that tie it to the work it belongs to:
 | `taskId`                                | A delegated task.                                 |
 | `commandId`                             | A slash command lifecycle.                        |
 
-A `null` link means the source did not supply it. RunWield does not invent links. For example, a manual `/compact` run
-outside an Agent turn links its context and compaction rows to the session and command, with no execution ID.
+A `null` link means the source did not supply it. RunWield does not invent Agent turns. A manual `/compact` outside an
+Agent turn uses an auxiliary measurement execution linked to its Session and command. Auxiliary starts are not
+user-initiated and do not add an Active day.
 
 **`null` means "not measured", never zero.** This applies to token counts, costs, and links. A missing row is also not a
 measured zero.
@@ -641,10 +653,13 @@ Each `model_usage` row identifies its transcript entry or source observation wit
 **Cost.** `costAmount` is in `costCurrency` (currently USD). `costSource` says whether the provider reported the cost,
 RunWield calculated it from rates, or it is unavailable. Treat it as a measurement, not an invoice.
 
-Completed `see_image` vision fallbacks record request-basis usage, including remote calls. Guided Review uses runtime
-observations for `wld guided-review` without another job total; external guide commands record one turn-basis aggregate.
-A command that supplies no measurements records unavailable usage. Guide generation outcomes remain separate events. The
-explicit remote model proof turn is not recorded, but its vision fallback calls are. agy CLI cost remains unavailable.
+Each `see_image` vision fallback records request-basis usage, including remote calls. Failed or aborted responses retain
+known usage with partial or unavailable coverage; thrown errors record unavailable usage. Measurement starts before the
+call. Without an active execution, vision uses an auxiliary start and finish. Guided Review uses runtime observations
+for `wld guided-review` without another job total; external guide commands start an auxiliary measurement before the
+command and record one turn-basis aggregate. A command that supplies no measurements records unavailable usage. Guide
+generation outcomes remain separate events. The explicit remote model proof turn is not recorded, but its vision fallback
+calls are. agy CLI cost is calculated only for an exact built-in catalog model match; otherwise it stays unavailable.
 Replay shows compaction usage separately from assistant totals. Historical zero-filled CLI transcripts cannot
 distinguish missing measurements from measured zeros.
 

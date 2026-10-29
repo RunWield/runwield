@@ -2,7 +2,12 @@ import { readdirSync } from "node:fs";
 import { readFileSync, truncateSync } from "node:fs";
 /** Durable delivery fences, not a payload queue. */
 import { join } from "node:path";
-import { exportDestinationDirectory, metricsExportDirectory, writeExportFile } from "./metrics-export-storage.ts";
+import {
+    exportDestinationDirectory,
+    metricsExportDirectory,
+    tryExportLock,
+    writeExportFile,
+} from "./metrics-export-storage.ts";
 import { metricsExportReference } from "./metrics-export-record.ts";
 import type { MetricsExportHostIdentity } from "./metrics-export-grants.ts";
 
@@ -55,7 +60,7 @@ export function appendMetricsExportLedger(destinationId: string, item: MetricsDe
     writeExportFile(path, JSON.stringify(item) + "\n", true);
 }
 
-export async function metricsDeliveryInFlightForJournal(path: string): Promise<boolean> {
+export async function metricsDeliveryInFlightForJournal(projectRoot: string): Promise<boolean> {
     let identity: MetricsExportHostIdentity;
     try {
         identity = JSON.parse(readFileSync(join(metricsExportDirectory(), "host.json"), "utf8"));
@@ -63,7 +68,7 @@ export async function metricsDeliveryInFlightForJournal(path: string): Promise<b
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
-    const reference = await metricsExportReference(identity, "journal", path);
+    const reference = await metricsExportReference(identity, "project", projectRoot);
     let entries;
     try {
         entries = [...readdirSync(join(metricsExportDirectory(), "destinations"), { withFileTypes: true })];
@@ -73,15 +78,26 @@ export async function metricsDeliveryInFlightForJournal(path: string): Promise<b
     }
     return entries
         .filter((e) => e.isDirectory())
-        .some((e) =>
-            [...readMetricsExportLedger(e.name).values()].some(
-                (item) => item.journalRef === reference && (item.state === "sending" || item.confirming),
-            ),
-        );
+        .some((e) => {
+            const hasAttempt = [...readMetricsExportLedger(e.name).values()].some(
+                (item) => item.projectRef === reference && (item.state === "sending" || item.confirming === true),
+            );
+            return hasAttempt && destinationHasLiveSender(e.name);
+        });
+}
+
+function destinationHasLiveSender(destinationId: string): boolean {
+    // Try-only: this is safe while clear holds the journal lock or revoke holds the configuration lock.
+    const lock = tryExportLock(join(exportDestinationDirectory(destinationId), ".send.lock"));
+    if (!lock) return true;
+    lock.close();
+    return false;
 }
 
 export function metricsDeliveryInFlight(destinationId: string): boolean {
-    return [...readMetricsExportLedger(destinationId).values()].some(
-        (item) => item.state === "sending" || item.confirming === true,
+    return (
+        [...readMetricsExportLedger(destinationId).values()].some(
+            (item) => item.state === "sending" || item.confirming === true,
+        ) && destinationHasLiveSender(destinationId)
     );
 }

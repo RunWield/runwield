@@ -5,7 +5,13 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { UsageReporter } from "./usage-reporting.ts";
 import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
+import { openNativeFileLock } from "../native-file-lock.ts";
+import { parseClaudeCliStream } from "../session/backends/claude-cli/stream-parser.ts";
+import { join } from "node:path";
+import { setWorkflowMetricsRecording } from "./metrics-journal.ts";
 import { setCustomSetting } from "../settings.js";
 import { SlashCommandMetricsTracker } from "./command-metrics.ts";
 import {
@@ -479,7 +485,7 @@ test("CLI detail usage remains explicitly non-additive and repeated sources do n
         await recorder.recordModelUsage({ ...detail, outputTokens: null });
         await recorder.recordModelUsage({
             ...detail,
-            sourceId: "claude_turn_total",
+            sourceId: "claude_turn_total:1",
             usageKind: "turn",
             aggregationBasis: "turn",
             inputTokens: 10,
@@ -783,4 +789,246 @@ for (const live of [true, false]) {
             }
         });
     });
+}
+
+test("execution created while recording is off cannot record model work after enablement", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        await setCustomSetting("workflowMetrics", false, "project", projectRoot);
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
+        await recorder.recordModelUsage({ sourceId: "disabled-work", inputTokens: 7, outputTokens: 2 });
+        assertEquals(await readMetrics(), []);
+        const result = await recordWorkflowMetric(
+            {
+                v: 2,
+                category: "model_usage",
+                event: "model_usage",
+                recorderId: "disabled",
+                seq: 0,
+                ...recorder.measurementBoundary(),
+                inputTokens: 7,
+                outputTokens: 2,
+            },
+            projectRoot,
+        );
+        assertEquals(result.persisted, false);
+        assertEquals(result.reason, "disabled");
+    });
+});
+
+test("enabled execution cannot settle model work into a newer recording generation", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        await rm(join(projectRoot, ".wld", "settings.json"));
+        await setWorkflowMetricsRecording(true);
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        await recorder.recordExecutionStart();
+        await setWorkflowMetricsRecording(false);
+        await setWorkflowMetricsRecording(true);
+        await recorder.recordModelUsage({ inputTokens: 7, outputTokens: 2 });
+        await recorder.settleExecution();
+        assertEquals(
+            (await readMetrics()).map((row) => row.event),
+            ["execution_started"],
+        );
+        const fresh = new ExecutionMetricsRecorder({ projectRoot });
+        await fresh.recordExecutionStart();
+        await fresh.recordModelUsage({ inputTokens: 5, outputTokens: 1 });
+        assertEquals((await readMetrics()).filter((row) => row.event === "model_usage").length, 1);
+    });
+});
+
+test("first execution adopts persisted collection and history identities for later rows", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        await recorder.recordExecutionStart();
+        await recorder.recordModelUsage({ inputTokens: 3, outputTokens: 1 });
+        const rows = await readMetrics();
+        assertEquals(rows.length, 2);
+        assertEquals(recorder.measurementBoundary().collectionEpoch, rows[0].collectionEpoch);
+        assertEquals(recorder.measurementBoundary().historyEpoch, rows[0].historyEpoch);
+        assertEquals(rows[1].collectionEpoch, rows[0].collectionEpoch);
+        assertEquals(rows[1].historyEpoch, rows[0].historyEpoch);
+    });
+});
+
+test("Session context observations retain disabled start consent after enablement", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        await setCustomSetting("workflowMetrics", false, "project", projectRoot);
+        const recorder = new SessionContextMetricsRecorder(projectRoot, "context", "compact");
+        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
+        await recorder.start({ samplingPoint: "before_compaction", currentUsage: 10 });
+        await recorder.retryStart(1, 2, 20);
+        await recorder.retryFinish(1, "succeeded");
+        await recorder.finish("success", 10, 5, 100, [], new Set());
+        assertEquals(await readMetrics(), []);
+    });
+});
+
+test("Session context observations cannot cross a recording generation", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        await rm(join(projectRoot, ".wld", "settings.json"));
+        await setWorkflowMetricsRecording(true);
+        const recorder = new SessionContextMetricsRecorder(projectRoot, "context", "compact");
+        await recorder.start({ samplingPoint: "before_compaction", currentUsage: 10 });
+        const before = await readMetrics();
+        await setWorkflowMetricsRecording(false);
+        await setWorkflowMetricsRecording(true);
+        await recorder.retryStart(1, 2, 20);
+        await recorder.finish("success", 10, 5, 100, [], new Set());
+        assertEquals(await readMetrics(), before);
+    });
+});
+
+test("manual compaction has an auxiliary start before usage and reports unavailable on failure", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new SessionContextMetricsRecorder(projectRoot, "manual", "compact");
+        await recorder.start({ samplingPoint: "before_compaction", currentUsage: 100 });
+        const rows = await readMetrics();
+        assertEquals(rows[0].event, "execution_started");
+        assertEquals(rows[0].dispatchKind, "auxiliary");
+        assertEquals(rows[0].userInitiated, false);
+        const { UsageReporter } = await import("./usage-reporting.ts");
+        const now = Date.now();
+        const period = {
+            start: new Date(now).toISOString().slice(0, 10),
+            end: new Date(now + 86400000).toISOString().slice(0, 10),
+        };
+        const report = new UsageReporter().query([projectRoot], period, "UTC");
+        assertEquals(report.projects[0].incomplete.length, 1);
+        assertEquals(report.totals.activeDays, 0);
+        await recorder.finish("error", 100, null, 1000, [], new Set());
+        const finished = (await readMetrics()).filter((row) => row.event === "execution_finished");
+        assertEquals(finished.length, 1);
+        assertEquals(finished[0].executionId, rows[0].executionId);
+        assertEquals(finished[0].outcome, "failed");
+        assertEquals(finished[0].coverage, { tools: "unavailable", usage: "unavailable", context: "unavailable" });
+        const settledReport = new UsageReporter().query([projectRoot], period, "UTC");
+        assertEquals(settledReport.totals.activeDays, 0);
+        assertEquals(settledReport.totals.tokens.exclusions > 0, true);
+    });
+});
+
+test("two Claude results persist once each and report only turn usage and cost deltas", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot, backend: "claude-cli" });
+        await recorder.recordExecutionStart();
+        const pending: Promise<void>[] = [];
+        const text = [
+            {
+                type: "result",
+                result: "",
+                usage: {
+                    input_tokens: 3,
+                    output_tokens: 4,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                },
+                total_cost_usd: 0.25,
+                modelUsage: { sonnet: { inputTokens: 300, outputTokens: 400, costUSD: 25 } },
+            },
+            {
+                type: "result",
+                result: "",
+                usage: {
+                    input_tokens: 5,
+                    output_tokens: 6,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                },
+                total_cost_usd: 0.75,
+                modelUsage: { sonnet: { inputTokens: 800, outputTokens: 1000, costUSD: 75 } },
+            },
+        ]
+            .map((row) => JSON.stringify(row))
+            .join("\n");
+        await parseClaudeCliStream(new Blob([text]).stream(), {
+            onDelta: () => {},
+            onUsage: (observation) => {
+                const usage = {
+                    ...observation.usage,
+                    sourceId: observation.sourceId,
+                    aggregationBasis: observation.aggregationBasis,
+                    costSource: "reported" as const,
+                };
+                pending.push(recorder.recordModelUsage(usage), recorder.recordModelUsage(usage));
+            },
+        });
+        await Promise.all(pending);
+        await recorder.settleExecution();
+        const rows = (await readMetrics()).filter((row) => row.event === "model_usage");
+        assertEquals(
+            rows.map((row) => row.sourceId),
+            ["claude_turn_total:1", "claude_model_0:1", "claude_turn_total:2", "claude_model_0:2"],
+        );
+        const day = new Date().toISOString().slice(0, 10);
+        const end = new Date(Date.parse(day) + 86400000).toISOString().slice(0, 10);
+        const report = new UsageReporter().query([projectRoot], { start: day, end }, "UTC");
+        assertEquals(report.totals.tokens.value, 18);
+        assertEquals(report.totals.reportedCostUsd.value, 0.75);
+        assertEquals(report.projects[0].coverage.overlappingUsage, 2);
+    });
+});
+
+test("model usage timestamps prefer observedAt then endedAt over recording time", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        const endedAt = "2026-11-01T23:59:00.000Z";
+        const observedAt = "2026-11-01T23:58:00.000Z";
+        await recorder.recordModelUsage({ sourceId: "ended", inputTokens: 1, outputTokens: 2, endedAt });
+        await recorder.recordModelUsage({ sourceId: "observed", inputTokens: 1, outputTokens: 2, endedAt, observedAt });
+        const rows = (await readMetrics()).filter((row) => row.event === "model_usage");
+        assertEquals(
+            rows.map((row) => row.ts),
+            [endedAt, observedAt],
+        );
+    });
+});
+
+for (const savedBeforeFailure of [false, true]) {
+    for (const retry of [false, true]) {
+        test(`failed usage append stays degraded and retryable: saved=${savedBeforeFailure}, retry=${retry}`, async () => {
+            await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+                const recorder = new ExecutionMetricsRecorder({ projectRoot });
+                await recorder.recordExecutionStart();
+                const usage = {
+                    sourceId: "lost",
+                    inputTokens: 10,
+                    outputTokens: 2,
+                    cacheReadTokens: 0,
+                    cacheWriteTokens: 0,
+                    costAmount: 0.1,
+                    costSource: "reported" as const,
+                };
+                if (savedBeforeFailure) await recorder.recordModelUsage({ ...usage, sourceId: "saved" });
+                const guard = openNativeFileLock(
+                    join(dirname(getWorkflowMetricsFilePath(projectRoot)), ".journal.guard"),
+                );
+                guard.lockSync(true);
+                try {
+                    await recorder.recordModelUsage(usage);
+                } finally {
+                    guard.close();
+                }
+                assertEquals((await readMetrics()).filter((row) => row.sourceId === "lost").length, 0);
+                if (retry) {
+                    await Promise.all([recorder.recordModelUsage(usage), recorder.recordModelUsage(usage)]);
+                    await recorder.recordModelUsage(usage);
+                }
+                await recorder.settleExecution();
+                const rows = await readMetrics();
+                assertEquals(rows.filter((row) => row.sourceId === "lost").length, retry ? 1 : 0);
+                assertEquals(rows.find((row) => row.event === "execution_finished")?.coverage, {
+                    tools: "unavailable",
+                    usage: savedBeforeFailure || retry ? "partial" : "unavailable",
+                    context: "unavailable",
+                });
+                const day = new Date().toISOString().slice(0, 10);
+                const end = new Date(Date.parse(day) + 86400000).toISOString().slice(0, 10);
+                const report = new UsageReporter().query([projectRoot], { start: day, end }, "UTC");
+                assertEquals(report.totals.tokens.value, 12 * (Number(savedBeforeFailure) + Number(retry)));
+                assert(report.daily[0].gaps.includes("unavailable"));
+                if (!savedBeforeFailure && !retry) assertEquals(report.totals.tokens.exclusions, 1);
+            });
+        });
+    }
 }

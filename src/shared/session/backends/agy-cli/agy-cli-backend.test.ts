@@ -11,6 +11,12 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
+import { setSystemTime } from "bun:test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { HostedSession } from "../../hosted-session.js";
+import { setCustomSetting } from "../../../settings.js";
+import { getWorkflowMetricsFilePath } from "../../../workflow/metrics.js";
+import { UsageReporter } from "../../../workflow/usage-reporting.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertThrows } from "../../../../testing/assertions.ts";
@@ -24,7 +30,7 @@ import { buildAgyBackendStatusEntry, sanitizeAgyStatusMessage } from "./failure.
 import { AgyCliStreamError, parseAgyCliStream } from "./stream-parser.ts";
 import type { AgyCliToolStep } from "./stream-parser.ts";
 import { proveAgyCustomAgentExecution, verifyAgyCustomAgentListed } from "./spike.ts";
-import { resolveAgyNativeTools } from "./execution-session.ts";
+import { AgyCliExecutionSession, resolveAgyNativeTools } from "./execution-session.ts";
 
 async function withTempDir(callback: (dir: string) => Promise<void>): Promise<void> {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-agy-backend-"));
@@ -130,7 +136,8 @@ async function main(): Promise<void> {
     const marker = markerMatch?.[1] || "missing-agent-marker";
     const resultText = (process.env["RUNWIELD_AGY_FIXTURE_RESULT_PREFIX"] || "") + marker +
         (process.env["RUNWIELD_AGY_FIXTURE_RESULT_SUFFIX"] || "");
-    emit({ type: "init", agent: agentName, session_id: "fake-session" });
+    emit({ type: "init", agent: agentName, session_id: "fake-session",
+        model: readArg(args, "--model") + "-" + readArg(args, "--effort") });
     emit({ type: "step_update", update_type: "tool_info", tool_info: { name: "display-only" } });
     emit({ type: "step_update", update_type: "text_delta", text: resultText.slice(0, Math.ceil(resultText.length / 2)) });
     emit({ type: "step_update", update_type: "text_delta", text: resultText.slice(Math.ceil(resultText.length / 2)) });
@@ -831,4 +838,66 @@ test("Agy absent thinking and reported zero thinking remain distinct", async () 
         const result = await parseAgyCliStream(new Blob([text]).stream());
         assertEquals(result.metadata.usage.thinkingTokens, expected);
     }
+});
+
+interface AgyUsageMetricRow {
+    event: string;
+    ts: string;
+    endedAt?: string;
+}
+
+test("Agy usage completed before midnight keeps its day when cleanup finishes after midnight", async () => {
+    await withAgyFixture(async (projectRoot) => {
+        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
+        const model = getModelRegistry().find("agy-cli", "gemini-3.8-flash");
+        assert(model);
+        const manager = SessionManager.inMemory(projectRoot);
+        const hosted = new HostedSession({ id: "agy-midnight", cwd: projectRoot, sessionManager: manager });
+        const endedAt = "2026-11-03T04:59:00.000Z";
+        let crossedMidnight = false;
+        const unsubscribe = hosted.subscribeRuntimeEvents((event) => {
+            if (event.type === "usage") {
+                crossedMidnight = true;
+                // Runtime usage follows parsing; journal settlement follows process and bridge cleanup.
+                setSystemTime(new Date("2026-11-03T05:01:00.000Z"));
+            }
+        });
+        let session: AgyCliExecutionSession | undefined;
+        try {
+            setSystemTime(new Date(endedAt));
+            session = await AgyCliExecutionSession.create({
+                cwd: projectRoot,
+                agentName: "engineer",
+                agentDisplayName: "Engineer",
+                finalSystemPrompt: "Only answer with the agent marker.",
+                model,
+                sessionManager: manager,
+                hostedSession: hosted,
+            });
+            await session.runTurn({ userRequest: "Reply with the marker." });
+            assertEquals(crossedMidnight, true);
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line) as AgyUsageMetricRow);
+            const usage = rows.find((row) => row.event === "model_usage");
+            assertEquals(usage?.endedAt, endedAt);
+            assertEquals(usage?.ts, endedAt);
+            const reporter = new UsageReporter();
+            const before = reporter.query(
+                [projectRoot],
+                { start: "2026-11-02", end: "2026-11-03" },
+                "America/New_York",
+            );
+            const after = reporter.query([projectRoot], { start: "2026-11-03", end: "2026-11-04" }, "America/New_York");
+            assertEquals(before.totals.inputTokens.value, 11);
+            assertEquals(before.totals.outputTokens.value, 13);
+            assertEquals(after.totals.inputTokens.value, 0);
+        } finally {
+            unsubscribe();
+            await session?.dispose();
+            await hosted.dispose();
+            setSystemTime();
+        }
+    });
 });

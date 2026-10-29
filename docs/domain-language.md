@@ -145,10 +145,12 @@ and not-yet-collected evidence are distinct gap reasons. A gap breaks the usage 
 known zero requires an enabled interval bounded by recorded evidence. _Avoid_: Zero usage, disabled duration, failed
 workflow
 
-**Collection epoch**: The local journal identity for an enabled or disabled collection state lazily observed by Core. An
-observed disabled transition can be retained as control evidence for prior history, but is not a Usage observation.
-Unobserved intervals contain no recorded measurements and do not prove disabled durations. Collection epochs are not
-Session lifetimes or Plan statuses. _Avoid_: Setting-change timestamp, disabled duration, Session epoch
+**Collection epoch**: The local identity for a collection interval. Normal recording controls commit a host-level
+boundary with the setting; Projects with an explicit boolean recording override keep their epoch. An empty Project
+setting inherits global enablement and its boundaries. Direct settings-file edits are
+observed lazily by Core. An observed disabled transition can be retained as control evidence, but is not a Usage
+observation. Unobserved intervals contain no recorded measurements and do not prove disabled durations. Collection
+epochs are not Session lifetimes or Plan statuses. _Avoid_: Disabled duration, Session epoch
 
 **History epoch**: The identity of one local primary Project measurement history. Usage observations and collection
 control records link to it; Session and Plan links remain separate. It does not authorize replay or reconstruction from

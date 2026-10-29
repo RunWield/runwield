@@ -4,35 +4,35 @@ classification: "PLANNED_CHANGE"
 workKind: "BUG_FIX"
 complexity: "HIGH"
 affectedPaths:
-  - "src/shared/workflow/metrics.js"
-  - "src/shared/workflow/metrics-journal.ts"
-  - "src/shared/workflow/execution-metrics.ts"
-  - "src/shared/workflow/usage-reporting.ts"
-  - "src/shared/workflow/metrics-export-scheduler.ts"
-  - "src/shared/workflow/metrics-export-ledger.ts"
-  - "src/shared/workflow/metrics-export-grants.ts"
-  - "src/ui/workspace/server/owner-usage-settings.ts"
-  - "src/ui/workspace/routes/api/review-agent-handlers.js"
-  - "src/shared/session/backends/claude-cli/stream-parser.ts"
-  - "src/tools/see-image.ts"
-  - "src/shared/session/session.js"
-  - "src/shared/remote/bounded-model-session.ts"
-  - "docs/prd/runwield-core-prd.md"
-  - "docs/domain-language.md"
-  - "docs/user-documentation/settings.md"
+    - "src/shared/workflow/metrics.js"
+    - "src/shared/workflow/metrics-journal.ts"
+    - "src/shared/workflow/execution-metrics.ts"
+    - "src/shared/workflow/usage-reporting.ts"
+    - "src/shared/workflow/metrics-export-scheduler.ts"
+    - "src/shared/workflow/metrics-export-ledger.ts"
+    - "src/shared/workflow/metrics-export-grants.ts"
+    - "src/ui/workspace/server/owner-usage-settings.ts"
+    - "src/ui/workspace/routes/api/review-agent-handlers.js"
+    - "src/shared/session/backends/claude-cli/stream-parser.ts"
+    - "src/tools/see-image.ts"
+    - "src/shared/session/session.js"
+    - "src/shared/remote/bounded-model-session.ts"
+    - "docs/prd/runwield-core-prd.md"
+    - "docs/domain-language.md"
+    - "docs/user-documentation/settings.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-25T00:21:02.248Z"
 origin: "internal"
 parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 11
-dependencies:
-  []
+dependencies: []
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 sessionName: "Metrics Epic Review Fixes"
+status: "reviewed"
+validatedCommit: "7c4c4f2db949c04440332fdb166166ba12b013c0"
 ---
 
 # Repair integration findings
@@ -46,13 +46,13 @@ integration gate runs again on the whole Epic.
 
 The findings fall into five problems:
 
-| Area                                     | Findings            | What goes wrong today                                                   |
-| ---------------------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| Project identity                         | R2-1                | Two Project roots can share one journal, report, clear, and grant.      |
-| Consent and history boundaries           | R2-2, R2-3, R2-4    | Work started while off, or before a clear, can enter the new history.   |
-| Measurement start for auxiliary calls    | R2-5, R2-7, R2-11   | Guided Review, compaction, and vision calls start with no measurement.  |
-| Export authorization and recovery        | R2-6, R2-7, R2-12   | Sends after clear or revoke; old work exports; revoked entries stick.   |
-| Usage accounting and documentation       | R2-8, R2-9, R2-10, R2-13 | Lost Claude turns, wrong day, false complete coverage, stale docs. |
+| Area                                  | Findings                 | What goes wrong today                                                  |
+| ------------------------------------- | ------------------------ | ---------------------------------------------------------------------- |
+| Project identity                      | R2-1                     | Two Project roots can share one journal, report, clear, and grant.     |
+| Consent and history boundaries        | R2-2, R2-3, R2-4         | Work started while off, or before a clear, can enter the new history.  |
+| Measurement start for auxiliary calls | R2-5, R2-7, R2-11        | Guided Review, compaction, and vision calls start with no measurement. |
+| Export authorization and recovery     | R2-6, R2-7, R2-12        | Sends after clear or revoke; old work exports; revoked entries stick.  |
+| Usage accounting and documentation    | R2-8, R2-9, R2-10, R2-13 | Lost Claude turns, wrong day, false complete coverage, stale docs.     |
 
 ### Product ownership
 
@@ -551,21 +551,21 @@ Run focused tests with `bun scripts/run-tests.js <paths>`. RunWield runs the ful
 
 Each test below must fail on `dc60183` and pass after the fix. A stub or pass-through cannot satisfy it.
 
-| Finding | Test file                                                                        | Scenario that must hold                                                                                                                                                  |
-| ------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| R2-1    | `usage-reporting.test.ts`                                                        | Record in `a-b` and `a/b`. Paths differ. Clearing `a-b` leaves `a/b`'s journal bytes and report rows unchanged. A grant for `a-b` exports no `a/b` row.                 |
-| R2-1    | `usage-reporting.test.ts`, `metrics-export-process.test.ts`                      | A seeded legacy journal with a grant offset is adopted with identical bytes. Reports show its rows; the next cycle sends no duplicate. A seeded collided journal gives each Project only its own rows in reports, exports none of them, and leaves the legacy file unchanged. |
-| R2-2    | `owner-usage-settings.integration.test.ts`, `metrics-journal.test.js`            | Recording on, capture an invocation, `mutateUsageSettings` off then on, append: `collection_boundary`. A new capture after the control persists.                        |
-| R2-3    | `execution-metrics.test.ts`                                                      | Recording off, create a recorder, turn recording on, `recordModelUsage`: `persisted: false`, reason `disabled`.                                                          |
-| R2-4    | `metrics-journal.test.js`                                                        | Writer A captures `initial`; writer B persists a row; clear; A appends: `history_boundary`. Two `initial` captures before any history both persist.                      |
-| R2-5    | `guided-review-usage.test.js`                                                    | Record a row; a guide command stub clears history before resolving; no `model_usage` row from that job is in the new history; a start row precedes job usage.            |
-| R2-6    | `metrics-export-delivery.test.ts`                                                | A clear or revoke committed before the locked dispatch step produces no `postMessage`. A test exporter records receipt before the cycle releases its locks.             |
-| R2-7    | `metrics-export-consent.test.ts`                                                 | After a grant, a `model_usage` row whose execution has no start row is not sent. A compaction started before the grant exports nothing. An outcome row after the grant is sent. |
-| R2-8    | `claude-cli-backend.test.ts`, `execution-metrics.test.ts`                        | Two results in one stream record two turn rows; the report sums both `usage` values; cost equals the final running total.                                               |
-| R2-9    | `usage-reporting.test.ts`, `agy-cli-backend.test.ts`                             | An agy row with `endedAt` 23:59 and recording after midnight belongs to the earlier day and period.                                                                      |
-| R2-10   | `execution-metrics.test.ts`                                                      | A failing `model_usage` append followed by a successful settlement writes `coverage.usage` `partial` or `unavailable`; the report shows exclusions, not a complete zero. |
-| R2-11   | `src/tools/see-image-usage.test.ts`, `src/shared/session/see-image-usage.test.js`, `src/shared/remote/see-image-usage.test.ts` | An `error` response with usage, an `aborted` response, and a thrown error each leave a start row and an incomplete or unavailable observation. With no active execution, the start row has `dispatchKind: "auxiliary"`, and the report adds no Active day. |
-| R2-12   | `metrics-export-process.test.ts`                                                 | Grant, hold, child cycle, kill child, revoke, release: clear reports `deliveryInFlight: false`; the next cycle marks the entry `unconfirmed` with `process_lost`.       |
+| Finding | Test file                                                                                                                      | Scenario that must hold                                                                                                                                                                                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R2-1    | `usage-reporting.test.ts`                                                                                                      | Record in `a-b` and `a/b`. Paths differ. Clearing `a-b` leaves `a/b`'s journal bytes and report rows unchanged. A grant for `a-b` exports no `a/b` row.                                                                                                                       |
+| R2-1    | `usage-reporting.test.ts`, `metrics-export-process.test.ts`                                                                    | A seeded legacy journal with a grant offset is adopted with identical bytes. Reports show its rows; the next cycle sends no duplicate. A seeded collided journal gives each Project only its own rows in reports, exports none of them, and leaves the legacy file unchanged. |
+| R2-2    | `owner-usage-settings.integration.test.ts`, `metrics-journal.test.js`                                                          | Recording on, capture an invocation, `mutateUsageSettings` off then on, append: `collection_boundary`. A new capture after the control persists.                                                                                                                              |
+| R2-3    | `execution-metrics.test.ts`                                                                                                    | Recording off, create a recorder, turn recording on, `recordModelUsage`: `persisted: false`, reason `disabled`.                                                                                                                                                               |
+| R2-4    | `metrics-journal.test.js`                                                                                                      | Writer A captures `initial`; writer B persists a row; clear; A appends: `history_boundary`. Two `initial` captures before any history both persist.                                                                                                                           |
+| R2-5    | `guided-review-usage.test.js`                                                                                                  | Record a row; a guide command stub clears history before resolving; no `model_usage` row from that job is in the new history; a start row precedes job usage.                                                                                                                 |
+| R2-6    | `metrics-export-delivery.test.ts`                                                                                              | A clear or revoke committed before the locked dispatch step produces no `postMessage`. A test exporter records receipt before the cycle releases its locks.                                                                                                                   |
+| R2-7    | `metrics-export-consent.test.ts`                                                                                               | After a grant, a `model_usage` row whose execution has no start row is not sent. A compaction started before the grant exports nothing. An outcome row after the grant is sent.                                                                                               |
+| R2-8    | `claude-cli-backend.test.ts`, `execution-metrics.test.ts`                                                                      | Two results in one stream record two turn rows; the report sums both `usage` values; cost equals the final running total.                                                                                                                                                     |
+| R2-9    | `usage-reporting.test.ts`, `agy-cli-backend.test.ts`                                                                           | An agy row with `endedAt` 23:59 and recording after midnight belongs to the earlier day and period.                                                                                                                                                                           |
+| R2-10   | `execution-metrics.test.ts`                                                                                                    | A failing `model_usage` append followed by a successful settlement writes `coverage.usage` `partial` or `unavailable`; the report shows exclusions, not a complete zero.                                                                                                      |
+| R2-11   | `src/tools/see-image-usage.test.ts`, `src/shared/session/see-image-usage.test.js`, `src/shared/remote/see-image-usage.test.ts` | An `error` response with usage, an `aborted` response, and a thrown error each leave a start row and an incomplete or unavailable observation. With no active execution, the start row has `dispatchKind: "auxiliary"`, and the report adds no Active day.                    |
+| R2-12   | `metrics-export-process.test.ts`                                                                                               | Grant, hold, child cycle, kill child, revoke, release: clear reports `deliveryInFlight: false`; the next cycle marks the entry `unconfirmed` with `process_lost`.                                                                                                             |
 
 > [!NOTE]
 > **Assumption: R2-6 is proven through the locked step**

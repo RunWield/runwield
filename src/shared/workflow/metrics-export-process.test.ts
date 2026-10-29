@@ -2,21 +2,36 @@ import { open as fsOpen } from "node:fs/promises";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
+import { openNativeFileLock } from "../native-file-lock.ts";
 import { getCwd } from "../../constants.js";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { readFile as fsReadFile, rename as fsRename, rm as fsRm } from "node:fs/promises";
+import { readFile as fsReadFile, rename as fsRename, rm as fsRm, symlink as fsSymlink } from "node:fs/promises";
 import process from "node:process";
 import { test } from "node:test";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type MetricsExportFixture, withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
+import { withCollidingMetricProjects } from "../../testing/workflow-metrics-fixture.ts";
 import { setCustomSetting } from "../settings.js";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.js";
+import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { metricsExportReference } from "./metrics-export-record.ts";
+import {
+    readMetricsExportGrants,
+    readMetricsExportHostIdentity,
+    revokeMetricsExportDestination,
+} from "./metrics-export-grants.ts";
+import { clearUsageHistory, UsageReporter } from "./usage-reporting.ts";
 import { withWorkflowMetricJournalLock } from "./metrics-journal.ts";
-import { readMetricsExportLedger } from "./metrics-export-ledger.ts";
+import {
+    appendMetricsExportLedger,
+    readMetricsExportLedger,
+    metricsDeliveryInFlight,
+    metricsDeliveryInFlightForJournal,
+} from "./metrics-export-ledger.ts";
 import {
     readMetricsExportStatus,
     runMetricsExportCycle,
@@ -185,3 +200,308 @@ test(
         });
     },
 );
+
+test("R2-1: a grant for a-b never exports a/b measurements", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await withCollidingMetricProjects(async (roots) => {
+            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            for (const root of roots) {
+                await fsMkdir(root, { recursive: true });
+                await setCustomSetting("workflowMetrics", true, "project", root);
+            }
+            await f.grant("/accept", [roots[0]]);
+            await f.record("model_usage", undefined, roots[1]);
+            await f.record("model_usage", undefined, roots[0]);
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests.length, 1);
+            assertEquals(
+                f.requests[0].projectRef,
+                await metricsExportReference(await readMetricsExportHostIdentity(), "project", roots[0]),
+            );
+        });
+    });
+});
+
+test("R2-1: a busy legacy adopter defers export and restart retries without losing the grant boundary", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await f.record();
+        const grant = await f.grant();
+        await f.record();
+        const path = getWorkflowMetricsFilePath(f.project);
+        const bytes = await fsReadFile(path);
+        const state = await fsReadFile(join(dirname(path), "state.json"));
+        const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(f.project));
+        await fsRename(dirname(path), legacy);
+        const guard = openNativeFileLock(join(legacy, ".journal.guard"));
+        assert(guard.tryLockSync(true));
+        try {
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const result = await collectProcessOutput(startCycle(f));
+                assert(result.success, new TextDecoder().decode(result.stderr));
+            }
+            assertEquals(f.requests, []);
+            assertEquals([...readMetricsExportLedger("fixture").values()], []);
+            assertEquals(await fsReadFile(join(legacy, "metrics.jsonl")), bytes);
+        } finally {
+            guard.close();
+        }
+        // Keep real competing adopters: the loser must defer safely or use the
+        // published directory. Neither can reset the saved approval boundary.
+        for (const result of await Promise.all([startCycle(f), startCycle(f)].map(collectProcessOutput))) {
+            assert(result.success, new TextDecoder().decode(result.stderr));
+        }
+        assertEquals(f.requests.length, 1);
+        assertEquals(await fsReadFile(path), bytes);
+        assertEquals(await fsReadFile(join(dirname(path), "state.json")), state);
+        assertEquals(readMetricsExportGrants()[0].projects, grant.projects);
+        assert((await collectProcessOutput(startCycle(f))).success);
+        assertEquals(f.requests.length, 1);
+    });
+});
+
+test("R2-1: export still rejects a corrupt legacy adoption fence", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await f.grant();
+        await f.record();
+        const path = getWorkflowMetricsFilePath(f.project);
+        await fsWriteFile(join(dirname(path), "legacy-adoption.json"), '{"partial":');
+        const result = await collectProcessOutput(startCycle(f));
+        assertEquals(result.success, false);
+        assert(new TextDecoder().decode(result.stderr).includes("SyntaxError"));
+        assertEquals(f.requests, []);
+    });
+});
+
+test("R2-1: legacy rename retains the grant offset through restart without a duplicate", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await f.record();
+        const grant = await f.grant();
+        await f.record();
+        await runMetricsExportCycle();
+        assertEquals(f.requests.length, 1);
+        const path = getWorkflowMetricsFilePath(f.project);
+        const bytes = await fsReadFile(path);
+        const state = await fsReadFile(join(dirname(path), "state.json"));
+        const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(f.project));
+        assert(dirname(path) !== legacy, "canonical history must not retain its lossy directory name");
+        await fsRename(dirname(path), legacy);
+        for (const result of await Promise.all([startCycle(f), startCycle(f)].map(collectProcessOutput))) {
+            assert(result.success, new TextDecoder().decode(result.stderr));
+        }
+        assertEquals(await fsReadFile(path), bytes);
+        assertEquals(await fsReadFile(join(dirname(path), "state.json")), state);
+        assertEquals(readMetricsExportGrants()[0].projects, grant.projects);
+        assertEquals(
+            new UsageReporter().query([f.project], { start: "2020-01-01", end: "2030-01-01" }, "UTC").totals.inputTokens
+                .value,
+            8,
+        );
+        assertEquals(f.requests.length, 1);
+        await f.record();
+        assert((await collectProcessOutput(startCycle(f))).success);
+        assertEquals(f.requests.length, 2);
+    });
+});
+
+test("R2-1: collided legacy grants exclude copied rows and export only fresh observations", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await withCollidingMetricProjects(async (roots) => {
+            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            for (const root of roots) {
+                await fsMkdir(root, { recursive: true });
+                await setCustomSetting("workflowMetrics", true, "project", root);
+            }
+            const grant = await f.grant("/accept", roots);
+            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(roots[0]));
+            for (const root of roots) {
+                const directory = dirname(getWorkflowMetricsFilePath(root));
+                if (directory !== legacy) await fsRm(directory, { recursive: true });
+            }
+            await fsMkdir(legacy, { recursive: true });
+            const bytes =
+                (
+                    await Promise.all(
+                        roots.map(async (root, index) =>
+                            JSON.stringify({
+                                v: 2,
+                                category: "model_usage",
+                                event: "model_usage",
+                                eventId: `old-${index}`,
+                                ts: new Date().toISOString(),
+                                historyEpoch: "shared-history",
+                                cwdHash: await hashMetricCwd(root),
+                                inputTokens: index ? 9 : 4,
+                                outputTokens: 0,
+                                aggregationBasis: "turn",
+                            }),
+                        ),
+                    )
+                ).join("\n") + "\n";
+            await fsWriteFile(join(legacy, "metrics.jsonl"), bytes);
+            await setCustomSetting(
+                "metricsExport",
+                {
+                    destinations: [
+                        {
+                            ...grant,
+                            projects: roots.map((projectRoot) => ({
+                                projectRoot,
+                                historyEpoch: "shared-history",
+                                offset: 0,
+                            })),
+                        },
+                    ],
+                },
+                "global",
+            );
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests, []);
+            assertEquals(
+                roots.map(
+                    (root) =>
+                        new UsageReporter().query([root], { start: "2020-01-01", end: "2030-01-01" }, "UTC").totals
+                            .inputTokens.value,
+                ),
+                [4, 9],
+            );
+            for (const project of readMetricsExportGrants()[0].projects) {
+                assertEquals(
+                    project.offset,
+                    (await fsReadFile(getWorkflowMetricsFilePath(project.projectRoot))).length,
+                );
+                assert(project.historyEpoch !== "shared-history");
+            }
+            await f.record("model_usage", undefined, roots[0]);
+            await f.record("model_usage", undefined, roots[1]);
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests.length, 2);
+            assertEquals(await fsReadFile(join(legacy, "metrics.jsonl"), "utf8"), bytes);
+        });
+    });
+});
+
+test("R2-1: clear finds live delivery evidence written with a legacy journal reference", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await f.grant();
+        await f.record();
+        f.hold();
+        const child = startCycle(f);
+        try {
+            await f.waitForRequest();
+            const identity = await readMetricsExportHostIdentity();
+            const item = [...readMetricsExportLedger("fixture").values()][0];
+            const alias = `${f.project}-alias`;
+            await fsSymlink(f.project, alias, process.platform === "win32" ? "junction" : "dir");
+            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(alias), "metrics.jsonl");
+            await fsMkdir(dirname(legacy), { recursive: true });
+            await fsWriteFile(legacy, await fsReadFile(getWorkflowMetricsFilePath(f.project)));
+            appendMetricsExportLedger("fixture", {
+                ...item,
+                journalRef: await metricsExportReference(identity, "journal", legacy),
+            });
+            const cleared = await new UsageReporter().clear([f.project]);
+            assertEquals(cleared[0].persisted, true);
+            assertEquals(cleared[0].deliveryInFlight, true);
+        } finally {
+            f.release();
+            assert((await collectProcessOutput(child)).success);
+        }
+    });
+});
+
+for (const method of ["deliver", "confirm"] as const) {
+    test(`revoked ${method} process loss clears in-flight evidence and recovers without a grant`, async () => {
+        await withMetricsExportFixture(async (f) => {
+            await f.grant(method === "confirm" ? "/present" : "/accept");
+            await f.record();
+            if (method === "confirm") f.holdConfirmation();
+            else f.hold();
+            const child = startCycle(f);
+            try {
+                if (method === "confirm") await f.waitForConfirmation();
+                else await f.waitForRequest();
+                assertEquals(await metricsDeliveryInFlightForJournal(f.project), true);
+                assertEquals(metricsDeliveryInFlight("fixture"), true);
+                child.kill(process.platform === "win32" ? "SIGTERM" : "SIGKILL");
+                await collectProcessOutput(child);
+                assertEquals((await revokeMetricsExportDestination("fixture")).deliveryInFlight, false);
+                f.release();
+                assertEquals((await new UsageReporter().clear([f.project]))[0].deliveryInFlight, false);
+                assertEquals(metricsDeliveryInFlight("fixture"), false);
+                const abandoned = [...readMetricsExportLedger("fixture").values()][0];
+                assert(method === "deliver" ? abandoned.state === "sending" : abandoned.confirming === true);
+                await runMetricsExportCycle();
+                const recovered = [...readMetricsExportLedger("fixture").values()][0];
+                if (method === "deliver") {
+                    assertEquals(recovered.state, "unconfirmed");
+                    assertEquals(recovered.code, "process_lost");
+                } else {
+                    assertEquals(recovered.state, "accepted");
+                    assertEquals(recovered.confirming, false);
+                }
+                assertEquals(f.requests.length, 1);
+            } finally {
+                f.release();
+                try {
+                    child.kill("SIGKILL");
+                } catch {
+                    /* Already exited. */
+                }
+                await collectProcessOutput(child);
+            }
+        });
+    });
+}
+
+test("collision adoption fences H0 grants after a legacy clear and preserves later fresh grants", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await withCollidingMetricProjects(async (roots) => {
+            for (const root of roots) {
+                await fsMkdir(root, { recursive: true });
+                await setCustomSetting("workflowMetrics", true, "project", root);
+            }
+            await f.record("execution_started", "h0", roots[0]);
+            const grant = await f.grant("/accept", [roots[0]]);
+            const h0 = grant.projects[0].historyEpoch;
+            assertEquals((await clearUsageHistory([roots[0]]))[0].persisted, true);
+            await f.record("execution_started", "copied", roots[0]);
+            await f.record("model_usage", "copied", roots[0]);
+            const path = getWorkflowMetricsFilePath(roots[0]);
+            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(roots[0]));
+            await fsRename(dirname(path), legacy);
+            await fsWriteFile(
+                join(legacy, "metrics.jsonl"),
+                JSON.stringify({
+                    v: 2,
+                    category: "model_usage",
+                    event: "model_usage",
+                    eventId: "other",
+                    cwdHash: await hashMetricCwd(roots[1]),
+                    historyEpoch: "h1",
+                    ts: new Date().toISOString(),
+                }) + "\n",
+                { flag: "a" },
+            );
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests, []);
+            assert(readMetricsExportGrants()[0].projects[0].historyEpoch !== h0);
+            await f.record("execution_started", "fresh", roots[0]);
+            await f.record("model_usage", "fresh", roots[0]);
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests.length, 1);
+            assertEquals((await clearUsageHistory([roots[0]]))[0].persisted, true);
+            await f.record("execution_started", "before-new-grant", roots[0]);
+            await f.record("model_usage", "before-new-grant", roots[0]);
+            await revokeMetricsExportDestination("fixture");
+            const freshGrant = await f.grant("/accept", [roots[0]]);
+            assertEquals(readMetricsExportGrants()[0].projects, freshGrant.projects);
+            assertEquals(freshGrant.projects[0].offset, (await fsReadFile(path)).length);
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests.length, 1);
+            await f.record("execution_started", "after-new-grant", roots[0]);
+            await f.record("model_usage", "after-new-grant", roots[0]);
+            assert((await collectProcessOutput(startCycle(f))).success);
+            assertEquals(f.requests.length, 2);
+        });
+    });
+});

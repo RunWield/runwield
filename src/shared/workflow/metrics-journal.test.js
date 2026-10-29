@@ -16,10 +16,17 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
+import { openNativeFileLock } from "../native-file-lock.ts";
 import { setCustomSetting } from "../settings.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
-import { appendWorkflowMetric, clearWorkflowMetricJournal, resolveCollectionEpoch } from "./metrics-journal.ts";
+import {
+    appendWorkflowMetric,
+    clearWorkflowMetricJournal,
+    resolveCollectionEpoch,
+    setWorkflowMetricsRecording,
+    withWorkflowMetricJournalLock,
+} from "./metrics-journal.ts";
 
 const metric = { v: 2, category: "command", event: "command_started", recorderId: "test", seq: 0, command: "help" };
 
@@ -538,13 +545,13 @@ test("interrupted tail repair retains its gap and earlier observations", async (
     });
 });
 
-test("first-ever pending append with an earlier timestamp survives empty-history clear", async () => {
+test("first-ever pending append with an earlier timestamp is rejected after empty-history clear", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const state = resolveCollectionEpoch(path, true);
         assertEquals(state.historyEpoch, "initial");
         const pending = { ...metric, ts: "2020-01-01T00:00:00Z", eventId: "command_started:first" };
-        const cleared = await clearWorkflowMetricJournal(path);
+        const cleared = await clearWorkflowMetricJournal(path, projectRoot);
         assertEquals(cleared.persisted, true);
         const result = await appendWorkflowMetric(path, projectRoot, pending, {
             enabled: true,
@@ -552,8 +559,189 @@ test("first-ever pending append with an earlier timestamp survives empty-history
             historyEpoch: state.historyEpoch,
             deadline: Date.now() + 1000,
         });
+        assertEquals(result.persisted, false);
+        assertEquals(result.reason, "history_boundary");
+        assertEquals((await readJournal(path)).filter((row) => row.eventId === pending.eventId).length, 0);
+    });
+});
+
+test("recording control rejects an old capture across unobserved off and on generations", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        await fsRm(join(projectRoot, ".wld", "settings.json"));
+        await setWorkflowMetricsRecording(true);
+        const path = getWorkflowMetricsFilePath(projectRoot);
+        assertEquals((await recordWorkflowMetric(metric, projectRoot)).persisted, true);
+        const old = invocation(path);
+        await setWorkflowMetricsRecording(false);
+        await setWorkflowMetricsRecording(true);
+        assertEquals((await appendWorkflowMetric(path, projectRoot, metric, old)).reason, "collection_boundary");
+        const fresh = invocation(path);
+        assertEquals(fresh.epoch === old.epoch, false);
+        assertEquals((await appendWorkflowMetric(path, projectRoot, metric, fresh)).persisted, true);
+        assertEquals((await readJournal(path)).filter((row) => row.event === "collection_epoch").length, 3);
+    });
+});
+
+test("global recording changes leave an explicit Project collection epoch current", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        const first = await recordWorkflowMetric(metric, projectRoot);
+        await setWorkflowMetricsRecording(false);
+        await setWorkflowMetricsRecording(true);
+        const result = await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot);
         assertEquals(result.persisted, true);
-        assertEquals(result.historyEpoch, cleared.historyEpoch);
-        assertEquals((await readJournal(path)).filter((row) => row.eventId === pending.eventId).length, 1);
+        assertEquals(result.collectionEpoch, first.collectionEpoch);
+    });
+});
+
+test("opt-out recording generations create no Project journal", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        await fsRm(join(projectRoot, ".wld", "settings.json"));
+        await setWorkflowMetricsRecording(false);
+        const path = getWorkflowMetricsFilePath(projectRoot);
+        assertEquals((await recordWorkflowMetric(metric, projectRoot)).reason, "disabled");
+        assertEquals(
+            await fsStat(dirname(path)).then(
+                () => true,
+                () => false,
+            ),
+            false,
+        );
+    });
+});
+
+test("recording control is bounded while a shared recording guard protects an append", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir }) => {
+        await setWorkflowMetricsRecording(true);
+        const guard = openNativeFileLock(join(homeDir, ".wld", "workflow-metrics", "recording.guard"));
+        guard.lockSync(false);
+        const started = Date.now();
+        try {
+            let reason;
+            try {
+                await setWorkflowMetricsRecording(false);
+            } catch (error) {
+                reason = error instanceof Error ? error.message : "unexpected_error";
+            }
+            assertEquals(reason, "lock_timeout");
+            assert(Date.now() - started < 1400);
+        } finally {
+            guard.close();
+        }
+        await setWorkflowMetricsRecording(false);
+    });
+});
+
+test("append is bounded behind an exclusive recording guard and shared readers can append", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+        await recordWorkflowMetric(metric, projectRoot);
+        const guard = openNativeFileLock(join(homeDir, ".wld", "workflow-metrics", "recording.guard"));
+        guard.lockSync(true);
+        const started = Date.now();
+        try {
+            assertEquals((await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot)).reason, "lock_timeout");
+            assert(Date.now() - started < 1400);
+        } finally {
+            guard.close();
+        }
+        const reader = openNativeFileLock(join(homeDir, ".wld", "workflow-metrics", "recording.guard"));
+        reader.lockSync(false);
+        try {
+            assertEquals((await recordWorkflowMetric({ ...metric, seq: 2 }, projectRoot)).persisted, true);
+        } finally {
+            reader.close();
+        }
+    });
+});
+
+for (const materialization of ["append", "authorization", "repair"]) {
+    test(`two initial captures survive ${materialization} materialization and checkpoint rebuild`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+            const path = getWorkflowMetricsFilePath(projectRoot);
+            const state = resolveCollectionEpoch(path, true);
+            const captured = { enabled: true, epoch: state.collectionEpoch.id, historyEpoch: state.historyEpoch };
+            if (materialization === "authorization") await withWorkflowMetricJournalLock(path, () => undefined);
+            if (materialization === "repair") {
+                await fsMkdir(dirname(path), { recursive: true });
+                await fsWriteFile(path, '{"torn":');
+            }
+            const first = await appendWorkflowMetric(
+                path,
+                projectRoot,
+                { ...metric, seq: 1 },
+                { ...captured, deadline: Date.now() + 1000 },
+            );
+            assertEquals(first.persisted, true);
+            await fsRm(join(dirname(path), "state.json"));
+            const second = await appendWorkflowMetric(
+                path,
+                projectRoot,
+                { ...metric, seq: 2 },
+                { ...captured, deadline: Date.now() + 1000 },
+            );
+            assertEquals(second.persisted, true);
+            assertEquals(second.historyEpoch, first.historyEpoch);
+            const cleared = await clearWorkflowMetricJournal(path, projectRoot);
+            assertEquals(cleared.persisted, true);
+            await fsRm(join(dirname(path), "state.json"));
+            const stale = await appendWorkflowMetric(
+                path,
+                projectRoot,
+                { ...metric, seq: 3 },
+                { ...captured, deadline: Date.now() + 1000 },
+            );
+            assertEquals(stale.reason, "history_boundary");
+        });
+    });
+}
+
+test("another process cannot settle an initial history capture after a populated-history clear", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+        const path = getWorkflowMetricsFilePath(projectRoot);
+        const script = join(projectRoot, "initial-writer.js");
+        await fsWriteFile(
+            script,
+            `
+const {appendWorkflowMetric, resolveCollectionEpoch} = await import(${JSON.stringify(new URL("./metrics-journal.ts", import.meta.url).href)});
+const state = resolveCollectionEpoch(${JSON.stringify(path)}, true);
+console.log(state.historyEpoch);
+await (await import("node:events")).once(process.stdin, "data");
+console.log(JSON.stringify(await appendWorkflowMetric(${JSON.stringify(path)}, ${JSON.stringify(projectRoot)}, ${JSON.stringify(metric)}, {
+    enabled: true, epoch: state.collectionEpoch.id, historyEpoch: state.historyEpoch, deadline: Date.now() + 1000
+})));`,
+        );
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", script]),
+            env: { HOME: homeDir },
+            stdin: "piped",
+            stdout: "piped",
+            stderr: "piped",
+            cwd: getCwd(),
+        });
+        const reader = child.stdout.getReader();
+        try {
+            assertEquals(new TextDecoder().decode((await reader.read()).value).trim(), "initial");
+            assertEquals((await recordWorkflowMetric(metric, projectRoot)).persisted, true);
+            assertEquals((await clearWorkflowMetricJournal(path, projectRoot)).persisted, true);
+            const writer = child.stdin.getWriter();
+            await writer.write(new Uint8Array([10]));
+            await writer.close();
+            writer.releaseLock();
+            let text = "";
+            for (;;) {
+                const part = await reader.read();
+                if (part.done) break;
+                text += new TextDecoder().decode(part.value);
+            }
+            assertEquals((await child.status).code, 0);
+            const result = JSON.parse(text.trim());
+            assertEquals(result.persisted, false);
+            assertEquals(result.reason, "history_boundary");
+            assertEquals((await readJournal(path)).filter((row) => row.v === 2).length, 0);
+        } finally {
+            child.kill("SIGKILL");
+            await child.status;
+            await reader.cancel();
+            reader.releaseLock();
+        }
     });
 });
