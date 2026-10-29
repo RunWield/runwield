@@ -9,8 +9,15 @@ Show any returned `compatibility` notice to the user before continuing. On `unsu
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
 Core owns host and version compatibility.
 
-1. Call MCP `status`. Include this conversation's `workflowId` when known; otherwise use `{}` to find the most recent
-   open workflow. Status is compact by default.
+1. First call MCP `status` with `{ workflowId, inspectOnly: true }` when the workflow ID is known, or
+   `{ inspectOnly: true }` to inspect the most recent open workflow in this repository without advancing it.
+   Show `workflow.plan.planName` (or `workflow.requestSummary` before a Plan exists), the current step from
+   `workflow.nextAction`, and the originating host from `workflow.originHost` before continuing. If no workflow exists,
+   report that result and stop; do not activate a new request. If the user requested only inspection, stop after this
+   summary. The explicit resume authorizes continuing a workflow started in Codex without another host-switch
+   confirmation. Preserve its Plan, action, revision, and execution directory; do not import the other host's transcript.
+   Only after showing this summary, call ordinary `status` with that `workflowId` to continue. Do not fetch role
+   instructions, start checks, or dispatch a worker before the summary. Status is compact by default.
 2. If `review.url` is returned, open that URL with Claude Code's shell and the operating system's URL opener, then show
    the URL. The MCP server already opens a newly hosted review. Wait with MCP `status` using
    `{ workflowId, waitForRevision: <current revision>, timeoutMs: 30000 }` while the review is pending. Core returns on a

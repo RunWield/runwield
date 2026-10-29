@@ -49,6 +49,39 @@ test("every Claude command shows Core compatibility guidance before continuing",
     }
 });
 
+test("Claude resume commands identify saved work before advancing a cross-host workflow", async () => {
+    for (const command of ["plan-review", "implement", "validate"]) {
+        const source = await fsReadFile(new URL(`./plugin/commands/${command}.md`, import.meta.url), "utf8");
+        const firstStep = source.match(/^1\. ([\s\S]*?)(?=^2\. )/m)?.[1].replace(/\s+/g, " ");
+        assert(firstStep, `${command} must identify the workflow before its action instructions.`);
+        assert(
+            /^First call MCP `status` with `\{ workflowId, inspectOnly: true \}`/.test(firstStep),
+            `${command}'s first status call must not advance the workflow.`,
+        );
+        assertStringIncludes(firstStep, "`{ inspectOnly: true }`");
+        const continuation = firstStep.indexOf("call ordinary `status` with that `workflowId`");
+        assert(continuation > 0, `${command} must continue the inspected workflow after its summary.`);
+        const summary = firstStep.slice(0, continuation);
+        for (const field of [
+            "workflow.plan.planName",
+            "workflow.requestSummary",
+            "workflow.nextAction",
+            "workflow.originHost",
+        ]) {
+            assertStringIncludes(summary, `\`${field}\``);
+        }
+        assertStringIncludes(summary, "do not activate a new request");
+        assertStringIncludes(summary, "only inspection, stop after this summary");
+        assertStringIncludes(summary, "without another host-switch confirmation");
+        assertStringIncludes(summary, "do not import the other host's transcript");
+        assertStringIncludes(firstStep, "Only after showing this summary");
+        assertStringIncludes(
+            firstStep,
+            "Do not fetch role instructions, start checks, or dispatch a worker before the summary",
+        );
+    }
+});
+
 test("validation instructions preserve the Core text and selection answer contracts", async () => {
     const text = (await fsReadFile(new URL("./plugin/commands/validate.md", import.meta.url), "utf8")).replace(
         /\s+/g,
