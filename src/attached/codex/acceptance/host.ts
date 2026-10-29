@@ -38,7 +38,7 @@ export class CodexHost {
     private threadId = "";
     private exitCode: number | null = null;
     private spawns = new Map<string, SpawnObservation>();
-    private subscribed = new Set<string>();
+    private observedWorkers = new Set<string>();
     private completedTurns = new Set<string>();
     private turnWait: PendingRequest | null = null;
     readonly observations: HostObservation[] = [];
@@ -153,8 +153,8 @@ export class CodexHost {
             const child = text(nativeItem.agentThreadId),
                 callId = text(nativeItem.id);
             const spawn = callId ? this.spawns.get(callId) : null;
-            if (child && spawn && !this.subscribed.has(child)) {
-                this.subscribed.add(child);
+            if (child && spawn && !this.observedWorkers.has(child)) {
+                this.observedWorkers.add(child);
                 this.record({
                     run: this.options.run,
                     kind: "worker",
@@ -163,10 +163,7 @@ export class CodexHost {
                     workerIds: [child],
                     freshContext: spawn.freshContext,
                 });
-                // Rejoin only this observed running child; omit settings and history hydration.
-                void this.request("thread/resume", { threadId: child, excludeTurns: true }).catch(() =>
-                    this.fail(new Error("Codex child evidence subscription failed")),
-                );
+                // Ephemeral child events already share this native stream. Resuming would require a saved rollout.
             }
         }
         const item =

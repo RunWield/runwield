@@ -183,6 +183,32 @@ test("fresh native worker identity and complete returned bytes qualify the submi
         equal(assessHostReview(e).outcome, "fail");
     }
 });
+test("separate fresh workers cannot pool instructions or partial byte reads into one review", () => {
+    const splitInstructions = reviewedEvidence();
+    splitInstructions.observations[1].workerIds!.push("second");
+    splitInstructions.observations[3].threadId = "second";
+    splitInstructions.observations[4].threadId = "second";
+    equal(assessHostReview(splitInstructions).outcome, "fail");
+    const splitBytes = reviewedEvidence();
+    splitBytes.observations[1].workerIds!.push("second");
+    splitBytes.observations[4].diffRead!.end = 50;
+    splitBytes.observations.push(
+        { ...splitBytes.observations[2], threadId: "second" },
+        { ...splitBytes.observations[3], threadId: "second" },
+        {
+            ...splitBytes.observations[4],
+            threadId: "second",
+            diffRead: {
+                scope: "full",
+                path: "greet.sh",
+                start: 50,
+                end: 100,
+                totalBytes: 100,
+            },
+        },
+    );
+    equal(assessHostReview(splitBytes).outcome, "fail");
+});
 test("read identities and submitted review actions survive next-action transitions", () => {
     const base = { type: "mcpToolCall", server: "runwield", id: "call" };
     const read = toolObservation("run", "worker", {

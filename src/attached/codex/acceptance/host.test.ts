@@ -68,7 +68,7 @@ test("live child retains auth location without inheriting parent task or tool so
         { HOME: "/host/home", CODEX_HOME: "/host/codex", OPENAI_API_KEY: "host-only-marker" },
     );
 });
-test("raw spawn call IDs join native child activity and subscribe to direct worker results", async () => {
+test("raw spawn IDs join native child activity and direct events without resuming ephemeral children", async () => {
     await withHost(
         `
 let buffer="";process.stdin.on("data",bytes=>{buffer+=bytes;let n;while((n=buffer.indexOf("\\n"))>=0){const q=JSON.parse(buffer.slice(0,n));buffer=buffer.slice(n+1);const send=x=>console.log(JSON.stringify(x));
@@ -77,7 +77,8 @@ send({method:"rawResponseItem/completed",params:{threadId:"parent",item:{type:"f
 send({method:"item/started",params:{threadId:"parent",item:{type:"subAgentActivity",id:"spawn",agentThreadId:"child"}}});
 }
 if(q.id)send({id:q.id,result:{}});
-if(q.method==="thread/resume")send({method:"item/completed",params:{threadId:q.params.threadId,item:{type:"mcpToolCall",server:"runwield",tool:"get_instructions",id:"read",result:{structuredContent:{ok:true,actionId:"action",workflowId:"workflow"}}}}});
+if(q.method==="thread/resume")process.exit(1);
+if(q.method==="trigger")send({method:"item/completed",params:{threadId:"child",item:{type:"mcpToolCall",server:"runwield",tool:"get_instructions",id:"read",result:{structuredContent:{ok:true,actionId:"action",workflowId:"workflow"}}}}});
 }});`,
         async (host, root) => {
             await host.request("trigger", {});
