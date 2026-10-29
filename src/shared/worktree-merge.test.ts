@@ -1,3 +1,4 @@
+import type { MergeRepairError } from "./worktree.js";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -22,7 +23,7 @@ import {
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 
-/** @typedef {Error & { mergeFailureKind?: string }} TestMergeRepairError */
+type TestWorktreeAttempt = Awaited<ReturnType<typeof createTestWorktreeAttempt>>;
 
 test("publication candidate must contain the current target commit", async () => {
     const projectRoot = await makeRepo();
@@ -35,17 +36,11 @@ test("publication candidate must contain the current target commit", async () =>
         const unrelatedCandidate = await git(projectRoot, ["rev-parse", "HEAD"]);
 
         const error = await assertRejects(
-            () =>
-                assertPublicationCandidateContainsTarget(
-                    projectRoot,
-                    targetCommit,
-                    unrelatedCandidate,
-                    "main",
-                ),
+            () => assertPublicationCandidateContainsTarget(projectRoot, targetCommit, unrelatedCandidate, "main"),
             Error,
             "Publication candidate would discard commits already on main",
         );
-        assertEquals(/** @type {TestMergeRepairError} */ (error).mergeFailureKind, "target_history_rewrite");
+        assertEquals((error as MergeRepairError).mergeFailureKind, "target_history_rewrite");
         assertEquals(await git(projectRoot, ["rev-parse", "main"]), targetCommit);
     } finally {
         await fsRm(projectRoot, { recursive: true });
@@ -55,8 +50,7 @@ test("publication candidate must contain the current target commit", async () =>
 test("mergeExecutionWorktree targets recorded branch without changing primary checkout", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -96,8 +90,7 @@ test("mergeExecutionWorktree refuses to update target branch checked out in anot
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const targetCheckout = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -142,8 +135,7 @@ test("mergeExecutionWorktree refuses checked-out target before mutating executio
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const targetCheckout = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -196,8 +188,7 @@ test("mergeExecutionWorktree refuses checked-out target before mutating executio
 test("mergeExecutionWorktree keeps a Plan deleted on both sides", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
         await fsWriteFile(`${projectRoot}/docs/plans/deleted.md`, "base\n");
@@ -245,8 +236,7 @@ test("mergeExecutionWorktree keeps a Plan deleted on both sides", async () => {
 test("publication resolves unrelated Plan drift without rewriting the execution worktree", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
         await fsWriteFile(`${projectRoot}/docs/plans/unrelated.md`, 'status: "draft"\n');
@@ -297,8 +287,7 @@ test("publication resolves unrelated Plan drift without rewriting the execution 
 test("mergeExecutionWorktree requires targetBranch to be a local branch, not a tag", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -336,10 +325,8 @@ test("mergeExecutionWorktree requires targetBranch to be a local branch, not a t
 test("mergeExecutionWorktree publishes and cleans up a repaired detached merge worktree", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
-    /** @type {string | undefined} */
-    let mergeWorktreePath;
+    let worktree: TestWorktreeAttempt | undefined;
+    let mergeWorktreePath: string | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -361,7 +348,7 @@ test("mergeExecutionWorktree publishes and cleans up a repaired detached merge w
                 worktreePath: worktree.path,
             });
         } catch (error) {
-            mergeWorktreePath = /** @type {{ mergeWorktreePath?: string }} */ (error).mergeWorktreePath;
+            mergeWorktreePath = (error as MergeRepairError).mergeWorktreePath;
         }
         if (!mergeWorktreePath) throw new Error("Expected detached merge repair worktree path");
         assertEquals(dirname(mergeWorktreePath), worktreeRoot);
@@ -397,10 +384,8 @@ test("mergeExecutionWorktree publishes and cleans up a repaired detached merge w
 test("mergeExecutionWorktree abandons repaired worktree when Engineer made branch retryable", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
-    /** @type {string | undefined} */
-    let mergeWorktreePath;
+    let worktree: TestWorktreeAttempt | undefined;
+    let mergeWorktreePath: string | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -422,7 +407,7 @@ test("mergeExecutionWorktree abandons repaired worktree when Engineer made branc
                 worktreePath: worktree.path,
             });
         } catch (error) {
-            mergeWorktreePath = /** @type {{ mergeWorktreePath?: string }} */ (error).mergeWorktreePath;
+            mergeWorktreePath = (error as MergeRepairError).mergeWorktreePath;
         }
         if (!mergeWorktreePath) throw new Error("Expected detached merge repair worktree path");
 
@@ -461,10 +446,8 @@ test("mergeExecutionWorktree abandons repaired worktree when Engineer made branc
 test("mergeExecutionWorktree abandons stale repaired worktree and retries current target", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
-    /** @type {string | undefined} */
-    let mergeWorktreePath;
+    let worktree: TestWorktreeAttempt | undefined;
+    let mergeWorktreePath: string | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -486,7 +469,7 @@ test("mergeExecutionWorktree abandons stale repaired worktree and retries curren
                 worktreePath: worktree.path,
             });
         } catch (error) {
-            mergeWorktreePath = /** @type {{ mergeWorktreePath?: string }} */ (error).mergeWorktreePath;
+            mergeWorktreePath = (error as MergeRepairError).mergeWorktreePath;
         }
         if (!mergeWorktreePath) throw new Error("Expected detached merge repair worktree path");
 
@@ -534,10 +517,8 @@ test("mergeExecutionWorktree abandons stale repaired worktree and retries curren
 test("mergeExecutionWorktree abandons repaired worktree for current-root checked-out target fallback", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
-    /** @type {string | undefined} */
-    let mergeWorktreePath;
+    let worktree: TestWorktreeAttempt | undefined;
+    let mergeWorktreePath: string | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -559,7 +540,7 @@ test("mergeExecutionWorktree abandons repaired worktree for current-root checked
                 worktreePath: worktree.path,
             });
         } catch (error) {
-            mergeWorktreePath = /** @type {{ mergeWorktreePath?: string }} */ (error).mergeWorktreePath;
+            mergeWorktreePath = (error as MergeRepairError).mergeWorktreePath;
         }
         if (!mergeWorktreePath) throw new Error("Expected detached merge repair worktree path");
 
@@ -602,8 +583,7 @@ test("mergeExecutionWorktree abandons repaired worktree for current-root checked
 test("mergeExecutionWorktree annotates current-root target fallback conflicts for repair", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         worktree = await createTestWorktreeAttempt({
@@ -625,12 +605,9 @@ test("mergeExecutionWorktree annotates current-root target fallback conflicts fo
             });
             throw new Error("Expected merge conflict");
         } catch (error) {
-            assertEquals(/** @type {{ repairCwd?: string }} */ (error).repairCwd, projectRoot);
-            assertEquals(
-                /** @type {{ mergeFailureKind?: string }} */ (error).mergeFailureKind,
-                "current_checkout_merge_conflict",
-            );
-            assertEquals(/** @type {{ mergeWorktreePath?: string }} */ (error).mergeWorktreePath, undefined);
+            assertEquals((error as MergeRepairError).repairCwd, projectRoot);
+            assertEquals((error as MergeRepairError).mergeFailureKind, "current_checkout_merge_conflict");
+            assertEquals((error as MergeRepairError).mergeWorktreePath, undefined);
         }
     } finally {
         await git(projectRoot, ["merge", "--abort"]).catch(() => {});
@@ -649,8 +626,7 @@ test("mergeExecutionWorktree annotates current-root target fallback conflicts fo
 test("mergeExecutionWorktree annotates legacy current-checkout conflicts for repair", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -670,12 +646,9 @@ test("mergeExecutionWorktree annotates legacy current-checkout conflicts for rep
             });
             throw new Error("Expected merge conflict");
         } catch (error) {
-            assertEquals(/** @type {{ repairCwd?: string }} */ (error).repairCwd, projectRoot);
-            assertEquals(
-                /** @type {{ mergeFailureKind?: string }} */ (error).mergeFailureKind,
-                "current_checkout_merge_conflict",
-            );
-            assertEquals(/** @type {{ mergeWorktreePath?: string }} */ (error).mergeWorktreePath, undefined);
+            assertEquals((error as MergeRepairError).repairCwd, projectRoot);
+            assertEquals((error as MergeRepairError).mergeFailureKind, "current_checkout_merge_conflict");
+            assertEquals((error as MergeRepairError).mergeWorktreePath, undefined);
         }
     } finally {
         await git(projectRoot, ["merge", "--abort"]).catch(() => {});
@@ -694,10 +667,8 @@ test("mergeExecutionWorktree annotates legacy current-checkout conflicts for rep
 test("mergeExecutionWorktree handles target branch advancing before a later merge", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let first;
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let second;
+    let first: TestWorktreeAttempt | undefined;
+    let second: TestWorktreeAttempt | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         first = await createTestWorktreeAttempt({
@@ -748,8 +719,7 @@ test("mergeExecutionWorktree handles target branch advancing before a later merg
 test("mergeExecutionWorktree marks target branch advancement as non-repairable", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
         const expectedTargetHead = await git(projectRoot, ["rev-parse", "feature-base"]);
@@ -778,7 +748,7 @@ test("mergeExecutionWorktree marks target branch advancement as non-repairable",
             Error,
             "Target branch feature-base advanced before publication; rerun Workflow Validation.",
         );
-        assertEquals(/** @type {any} */ (error).mergeFailureKind, "target_branch_advanced");
+        assertEquals((error as MergeRepairError).mergeFailureKind, "target_branch_advanced");
     } finally {
         if (worktree) {
             await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true });
@@ -791,8 +761,7 @@ test("mergeExecutionWorktree marks target branch advancement as non-repairable",
 test("mergeExecutionWorktree reports missing target branch without merging into current checkout", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -831,8 +800,7 @@ test("mergeExecutionWorktree reports missing target branch without merging into 
 test("mergeExecutionWorktree includes uncommitted worktree changes", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -857,10 +825,7 @@ test("mergeExecutionWorktree includes uncommitted worktree changes", async () =>
         const commitMessage = await git(worktree.path, ["log", "-1", "--format=%B"]);
         assertStringIncludes(commitMessage, `Complete ${planName}`);
         assertStringIncludes(commitMessage, `- Plan: ${planName}`);
-        assertStringIncludes(
-            commitMessage,
-            "- Description: Reference the plan description in dirty worktree commits.",
-        );
+        assertStringIncludes(commitMessage, "- Description: Reference the plan description in dirty worktree commits.");
         assertEquals(commitMessage.includes("Apply execution worktree changes"), false);
     } finally {
         if (worktree) {
@@ -878,8 +843,7 @@ test("mergeExecutionWorktree includes uncommitted worktree changes", async () =>
 test("checkpointExecutionWorktree commits tracked and untracked implementation changes", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -916,8 +880,7 @@ test("checkpointExecutionWorktree commits tracked and untracked implementation c
 test("removeWorktreeGitArtifacts preserves unexpected dirty work unless force is explicit", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -937,7 +900,7 @@ test("removeWorktreeGitArtifacts preserves unexpected dirty work unless force is
         );
 
         assertEquals((await fsStat(`${worktree.path}/valuable-repair.js`)).isFile(), true);
-        assertEquals(await git(projectRoot, ["show-ref", "--verify", `refs/heads/${worktree.branch}`]) !== "", true);
+        assertEquals((await git(projectRoot, ["show-ref", "--verify", `refs/heads/${worktree.branch}`])) !== "", true);
     } finally {
         if (worktree) {
             await removeWorktreeGitArtifacts({
@@ -954,8 +917,7 @@ test("removeWorktreeGitArtifacts preserves unexpected dirty work unless force is
 test("mergeExecutionWorktree allows unrelated dirty primary checkout changes", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -992,8 +954,7 @@ test("mergeExecutionWorktree allows unrelated dirty primary checkout changes", a
 test("mergeExecutionWorktree refuses dirty primary changes that overlap branch changes", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -1027,8 +988,7 @@ test("mergeExecutionWorktree refuses dirty primary changes that overlap branch c
 test("mergeExecutionWorktree continues an in-progress resolved merge", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: TestWorktreeAttempt | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,
