@@ -1,3 +1,4 @@
+import { parseAttachedMcpArgs } from "./index.ts";
 import { saveAttachedReviewChat } from "../../shared/attached/coordinator.ts";
 import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
@@ -160,4 +161,27 @@ test("CLI get_pending_chat returns the oldest pending Plan review turn", async (
         assertEquals(cli.result.operation, "get_pending_chat");
         assertEquals(cli.result.chat.message, "First question");
     });
+});
+
+test("Codex MCP launch metadata requires both bounded fields and rejects unknown or repeated flags", () => {
+    assertEquals(parseAttachedMcpArgs([]), { host: "claude-code" });
+    assertEquals(parseAttachedMcpArgs(["codex"]), { host: "codex" });
+    for (const args of [
+        ["codex", "--adapter-version", "0.1.0", "--adapter-contract", "1"],
+        ["codex", "--adapter-contract", "1", "--adapter-version", "0.1.0"],
+    ])
+        assertEquals(parseAttachedMcpArgs(args), { host: "codex", adapter: { version: "0.1.0", adapterContract: 1 } });
+    for (const args of [
+        ["other"],
+        ["codex", "--adapter-version", "0.1.0"],
+        ["codex", "--adapter-contract", "1"],
+        ["codex", "--adapter-version", "", "--adapter-contract", "1"],
+        ["codex", "--adapter-version", "v".repeat(129), "--adapter-contract", "1"],
+        ["codex", "--adapter-version", "0.1.0", "--adapter-contract", "-1"],
+        ["codex", "--adapter-version", "0.1.0", "--adapter-contract", "1.5"],
+        ["codex", "--adapter-version", "0.1.0", "--adapter-contract", "9007199254740992"],
+        ["codex", "--adapter-version", "0.1.0", "--adapter-version", "0.2.0"],
+        ["codex", "--adapter-version", "0.1.0", "--other", "1"],
+    ])
+        assertEquals(parseAttachedMcpArgs(args), null, JSON.stringify(args));
 });

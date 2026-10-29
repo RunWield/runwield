@@ -117,6 +117,7 @@ import {
 } from "../workflow/validation-host-contract.ts";
 import { readReviewDiff } from "../workflow/review-diff.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
+import { attachedHost, type AttachedHostId } from "./hosts.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
 import { assessCompatibility, isBlockingCompatibility } from "./compatibility.ts";
 import { parseHostEvidence } from "./operations.ts";
@@ -211,7 +212,8 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
             return {
                 kind: "plan_saved",
                 planName: record.plan.planName,
-                guidance: "The Plan is Ready For Work, saved for later. /runwield:implement starts it.",
+                guidance:
+                    "The Plan is Ready For Work, saved for later. Use the host's RunWield implementation entrypoint to start it.",
             };
         }
         return {
@@ -265,7 +267,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
                 record.closure.completionMode === "in_place"
                     ? "Consented in-place completion is proven; no Git publication is claimed."
                     : "Publication is proven."
-            } Work Record supersession proposals are deferred; use wld wr supersede. Suggest manual checks from the Plan in Claude Code; do not save those checks.`,
+            } Work Record supersession proposals are deferred; use wld wr supersede. Suggest manual checks from the Plan in the host conversation; do not save those checks.`,
         };
     }
     return record.closure?.reason === "plan_advanced_in_core"
@@ -464,6 +466,8 @@ async function projectedViewOf(
 ): Promise<AttachedWorkflowView> {
     return {
         workflowId: record.workflowId,
+        originHost: record.evidence.host,
+        requestSummary: summarizeAttachedRequest(record.request.text),
         revision: record.revision,
         state: record.state,
         nextAction: await nextActionFor(record),
@@ -1292,7 +1296,7 @@ export async function applyAttachedReviewDecision(
                           contractVersion: ATTACHED_PLANNER_CONTRACT_VERSION,
                           ...(outcome.kind === "canceled"
                               ? {
-                                    note: "The user canceled the browser review. Return to the user in Claude; this workflow remains open.",
+                                    note: "The user canceled the browser review. Return to the user in the host conversation; this workflow remains open.",
                                 }
                               : {
                                     feedback: outcome.feedback,
@@ -1564,6 +1568,17 @@ export async function readStatus(
     envelope: StatusEnvelope,
     options?: AttachedOperationOptions,
 ): Promise<AttachedOperationResult> {
+    return await presentAttachedHost(
+        envelope.projectRoot,
+        await readStatusState(envelope, options),
+        envelope.evidence?.host,
+    );
+}
+
+async function readStatusState(
+    envelope: StatusEnvelope,
+    options?: AttachedOperationOptions,
+): Promise<AttachedOperationResult> {
     if (!getHomeDir())
         return await rejected("status", rejection("home_unavailable", "Set HOME to use Attached workflows."));
     const location = locateAttachedWorkflows(envelope.projectRoot);
@@ -1578,7 +1593,7 @@ export async function readStatus(
     }
     const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
     const compatibility = envelope.evidence ? assessCompatibility(envelope.evidence) : undefined;
-    if (compatibility && isBlockingCompatibility(compatibility)) {
+    if (envelope.inspectOnly || (compatibility && isBlockingCompatibility(compatibility))) {
         return {
             ok: true,
             operation: "status",
@@ -1712,7 +1727,9 @@ async function runParsedOperation(
 async function withRoleInstructions(
     projectRoot: string,
     result: AttachedOperationResult,
+    hostId: AttachedHostId,
 ): Promise<AttachedOperationResult> {
+    result = await presentAttachedHost(projectRoot, result, hostId);
     const action = result.workflow?.nextAction;
     if ((action?.kind === "validation" || action?.kind === "recorder") && action.request.kind !== "decision") {
         const role =
@@ -1722,7 +1739,7 @@ async function withRoleInstructions(
                   ? "recorder"
                   : "reviewer-feedback-engineer";
         const cwd = action.request.cwd;
-        const roleInstructions = await resolveAttachedRoleInstructions(cwd, role);
+        const roleInstructions = await resolveAttachedRoleInstructions(cwd, role, hostId);
         const text =
             action.request.kind === "reviewer"
                 ? `${(await loadReviewerPrompt(action.request.reviewMode, cwd)).systemPrompt}\n\n${roleInstructions}\n\n## review_complete payload schema\n\n${JSON.stringify(ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!.inputSchema.properties.payload, null, 2)}`
@@ -1737,8 +1754,59 @@ async function withRoleInstructions(
         };
     }
     if (action?.kind !== "triage" && action?.kind !== "plan" && action?.kind !== "implementation") return result;
-    const text = await resolveAttachedRoleInstructions(projectRoot, action.role);
+    const text = await resolveAttachedRoleInstructions(projectRoot, action.role, hostId);
     return { ...result, instructions: { role: action.role, contractVersion: action.contractVersion, text } };
+}
+
+/** Project the current caller without rewriting activation evidence or accepted outcomes. */
+async function presentAttachedHost(
+    projectRoot: string,
+    result: AttachedOperationResult,
+    currentHost?: string,
+): Promise<AttachedOperationResult> {
+    if (!result.workflow) return result;
+    let originHost = result.workflow.originHost;
+    let requestSummary = result.workflow.requestSummary;
+    if (!originHost || requestSummary === undefined) {
+        const loaded = await loadAttachedWorkflowRecord(
+            locateAttachedWorkflows(projectRoot),
+            result.workflow.workflowId,
+        );
+        if (loaded.status !== "missing") {
+            originHost = loaded.record.evidence.host;
+            requestSummary = summarizeAttachedRequest(loaded.record.request.text);
+        }
+    }
+    const host = attachedHost(currentHost ?? originHost ?? "");
+    let nextAction = result.workflow.nextAction;
+    if (host && nextAction.kind === "plan_saved") {
+        nextAction = {
+            ...nextAction,
+            guidance: `The Plan is Ready For Work, saved for later. ${host.implementEntrypoint} starts it.`,
+        };
+    }
+    if (host && nextAction.kind === "delivered") {
+        nextAction = {
+            ...nextAction,
+            guidance: nextAction.guidance.replace("in Claude Code;", `in ${host.displayName};`),
+        };
+    }
+    if (
+        nextAction.kind === "plan" &&
+        nextAction.note ===
+            "The user canceled the browser review. Return to the user in Claude; this workflow remains open."
+    ) {
+        nextAction = {
+            ...nextAction,
+            note: "The user canceled the browser review. Return to the user in the host conversation; this workflow remains open.",
+        };
+    }
+    return { ...result, workflow: { ...result.workflow, originHost, requestSummary, nextAction } };
+}
+
+function summarizeAttachedRequest(text: string): string {
+    const characters = Array.from(text.replace(/\s+/g, " ").trim());
+    return characters.length > 160 ? `${characters.slice(0, 157).join("")}...` : characters.join("");
 }
 
 export type AttachedReadResult =
@@ -1811,7 +1879,11 @@ export async function runAttachedOperation(
             return await rejected(name, rejection(compatibility.status, compatibility.message));
         }
         const result = await runParsedOperation(name, projectRoot, input, options);
-        return await withRoleInstructions(projectRoot, result.ok ? { ...result, compatibility } : result);
+        return await withRoleInstructions(
+            projectRoot,
+            result.ok ? { ...result, compatibility } : result,
+            attachedHost(parsed.envelope.host)!.id,
+        );
     }
     return await runParsedOperation(name, projectRoot, input, options);
 }
@@ -1886,7 +1958,11 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
     if ((action.kind === "validation" || action.kind === "code_review") && action.request.kind === "decision") {
         return { ok: true as const, ...identity, request: action.request };
     }
-    const resolved = await withRoleInstructions(envelope.projectRoot, current);
+    const resolved = await withRoleInstructions(
+        envelope.projectRoot,
+        current,
+        attachedHost(envelope.evidence.host)!.id,
+    );
     if (!resolved.instructions) {
         return {
             ok: false as const,

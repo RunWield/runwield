@@ -221,7 +221,9 @@ Initialization is optional and may occur before or after the first Attached Work
 ### Host-owned reasoning
 
 **Scope and maturity:** Implemented for the Claude FEATURE journey with the source and permissions scope recorded in
-[Preview Acceptance](#preview-acceptance). This remains a requirement for every later Connect adapter.
+[Preview Acceptance](#preview-acceptance). The shared coordinator also adapts runtime roles and native file tools for
+Codex; this shared boundary is not evidence of a completed live Codex journey. Every adapter retains host-owned model
+calls, fresh worker instructions, and direct independent-review inspection.
 
 **Requirement: Use the external host for every model call.**
 
@@ -233,7 +235,8 @@ Initialization is optional and may occur before or after the first Attached Work
   substitute a RunWield-owned Agent Session.
 - Each role response whose Core prompt uses Skills includes the effective Skill catalog with names, descriptions,
   and read paths. The catalog resolves project, home, external, and bundled Skills at run time. The independent
-  reviewer receives no Skills. The Connect plugin ships no Skill files.
+  reviewer receives no Skills. Claude's plugin ships no Skill files. Codex's host-native entrypoint Skills carry workflow
+  guidance without copying role definitions or the effective role Skill catalog.
 
 **Acceptance scenarios:**
 
@@ -662,19 +665,31 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 
 ### Compatibility and honest availability
 
-**Scope and maturity:** Implemented for Claude Code through the Core-owned
-[Compatibility Matrix](../../src/shared/attached/compatibility.ts) and
-[host guide](../user-documentation/connect-claude-code.md). The matrix lists only versions with passing saved live
-results; [Preview Acceptance](#preview-acceptance) records their evidence limits. Other hosts and stable support remain
-targets.
+**Scope and maturity:** The Core-owned [Compatibility Matrix](../../src/shared/attached/compatibility.ts) recognizes
+Claude Code and Codex. Claude's tested entries and [host guide](../user-documentation/connect-claude-code.md) retain the
+source and permission limits in [Preview Acceptance](#preview-acceptance). Codex has no tested-version entries yet;
+recognized versions continue with an explicit untested notice. Protocol probes do not qualify a complete desktop or CLI
+workflow. Other hosts and stable support remain targets.
 
-Core checks every evidence-carrying operation before dispatch. A host other than Claude Code rejects with
-`unsupported_host`. An incompatible adapter contract or host below the tested floor also rejects without changing the
-workflow, Plan, or worktree. Newer or unreported host versions continue with a visible notice, not a tested-support
-claim. Current-action instruction, artifact, and pending-chat reads require current host evidence and reject under
-these same rules without returning work content. Claude's MCP server supplies evidence on every operation. Status
-remains readable with a stale adapter for recovery, reports the current assessment when evidence is supplied, and does
-not continue validation for a rejected host.
+Core checks every evidence-carrying operation before dispatch. Unrecognized hosts reject with `unsupported_host`.
+An incompatible adapter contract or host below its tested floor also rejects without changing the workflow, Plan, or
+worktree. Newer or unreported host versions continue with a visible notice, not a tested-support claim. Prerelease
+versions remain distinct from stable versions. Current-action instruction, artifact, and pending-chat reads require
+current host evidence and reject under these same rules without returning work content.
+
+Both adapters use the shared MCP carrier. It derives host identity from recognized MCP initialization names. Claude
+supplies its installed manifest path; Codex supplies bounded version and contract arguments in its installed MCP launch
+configuration. Package checks keep those arguments synchronized with its manifest. A launch option or model-supplied
+evidence cannot make an unrelated client a supported host. Status remains readable with a stale adapter for recovery, reports the current assessment when evidence
+is supplied, and does not continue validation for a rejected host. Fresh role instructions and browser labels identify
+the coordinating host; the adapter does not persist copied prompts or start a Core model session.
+
+A user may resume a Claude-started workflow in Codex or a Codex-started workflow in Claude. The host shows the Plan name
+(or saved request before a Plan exists), current step, and originating host before continuing; it does not ask for a
+second approval merely because the host changed. An initial `status` inspection returns that summary without
+reconciliation, validation, publication, or review hosting; normal status continues only after disclosure. Compact status
+projects the activation host and a request preview of at most 160 characters from the existing record.
+Original evidence remains intact, current operations record the caller, and revision/action guards apply unchanged.
 
 **Requirement: Disclose tested host support and limitations.**
 
@@ -714,8 +729,14 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 **Acceptance scenarios:**
 
-- Given a non-Claude host with a tested version number and supported adapter contract, activation rejects with
-  `unsupported_host` before changing any workflow, Plan, or worktree. Status remains readable for recovery.
+- Given an unrecognized host with a tested version number and supported adapter contract, activation rejects with
+  `unsupported_host` before changing any workflow, Plan, or worktree. Selecting the Codex adapter or supplying claimed
+  Codex evidence in tool arguments does not bypass the host check. Status remains readable for recovery.
+- Given a recognized Codex prerelease without saved live acceptance, activation discloses untested support and never
+  reports that the version or its desktop/CLI journey is tested.
+- Given an open workflow from either supported host, the other host restores its same identity, Plan and pending action,
+  shows the handoff summary, and continues with current-host instructions. Stale outcomes remain rejected, and a host
+  change neither creates a new workflow nor resets approval.
 - Given a saved action and a rejected current host or adapter, instruction, artifact, and pending-chat reads return
   the compatibility rejection and no work content. Status returns the current assessment without continuing validation
   or changing the workflow revision.

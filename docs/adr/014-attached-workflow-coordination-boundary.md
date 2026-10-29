@@ -74,14 +74,37 @@ Provide MCP as a thin protocol adapter over the same coordinator operation surfa
 The MCP adapter may translate framing and schemas but must not contain Plan Lifecycle, validation, worktree, or recovery
 logic. Every MCP operation, including instruction, artifact, and pending-chat reads, is also a `wld attached` operation.
 
+Claude and Codex share one MCP carrier for schemas, progress, bounded status waits, review hosting, and shutdown.
+`wld attached mcp` preserves the Claude launch path; `wld attached mcp codex` selects the Codex package. Selection alone
+is not host evidence: the carrier accepts only observed client initialization identities for that adapter. Claude's
+resolved plugin root supplies installed manifest evidence. Codex's native plugin does not interpolate that root, so its
+installed MCP launch passes `--adapter-version` and `--adapter-contract` together. Startup validates those arguments,
+and package checks keep them synchronized with its manifest and descriptor. This transport-owned metadata overrides
+model-supplied tool arguments. Direct development launches without metadata use the bundled descriptor.
+Codex's native `.mcp.json` supports the long tool timeout required by Core checks; portable `mcp.json` does not support
+that setting in the probed host. Reuse the synchronous operation and shared recovery path rather than adding a second
+validation loop to compensate. Concrete host descriptors own
+presentation, native entrypoints, and compatibility guidance, while the coordinator and existing domain authorities
+retain every lifecycle rule. Codex prereleases are parsed without equating them to a tested stable version; no tested
+matrix entry is created from a protocol-only probe.
+
 Deliver role instructions at run time. Each coordinator response that hands a role to the host carries that role's
 current instructions, resolved from the project, home, and bundled agent definitions in the same order Core Sessions
 use, and a map from RunWield tool names to host tool names. Roles whose Core prompt uses Skills also receive the
 current effective Skill catalog with read paths, resolved from project, home, external, and bundled Skills. The
 independent reviewer receives no Skills. Core and Attached share the catalog's visibility and text rules, so overrides
-and disabled Skills behave the same way. The adapter package ships no generated Skills or copied role
-prompts, so no copy can go stale. In Claude Code these instructions arrive as a tool result rather than a system prompt;
-that is an accepted compromise of the Attached model. Subagents receive the instructions in their task prompt.
+and disabled Skills behave the same way. The adapter package ships no generated role Skills or copied role
+prompts, so no copy can go stale. Host-native activation guidance is separate from these runtime role definitions.
+Instructions arrive as tool results rather than a host system prompt; that is an accepted compromise of the Attached
+model. Subagents fetch current action instructions directly where required. Host names, tool mappings and browser
+conversation labels follow the coordinating host without changing the underlying Plan or action identity. Cross-host
+continuation is supported: compact status projects `originHost` from activation evidence, while current caller evidence
+selects role presentation and is retained on new accepted operations. Older saved operation results receive the same
+projection on return, without a record migration or rewritten activation history. The host discloses the saved Plan or
+request and current step before continuing. `status {inspectOnly: true}` performs that initial read without
+reconciliation, checks, publication, or review hosting. Its request preview is bounded to 160 Unicode characters from
+the explicit activation request. Ordinary status retains recovery behavior after the host shows the summary; existing
+revision and action checks remain authoritative.
 
 Do not add hooks or permission rules that restrict host tools during an Attached Workflow. Role boundaries, such as "the
 Planner writes only Plan files," come from the role instructions, as they do in Core.
@@ -118,7 +141,8 @@ preserve existing Native and Managed behavior and is a hard prerequisite for Att
   Documentation must not describe the instructions as a hard gate.
 - Validation-engine extraction is delivered and verified independently before the Attached Epic can execute its
   validation journey. This avoids implementing and later discarding a second 2,000-plus-line validation loop.
-- Future Codex, OpenCode, and Pi adapters may reuse the same coordinator and CLI/MCP semantics, but they remain outside
-  the Claude FEATURE Preview scope and require capability-specific Preview Epics.
+- Codex reuses the same coordinator and CLI/MCP semantics through its own adapter and capability-specific Epic.
+  Desktop and CLI qualification remain distinct evidence claims. OpenCode and Pi remain future adapters; none inherit
+  Claude's live acceptance merely by sharing the carrier.
 - The existing Claude CLI execution-backend project remains a distinct Managed-mode integration. Its MCP transport may
   later share protocol utilities, but neither project depends on the other's model-execution direction.

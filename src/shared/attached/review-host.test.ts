@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../browser-port.ts";
@@ -8,9 +9,60 @@ import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkf
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
 import { stopActiveReviewSurfaces } from "../../ui/review/review-launcher.ts";
-import { planWrittenInput, runOperation, submitReview, withProject } from "./attached-test-fixture.ts";
+import {
+    EVIDENCE,
+    activateInput,
+    pendingTriage,
+    triageReportInput,
+    planWrittenInput,
+    runOperation,
+    submitReview,
+    withProject,
+} from "./attached-test-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+
+test("Codex browser review and restored chat identify the coordinating host", async () => {
+    await withProject(async (root) => {
+        const evidence = { ...EVIDENCE, host: "codex", hostVersion: "0.164.0-alpha.11.1" };
+        try {
+            const activated = await runOperation("activate", root, { ...activateInput(), evidence });
+            const planned = await runOperation("triage_report", root, {
+                ...triageReportInput(pendingTriage(activated)),
+                evidence,
+            });
+            assert(planned.ok && planned.workflow.nextAction.kind === "plan");
+            await mkdir(join(root, "docs/plans"), { recursive: true });
+            await fsWriteFile(join(root, "docs/plans/dark-mode-toggle.md"), "# Toggle\n\nAdd a toggle.\n");
+            const submitted = await runOperation("plan_written", root, {
+                ...planWrittenInput({
+                    workflowId: planned.workflow.workflowId,
+                    actionId: planned.workflow.nextAction.actionId,
+                    expectedRevision: planned.workflow.revision,
+                }),
+                evidence,
+            });
+            assert(submitted.ok);
+            for (let round = 0; round < 2; round++) {
+                const hosted = await ensureReviewHosted(
+                    root,
+                    submitted.workflow,
+                    NO_OPEN_BROWSER_PORT,
+                    undefined,
+                    "codex",
+                );
+                assert(hosted);
+                const url = new URL(hosted.url);
+                const conversation = await (await fetch(new URL(`/api/review/conversation${url.search}`, url))).json();
+                assertEquals(conversation.agentLabel, "Codex");
+                assertEquals(hosted.guidance.includes("/runwield:implement"), false);
+                await stopHostedAttachedReviews();
+            }
+        } finally {
+            await stopHostedAttachedReviews();
+        }
+    });
+});
 
 test("the production decision route acknowledges only a committed Attached outcome and reuses its page", async () => {
     await withProject(async (root) => {
