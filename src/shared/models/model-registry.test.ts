@@ -1,3 +1,7 @@
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { FetchRequest } from "../fetch-request.ts";
+import type { JsonRecord } from "../jsonc.ts";
+import type { RunWieldModel } from "./model-registry.ts";
 import { test } from "node:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +15,26 @@ import {
     RunWieldCredentialStore,
     RunWieldModelRegistry,
 } from "./model-registry.ts";
+
+type ModelReferenceFixture = Pick<RunWieldModel, "provider" | "id">;
+type ProviderModelFixture = Pick<RunWieldModel, "id" | "input">;
+
+interface ProviderConfigFixture extends JsonRecord {
+    models: ProviderModelFixture[];
+}
+
+interface DiscoveryRequestFixture {
+    headers?: Record<string, string>;
+}
+
+interface RuntimeAvailabilityFixture {
+    getAvailableSnapshot(): readonly ModelReferenceFixture[];
+}
+
+type RegistryLookupFixture = Pick<RunWieldModelRegistry, "find">;
+type FetchResponseFixture = Pick<Response, "ok" | "status" | "statusText" | "json">;
+type FetchPortFixture = (...args: Parameters<FetchRequest>) => Promise<FetchResponseFixture>;
+type RegisteredProviderCapture = ProviderConfigFixture | undefined;
 
 test("RunWield model runtime registers statically bundled OAuth loaders before creation", async () => {
     const source = await fsReadFile(new URL("./model-registry.ts", import.meta.url), "utf8");
@@ -125,9 +149,9 @@ test("RunWieldModelRegistry availability delegates to runtime snapshot when hydr
         const availableModel = { provider: "runtime", id: "available" };
         const registry = new RunWieldModelRegistry({
             configDir: tempDir,
-            runtime: /** @type {any} */ ({
+            runtime: {
                 getAvailableSnapshot: () => [availableModel],
-            }),
+            } as RuntimeAvailabilityFixture as ModelRuntime,
         });
 
         assertEquals(registry.getAvailable(), [availableModel]);
@@ -159,7 +183,10 @@ test("RunWieldModelRegistry sync availability filters local models by configured
         );
         const registry = new RunWieldModelRegistry({ configDir: tempDir });
 
-        assertEquals(registry.getAvailable().map((model) => `${model.provider}/${model.id}`), ["authed/available"]);
+        assertEquals(
+            registry.getAvailable().map((model) => `${model.provider}/${model.id}`),
+            ["authed/available"],
+        );
     } finally {
         await fsRm(tempDir, { recursive: true });
     }
@@ -168,15 +195,15 @@ test("RunWieldModelRegistry sync availability filters local models by configured
 test("RunWieldModelRegistry cold sync availability includes built-in models with stored credentials", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-registry-cold-builtin-"));
     try {
-        await fsWriteFile(
-            join(tempDir, "auth.json"),
-            JSON.stringify({ openai: { type: "api_key", key: "test-key" } }),
-        );
+        await fsWriteFile(join(tempDir, "auth.json"), JSON.stringify({ openai: { type: "api_key", key: "test-key" } }));
         const registry = new RunWieldModelRegistry({ configDir: tempDir });
 
         const availableRefs = registry.getAvailable().map((model) => `${model.provider}/${model.id}`);
 
-        assertEquals(availableRefs.some((ref) => ref.startsWith("openai/")), true);
+        assertEquals(
+            availableRefs.some((ref) => ref.startsWith("openai/")),
+            true,
+        );
     } finally {
         await fsRm(tempDir, { recursive: true });
     }
@@ -198,40 +225,37 @@ test("discoverProviderModel registers a model returned by OpenAI-compatible /mod
             }),
         );
 
-        /** @type {any | undefined} */
-        let registeredModel;
-        /** @type {string | undefined} */
-        let requestedUrl;
-        /** @type {string | undefined} */
-        let authorization;
-        const registry = /** @type {any} */ ({
-            find: (/** @type {string} */ provider, /** @type {string} */ modelId) =>
+        let registeredModel: ModelReferenceFixture | undefined;
+        let requestedUrl: string | undefined;
+        let authorization: string | undefined;
+        const registry = {
+            find: (provider: string, modelId: string) =>
                 registeredModel && registeredModel.provider === provider && registeredModel.id === modelId
                     ? registeredModel
                     : undefined,
-            registerProvider: (
-                /** @type {string} */ provider,
-                /** @type {{ models: Array<{ id: string }> }} */ config,
-            ) => {
+            registerProvider: (provider: string, config: ProviderConfigFixture) => {
                 registeredModel = { provider, id: config.models[0].id };
             },
-        });
+        } as RegistryLookupFixture as RunWieldModelRegistry;
 
-        const result = await discoverProviderModel(registry, "crofai", "deepseek-v4-pro", {
-            fetch: /** @type {typeof fetch} */ ((
-                /** @type {string} */ url,
-                /** @type {{ headers?: Record<string, string> }} */ init,
-            ) => {
-                requestedUrl = url;
-                authorization = init.headers?.Authorization;
-                return Promise.resolve({
-                    ok: true,
-                    status: 200,
-                    statusText: "OK",
-                    json: () => Promise.resolve({ data: [{ id: "deepseek-v4-pro" }] }),
-                });
-            }),
-        }, { runwieldDir: tempDir });
+        const result = await discoverProviderModel(
+            registry,
+            "crofai",
+            "deepseek-v4-pro",
+            {
+                fetch: ((url: string, init: DiscoveryRequestFixture) => {
+                    requestedUrl = url;
+                    authorization = init.headers?.Authorization;
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        statusText: "OK",
+                        json: () => Promise.resolve({ data: [{ id: "deepseek-v4-pro" }] }),
+                    });
+                }) as FetchRequest,
+            },
+            { runwieldDir: tempDir },
+        );
 
         assertEquals(requestedUrl, "https://crof.ai/v1/models");
         assertEquals(authorization, "Bearer test-key");
@@ -258,24 +282,24 @@ test("discoverProviderModel defaults discovered models to text-only input", asyn
             }),
         );
 
-        /** @type {any} */
-        let registeredConfig;
-        const registry = /** @type {any} */ ({
-            find: () => registeredConfig ? { ...registeredConfig.models[0], provider: "crofai" } : undefined,
-            registerProvider: (/** @type {string} */ _provider, /** @type {any} */ config) => {
+        // The real discovery call populates this capture through registerProvider.
+        let registeredConfig: RegisteredProviderCapture;
+        const registry = {
+            find: () => (registeredConfig ? { ...registeredConfig.models[0], provider: "crofai" } : undefined),
+            registerProvider: (_provider: string, config: ProviderConfigFixture) => {
                 registeredConfig = config;
             },
-        });
+        } as RegistryLookupFixture as RunWieldModelRegistry;
 
         // Default discovery (active model path): must NOT claim image support,
         // otherwise raw image bytes get sent to a text-only model and silently fail.
-        const fetchFn = /** @type {typeof fetch} */ (/** @type {any} */ (() =>
+        const fetchFn = (() =>
             Promise.resolve({
                 ok: true,
                 status: 200,
                 statusText: "OK",
                 json: () => Promise.resolve({ data: [{ id: "deepseek-v4-pro" }] }),
-            })));
+            })) as FetchPortFixture as FetchRequest;
 
         // Default discovery (active model path): must NOT claim image support,
         // otherwise raw image bytes get sent to a text-only model and silently fail.
@@ -286,7 +310,7 @@ test("discoverProviderModel defaults discovered models to text-only input", asyn
             { fetch: fetchFn },
             { runwieldDir: tempDir },
         );
-        assertEquals(registeredConfig.models[0].input, ["text"]);
+        assertEquals((registeredConfig as RegisteredProviderCapture)!.models[0].input, ["text"]);
 
         // Explicit vision-fallback path: caller opts the discovered model into image input.
         registeredConfig = undefined;
@@ -297,7 +321,7 @@ test("discoverProviderModel defaults discovered models to text-only input", asyn
             { fetch: fetchFn },
             { runwieldDir: tempDir, input: ["text", "image"] },
         );
-        assertEquals(registeredConfig.models[0].input, ["text", "image"]);
+        assertEquals((registeredConfig as RegisteredProviderCapture)!.models[0].input, ["text", "image"]);
     } finally {
         await fsRm(tempDir, { recursive: true });
     }
@@ -320,35 +344,47 @@ test("discoverProviderModel honors provider imageInputModels allowlist", async (
             }),
         );
 
-        /** @type {any} */
-        let registeredConfig;
-        const registry = /** @type {any} */ ({
+        // The real discovery call populates this capture through registerProvider.
+        let registeredConfig: RegisteredProviderCapture;
+        const registry = {
             find: () => undefined,
-            registerProvider: (/** @type {string} */ _provider, /** @type {any} */ config) => {
+            registerProvider: (_provider: string, config: ProviderConfigFixture) => {
                 registeredConfig = config;
             },
-        });
+        } as RegistryLookupFixture as RunWieldModelRegistry;
 
-        const fetchFn = /** @type {typeof fetch} */ (/** @type {any} */ (() =>
+        const fetchFn = (() =>
             Promise.resolve({
                 ok: true,
                 status: 200,
                 statusText: "OK",
                 json: () => Promise.resolve({ data: [{ id: "vision-model" }, { id: "text-model" }] }),
-            })));
+            })) as FetchPortFixture as FetchRequest;
 
         // Listed in imageInputModels -> vision-capable.
-        await discoverProviderModel(registry, "crofai", "vision-model", { fetch: fetchFn }, {
-            runwieldDir: tempDir,
-        });
-        assertEquals(registeredConfig.models[0].input, ["text", "image"]);
+        await discoverProviderModel(
+            registry,
+            "crofai",
+            "vision-model",
+            { fetch: fetchFn },
+            {
+                runwieldDir: tempDir,
+            },
+        );
+        assertEquals((registeredConfig as RegisteredProviderCapture)!.models[0].input, ["text", "image"]);
 
         // Not listed -> text-only.
         registeredConfig = undefined;
-        await discoverProviderModel(registry, "crofai", "text-model", { fetch: fetchFn }, {
-            runwieldDir: tempDir,
-        });
-        assertEquals(registeredConfig.models[0].input, ["text"]);
+        await discoverProviderModel(
+            registry,
+            "crofai",
+            "text-model",
+            { fetch: fetchFn },
+            {
+                runwieldDir: tempDir,
+            },
+        );
+        assertEquals((registeredConfig as RegisteredProviderCapture)!.models[0].input, ["text"]);
     } finally {
         await fsRm(tempDir, { recursive: true });
     }

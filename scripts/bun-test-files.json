@@ -258,7 +258,7 @@
     "src/shared/model-presets.test.ts",
     "src/shared/models/agy-cli-models.test.ts",
     "src/shared/models/claude-cli-models.test.ts",
-    "src/shared/models/model-registry.test.js",
+    "src/shared/models/model-registry.test.ts",
     "src/shared/models/model-validation.test.ts",
     "src/shared/native-file-lock.test.ts",
     "src/shared/owner-coordination/cross-surface-activation.integration.test.ts",
