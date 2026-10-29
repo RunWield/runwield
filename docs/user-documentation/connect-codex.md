@@ -13,10 +13,11 @@ The native package provides one explicitly invoked skill, `$runwield:run`, for s
 same Core workflow as Claude Code, including browser review, fresh implementation and review workers, repair,
 publication, and Work Records. Other request types, hooks, and enforced worker tool restrictions are outside this Preview.
 
-| Surface                        | Evidence available                                 | Qualification limit                                                                                 |
-| ------------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Codex CLI `0.164.0-alpha.11.1` | Native marketplace/package and MCP protocol probes | A prerelease probe does not qualify a complete live skill journey or a stable version range.        |
-| Codex desktop app              | The package targets the app's native plugin format | CLI and app-server results do not establish desktop installation or a completed desktop UI journey. |
+| Surface                               | Evidence available                                                                                     | Qualification limit                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Codex CLI `0.164.0-alpha.11.1`        | Native marketplace installation and MCP protocol checks                                                | Does not qualify the complete installed skill journey or a stable version range.                                    |
+| Codex app-server `0.164.0-alpha.11.1` | Live source-skill journey through recovery, independent review, repair, publication, and a Work Record | Uses an explicit packaged skill path and full access in disposable repositories; installation is tested separately. |
+| Codex desktop app                     | The package targets the app's native plugin format                                                     | App-server results do not establish desktop installation or a completed desktop UI journey.                         |
 
 Core has no tested Codex versions in its Compatibility Matrix yet. It allows a recognized Codex host with a visible
 untested-version notice. The [Codex acceptance requirements](../prd/runwield-connect-prd.md#codex-acceptance) distinguish

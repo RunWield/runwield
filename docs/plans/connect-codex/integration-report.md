@@ -1,73 +1,93 @@
 # Codex Connect integration report
 
-This report tracks external Codex orchestration of the [Epic](../connect-codex.md). It is not a RunWield Verified
-attestation and does not replace Core-owned lifecycle or delivery evidence.
+The [Epic](../connect-codex.md) adds the native `$runwield:run` start/resume skill, shared Core coordination, and
+artifact-based continuation between Codex and Claude Code. Both desktop and CLI are targets, with separate evidence
+limits. This report records external delivery work; it is not a Core Verified attestation. Core-owned Plan lifecycle
+metadata remains unchanged.
 
-## Baseline
+## Child delivery
 
-- Base: `fe8e6efef` from `origin/main`.
-- Bun: 1.4.3; submodules initialized and both dependency graphs installed with `bun run install:locked`.
-- `bun run ci`: passed in 691.9 seconds before implementation changes.
-- The original checkout's unrelated Plan edit was preserved.
+Each child was implemented by a subagent in a separate managed worktree. Three independent reviewers assessed
+Standards, Spec, and Tests before its branch merged into `epic/connect-codex`.
 
-## Implementation and review
+| Child                                           | Final source or repair                | Epic integration         | Child review           |
+| ----------------------------------------------- | ------------------------------------- | ------------------------ | ---------------------- |
+| Share host-aware coordination                   | `bce0317b6`                           | `27a7d4432`              | All three axes approve |
+| Package the Codex workflow                      | `7403fbb79`                           | `983077d00`              | All three axes approve |
+| Prove Codex execution and recovery              | `08fdcc8ef`, final repair `b32705f8f` | `7f992a00d`, `a2ff2ef73` | All three axes approve |
+| Document Codex support                          | `871e340d7`                           | `2f3946550`              | All three axes approve |
+| Repair catalog identity collisions              | `67fb8595b`                           | `f16a0f382`              | All three axes approve |
+| Repair confirmed archive during turn settlement | `ed9f77f9d`                           | `4c14e1766`              | All three axes approve |
 
-| Child                              | Implementation                          | CI                        | Fresh-context review           | Epic merge          |
-| ---------------------------------- | --------------------------------------- | ------------------------- | ------------------------------ | ------------------- |
-| Share host-aware coordination      | `3923d9365`; signal repair in progress  | CI regressions repaired   | Approved; signal delta pending | `f2b256a5b`         |
-| Package the Codex workflow         | `7403fbb79`                             | Focused checks pass       | Approved on all axes           | `983077d00`         |
-| Prove Codex execution and recovery | `59f405297`; review repairs in progress | Focused checks pass       | Three findings under repair    | Pending             |
-| Document Codex support             | `d79d25c91`                             | Documentation checks pass | Approved on all axes           | Awaiting dependency |
+The fifth Plan repairs a baseline ordering defect exposed by Linux PR CI: authority projection could hide a conflicting
+Plan ID. Same-name selection now precedes the existing rename fallback. Real filesystem fixtures cover both enumeration
+orders, explicit backfill, and missing or archived authority without weakening collision rejection.
 
-The children were implemented by separate subagents in separate managed worktrees. Dependency merges assemble the
-later Plans without declaring earlier Plans reviewed. The epic also includes `origin/main` through `875f058b7`.
+The sixth Plan repairs an independently reproduced Workspace archive race. A confirmed archive now reconciles the
+original turn's durable idle or checkpointing state when its live operation disappears. Active, uncertain, or
+replacement work remains protected. Twelve deterministic cases exercise both remote boundaries and replacement during
+settlement. The original cancellation fixture now waits for its provider's AbortSignal instead of assuming a delay.
 
-Focused checks cover shared host compatibility, current-host roles, read-only resume inspection, bidirectional
-continuation, real MCP framing, native package installation, explicit invocation, and acceptance evidence rejection.
-Documentation link checks and the public site build passed. The first runtime CI exposed a saved-Plan guidance
-regression; it was repaired and the affected regression test passed. A later full gate passed 813 test files, failed
-three, and skipped two. Two stale status assertions were updated to pin the new bounded preview without exposing the
-full request; the timeout case passed unchanged. All three affected files passed in the focused repair run. The assembled
-source at `d79d25c91` is running a full gate, with subsequent review repairs tracked separately.
+Live host interruption also exposed a shared cancellation gap. The MCP carrier handles native shutdown signals, and
+macOS process cleanup survives the owning runtime's exit. Real process tests cover EOF, signals, owner death, and the
+existing fork race. These changes preserve Claude behavior through the shared carrier.
 
-Two earlier tool-owned CI sessions ended without surviving completion evidence. Neither counts as a pass. The runtime
-rerun has a detached supervisor, retained log, and atomic exit-code file. A combined run was deliberately superseded
-before completion so final validation can include the handoff and acceptance repairs and the updated main branch.
+## Whole-epic review
 
-Integration inspection found and repaired a bidirectional handoff gap: Claude's resume commands now inspect saved work
-without advancement, disclose the Plan or request, current step, and originating host, then continue through ordinary
-status. The existing explicit resume authorizes the handoff; no additional approval is introduced.
+A new set of reviewers with clean contexts read the complete 74-file change from `875f058b7` to `f16a0f382`, the Epic,
+the original five child Plans, and applicable requirements. They subsequently read the complete four-file snapshot
+repair and the three-file sixth Plan against its objective and the Workspace requirements.
 
-The independent reviews read every changed-file entry in all four child ranges. Standards approved all four Plans.
-Spec approved Plans 1, 2, and 4; `SPEC-P3-001` requires unavailable host authentication to be identified as a prerequisite.
-Tests approved Plans 1 and 4, then approved Plan 2 after `T-P2-001` was repaired with workflow contract tests and its
-parent-written-review counterexample was independently checked. `T-P3-001` (invoking-checkout isolation) and `T-P3-002`
-(inherited worker context at the subprocess boundary) remain under repair. No advisories were reported.
+## Standards
 
-## Observed host capabilities
+Approved with no open issues or advisories. The child review's `STANDARDS-P3-001` was independently confirmed fixed:
+acceptance exempts only Core's `.wld/internal/` runtime files, preserving user configuration.
 
-Codex CLI `0.164.0-alpha.11.1` reported MCP client name `codex-mcp-client`, title `Codex`, and that exact version in a
-real isolated probe. Its server ran in the selected project directory. A separate installed native-package probe
-proved `tool_timeout_sec`: one second timed out a three-second call, while 3600 seconds allowed a 65-second call.
-These narrow observations do not qualify the full FEATURE journey or the desktop UI.
+## Spec
 
-Native `.codex-plugin/plugin.json` and `.mcp.json` are selected because the portable MCP schema rejected the required
-timeout field. The final native `$runwield:run` package passed isolated installation, complete tool discovery, activation,
-stale-revision and transcript rejection, Planner handoff, fresh-process restoration, and remove/reinstall restoration.
-Its sanitized summary records the exact source digest and explicitly excludes model-turn and desktop UI qualification.
+Approved with no open issues or advisories. `SPEC-P3-001` now reports unavailable host authentication as a blocked
+prerequisite without recording private errors. `SPEC-P3-002` now preserves user configuration during isolation checks.
 
-A preliminary source-skill journey reached Core delivery and a Work Record after browser chat, isolated implementation,
-interrupted validation, repair, and re-review. The simplified CLI event stream did not prove worker independence, so
-that result did not qualify support. The final acceptance carrier uses native app-server events to associate fresh
-worker identities with direct instruction and complete diff reads; no raw prompts or model responses are retained in
-the saved summary. The next live run identified a genuine shutdown gap: native Codex terminates its MCP subprocess
-with a signal, while the shared carrier handled only closed input. Graceful signal cancellation and its regression
-coverage are under repair; the failed live result does not qualify support. Final live evidence, branch CI, and
-whole-epic review remain pending.
+## Tests
+
+Approved after repair, with no open issues or advisories. `T-P2-001` added workflow contract counterexamples;
+`T-P3-001` protects invoking source bytes and Git state; `T-P3-002` rejects inherited worker context at the native event
+boundary. Whole-epic issue `T-EPIC-001` fixed a reused snapshot producer's Claude-only configuration exclusion. Real
+Codex snapshots now capture configuration creation, edits, deletion, and Git status; Claude keeps its own installation
+exception. Every claimed fix was independently re-reviewed.
+
+## Validation
+
+- Bun 1.4.3, initialized submodules, and `bun run install:locked` were used for the implementation checkouts.
+- Baseline `bun run ci` passed at `fe8e6efef` in 691.9 seconds. The epic includes `origin/main` through `875f058b7`.
+- Integrated `bun run ci` passed at `d79d25c91` in 1050.0 seconds. Later repairs passed their focused tests, types,
+  lint, formatting, and zero-seam checks. Documentation links and the public site build passed.
+- GitHub source and Golden shards passed at `a2ff2ef73` on retry. The first attempt exposed the archive race repaired
+  by the sixth Plan; the passing retry did not dismiss that reproduced defect. Final CI and the final evidence/documentation
+  review are recorded on [PR #477](https://github.com/RunWield/runwield/pull/477).
+- The original checkout's unrelated Plan edit was preserved. No installed user plugin or credentials were changed for
+  acceptance; native installation uses disposable configuration.
+
+## Host acceptance
+
+The native package supplies bounded adapter metadata because plugin-root environment expansion was unavailable in the
+observed host. Its one-hour MCP timeout was exercised with a 65-second call. Protocol installation and live source-skill
+execution remain distinct evidence scopes. Saved summaries identify their exact source commit, digest, host version,
+permissions, and limitations; they contain no raw conversation or credentials.
+
+Both [installed protocol](../../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-installed-protocol.json)
+and [source-skill](../../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-source-skill.json) acceptance pass
+on clean integrated source `a2ff2ef73`, digest `6cb23082c7ed342e3216d5986d9e19f080aa58877c67ba72636cf319b388f697`,
+with Codex `0.164.0-alpha.11.1`. All 16 live checks pass. The live journey exercises browser Plan chat, restoration, isolated implementation, interrupted validation, independent
+review, forced repair and re-review, Code Review approval, Core publication, and the canonical Work Record. Native
+spawn identities and direct candidate-bound diff receipts establish reviewer independence.
 
 ## Qualification limits
 
-The package targets both Codex desktop and CLI. Native installation/protocol evidence and explicit-path source-skill
-evidence remain separate. Neither establishes a desktop UI walkthrough or default-permissions acceptance. The Codex
-Compatibility Matrix remains empty; recognized untested hosts receive a visible notice. Publication of this repository
-PR does not release a new Core binary or submit the plugin to a public directory.
+The Codex Compatibility Matrix remains empty. Native installed-package protocol evidence and explicit-path source-skill
+evidence do not establish an installed complete workflow, desktop UI walkthrough, default-permissions acceptance, or a
+stable version range. Recognized untested hosts receive a visible notice. Publishing this repository PR does not release
+a new Core binary or submit the plugin to a public directory. Installation and remaining scope are documented in the
+[Codex guide](../../user-documentation/connect-codex.md).
+
+Review counts: Standards 0 issues / 0 advisories; Spec 0 / 0; Tests 0 / 0.

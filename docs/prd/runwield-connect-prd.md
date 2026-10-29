@@ -913,6 +913,12 @@ The Codex adapter must qualify its own host behavior. Claude evidence does not q
 separates native installed-package protocol checks from real ephemeral host skill execution with explicit package configuration.
 Neither scope alone proves the desktop UI journey or permits a tested-version compatibility entry.
 
+Observed evidence is saved for Codex `0.164.0-alpha.11.1` at source `a2ff2ef73`: the
+[installed protocol summary](../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-installed-protocol.json)
+and [source-skill summary](../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-source-skill.json) both pass
+their stated scopes. The live run uses explicit package configuration and full access in disposable repositories.
+Installed complete-workflow, desktop UI, default-permissions and stable-version qualification remain open.
+
 - Native qualification must observe the actual MCP client identity and version, installed tool discovery, stale-action
   and transcript rejection, and restoration after process loss and plugin reinstallation in disposable repositories.
 - Live qualification must observe Codex-owned model calls, execution in Core's checkout, real validation and recovery,

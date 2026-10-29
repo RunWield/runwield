@@ -5,11 +5,11 @@
     "surface": "desktop-runtime",
     "hostVersion": "0.164.0-alpha.11.1",
     "permissions": "protocol-tools-in-disposable-world",
-    "testDate": "2026-10-29T19:51:17.262Z",
+    "testDate": "2026-10-29T21:03:49.983Z",
     "source": {
-        "commit": "0b6895bd51da5bfb19009760fbcd11077264d902",
-        "dirty": true,
-        "digest": "ffc4b1de7004be1d4d64fde4c2efec5db878bbad2fd5f042cddc56c34f53bd11"
+        "commit": "a2ff2ef734760506e914938875279e3f959dacc3",
+        "dirty": false,
+        "digest": "6cb23082c7ed342e3216d5986d9e19f080aa58877c67ba72636cf319b388f697"
     },
     "adapterVersion": "0.1.0",
     "adapterContract": 1,

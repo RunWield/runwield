@@ -19,7 +19,7 @@ status: draft
 
 The [Epic](../connect-codex.md) requires CI repair before delivery. Linux PR CI exposed an existing catalog defect:
 registered document authority can replace an unrelated Plan that shares its ID when that Plan is enumerated first.
-The later identity guard then cannot see the collision. Reordering real fixture creation reproduces both failures on
+The later identity guard then cannot see the collision. Assigning roles from real directory enumeration reproduces the failure on
 macOS without changing production code or weakening the expected rejection.
 
 The owning capability is Core's [execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery).
@@ -39,7 +39,7 @@ store and identity paths; do not add injection seams, duplicate catalogs, or new
 
 ## Implementation Steps
 
-- Reproduce the CI failure with real Git/Plan fixtures whose creation order exposes the unrelated Plan first.
+- Reproduce the CI failure with real Git/Plan fixtures that exercise both observed directory enumeration orders.
 - Prefer the same-name row during authority replacement/removal, retaining conflicting entries for identity checks.
 - Cover both enumeration orders and explicit backfill modes; reject without changing either source document.
 - Preserve missing-authority recovery behavior and update the owning Core acceptance scenario.
