@@ -18,7 +18,7 @@ status: draft
 
 The [Epic](../connect-codex.md) requires the Claude FEATURE journey through native Codex plugin surfaces. The shared
 carrier is established by [host-aware coordination](share-host-aware-coordination.md). The owner selected one explicit
-`$runwield` skill for start/resume and cross-host continuation with the Plan and current step shown first.
+`$runwield:run` skill for start/resume and cross-host continuation with the Plan and current step shown first.
 
 ## Objective
 
@@ -48,7 +48,7 @@ roles, create custom lifecycle policy, install hooks, or introduce a second work
 
 - Codex installs the package from the repository marketplace in an isolated configuration; manifests resolve all
   resources inside the package and launch Core from the user's project directory with the installed plugin root.
-- One native explicit-only `$runwield` skill implements start/resume. New work needs explicit activation;
+- One native explicit-only `$runwield:run` skill implements start/resume. New work needs explicit activation;
   resume reads durable status and never creates a new workflow merely because conversation context was lost.
 - Resume can continue a Claude-started workflow in the same local repository. It identifies the saved Plan and current
   step, discloses the originating host on handoff, and uses saved Core artifacts without importing conversation history.

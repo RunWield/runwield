@@ -38,7 +38,8 @@ workflow guidance, never copied RunWield role definitions. No hooks or permissio
 ### Owner decisions
 
 - Both the desktop app and CLI are targets; qualify them separately and state unproven behavior honestly.
-- One explicitly invoked `$runwield` skill starts or resumes work. It asks when start versus resume is ambiguous.
+- One explicitly invoked `$runwield:run` skill starts or resumes work. It asks when start versus resume is ambiguous.
+  Codex namespaces the packaged skill; the owner selected `run` to avoid the repeated `runwield:runwield` name.
 - Cross-host continuation is supported in the same local repository. Resume shows the Plan name and current step,
   including the originating host when changing hosts, before continuing from Core's saved artifacts. Users need not
   remember an internal workflow ID. Host conversation history is never imported.
