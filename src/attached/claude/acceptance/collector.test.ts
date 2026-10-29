@@ -137,6 +137,24 @@ test("snapshot reads an installed runtime file symlink without changing the worl
         assertEquals(await captureSnapshot(root), snapshot);
     });
 });
+test("Claude snapshots keep their local plugin-enablement exception without excluding other user config", async () => {
+    await withWorld(async (root) => {
+        await write(root, "fixture/.claude/settings.local.json", '{"enabledPlugins":{"runwield":true}}');
+        await write(root, "fixture/.claude/settings.json", '{"userSetting":true}');
+        const snapshot = await captureSnapshot(root);
+        assertEquals(snapshot.errors, []);
+        assertEquals(
+            snapshot.files.some((file) => file.path === "fixture/.claude/settings.local.json"),
+            false,
+        );
+        assertEquals(snapshot.git?.status.includes(".claude/settings.local.json"), false);
+        assertEquals(
+            snapshot.files.find((file) => file.path === "fixture/.claude/settings.json")?.text,
+            '{"userSetting":true}',
+        );
+        assertEquals(snapshot.git?.status.includes(".claude/settings.json"), true);
+    });
+});
 
 test("privacy scans resolved file-link bytes rather than ignoring the link", async () => {
     await withWorld(async (root) => {

@@ -308,7 +308,7 @@ child.on("error",()=>process.exit(1));child.on("close",code=>process.exit(code??
         );
     }
     async snapshot(name: string, run: string | null): Promise<void> {
-        const snapshot = await captureSnapshot(this.root, run);
+        const snapshot = await captureSnapshot(this.root, run, "codex");
         await writeFile(join(this.root, "snapshots", `${name}.json`), JSON.stringify(snapshot), { mode: 0o600 });
         if (snapshot.errors.length) throw new Error("Durable evidence could not be captured");
     }

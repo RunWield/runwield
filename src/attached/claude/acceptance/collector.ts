@@ -52,16 +52,19 @@ function lines(text: string): string[] {
     return text.split(/\r?\n/).filter((line) => line.length > 0);
 }
 
-/** Read durable state at a journey boundary. The driver saves the returned value; this function writes nothing. */
-export async function captureSnapshot(root: string, hostRun: string | null = null): Promise<Snapshot> {
+/** Read durable state. Only Claude's own install journey owns its local plugin-enablement file. */
+export async function captureSnapshot(
+    root: string,
+    hostRun: string | null = null,
+    host: "claude-code" | "codex" = "claude-code",
+): Promise<Snapshot> {
     const snapshot: Snapshot = { hostRun, files: [], git: null, ciRuns: null, ciFinished: null, errors: [] };
     for (const scope of SCOPES) {
         await walk(
             join(root, scope),
             scope,
             (path, bytes) => {
-                // Claude owns this file. Its local plugin enablement is not RunWield state.
-                if (path === "fixture/.claude/settings.local.json") return;
+                if (host === "claude-code" && path === "fixture/.claude/settings.local.json") return;
                 const file: CapturedFile = { path, sha256: createHash("sha256").update(bytes).digest("hex") };
                 if (/\.(json|jsonl|md)$/.test(path)) file.text = bytes.toString("utf8");
                 snapshot.files.push(file);
@@ -120,7 +123,7 @@ export async function captureSnapshot(root: string, hostRun: string | null = nul
                 "--untracked-files=all",
                 "--",
                 ".",
-                ":(exclude).claude/settings.local.json",
+                ...(host === "claude-code" ? [":(exclude).claude/settings.local.json"] : []),
             ]).toString(),
             refs,
             parents,
