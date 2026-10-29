@@ -903,6 +903,8 @@ Neither scope alone proves the desktop UI journey or permits a tested-version co
 - Live qualification must observe Codex-owned model calls, execution in Core's checkout, real validation and recovery,
   direct independent reviewer reads, repairs, browser decisions, publication and Work Records. Parent reads and worker
   prose cannot substitute for fresh-context, candidate-bound review evidence.
+- Worktree isolation preserves invoking source bytes, branch, HEAD and protected Git status through delivery. Only the
+  current Plan, Core lifecycle files and `.gitignore` setup may change in the invoking checkout.
 - The live runner correlates worker threads with native spawn events. It records spawn settings, identifiers
   and diff-byte receipts, while discarding raw conversation content and disabling inherited MCP servers for the run.
 - Saved summaries identify the exact source digest, adapter, host surface, permissions and remaining gaps. Missing
@@ -910,7 +912,8 @@ Neither scope alone proves the desktop UI journey or permits a tested-version co
   text and credentials do not belong in committed summaries or Core artifacts.
 
 **Acceptance scenarios:** A protocol-only passing result cannot qualify a complete Codex version. A missing executable
-produces blocked evidence. A completed parent review without independently observed worker reads fails qualification.
+or absent/rejected host authentication produces blocked, unproven evidence without storing account details or raw errors.
+A completed parent review or inherited-context worker without independently observed fresh worker reads fails qualification.
 A private transcript sentinel found in durable artifacts fails qualification even when the workflow delivered.
 
 ### Stable Product Outcomes

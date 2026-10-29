@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseCodexAcceptanceArgs } from "../../../../scripts/connect-codex-acceptance.ts";
 import { runAcceptance } from "./driver.ts";
+import { runLiveAcceptance } from "./live.ts";
 
 test("acceptance CLI admits only explicit executable, output, and retention options", () => {
     equal(parseCodexAcceptanceArgs(["--codex", "/test/codex", "--out", "/test/evidence", "--keep"]), {
@@ -46,3 +47,39 @@ test("nonempty output directories are never overwritten", async () => {
         await rm(root, { recursive: true, force: true });
     }
 });
+for (const missing of [true, false]) {
+    test(`live ${missing ? "absent" : "rejected"} host authentication is blocked and unproven without private error text`, async () => {
+        const parent = await mkdtemp(join(tmpdir(), "codex-auth-test-"));
+        const executable = join(parent, "codex");
+        const root = join(parent, "evidence");
+        try {
+            await writeFile(
+                executable,
+                `#!${process.execPath}
+if(process.argv.includes("--version")){console.log("codex-cli 0.164.0-alpha.11.1");process.exit(0);}
+let buffer="";process.stdin.on("data",bytes=>{buffer+=bytes;let n;while((n=buffer.indexOf("\\n"))>=0){const q=JSON.parse(buffer.slice(0,n));buffer=buffer.slice(n+1);if(!q.id)continue;
+if(q.method==="initialize")console.log(JSON.stringify({id:q.id,result:{}}));
+else if(q.method==="account/read")console.log(JSON.stringify({id:q.id,${missing ? "result:{requiresOpenaiAuth:true,account:null}" : 'error:{code:401,message:"PRIVATE-CREDENTIAL"}'}}));
+else process.exit(1);
+}});
+`,
+                { mode: 0o755 },
+            );
+            const result = await runLiveAcceptance({
+                root,
+                codex: executable,
+                checkout: fileURLToPath(new URL("../../../../", import.meta.url)),
+                keep: true,
+            });
+            equal(result.outcome, "blocked");
+            equal(result.blockedPrerequisite, "codex-host-authentication");
+            equal(result.checks.at(-1)?.outcome, "unproven");
+            equal(result.proposedMatrixEntry, null);
+            const saved = await readFile(join(root, "summary.json"), "utf8");
+            equal(JSON.parse(saved), result);
+            equal(saved.includes("PRIVATE-"), false);
+        } finally {
+            await rm(parent, { recursive: true, force: true });
+        }
+    });
+}

@@ -3,7 +3,41 @@ import { StringDecoder } from "node:string_decoder";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { coreResult, field, map, text, toolObservation, type HostObservation, type JsonMap } from "./evidence.ts";
+import {
+    coreResult,
+    field,
+    map,
+    text,
+    toolObservation,
+    type HostObservation,
+    type Json,
+    type JsonMap,
+} from "./evidence.ts";
+
+/** Fixed categories only: native errors may contain credential-bearing provider text. */
+export class HostAuthenticationError extends Error {
+    constructor(readonly reason: "missing" | "rejected") {
+        super(`Codex host authentication ${reason}`);
+    }
+}
+function nativeFailure(value: Json | undefined, fallback: string): Error {
+    const info = field(value, "codexErrorInfo") ?? field(value, "data", "codexErrorInfo");
+    const statuses = [
+        "httpConnectionFailed",
+        "responseStreamConnectionFailed",
+        "responseStreamDisconnected",
+        "responseTooManyFailedAttempts",
+    ];
+    const message = text(field(value, "message"))?.slice(0, 2048) ?? "";
+    const unauthorized =
+        info === "unauthorized" ||
+        field(value, "code") === 401 ||
+        statuses.some((key) => field(info, key, "httpStatusCode") === 401) ||
+        /\b(authentication required|not logged in|invalid api key|expired (?:access |refresh )?token|token (?:has )?expired|401 unauthorized)\b/i.test(
+            message,
+        );
+    return unauthorized ? new HostAuthenticationError("rejected") : new Error(fallback);
+}
 
 export interface HostOptions {
     executable: string;
@@ -114,7 +148,7 @@ export class CodexHost {
                 clearTimeout(pending.timer);
                 const result = map(row.result);
                 if (result) pending.resolve(result);
-                else pending.reject(new Error("Codex rejected the protocol request"));
+                else pending.reject(nativeFailure(row.error, "Codex rejected the protocol request"));
             }
             return;
         }
@@ -122,7 +156,8 @@ export class CodexHost {
         const eventThread = text(field(row, "params", "threadId")) ?? this.threadId;
         if (row.type === "turn.completed" || row.method === "turn/completed") {
             if (row.method === "turn/completed" && field(row, "params", "turn", "status") !== "completed") {
-                if (eventThread === this.threadId) this.fail(new Error("Codex model turn failed"));
+                if (eventThread === this.threadId)
+                    this.fail(nativeFailure(field(row, "params", "turn", "error"), "Codex model turn failed"));
                 return;
             }
             this.record({ run: this.options.run, kind: "turn", threadId: eventThread });
@@ -133,7 +168,12 @@ export class CodexHost {
                 this.turnWait = null;
             }
         }
-        if (row.type === "turn.failed" || row.type === "error") this.fail(new Error("Codex model turn failed"));
+        if (
+            row.type === "turn.failed" ||
+            row.type === "error" ||
+            (row.method === "error" && eventThread === this.threadId && field(row, "params", "willRetry") !== true)
+        )
+            this.fail(nativeFailure(row.error ?? field(row, "params", "error"), "Codex model turn failed"));
         const nativeItem = map(field(row, "params", "item"));
         if (
             row.method === "rawResponseItem/completed" &&
@@ -153,7 +193,7 @@ export class CodexHost {
             const child = text(nativeItem.agentThreadId),
                 callId = text(nativeItem.id);
             const spawn = callId ? this.spawns.get(callId) : null;
-            if (child && spawn && !this.observedWorkers.has(child)) {
+            if (child && spawn?.threadId === eventThread && !this.observedWorkers.has(child)) {
                 this.observedWorkers.add(child);
                 this.record({
                     run: this.options.run,
@@ -215,6 +255,13 @@ export class CodexHost {
             capabilities: { experimentalApi: true },
         });
         this.child.stdin.write(JSON.stringify({ method: "initialized" }) + "\n");
+    }
+    async requireAuthentication(): Promise<void> {
+        // No proactive refresh or login. Account details remain in memory and are never evidence.
+        const account = await this.request("account/read", { refreshToken: false });
+        if (account.requiresOpenaiAuth === true && !map(account.account)) throw new HostAuthenticationError("missing");
+        if (typeof account.requiresOpenaiAuth !== "boolean")
+            throw new Error("Codex did not report authentication requirements");
     }
     async startThread(options: JsonMap = {}): Promise<void> {
         const response = await this.request("thread/start", {
@@ -314,26 +361,20 @@ export class CodexHost {
     }
     async stop(): Promise<void> {
         if (this.stopped) return;
-        if (this.child.pid) {
-            try {
-                process.kill(-this.child.pid, "SIGTERM");
-            } catch {
-                this.child.kill("SIGTERM");
-            }
-        }
-        const timer = setTimeout(() => {
-            if (!this.stopped && this.child.pid) {
-                try {
-                    process.kill(-this.child.pid, "SIGKILL");
-                } catch {
-                    this.child.kill("SIGKILL");
-                }
-            }
-        }, 3000);
+        // Model loss of the host connection. Killing the process group would also kill Core
+        // before its transport/signal cleanup can cancel the separately grouped CI process.
+        this.child.stdin.end();
+        const terminate = setTimeout(() => {
+            if (!this.stopped) this.child.kill("SIGTERM");
+        }, 15_000);
+        const kill = setTimeout(() => {
+            if (!this.stopped) this.child.kill("SIGKILL");
+        }, 30_000);
         try {
             await this.closed;
         } finally {
-            clearTimeout(timer);
+            clearTimeout(terminate);
+            clearTimeout(kill);
         }
     }
 }

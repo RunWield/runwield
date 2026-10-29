@@ -217,6 +217,23 @@ child.on("error",()=>process.exit(1));child.on("close",code=>process.exit(code??
         this.hosts.push(host);
         return host;
     }
+    async checkLiveAuthentication(): Promise<void> {
+        const host = new CodexHost({
+            executable: this.codex,
+            cwd: this.fixture,
+            root: this.root,
+            env: isolatedLiveHostEnv(process.env),
+            run: "authentication-prerequisite",
+            args: ["app-server", "-c", "features.plugins=false", "-c", "features.apps=false"],
+        });
+        this.hosts.push(host);
+        try {
+            await host.initializeTransport();
+            await host.requireAuthentication();
+        } finally {
+            await host.stop();
+        }
+    }
     async liveHost(run: string, prompt: string): Promise<CodexHost> {
         const packageConfig: JsonMap = JSON.parse(
             await readFile(join(this.root, "marketplace/src/attached/codex/plugin/.mcp.json"), "utf8"),
