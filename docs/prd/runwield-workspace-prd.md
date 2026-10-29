@@ -524,6 +524,9 @@ universal process-memory limit; memory use of live observation remains a targete
 - Given a finished workflow tool, its full report stays readable and its block shows the final status.
 - Given an idle Session, Archive removes its row at once; given a busy Session, Confirm stops and settles the work
   first, and Cancel leaves it running.
+- Given a confirmed Archive while the observed turn finishes, Workspace recognizes its saved settlement and archives
+  the Session without another confirmation. Missing live access alone does not authorize archive: active, uncertain,
+  or replacement work remains protected.
 - Given a failed archive request, the row stays with an actionable error.
 - Given a Background Task started from Workspace and a closed tab, the task finishes and its result appears in the same
   conversation on reconnection, with the draft and any pending interaction unchanged.
