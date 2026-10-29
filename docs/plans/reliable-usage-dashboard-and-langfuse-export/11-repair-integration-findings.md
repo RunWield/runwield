@@ -31,8 +31,8 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 sessionName: "Metrics Epic Review Fixes"
-status: "reviewed"
 validatedCommit: "7c4c4f2db949c04440332fdb166166ba12b013c0"
+status: "verified"
 ---
 
 # Repair integration findings
