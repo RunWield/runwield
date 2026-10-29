@@ -102,7 +102,7 @@ default runtime, installer, CI or package manager based solely on the POC recomm
 ## Verification for the first slice
 
 - `deno run -A scripts/run-tests.js --isolated src/shared/private-json-file.test.ts` (never direct `deno test`).
-- Through the same isolated runner: `file-session-store.test.js`, `file-session-store-owner.test.ts`,
+- Through the same isolated runner: `file-session-store.test.ts`, `file-session-store-owner.test.ts`,
   `file-session-last-plan-review.test.ts` and `file-session-plan-review-rollover.test.ts` in `src/shared/session/`.
 - Bun 1.4.3 and Node: run `scripts/check-portable-json.ts`. It invokes the same real-filesystem assertions as the Deno
   test and creates/removes its own temporary directories. It does not open user state.

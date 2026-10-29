@@ -10,25 +10,25 @@ import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { classifyRootSessionLocator } from "./root-session.js";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
-import { openFileSessionStore } from "./file-session-store.ts";
+import {
+    openFileSessionStore,
+    type FileSessionStore,
+    type SessionSegmentLineageEvidence,
+} from "./file-session-store.ts";
+import type { PlanAssociation } from "./plan-association.ts";
 import { catalogLockPath, lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
 
 const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
-/** @typedef {import("./file-session-store.ts").FileSessionStore} FileSessionStore */
+type TestLineage = Required<SessionSegmentLineageEvidence>;
 
-/**
- * @typedef {Object} TestLineage
- * @property {string} runwieldSessionId
- * @property {string} segmentId
- * @property {string | null} parentSegmentId
- * @property {string | null} parentPiSessionId
- * @property {string | null} lineageGroupKey
- * @property {'planning' | 'execution' | 'semantic_repair'} kind
- */
-
-/** @param {string} sessionDir @param {string} cwd @param {string} id @param {TestLineage | null} [lineage] @param {string} [timestamp] */
-async function writeTranscript(sessionDir, cwd, id, lineage = null, timestamp = TIMESTAMP) {
+async function writeTranscript(
+    sessionDir: string,
+    cwd: string,
+    id: string,
+    lineage: TestLineage | null = null,
+    timestamp = TIMESTAMP,
+) {
     await mkdir(sessionDir, { recursive: true });
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`);
     const entries = [JSON.stringify({ type: "session", version: 3, id, timestamp, cwd })];
@@ -412,8 +412,7 @@ test("concurrent legacy migration converges on one Session identity", async () =
         const firstStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const secondStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = firstStore.ensureRuntimeProject({ root: fixture.projectRoot });
-        /** @param {FileSessionStore} store @param {string} id */
-        const migrate = (store, id) =>
+        const migrate = (store: FileSessionStore, id: string) =>
             store.ensureSessionCatalogRecord({
                 projectId: project.projectId,
                 piSessionId: "legacy-race",
@@ -764,8 +763,7 @@ test("malformed lineage is blocked instead of cataloged as a legacy Session", as
 test("conflicting lineage entries fail closed", async () => {
     const fixture = await makeFixture();
     try {
-        /** @type {TestLineage} */
-        const firstLineage = {
+        const firstLineage: TestLineage = {
             runwieldSessionId: "stable-session",
             segmentId: "planning-segment",
             parentSegmentId: null,
@@ -1021,8 +1019,7 @@ test("existing-generation recovery blocks a rewritten committed prefix", async (
     }
 });
 
-/** @param {string} path */
-async function exists(path) {
+async function exists(path: string) {
     try {
         await stat(path);
         return true;
@@ -1053,8 +1050,7 @@ test("Plan Association manifest projection commits with the published generation
         });
         const segment = store.getCurrentSessionSegment(session.runwieldSessionId);
         assert(segment);
-        /** @type {import('./plan-association.ts').PlanAssociation} */
-        const association = {
+        const association: PlanAssociation = {
             planId: "plan-1",
             planName: "example-plan",
             purpose: "planning",
