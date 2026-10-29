@@ -1,3 +1,7 @@
+import type {
+    RuntimeValidationCheckResult,
+    RuntimeValidationProgress,
+} from "../../shared/session/session-runtime-events.js";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
@@ -32,9 +36,8 @@ import stripAnsi from "strip-ansi";
 
 /**
  * Compute visible length by stripping all ANSI/APC/OSC sequences.
- * @param {string} str
  */
-function visibleLength(str) {
+function visibleLength(str: string) {
     // deno-lint-ignore no-control-regex
     return str.replace(/\x1b\[[0-9;]*m|\x1b[_\]].*?\x07/g, "").length;
 }
@@ -46,11 +49,8 @@ function visibleLength(str) {
  * 2. Every line starts with a bg ANSI code
  * 3. After any \x1b[0m (full reset), the bg is re-applied
  *
- * @param {string[]} lines
- * @param {number} w
- * @param {string} blockName - for error messages
  */
-function assertBlockBackground(lines, w, blockName) {
+function assertBlockBackground(lines: string[], w: number, blockName: string) {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const vl = visibleLength(line);
@@ -148,7 +148,10 @@ test("AgentMessageBlock renders completed Mermaid fences as Unicode diagrams", (
     const block = new AgentMessageBlock("Planner", null);
     block.appendText("```mermaid\ngraph TD\n  A --> B\n```");
 
-    const plain = block.render(120).map((line) => stripAnsi(line)).join("\n");
+    const plain = block
+        .render(120)
+        .map((line) => stripAnsi(line))
+        .join("\n");
 
     assertEquals(plain.includes("Planner:"), true, "Should contain agent name");
     assertEquals(plain.includes("┌"), true, "Should render a Unicode diagram");
@@ -174,7 +177,10 @@ test("ThinkingBlock removes the thinking label after completion", () => {
     block.appendText("Finished reasoning.");
     block.end();
 
-    const plain = block.render(80).map((line) => stripAnsi(line)).join("\n");
+    const plain = block
+        .render(80)
+        .map((line) => stripAnsi(line))
+        .join("\n");
 
     assertEquals(plain.includes("Thinking"), false);
     assertEquals(plain.includes("✓"), false);
@@ -187,8 +193,14 @@ test("ThinkingBlock wraps long reasoning lines to the viewport width", () => {
 
     const lines = block.render(32).map((line) => stripAnsi(line));
 
-    assertEquals(lines.some((line) => line.includes("truncating")), true);
-    assertEquals(lines.some((line) => line.includes("viewport edge")), true);
+    assertEquals(
+        lines.some((line) => line.includes("truncating")),
+        true,
+    );
+    assertEquals(
+        lines.some((line) => line.includes("viewport edge")),
+        true,
+    );
     assert(lines.every((line) => visibleLength(line) <= 32));
 });
 
@@ -196,7 +208,10 @@ test("ThinkingBlock can hide reasoning text", () => {
     const block = new ThinkingBlock({ hidden: true });
     block.appendText("private reasoning");
 
-    const plain = block.render(80).map((line) => stripAnsi(line)).join("\n");
+    const plain = block
+        .render(80)
+        .map((line) => stripAnsi(line))
+        .join("\n");
 
     assertEquals(plain.includes("Thinking"), false);
     assertEquals(plain.includes("hidden"), true);
@@ -341,7 +356,7 @@ test("ValidationHandoffBlock renders owner validation labels and latest handoff 
 });
 
 test("ValidationHandoffBlock shows each workflow check once as verification advances", () => {
-    const states = /** @type {const} */ (["running", "failed", "passed"]);
+    const states = ["running", "failed", "passed"] satisfies RuntimeValidationCheckResult[];
     for (const state of states) {
         const block = new ValidationHandoffBlock({
             progress: {
@@ -453,19 +468,31 @@ test("ToolExecutionBlock shows live elapsed time from execution start after it i
         const w = 100;
         const block = new ToolExecutionBlock("bash", "$ sleep 1");
 
-        let plain = block.render(w).map((line) => stripAnsi(line)).join("\n");
+        let plain = block
+            .render(w)
+            .map((line) => stripAnsi(line))
+            .join("\n");
         assertEquals(plain.includes("Elapsed time:"), false);
 
         block.enableElapsedTime();
-        plain = block.render(w).map((line) => stripAnsi(line)).join("\n");
+        plain = block
+            .render(w)
+            .map((line) => stripAnsi(line))
+            .join("\n");
         assertEquals(plain.includes("Elapsed time: 0.0s"), true);
 
         now = 1500;
-        plain = block.render(w).map((line) => stripAnsi(line)).join("\n");
+        plain = block
+            .render(w)
+            .map((line) => stripAnsi(line))
+            .join("\n");
         assertEquals(plain.includes("Elapsed time: 0.5s"), true);
 
         block.endExecution(false, 700);
-        plain = block.render(w).map((line) => stripAnsi(line)).join("\n");
+        plain = block
+            .render(w)
+            .map((line) => stripAnsi(line))
+            .join("\n");
         assertEquals(plain.includes("Elapsed time:"), false);
         assertEquals(plain.includes("Took 0.7s"), true);
     } finally {
@@ -583,7 +610,10 @@ test("ToolExecutionBlock limits expanded output while preserving its start and e
     block.setOutput(Array.from({ length: 1_000 }, (_, index) => `line ${index}`).join("\n"));
     block.setExpanded(true);
 
-    const plain = block.render(100).map((line) => stripAnsi(line)).join("\n");
+    const plain = block
+        .render(100)
+        .map((line) => stripAnsi(line))
+        .join("\n");
 
     assertEquals(plain.includes("line 0"), true);
     assertEquals(plain.includes("line 999"), true);
@@ -703,7 +733,10 @@ test("ToolExecutionGroupBlock keeps compact rows within tiny widths", () => {
 
     for (const w of [0, 1, 2]) {
         const lines = group.render(w);
-        assertEquals(lines.every((line) => visibleLength(line) === w), true);
+        assertEquals(
+            lines.every((line) => visibleLength(line) === w),
+            true,
+        );
     }
 });
 
@@ -758,7 +791,7 @@ test("PromptSelectBlock renders with uniform background", () => {
     const bgCodes = lines.map((line) => {
         // deno-lint-ignore no-control-regex
         const m = line.match(/^\x1b\[(?:48;2;(\d+;\d+;\d+)|48;5;(\d+))m/);
-        return m ? (m[1] || m[2]) : null;
+        return m ? m[1] || m[2] : null;
     });
     const uniqueBgs = [...new Set(bgCodes)];
     assertEquals(uniqueBgs.length, 1, `PromptSelectBlock should have uniform bg, got: ${uniqueBgs.join(", ")}`);
@@ -835,7 +868,7 @@ test("PromptTextBlock renders with uniform background", () => {
     const bgCodes = lines.map((line) => {
         // deno-lint-ignore no-control-regex
         const m = line.match(/^\x1b\[(?:48;2;(\d+;\d+;\d+)|48;5;(\d+))m/);
-        return m ? (m[1] || m[2]) : null;
+        return m ? m[1] || m[2] : null;
     });
     const uniqueBgs = [...new Set(bgCodes)];
     assertEquals(uniqueBgs.length, 1, `PromptTextBlock should have uniform bg, got: ${uniqueBgs.join(", ")}`);
@@ -859,7 +892,10 @@ test("PromptTextBlock handles input and settling", () => {
     // Verify visual output changes to a finalized line (contains "hi")
     const lines = block.render(80);
     const plainTextLines = lines.map((line) => stripAnsi(line));
-    assertEquals(plainTextLines.some((line) => line.includes("hi")), true);
+    assertEquals(
+        plainTextLines.some((line) => line.includes("hi")),
+        true,
+    );
 });
 
 // ─── SpinnerBlock ────────────────────────────────────────────────────────────
@@ -909,7 +945,8 @@ test("SpinnerBlock shows agent busy line when busyLines are set", () => {
     spinner.setBusyLines(["Planning...", "Drafting the plan...", "Thinking through the steps..."]);
     const plainText = stripAnsi(spinner.render(80)[0]);
     assertEquals(
-        plainText.includes("Planning...") || plainText.includes("Drafting the plan...") ||
+        plainText.includes("Planning...") ||
+            plainText.includes("Drafting the plan...") ||
             plainText.includes("Thinking through the steps..."),
         true,
     );
@@ -956,8 +993,7 @@ test("SpinnerBlock uses Working... when switching to an Agent without busy lines
     assertEquals(stripAnsi(spinner.render(80)[0]).includes("Working..."), true);
 });
 
-/** @type {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} */
-const verifiedReportProgress = {
+const verifiedReportProgress: RuntimeValidationProgress = {
     kind: "mechanical",
     outcome: "verified",
     stage: "terminal",
