@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { deepStrictEqual as equal, throws, rejects } from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import { runAcceptance } from "./driver.ts";
 import { runLiveAcceptance } from "./live.ts";
 import { AcceptanceWorld } from "./world.ts";
 import { resolveValidationCommand } from "../../../shared/workflow/validation-local-ci.ts";
+import type { Snapshot } from "../../claude/acceptance/evidence.ts";
 
 test("acceptance CLI admits only explicit executable, output, and retention options", () => {
     equal(parseCodexAcceptanceArgs(["--codex", "/test/codex", "--out", "/test/evidence", "--keep"]), {
@@ -32,6 +33,60 @@ test("fixture tracks its approved project command before the inactive source bas
         equal(await resolveValidationCommand(world.fixture, "ordinary-project"), "sh ./check.sh");
         equal(await readFile(join(world.fixture, ".wld/settings.json"), "utf8"), expected);
         equal(world.git(["status", "--porcelain=v1", "--untracked-files=all"]), "");
+    } finally {
+        await world.close();
+        await rm(parent, { recursive: true, force: true });
+    }
+});
+test("Codex world snapshots capture invoking Claude config creation, edits and deletion with Git status", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "codex-config-snapshot-"));
+    const world = new AcceptanceWorld({ root: join(parent, "world"), codex: "unused", checkout: parent });
+    const path = "fixture/.claude/settings.local.json";
+    const relative = ".claude/settings.local.json";
+    const initial = JSON.stringify({ enabledPlugins: { "user-plugin": true } });
+    const changed = JSON.stringify({ enabledPlugins: { "user-plugin": false } });
+    const snapshot = async (name: string): Promise<Snapshot> => {
+        await world.snapshot(name, null);
+        return JSON.parse(await readFile(join(world.root, "snapshots", `${name}.json`), "utf8"));
+    };
+    try {
+        await world.create();
+        const before = await snapshot("before");
+        equal(
+            before.files.some((file) => file.path === path),
+            false,
+        );
+        equal(before.git?.status, "");
+
+        await mkdir(join(world.fixture, ".claude"));
+        await writeFile(join(world.fixture, relative), initial);
+        const created = await snapshot("created");
+        equal(created.files.find((file) => file.path === path)?.text, initial);
+        equal(created.git?.status, `?? ${relative}\n`);
+
+        world.git(["add", relative]);
+        world.git(["commit", "-m", "Track fixture user config"]);
+        const tracked = await snapshot("tracked");
+        equal(tracked.git?.status, "");
+        await writeFile(join(world.fixture, relative), changed);
+        const edited = await snapshot("edited");
+        equal(edited.files.find((file) => file.path === path)?.text, changed);
+        equal(
+            edited.files.find((file) => file.path === path)?.sha256 ===
+                tracked.files.find((file) => file.path === path)?.sha256,
+            false,
+        );
+        equal(edited.git?.status, ` M ${relative}\n`);
+        equal(edited.git?.head, tracked.git?.head);
+
+        await rm(join(world.fixture, relative));
+        const deleted = await snapshot("deleted");
+        equal(
+            deleted.files.some((file) => file.path === path),
+            false,
+        );
+        equal(deleted.git?.status, ` D ${relative}\n`);
+        equal(deleted.git?.head, tracked.git?.head);
     } finally {
         await world.close();
         await rm(parent, { recursive: true, force: true });
