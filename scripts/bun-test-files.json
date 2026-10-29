@@ -191,7 +191,7 @@
     "src/extensions/mnemoteca/index.test.js",
     "src/extensions/mnemoteca/tools.test.ts",
     "src/extensions/re-anchor/index.test.ts",
-    "src/extensions/snip/index.test.js",
+    "src/extensions/snip/index.test.ts",
     "src/plan-catalog-isolation.test.ts",
     "src/plan-identity-registry.integration.test.ts",
     "src/plan-store-locks.test.ts",
