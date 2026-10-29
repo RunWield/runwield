@@ -61,6 +61,7 @@ export class AcceptanceWorld {
         await mkdir(this.root, { recursive: true, mode: 0o700 });
         for (const directory of [
             "fixture",
+            "fixture/.wld",
             "runwield-home/.wld",
             "codex-home",
             "tmp",
@@ -81,6 +82,12 @@ export class AcceptanceWorld {
         ])
             await writeFile(join(this.root, file), "", { flag: "wx", mode: 0o600 });
         await writeFile(join(this.fixture, "README.md"), "# Codex Connect acceptance fixture\n");
+        // This journey already specifies its approved command. Track that user preference before
+        // the baseline so normal Core command persistence cannot look like a worker checkout edit.
+        await writeFile(
+            join(this.fixture, ".wld/settings.json"),
+            JSON.stringify({ verification_command: "sh ./check.sh" }, null, 2),
+        );
         await writeFile(
             join(this.fixture, "check.sh"),
             `#!/bin/sh\nset -eu\ntrap 'printf "%s\\n" "$$" >> "$ACCEPTANCE_MARKER_DIR/ci-finished"' EXIT\nprintf '%s\\n' "$$" >> "$ACCEPTANCE_MARKER_DIR/ci-runs"\nsleep 65\ntest "$(sh ./greet.sh Ada)" = 'Hello, Ada!'\ntest "$(sh ./greet.sh 'Ada Lovelace')" = 'Hello, Ada Lovelace!'\nif sh ./greet.sh >/dev/null 2>missing-name.stderr; then exit 1; fi\ngrep -qi usage missing-name.stderr\n`,
@@ -91,12 +98,9 @@ export class AcceptanceWorld {
         this.git(["config", "user.email", "acceptance@example.invalid"]);
         this.git(["config", "core.excludesFile", "/dev/null"]);
         await writeFile(join(this.fixture, ".git/info/exclude"), "missing-name.stderr\n");
-        this.git(["add", "README.md", "check.sh"]);
+        this.git(["add", "README.md", "check.sh", ".wld/settings.json"]);
         this.git(["commit", "-m", "Create acceptance fixture"]);
-        await writeFile(
-            join(this.root, "runwield-home/.wld/settings.json"),
-            JSON.stringify({ verification_command: "sh ./check.sh", codereview: "always" }),
-        );
+        await writeFile(join(this.root, "runwield-home/.wld/settings.json"), JSON.stringify({ codereview: "always" }));
         await writeFile(
             join(this.root, "bin/wld"),
             `#!${process.execPath}
