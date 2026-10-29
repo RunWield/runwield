@@ -38,7 +38,10 @@ workflow guidance, never copied RunWield role definitions. No hooks or permissio
 ### Owner decisions
 
 - Both the desktop app and CLI are targets; qualify them separately and state unproven behavior honestly.
-- Invocation shape and cross-host continuation are under interview before dependent implementation proceeds.
+- One explicitly invoked `$runwield` skill starts or resumes work. It asks when start versus resume is ambiguous.
+- Cross-host continuation is supported in the same local repository. Resume shows the Plan name and current step,
+  including the originating host when changing hosts, before continuing from Core's saved artifacts. Users need not
+  remember an internal workflow ID. Host conversation history is never imported.
 - Distribution mirrors Claude's repository marketplace. Public-directory submission is not part of this repository PR.
 - Compatible local Core on PATH remains the same prerequisite as Claude; no separate model credentials are required.
 
@@ -49,7 +52,9 @@ workflow guidance, never copied RunWield role definitions. No hooks or permissio
 Claude assumptions currently sit in the MCP manifest loader, compatibility policy, role adaptation, browser labels,
 and a few completion messages. The coordinator already owns revision checks, action identity, direct reviewer diff
 receipts, repair, shutdown recovery, and publication. Codex's skill invocation policy and MCP timeout configuration
-need native mappings; copying Claude commands or environment variables does not establish them.
+need native mappings. Runtime probes select the native `.codex-plugin/plugin.json` format: its MCP timeout works,
+while portable configuration rejects that field. Native launch metadata supplies adapter version and contract because
+plugin-root variables did not expand in the tested CLI.
 
 ## Expected Change Surface
 

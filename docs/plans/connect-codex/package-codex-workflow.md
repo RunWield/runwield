@@ -17,8 +17,8 @@ status: draft
 ## Context
 
 The [Epic](../connect-codex.md) requires the Claude FEATURE journey through native Codex plugin surfaces. The shared
-carrier is established by [host-aware coordination](share-host-aware-coordination.md). The owner selects the invocation
-shape before this Plan's entrypoint implementation.
+carrier is established by [host-aware coordination](share-host-aware-coordination.md). The owner selected one explicit
+`$runwield` skill for start/resume and cross-host continuation with the Plan and current step shown first.
 
 ## Objective
 
@@ -27,8 +27,10 @@ Core action through the appropriate Codex-owned worker without copied role promp
 
 ## Approach
 
-Use current official plugin manifests, native skills and `agents/openai.yaml` explicit-invocation policy. Package only
-orchestration guidance and fetch role instructions at runtime. Reuse the shared MCP adapter and Core action contracts.
+Use the supported native `.codex-plugin/plugin.json` and `.mcp.json` format, a single skill and
+`agents/openai.yaml` explicit-invocation policy. Package only orchestration guidance and fetch role instructions at
+runtime. Installed launch arguments carry the adapter version/contract; package tests pin them to the manifest.
+Reuse the shared MCP adapter and Core action contracts.
 
 ## Expected Change Surface
 
@@ -46,8 +48,11 @@ roles, create custom lifecycle policy, install hooks, or introduce a second work
 
 - Codex installs the package from the repository marketplace in an isolated configuration; manifests resolve all
   resources inside the package and launch Core from the user's project directory with the installed plugin root.
-- Native explicit-only skills implement the owner-selected start/resume entrypoint. New work needs explicit activation;
+- One native explicit-only `$runwield` skill implements start/resume. New work needs explicit activation;
   resume reads durable status and never creates a new workflow merely because conversation context was lost.
+- Resume can continue a Claude-started workflow in the same local repository. It identifies the saved Plan and current
+  step, discloses the originating host on handoff, and uses saved Core artifacts without importing conversation history.
+  Ambiguous start/resume intent is clarified before activation; internal workflow IDs are not a routine user burden.
 - Planning handles triage, setup disclosure, Plan submission, browser feedback/chat, cancellation, Approve & Run and
   Approve for Later with the existing Core contracts.
 - Implementation and repair dispatch fresh Codex subagents in Core's supplied execution directory, preserving the
