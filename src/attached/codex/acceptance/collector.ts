@@ -86,7 +86,7 @@ export function assessHostReview(evidence: CollectedEvidence): Check {
                     row.freshContext === true,
             )
             .flatMap((row) => row.workerIds ?? []);
-        const reads = evidence.observations.filter(
+        const allReads = evidence.observations.filter(
             (row) =>
                 row.kind === "tool" &&
                 row.accepted &&
@@ -96,73 +96,82 @@ export function assessHostReview(evidence: CollectedEvidence): Check {
                 row.workflowId === review.workflowId &&
                 row.actionId === review.submittedActionId,
         );
-        if (
-            !reads.some((row) => row.operation === "review_diff") ||
-            !reads.some((row) => row.operation === "get_instructions")
-        )
+        const readers = new Set(allReads.map((row) => row.threadId));
+        if (!readers.size)
             return {
                 id: "independent-host-review",
                 outcome: "fail",
-                detail: "An accepted review lacks matching direct worker instruction and diff reads.",
+                detail: "No independently observed reviewer read the submitted action.",
             };
-        const readers = new Set(reads.map((row) => row.threadId));
-        if (
-            evidence.observations.some(
-                (row) =>
-                    row.run === review.run &&
-                    readers.has(row.threadId) &&
-                    row.operation === "get_instructions" &&
-                    row.accepted &&
-                    row.actionId !== review.submittedActionId,
+        for (const reader of readers) {
+            const reads = allReads.filter((row) => row.threadId === reader);
+            if (
+                !reads.some((row) => row.operation === "review_diff") ||
+                !reads.some((row) => row.operation === "get_instructions")
             )
-        )
-            return {
-                id: "independent-host-review",
-                outcome: "fail",
-                detail: "The reviewer worker was reused across different actions.",
-            };
-        const scope = reads.find((row) => row.requiredScope)?.requiredScope;
-        const listing = reads.find((row) => row.diffScope === scope && typeof row.diffFileCount === "number");
-        if (!scope || !listing)
-            return {
-                id: "independent-host-review",
-                outcome: "unproven",
-                detail: "The native evidence lacks the required diff inventory.",
-            };
-        const pages = reads.flatMap((row) => (row.diffRead?.scope === scope ? [row.diffRead] : []));
-        const paths = new Set(pages.map((page) => page.path));
-        if (paths.size !== listing.diffFileCount)
-            return {
-                id: "independent-host-review",
-                outcome: "fail",
-                detail: "Reviewer reads do not cover the required file inventory.",
-            };
-        for (const path of paths) {
-            const spans = pages.filter((page) => page.path === path).sort((a, b) => a.start - b.start);
-            const size = spans[0].totalBytes;
-            let end = 0;
-            for (const span of spans) {
-                if (
-                    ![span.start, span.end, span.totalBytes].every(Number.isSafeInteger) ||
-                    span.totalBytes !== size ||
-                    span.start < 0 ||
-                    span.start > end ||
-                    span.end < span.start ||
-                    span.end > size
-                )
-                    return {
-                        id: "independent-host-review",
-                        outcome: "fail",
-                        detail: "Reviewer byte receipts contain gaps or inconsistent sizes.",
-                    };
-                end = Math.max(end, span.end);
-            }
-            if (end !== size)
                 return {
                     id: "independent-host-review",
                     outcome: "fail",
-                    detail: "Reviewer byte coverage is incomplete.",
+                    detail: "An accepted review lacks matching direct worker instruction and diff reads.",
                 };
+            if (
+                evidence.observations.some(
+                    (row) =>
+                        row.run === review.run &&
+                        readers.has(row.threadId) &&
+                        row.operation === "get_instructions" &&
+                        row.accepted &&
+                        row.actionId !== review.submittedActionId,
+                )
+            )
+                return {
+                    id: "independent-host-review",
+                    outcome: "fail",
+                    detail: "The reviewer worker was reused across different actions.",
+                };
+            const scope = reads.find((row) => row.requiredScope)?.requiredScope;
+            const listing = reads.find((row) => row.diffScope === scope && typeof row.diffFileCount === "number");
+            if (!scope || !listing)
+                return {
+                    id: "independent-host-review",
+                    outcome: "unproven",
+                    detail: "The native evidence lacks the required diff inventory.",
+                };
+            const pages = reads.flatMap((row) => (row.diffRead?.scope === scope ? [row.diffRead] : []));
+            const paths = new Set(pages.map((page) => page.path));
+            if (paths.size !== listing.diffFileCount)
+                return {
+                    id: "independent-host-review",
+                    outcome: "fail",
+                    detail: "Reviewer reads do not cover the required file inventory.",
+                };
+            for (const path of paths) {
+                const spans = pages.filter((page) => page.path === path).sort((a, b) => a.start - b.start);
+                const size = spans[0].totalBytes;
+                let end = 0;
+                for (const span of spans) {
+                    if (
+                        ![span.start, span.end, span.totalBytes].every(Number.isSafeInteger) ||
+                        span.totalBytes !== size ||
+                        span.start < 0 ||
+                        span.start > end ||
+                        span.end < span.start ||
+                        span.end > size
+                    )
+                        return {
+                            id: "independent-host-review",
+                            outcome: "fail",
+                            detail: "Reviewer byte receipts contain gaps or inconsistent sizes.",
+                        };
+                    end = Math.max(end, span.end);
+                }
+                if (end !== size)
+                    return {
+                        id: "independent-host-review",
+                        outcome: "fail",
+                        detail: "Reviewer byte coverage is incomplete.",
+                    };
+            }
         }
     }
     return {

@@ -918,7 +918,7 @@ Neither scope alone proves the desktop UI journey or permits a tested-version co
 - Live qualification must observe Codex-owned model calls, execution in Core's checkout, real validation and recovery,
   direct independent reviewer reads, repairs, browser decisions, publication and Work Records. Parent reads and worker
   prose cannot substitute for fresh-context, candidate-bound review evidence.
-- The live runner joins only worker threads identified by native spawn events. It records spawn settings, identifiers
+- The live runner correlates worker threads with native spawn events. It records spawn settings, identifiers
   and diff-byte receipts, while discarding raw conversation content and disabling inherited MCP servers for the run.
 - Saved summaries identify the exact source digest, adapter, host surface, permissions and remaining gaps. Missing
   authentication, incomplete provenance and unavailable desktop evidence remain explicitly unproven. Raw conversation
