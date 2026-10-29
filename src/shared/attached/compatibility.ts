@@ -1,7 +1,8 @@
-/** Core-owned Claude Connect compatibility policy. Entries require live acceptance evidence. */
+/** Core-owned Connect compatibility policy. Tested entries require live acceptance evidence. */
 import type { HostEvidence } from "./operations.ts";
+import { attachedHost } from "./hosts.ts";
 
-export interface TestedClaudeVersion {
+export interface TestedHostVersion {
     version: string;
     testDate: string;
     coreVersion: string;
@@ -26,17 +27,46 @@ export interface CompatibilityAssessment {
     message: string;
 }
 
+interface ParsedVersion {
+    release: number[];
+    prerelease: string[];
+}
+
+function parseVersion(value: string): ParsedVersion | null {
+    const matched =
+        /^(\d+(?:\.\d+)*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(
+            value,
+        );
+    if (!matched) return null;
+    const release = matched[1].split(".").map(Number);
+    if (!release.every(Number.isSafeInteger)) return null;
+    return { release, prerelease: matched[2]?.split(".") ?? [] };
+}
+
 function compareVersions(left: string, right: string): number {
-    const a = left.split(".").map(Number);
-    const b = right.split(".").map(Number);
-    for (let index = 0; index < Math.max(a.length, b.length); index++) {
-        const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    const a = parseVersion(left)!;
+    const b = parseVersion(right)!;
+    for (let index = 0; index < Math.max(a.release.length, b.release.length); index++) {
+        const difference = (a.release[index] ?? 0) - (b.release[index] ?? 0);
         if (difference !== 0) return difference;
+    }
+    if (!a.prerelease.length || !b.prerelease.length)
+        return Number(!a.prerelease.length) - Number(!b.prerelease.length);
+    for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index++) {
+        const x = a.prerelease[index],
+            y = b.prerelease[index];
+        if (x === undefined || y === undefined) return Number(x !== undefined) - Number(y !== undefined);
+        if (x === y) continue;
+        const numericX = /^\d+$/.test(x),
+            numericY = /^\d+$/.test(y);
+        if (numericX && numericY) return Number(x) - Number(y);
+        if (numericX !== numericY) return numericX ? -1 : 1;
+        return x < y ? -1 : 1;
     }
     return 0;
 }
 
-const testedVersions: TestedClaudeVersion[] = [
+const testedVersions: TestedHostVersion[] = [
     {
         version: "2.1.303",
         testDate: "2026-10-21T18:10:26.292Z",
@@ -83,14 +113,26 @@ export const CLAUDE_COMPATIBILITY_MATRIX = {
     testedVersions,
 };
 
+const codexTestedVersions: TestedHostVersion[] = [];
+
+/** Codex is available for qualification; protocol probes are not live workflow acceptance. */
+export const CODEX_COMPATIBILITY_MATRIX = {
+    host: "codex",
+    matrixVersion: 1,
+    supportedAdapterContracts: [1],
+    oldestTestedVersion: null,
+    testedVersions: codexTestedVersions,
+};
+
 /** Assess host evidence before Core performs an operation. Unknown versions remain usable with a notice. */
 export function assessCompatibility(evidence: HostEvidence): CompatibilityAssessment {
-    const matrix = CLAUDE_COMPATIBILITY_MATRIX;
-    if (evidence.host !== matrix.host) {
+    const host = attachedHost(evidence.host);
+    const matrix = evidence.host === "codex" ? CODEX_COMPATIBILITY_MATRIX : CLAUDE_COMPATIBILITY_MATRIX;
+    if (!host) {
         return {
             status: "unsupported_host",
             matrixVersion: matrix.matrixVersion,
-            message: `RunWield Connect supports Claude Code only. ${evidence.host} is not a supported External Agent Host.`,
+            message: `RunWield Connect supports Claude Code and Codex. ${evidence.host} is not a supported External Agent Host.`,
         };
     }
     const required = matrix.supportedAdapterContracts.join(", ");
@@ -101,15 +143,15 @@ export function assessCompatibility(evidence: HostEvidence): CompatibilityAssess
             message:
                 `Plugin ${evidence.adapterVersion} uses adapter contract ${evidence.adapterContract}; Core supports ${required}. ` +
                 (evidence.adapterContract < Math.min(...matrix.supportedAdapterContracts)
-                    ? "Update the plugin in Claude Code: /plugin marketplace update runwield, then /plugin update runwield@runwield."
+                    ? host.updatePlugin
                     : "Update RunWield Core with your installer or package manager: rerun install.sh, brew upgrade gandazgul/tap/wld, or winget upgrade --id Gandazgul.RunWield --exact."),
         };
     }
-    if (!/^\d+(?:\.\d+)*$/.test(evidence.hostVersion)) {
+    if (!parseVersion(evidence.hostVersion)) {
         return {
             status: "version_not_reported",
             matrixVersion: matrix.matrixVersion,
-            message: "Claude Code did not report a numeric version. This host version is not yet tested; continuing.",
+            message: `${host.displayName} did not report a recognizable version. This host version is not yet tested; continuing.`,
         };
     }
     const floor = matrix.oldestTestedVersion;
@@ -117,20 +159,20 @@ export function assessCompatibility(evidence: HostEvidence): CompatibilityAssess
         return {
             status: "unsupported_host_version",
             matrixVersion: matrix.matrixVersion,
-            message: `Claude Code ${evidence.hostVersion} is older than the oldest tested version ${floor}. Update Claude Code with claude update.`,
+            message: `${host.displayName} ${evidence.hostVersion} is older than the oldest tested version ${floor}. ${host.updateHost}`,
         };
     }
     if (!matrix.testedVersions.some((entry) => compareVersions(entry.version, evidence.hostVersion) === 0)) {
         return {
             status: "untested_newer",
             matrixVersion: matrix.matrixVersion,
-            message: `Claude Code ${evidence.hostVersion} is not yet tested with this Core version; continuing.`,
+            message: `${host.displayName} ${evidence.hostVersion} is not yet tested with this Core version; continuing.`,
         };
     }
     return {
         status: "compatible",
         matrixVersion: matrix.matrixVersion,
-        message: `Claude Code ${evidence.hostVersion} and adapter contract ${evidence.adapterContract} are tested with Core.`,
+        message: `${host.displayName} ${evidence.hostVersion} and adapter contract ${evidence.adapterContract} are tested with Core.`,
     };
 }
 

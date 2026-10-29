@@ -353,10 +353,10 @@ for (const operationId of ["constructor", "toString"]) {
     });
 }
 
-test("a non-Claude activation rejects without creating a workflow record", async () => {
+test("an unsupported activation rejects without creating a workflow record", async () => {
     await withProject(async (projectRoot) => {
         const input = activateInput();
-        const result = await run("activate", projectRoot, { ...input, evidence: { ...EVIDENCE, host: "codex" } });
+        const result = await run("activate", projectRoot, { ...input, evidence: { ...EVIDENCE, host: "opencode" } });
         assert(!result.ok);
         assertEquals(result.rejection.code, "unsupported_host");
         const files = await fsReaddir(locateAttachedWorkflows(projectRoot).workflowsDir).catch((error) => {

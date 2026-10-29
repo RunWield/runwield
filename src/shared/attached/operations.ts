@@ -160,6 +160,7 @@ export interface StatusEnvelope {
     evidence?: HostEvidence;
     projectRoot: string;
     workflowId?: string;
+    inspectOnly?: boolean;
 }
 
 export type AttachedWorkflowState =
@@ -317,6 +318,10 @@ export interface ProjectMovedRecovery {
 
 export interface AttachedWorkflowView {
     workflowId: string;
+    /** Activation host; projected from the record, including for legacy operation replays. */
+    originHost?: string;
+    /** Bounded preview of the explicitly activated request, never host conversation history. */
+    requestSummary?: string;
     revision: number;
     state: AttachedWorkflowState;
     nextAction: AttachedNextAction;
@@ -583,11 +588,15 @@ export function parseReviewReplyInput(projectRoot: string, input: AttachedJsonVa
 
 export function parseStatusInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): StatusEnvelope => {
-        const object = readObject(input, "", ["workflowId", "evidence"]);
+        const object = readObject(input, "", ["workflowId", "evidence", "inspectOnly"]);
+        if (object.inspectOnly !== undefined && typeof object.inspectOnly !== "boolean") {
+            reject("invalid_input", "inspectOnly", "inspectOnly must be a boolean.");
+        }
         return {
             projectRoot,
             ...(object.workflowId !== undefined && { workflowId: readIdentifier(object, "workflowId", "workflowId") }),
             ...(object.evidence !== undefined && { evidence: readEvidence(object) }),
+            ...(typeof object.inspectOnly === "boolean" && { inspectOnly: object.inspectOnly }),
         };
     });
 }
@@ -757,12 +766,12 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
     {
         name: "status",
         description:
-            "Read workflow state and recovery. MCP returns compact status by default and supports bounded waits for revision changes. Omit workflowId to restore the most recent open workflow.",
+            "Read workflow state and recovery. Use inspectOnly to show the saved workflow before continuing it, without reconciliation, validation, publication, or review hosting. Omit workflowId to select the most recent open workflow.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: [],
-            properties: { workflowId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA },
+            properties: { workflowId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA, inspectOnly: { type: "boolean" } },
         },
     },
     {
@@ -1101,7 +1110,7 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
 ATTACHED_OPERATIONS.push({
     name: "work_record_completed",
     description:
-        "Submit the Claude Recorder worker's sections. Core validates and saves them, then continues publication. An invalid submission gets one retry.",
+        "Submit the host Recorder worker's sections. Core validates and saves them, then continues publication. An invalid submission gets one retry.",
     inputSchema: workflowOperationSchema(["actionId", "title", "summary"], {
         actionId: IDENTIFIER_SCHEMA,
         title: { type: "string", minLength: 1 },

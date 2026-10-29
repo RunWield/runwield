@@ -13,6 +13,7 @@ import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handle
 import { readStatus, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import type { AttachedChatReply, AttachedWorkflowView } from "./operations.ts";
+import { ATTACHED_HOSTS, type AttachedHostId } from "./hosts.ts";
 
 export interface HostedAttachedReview {
     url: string;
@@ -27,6 +28,7 @@ interface TransientAttachedReply {
 }
 
 interface HostedRound {
+    hostId: AttachedHostId;
     type: "plan" | "code";
     stale?: boolean;
     actionId: string;
@@ -57,14 +59,16 @@ async function conversationFor(
     workflow: AttachedWorkflowView,
     type: "plan" | "code",
     browser: BrowserPort,
+    hostId: AttachedHostId,
 ): Promise<ReviewConversation> {
+    const host = ATTACHED_HOSTS[hostId];
     const prior = hosted.get(workflow.workflowId);
     const conversation: ReviewConversation =
         prior?.type === type
             ? prior.conversation
             : {
                   id: `attached-${type}:${workflow.workflowId}`,
-                  agentLabel: "Claude",
+                  agentLabel: host.agentLabel,
                   revision: 0,
                   events: [],
                   turns: [],
@@ -106,7 +110,7 @@ async function conversationFor(
                               type: "assistant_text_delta" as const,
                               delta: turn.reply,
                               messageId: turn.turnId,
-                              agentName: "Claude",
+                              agentName: host.agentLabel,
                           },
                       ],
             );
@@ -135,7 +139,7 @@ async function conversationFor(
                   ? action.actionId
                   : undefined;
         if (key && key !== sourceKey) {
-            await ensureReviewHosted(projectRoot, status.workflow, browser);
+            await ensureReviewHosted(projectRoot, status.workflow, browser, undefined, hostId);
             return;
         }
         await sync();
@@ -156,19 +160,32 @@ export async function ensureReviewHosted(
     workflow: AttachedWorkflowView,
     browser: BrowserPort = SYSTEM_BROWSER_PORT,
     reply?: AttachedChatReply,
+    hostId: AttachedHostId = "claude-code",
 ): Promise<HostedAttachedReview | null> {
+    const host = ATTACHED_HOSTS[hostId];
+    const previous = hosted.get(workflow.workflowId);
+    if (previous && previous.hostId !== hostId) {
+        hosted.delete(workflow.workflowId);
+        await previous.surface.stop();
+    }
     const live = hosted.get(workflow.workflowId);
     if (live && reply) {
         live.transientReply = {
             events: [
                 ...live.conversation.events.map((event) => ({ ...event, delta: "" })),
-                { type: "assistant_text_delta", delta: reply.text, messageId: reply.turnId, agentName: "Claude" },
+                {
+                    type: "assistant_text_delta",
+                    delta: reply.text,
+                    messageId: reply.turnId,
+                    agentName: host.agentLabel,
+                },
             ],
             revision: live.conversation.revision,
             delivered: false,
         };
     }
-    if (workflow.nextAction.kind === "code_review") return await ensureCodeReviewHosted(projectRoot, workflow, browser);
+    if (workflow.nextAction.kind === "code_review")
+        return await ensureCodeReviewHosted(projectRoot, workflow, browser, hostId);
     if (workflow.recovery || workflow.review?.status !== "pending") return null;
     const pending = opening.get(workflow.workflowId);
     if (pending) return await pending;
@@ -189,22 +206,25 @@ export async function ensureReviewHosted(
         if (payload.planRevision !== basis.review.planRevision) {
             throw new Error("The Plan changed while opening. Retry status.");
         }
-        const conversation = await conversationFor(projectRoot, workflow, "plan", browser);
+        const conversation = await conversationFor(projectRoot, workflow, "plan", browser, hostId);
         const surface = await startPlanReviewSurface<ReviewDecision>({
             reviewConversation: conversation,
             cwd: basis.documentRoot,
             plan: payload.planWithFm,
             planPath: basis.planPath,
-            agentLabel: "Claude",
+            agentLabel: host.agentLabel,
             surfaceId: workflow.workflowId,
             browser,
             onReviewOpen: async () => {
                 if (hosted.get(workflow.workflowId)?.stale) {
-                    const review = await ensureReviewHosted(projectRoot, workflow, browser);
+                    const review = await ensureReviewHosted(projectRoot, workflow, browser, undefined, hostId);
                     if (!review) {
-                        return new Response("The Plan advanced in Core. Return to Claude for its current position.", {
-                            status: 409,
-                        });
+                        return new Response(
+                            `The Plan advanced in Core. Return to ${host.displayName} for its current position.`,
+                            {
+                                status: 409,
+                            },
+                        );
                     }
                 }
             },
@@ -221,11 +241,11 @@ export async function ensureReviewHosted(
         const review: HostedAttachedReview = {
             url: surface.url,
             round: basis.review.round,
-            guidance:
-                "The browser review is open. Poll status for the durable outcome. Follow Planner instructions after feedback or cancellation; on plan_ready call start_execution immediately and dispatch the host worker. On plan_saved, report Ready For Work, saved for later, and stop. When the user invokes /runwield:implement, start_execution accepts either plan_ready or plan_saved.",
+            guidance: `The browser review is open. Poll status for the durable outcome. Follow Planner instructions after feedback or cancellation; on plan_ready call start_execution immediately and dispatch the host worker. On plan_saved, report Ready For Work, saved for later, and stop. When the user invokes ${host.implementEntrypoint}, start_execution accepts either plan_ready or plan_saved.`,
         };
         hosted.set(workflow.workflowId, {
             ...existing,
+            hostId,
             type: "plan",
             stale: false,
             actionId: basis.review.actionId,
@@ -256,7 +276,9 @@ async function ensureCodeReviewHosted(
     projectRoot: string,
     workflow: AttachedWorkflowView,
     browser: BrowserPort,
+    hostId: AttachedHostId,
 ): Promise<HostedAttachedReview | null> {
+    const host = ATTACHED_HOSTS[hostId];
     const action = workflow.nextAction;
     if (workflow.recovery || action.kind !== "code_review") return null;
     const existing = hosted.get(workflow.workflowId);
@@ -265,7 +287,7 @@ async function ensureCodeReviewHosted(
     if (pending) return await pending;
     const task = (async () => {
         const meta = action.request.interaction._meta;
-        const conversation = await conversationFor(projectRoot, workflow, "code", browser);
+        const conversation = await conversationFor(projectRoot, workflow, "code", browser, hostId);
         const surface = await startCodeReviewSurface<ReviewDecision>({
             reviewConversation: conversation,
             rawPatch: String(meta?.diffText || ""),
@@ -275,7 +297,7 @@ async function ensureCodeReviewHosted(
             planName: workflow.plan?.planName,
             planTitle: String(meta?.planTitle || ""),
             planContent: String(meta?.planContent || ""),
-            agentLabel: "Claude",
+            agentLabel: host.agentLabel,
             agentTurnOwner: "host",
             browser,
             surfaceId: `attached-code:${workflow.workflowId}`,
@@ -297,12 +319,12 @@ async function ensureCodeReviewHosted(
         const review = {
             url: surface.url,
             round: 1,
-            guidance:
-                "Code review is open. Poll status for feedback or approval. Closing Claude leaves the workflow resumable.",
+            guidance: `Code review is open. Poll status for feedback or approval. Closing ${host.agentLabel} leaves the workflow resumable.`,
         };
         if (existing?.type === "plan") stopDetached(existing.surface);
         hosted.set(workflow.workflowId, {
             ...existing,
+            hostId,
             type: "code",
             stale: false,
             actionId: action.actionId,

@@ -13,8 +13,29 @@ import {
 import { locateAttachedWorkflows, loadAttachedWorkflowRecord, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { activateInput, EVIDENCE, runOperation, withProject } from "./attached-test-fixture.ts";
 import { compactStatus } from "./presentation.ts";
-import { assessCompatibility } from "./compatibility.ts";
+import { assessCompatibility, CODEX_COMPATIBILITY_MATRIX } from "./compatibility.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
+
+test("Codex prereleases are recognized without claiming uncollected live acceptance", async () => {
+    assertEquals(CODEX_COMPATIBILITY_MATRIX.testedVersions, []);
+    assertEquals(CODEX_COMPATIBILITY_MATRIX.oldestTestedVersion, null);
+    await withProject(async (root) => {
+        for (const hostVersion of ["0.164.0-alpha.11.1", "0.164.0", "0.164.0+build.1"]) {
+            const result = await runOperation("activate", root, {
+                ...activateInput(`codex-${hostVersion.replaceAll("+", "-")}`),
+                evidence: { ...EVIDENCE, host: "codex", hostVersion },
+            });
+            assert(result.ok);
+            assertEquals(result.compatibility?.status, "untested_newer");
+            assertStringIncludes(result.compatibility?.message ?? "", "not yet tested");
+        }
+    });
+});
+
+test("a prerelease of the Claude floor is older than its tested stable release", () => {
+    assertEquals(assessCompatibility({ ...EVIDENCE, hostVersion: "2.1.303-rc.1" }).status, "unsupported_host_version");
+    assertEquals(assessCompatibility({ ...EVIDENCE, hostVersion: "2.1.304-rc.1" }).status, "untested_newer");
+});
 
 for (const adapterContract of [0, 2]) {
     test(`adapter contract ${adapterContract} rejects activation without creating a record`, async () => {
@@ -131,7 +152,7 @@ const payloads: Record<AttachedLifecycleOperationName, AttachedJsonObject> = {
 };
 
 for (const refusal of [
-    { reason: "a non-Claude host", code: "unsupported_host", evidence: { ...EVIDENCE, host: "codex" } },
+    { reason: "an unsupported host", code: "unsupported_host", evidence: { ...EVIDENCE, host: "opencode" } },
     { reason: "a stale contract", code: "incompatible_adapter", evidence: { ...EVIDENCE, adapterContract: 0 } },
     {
         reason: "a host below the tested floor",
@@ -240,10 +261,10 @@ for (const refusal of [
 
 test("compatibility checks host identity before adapter and version support", () => {
     assertEquals(
-        assessCompatibility({ ...EVIDENCE, host: "codex", hostVersion: "2.1.303" }).status,
+        assessCompatibility({ ...EVIDENCE, host: "opencode", hostVersion: "2.1.303" }).status,
         "unsupported_host",
     );
-    assertEquals(assessCompatibility({ ...EVIDENCE, host: "codex", adapterContract: 0 }).status, "unsupported_host");
+    assertEquals(assessCompatibility({ ...EVIDENCE, host: "opencode", adapterContract: 0 }).status, "unsupported_host");
     assertEquals(
         assessCompatibility({ ...EVIDENCE, host: "claude-code", hostVersion: "2.1.303" }).status,
         "compatible",

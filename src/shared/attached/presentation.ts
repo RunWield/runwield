@@ -106,6 +106,8 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
 function compactWorkflow(workflow: AttachedWorkflowView) {
     return {
         workflowId: workflow.workflowId,
+        originHost: workflow.originHost,
+        requestSummary: workflow.requestSummary,
         revision: workflow.revision,
         state: workflow.state,
         plan: workflow.plan,
