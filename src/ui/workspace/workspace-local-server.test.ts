@@ -156,31 +156,26 @@ test("Workspace API and detail route return readable editable Plan body metadata
     await withProcessGlobalTestLock(async () => {
         const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         try {
-            await savePlan(
-                cwd,
-                "detail",
-                "# Detail\n\nReadable body with [RunWield](https://runwield.dev)",
-                /** @type {any} */ ({
-                    planId: "detail-id",
-                    status: "implemented",
-                    classification: "FEATURE",
-                    complexity: "HIGH",
-                    summary: "Detail summary",
-                    affectedPaths: ["src/ui/workspace/components/PlanDetail.jsx"],
-                    tickets: [{ url: "https://example.com/tickets/DETAIL-123" }, { url: "javascript:alert(1)" }],
-                    dependencies: ["sibling-plan"],
-                    implementedAt: "2026-06-30T10:00:00.000Z",
-                    executionBaselineTree: "tree-detail",
-                    worktreeId: "wt-detail",
-                    worktreePath: "/tmp/secret-worktree-path",
-                    worktreeBranch: "runwield/worktree/detail",
-                    worktreeStatus: "active",
-                    humanReviewMode: "ask",
-                    humanReviewDecision: "approved",
-                    humanReviewedAt: "2026-06-30T11:00:00.000Z",
-                    customPriority: "urgent",
-                }),
-            );
+            await savePlan(cwd, "detail", "# Detail\n\nReadable body with [RunWield](https://runwield.dev)", {
+                planId: "detail-id",
+                status: "implemented",
+                classification: "FEATURE",
+                complexity: "HIGH",
+                summary: "Detail summary",
+                affectedPaths: ["src/ui/workspace/components/PlanDetail.jsx"],
+                tickets: [{ url: "https://example.com/tickets/DETAIL-123" }, { url: "javascript:alert(1)" }],
+                dependencies: ["sibling-plan"],
+                implementedAt: "2026-06-30T10:00:00.000Z",
+                executionBaselineTree: "tree-detail",
+                worktreeId: "wt-detail",
+                worktreePath: "/tmp/secret-worktree-path",
+                worktreeBranch: "runwield/worktree/detail",
+                worktreeStatus: "active",
+                humanReviewMode: "ask",
+                humanReviewDecision: "approved",
+                humanReviewedAt: "2026-06-30T11:00:00.000Z",
+                customPriority: "urgent",
+            });
             const board = await loadBoard(cwd);
             assertEquals(board.plans.length, 1);
 
@@ -409,21 +404,16 @@ test("Workspace body-save API preserves front matter rejects stale writes and re
 test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(
-            cwd,
-            "epic",
-            "# Epic\n\n## Context\n\nEpic summary\n\nEpic body",
-            /** @type {any} */ ({
-                planId: "epic-id",
-                status: "draft",
-                classification: "PROJECT",
-                summary: "Epic summary",
-                epicCompletionMode: "done_enough",
-                epicDoneEnoughAt: "2026-06-30T12:00:00.000Z",
-                epicDoneEnoughSummary: "Shipped enough",
-                customRisk: false,
-            }),
-        );
+        await savePlan(cwd, "epic", "# Epic\n\n## Context\n\nEpic summary\n\nEpic body", {
+            planId: "epic-id",
+            status: "draft",
+            classification: "PROJECT",
+            summary: "Epic summary",
+            epicCompletionMode: "done_enough",
+            epicDoneEnoughAt: "2026-06-30T12:00:00.000Z",
+            epicDoneEnoughSummary: "Shipped enough",
+            customRisk: false,
+        });
         await savePlan(cwd, "epic/done", "# Done\n\n## Context\n\nDone summary", {
             planId: "done-id",
             status: "verified",
