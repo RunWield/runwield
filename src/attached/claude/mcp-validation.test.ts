@@ -63,6 +63,8 @@ test("MCP status is compact by default and workers fetch complete current instru
         assert(compactPlan.ok);
         assertEquals(compactPlan.workflow.nextAction.kind, "review");
         assertEquals(compactPlan.workflow.revision, plan.revision);
+        assertEquals(compactPlan.workflow.originHost, EVIDENCE.host);
+        assertEquals(compactPlan.workflow.requestSummary, "Add a dark mode toggle");
         assertEquals(Object.keys(JSON.parse(JSON.stringify(planPoll.structuredContent))).sort(), [
             "compatibility",
             "ok",
@@ -111,6 +113,8 @@ test("MCP status is compact by default and workers fetch complete current instru
             operation: string;
             workflow: {
                 workflowId: string;
+                originHost: string;
+                requestSummary: string;
                 revision: number;
                 state: string;
                 nextAction: { kind: string; actionId: string | null; round: number | null; chatPending: boolean };
@@ -122,6 +126,8 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compact.operation, "status");
         assertEquals(compact.workflow.workflowId, fixture.workflowId);
         assertEquals(compact.workflow.revision, started.workflow.revision);
+        assertEquals(compact.workflow.originHost, EVIDENCE.host);
+        assertEquals(compact.workflow.requestSummary, "Implement the value");
         assertEquals(compact.workflow.nextAction.kind, "validation");
         assertEquals(compact.workflow.nextAction.chatPending, false);
         assertEquals(Object.keys(JSON.parse(JSON.stringify(compactResponse.structuredContent))).sort(), [
@@ -132,7 +138,9 @@ test("MCP status is compact by default and workers fetch complete current instru
         ]);
         assertEquals(Object.keys(compact.workflow).sort(), [
             "nextAction",
+            "originHost",
             "plan",
+            "requestSummary",
             "review",
             "revision",
             "state",
