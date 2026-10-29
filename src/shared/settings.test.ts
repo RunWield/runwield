@@ -1,3 +1,4 @@
+import type { JsonRecord } from "./jsonc.ts";
 import { mkdirSync as fsMkdirSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import { test } from "node:test";
 import {
@@ -43,13 +44,29 @@ import {
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 
+type SettingsTestBody = () => void | Promise<void>;
+
+interface SettingsTestDefinition {
+    name: string;
+    ignore?: boolean;
+    fn: SettingsTestBody;
+}
+
+interface AgentSettingsFixture extends JsonRecord {
+    model: string;
+}
+
+interface ParsedSettingsFixture extends JsonRecord {
+    theme: string;
+    agents: Record<string, AgentSettingsFixture>;
+}
+
 // Use a temp dir for isolated file-based tests
 const TEMP_DIR = await fsMkdtemp(join(tmpdir(), "runwield-settings-test-"));
 const TEMP_GLOBAL_SETTINGS = join(TEMP_DIR, "global-settings.json");
 const TEMP_PROJECT_SETTINGS = join(TEMP_DIR, "project-settings.json");
 
-/** @param {number} ms */
-function delay(ms) {
+function delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -58,16 +75,16 @@ function delay(ms) {
  * filesystem metadata settles after a test's last writes. Retry boundedly so
  * cleanup flakiness does not fail an otherwise successful test.
  *
- * @param {string} path
  */
-async function removeTempDir(path) {
+async function removeTempDir(path: string) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
             await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
-            const isRetryable = error instanceof Error &&
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+            const isRetryable =
+                error instanceof Error &&
                 /Directory not empty|resource busy|os error 66|os error 16/i.test(error.message);
             if (!isRetryable || attempt === 4) throw error;
             await delay(25 * (attempt + 1));
@@ -81,20 +98,14 @@ const linkedWorktreeSettingsRepo = defineGitFixture(async (repoPath) => {
     await git(repoPath, ["commit", "-m", "base"]);
 });
 
-/**
- * @param {string | Record<string, any>} testDefinition
- * @param {(() => void | Promise<void>) | undefined} [fn]
- */
-function settingsTest(testDefinition, fn) {
+function settingsTest(testDefinition: string | SettingsTestDefinition, fn?: SettingsTestBody) {
     if (typeof testDefinition === "string") {
         if (!fn) throw new Error("settingsTest requires a test function");
         test(testDefinition, () => withProcessGlobalTestLock(async () => await fn()));
         return;
     }
-    test(
-        testDefinition.name,
-        { skip: testDefinition.ignore === true },
-        () => withProcessGlobalTestLock(async () => await testDefinition.fn()),
+    test(testDefinition.name, { skip: testDefinition.ignore === true }, () =>
+        withProcessGlobalTestLock(async () => await testDefinition.fn()),
     );
 }
 
@@ -186,7 +197,7 @@ settingsTest({
         // Actually, the cleanest test: write to a temp dir and verify via
         // the module's helper by reading the file content directly.
         const { parse: parseJsonc } = await import("./jsonc.ts");
-        const parsed = /** @type {Record<string, any>} */ (parseJsonc(jsoncContent));
+        const parsed = parseJsonc(jsoncContent) as ParsedSettingsFixture;
         assertEquals(parsed.theme, "dark");
         assertEquals(parsed.agents.router.model, "provider/router-v2");
         assertEquals(parsed.agents.planner.model, "provider/planner-v1");
@@ -825,16 +836,16 @@ settingsTest("Plan Server URL setting validates clean non-secret URLs", () => {
     assertThrows(() => normalizePlanServerUrl("https://plans.example.test/#key=secret&cap=secret&role=reviewer"));
     assertThrows(() => normalizePlanServerUrl("https://plans.example.test/base/p/space-1"));
     assertThrows(() =>
-        normalizePlanServerUrl("https://plans.example.test/base/p/space-1#key=secret&cap=secret&role=reviewer")
+        normalizePlanServerUrl("https://plans.example.test/base/p/space-1#key=secret&cap=secret&role=reviewer"),
     );
     assertThrows(() =>
-        normalizePlanServerUrl("https://plans.example.test/p/space-1#key=secret&cap=secret&role=reviewer")
+        normalizePlanServerUrl("https://plans.example.test/p/space-1#key=secret&cap=secret&role=reviewer"),
     );
 });
 
 settingsTest("Plan Server URL setting rejects full share URLs and secret fragments", async () => {
     await assertRejects(() =>
-        setDefaultPlanServerUrl("https://plans.example.test/p/space-1#key=secret&cap=secret", "project")
+        setDefaultPlanServerUrl("https://plans.example.test/p/space-1#key=secret&cap=secret", "project"),
     );
 });
 

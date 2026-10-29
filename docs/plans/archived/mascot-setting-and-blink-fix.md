@@ -142,7 +142,7 @@ design to fix a centering bug; stable centering fixes every role, not just base.
 
 Tests (new or updated):
 
-- `src/shared/settings.test.js` — `isMascotEnabled` behavior and cache invalidation.
+- `src/shared/settings.test.ts` — `isMascotEnabled` behavior and cache invalidation.
 - `src/ui/tui/agent-mascot.test.ts` — stable centering across blink frames and poses.
 - `src/ui/tui/agent-mascot-view.test.ts` — disabled setting removes the mascot from the live TUI without breaking the
   rail or compact layouts.
@@ -168,7 +168,7 @@ Implementation Steps need, including files not named here. Stop and report only 
    `getMergedCustomSetting("mascot",
 projectRoot) !== false` behind a module-level cache keyed by project root.
    `setCustomSetting`, `setExactProjectCustomSetting`, and `__resetSettingsForTests` clear the cache.
-   `src/shared/settings.test.js` covers: default `true` with no settings file, `false` disables, project `false`
+   `src/shared/settings.test.ts` covers: default `true` with no settings file, `false` disables, project `false`
    overrides global `true`, non-`false` values (including `true`, strings, `0`) leave it enabled, and a write through
    `setCustomSetting` changes the next `isMascotEnabled` read without a process restart.
 2. `src/ui/mascot/mascot.ts` computes `drawingWidth` for each mascot as the maximum `trimEnd()` line length across all
