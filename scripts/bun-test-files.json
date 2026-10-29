@@ -622,7 +622,7 @@
     "src/ui/tui/agent-mascot.test.ts",
     "src/ui/tui/api.test.js",
     "src/ui/tui/bash-interceptor.test.ts",
-    "src/ui/tui/blocks.test.js",
+    "src/ui/tui/blocks.test.ts",
     "src/ui/tui/boot-banner.test.ts",
     "src/ui/tui/chat-footer.test.ts",
     "src/ui/tui/chat-input-controller.test.ts",
