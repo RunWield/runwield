@@ -41,6 +41,10 @@ product language. _Avoid_: Public product name, RunWield Execution Backend
 with RunWield governing durable workflow truth while the host performs agent reasoning and execution. _Avoid_: Attached
 Mode, Managed Mode, RunWield Session
 
+An Attached Workflow can continue through another compatible External Agent Host in the same local repository. The
+originating host remains provenance; the current host supplies reasoning. Continuation preserves Core's saved Plan,
+action, and execution directory without transferring host conversation history.
+
 **Attached Workflow Coordinator**: The Core runtime that advances Attached Workflows through short `wld attached`
 operations. It is a sibling of `SessionRuntime`: it loads the Attached Workflow Record, checks it, makes at most one
 change, saves, and exits. It never creates a Session, calls a model, or stores a host transcript. _Avoid_: Attached
