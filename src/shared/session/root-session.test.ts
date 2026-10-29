@@ -1,3 +1,5 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -29,6 +31,18 @@ import {
     resolveCreatedRootSessionPath,
 } from "./root-session.js";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
+
+type SessionMessage = Parameters<SessionManager["appendMessage"]>[0];
+type AssistantTranscriptFields = Pick<AssistantMessage, "role" | "timestamp" | "content">;
+type SessionFixtureIdentity = Pick<SessionManager, "getSessionId">;
+
+interface WritableSessionFixture extends SessionFixtureIdentity {
+    _rewriteFile?: () => void;
+}
+
+interface DisposableSessionFixture extends SessionFixtureIdentity {
+    dispose?: () => void | Promise<void>;
+}
 
 test("root-session path containment accepts children but rejects sibling prefixes", () => {
     const base = join("root", "sessions");
@@ -122,16 +136,15 @@ test("root-session opens a validated transcript stored under the Project session
             await fsMkdir(worktreeRoot, { recursive: true });
             const projectSessionDir = getRunWieldSessionDir(projectRoot);
             manager = SessionManager.create(worktreeRoot, projectSessionDir, { id: "worktree-header" });
-            manager.appendMessage(
-                /** @type {any} */ ({
-                    role: "user",
-                    timestamp: Date.now(),
-                    content: [{ type: "text", text: "repair context" }],
-                }),
-            );
+            manager.appendMessage({
+                role: "user",
+                timestamp: Date.now(),
+                content: [{ type: "text", text: "repair context" }],
+            });
             const transcriptPath = manager.getSessionFile?.();
             if (!transcriptPath) throw new Error("Expected a persisted transcript path");
-            const writableManager = /** @type {any} */ (manager);
+            // Existing fixture accesses Pi's private rewrite capability through a structural view.
+            const writableManager = manager as SessionFixtureIdentity as WritableSessionFixture;
             if (typeof writableManager._rewriteFile === "function") writableManager._rewriteFile();
 
             await assertRejects(
@@ -199,8 +212,8 @@ test("root-session opens a validated transcript stored under the Project session
                 "Persisted session not found",
             );
         } finally {
-            await Promise.resolve(/** @type {any} */ (opened?.sessionManager)?.dispose?.());
-            await Promise.resolve(/** @type {any} */ (manager)?.dispose?.());
+            await Promise.resolve((opened?.sessionManager as DisposableSessionFixture | undefined)?.dispose?.());
+            await Promise.resolve((manager as DisposableSessionFixture | undefined)?.dispose?.());
             if (previousHome === undefined) delete process.env["HOME"];
             else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
@@ -223,26 +236,23 @@ test("root-session persisted helpers list open and guard cwd paths", async () =>
                 join(sessionDir, `persisted-test_memory-backups`),
             );
             const manager = SessionManager.create(cwd, sessionDir, { id: "persisted-test" });
-            manager.appendMessage(
-                /** @type {any} */ ({
-                    role: "user",
-                    timestamp: Date.now(),
-                    content: [{ type: "text", text: "hello" }],
-                }),
-            );
-            manager.appendMessage(
-                /** @type {any} */ ({
-                    role: "assistant",
-                    timestamp: Date.now(),
-                    api: "test",
-                    provider: "test",
-                    model: "test",
-                    usage: {},
-                    cost: {},
-                    stopReason: "end_turn",
-                    content: [{ type: "text", text: "hi" }],
-                }),
-            );
+            manager.appendMessage({
+                role: "user",
+                timestamp: Date.now(),
+                content: [{ type: "text", text: "hello" }],
+            });
+            // Preserve the legacy transcript fixture without filling in SDK-only message fields.
+            manager.appendMessage({
+                role: "assistant",
+                timestamp: Date.now(),
+                api: "test",
+                provider: "test",
+                model: "test",
+                usage: {},
+                cost: {},
+                stopReason: "end_turn",
+                content: [{ type: "text", text: "hi" }],
+            } as AssistantTranscriptFields as SessionMessage);
 
             process.env["HOME"] = home;
             const sessions = await listPersistedRootSessions(cwd);
@@ -298,19 +308,18 @@ test("root-session helpers create list and open through canonical cwd aliases", 
             await fsSymlink(realCwd, linkedCwd);
             const manager = await createRootSessionManager("new", linkedCwd);
             manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text: "hello" }] });
-            manager.appendMessage(
-                /** @type {any} */ ({
-                    role: "assistant",
-                    timestamp: Date.now(),
-                    api: "test",
-                    provider: "test",
-                    model: "test",
-                    usage: {},
-                    cost: {},
-                    stopReason: "end_turn",
-                    content: [{ type: "text", text: "hi" }],
-                }),
-            );
+            // Preserve the legacy transcript fixture without filling in SDK-only message fields.
+            manager.appendMessage({
+                role: "assistant",
+                timestamp: Date.now(),
+                api: "test",
+                provider: "test",
+                model: "test",
+                usage: {},
+                cost: {},
+                stopReason: "end_turn",
+                content: [{ type: "text", text: "hi" }],
+            } as AssistantTranscriptFields as SessionMessage);
             const sessionId = manager.getSessionId();
 
             const sessions = await listPersistedRootSessions(realCwd);
@@ -583,9 +592,8 @@ test("catalog-safe root session locator rejects malformed or out-of-directory fi
 /**
  * Retries temp-dir cleanup because Pi SessionManager can finish flushing session
  * files just after a test assertion on macOS, causing transient ENOTEMPTY.
- * @param {string} path
  */
-async function removeTempDirBestEffort(path) {
+async function removeTempDirBestEffort(path: string) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
             await fsRm(path, { recursive: true });
