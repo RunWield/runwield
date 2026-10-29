@@ -3,66 +3,115 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertArrayIncludes, assertStringIncludes } from "../../testing/assertions.ts";
 import cymbalExtension from "./index.ts";
 
-/**
- * @param {(command: string, args: string[], opts: { cwd: string }) => Promise<{code: number, stdout: string, stderr: string}> | {code: number, stdout: string, stderr: string}} execImpl
- */
-function setup(execImpl) {
-    /** @type {Map<string, (event: any, ctx: any) => any>} */
-    const handlers = new Map();
-    /** @type {Array<any>} */
-    const tools = [];
-    /** @type {Array<{command: string, args: string[], opts: { cwd: string }}>} */
-    const calls = [];
+import type {
+    ExtensionContext,
+    SessionStartEvent,
+    ToolResultEvent,
+    ToolResultEventResult,
+} from "@earendil-works/pi-coding-agent";
+import type { TextContent } from "@earendil-works/pi-ai/compat";
+import type { createCymbalTools, CymbalToolHost } from "./tools.ts";
 
-    const pi = /** @type {import('@earendil-works/pi-coding-agent').ExtensionAPI} */ ({
-        on(event, handler) {
+type RegisteredTool = ReturnType<typeof createCymbalTools>[number];
+type ToolParameters = Parameters<RegisteredTool["execute"]>[1];
+type ExecOptions = Parameters<CymbalToolHost["exec"]>[2];
+type ExecResult = Awaited<ReturnType<CymbalToolHost["exec"]>>;
+type FixtureExec = (command: string, args: string[], opts: ExecOptions) => ExecResult | Promise<ExecResult>;
+type HookContext = Partial<ExtensionContext>;
+type HookResult = ToolResultEventResult | void;
+
+interface NativeHandlers {
+    session_start: (event: SessionStartEvent, ctx: ExtensionContext) => void | Promise<void>;
+    tool_result: (event: ToolResultEvent, ctx: ExtensionContext) => HookResult | Promise<HookResult>;
+}
+
+interface ExecCall {
+    command: string;
+    args: string[];
+    opts: ExecOptions;
+}
+
+interface FixtureRegistration {
+    on(event: "session_start", handler: NativeHandlers["session_start"]): void;
+    on(event: "tool_result", handler: NativeHandlers["tool_result"]): void;
+    registerTool(tool: RegisteredTool): void;
+    exec(command: string, args: string[], opts: ExecOptions): Promise<ExecResult>;
+}
+
+type CymbalFixtureInstaller = (pi: FixtureRegistration) => void;
+
+interface FixtureContentBlock {
+    type: string;
+    text?: string;
+}
+
+interface FixtureResultEvent extends Partial<Omit<ToolResultEvent, "type" | "toolName" | "content">> {
+    toolName: ToolResultEvent["toolName"];
+    content?: FixtureContentBlock[];
+}
+
+interface FixtureHandlerGetter {
+    (event: "session_start"): ((event: Record<string, never>, ctx: Pick<ExtensionContext, "cwd">) => void) | undefined;
+    (
+        event: "tool_result",
+    ): ((event: FixtureResultEvent, ctx: HookContext) => HookResult | Promise<HookResult>) | undefined;
+}
+
+interface FixtureToolResult extends Awaited<ReturnType<RegisteredTool["execute"]>> {
+    isError?: boolean;
+}
+
+type FixtureToolExecute = (
+    id: string,
+    params: ToolParameters,
+    signal: AbortSignal,
+    onUpdate: () => void,
+    context: HookContext,
+) => Promise<FixtureToolResult>;
+
+interface FixtureNudgeResponse {
+    content: TextContent[];
+}
+
+function setup(execImpl: FixtureExec) {
+    const handlers = new Map<string, NativeHandlers[keyof NativeHandlers]>();
+    const tools: RegisteredTool[] = [];
+    const calls: ExecCall[] = [];
+
+    const pi: FixtureRegistration = {
+        on(event: keyof NativeHandlers, handler: NativeHandlers[keyof NativeHandlers]) {
             handlers.set(event, handler);
         },
         registerTool(tool) {
             tools.push(tool);
         },
-        async exec(
-            /** @type {string} */ command,
-            /** @type {string[]} */ args,
-            /** @type {{ cwd: string }} */ opts,
-        ) {
+        async exec(command, args, opts) {
             calls.push({ command, args, opts });
             return await execImpl(command, args, opts);
         },
-    });
+    };
 
-    cymbalExtension(pi);
+    (cymbalExtension as CymbalFixtureInstaller)(pi);
 
-    /** @param {string} name */
-    const getTool = (name) => {
+    const getTool = (name: string) => {
         const tool = tools.find((registeredTool) => registeredTool.name === name);
         if (!tool) throw new Error(`Tool not found in test setup: ${name}`);
         return tool;
     };
 
-    /** @param {string} event */
-    const getHandler = (event) => {
+    const getHandler = ((event: keyof NativeHandlers) => {
         return handlers.get(event);
-    };
+    }) as FixtureHandlerGetter;
 
     return { handlers, tools, calls, getTool, getHandler };
 }
 
-/**
- * @param {{ execute: unknown }} tool
- * @param {object} params
- */
-async function executeTool(tool, params) {
-    const execute =
-        /** @type {(id: string, params: object, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<{ content: Array<{ type: string, text?: string }>, details: unknown, isError?: boolean }>} */ (tool
-            .execute);
+async function executeTool(tool: RegisteredTool, params: ToolParameters) {
+    const execute = tool.execute as FixtureToolExecute;
     return await execute("tool-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-/**
- * @param {{ content: Array<{ type: string, text?: string }> }} result
- */
-function firstText(result) {
+function firstText(result: Pick<FixtureToolResult, "content">) {
     const first = result.content[0];
     assertEquals(first?.type, "text");
     if (!first || first.type !== "text") throw new Error("Expected text content.");
@@ -116,8 +165,7 @@ test("cymbal tools disable sibling worktree federation", async () => {
             return Promise.resolve({
                 code: 1,
                 stdout: "",
-                stderr:
-                    "cymbal: skipped 2 unindexed sibling worktree(s); run `cymbal index .` inside each to include them.",
+                stderr: "cymbal: skipped 2 unindexed sibling worktree(s); run `cymbal index .` inside each to include them.",
             });
         }
         return Promise.resolve({ code: 0, stdout: "indexed current worktree", stderr: "" });
@@ -279,7 +327,7 @@ test("cymbal tools normalize empty, non-zero, and thrown command results", async
             code: 2,
             stdout: "",
             stderr: "bad query\nUsage: cymbal search",
-        })
+        }),
     );
     assertEquals(
         firstText(await executeTool(failingSetup.getTool("code_refs"), { symbol: "Bad" })),
@@ -326,7 +374,10 @@ test("cymbal result hook distinguishes total batch failure from partial success"
             stderr: "",
         }));
         const result = await executeTool(getTool("code_batch"), {
-            operations: [{ op: "show", target: "A" }, { op: "show", target: "B" }],
+            operations: [
+                { op: "show", target: "A" },
+                { op: "show", target: "B" },
+            ],
         });
         const handler = getHandler("tool_result");
         assert(handler);
@@ -356,7 +407,7 @@ test("cymbal nudge correctly intercepts bash and grep", async () => {
         content: [{ type: "text", text: "original output" }],
     };
 
-    const result = await handler(grepEvent, {});
+    const result = (await handler(grepEvent, {})) as FixtureNudgeResponse;
     assertEquals(calls.at(-1)?.args, [
         "--no-federate",
         "hook",
@@ -382,20 +433,26 @@ test("cymbal nudge handles bash commands, array paths, and ignored events", asyn
     const handler = getHandler("tool_result");
     if (!handler) throw new Error("tool_result handler not registered");
 
-    const bashResult = await handler({
-        toolName: "bash",
-        input: { command: "rg Session src" },
-        content: [{ type: "text", text: "rg output" }],
-    }, {});
+    const bashResult = (await handler(
+        {
+            toolName: "bash",
+            input: { command: "rg Session src" },
+            content: [{ type: "text", text: "rg output" }],
+        },
+        {},
+    )) as FixtureNudgeResponse;
 
     assertEquals(calls.at(-1)?.args, ["--no-federate", "hook", "nudge", "--format=text", "--", "rg Session src"]);
     assertEquals(bashResult.content.at(-1)?.text, "\n\nTry `cymbal refs`");
 
-    await handler({
-        toolName: "grep",
-        input: { pattern: "Session", path: ["src", "tests"] },
-        content: [],
-    }, {});
+    await handler(
+        {
+            toolName: "grep",
+            input: { pattern: "Session", path: ["src", "tests"] },
+            content: [],
+        },
+        {},
+    );
     assertEquals(calls.at(-1)?.args, [
         "--no-federate",
         "hook",
@@ -405,17 +462,23 @@ test("cymbal nudge handles bash commands, array paths, and ignored events", asyn
         'grep "Session" src tests',
     ]);
 
-    const ignored = await handler({
-        toolName: "read",
-        input: {},
-        content: [{ type: "text", text: "unchanged" }],
-    }, {});
+    const ignored = await handler(
+        {
+            toolName: "read",
+            input: {},
+            content: [{ type: "text", text: "unchanged" }],
+        },
+        {},
+    );
     assertEquals(ignored, undefined);
 
-    const noOutput = await handler({
-        toolName: "bash",
-        input: { command: "no-output" },
-        content: [{ type: "text", text: "same" }],
-    }, {});
+    const noOutput = await handler(
+        {
+            toolName: "bash",
+            input: { command: "no-output" },
+            content: [{ type: "text", text: "same" }],
+        },
+        {},
+    );
     assertEquals(noOutput, undefined);
 });
