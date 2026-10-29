@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { withWorkflowMetricsFixture } from "../testing/workflow-metrics-fixture.ts";
-import { ExecutionMetricsRecorder } from "../shared/workflow/execution-metrics.ts";
+import { ExecutionMetricsRecorder, type ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
 import { setCustomSetting } from "../shared/settings.js";
+import { UsageReporter } from "../shared/workflow/usage-reporting.ts";
 import { createSeeImageTool } from "./see-image.ts";
 
 const measuredUsage = {
@@ -56,17 +57,27 @@ async function observeVision(testCase: VisionCase) {
         const recorder = new ExecutionMetricsRecorder({
             projectRoot: fixture.projectRoot,
             sessionId: "vision-session",
+            dispatchKind: "auxiliary",
+            userInitiated: false,
         });
-        const observations = [];
+        const observations: ModelUsageObservation[] = [];
         const tool = createSeeImageTool({
             cwd: fixture.projectRoot,
-            completeSimpleFn: () =>
-                testCase.rejects
-                    ? Promise.reject(new Error("Network unavailable"))
-                    : Promise.resolve(testCase.response!),
-            onModelUsage: async (observation) => {
-                observations.push(observation);
-                await recorder.recordModelUsage(observation);
+            completeSimpleFn: async () => {
+                const starts = (await fixture.readMetrics()).filter((row) => row.event === "execution_started");
+                assertEquals(starts.length, testCase.disabled ? 0 : 1);
+                if (testCase.rejects) throw new Error("Network unavailable with private payload");
+                return testCase.response!;
+            },
+            onModelStart: async () => {
+                await recorder.recordExecutionStart();
+                return {
+                    async finish(observation, outcome) {
+                        observations.push(observation);
+                        await recorder.recordModelUsage(observation);
+                        await recorder.settleExecution(outcome);
+                    },
+                };
             },
         });
         const execute = tool.execute as DirectVisionExecution;
@@ -74,8 +85,37 @@ async function observeVision(testCase: VisionCase) {
         const records = (await fixture.readMetrics()).filter((record) => record.event === "model_usage");
         const failed = testCase.rejects || ["error", "aborted"].includes(testCase.response?.stopReason ?? "");
         assertEquals(result.details.ok, !failed);
-        assertEquals(observations.length, failed ? 0 : 1);
-        assertEquals(records.length, failed || testCase.disabled ? 0 : 1);
+        assertEquals(observations.length, 1);
+        assertEquals(records.length, testCase.disabled ? 0 : 1);
+        const journal = await fixture.readMetrics();
+        const starts = journal.filter((row) => row.event === "execution_started");
+        const finishes = journal.filter((row) => row.event === "execution_finished");
+        assertEquals(starts.length, testCase.disabled ? 0 : 1);
+        assertEquals(finishes.length, testCase.disabled ? 0 : 1);
+        if (starts.length) {
+            assertEquals(starts[0].dispatchKind, "auxiliary");
+            assertEquals(starts[0].userInitiated, false);
+            assertEquals(finishes[0].executionId, starts[0].executionId);
+        }
+        const now = Date.now();
+        const report = new UsageReporter().query(
+            [fixture.projectRoot],
+            {
+                start: new Date(now).toISOString().slice(0, 10),
+                end: new Date(now + 86400000).toISOString().slice(0, 10),
+            },
+            "UTC",
+        );
+        assertEquals(report.totals.activeDays, 0);
+        if (failed && !testCase.disabled) {
+            assertEquals(report.totals.tokens.exclusions > 0, true);
+            assertEquals(String(records[0].unavailableReason).includes("private payload"), false);
+            assertEquals(finishes[0].coverage, {
+                tools: "unavailable",
+                usage: observations[0].measurementAvailability,
+                context: "unavailable",
+            });
+        }
         if (!records.length) return;
         const record = records[0];
         assertEquals(record.v, 2);
@@ -91,13 +131,16 @@ async function observeVision(testCase: VisionCase) {
         assertEquals(record.cacheWriteTokens, usage?.cacheWrite ?? null);
         assertEquals(record.costAmount, usage?.cost?.total ?? null);
         assertEquals(record.costSource, usage?.cost?.total != null ? "calculated" : "unavailable");
+        assertEquals(record.unavailableReason, failed ? "source_unavailable" : usage ? null : "not_reported");
         assertEquals(
             record.measurementAvailability,
             !usage
                 ? "unavailable"
-                : usage.input == null || usage.output == null || usage.cacheRead == null || usage.cacheWrite == null
+                : failed
                   ? "partial"
-                  : "complete",
+                  : usage.input == null || usage.output == null || usage.cacheRead == null || usage.cacheWrite == null
+                    ? "partial"
+                    : "complete",
         );
     });
 }
@@ -124,17 +167,21 @@ test("see_image keeps absent vision categories and cost unavailable", () => {
     return observeVision({ response });
 });
 
-test("see_image does not observe an errored vision response", () =>
-    observeVision({
-        response: fauxAssistantMessage(fauxText(""), { stopReason: "error", errorMessage: "Provider failed" }),
-    }));
+test("see_image retains partial usage for an errored vision response", () => {
+    const response = completion();
+    response.stopReason = "error";
+    response.errorMessage = "Provider failed with private payload";
+    return observeVision({ response });
+});
 
-test("see_image does not observe a cancelled vision response", () =>
-    observeVision({
-        response: fauxAssistantMessage(fauxText(""), { stopReason: "aborted" }),
-    }));
+test("see_image records unavailable usage for a cancelled vision response", () => {
+    const response = completion();
+    response.stopReason = "aborted";
+    Reflect.deleteProperty(response, "usage");
+    return observeVision({ response });
+});
 
-test("see_image does not invent usage when the vision network fails", () => observeVision({ rejects: true }));
+test("see_image records unavailable usage when the vision network fails", () => observeVision({ rejects: true }));
 
 test("see_image respects disabled workflow metrics", () => observeVision({ response: completion(), disabled: true }));
 
@@ -142,5 +189,11 @@ test("see_image preserves cache-only usage as partial rather than unavailable", 
     const response = completion();
     Reflect.deleteProperty(response.usage, "input");
     Reflect.deleteProperty(response.usage, "output");
+    return observeVision({ response });
+});
+
+test("see_image retains partial usage from an aborted vision response", () => {
+    const response = completion();
+    response.stopReason = "aborted";
     return observeVision({ response });
 });

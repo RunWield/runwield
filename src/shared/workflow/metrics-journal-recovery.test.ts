@@ -20,7 +20,7 @@ test("clear waits for automatic recovery and does not restore the removed histor
         await mkdir(dirname(path), { recursive: true });
         await writeFile(path, retained);
         assertEquals((await recordWorkflowMetric(metric, projectRoot)).reason, "recovery_pending");
-        const cleared = await clearWorkflowMetricJournal(path);
+        const cleared = await clearWorkflowMetricJournal(path, projectRoot);
         assertEquals(cleared.persisted, true);
         await withWorkflowMetricJournalLock(path, () => undefined);
         assertEquals((await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot)).persisted, true);

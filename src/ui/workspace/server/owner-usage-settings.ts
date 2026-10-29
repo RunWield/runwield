@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
-import { realpathSync } from "node:fs";
 import { listInstalledMetricsExporters } from "../../../shared/extensions/metrics-exporter.ts";
 import type {
     InstalledMetricsExporter,
     MetricsExporterCredentialField,
 } from "../../../shared/extensions/metrics-exporter.ts";
-import { resolvePrimaryCheckoutRoot } from "../../../shared/primary-checkout.ts";
+import { MeasurementProjectUnavailableError, resolveMeasurementProject } from "../../../shared/workflow/metrics.js";
 import { remotePersonalResourcesActive } from "../../../shared/remote/personal-resources.ts";
-import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "../../../shared/settings.js";
-import { isWorkflowMetricsEnabled } from "../../../shared/workflow/metrics-journal.ts";
+import { getCustomSetting, getMergedCustomSetting } from "../../../shared/settings.js";
+import {
+    hasWorkflowMetricsEnablementOverride,
+    isWorkflowMetricsEnabled,
+    setWorkflowMetricsRecording,
+} from "../../../shared/workflow/metrics-journal.ts";
 import {
     clearMetricsExportCredentials,
     grantMetricsExportDestination,
@@ -106,7 +109,12 @@ export class UsageSettingsError extends Error {
 }
 
 function canonicalRoot(root: string) {
-    return realpathSync(resolvePrimaryCheckoutRoot(realpathSync(root)));
+    try {
+        return resolveMeasurementProject(root).root;
+    } catch (error) {
+        if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
+        return error.project.root;
+    }
 }
 function enabledProjects(store: OwnerProjectStore) {
     return listOwnerProjects(store)
@@ -138,12 +146,11 @@ export function loadUsageRecording(store: OwnerProjectStore): UsageRecording {
             projectId: project.projectId,
             label: project.label,
             enabled: isWorkflowMetricsEnabled(getMergedCustomSetting("workflowMetrics", project.root)),
-            setBy:
-                getCustomSetting("workflowMetrics", "project", project.root) !== undefined
-                    ? "project"
-                    : globalValue !== undefined
-                      ? "global"
-                      : "default",
+            setBy: hasWorkflowMetricsEnablementOverride(getCustomSetting("workflowMetrics", "project", project.root))
+                ? "project"
+                : hasWorkflowMetricsEnablementOverride(globalValue)
+                  ? "global"
+                  : "default",
         })),
     };
 }
@@ -161,8 +168,21 @@ export async function loadUsageSettings(store: OwnerProjectStore): Promise<Usage
     }
     const projects = enabledProjects(store);
     const exporters = await listInstalledMetricsExporters();
-    const grants = readMetricsExportGrants();
-    const statuses = await readMetricsExportStatus();
+    let grants: MetricsExportDestinationGrant[];
+    let statuses: CoreStatus[];
+    try {
+        grants = readMetricsExportGrants();
+        statuses = await readMetricsExportStatus();
+    } catch (error) {
+        if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
+        return {
+            recording,
+            exportAvailable: false,
+            unavailableReason: "Measurement history is temporarily unavailable. Retry shortly.",
+            exporters: [],
+            destinations: [],
+        };
+    }
     return {
         recording,
         exportAvailable: true,
@@ -277,14 +297,11 @@ export async function mutateUsageSettings(
     let result: UsageSettingsResult = {};
     if (action === "recording") {
         if (typeof body.enabled !== "boolean") throw new UsageSettingsError("Choose recording on or off.");
-        const saved = getCustomSetting("workflowMetrics", "global");
-        await setCustomSetting(
-            "workflowMetrics",
-            saved && typeof saved === "object" && !Array.isArray(saved)
-                ? { ...saved, enabled: body.enabled }
-                : body.enabled,
-            "global",
-        );
+        try {
+            await setWorkflowMetricsRecording(body.enabled);
+        } catch {
+            throw new UsageSettingsError("Recording could not be saved. Try changing recording again.", 409);
+        }
     } else if (action === "clear") {
         const roots = selectedRoots(store, body.projectIds);
         if (body.confirmed !== true || !roots.length)

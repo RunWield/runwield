@@ -1,10 +1,8 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
-import { realpathSync, statSync, readFileSync } from "node:fs";
+import { statSync, readFileSync } from "node:fs";
 /** Read-only reporting over collected Project measurements. No Session or Plan reads. */
-import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { getWorkflowMetricsFilePath, readLegacyWorkflowMetric } from "./metrics.js";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolveMeasurementProject, MeasurementProjectUnavailableError, readLegacyWorkflowMetric } from "./metrics.js";
 import { clearWorkflowMetricJournal } from "./metrics-journal.ts";
 
 export interface UsagePeriod {
@@ -55,6 +53,7 @@ interface JournalRow {
     measurementAvailability?: string;
     totalLatencyMs?: number | null;
     completedAt?: number | null;
+    endedAt?: string | null;
     coverage?: JournalUsageCoverage;
 }
 
@@ -142,37 +141,41 @@ export interface UsageProjectReport {
     coverage: UsageProjectCoverage;
 }
 
-function projectIdentity(path: string): string {
-    return createHash("sha256").update(dirname(path).split(/[\\/]/).at(-1)!).digest("hex");
+interface MeasurementJournal {
+    root: string;
+    key: string;
+    journalPath: string;
+    unavailable?: boolean;
+}
+
+function projectIdentity(project: MeasurementJournal): string {
+    return project.key;
 }
 
 /** Resolve an authorized root to the opaque identity used by report rows and links. */
 export function usageProjectIdentityForRoot(root: string): string {
-    return projectIdentity(journalPaths([root])[0]);
+    try {
+        return resolveMeasurementProject(root).key;
+    } catch (error) {
+        if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
+        return error.project.key;
+    }
 }
 
-/** Resolve caller-authorized aliases without creating or reading another Project. */
-function journalPaths(roots: string[]): string[] {
-    const paths = new Map<string, string>();
+/** Resolve caller-authorized aliases once, without preferring a legacy directory spelling. */
+function journalPaths(roots: string[]): MeasurementJournal[] {
+    const projects = new Map<string, MeasurementJournal>();
     for (const root of roots) {
-        const primary = resolvePrimaryCheckoutRoot(root);
-        let identity = primary;
+        let project: MeasurementJournal;
         try {
-            identity = realpathSync(primary);
-        } catch {
-            /* Unavailable roots remain explicit gaps. */
+            project = resolveMeasurementProject(root);
+        } catch (error) {
+            if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
+            project = { ...error.project, unavailable: true };
         }
-        const path = getWorkflowMetricsFilePath(primary);
-        if (!paths.has(identity)) paths.set(identity, path);
-        // Preserve existing history when an alias uses a different spelling of the same root.
-        try {
-            statSync(path);
-            paths.set(identity, path);
-        } catch {
-            /* Reporting handles absent journals. */
-        }
+        projects.set(project.key, project);
     }
-    return [...paths.values()];
+    return [...projects.values()];
 }
 
 function totals(): UsageTotals {
@@ -259,7 +262,9 @@ function finite(value: number | null | undefined): value is number {
 }
 
 function observationTime(row: JournalRow): number {
-    return finite(row.completedAt) ? row.completedAt : Date.parse(row.ts);
+    if (finite(row.completedAt)) return row.completedAt;
+    const endedAt = row.endedAt ? Date.parse(row.endedAt) : NaN;
+    return Number.isFinite(endedAt) ? endedAt : Date.parse(row.ts);
 }
 
 function link(projectId: string, row: JournalRow): UsageLink {
@@ -449,15 +454,17 @@ export class UsageReporter {
         const rangeEnd = dayBoundary(period.end, formatter);
         const dates: string[] = [];
         for (let date = start; date < end; date += 86400000) dates.push(new Date(date).toISOString().slice(0, 10));
-        const paths = journalPaths(projectRoots);
+        const journals = journalPaths(projectRoots);
+        const paths = journals.map((project) => project.journalPath);
         for (const path of this.journals.keys()) if (!paths.includes(path)) this.journals.delete(path);
-        const projects: UsageProjectReport[] = paths.map((path) => {
-            // The private journal directory already has a stable, host-local Project identity.
-            const projectId = projectIdentity(path);
+        const projects: UsageProjectReport[] = journals.map((project) => {
+            const path = project.journalPath;
+            const projectId = projectIdentity(project);
             let cache: JournalCache;
             let unavailable = false;
             let historyClearPending = false;
             try {
+                if (project.unavailable) throw new Error("measurement_project_unavailable");
                 if (withheld.has(path)) throw new Error("history_clear_pending");
                 cache = this.refresh(path);
             } catch (error) {
@@ -780,10 +787,13 @@ export class UsageReporter {
 
     async clear(projectRoots: string[]) {
         const results = [];
-        for (const path of journalPaths(projectRoots)) {
-            const result = await clearWorkflowMetricJournal(path);
+        for (const project of journalPaths(projectRoots)) {
+            const path = project.journalPath;
+            const result = project.unavailable
+                ? { persisted: false, reason: "storage_failure" }
+                : await clearWorkflowMetricJournal(path, project.root);
             this.journals.delete(path);
-            results.push({ projectId: projectIdentity(path), ...result });
+            results.push({ projectId: projectIdentity(project), ...result });
         }
         return results;
     }

@@ -1777,7 +1777,14 @@ code approval remains host-only through `wld install`; there is no command-line 
 **Requirement: Record structured workflow observations locally, with opt-in and no sensitive content.** With
 `workflowMetrics` enabled, RunWield records ordered tool usage, token usage, cost, context snapshots, compaction,
 retries, response latency, and slash commands to a local JSONL file under `~/.wld/workflow-metrics/`, one per primary
-Project. Linked worktrees share their Project's file. Recording is off by default.
+Project. The directory is `<sanitized-basename>-<full-sha256-of-real-primary-root>`, with a basename of at most 40
+characters. Linked worktrees and symlink aliases share their Project's file; distinct roots do not. Recording is off by
+default. Core adopts an unshared legacy journal without changing its bytes or grant offsets. A collided legacy journal
+is left in place; each new history receives only attributable rows and an explicit gap, with existing grant starts moved
+to the new end so copied rows do not export. If another process is adopting the legacy journal, export defers discovery
+until a later cycle without changing consent or delivery positions. Owner reports keep canonical Project identities
+and show unavailable history during that wait; settings remain readable without authorizing a grant. Other discovery
+data errors remain errors.
 
 Records hold metadata only: prompts, diffs, tool results, file contents, and credentials stay out. Bash commands are
 reduced to coarse command labels; memory calls record their action and scope. Usage records keep exact token, cache,
@@ -1790,8 +1797,9 @@ they are not substitutes for Session Transcript or Plan Association evidence. A 
 transcript nor a billing charge. Missing measurements remain unavailable, not zero.
 
 **Requirement: Supported backends preserve their measurement detail and upstream limits.** Pi retains native per-request
-measurements linked to assistant turns. Claude CLI retains request measurements, turn totals, and per-model detail as
-alternatives where they overlap. Core retains these alternatives locally but excludes redundant alternative rows from
+measurements linked to assistant turns. Claude CLI retains each result's turn usage once with a distinct source identity;
+turn cost is the change in the process running total. Request measurements and per-model detail remain alternatives
+where they overlap. Core retains these alternatives locally but excludes redundant alternative rows from
 all metrics exports. New Claude CLI and agy CLI usage rows identify input as excluding cache tokens; old rows keep their
 recorded basis. agy CLI retains turn-cumulative tokens and records USD cost as calculated when its model ID exactly
 matches the built-in Google price catalog. A missing catalog entry stays unavailable; a preview or alias model is not
@@ -1834,12 +1842,19 @@ Identical unmerged readback versions can confirm one immutable fact only when ev
 versions cannot. Vendor-added buckets, costs, or complete totals that contradict missing measurements remain mismatch
 evidence. Protocol fixtures do not replace owner-authorized checks of native metrics in a disposable project.
 
-**Requirement: Auxiliary calls use the same opt-in measurement history without duplicate accounting.** A completed
-`see_image` vision fallback records one request-basis observation, locally or remotely, linked to its active execution
-or Session. Missing response usage records unavailable. Guided Review uses the existing runtime observations for
-`wld guided-review`; it does not add a second job total. External guide commands record one turn-basis aggregate per
-settled job, with unavailable categories when the command provides no usage. Every guide job keeps its generation
-outcome. The explicit remote model proof turn is not a Usage source; its vision fallback calls are.
+**Requirement: Auxiliary calls use the same opt-in measurement history without duplicate accounting.** Each
+RunWield-started auxiliary model call captures consent and collection and history epochs before invocation. External
+Guided Review and manual compaction persist an `execution_started` before model work and settle with
+`execution_finished`. Vision captures its active execution at call start or starts and settles an auxiliary execution
+when none exists, locally or remotely. Auxiliary starts have `dispatchKind: "auxiliary"` and `userInitiated: false`;
+they add no Active day. A start without a finish appears as incomplete.
+
+Each `see_image` fallback records one request-basis observation. Error or aborted responses retain supplied usage with
+partial or unavailable coverage; a thrown error without a response records unavailable usage with a content-free reason.
+Guided Review uses existing runtime observations for `wld guided-review`, without a second job total. External guide
+commands record one turn-basis aggregate per settled job, with unavailable categories when the command provides no usage.
+Every guide job keeps its generation outcome with the start-time epochs. The explicit remote model proof turn is not a
+Usage source; its vision fallback calls are.
 
 **Requirement: Cross-process recording has bounded lock acquisition and truthful persistence.** All writers to the
 primary Project journal take an OS file lock before the same `proper-lockfile` lock, including linked worktrees and
@@ -1853,13 +1868,24 @@ acquisition to approximately one second. A persistence success requires synchron
 promise complete coverage. Timeout, compromised lock, storage failure, disabled collection, and
 stale collection boundaries return non-persistence without blocking delivery or claiming saved data. Captured
 observation identity and epoch stay fixed during an acquisition retry. No failed observation is queued for replay.
+Model usage becomes reconciled only after confirmed persistence; a failed append stays explicitly retryable. Once an
+execution loses a usage row, its settlement coverage is partial or unavailable, never a complete zero.
 
-**Requirement: Collection epochs reflect observed boundaries, not inferred disabled durations.** Core observes settings
-lazily when recording and resolves durable epoch state under the journal lock. A previously enabled history may retain
-an observed disabled `collection_epoch` control transition without recording a disabled Usage measurement. An unobserved
-interval contains no recorded measurements; it is not evidence of how long collection was disabled. Re-enablement never
-replays missed activity or reconstructs it from Session Transcripts. Stale observations cannot cross an observed
-boundary. History epochs identify local Project measurement histories independently of Session and Plan lifecycles.
+**Requirement: Collection epochs reflect observed boundaries, not inferred disabled durations.** The normal Workspace
+recording control commits a fresh host-level generation and the global setting under the recording guard. Disable and
+re-enable therefore preserve a boundary even without intervening appends. Projects with project-scope recording overrides
+keep their epoch across global changes only when they explicitly set enablement (a boolean or their own boolean
+`enabled` field). An empty Project setting inherits global enablement and generation boundaries. Direct settings-file
+edits remain lazily observed. Journal appends hold the journal guard and a shared recording guard from the effective
+settings read through the write, within the existing
+one-second acquisition budget. Invocation consent and epochs are captured before work starts; work started while off or
+in a stale collection epoch cannot settle into a later interval.
+
+A previously enabled history may retain a disabled `collection_epoch` control transition without recording a disabled
+Usage measurement. Unobserved intervals do not prove disabled durations. Re-enablement never replays missed activity or
+reconstructs it from Session Transcripts. History epochs identify local Project histories independently of Session and
+Plan lifecycles. The initial-history alias accepts concurrent first writers only within that first history; any clear
+invalidates older captures, including `initial` captures from another process.
 
 **Requirement: Workflow outcomes count observed operations, not inferred delivery.** Each validation attempt and repair
 round has its own operation identity. Attempt numbers and round numbers are labels, not deduplication keys. A confirmed
@@ -1904,7 +1930,8 @@ rebuilding it changes no source records.
 **Requirement: Active days require human input evidence.** An Active day has an execution start marked by the Runtime as
 user-initiated, or an explicit user command start. Automatic Plan dispatch, validation repair, generated background
 results, isolated calls, and open windows do not count. Older execution starts without input provenance do not prove an
-Active day. Usage belongs to the observation's completion day, whether or not that day is active. Incomplete operations
+Active day. Usage belongs to the observation's completion day, whether or not that day is active. Completion time uses
+`completedAt`, then `endedAt`, then the observation timestamp, not delayed storage or cleanup time. Incomplete operations
 appear separately and receive no invented spend or latency totals.
 
 **Requirement: Preserve delivery meaning in reports.** Published changes count distinct confirmed delivery attempts with
@@ -1932,8 +1959,21 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
 
 **Acceptance scenarios:**
 
+- Given roots that differ only by a slash versus a hyphen, their reports, clear actions, and grants remain separate.
+  Legacy adoption retains an unshared journal's bytes and grant offset. A collided legacy journal gives each Project
+  only its attributable report rows, exports none of the copied rows, and leaves the legacy file unchanged. This also
+  holds when the grant predates a legacy clear. A new grant after a later clear retains its own approval position.
+- Given a held legacy adoption guard, export completes the cycle without sending. Owner reports show unavailable
+  history, and settings remain readable without writing a grant. After release, reports show the retained rows and
+  competing hosts adopt the journal and export only eligible observations once, with unchanged journal bytes, state,
+  and grant positions.
 - Given known token, cost, and latency observations, a query returns their exact settled values and backend/model
   breakdowns. An incomplete execution is listed separately and contributes no spend or latency total.
+- Given model completion before midnight and cleanup afterward, usage belongs to the earlier completion day and period.
+- Given a failed model-usage append followed by a saved execution finish, the report discloses usage exclusions, not a
+  complete zero. A later successful retry cannot erase the degraded coverage.
+- Given two Claude results in one stream, both turn measurements count once and cost equals the final running total;
+  overlapping per-model alternatives add no totals.
 - Given a disabled day, a legacy-only day, and a complete enabled day with no usage, only the covered day draws zero.
   Missing token categories or USD cost disclose exclusions beside their subtotals.
 - Given the repeated hour at a daylight saving transition, each completed observation belongs to one local day. An
@@ -2002,8 +2042,10 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
   versions that contradict Core evidence do not confirm it.
 - Given assistant entries without usage and a compaction entry with usage, when a Session is replayed, assistant totals
   show unavailable while the compaction component shows its own measured values.
-- Given a completed local or remote vision fallback, when usage is present, RunWield records it once. Missing usage
-  produces an unavailable observation; an errored completion produces no fabricated measurements.
+- Given a completed local or remote vision fallback, when usage is present, RunWield records it once. Error or aborted
+  responses retain known usage with incomplete coverage; a thrown error records unavailable usage. Each call captures
+  its measurement start first; without an active execution its auxiliary start adds no Active day.
+- Given a clear during an external guide command, its delayed usage and generation outcome cannot enter the new history.
 - Given a default `wld` guide job, when it settles, its existing runtime measurements and one generation outcome remain
   without a duplicate job total. An external guide job records one aggregate and one outcome. Null categories yield
   partial or unavailable coverage, not zero. Version-1 frames are not accepted as new measurements.
@@ -2011,8 +2053,8 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
   picker writes an `opened` observation, then a `dispatched` observation only when a choice starts work. Its final
   result is succeeded, failed, canceled, or rejected under the same invocation ID. Closing a picker without a choice
   records cancellation, not a completed model change.
-- Given manual `/compact` outside an Agent turn, RunWield records its observed compaction and context under the Session
-  and command without assigning a fictitious execution ID.
+- Given manual `/compact` outside an Agent turn, RunWield awaits an auxiliary measurement start before model work and
+  records compaction and context under its Session and command. Its auxiliary execution adds no Active day.
 - Given separate Core processes and a linked worktree writing the same Project history, when observations overlap, the
   shared lock serializes journal mutation; contention ends within approximately one second with a truthful
   non-persistence result if the lock is not acquired.
@@ -2020,9 +2062,13 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
   persistence, stop delivery, or enqueue the observation for replay.
 - Given prior enabled history, when Core observes disabled collection, it records only the disabled control transition.
   When Core later observes enablement, it starts an observed collection epoch without backfilling missed measurements.
-- Given settings changed during an interval without Core observations, when recording resumes, the interval has no
-  recorded measurements and no inferred disabled duration. An observation from a stale epoch is not relabeled into the
-  new observed epoch.
+- Given recording disabled then enabled through the normal control without intervening appends, an older capture is
+  rejected at the committed collection boundary and a new capture persists. An empty Project setting inherits that
+  boundary; an explicit Project enablement override keeps its own epoch.
+- Given a settings-write failure after recording generation commit, the unchanged enabled setting permits fresh work,
+  but captures from before the attempted control change are rejected.
+- Given direct settings-file edits without Core observations, the interval has no recorded measurements and no inferred
+  disabled duration. An observation from a stale observed epoch is not relabeled into the new epoch.
 - Given a journal with v1 rows and a torn final append, when repair runs under the lock, the v1 rows remain unchanged,
   only the incomplete tail is removed, and an explicit `measurement_gap` records the lost bytes.
 - Given corrupt interior lines, when repair runs, those lines remain and gap evidence surfaces their line numbers;
@@ -2037,15 +2083,19 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
 **Requirement: Export only under explicit destination consent.** An Export grant binds an approved installed exporter
 identity, endpoint, external project, and explicit allowlist of primary Projects. Project settings cannot grant export.
 Each Project starts at its journal byte position when added. An execution that started before that position is never
-exported, even if it finishes later. Rows without an execution start at their own position. A new history after clear
+exported, even if it finishes later. An execution-scoped row is eligible only with retained start evidence at or after
+the grant boundary in the same history; missing start evidence fails closed. Rows without an `executionId`, such as
+workflow outcomes, start at their own position. A new history after clear
 starts at zero. Endpoint or external-project changes and re-enablement create new consent and start positions. HTTPS is
 required except explicit permission for loopback HTTP. Credentials rotation preserves consent and fences.
 
 **Acceptance scenarios:**
 
 - Given no installed approved exporter, no grant, or an empty allowlist, a cycle sends nothing.
-- Given an execution started before consent and finished afterward, none of its observations are sent. A new execution
-  in a granted Project is sent; an unlisted Project is not sent. Adding a Project starts only its future history.
+- Given an execution or manual compaction started before consent and finished afterward, none of its observations are
+  sent. An execution-scoped usage row without retained start evidence is not sent. A new execution in a granted Project
+  is sent; an unlisted Project is not sent. An outcome without an execution ID is eligible at its own post-grant position.
+  Adding a Project starts only its future history.
 - Given a new endpoint, external project, or re-enablement, old pending history is not swept into the new grant.
 - Given a non-loopback HTTP endpoint, Core refuses consent. Loopback HTTP also requires explicit permission.
 - Given a changed installed identity, the old grant authorizes nothing, even if the new package has been approved.
@@ -2056,15 +2106,23 @@ required except explicit permission for loopback HTTP. Credentials rotation pres
 and every 60 seconds, independent of cwd, open Sessions, Workspace registration, or browser access. Remote personal
 resource hosts do not start it. Core takes a non-blocking destination OS lock, then the configuration lock and journal
 guard. Grant and exporter-approval edits share the configuration lock. Under the guard Core checks current consent,
-installed approval, and history, and syncs the send intent before I/O. It releases the guard before dispatch. Pending
-payloads exist only in journals; a cursor retains scan positions and eligible open executions. A content-free ledger
-retains durable intents and outcomes across host restarts.
+installed approval, and history, and syncs the send intent. Core builds the observation and spawns the worker before
+locking, then hands the authorized request to that worker with synchronous `postMessage` under the configuration and
+journal guards. It awaits network results only after release. Failed authorization terminates the worker without a
+request. Clear or revoke committed before dispatch prevents that request. Pending payloads exist only in journals; a
+cursor retains scan positions and eligible execution starts, rebuilding older cursors without start evidence. A
+content-free ledger retains durable intents and outcomes across host restarts. Recovery visits all destinations,
+including revoked grants. In-flight status requires both an unsettled intent and a held destination send lock; a dead
+process does not remain in flight.
 
 **Acceptance scenarios:**
 
 - Given an unregistered granted Project B while cwd is Project A, a cycle sends B's eligible rows.
 - Given two simultaneous hosts, each observation reaches the destination once. Every request has a durable prior intent.
-- Given a dead send holder, the next holder marks unsettled intents unconfirmed with `process_lost`, without replay.
+- Given clear or revoke committed before the lock-scoped dispatch, the prepared worker receives no request. An
+  authorized request is handed to the worker before the locks release; its network result is awaited afterward.
+- Given a dead send holder, clear reports no live delivery. The next cycle marks unsettled sending intents unconfirmed
+  with `process_lost` and ends abandoned confirmations, including revoked destinations, without replay.
 
 <a id="export-delivery-states"></a>
 

@@ -7,6 +7,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { withWorkflowMetricJournalLock } from "../workflow/metrics-journal.ts";
+import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { HostedSession } from "./hosted-session.js";
 import {
@@ -18,8 +20,10 @@ import {
 
 async function readMetrics(projectRoot: string) {
     await drainWorkflowMetrics();
-    return (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim()
-        .split("\n").map((line) => JSON.parse(line));
+    return (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
 }
 
 test("disabled recording leaves no Project JSONL after a real Agent turn", async () => {
@@ -48,13 +52,15 @@ test("real mixed-tool turn reconstructs ordered calls and batch children from sh
             () =>
                 fauxAssistantMessage(fauxToolCall("memory", { action: "recall", scope: "project", query: "fixture" })),
             () =>
-                fauxAssistantMessage(fauxToolCall("code_batch", {
-                    operations: [
-                        { op: "show", target: "FixtureSymbol" },
-                        { op: "outline", file: "readme.txt" },
-                        { op: "show", target: "FixtureSymbol" },
-                    ],
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("code_batch", {
+                        operations: [
+                            { op: "show", target: "FixtureSymbol" },
+                            { op: "outline", file: "readme.txt" },
+                            { op: "show", target: "FixtureSymbol" },
+                        ],
+                    }),
+                ),
             () => fauxAssistantMessage(fauxToolCall("bash", { command: "git status --short" })),
             () => fauxAssistantMessage(fauxToolCall("read", { path: "readme.txt" })),
             () => fauxAssistantMessage(fauxToolCall("delegate_agent", { mode: "read", brief: "Inspect fixture." })),
@@ -70,11 +76,11 @@ test("real mixed-tool turn reconstructs ordered calls and batch children from sh
             const parent = rows.find((row) => row.event === "execution_started" && row.executionKind === "root");
             const child = rows.find((row) => row.event === "execution_started" && row.executionKind === "delegated");
             assert(parent && child);
-            const ordered = rows.filter((row) => row.executionId === parent.executionId)
-                .sort((a, b) => a.seq - b.seq);
-            const context = ordered.filter((row) =>
-                row.event === "context_snapshot" &&
-                ["execution_start", "turn_start", "turn_end"].includes(row.samplingPoint)
+            const ordered = rows.filter((row) => row.executionId === parent.executionId).sort((a, b) => a.seq - b.seq);
+            const context = ordered.filter(
+                (row) =>
+                    row.event === "context_snapshot" &&
+                    ["execution_start", "turn_start", "turn_end"].includes(row.samplingPoint),
             );
             assert(context.length >= 3);
             assert(context.every((row) => typeof row.staticCategoryCounts?.toolsTokens === "number"));
@@ -82,19 +88,21 @@ test("real mixed-tool turn reconstructs ordered calls and batch children from sh
             const names = starts.map((row) => row.toolName);
             assertEquals(names, ["read", "memory", "code_batch", "bash", "read", "delegate_agent"]);
             assertEquals(names.filter((name) => name === "read").length, 2);
-            assertEquals(names.slice(1).map((name, index) => `${names[index]}->${name}`), [
-                "read->memory",
-                "memory->code_batch",
-                "code_batch->bash",
-                "bash->read",
-                "read->delegate_agent",
-            ]);
+            assertEquals(
+                names.slice(1).map((name, index) => `${names[index]}->${name}`),
+                ["read->memory", "memory->code_batch", "code_batch->bash", "bash->read", "read->delegate_agent"],
+            );
             const batch = starts.find((row) => row.toolName === "code_batch");
             assert(batch);
             assertEquals(
-                ordered.filter((row) => row.event === "tool_operation" && row.parentCallId === batch.callId)
+                ordered
+                    .filter((row) => row.event === "tool_operation" && row.parentCallId === batch.callId)
                     .map((row) => [row.operationIndex, row.batchKind]),
-                [[0, "show"], [1, "outline"], [2, "show"]],
+                [
+                    [0, "show"],
+                    [1, "outline"],
+                    [2, "show"],
+                ],
             );
             assertEquals(ordered.find((row) => row.event === "execution_finished")?.callCount, 6);
             assertEquals(child.parentExecutionId, parent.executionId);
@@ -116,11 +124,13 @@ test("real background delegate records its parent execution without surfacing ch
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("delegate_agent", {
-                    mode: "read",
-                    background: true,
-                    brief: "Check a harmless fixture value.",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("delegate_agent", {
+                        mode: "read",
+                        background: true,
+                        brief: "Check a harmless fixture value.",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Parent done.")),
             () => fauxAssistantMessage(fauxText("Child done.")),
         ]);
@@ -136,8 +146,8 @@ test("real background delegate records its parent execution without surfacing ch
             const root = rows.find((row) => row.event === "execution_started" && row.executionKind === "root");
             const child = rows.find((row) => row.event === "execution_started" && row.executionKind === "delegated");
             assert(root && child, "both executions must be recorded");
-            const parentCall = rows.find((row) =>
-                row.event === "tool_call_started" && row.toolName === "delegate_agent"
+            const parentCall = rows.find(
+                (row) => row.event === "tool_call_started" && row.toolName === "delegate_agent",
             );
             assert(parentCall);
             assertEquals(child.parentExecutionId, root.executionId);
@@ -181,14 +191,16 @@ test("two parallel background delegates retain their shared parent execution", a
                 }
                 const rows = await readMetrics(projectRoot);
                 const root = rows.find((row) => row.event === "execution_started" && row.executionKind === "root");
-                const children = rows.filter((row) =>
-                    row.event === "execution_started" && row.executionKind === "delegated"
+                const children = rows.filter(
+                    (row) => row.event === "execution_started" && row.executionKind === "delegated",
                 );
                 assert(root);
                 assertEquals(children.length, 2);
-                const parentCalls = rows.filter((row) =>
-                    row.event === "tool_call_started" &&
-                    row.executionId === root.executionId && row.toolName === "delegate_agent"
+                const parentCalls = rows.filter(
+                    (row) =>
+                        row.event === "tool_call_started" &&
+                        row.executionId === root.executionId &&
+                        row.toolName === "delegate_agent",
                 );
                 assertEquals(parentCalls.length, 2);
                 assertEquals(new Set(children.map((row) => row.parentToolCallId)).size, 2);
@@ -229,10 +241,14 @@ test("isolated Reviewer delegates a nested child with its own execution identity
             const child = rows.find((row) => row.event === "execution_started" && row.executionKind === "delegated");
             assert(parent && child);
             assertEquals(child.parentExecutionId, parent.executionId);
-            assert(rows.some((row) =>
-                row.event === "tool_call_started" && row.executionId === parent.executionId &&
-                row.callId === child.parentToolCallId
-            ));
+            assert(
+                rows.some(
+                    (row) =>
+                        row.event === "tool_call_started" &&
+                        row.executionId === parent.executionId &&
+                        row.callId === child.parentToolCallId,
+                ),
+            );
             assertEquals(child.taskId, null);
         } finally {
             await hosted.dispose();
@@ -247,10 +263,12 @@ test("real foreground delegate preserves parent links with no background task ID
             await setCustomSetting("workflowMetrics", true, "project", projectRoot);
             setModelResponseFactories([
                 () =>
-                    fauxAssistantMessage(fauxToolCall("delegate_agent", {
-                        mode: "read",
-                        brief: "Inspect the fixture.",
-                    })),
+                    fauxAssistantMessage(
+                        fauxToolCall("delegate_agent", {
+                            mode: "read",
+                            brief: "Inspect the fixture.",
+                        }),
+                    ),
                 () => fauxAssistantMessage(fauxText("Child done.")),
                 () => fauxAssistantMessage(fauxText("Parent done.")),
             ]);
@@ -264,11 +282,11 @@ test("real foreground delegate preserves parent links with no background task ID
                 );
                 const rows = await readMetrics(projectRoot);
                 const root = rows.find((row) => row.event === "execution_started" && row.executionKind === "root");
-                const child = rows.find((row) =>
-                    row.event === "execution_started" && row.executionKind === "delegated"
+                const child = rows.find(
+                    (row) => row.event === "execution_started" && row.executionKind === "delegated",
                 );
-                const parentCall = rows.find((row) =>
-                    row.event === "tool_call_started" && row.toolName === "delegate_agent"
+                const parentCall = rows.find(
+                    (row) => row.event === "tool_call_started" && row.toolName === "delegate_agent",
                 );
                 assert(root && child && parentCall);
                 assertEquals(child.parentExecutionId, root.executionId);
@@ -282,7 +300,7 @@ test("real foreground delegate preserves parent links with no background task ID
     );
 });
 
-test("manual compaction outside a model turn links context to command without inventing execution", async () => {
+test("manual compaction outside a model turn links context and auxiliary usage to command", async () => {
     await withRuntimeCommandFixture(
         "metrics-manual-compaction-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -290,7 +308,19 @@ test("manual compaction outside a model turn links context to command without in
             setModelResponseFactories([
                 () => fauxAssistantMessage(fauxText("Initial response with useful details. ".repeat(3500))),
                 () => fauxAssistantMessage(fauxText("A second response with more useful details.")),
-                () => fauxAssistantMessage(fauxText("Preserve useful details.")),
+                () => {
+                    const now = Date.now();
+                    const report = new UsageReporter().query(
+                        [projectRoot],
+                        {
+                            start: new Date(now).toISOString().slice(0, 10),
+                            end: new Date(now + 86400000).toISOString().slice(0, 10),
+                        },
+                        "UTC",
+                    );
+                    assertEquals(report.projects[0].incomplete.length, 1);
+                    return fauxAssistantMessage(fauxText("Preserve useful details."));
+                },
             ]);
             const hosted = new HostedSession({
                 id: "manual-compaction",
@@ -306,27 +336,70 @@ test("manual compaction outside a model turn links context to command without in
                     userRequest: "Keep another useful detail.",
                 });
                 hosted.activeCommandInvocationId = "cmd_manual";
-                await root.compact();
+                let compacted: ReturnType<typeof root.compact> | undefined;
+                let dispatchedBeforeStartPersisted = false;
+                let started = false;
+                const unsubscribe = root.subscribe((event) => {
+                    if (event.type === "compaction_start" && event.reason === "manual") started = true;
+                });
+                try {
+                    // Hold real storage briefly: an unawaited measurement start must not
+                    // let manual compaction dispatch while its start is still waiting.
+                    await withWorkflowMetricJournalLock(getWorkflowMetricsFilePath(projectRoot), async () => {
+                        compacted = root.compact();
+                        await new Promise((resolve) => setTimeout(resolve, 50));
+                        dispatchedBeforeStartPersisted = started;
+                    });
+                    await compacted;
+                    assertEquals(dispatchedBeforeStartPersisted, false);
+                } finally {
+                    unsubscribe();
+                    await compacted?.catch(() => undefined);
+                }
+                const completedAt = Date.now();
+                const afterCompaction = new UsageReporter().query(
+                    [projectRoot],
+                    {
+                        start: new Date(completedAt).toISOString().slice(0, 10),
+                        end: new Date(completedAt + 86400000).toISOString().slice(0, 10),
+                    },
+                    "UTC",
+                );
+                assertEquals(afterCompaction.projects[0].incomplete.length, 0);
                 await drainSessionCompactionMetrics(root);
                 const rows = await readMetrics(projectRoot);
                 const start = rows.find((row) => row.event === "compaction_started" && row.reason === "manual");
-                const end = rows.find((row) =>
-                    row.event === "compaction_finished" && row.recorderId === start?.recorderId
+                const end = rows.find(
+                    (row) => row.event === "compaction_finished" && row.recorderId === start?.recorderId,
                 );
                 assert(start && end, "manual compaction must have matching observations");
                 assertEquals(start.executionId, undefined);
                 assertEquals(end.executionId, undefined);
                 assertEquals(start.commandId, "cmd_manual");
                 assertEquals(end.outcome, "success");
-                const compactionUsage = rows.filter((row) =>
-                    row.event === "model_usage" &&
-                    row.usageKind === "compaction" && row.commandId === "cmd_manual"
+                const compactionUsage = rows.filter(
+                    (row) =>
+                        row.event === "model_usage" && row.usageKind === "compaction" && row.commandId === "cmd_manual",
                 );
                 assertEquals(compactionUsage.length, 1);
-                const snapshots = rows.filter((row) =>
-                    row.recorderId === start.recorderId && row.event === "context_snapshot"
+                const auxiliary = rows.find(
+                    (row) => row.event === "execution_started" && row.commandId === "cmd_manual",
                 );
-                assertEquals(snapshots.map((row) => row.samplingPoint), ["before_compaction", "after_compaction"]);
+                assert(auxiliary);
+                assertEquals(auxiliary.dispatchKind, "auxiliary");
+                assertEquals(auxiliary.userInitiated, false);
+                assertEquals(compactionUsage[0].executionId, auxiliary.executionId);
+                const auxiliaryFinish = rows.find(
+                    (row) => row.event === "execution_finished" && row.executionId === auxiliary.executionId,
+                );
+                assertEquals(auxiliaryFinish?.outcome, "succeeded");
+                const snapshots = rows.filter(
+                    (row) => row.recorderId === start.recorderId && row.event === "context_snapshot",
+                );
+                assertEquals(
+                    snapshots.map((row) => row.samplingPoint),
+                    ["before_compaction", "after_compaction"],
+                );
                 assertEquals(typeof snapshots[0].staticCategoryCounts.systemTokens, "number");
                 assertEquals(typeof snapshots[0].staticCategoryCounts.toolsTokens, "number");
                 assertEquals([snapshots[1].currentUsage, snapshots[1].usageState], [null, "unknown_after_compaction"]);
@@ -365,12 +438,12 @@ test("manual compaction cancellation saves a canceled result with no invented ex
             }
             await drainSessionCompactionMetrics(root);
             const rows = await readMetrics(projectRoot);
-            const start = rows.find((row) =>
-                row.event === "compaction_started" && row.reason === "manual" &&
-                row.commandId === "cmd_cancel"
+            const start = rows.find(
+                (row) =>
+                    row.event === "compaction_started" && row.reason === "manual" && row.commandId === "cmd_cancel",
             );
-            const finish = rows.find((row) =>
-                row.event === "compaction_finished" && row.recorderId === start?.recorderId
+            const finish = rows.find(
+                (row) => row.event === "compaction_finished" && row.recorderId === start?.recorderId,
             );
             assert(start && finish);
             assertEquals(finish.outcome, "canceled");
@@ -394,8 +467,8 @@ test("Runtime manual compaction carries the caller command ID into saved observa
             );
             const rows = await readMetrics(projectRoot);
             const start = rows.find((row) => row.event === "compaction_started" && row.reason === "manual");
-            const finish = rows.find((row) =>
-                row.event === "compaction_finished" && row.recorderId === start?.recorderId
+            const finish = rows.find(
+                (row) => row.event === "compaction_finished" && row.recorderId === start?.recorderId,
             );
             assert(start && finish);
             assertEquals(start.commandId, "cmd_runtime");
@@ -420,17 +493,76 @@ test("manual compaction failure records an error without fabricating execution",
             await assertRejects(() => root.compact(), Error, "Nothing to compact");
             await drainSessionCompactionMetrics(root);
             await drainWorkflowMetrics();
-            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim()
-                .split("\n").map((line) => JSON.parse(line));
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line));
             const start = rows.find((row) => row.event === "compaction_started" && row.reason === "manual");
             assert(start);
-            const finish = rows.find((row) =>
-                row.event === "compaction_finished" && row.recorderId === start.recorderId
+            const finish = rows.find(
+                (row) => row.event === "compaction_finished" && row.recorderId === start.recorderId,
             );
             assert(finish);
             assertEquals(finish.outcome, "error");
             assertEquals(finish.executionId, undefined);
         } finally {
+            await hosted.dispose();
+        }
+    });
+});
+
+test("overlapping manual compactions keep call ownership and leave no orphan starts", async () => {
+    await withRuntimeCommandFixture("metrics-overlap-", async ({ projectRoot, setModelResponseFactories }) => {
+        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
+        const entered = Promise.withResolvers<void>();
+        const aborted = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        setModelResponseFactories([
+            () => fauxAssistantMessage(fauxText("Initial response with useful details. ".repeat(3500))),
+            () => fauxAssistantMessage(fauxText("Additional details.")),
+            async (_context, options) => {
+                entered.resolve();
+                options?.signal?.addEventListener("abort", () => aborted.resolve(), { once: true });
+                await release.promise;
+                return fauxAssistantMessage(fauxText("First summary."));
+            },
+            () => fauxAssistantMessage(fauxText("Second summary with its own usage.")),
+        ]);
+        const hosted = new HostedSession({
+            id: "overlap",
+            cwd: projectRoot,
+            sessionManager: SessionManager.inMemory(projectRoot),
+        });
+        try {
+            const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+            await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "First turn." });
+            await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Second turn." });
+            hosted.activeCommandInvocationId = "compact-a";
+            const first = root.compact().catch(() => undefined);
+            await entered.promise;
+            hosted.activeCommandInvocationId = "compact-b";
+            const second = root.compact().catch(() => undefined);
+            await aborted.promise;
+            release.resolve();
+            await Promise.all([first, second]);
+            const rows = await readMetrics(projectRoot);
+            const starts = rows.filter(
+                (row) => row.event === "execution_started" && ["compact-a", "compact-b"].includes(row.commandId),
+            );
+            assertEquals(starts.length, 2);
+            for (const start of starts) {
+                assertEquals(
+                    rows.filter((row) => row.event === "execution_finished" && row.executionId === start.executionId)
+                        .length,
+                    1,
+                );
+            }
+            const usage = rows.filter((row) => row.event === "model_usage" && row.usageKind === "compaction");
+            assertEquals(usage.length, 1);
+            assertEquals(usage[0].commandId, "compact-b");
+            assertEquals(usage[0].executionId, starts.find((row) => row.commandId === "compact-b").executionId);
+        } finally {
+            release.resolve();
             await hosted.dispose();
         }
     });

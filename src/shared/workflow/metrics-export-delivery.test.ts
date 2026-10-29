@@ -5,13 +5,33 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
-import { revokeMetricsExportDestination, setMetricsExportCredentials } from "./metrics-export-grants.ts";
-import { readMetricsExportLedger } from "./metrics-export-ledger.ts";
 import {
+    revokeMetricsExportDestination,
+    setMetricsExportCredentials,
+    readMetricsExportHostIdentity,
+    readMetricsExportCredentials,
+} from "./metrics-export-grants.ts";
+import {
+    type MetricsDeliveryItem,
+    appendMetricsExportLedger,
+    readMetricsExportLedger,
+} from "./metrics-export-ledger.ts";
+import {
+    authorizeAndDispatchMetricsExport,
+    PreparedMetricsExportRequest,
     readMetricsExportStatus,
     runMetricsExportCycle,
     startMetricsExportScheduler,
 } from "./metrics-export-scheduler.ts";
+import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { withWorkflowMetricJournalLock } from "./metrics-journal.ts";
+import { listInstalledMetricsExporters } from "../extensions/metrics-exporter.ts";
+import {
+    buildMetricsExportObservation,
+    metricsExportReference,
+    type MetricsJournalRow,
+} from "./metrics-export-record.ts";
+import { tryExportLock, withExportConfigurationLock } from "./metrics-export-storage.ts";
 import { clearUsageHistory, queryUsageReport } from "./usage-reporting.ts";
 
 for (const [path, expected] of [
@@ -216,3 +236,96 @@ test("exporter response codes cannot retain free text or credential-shaped conte
         }
     });
 });
+
+for (const method of ["deliver", "confirm"] as const) {
+    for (const boundary of ["clear", "revoke", "abort", "none"] as const) {
+        test(`locked ${method} dispatch ${boundary === "none" ? "reaches the exporter before lock release" : `rejects a committed ${boundary}`}`, async () => {
+            await withMetricsExportFixture(async (f) => {
+                const grant = await f.grant("/present");
+                await f.record();
+                // Build the wire observation and spawn the worker before authorization, as the cycle does.
+                const path = getWorkflowMetricsFilePath(f.project);
+                const bytes = await fsReadFile(path, "utf8");
+                const lines = bytes.trimEnd().split("\n");
+                const row: MetricsJournalRow = JSON.parse(lines.at(-1)!);
+                const offset = Buffer.byteLength(lines.slice(0, -1).join("\n") + (lines.length > 1 ? "\n" : ""));
+                const identity = await readMetricsExportHostIdentity();
+                const journalRef = await metricsExportReference(identity, "journal", path);
+                const observation = await buildMetricsExportObservation(row, f.project, identity);
+                assert(observation);
+                const exporter = (await listInstalledMetricsExporters())[0];
+                const controller = new AbortController();
+                const prepared = new PreparedMetricsExportRequest(
+                    exporter,
+                    method,
+                    row,
+                    observation,
+                    controller.signal,
+                );
+                const previous: MetricsDeliveryItem | undefined =
+                    method === "confirm"
+                        ? {
+                              eventId: row.eventId,
+                              attemptId: crypto.randomUUID(),
+                              grantId: grant.grantId,
+                              projectRef: observation.projectRef,
+                              journalRef,
+                              historyEpoch: row.historyEpoch,
+                              offset,
+                              state: "accepted",
+                              at: new Date().toISOString(),
+                              credentialsRevision: readMetricsExportCredentials("fixture").revision,
+                              attempts: 1,
+                              confirmations: 0,
+                          }
+                        : undefined;
+                if (previous) appendMetricsExportLedger("fixture", previous);
+                try {
+                    if (boundary === "clear") await clearUsageHistory([f.project]);
+                    if (boundary === "revoke") await revokeMetricsExportDestination("fixture");
+                    if (boundary === "abort") controller.abort();
+                    const result = await withExportConfigurationLock(() =>
+                        withWorkflowMetricJournalLock(path, async (epoch) => {
+                            const dispatched = authorizeAndDispatchMetricsExport(
+                                {
+                                    prepared,
+                                    grant,
+                                    project: grant.projects[0],
+                                    path,
+                                    position: { offset, eventId: row.eventId },
+                                    historyEpoch: row.historyEpoch,
+                                    projectRef: observation.projectRef,
+                                    journalRef,
+                                    previous,
+                                    signal: controller.signal,
+                                },
+                                epoch,
+                            );
+                            if (boundary === "none") {
+                                assert(dispatched);
+                                // Deliberately keep both real guards held until receipt. No deferred dispatch can pass.
+                                await Promise.race([
+                                    method === "deliver" ? f.waitForRequest() : f.waitForConfirmation(),
+                                    new Promise<never>((_, reject) =>
+                                        setTimeout(() => reject(new Error("dispatch did not occur under locks")), 1500),
+                                    ),
+                                ]);
+                                assertEquals(
+                                    tryExportLock(join(f.home, ".wld", "metrics-export", ".config.lock")),
+                                    null,
+                                );
+                            } else assertEquals(dispatched, null);
+                            return dispatched;
+                        }),
+                    );
+                    if (result) await result.pending;
+                    assertEquals(f.requests.length, boundary === "none" && method === "deliver" ? 1 : 0);
+                    assertEquals(f.confirmations.length, boundary === "none" && method === "confirm" ? 1 : 0);
+                    assertEquals(readMetricsExportLedger("fixture").size, boundary === "none" || previous ? 1 : 0);
+                } finally {
+                    prepared.cancel();
+                }
+            });
+        });
+    }
+}

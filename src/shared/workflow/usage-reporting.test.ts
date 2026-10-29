@@ -2,16 +2,25 @@ import { getCwd } from "../../constants.js";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { mkdir as fsMkdir, writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    writeFile as fsWriteFile,
+    readFile as fsReadFile,
+    rm as fsRm,
+    symlink as fsSymlink,
+    realpath as fsRealpath,
+} from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { withCollidingMetricProjects, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
+import { getWorkflowMetricsFilePath, hashMetricCwd, recordWorkflowMetric } from "./metrics.js";
+import { encodeCwdForSessionDir } from "../session/root-session.js";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
-import { UsageReporter } from "./usage-reporting.ts";
+import { UsageReporter, usageProjectIdentityForRoot } from "./usage-reporting.ts";
+import { openNativeFileLock } from "../native-file-lock.ts";
 import { setCustomSetting } from "../settings.js";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 
@@ -943,5 +952,193 @@ test("new cache-exclusive CLI rows count known cache tokens while old unknown ro
         });
         assertEquals(report.totals.tokens, { value: 80213, exclusions: 3 });
         assertEquals(report.totals.outputTokens.value, 507 + 155 + 8 + 320);
+    });
+});
+
+test("R2-1: lossy-name Projects keep separate reports and clear histories", async () => {
+    await withWorkflowMetricsFixture(async () => {
+        await withCollidingMetricProjects(async (roots) => {
+            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            for (const root of roots) {
+                await fsMkdir(root, { recursive: true });
+                await setCustomSetting("workflowMetrics", true, "project", root);
+                assert(
+                    (
+                        await recordWorkflowMetric(
+                            {
+                                v: 2,
+                                category: "model_usage",
+                                event: "model_usage",
+                                recorderId: crypto.randomUUID(),
+                                seq: 0,
+                                inputTokens: root === roots[0] ? 7 : 11,
+                                outputTokens: 0,
+                            },
+                            root,
+                        )
+                    ).persisted,
+                );
+            }
+            const paths = roots.map(getWorkflowMetricsFilePath);
+            assert(paths[0] !== paths[1], "different roots must not share a journal");
+            const reporter = new UsageReporter();
+            const wide = { start: "2020-01-01", end: "2030-01-01" };
+            const before = reporter.query([roots[1]], wide, zone);
+            const bytes = await fsReadFile(paths[1]);
+            assertEquals(before.totals.tokens.value, 11);
+            assertEquals(reporter.query(roots, wide, zone).projects.length, 2);
+            assert((await reporter.clear([roots[0]]))[0].persisted);
+            assertEquals(await fsReadFile(paths[1]), bytes);
+            assertEquals(reporter.query([roots[1]], wide, zone), before);
+        });
+    });
+});
+
+test("R2-1: legacy adoption preserves journal and checkpoint bytes and report rows", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+        const legacy = join(homeDir, ".wld", "workflow-metrics", encodeCwdForSessionDir(projectRoot));
+        await fsMkdir(legacy, { recursive: true });
+        const historyEpoch = "legacy-history";
+        const bytes =
+            [
+                enabled,
+                usage("2026-11-01T16:00:00Z", {
+                    cwdHash: await hashMetricCwd(projectRoot),
+                    historyEpoch,
+                }),
+                watermark,
+            ]
+                .map((item) => JSON.stringify(item))
+                .join("\n") + "\n";
+        const state =
+            JSON.stringify({
+                v: 1,
+                historyEpoch,
+                collectionEpoch: { id: "legacy-collection", enabled: true },
+                journalBytes: new TextEncoder().encode(bytes).length,
+                journalLines: 3,
+            }) + "\n";
+        await fsWriteFile(join(legacy, "metrics.jsonl"), bytes);
+        await fsWriteFile(join(legacy, "state.json"), state);
+        const path = getWorkflowMetricsFilePath(projectRoot);
+        assert(dirname(path) !== legacy, "legacy directory must be adopted, not retained");
+        assertEquals(await fsReadFile(path, "utf8"), bytes);
+        assertEquals(await fsReadFile(join(dirname(path), "state.json"), "utf8"), state);
+        assertEquals(new UsageReporter().query([projectRoot], period, zone).totals.tokens.value, 19);
+        assertEquals(getWorkflowMetricsFilePath(projectRoot), path);
+    });
+});
+
+test("R2-1: collided legacy history reports only attributable rows and keeps the source", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir }) => {
+        await withCollidingMetricProjects(async (roots) => {
+            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            for (const root of roots) await fsMkdir(root, { recursive: true });
+            const legacy = join(homeDir, ".wld", "workflow-metrics", encodeCwdForSessionDir(roots[0]), "metrics.jsonl");
+            await fsMkdir(dirname(legacy), { recursive: true });
+            const data = await Promise.all(
+                roots.map(async (root, index) =>
+                    usage("2026-11-01T16:00:00Z", {
+                        cwdHash: await hashMetricCwd(root),
+                        historyEpoch: "shared",
+                        inputTokens: index ? 30 : 10,
+                    }),
+                ),
+            );
+            const bytes = data.map((item) => JSON.stringify(item)).join("\n") + "\n";
+            await fsWriteFile(legacy, bytes);
+            const reports = roots.map((root) => new UsageReporter().query([root], period, zone));
+            assertEquals(
+                reports.map((report) => report.totals.inputTokens.value),
+                [10, 30],
+            );
+            assert(reports[0].projects[0].projectId !== reports[1].projects[0].projectId);
+            for (const root of roots) {
+                const saved = await fsReadFile(getWorkflowMetricsFilePath(root), "utf8");
+                assert(saved.includes('"reason":"legacy_shared_journal"'));
+                assert(!saved.includes('"historyEpoch":"shared"'));
+            }
+            assertEquals(await fsReadFile(legacy, "utf8"), bytes);
+        });
+    });
+});
+
+test("R2-1: real-root and symlink spellings share the full root hash, not a directory hash", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        const alias = `${projectRoot}-alias`;
+        await fsSymlink(projectRoot, alias, process.platform === "win32" ? "junction" : "dir");
+        try {
+            const canonical = await fsRealpath(projectRoot);
+            const key = await hashMetricCwd(canonical);
+            const path = getWorkflowMetricsFilePath(alias);
+            assertEquals(path, getWorkflowMetricsFilePath(projectRoot));
+            assert(dirname(path).endsWith(`-${key}`));
+            assertEquals(usageProjectIdentityForRoot(alias), key);
+            assert((await recordWorkflowMetric({ category: "command", event: "alias" }, alias)).persisted);
+            const rows = (await fsReadFile(path, "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line));
+            assertEquals(rows.find((item) => item.event === "alias").cwdHash, key);
+        } finally {
+            await fsRm(alias);
+        }
+    });
+});
+
+test("R2-1: busy legacy adoption withholds history and retries without changing the source", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+        const legacy = join(homeDir, ".wld", "workflow-metrics", encodeCwdForSessionDir(projectRoot));
+        await fsMkdir(legacy, { recursive: true });
+        const bytes =
+            JSON.stringify(usage("2026-11-01T16:00:00Z", { cwdHash: await hashMetricCwd(projectRoot) })) + "\n";
+        await fsWriteFile(join(legacy, "metrics.jsonl"), bytes);
+        const guard = openNativeFileLock(join(legacy, ".journal.guard"));
+        assert(guard.tryLockSync(true));
+        const reporter = new UsageReporter();
+        try {
+            const report = reporter.query([projectRoot], period, zone);
+            assertEquals(report.coverage.unavailableProjects, 1);
+            assertEquals(report.totals.tokens.value, 0);
+            assertEquals(
+                (await recordWorkflowMetric({ category: "command", event: "busy" }, projectRoot)).persisted,
+                false,
+            );
+            assertEquals(await fsReadFile(join(legacy, "metrics.jsonl"), "utf8"), bytes);
+        } finally {
+            guard.close();
+        }
+        assertEquals(reporter.query([projectRoot], period, zone).totals.tokens.value, 19);
+        assertEquals(await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"), bytes);
+    });
+});
+
+test("completion timestamps put historical agy usage in the correct day and half-open period", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        await journal(projectRoot, [
+            enabled,
+            usage("2026-11-03T05:01:00Z", { backend: "agy-cli", endedAt: "2026-11-03T04:59:00Z" }),
+            usage("2026-11-02T20:00:00Z", {
+                backend: "agy-cli",
+                endedAt: "2026-11-03T05:00:00Z",
+                inputTokens: 20,
+            }),
+            usage("2026-11-03T05:01:00Z", {
+                backend: "agy-cli",
+                endedAt: "2026-11-03T05:01:00Z",
+                completedAt: Date.parse("2026-11-03T04:58:00Z"),
+            }),
+            usage("2026-11-01T16:00:00Z", { endedAt: "invalid" }),
+            watermark,
+        ]);
+        const reporter = new UsageReporter();
+        const before = reporter.query([projectRoot], { start: "2026-11-01", end: "2026-11-03" }, zone);
+        assertEquals(
+            before.daily.map((day) => day.totals.tokens.value),
+            [19, 38],
+        );
+        assertEquals(before.totals.tokens.value, 57);
+        const after = reporter.query([projectRoot], { start: "2026-11-03", end: "2026-11-04" }, zone);
+        assertEquals(after.totals.tokens.value, 29);
     });
 });

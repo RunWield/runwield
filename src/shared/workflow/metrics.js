@@ -3,11 +3,19 @@
  * Local-only workflow metrics recording helpers.
  */
 
-import { isAbsolute, join } from "node:path";
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";
-import { appendWorkflowMetric, isWorkflowMetricsEnabled, resolveCollectionEpoch } from "./metrics-journal.ts";
+import {
+    adoptLegacyWorkflowMetricJournal,
+    appendWorkflowMetric,
+    hasWorkflowMetricsEnablementOverride,
+    isWorkflowMetricsEnabled,
+    resolveCollectionEpoch,
+} from "./metrics-journal.ts";
 export { isWorkflowMetricsEnabled } from "./metrics-journal.ts";
 
 /**
@@ -75,14 +83,67 @@ const cwdHashCache = new Map();
 const activeToolCalls = new Map();
 
 /**
- * @param {string} cwd
- * @returns {string}
+ * @typedef {Object} MeasurementProject
+ * @property {string} root
+ * @property {string} key
+ * @property {string} journalPath
  */
+
+/** A report can retain the canonical identity while withholding unavailable history. */
+export class MeasurementProjectUnavailableError extends Error {
+    /** @param {MeasurementProject} project */
+    constructor(project) {
+        super("measurement_project_unavailable");
+        this.project = project;
+    }
+}
+
+/**
+ * One identity for the primary checkout, including symlink and worktree aliases.
+ * @param {string} root
+ * @returns {MeasurementProject}
+ */
+export function resolveMeasurementProject(root) {
+    if (!root) throw new Error("resolveMeasurementProject: root is required");
+    const spellings = new Set([resolvePrimaryCheckoutRoot(root)]);
+    let canonical = resolve(root);
+    try {
+        canonical = realpathSync(canonical);
+    } catch {
+        // Missing Projects still have a stable absolute identity.
+    }
+    canonical = resolvePrimaryCheckoutRoot(canonical);
+    spellings.add(canonical);
+    try {
+        canonical = realpathSync(canonical);
+    } catch {
+        canonical = resolve(canonical);
+    }
+    spellings.add(canonical);
+    const key = createHash("sha256").update(canonical).digest("hex");
+    const label =
+        basename(canonical)
+            .replace(/[^a-zA-Z0-9_-]/g, "_")
+            .slice(0, 40) || "project";
+    const directory = join(getHomeDir() || "~", RUNWIELD_DIR_NAME, METRICS_DIR_NAME);
+    const project = { root: canonical, key, journalPath: join(directory, `${label}-${key}`, "metrics.jsonl") };
+    try {
+        for (const spelling of spellings) {
+            adoptLegacyWorkflowMetricJournal(
+                project.journalPath,
+                join(directory, encodeCwdForSessionDir(spelling), "metrics.jsonl"),
+                [...spellings].map((value) => createHash("sha256").update(value).digest("hex")),
+            );
+        }
+    } catch {
+        throw new MeasurementProjectUnavailableError(project);
+    }
+    return project;
+}
+
+/** @param {string} cwd @returns {string} */
 export function getWorkflowMetricsFilePath(cwd) {
-    if (!cwd) throw new Error("getWorkflowMetricsFilePath: cwd is required");
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const homeDir = getHomeDir() || "~";
-    return join(homeDir, RUNWIELD_DIR_NAME, METRICS_DIR_NAME, encodeCwdForSessionDir(projectRoot), "metrics.jsonl");
+    return resolveMeasurementProject(cwd).journalPath;
 }
 
 /**
@@ -850,29 +911,31 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
 export async function recordWorkflowMetric(metric, cwd) {
     try {
         if (!cwd) throw new Error("recordWorkflowMetric: cwd is required");
-        const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+        const project = resolveMeasurementProject(cwd);
+        const projectRoot = project.root;
         // Git and Plan storage can load without booting the agent package.
         // Actual metric writes still read the real settings and honor opt-out.
-        const { getMergedCustomSetting } = await import("../settings.js");
+        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.js");
         const resolvedSetting = getMergedCustomSetting("workflowMetrics", projectRoot);
-        const filePath = getWorkflowMetricsFilePath(projectRoot);
-        const epochState = resolveCollectionEpoch(filePath, isWorkflowMetricsEnabled(resolvedSetting));
+        const filePath = project.journalPath;
+        const epochState = resolveCollectionEpoch(
+            filePath,
+            isWorkflowMetricsEnabled(resolvedSetting),
+            hasWorkflowMetricsEnablementOverride(getCustomSetting("workflowMetrics", "project", projectRoot)),
+        );
         const invocation = {
             enabled:
-                metric.persisted === false && typeof metric.collectionEnabledAtCall === "boolean"
+                typeof metric.collectionEnabledAtCall === "boolean"
                     ? metric.collectionEnabledAtCall
                     : isWorkflowMetricsEnabled(resolvedSetting),
-            epoch:
-                metric.persisted === false && typeof metric.collectionEpoch === "string"
-                    ? metric.collectionEpoch
-                    : epochState.collectionEpoch.id,
+            epoch: typeof metric.collectionEpoch === "string" ? metric.collectionEpoch : epochState.collectionEpoch.id,
             historyEpoch: typeof metric.historyEpoch === "string" ? metric.historyEpoch : epochState.historyEpoch,
             deadline:
                 typeof metric.persistenceDeadline === "number"
                     ? Math.min(Date.now() + 1000, metric.persistenceDeadline)
                     : Date.now() + 1000,
         };
-        const cwdHash = await hashMetricCwd(projectRoot);
+        const cwdHash = project.key;
 
         let record;
         if (metric.v === 2) {

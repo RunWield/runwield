@@ -134,12 +134,6 @@ export async function createBoundedRemoteModelSession(options: {
     const model = await resolveBoundedRemoteModelSelection(registry, { ...options, agentDef });
     const customTools = [...(options.customTools ?? [])];
     const sessionManager = SessionManager.inMemory(options.cwd);
-    // The verification turn itself stays unrecorded. Only auxiliary vision requests use this recorder.
-    const visionMetrics = new ExecutionMetricsRecorder({
-        projectRoot: options.cwd,
-        sessionId: sessionManager.getSessionId(),
-        agentName,
-    });
     if (
         !modelSupportsImageInput(model) &&
         getResolvedVisionFallbackModelSetting(options.cwd) &&
@@ -153,7 +147,26 @@ export async function createBoundedRemoteModelSession(options: {
                     remoteModel: fallback.model,
                     completeSimpleFn: (model, context, streamOptions) =>
                         runtime.streamSimple(model, context, streamOptions).result(),
-                    onModelUsage: (observation) => visionMetrics.recordModelUsage(observation),
+                    onModelStart: async () => {
+                        // Capture consent and identity per request, not when the Session is built.
+                        const recorder = new ExecutionMetricsRecorder({
+                            projectRoot: options.cwd,
+                            sessionId: sessionManager.getSessionId(),
+                            agentName,
+                            dispatchKind: "auxiliary",
+                            userInitiated: false,
+                        });
+                        await recorder.recordExecutionStart();
+                        return {
+                            async finish(observation, outcome) {
+                                try {
+                                    await recorder.recordModelUsage(observation);
+                                } finally {
+                                    await recorder.settleExecution(outcome, "vision_completed");
+                                }
+                            },
+                        };
+                    },
                 }),
             );
         }

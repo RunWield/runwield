@@ -64,7 +64,7 @@ for (const clears of [1, 3]) {
                             import { clearWorkflowMetricJournal } from ${JSON.stringify(new URL("./metrics-journal.ts", import.meta.url).href)};
                             import { ExecutionMetricsRecorder } from ${JSON.stringify(new URL("./execution-metrics.ts", import.meta.url).href)};
                             setSystemTime(new Date("2026-11-02T16:01:00Z"));
-                            const result = await clearWorkflowMetricJournal(${JSON.stringify(path)});
+                            const result = await clearWorkflowMetricJournal(${JSON.stringify(path)}, ${JSON.stringify(projectRoot)});
                             if (!result.persisted) throw new Error(JSON.stringify(result));
                             await new ExecutionMetricsRecorder({projectRoot:${JSON.stringify(projectRoot)}}).recordModelUsage({
                                 inputTokens:7, outputTokens:0, cacheReadTokens:0, cacheWriteTokens:0,
@@ -122,7 +122,7 @@ test("a real interrupted clear stays read-only until explicit retry", async () =
                     return open(...args);
                 }}));
                 const { clearWorkflowMetricJournal } = await import(${JSON.stringify(new URL("./metrics-journal.ts", import.meta.url).href)});
-                const result = await clearWorkflowMetricJournal(${JSON.stringify(path)});
+                const result = await clearWorkflowMetricJournal(${JSON.stringify(path)}, ${JSON.stringify(projectRoot)});
                 if (result.persisted || result.reason !== "storage_failure") throw new Error(JSON.stringify(result));
             `;
             const child = spawnSync(process.execPath, runtimeSourceArgs(["eval", script]), {

@@ -2,6 +2,8 @@ import process from "node:process";
 import { test } from "node:test";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { setCustomSetting } from "../../shared/settings.js";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { clearUsageHistory, UsageReporter } from "../../shared/workflow/usage-reporting.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import {
@@ -37,6 +39,7 @@ const reviewPayload = {
  * @property {boolean} [fails]
  * @property {Usage} [resultUsage]
  * @property {string} [command]
+ * @property {() => Promise<void>} [duringCommand]
  */
 /** @param {string} cwd @param {JobScenario} scenario */
 async function runJob(cwd, scenario) {
@@ -49,8 +52,9 @@ async function runJob(cwd, scenario) {
         reviewPayload,
         runGuideCommand: scenario.command
             ? runConfiguredGuideCommand
-            : (_prompt, _signal, _cwd, progress) => {
+            : async (_prompt, _signal, _cwd, progress) => {
                   for (const frame of scenario.frames) progress?.onUsage?.(frame);
+                  await scenario.duringCommand?.();
                   if (scenario.fails) return Promise.reject(new Error("provider failed"));
                   return Promise.resolve({
                       stdout: guide,
@@ -236,5 +240,72 @@ test("a Guided Review capacity hint does not make absent measurements available"
             records.find((record) => record.event === "guided_review_generation_result")?.outcome,
             "succeeded",
         );
+    });
+});
+
+for (const internal of [false, true]) {
+    test(`${internal ? "wld" : "external"} Guided Review cannot settle across a history clear`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+            await recordWorkflowMetric(
+                { v: 2, event: "guided_review_generation_result", category: "validation", recorderId: "seed", seq: 0 },
+                projectRoot,
+            );
+            await runJob(projectRoot, {
+                internal,
+                frames: [{ ...absent, inputTokens: 12 }],
+                duringCommand: async () => {
+                    const rows = await readMetrics();
+                    if (!internal) {
+                        const starts = rows.filter((row) => row.event === "execution_started");
+                        assertEquals(starts.length, 1);
+                        assertEquals(starts[0].dispatchKind, "auxiliary");
+                        assertEquals(starts[0].userInitiated, false);
+                        assertEquals(starts[0].sourceSurface, "workspace");
+                    }
+                    assertEquals((await clearUsageHistory([projectRoot]))[0].persisted, true);
+                },
+            });
+            const rows = await readMetrics();
+            assertEquals(rows.filter((row) => row.event === "model_usage").length, 0);
+            assertEquals(rows.filter((row) => row.event === "guided_review_generation_result").length, 0);
+            assertEquals(rows.filter((row) => row.event === "execution_finished").length, 0);
+        });
+    });
+}
+
+test("external Guided Review has start evidence before model work and a settled auxiliary identity", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        let pendingIncomplete = -1;
+        let pendingActiveDays = -1;
+        await runJob(projectRoot, {
+            frames: [],
+            fails: true,
+            duringCommand: async () => {
+                const rows = await readMetrics();
+                assertEquals(rows.filter((row) => row.event === "execution_started").length, 1);
+                const now = Date.now();
+                const report = new UsageReporter().query(
+                    [projectRoot],
+                    {
+                        start: new Date(now).toISOString().slice(0, 10),
+                        end: new Date(now + 86400000).toISOString().slice(0, 10),
+                    },
+                    "UTC",
+                );
+                pendingIncomplete = report.projects[0].incomplete.length;
+                pendingActiveDays = report.totals.activeDays;
+            },
+        });
+        assertEquals(pendingIncomplete, 1);
+        assertEquals(pendingActiveDays, 0);
+        const rows = await readMetrics();
+        const start = rows.find((row) => row.event === "execution_started");
+        const finish = rows.find((row) => row.event === "execution_finished");
+        assertEquals(start?.dispatchKind, "auxiliary");
+        assertEquals(start?.userInitiated, false);
+        assertEquals(start?.sourceSurface, "workspace");
+        assertEquals(finish?.executionId, start?.executionId);
+        assertEquals(finish?.outcome, "failed");
+        assertEquals(finish?.coverage.usage, "unavailable");
     });
 });

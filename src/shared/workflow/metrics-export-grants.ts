@@ -1,12 +1,11 @@
-import { realpathSync, statSync, readFileSync } from "node:fs";
+import { statSync, readFileSync } from "node:fs";
 /** Owner consent, transport credentials, and host-local reference identity. */
 import { join } from "node:path";
 import { type InstalledMetricsExporter, resolveApprovedMetricsExporters } from "../extensions/metrics-exporter.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { getCustomSetting, setCustomSetting } from "../settings.js";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
-import { withWorkflowMetricJournalLock } from "./metrics-journal.ts";
+import { resolveMeasurementProject } from "./metrics.js";
+import { readWorkflowMetricLegacyAdoption, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import { metricsDeliveryInFlight } from "./metrics-export-ledger.ts";
 import { metricsExportDirectory, replaceExportFile, withExportConfigurationLock } from "./metrics-export-storage.ts";
 
@@ -14,6 +13,7 @@ export interface MetricsExportProjectStart {
     projectRoot: string;
     historyEpoch: string;
     offset: number;
+    legacyAdoptionEpoch?: string;
 }
 export interface MetricsExportDestinationGrant {
     destinationId: string;
@@ -57,7 +57,24 @@ interface ExportSettings {
 
 export function readMetricsExportGrants(): MetricsExportDestinationGrant[] {
     const settings: ExportSettings | undefined = getCustomSetting("metricsExport", "global");
-    return Array.isArray(settings?.destinations) ? settings.destinations : [];
+    return (Array.isArray(settings?.destinations) ? settings.destinations : []).map((grant) => ({
+        ...grant,
+        projects: grant.projects.map((start) => {
+            const project = resolveMeasurementProject(start.projectRoot);
+            const fence = readWorkflowMetricLegacyAdoption(project.journalPath);
+            return {
+                ...start,
+                projectRoot: project.root,
+                ...(fence && start.legacyAdoptionEpoch !== fence.historyEpoch
+                    ? {
+                          historyEpoch: fence.historyEpoch,
+                          offset: fence.offset,
+                          legacyAdoptionEpoch: fence.historyEpoch,
+                      }
+                    : {}),
+            };
+        }),
+    }));
 }
 function requireLocal(): void {
     if (remotePersonalResourcesActive()) throw new Error("Export configuration requires the local host");
@@ -95,8 +112,7 @@ function validateEndpoint(input: MetricsExportGrantInput): string {
     return url.href;
 }
 async function projectStart(root: string): Promise<MetricsExportProjectStart> {
-    const projectRoot = realpathSync(resolvePrimaryCheckoutRoot(realpathSync(root)));
-    const path = getWorkflowMetricsFilePath(projectRoot);
+    const { root: projectRoot, journalPath: path } = resolveMeasurementProject(root);
     return await withWorkflowMetricJournalLock(path, (historyEpoch) => {
         let offset = 0;
         try {
@@ -104,7 +120,13 @@ async function projectStart(root: string): Promise<MetricsExportProjectStart> {
         } catch (error) {
             if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
-        return { projectRoot, historyEpoch, offset };
+        const adoption = readWorkflowMetricLegacyAdoption(path);
+        return {
+            projectRoot,
+            historyEpoch,
+            offset,
+            ...(adoption ? { legacyAdoptionEpoch: adoption.historyEpoch } : {}),
+        };
     });
 }
 
@@ -134,7 +156,7 @@ async function saveDestinationGrant(input: MetricsExportGrantInput): Promise<Met
         grantMatchesExporter(previous, exporter);
     const projects: MetricsExportProjectStart[] = [];
     for (const root of input.projectRoots) {
-        const canonical = realpathSync(resolvePrimaryCheckoutRoot(realpathSync(root)));
+        const canonical = resolveMeasurementProject(root).root;
         if (projects.some((p) => p.projectRoot === canonical)) continue;
         projects.push(
             (preserve && previous.projects.find((p) => p.projectRoot === canonical)) || (await projectStart(canonical)),

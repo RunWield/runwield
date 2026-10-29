@@ -2,7 +2,7 @@ import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { realpath as fsRealpath, mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
 import { setCustomSetting } from "../shared/settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
@@ -85,4 +85,17 @@ export async function withWorkflowMetricsFixture(
             await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
         }
     });
+}
+
+/** Keep the legacy spelling below its 120-character hashed-name cutoff. */
+export async function withCollidingMetricProjects(run: (roots: string[]) => Promise<void>): Promise<void> {
+    const base = await fsMkdtemp(join(process.platform === "win32" ? tmpdir() : "/tmp", "r2-1-"));
+    const root = await fsRealpath(base);
+    const roots = [join(root, "a-b"), join(root, "a", "b")];
+    try {
+        for (const project of roots) await fsMkdir(project, { recursive: true });
+        await run(roots);
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+    }
 }

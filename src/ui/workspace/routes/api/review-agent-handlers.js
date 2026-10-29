@@ -32,6 +32,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
  * @property {boolean[]} reviewed
  * @property {AbortController} abortController
  * @property {Promise<void>} done
+ * @property {ExecutionMetricsRecorder} [metricsRecorder]
  * @property {RuntimeUsageTotals} usageTotals
  */
 
@@ -241,7 +242,23 @@ function finishGuideJobUsage(entry) {
 
 /** @param {ReviewAgentState} state @param {ReviewGuideJobEntry} entry @param {string[]} changedFiles */
 async function runGuideJob(state, entry, changedFiles) {
+    // Capture the boundary for every engine, including internally measured wld jobs and fixtures.
+    const boundaryRecorder = new ExecutionMetricsRecorder({
+        projectRoot: state.cwd,
+        executionId: `guide_${entry.info.id}`,
+        requestId: `guide_${entry.info.id}`,
+        agentName: "guide",
+        provider: String(entry.info.engine),
+        model: String(entry.info.model),
+        sourceSurface: "workspace",
+        dispatchKind: "auxiliary",
+        userInitiated: false,
+    });
+    entry.metricsRecorder = boundaryRecorder;
     try {
+        if (entry.info.engine !== "wld" && !state.reviewPayload.guidedReviewFixture) {
+            await boundaryRecorder.recordExecutionStart();
+        }
         let raw;
         /** @type {import("../../../../cmd/guided-review/protocol.ts").GuidedReviewMetadata} */
         let meta = { provider: String(entry.info.engine), model: String(entry.info.model) };
@@ -316,27 +333,29 @@ async function recordGuideJobMetric(state, entry) {
     const info = /** @type {Record<string, unknown>} */ (withElapsed(entry.info));
     // wld guided-review already journals each call through its Session runtime.
     if (info.engine !== "wld" && !state.reviewPayload.guidedReviewFixture) {
-        const recorder = new ExecutionMetricsRecorder({
-            projectRoot: state.cwd,
-            executionId: `guide_${info.id}`,
-            requestId: `guide_${info.id}`,
-            agentName: "guide",
-            provider: String(info.providerName || info.engine),
-            model: String(info.model),
-            sourceSurface: "guided_review",
-        });
-        await recorder.recordModelUsage({
-            ...entry.usageTotals.usage,
-            sourceId: `guide_${info.id}`,
-            usageKind: "turn",
-            aggregationBasis: "turn",
-            measurementAvailability: entry.usageTotals.measurementAvailability,
-            costAvailability: entry.usageTotals.availability.costUsd,
-            costSource: entry.usageTotals.usage.costUsd === null ? "unavailable" : "reported",
-        });
+        const recorder = entry.metricsRecorder;
+        try {
+            await recorder?.recordModelUsage({
+                ...entry.usageTotals.usage,
+                provider: String(info.providerName || info.engine),
+                model: String(info.model),
+                sourceId: `guide_${info.id}`,
+                usageKind: "turn",
+                aggregationBasis: "turn",
+                measurementAvailability: entry.usageTotals.measurementAvailability,
+                costAvailability: entry.usageTotals.availability.costUsd,
+                costSource: entry.usageTotals.usage.costUsd === null ? "unavailable" : "reported",
+            });
+        } finally {
+            await recorder?.settleExecution(
+                info.status === "done" ? "succeeded" : info.status === "killed" ? "interrupted" : "failed",
+                "guided_review_completed",
+            );
+        }
     }
     await recordWorkflowMetric(
         {
+            ...entry.metricsRecorder?.measurementBoundary(),
             v: 2,
             category: "validation",
             event: "guided_review_generation_result",

@@ -20,7 +20,15 @@ import {
 } from "./metrics-export-grants.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "./metrics-export-scheduler.ts";
 import { clearUsageHistory } from "./usage-reporting.ts";
+import { SessionContextMetricsRecorder } from "./execution-metrics.ts";
+import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { withExportConfigurationLock } from "./metrics-export-storage.ts";
+
+interface LegacyCursor {
+    startedExecutions?: string[];
+    excludedExecutions?: string[];
+}
 
 test("no exporter authority means no network delivery", async () => {
     await withMetricsExportFixture(async (f) => {
@@ -159,14 +167,14 @@ test("clear before authorization removes pending payloads and later history star
     });
 });
 
-test("current history after clear is eligible even without a retained execution start", async () => {
+test("current history after clear rejects usage without a retained execution start", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record("execution_started", "spans-clear");
         await clearUsageHistory([f.project]);
         await f.record("model_usage", "spans-clear");
         await runMetricsExportCycle();
-        assertEquals(f.requests.length, 1);
+        assertEquals(f.requests.length, 0);
     });
 });
 
@@ -204,25 +212,18 @@ test("queued Project edit uses the current destination rather than overwriting a
     });
 });
 
-test("post-grant usage without a recorded execution start is pending and exported", async () => {
+test("post-grant usage without a recorded execution start is neither pending nor exported", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.record("model_usage", "auxiliary-before-grant");
         await f.grant();
         await f.record("model_usage", "vision-fallback");
-        assertEquals((await readMetricsExportStatus())[0].counts.pending, 1);
-        await runMetricsExportCycle();
-        assertEquals(
-            f.requests.map((o) => o.kind),
-            ["model_usage"],
-        );
-        await f.record("model_usage", "external-guided-review");
-        assertEquals((await readMetricsExportStatus())[0].counts.pending, 1);
-        await runMetricsExportCycle();
-        assertEquals(
-            f.requests.map((o) => o.kind),
-            ["model_usage", "model_usage"],
-        );
         assertEquals((await readMetricsExportStatus())[0].counts.pending, 0);
+        await runMetricsExportCycle();
+        assertEquals(f.requests, []);
+        await f.record("model_usage", "external-guided-review");
+        assertEquals((await readMetricsExportStatus())[0].counts.pending, 0);
+        await runMetricsExportCycle();
+        assertEquals(f.requests, []);
     });
 });
 
@@ -249,5 +250,67 @@ test("final authorization refuses a cached exporter identity after approval remo
         await f.record();
         await runMetricsExportCycle();
         assertEquals(f.requests, []);
+    });
+});
+
+test("manual compaction started before export approval never exports its later usage", async () => {
+    await withMetricsExportFixture(async (f) => {
+        const recorder = new SessionContextMetricsRecorder(f.project, "manual", "compact");
+        await recorder.start({ samplingPoint: "before_compaction", currentUsage: 100 });
+        await f.grant();
+        const message = fauxAssistantMessage(fauxText("summary"));
+        const entries: SessionEntry[] = [
+            {
+                type: "compaction",
+                id: "compaction",
+                parentId: null,
+                timestamp: new Date().toISOString(),
+                summary: "summary",
+                firstKeptEntryId: "entry",
+                tokensBefore: 100,
+                usage: message.usage,
+            },
+        ];
+        await recorder.finish("success", 100, 50, 1000, entries, new Set());
+        await runMetricsExportCycle();
+        assertEquals(f.requests, []);
+    });
+});
+
+test("workflow outcomes without execution IDs remain eligible at their own position", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await f.record("publication_confirmed");
+        await f.grant();
+        await f.record("publication_confirmed");
+        await runMetricsExportCycle();
+        assertEquals(
+            f.requests.map((row) => row.kind),
+            ["publication_confirmed"],
+        );
+    });
+});
+
+test("legacy cursors rebuild start evidence from the consent boundary without duplicate sends", async () => {
+    await withMetricsExportFixture(async (f) => {
+        await f.record("execution_started", "before");
+        await f.grant();
+        await f.record("execution_started", "after");
+        await f.record("model_usage", "after");
+        await runMetricsExportCycle();
+        const path = join(f.home, ".wld", "metrics-export", "destinations", "fixture", "cursor.json");
+        const cursors: Record<string, LegacyCursor> = JSON.parse(await fsReadFile(path, "utf8"));
+        for (const cursor of Object.values(cursors)) {
+            delete cursor.startedExecutions;
+            cursor.excludedExecutions = ["before"];
+        }
+        await fsWriteFile(path, JSON.stringify(cursors));
+        await f.record("model_usage", "missing");
+        await f.record("model_usage", "before");
+        await f.record("execution_finished", "after");
+        await runMetricsExportCycle();
+        assertEquals(
+            f.requests.map((row) => row.kind),
+            ["model_usage", "execution_finished"],
+        );
     });
 });

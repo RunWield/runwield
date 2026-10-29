@@ -19,7 +19,12 @@ import {
     recordWorkflowMetric,
 } from "./metrics.js";
 
-import { resolveCollectionEpoch } from "./metrics-journal.ts";
+import { getCustomSetting, getMergedCustomSetting } from "../settings.js";
+import {
+    hasWorkflowMetricsEnablementOverride,
+    isWorkflowMetricsEnabled,
+    resolveCollectionEpoch,
+} from "./metrics-journal.ts";
 
 export type ExecutionKind = "root" | "isolated" | "delegated";
 export type ExecutionMode = "foreground" | "background";
@@ -28,7 +33,7 @@ export type ExecutionOutcome = "succeeded" | "failed" | "canceled" | "rejected" 
 export type UsageKind = "turn" | "request" | "compaction" | "summary" | "standalone";
 export type MeasurementAvailability = "complete" | "partial" | "unavailable";
 
-/** Session-local context operations are not Agent executions. */
+/** Session-local context operations use auxiliary measurement identities, not Agent turns. */
 export class SessionContextMetricsRecorder {
     private readonly recorderId = `rec_${crypto.randomUUID()}`;
     private readonly startedAt = Date.now();
@@ -48,6 +53,8 @@ export class SessionContextMetricsRecorder {
             managedSessionId: hostedSession?.getManagedMetadata()?.runwieldSessionId,
             segmentId: hostedSession?.getManagedMetadata()?.currentSegmentId,
             commandId: commandId ?? undefined,
+            dispatchKind: "auxiliary",
+            userInitiated: false,
         });
     }
 
@@ -61,6 +68,7 @@ export class SessionContextMetricsRecorder {
                 category: event.startsWith("retry_") ? "execution" : "context",
                 event,
                 recorderId: this.recorderId,
+                ...this.usageRecorder.measurementBoundary(),
                 seq: this.seq++,
                 sessionId: this.sessionId,
                 commandId: this.commandId,
@@ -71,6 +79,7 @@ export class SessionContextMetricsRecorder {
     }
 
     async start(snapshot: ContextSnapshotObservation): Promise<void> {
+        await this.usageRecorder.recordExecutionStart();
         await this.record("context_snapshot", {
             samplingPoint: "before_compaction",
             capacity: snapshot.capacity ?? null,
@@ -111,6 +120,10 @@ export class SessionContextMetricsRecorder {
             afterTokens: after,
             durationMs: Math.max(0, Date.now() - this.startedAt),
         });
+        await this.usageRecorder.settleExecution(
+            outcome === "success" ? "succeeded" : outcome === "canceled" ? "canceled" : "failed",
+            "manual_compaction_completed",
+        );
         await drainWorkflowMetrics(100);
     }
 }
@@ -631,6 +644,8 @@ export class ExecutionMetricsRecorder {
     readonly sourceSurface: string;
     readonly userInitiated: boolean;
     private historyEpoch: string;
+    private collectionEpoch: string;
+    private readonly collectionEnabledAtCall: boolean;
     private readonly hostedSession?: HostedSession;
 
     private seq = 0;
@@ -651,6 +666,7 @@ export class ExecutionMetricsRecorder {
     private completedToolCallIds = new Set<string>();
     private nativeObservationIds = new Set<string>();
     private reconciledUsageEntryIds = new Set<string>();
+    private pendingUsageEntryIds = new Set<string>();
     private piEntryTurnIds = new Map<string, string>();
     private piMessageTiming = new WeakMap<import("@earendil-works/pi-ai").AssistantMessage, ModelUsageTiming>();
     private settled = false;
@@ -680,9 +696,22 @@ export class ExecutionMetricsRecorder {
         this.sourceSurface = options.sourceSurface || "cli";
         this.userInitiated = options.userInitiated === true;
         try {
-            this.historyEpoch = resolveCollectionEpoch(getWorkflowMetricsFilePath(options.projectRoot)).historyEpoch;
+            this.collectionEnabledAtCall = isWorkflowMetricsEnabled(
+                getMergedCustomSetting("workflowMetrics", options.projectRoot),
+            );
+            const state = resolveCollectionEpoch(
+                getWorkflowMetricsFilePath(options.projectRoot),
+                this.collectionEnabledAtCall,
+                hasWorkflowMetricsEnablementOverride(
+                    getCustomSetting("workflowMetrics", "project", options.projectRoot),
+                ),
+            );
+            this.historyEpoch = state.historyEpoch;
+            this.collectionEpoch = state.collectionEpoch.id;
         } catch {
             this.historyEpoch = "unavailable";
+            this.collectionEpoch = "unavailable";
+            this.collectionEnabledAtCall = false;
         }
         this.startedAt = Date.now();
     }
@@ -691,11 +720,20 @@ export class ExecutionMetricsRecorder {
         return this.seq++;
     }
 
+    /** Shared by execution rows and the Session context recorder's own observations. */
+    measurementBoundary() {
+        return {
+            historyEpoch: this.historyEpoch,
+            collectionEpoch: this.collectionEpoch,
+            collectionEnabledAtCall: this.collectionEnabledAtCall,
+        };
+    }
+
     private baseLinks() {
         return {
             v: 2,
             recorderId: this.recorderId,
-            historyEpoch: this.historyEpoch,
+            ...this.measurementBoundary(),
             executionId: this.executionId,
             sessionId: this.sessionId ?? null,
             managedSessionId: this.managedSessionId ?? null,
@@ -730,7 +768,10 @@ export class ExecutionMetricsRecorder {
             },
             this.projectRoot,
         );
-        if (result.persisted && result.historyEpoch) this.historyEpoch = result.historyEpoch;
+        if (result.persisted) {
+            if (result.historyEpoch) this.historyEpoch = result.historyEpoch;
+            if (result.collectionEpoch) this.collectionEpoch = result.collectionEpoch;
+        }
     }
 
     async recordToolExposure(
@@ -1167,11 +1208,8 @@ export class ExecutionMetricsRecorder {
                     usage.cacheWriteTokens == null
                   ? "partial"
                   : "complete");
-        if (this.reconciledUsageEntryIds.has(sourceId)) return;
-        this.reconciledUsageEntryIds.add(sourceId);
-        if (availability !== "complete") this.usageIncomplete = true;
-        if (availability !== "unavailable") this.usageCoverage = this.usageIncomplete ? "partial" : "complete";
-        else if (this.usageCoverage === "complete") this.usageCoverage = "partial";
+        if (this.reconciledUsageEntryIds.has(sourceId) || this.pendingUsageEntryIds.has(sourceId)) return;
+        this.pendingUsageEntryIds.add(sourceId);
 
         let planId: string | undefined;
         const managed = this.hostedSession?.getManagedMetadata();
@@ -1204,12 +1242,12 @@ export class ExecutionMetricsRecorder {
             }
         }
         const costAmount = usage.costAmount ?? usage.costUsd ?? null;
-        await recordWorkflowMetric(
+        const result = await recordWorkflowMetric(
             {
                 ...this.baseLinks(),
                 category: "model_usage",
                 event: "model_usage",
-                ts: usage.observedAt ? (normalizeObservedTime(usage.observedAt) ?? undefined) : undefined,
+                ts: normalizeObservedTime(usage.observedAt ?? usage.endedAt ?? "") ?? undefined,
                 ...(planId ? { planId } : {}),
                 seq: this.nextSeq(),
                 sourceId,
@@ -1235,7 +1273,17 @@ export class ExecutionMetricsRecorder {
                 requestId: usage.requestId || this.requestId,
             },
             this.projectRoot,
-        );
+        ).finally(() => this.pendingUsageEntryIds.delete(sourceId));
+        if (result.persisted) {
+            this.reconciledUsageEntryIds.add(sourceId);
+            if (availability !== "complete") this.usageIncomplete = true;
+            if (availability !== "unavailable") this.usageCoverage = this.usageIncomplete ? "partial" : "complete";
+            else if (this.usageCoverage === "complete") this.usageCoverage = "partial";
+        } else {
+            // A lost observation stays visible even if a later retry succeeds.
+            this.usageIncomplete = true;
+            if (this.usageCoverage !== "unavailable") this.usageCoverage = "partial";
+        }
     }
 
     async recordContextSnapshot(
