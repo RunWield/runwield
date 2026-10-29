@@ -12,16 +12,12 @@ provenance:
         - "4c6482a6-ff82-497f-b345-1ba9ab2a4e68"
 ---
 
-# Fix published Plan session handoff
+# Post-publication Engineer handoff
 
 ## Summary
 
-Verified Plan publication now rebuilds the root Agent Session as Engineer in the primary checkout before clearing the
-completed workflow. Explicit working-directory changes rebuild Agent tools, `/load-plan` preserves the verified handoff,
-nonterminal recovery keeps its execution context, and parent Epic continuation remains intact. Regression tests, the
-seam check, and the full CI task passed; the Core PRD now records the lasting behavior.
+Successful Plan publication rebuilds the root Agent Session as Engineer in the primary checkout before clearing the completed workflow. Explicit working-directory changes rebuild Agent tools, load-plan preserves the handoff, and nonterminal recovery retains its execution context. Parent Epic continuation remains intact.
 
 ## Future Planning Notes
 
-Use the actual verified publication result, not Plan status, for post-publication handoffs. Treat an explicit
-working-directory change as a root rebuild even when the Agent does not change.
+Use the actual publication result, not Plan status, for post-publication handoffs. Treat an explicit working-directory change as a root rebuild even when the Agent does not change.

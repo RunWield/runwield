@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
-import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 import type { IDisposable } from "@xterm/headless";
 
 type TerminalResizeCallback = NonNullable<Parameters<VirtualTerminal["start"]>[1]>;

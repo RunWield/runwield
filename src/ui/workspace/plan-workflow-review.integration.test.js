@@ -223,9 +223,8 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     const result = await resumed.json();
                     assertEquals(resumed.status, 202, JSON.stringify(result));
                     assertExists(result.operationId);
-                    // Real worktree and checkpoint I/O can exceed ten seconds under CI contention.
-                    const resumeDeadline = Date.now() + 60_000;
-                    while (Date.now() < resumeDeadline) {
+                    // Git-backed resume and validation can exceed 10 seconds under CI load.
+                    for (let i = 0; i < 3000; i++) {
                         const operation = service.getOperation(result.operationId);
                         if (operation.liveInteraction || operation.status !== "running") break;
                         await new Promise((resolve) => setTimeout(resolve, 20));

@@ -11,11 +11,8 @@ provenance:
         - "9e0b3f7b-fd05-40ea-aef2-870f48cce594"
 ---
 
-# Merge verified Plan metadata with worktree changes
+# Worktree-local Plan validation metadata
 
 ## Summary
 
-Worktree-backed completion now records the validation_passed lifecycle update in the execution worktree before
-merge-back, so verified Plan metadata is committed and merged with implementation changes instead of dirtying the
-primary checkout. Normal validation and manual merge recovery preserve retry ordering, rollback behavior, and in-place
-execution semantics, with regression coverage for success and merge-failure recovery.
+Worktree-backed completion records the validation_passed lifecycle update in the execution worktree before merge-back. Verified Plan metadata therefore merges with implementation changes instead of dirtying the primary checkout. Normal validation and manual merge recovery preserve retry ordering, rollback behavior, and in-place execution semantics.

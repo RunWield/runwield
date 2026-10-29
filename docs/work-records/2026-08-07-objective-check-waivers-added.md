@@ -10,7 +10,7 @@ createdAt: "2026-08-07T03:49:04.911Z"
 provenance:
     sourcePlans:
         - "5f04e6ca-3c88-49d5-9d3e-cffa84a6597c"
-supersededBy: "61aca895-8b29-413f-8b46-ea76b384dd6b"
+supersededBy: "d39608f5-d764-4178-8b0c-c0cbb465f422"
 ---
 
 # Objective Check waivers added

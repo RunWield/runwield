@@ -1,0 +1,48 @@
+schemaVersion: 1
+scenarioId: RV-D03
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    empty-middle-page:
+        command: bun run test:oracle empty-middle-page
+        expectedFailureMarker: RV-D03-EMPTY-PAGE-CURSOR
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D03-A
+              severity: medium
+              category: cursor-pagination
+              trigger: An accession API returns a populated first page, an empty second page with nextCursor, and a populated terminal third page.
+              expectedBehavior: Export records from both populated pages in API order.
+              wrongBehavior: The export stops at the empty second page and silently omits the later accession.
+              evidence:
+                  - src/export.ts
+                  - src/api.ts
+                  - src/format.ts
+              acceptableConcepts:
+                  - empty page is not cursor exhaustion
+                  - continuation cursor must survive an empty item array
+                  - later accession records are missing from export
+              nearMisses:
+                  - A terminal empty page with no continuation cursor is a successful empty result.
+                  - Repeated cursors must raise an error rather than loop or silently truncate.
+                  - Opaque empty-string cursors are valid and are not a termination signal.
+              proofCommand: bun run test:oracle empty-middle-page
+              expectedFailureMarker: RV-D03-EMPTY-PAGE-CURSOR
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - A terminal empty page with no continuation cursor is a successful empty result.
+    - Repeated cursors must raise an error rather than loop or silently truncate.
+    - Opaque empty-string cursors are valid and are not a termination signal.

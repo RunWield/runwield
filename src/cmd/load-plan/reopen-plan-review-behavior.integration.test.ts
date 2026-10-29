@@ -79,7 +79,7 @@ test("reopened ordinary feedback sends its image to the saved planning Agent in 
                 });
                 const result = await runtime.reopenPlanReview(sessionId);
                 assertEquals(result.kind, "complete", result.message);
-                assertEquals((await loadPlan(projectRoot, "target"))?.attrs.status, "feedback");
+                assertEquals((await loadPlan(projectRoot, "target"))?.attrs.status, "draft");
                 assertEquals(runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId, persistentId);
                 assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "architect");
                 assert(context, "The planning Agent did not receive the feedback turn");
@@ -264,7 +264,10 @@ test("reopened Sequence combines child feedback and then approves and runs the f
                 });
                 const result = await runtime.reopenPlanReview(sessionId);
                 assertEquals(result.kind, "complete", result.message);
-                assertEquals(reviewed.map((doc) => doc.planName), ["sequence", "sequence/first", "sequence/second"]);
+                assertEquals(
+                    reviewed.map((doc) => doc.planName),
+                    ["sequence", "sequence/first", "sequence/second"],
+                );
                 assertEquals((await loadPlan(projectRoot, "sequence/second"))?.attrs.status, "ready_for_work");
                 const first = await loadPlan(projectRoot, "sequence/first");
                 assert(first);

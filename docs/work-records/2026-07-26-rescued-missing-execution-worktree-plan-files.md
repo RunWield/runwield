@@ -11,16 +11,12 @@ provenance:
         - "d98d1426-5ee8-4a0d-bd7d-acfff8044ee6"
 ---
 
-# Rescued missing execution worktree Plan files
+# Missing execution Plan recovery
 
 ## Summary
 
-RunWield now materializes canonical Plan files into execution worktrees before workflow start and can safely restore an
-absent execution Plan file during validation or load-plan recovery after identity checks. The work added path
-resolution, rescue helpers, workflow preparation, validation-context restoration, user notices, metrics, tests, and
-lifecycle documentation. Verification passed formatting checks, targeted tests, and full `deno task ci`.
+RunWield materializes canonical Plans into execution worktrees before workflow start. Validation and load-Plan recovery can restore an absent execution Plan after identity checks.
 
 ## Future Planning Notes
 
-Plan-file rescue is intentionally absent-file-only: malformed, symlinked, non-regular, unreadable, concurrently created,
-or Plan-ID-conflicting paths are preserved and reported rather than overwritten.
+Recovery is absent-file-only. Malformed, symlinked, non-regular, unreadable, concurrently created, or identity-conflicting targets must not be overwritten.

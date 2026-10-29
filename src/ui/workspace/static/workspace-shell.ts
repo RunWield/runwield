@@ -25,7 +25,9 @@ export function installSidebarResize() {
     try {
         const saved = Number(globalThis.localStorage.getItem(SIDEBAR_WIDTH_KEY));
         if (saved > 0) width = saved;
-    } catch { /* Layout preferences are optional. */ }
+    } catch {
+        /* Layout preferences are optional. */
+    }
     const setWidth = (requested, persist = true) => {
         width = clampSidebarWidth(requested, shell.getBoundingClientRect().width);
         shell.style.setProperty("--rw-workspace-sidebar-width", `${width}px`);
@@ -34,7 +36,9 @@ export function installSidebarResize() {
         if (persist) {
             try {
                 globalThis.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
-            } catch { /* Optional preference. */ }
+            } catch {
+                /* Optional preference. */
+            }
         }
     };
     handle.addEventListener("pointerdown", (event) => {
@@ -54,15 +58,16 @@ export function installSidebarResize() {
     handle.addEventListener("pointercancel", finish);
     handle.addEventListener("lostpointercapture", finish);
     handle.addEventListener("keydown", (event) => {
-        const requested = event.key === "ArrowLeft"
-            ? width - 16
-            : event.key === "ArrowRight"
-            ? width + 16
-            : event.key === "Home"
-            ? 220
-            : event.key === "End"
-            ? 480
-            : null;
+        const requested =
+            event.key === "ArrowLeft"
+                ? width - 16
+                : event.key === "ArrowRight"
+                  ? width + 16
+                  : event.key === "Home"
+                    ? 220
+                    : event.key === "End"
+                      ? 480
+                      : null;
         if (requested === null) return;
         event.preventDefault();
         setWidth(requested);
@@ -92,8 +97,10 @@ export function applySessionName(detail) {
     }
     for (const row of document.querySelectorAll("[data-sidebar-session]")) {
         if (
-            row.dataset.sidebarProjectId !== detail.projectId || row.dataset.sidebarSession !== detail.runwieldSessionId
-        ) continue;
+            row.dataset.sidebarProjectId !== detail.projectId ||
+            row.dataset.sidebarSession !== detail.runwieldSessionId
+        )
+            continue;
         if (!name) {
             row.remove();
             continue;
@@ -181,9 +188,7 @@ function currentRoute() {
 
 function rememberCurrentRoute() {
     const route = currentRoute();
-    if (
-        route.kind === "session" && route.projectId && route.runwieldSessionId && route.runwieldSessionId !== "new"
-    ) {
+    if (route.kind === "session" && route.projectId && route.runwieldSessionId && route.runwieldSessionId !== "new") {
         writeStored(LAST_PROJECT_KEY, { projectId: route.projectId });
         writeStored(LAST_SESSION_KEY, {
             projectId: route.projectId,
@@ -297,26 +302,27 @@ function sessionTitleFromPayload(payload, current) {
     const sessions = Array.isArray(project?.sessions) ? project.sessions : [];
     const match = sessions.find((session) => session.runwieldSessionId === current.runwieldSessionId);
     if (match?.displayName) return match.displayName;
-    return observedSessionNames.get(`${current.projectId}:${current.runwieldSessionId}`) ||
-        "Session";
+    return observedSessionNames.get(`${current.projectId}:${current.runwieldSessionId}`) || "Session";
 }
 
 function renderMainHeader(payload, current) {
     const header = document.querySelector("[data-workspace-main-header-left]");
     if (!header) return;
-    header.querySelector("[data-workspace-sidebar-restore]")?.remove();
     header.querySelector("[data-workspace-main-session-name]")?.remove();
     const title = header.querySelector("[data-workspace-surface-title]")
         ? ""
         : sessionTitleFromPayload(payload, current);
-    const restore = document.createElement("button");
-    restore.className = "rw-icon-button workspace-sidebar-restore";
-    restore.type = "button";
-    restore.dataset.workspaceSidebarRestore = "";
-    restore.setAttribute("aria-label", "Open Workspace sidebar");
-    restore.title = "Open Workspace sidebar";
-    restore.innerHTML = panelCollapseIcon("right");
-    header.prepend(restore);
+    let restore = header.querySelector("[data-workspace-sidebar-restore]");
+    if (!restore) {
+        restore = document.createElement("button");
+        restore.className = "rw-icon-button workspace-sidebar-restore";
+        restore.type = "button";
+        restore.dataset.workspaceSidebarRestore = "";
+        restore.setAttribute("aria-label", "Open Workspace sidebar");
+        restore.title = "Open Workspace sidebar";
+        restore.innerHTML = panelCollapseIcon("right");
+        header.prepend(restore);
+    }
     if (title) {
         const sessionName = document.createElement("strong");
         sessionName.className = "workspace-main-session-name";
@@ -356,9 +362,11 @@ function updateSessionRow(link, projectId, session, current, extraClass = "") {
     const classNames = ["workspace-sidebar-session"];
     if (extraClass) classNames.push(...extraClass.trim().split(/\s+/));
     if (
-        current.kind === "session" && current.projectId === projectId &&
+        current.kind === "session" &&
+        current.projectId === projectId &&
         current.runwieldSessionId === session.runwieldSessionId
-    ) classNames.push("active");
+    )
+        classNames.push("active");
     link.className = classNames.join(" ");
     const label = link.querySelector("span") || document.createElement("span");
     label.textContent = session.displayName;
@@ -431,8 +439,8 @@ function snapshotProject(projectElement) {
 export function sidebarSessionOrder(existingProject, incomingProject) {
     const incoming = normalizeProject(incomingProject).sessions;
     const seen = new Set(incoming.map((session) => session.runwieldSessionId));
-    const retained = (existingProject?.sessions || []).filter((session) =>
-        session.runwieldSessionId && session.loaded === true && !seen.has(session.runwieldSessionId)
+    const retained = (existingProject?.sessions || []).filter(
+        (session) => session.runwieldSessionId && session.loaded === true && !seen.has(session.runwieldSessionId),
     );
     return [...incoming, ...retained];
 }
@@ -493,9 +501,12 @@ function ensureSidebarScaffold(sidebar, payload, current) {
     const projects = Array.isArray(payload.projects) ? payload.projects : [];
     const rememberedProject = readStored(LAST_PROJECT_KEY)?.projectId || "";
     const enabledProjects = projects.filter((project) => project.enabled);
-    const newProjectId = enabledProjects.find((project) => project.projectId === current.projectId)?.projectId ||
+    const newProjectId =
+        enabledProjects.find((project) => project.projectId === current.projectId)?.projectId ||
         enabledProjects.find((project) => project.projectId === rememberedProject)?.projectId ||
-        enabledProjects[0]?.projectId || (payload.loading ? current.projectId || rememberedProject : "") || "";
+        enabledProjects[0]?.projectId ||
+        (payload.loading ? current.projectId || rememberedProject : "") ||
+        "";
     newSession.href = newProjectId ? newSessionHref(newProjectId) : "/projects";
     newSession.removeAttribute("aria-disabled");
     return list;
@@ -506,12 +517,10 @@ function makeProjectElement(project, current) {
     item.className = "workspace-sidebar-project";
     item.dataset.sidebarProject = project.projectId;
     const summary = document.createElement("summary");
-    summary.innerHTML =
-        `<span class="workspace-sidebar-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M5 2l7 6-7 6z" /></svg></span><span class="workspace-sidebar-project-name"></span>`;
+    summary.innerHTML = `<span class="workspace-sidebar-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M5 2l7 6-7 6z" /></svg></span><span class="workspace-sidebar-project-name"></span>`;
     const gear = document.createElement("a");
     gear.className = "workspace-sidebar-gear";
-    gear.innerHTML =
-        `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" /></svg>`;
+    gear.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" /></svg>`;
     summary.append(gear);
     const links = document.createElement("div");
     links.className = "workspace-sidebar-project-links";
@@ -570,9 +579,9 @@ function makePlanRow(projectId, plan, current) {
         plan.title || "Plan",
     );
     row.dataset.sidebarPlan = plan.planId;
-    row.innerHTML = `<span>${html(plan.title || "Plan")}</span><small>${
-        html(plan.statusLabel || plan.status || "Plan")
-    }</small>`;
+    row.innerHTML = `<span>${html(plan.title || "Plan")}</span><small>${html(
+        plan.statusLabel || plan.status || "Plan",
+    )}</small>`;
     if (current.kind === "plan" && current.projectId === projectId && current.planId === plan.planId) {
         row.setAttribute("aria-current", "page");
     } else row.removeAttribute("aria-current");
@@ -616,9 +625,9 @@ function reconcilePlanRows(container, project, current) {
             node,
         ]),
     );
-    container.querySelectorAll(":scope > .workspace-sidebar-empty, :scope > [data-show-more-plans]").forEach((node) =>
-        node.remove()
-    );
+    container
+        .querySelectorAll(":scope > .workspace-sidebar-empty, :scope > [data-show-more-plans]")
+        .forEach((node) => node.remove());
     const wanted = new Set(visible.map((plan) => plan.planId));
     byId.forEach((node, planId) => {
         if (!wanted.has(planId)) node.remove();
@@ -630,8 +639,8 @@ function reconcilePlanRows(container, project, current) {
                 project.plansLoading
                     ? "Loading Plans…"
                     : project.plansError
-                    ? "Plans unavailable."
-                    : "No active Plans.",
+                      ? "Plans unavailable."
+                      : "No active Plans.",
             ),
         );
         return;
@@ -654,12 +663,12 @@ function reconcilePlanRows(container, project, current) {
     const focusSelectors = activeSessionKey
         ? [`[data-sidebar-session="${CSS.escape(activeSessionKey)}"]`]
         : activePlanKey
-        ? [`[data-sidebar-plan="${CSS.escape(activePlanKey)}"]`]
-        : activeMorePlansKey
-        ? [`[data-show-more-plans="${CSS.escape(activeMorePlansKey)}"]`, "[data-sidebar-plan]"]
-        : activeMorePlanSessionsKey
-        ? [`[data-show-more-plan-sessions="${CSS.escape(activeMorePlanSessionsKey)}"]`, "[data-sidebar-session]"]
-        : [];
+          ? [`[data-sidebar-plan="${CSS.escape(activePlanKey)}"]`]
+          : activeMorePlansKey
+            ? [`[data-show-more-plans="${CSS.escape(activeMorePlansKey)}"]`, "[data-sidebar-plan]"]
+            : activeMorePlanSessionsKey
+              ? [`[data-show-more-plan-sessions="${CSS.escape(activeMorePlanSessionsKey)}"]`, "[data-sidebar-session]"]
+              : [];
     for (const selector of focusSelectors) {
         const focusTarget = container.querySelector(selector);
         if (focusTarget) {
@@ -678,9 +687,12 @@ function reconcileSessionRows(container, existingProject, project, current) {
         ]),
     );
     const wantedIds = new Set(ordered.map((session) => session.runwieldSessionId));
-    const activeOutsidePage = project.enabled && current.kind === "session" &&
+    const activeOutsidePage =
+        project.enabled &&
+        current.kind === "session" &&
         current.projectId === project.projectId &&
-        current.runwieldSessionId !== "new" && !wantedIds.has(current.runwieldSessionId) &&
+        current.runwieldSessionId !== "new" &&
+        !wantedIds.has(current.runwieldSessionId) &&
         Boolean(observedSessionNames.get(`${current.projectId}:${current.runwieldSessionId}`));
     if (activeOutsidePage) wantedIds.add(current.runwieldSessionId);
 
@@ -693,7 +705,8 @@ function reconcileSessionRows(container, existingProject, project, current) {
     const nodes = [];
     for (const session of ordered) {
         const retained = byId.get(session.runwieldSessionId);
-        const row = retained ||
+        const row =
+            retained ||
             makeSessionRow(
                 project.projectId,
                 session,
@@ -713,11 +726,11 @@ function reconcileSessionRows(container, existingProject, project, current) {
     if (activeOutsidePage) {
         const session = {
             runwieldSessionId: current.runwieldSessionId,
-            displayName: observedSessionNames.get(`${current.projectId}:${current.runwieldSessionId}`) ||
-                "",
+            displayName: observedSessionNames.get(`${current.projectId}:${current.runwieldSessionId}`) || "",
             state: "idle",
         };
-        const row = byId.get(current.runwieldSessionId) ||
+        const row =
+            byId.get(current.runwieldSessionId) ||
             makeSessionRow(project.projectId, session, current, " workspace-sidebar-session-extra");
         updateSessionRow(row, project.projectId, session, current, " workspace-sidebar-session-extra");
         nodes.push(row);
@@ -740,13 +753,15 @@ function reconcileSessionRows(container, existingProject, project, current) {
     }
 
     if (!nodes.length) {
-        nodes.push(makeEmpty(
-            !project.enabled || project.sessionsError
-                ? "Sessions unavailable."
-                : project.sessionsLoading
-                ? "Loading Sessions…"
-                : "No Sessions yet.",
-        ));
+        nodes.push(
+            makeEmpty(
+                !project.enabled || project.sessionsError
+                    ? "Sessions unavailable."
+                    : project.sessionsLoading
+                      ? "Loading Sessions…"
+                      : "No Sessions yet.",
+            ),
+        );
     }
     for (const node of nodes) container.append(node);
 }
@@ -862,8 +877,9 @@ export async function loadMoreSidebarSessions(button) {
         const data = await ownerJson(`/api/owner/projects/${encodeURIComponent(projectId)}/sessions?${query}`);
         // A refresh may have added a row while the request was pending.
         const known = new Set(
-            Array.from(parent.querySelectorAll("[data-sidebar-session]"))
-                .map((row) => row.getAttribute("data-sidebar-session")),
+            Array.from(parent.querySelectorAll("[data-sidebar-session]")).map((row) =>
+                row.getAttribute("data-sidebar-session"),
+            ),
         );
         const rows = (Array.isArray(data.sessions) ? data.sessions : [])
             .filter((session) => session?.runwieldSessionId && !known.has(session.runwieldSessionId))
@@ -978,29 +994,33 @@ export async function refreshSidebarForPage() {
         renderSidebar(payload, current);
         let complete = false;
         // Each Project becomes usable independently, before workflow evidence is read.
-        const sessions = projects.filter((project) =>
-            project.enabled && (!previous.has(project.projectId) || project.sessionsLoading || project.sessionsError)
-        ).map(async (project) => {
-            try {
-                const result = await ownerJson(
-                    `/api/owner/projects/${
-                        encodeURIComponent(project.projectId)
-                    }/sessions?pageSize=5&includeTotal=false`,
-                    { signal: abort.signal },
-                );
-                if (!isCurrent() || complete) return;
-                // Already-populated navigation stays stable until its complete refresh.
-                project.sessions = result.sessions || [];
-                project.hasMoreSessions = result.hasNext === true;
-                project.sessionsLoading = false;
-                project.sessionsError = false;
-            } catch (error) {
-                if (!isCurrent() || complete || error?.name === "AbortError") return;
-                project.sessionsLoading = false;
-                project.sessionsError = true;
-            }
-            renderSidebar(payload, current);
-        });
+        const sessions = projects
+            .filter(
+                (project) =>
+                    project.enabled &&
+                    (!previous.has(project.projectId) || project.sessionsLoading || project.sessionsError),
+            )
+            .map(async (project) => {
+                try {
+                    const result = await ownerJson(
+                        `/api/owner/projects/${encodeURIComponent(
+                            project.projectId,
+                        )}/sessions?pageSize=5&includeTotal=false`,
+                        { signal: abort.signal },
+                    );
+                    if (!isCurrent() || complete) return;
+                    // Already-populated navigation stays stable until its complete refresh.
+                    project.sessions = result.sessions || [];
+                    project.hasMoreSessions = result.hasNext === true;
+                    project.sessionsLoading = false;
+                    project.sessionsError = false;
+                } catch (error) {
+                    if (!isCurrent() || complete || error?.name === "AbortError") return;
+                    project.sessionsLoading = false;
+                    project.sessionsError = true;
+                }
+                renderSidebar(payload, current);
+            });
         const details = (async () => {
             try {
                 const full = await ownerJson("/api/owner/sidebar", { signal: abort.signal });

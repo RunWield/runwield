@@ -1,0 +1,19 @@
+schemaVersion: 1
+scenarioId: RV-D09
+track: discovery
+group: correctness-beyond-plan
+fixtureRevision: 1
+planPath: docs/plans/record-validation-start.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - correctness-beyond-plan
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate

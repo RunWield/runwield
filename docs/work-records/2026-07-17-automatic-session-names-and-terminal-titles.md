@@ -11,15 +11,12 @@ provenance:
         - "fcdc3cfb-4111-4ea4-bef2-9f29d0e0cf51"
 ---
 
-# Automatic session names and terminal titles
+# Automatic Session names and terminal titles
 
 ## Summary
 
-Implemented and verified automatic Router-provided session naming, terminal tab titles with project fallbacks, persisted
-manual naming through the Pi-compatible `/name` command, and title updates across resumed and newly created sessions.
-Existing session names remain protected from automatic replacement, and terminal titles are sanitized and applied
-best-effort.
+Router provides automatic Session names, and terminal titles use Session names with project fallbacks. The Pi-compatible /name command persists manual names, and title updates cover new and resumed Sessions. Automatic naming preserves existing names; terminal titles are sanitized and applied best-effort.
 
 ## Future Planning Notes
 
-Terminal title behavior may still depend on emulator, tmux, screen, or shell integration support.
+Terminal title support depends on the terminal emulator, multiplexer, and shell integration.

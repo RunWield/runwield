@@ -11,18 +11,12 @@ provenance:
         - "046dc2a7-e537-4446-b938-1f27b2c89c55"
 ---
 
-# Expose Compaction Settings and Session Diagnostics
+# Compaction settings and Session diagnostics
 
 ## Summary
 
-Added a slash-only `/settings` menu for toggling auto-compaction and editing persisted reserve/keep-recent token values.
-Enhanced `/session` with compaction counts, effective settings, trigger threshold, and current context usage. Added
-validation and automated coverage; verification completed successfully.
+The slash-only /settings menu controls auto-compaction and persisted reserve and keep-recent token values. The /session display shows compaction totals, effective settings, trigger threshold, and current context usage.
 
-## Deferred Work
+## Out of Scope
 
-Broader settings categories and direct management of project-scoped compaction overrides remain out of scope.
-
-## Future Planning Notes
-
-The `/settings` menu provides an extensible entry point for exposing additional RunWield settings later.
+This work does not include direct management of Project-scoped compaction overrides.

@@ -4,7 +4,7 @@
  */
 
 import { type Static, StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type {
@@ -26,64 +26,81 @@ const QUESTION_ID = Type.String({
     description: "Optional stable question ID (letters, numbers, underscore, dash).",
 });
 
-const YES_NO_QUESTION = Type.Object({
-    id: Type.Optional(QUESTION_ID),
-    type: StringEnum(["yes_no"]),
-    prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
-    default: Type.Optional(Type.Boolean({ description: "Optional recommended default answer." })),
-    allowOther: Type.Optional(Type.Boolean({
-        description: "Deprecated. 'Other' is always available for yes_no questions.",
-    })),
-}, { additionalProperties: false });
+const YES_NO_QUESTION = Type.Object(
+    {
+        id: Type.Optional(QUESTION_ID),
+        type: StringEnum(["yes_no"]),
+        prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
+        default: Type.Optional(Type.Boolean({ description: "Optional recommended default answer." })),
+        allowOther: Type.Optional(
+            Type.Boolean({
+                description: "Deprecated. 'Other' is always available for yes_no questions.",
+            }),
+        ),
+    },
+    { additionalProperties: false },
+);
 
-const TEXT_QUESTION = Type.Object({
-    id: Type.Optional(QUESTION_ID),
-    type: StringEnum(["text"]),
-    prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
-    default: Type.Optional(Type.String({ maxLength: 400, description: "Optional default text answer." })),
-    placeholder: Type.Optional(Type.String({ maxLength: 200, description: "Optional prompt hint." })),
-    allowEmpty: Type.Optional(Type.Boolean({ description: "Whether empty text answers are allowed." })),
-}, { additionalProperties: false });
+const TEXT_QUESTION = Type.Object(
+    {
+        id: Type.Optional(QUESTION_ID),
+        type: StringEnum(["text"]),
+        prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
+        default: Type.Optional(Type.String({ maxLength: 400, description: "Optional default text answer." })),
+        placeholder: Type.Optional(Type.String({ maxLength: 200, description: "Optional prompt hint." })),
+        allowEmpty: Type.Optional(Type.Boolean({ description: "Whether empty text answers are allowed." })),
+    },
+    { additionalProperties: false },
+);
 
-const MULTIPLE_CHOICE_QUESTION = Type.Object({
-    id: Type.Optional(QUESTION_ID),
-    type: StringEnum(["multiple_choice"]),
-    prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
-    choices: Type.Array(
-        Type.Object({
-            value: Type.String({ minLength: 1, maxLength: 120 }),
-            label: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-        }, { additionalProperties: false }),
-        {
-            minItems: 2,
-            maxItems: 12,
-            description: "Choice list. Values must be unique in the same question.",
-        },
-    ),
-    default: Type.Optional(
-        Type.String({ minLength: 1, maxLength: 120, description: "Optional default choice value." }),
-    ),
-    allowOther: Type.Optional(Type.Boolean({
-        description: "Deprecated. 'Other' is always available for multiple_choice questions.",
-    })),
-}, { additionalProperties: false });
+const MULTIPLE_CHOICE_QUESTION = Type.Object(
+    {
+        id: Type.Optional(QUESTION_ID),
+        type: StringEnum(["multiple_choice"]),
+        prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
+        choices: Type.Array(
+            Type.Object(
+                {
+                    value: Type.String({ minLength: 1, maxLength: 120 }),
+                    label: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+                },
+                { additionalProperties: false },
+            ),
+            {
+                minItems: 2,
+                maxItems: 12,
+                description: "Choice list. Values must be unique in the same question.",
+            },
+        ),
+        default: Type.Optional(
+            Type.String({ minLength: 1, maxLength: 120, description: "Optional default choice value." }),
+        ),
+        allowOther: Type.Optional(
+            Type.Boolean({
+                description: "Deprecated. 'Other' is always available for multiple_choice questions.",
+            }),
+        ),
+    },
+    { additionalProperties: false },
+);
 
-const INTERVIEW_QUESTION = Type.Union([
-    YES_NO_QUESTION,
-    TEXT_QUESTION,
-    MULTIPLE_CHOICE_QUESTION,
-]);
+const INTERVIEW_QUESTION = Type.Union([YES_NO_QUESTION, TEXT_QUESTION, MULTIPLE_CHOICE_QUESTION]);
 
-const PARAMETERS = Type.Object({
-    question: Type.Optional(INTERVIEW_QUESTION),
-    questions: Type.Optional(Type.Array(INTERVIEW_QUESTION, {
-        minItems: 1,
-        maxItems: 3,
-        description: "Batch of 1-3 questions asked sequentially.",
-    })),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        question: Type.Optional(INTERVIEW_QUESTION),
+        questions: Type.Optional(
+            Type.Array(INTERVIEW_QUESTION, {
+                minItems: 1,
+                maxItems: 3,
+                description: "Batch of 1-3 questions asked sequentially.",
+            }),
+        ),
+    },
+    { additionalProperties: false },
+);
 
-type InterviewParameters = Static<typeof PARAMETERS>;
+export type InterviewParameters = Static<typeof PARAMETERS>;
 
 export interface InterviewError {
     code: string;
@@ -128,10 +145,7 @@ export interface MultipleChoiceInterviewQuestion {
     allowOther?: boolean;
 }
 
-export type InterviewQuestion =
-    | YesNoInterviewQuestion
-    | TextInterviewQuestion
-    | MultipleChoiceInterviewQuestion;
+export type InterviewQuestion = YesNoInterviewQuestion | TextInterviewQuestion | MultipleChoiceInterviewQuestion;
 export type InterviewAnswerValue = boolean | string;
 
 export interface InterviewResultAnswer {
@@ -196,8 +210,7 @@ type InterviewAnswer =
     | { value: InterviewAnswerValue; valueLabel?: string; otherText?: string };
 
 type NormalizeBatchResult =
-    | { ok: true; questions: InterviewQuestion[] }
-    | { ok: false; questions: InterviewQuestion[]; error: string };
+    { ok: true; questions: InterviewQuestion[] } | { ok: false; questions: InterviewQuestion[]; error: string };
 
 type UserInterviewResult = AgentToolResult<InterviewResultDetails>;
 
@@ -237,7 +250,9 @@ function toInterviewQuestion(question: Static<typeof INTERVIEW_QUESTION>): Inter
     };
 }
 
-export function createUserInterviewTool(opts: UserInterviewToolOptions = {}) {
+export function createUserInterviewTool(
+    opts: UserInterviewToolOptions = {},
+): ToolDefinition<typeof PARAMETERS, InterviewResultDetails> {
     const hostedSession = opts.hostedSession;
     return defineTool<typeof PARAMETERS, InterviewResultDetails>({
         name: "user_interview",
@@ -293,12 +308,14 @@ export function createUserInterviewTool(opts: UserInterviewToolOptions = {}) {
                         remainingCount: questions.length - answers.length,
                         canceledAt: i + 1,
                         answers,
-                        errors: [{
-                            code: "USER_CANCELED",
-                            message: "User canceled the interview prompt.",
-                            questionIndex: i + 1,
-                            questionId: question.id,
-                        }],
+                        errors: [
+                            {
+                                code: "USER_CANCELED",
+                                message: "User canceled the interview prompt.",
+                                questionIndex: i + 1,
+                                questionId: question.id,
+                            },
+                        ],
                     });
                 }
 
@@ -497,9 +514,10 @@ function brokerFailureToAnswer(
     ) {
         return {
             error: {
-                code: response.outcome === RuntimeInteractionOutcomes.BLOCKED
-                    ? "INTERACTION_BLOCKED"
-                    : "INTERACTION_UNSUPPORTED",
+                code:
+                    response.outcome === RuntimeInteractionOutcomes.BLOCKED
+                        ? "INTERACTION_BLOCKED"
+                        : "INTERACTION_UNSUPPORTED",
                 message: response.message || "The current client cannot answer this structured interview prompt.",
                 questionId: question.id,
             },
@@ -604,9 +622,10 @@ async function askQuestion(
     if (question.type === "multiple_choice") {
         const options: SelectOption[] = question.choices.map((choice) => ({
             value: choice.value,
-            label: choice.value === question.default
-                ? withRecommendedSuffix(choice.label || choice.value)
-                : (choice.label || choice.value),
+            label:
+                choice.value === question.default
+                    ? withRecommendedSuffix(choice.label || choice.value)
+                    : choice.label || choice.value,
         }));
         options.push({ value: OTHER_VALUE, label: "Other" });
         while (true) {
@@ -663,10 +682,12 @@ function buildResult(details: InterviewResultDetails): UserInterviewResult {
     const payload = { ...details, errors: details.errors || [] };
 
     return {
-        content: [{
-            type: "text",
-            text: `${buildResultSummary(details)}\n\ninterview_result_json:\n${JSON.stringify(payload, null, 2)}`,
-        }],
+        content: [
+            {
+                type: "text",
+                text: `${buildResultSummary(details)}\n\ninterview_result_json:\n${JSON.stringify(payload, null, 2)}`,
+            },
+        ],
         details,
     };
 }
@@ -683,8 +704,9 @@ function answerLineNumber(answer: InterviewResultAnswer): number {
 }
 
 function buildCompletedResultSummary(details: CompletedInterviewResultDetails): string {
-    const summaries = details.answers.map((answer) =>
-        `${answer.prompt}\n\n${answerLineNumber(answer)}. Answer selected was ${formatAnswerSelection(answer)}`
+    const summaries = details.answers.map(
+        (answer) =>
+            `${answer.prompt}\n\n${answerLineNumber(answer)}. Answer selected was ${formatAnswerSelection(answer)}`,
     );
     return summaries.join("\n\n");
 }

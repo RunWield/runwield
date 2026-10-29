@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "description": "Content-free RunWield metrics export to Langfuse Cloud v4",
     "type": "module",
-    "license": "SEE LICENSE IN LICENSE",
+    "license": "MIT",
     "files": [
         "exporter.ts",
         "README.md",

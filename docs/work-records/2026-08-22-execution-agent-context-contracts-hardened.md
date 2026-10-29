@@ -12,20 +12,12 @@ provenance:
         - "0eaac4ba-cad8-41c2-83be-60f7ef1fbd52"
 ---
 
-# Execution-Agent context contracts hardened
+# Execution-Agent context contracts
 
 ## Summary
 
-Declared explicit context contracts for Engineer, Plan Engineer, Frontend Engineer, and Validation Repair Engineer,
-exposed them through loaded Agent metadata, and added focused contract and Golden TUI coverage that proves the correct
-execution Agent context survives launch and recovery. Verification passed with targeted suites and final `deno task ci`.
-
-## Deviations from Plan
-
-No separate live TUI manual session was run; Golden TUI evidence covered Quick Fix resume, Plan Engineer execution,
-Frontend Engineer execution, and resumed execution identity.
+Engineer, Plan Engineer, Frontend Engineer, and Validation Repair Engineer expose explicit context contracts through loaded Agent metadata. Contract and Golden TUI coverage check execution identity and context across launch and recovery. The metadata describes expected context rather than controlling dispatch.
 
 ## Future Planning Notes
 
-`contextContract` is descriptive validation metadata, not runtime dispatch authority. Static prompt baselines are
-comparison data only and did not justify adding a prompt-composition layer.
+Keep contextContract descriptive, not authoritative for runtime dispatch. Static prompt baselines are comparison data, not a reason to add prompt-composition machinery.

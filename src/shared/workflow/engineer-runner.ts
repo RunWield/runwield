@@ -22,6 +22,7 @@ export async function runEngineerWithPlan(
     reviewFeedback,
     reviewImages,
     executionAgent = AGENTS.ENGINEER,
+    resumePreviousRequest = false,
 ) {
     if (!hostedSession) throw new Error("runEngineerWithPlan: hostedSession is required");
     const workflow = hostedSession.getActiveExecutionWorkflow?.();
@@ -45,6 +46,8 @@ export async function runEngineerWithPlan(
             sessionManager,
             cwd: executionCwd,
             dispatchKind: "plan_execution",
+            resumePreviousRequest,
+            taskId: planName,
             ...(customTools ? { customTools } : {}),
         });
     } catch (error) {
@@ -144,6 +147,8 @@ export async function runEngineerWithSegmentHandoff({ continuation, sessionManag
             sessionManager,
             cwd: workflow?.executionCwd || hostedSession.cwd,
             dispatchKind: "plan_execution",
+            resumePreviousRequest: true,
+            taskId: continuation.plan.planName,
             ...(customTools ? { customTools } : {}),
         });
     } catch (error) {

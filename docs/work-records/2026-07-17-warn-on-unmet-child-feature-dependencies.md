@@ -11,9 +11,8 @@ provenance:
         - "c5a1a29f-5752-4b87-9fab-ecdf13a62c23"
 ---
 
-# Warn on Unmet Child Feature Dependencies
+# Child Plan dependency warnings
 
 ## Summary
 
-Added dependency checks when loading child FEATURE plans. Missing or unverified sibling dependencies now trigger a
-warning that lets users cancel or proceed anyway, with coverage for verified, unverified, missing, and canceled flows.
+Loading a child Plan checks sibling dependencies. Missing or unverified dependencies produce a warning that lets the user cancel or proceed.

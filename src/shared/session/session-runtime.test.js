@@ -4218,7 +4218,7 @@ test("SessionRuntime automatically catalogs and segments legacy transcripts when
     });
 });
 
-test("SessionRuntime loadSession returns opaque metadata and redacted replay events", async () => {
+test("SessionRuntime loadSession returns opaque metadata and preserves recorded tool results", async () => {
     ensureRuntimeModelFixture();
     const branch = [
         {
@@ -4361,7 +4361,12 @@ test("SessionRuntime loadSession returns opaque metadata and redacted replay eve
         replayThinkingEvents.map((event) => /** @type {any} */ (event).agentName),
         ["Planner", "Planner"],
     );
-    assertEquals(JSON.stringify(result.replayEvents).includes("secret"), false);
+    const legacyToolEnd = result.replayEvents.find(
+        (event) => event.type === RuntimeEventTypes.TOOL_END && event.toolCallId === "tool-1",
+    );
+    assert(legacyToolEnd?.type === RuntimeEventTypes.TOOL_END);
+    assertEquals(legacyToolEnd.output, "password=secret");
+    assertEquals(legacyToolEnd.content, [{ type: "text", text: "password=secret" }]);
     assertEquals(JSON.stringify(result.replayEvents).includes("[object Object]"), false);
     assertEquals(JSON.stringify(result.replayEvents).includes("runwield.active_agent"), false);
 });

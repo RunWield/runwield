@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { savePlan } from "../../plan-store.js";
+import { savePlan, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
 
 import {
     buildBoardGroups,
@@ -78,9 +78,18 @@ test("buildBoardGroups separates active closed and on-hold Plans", () => {
         { name: "hold", planName: "hold", planId: "h", status: "on_hold", attrs: {}, classification: "FEATURE" },
     ];
     const groups = /** @type {any} */ (buildBoardGroups(/** @type {any} */ (plans)));
-    assertEquals(groups.active.standalone.map(/** @param {any} plan */ (plan) => plan.planName), ["active"]);
-    assertEquals(groups.closed.standalone.map(/** @param {any} plan */ (plan) => plan.planName), ["closed"]);
-    assertEquals(groups.onHold.standalone.map(/** @param {any} plan */ (plan) => plan.planName), ["hold"]);
+    assertEquals(
+        groups.active.standalone.map(/** @param {any} plan */ (plan) => plan.planName),
+        ["active"],
+    );
+    assertEquals(
+        groups.closed.standalone.map(/** @param {any} plan */ (plan) => plan.planName),
+        ["closed"],
+    );
+    assertEquals(
+        groups.onHold.standalone.map(/** @param {any} plan */ (plan) => plan.planName),
+        ["hold"],
+    );
 });
 
 test("buildWorkspaceBoard groups top-level cards into status columns and hides resolved children", () => {
@@ -122,67 +131,89 @@ test("buildWorkspaceBoard groups top-level cards into status columns and hides r
     ];
     const board = /** @type {any} */ (buildWorkspaceBoard(/** @type {any} */ (plans)));
     const draftCards = board.active.columns.find((/** @type {any} */ column) => column.status === "draft").cards;
-    const readyCards =
-        board.active.columns.find((/** @type {any} */ column) => column.status === "ready_for_work").cards;
-    assertEquals(draftCards.map((/** @type {any} */ plan) => plan.planName), ["epic"]);
+    const readyCards = board.active.columns.find(
+        (/** @type {any} */ column) => column.status === "ready_for_work",
+    ).cards;
+    assertEquals(
+        draftCards.map((/** @type {any} */ plan) => plan.planName),
+        ["epic"],
+    );
     assertEquals(draftCards[0].childProgress.total, 1);
-    assertEquals(readyCards.map((/** @type {any} */ plan) => plan.planName), ["standalone"]);
+    assertEquals(
+        readyCards.map((/** @type {any} */ plan) => plan.planName),
+        ["standalone"],
+    );
 });
 
 test("buildWorkspaceBoard keeps closed children with their active Epic instead of closed tab cards", () => {
-    const board = /** @type {any} */ (buildWorkspaceBoard(
-        /** @type {any} */ ([
-            {
-                name: "epic",
-                planName: "epic",
-                planId: "epic-id",
-                status: "in_progress",
-                attrs: { classification: "PROJECT", status: "in_progress" },
-                classification: "PROJECT",
-                isEpic: true,
-                isChild: false,
-                hierarchyRole: "epic",
-            },
-            {
-                name: "epic/closed-child",
-                planName: "epic/closed-child",
-                planId: "closed-child-id",
-                status: "verified",
-                attrs: { classification: "FEATURE", parentPlan: "epic", status: "verified" },
-                classification: "FEATURE",
-                parentPlan: "epic",
-                isEpic: false,
-                isChild: true,
-                hierarchyRole: "child",
-            },
-        ]),
-    ));
+    const board = /** @type {any} */ (
+        buildWorkspaceBoard(
+            /** @type {any} */ ([
+                {
+                    name: "epic",
+                    planName: "epic",
+                    planId: "epic-id",
+                    status: "in_progress",
+                    attrs: { classification: "PROJECT", status: "in_progress" },
+                    classification: "PROJECT",
+                    isEpic: true,
+                    isChild: false,
+                    hierarchyRole: "epic",
+                },
+                {
+                    name: "epic/closed-child",
+                    planName: "epic/closed-child",
+                    planId: "closed-child-id",
+                    status: "verified",
+                    attrs: { classification: "FEATURE", parentPlan: "epic", status: "verified" },
+                    classification: "FEATURE",
+                    parentPlan: "epic",
+                    isEpic: false,
+                    isChild: true,
+                    hierarchyRole: "child",
+                },
+            ]),
+        )
+    );
     const inProgressColumn = board.active.columns.find((/** @type {any} */ column) => column.status === "in_progress");
     const verifiedColumn = board.closed.columns.find((/** @type {any} */ column) => column.status === "verified");
-    assertEquals(inProgressColumn.cards.map((/** @type {any} */ plan) => plan.planId), ["epic-id"]);
+    assertEquals(
+        inProgressColumn.cards.map((/** @type {any} */ plan) => plan.planId),
+        ["epic-id"],
+    );
     assertEquals(inProgressColumn.cards[0].childProgress.verified, 1);
     assertEquals(verifiedColumn.cards.length, 0);
 });
 
 test("buildWorkspaceBoard keeps orphan children visible for repair outside main status cards", () => {
-    const board = /** @type {any} */ (buildWorkspaceBoard(
-        /** @type {any} */ ([{
-            name: "missing/child",
-            planName: "missing/child",
-            planId: "orphan-id",
-            status: "draft",
-            attrs: { classification: "FEATURE", parentPlan: "missing" },
-            classification: "FEATURE",
-            parentPlan: "missing",
-            isEpic: false,
-            isChild: true,
-            hierarchyRole: "orphan-child",
-        }]),
-    ));
+    const board = /** @type {any} */ (
+        buildWorkspaceBoard(
+            /** @type {any} */ ([
+                {
+                    name: "missing/child",
+                    planName: "missing/child",
+                    planId: "orphan-id",
+                    status: "draft",
+                    attrs: { classification: "FEATURE", parentPlan: "missing" },
+                    classification: "FEATURE",
+                    parentPlan: "missing",
+                    isEpic: false,
+                    isChild: true,
+                    hierarchyRole: "orphan-child",
+                },
+            ]),
+        )
+    );
     const draftColumn = board.active.columns.find((/** @type {any} */ column) => column.status === "draft");
     assertEquals(draftColumn.cards.length, 0);
-    assertEquals(draftColumn.orphanChildren.map((/** @type {any} */ plan) => plan.planId), ["orphan-id"]);
-    assertEquals(board.active.orphanChildren.map((/** @type {any} */ plan) => plan.planId), ["orphan-id"]);
+    assertEquals(
+        draftColumn.orphanChildren.map((/** @type {any} */ plan) => plan.planId),
+        ["orphan-id"],
+    );
+    assertEquals(
+        board.active.orphanChildren.map((/** @type {any} */ plan) => plan.planId),
+        ["orphan-id"],
+    );
 });
 
 test("Plan Board search helpers normalize query and match title name and summary", () => {
@@ -222,7 +253,10 @@ test("buildPlanBoardSearchIndex includes top-level cards and orphan repair cards
         orphanChildren: [{ planId: "orphan-id", planName: "missing/child", summary: "Repair me" }],
     });
 
-    assertEquals(searchIndex.map((/** @type {any} */ entry) => entry.planId), ["epic-id", "orphan-id"]);
+    assertEquals(
+        searchIndex.map((/** @type {any} */ entry) => entry.planId),
+        ["epic-id", "orphan-id"],
+    );
     assertEquals(searchIndex[1].title, "missing/child");
 });
 
@@ -286,14 +320,10 @@ test("loadPlanSummaries preserves the core plan-list order", async () => {
             });
         }
 
-        assertEquals((await loadPlanSummaries(cwd)).map((plan) => plan.name), [
-            "failed-project",
-            "failed-feature",
-            "ready-project",
-            "ready-feature",
-            "verified",
-            "held",
-        ]);
+        assertEquals(
+            (await loadPlanSummaries(cwd)).map((plan) => plan.name),
+            ["failed-project", "failed-feature", "ready-project", "ready-feature", "verified", "held"],
+        );
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -302,17 +332,12 @@ test("loadPlanSummaries preserves the core plan-list order", async () => {
 test("loadWorkspaceDetail returns Epic detail with children grouped by status", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(
-            cwd,
-            "epic",
-            "# Epic\n\nBody",
-            {
-                planId: "epic-id",
-                classification: "PROJECT",
-                status: "draft",
-                type: "epic",
-            },
-        );
+        await savePlan(cwd, "epic", "# Epic\n\nBody", {
+            planId: "epic-id",
+            classification: "PROJECT",
+            status: "draft",
+            type: "epic",
+        });
         await savePlan(cwd, "epic/child", "# Child", {
             planId: "child-id",
             classification: "FEATURE",
@@ -325,9 +350,15 @@ test("loadWorkspaceDetail returns Epic detail with children grouped by status", 
         assertEquals(detail.frontMatter.type, "epic");
         assertEquals(detail.childProgress.total, 1);
         assertEquals(detail.childProgress.byStatus.failed, 1);
-        assertEquals(detail.childHealth.failed.map((/** @type {any} */ plan) => plan.planId), ["child-id"]);
+        assertEquals(
+            detail.childHealth.failed.map((/** @type {any} */ plan) => plan.planId),
+            ["child-id"],
+        );
         const failedColumn = detail.childColumns.find((/** @type {any} */ column) => column.status === "failed");
-        assertEquals(failedColumn.cards.map((/** @type {any} */ plan) => plan.planId), ["child-id"]);
+        assertEquals(
+            failedColumn.cards.map((/** @type {any} */ plan) => plan.planId),
+            ["child-id"],
+        );
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -378,16 +409,22 @@ test("workspace adapter exposes Epic dependency health done-enough held and orph
         const detail = /** @type {any} */ (await loadWorkspaceDetail(cwd, "epic-id"));
         const blocked = detail.children.find((/** @type {any} */ child) => child.planId === "blocked-id");
         assertEquals(detail.doneEnough, true);
-        assertEquals(detail.childHealth.held.map((/** @type {any} */ child) => child.planId), ["held-id"]);
-        assertEquals(detail.childHealth.blocked.map((/** @type {any} */ child) => child.planId), ["blocked-id"]);
-        assertEquals(detail.childHealth.missingDependencies.map((/** @type {any} */ child) => child.planId), [
-            "blocked-id",
-        ]);
-        assertEquals(blocked.dependencyStates.map((/** @type {any} */ entry) => entry.state), [
-            "verified",
-            "unverified",
-            "missing",
-        ]);
+        assertEquals(
+            detail.childHealth.held.map((/** @type {any} */ child) => child.planId),
+            ["held-id"],
+        );
+        assertEquals(
+            detail.childHealth.blocked.map((/** @type {any} */ child) => child.planId),
+            ["blocked-id"],
+        );
+        assertEquals(
+            detail.childHealth.missingDependencies.map((/** @type {any} */ child) => child.planId),
+            ["blocked-id"],
+        );
+        assertEquals(
+            blocked.dependencyStates.map((/** @type {any} */ entry) => entry.state),
+            ["verified", "unverified", "missing"],
+        );
 
         const orphan = /** @type {any} */ (await loadWorkspaceDetail(cwd, "orphan-id"));
         assertEquals(orphan.hierarchyRole, "orphan-child");
@@ -442,4 +479,42 @@ test("workspace detail header CSS lets lifecycle actions wrap without squeezing 
     assertStringIncludes(workspaceCss, ".column-cards,\n.plan-card {");
     assertStringIncludes(componentsCss, ".markdown-view {\n    background:");
     assertStringIncludes(componentsCss, "overflow-wrap: anywhere;");
+});
+
+test("Epic detail order ignores filename prefixes and status and follows metadata edits", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "child-order-board-"));
+    try {
+        await savePlan(cwd, "epic", "# Epic", { planId: "epic-id", classification: "PROJECT" });
+        const children = [
+            { name: "99-first", order: 1, status: "draft" },
+            { name: "middle", order: 2, status: "ready_for_work" },
+            { name: "01-last", order: 10, status: "failed" },
+        ];
+        for (const child of children) {
+            await savePlan(cwd, `epic/${child.name}`, `# ${child.name}`, {
+                planId: child.name,
+                parentPlan: "epic",
+                order: child.order,
+                status: child.status,
+            });
+        }
+        const before = await loadWorkspaceDetail(cwd, "epic-id");
+        assertEquals(
+            before.children.map((child) => child.name),
+            ["epic/99-first", "epic/middle", "epic/01-last"],
+        );
+        const last = await loadPlan(cwd, "epic/01-last");
+        await updatePlanFrontMatter(cwd, "epic/01-last", { order: 0 }, {}, { expectedRevision: last.revision });
+        const after = await loadWorkspaceDetail(cwd, "epic-id");
+        assertEquals(
+            after.children.map((child) => child.name),
+            ["epic/01-last", "epic/99-first", "epic/middle"],
+        );
+        assertEquals(
+            after.children.map((child) => child.planId),
+            ["01-last", "99-first", "middle"],
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
 });

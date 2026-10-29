@@ -8,6 +8,9 @@
 import { SUBAGENTS } from "../../constants.js";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 
+// Validation prompts use the same layered role names in every runtime.
+export { getAgentDisplayName } from "../session/agents.js";
+
 /**
  * Load reviewer as a bare workflow prompt instead of a normal agent definition.
  * Normal agent definitions are wrapped with RunWield' shared system prompt, which
@@ -24,11 +27,13 @@ import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
  * (rounds three and above).
  *
  * @param {"discovery" | "verify"} [mode]
+ * @param {string} [projectRoot]
  * @returns {Promise<import('../session/types.js').AgentDefinition>}
  */
-export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discovery") {
+export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discovery", projectRoot?: string) {
     return await loadSubAgentDefinition(SUBAGENTS.REVIEWER, {
         reviewerMode: mode,
+        projectRoot,
     });
 }
 

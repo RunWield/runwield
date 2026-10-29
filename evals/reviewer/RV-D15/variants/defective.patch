@@ -1,0 +1,12 @@
+diff --git a/src/setup.ts b/src/setup.ts
+--- a/src/setup.ts
++++ b/src/setup.ts
+@@ -2,7 +2,7 @@
+ import { getWorkspace, saveWorkspace } from "./store.ts";
+ 
+ export function defaultWorkspace(): Workspace {
+-    return { id: "default", label: "Workspace" };
++    return { id: "My Workspace", label: "My Workspace" };
+ }
+ 
+ export async function initializeWorkspace(root: string): Promise<Workspace> {

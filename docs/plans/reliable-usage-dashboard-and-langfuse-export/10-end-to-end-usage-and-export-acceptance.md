@@ -283,7 +283,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   already exist; edit only if the repairs change a definition.
 - Any module from children 01–09 where the live journey exposes a real defect.
 
-Deliberately out: `docs/plans/archived/complete-tool-call-metrics.md` stays as completed history. No new settings, no
+Deliberately out: The former **Complete Tool-Call Metrics** draft remains historical. No new settings, no
 new export states, no retry control.
 
 ## Reuse Opportunities

@@ -11,10 +11,8 @@ provenance:
         - "378500c6-a9b2-44e3-a9a8-a15601ac9fdf"
 ---
 
-# Reorganized UI Source Tree
+# Terminal UI and theme source separation
 
 ## Summary
 
-Moved terminal UI modules from `src/shared/ui/` to `src/ui/tui/` and theme modules to `src/ui/theme/`. Updated
-repository imports, JSDoc paths, build resources, tests, and documentation while preserving existing behavior. Removed
-the obsolete `src/shared/ui/` directory and verified the refactor with the full CI suite.
+Terminal UI and theme modules each have dedicated source ownership outside shared Core. The source reorganization preserves runtime behavior.

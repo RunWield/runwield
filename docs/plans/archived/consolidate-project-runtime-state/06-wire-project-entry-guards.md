@@ -195,7 +195,7 @@ Use the sandboxed runner only:
 ```sh
 deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts
 deno run -A scripts/run-tests.js src/shared/session/session-runtime.test.js src/acp/server.test.js src/cmd/init/index.test.ts src/cmd/plans/index.test.ts src/cmd/plans/collaboration-commands.integration.test.ts src/ui/tui/chat-session.test.ts src/ui/tui/golden-scenarios/initial-scenarios.test.js
-deno run -A scripts/run-tests.js src/shared/worktree-registry.test.js src/shared/workflow/controller-registry.integration.test.ts src/plan-store.test.js src/shared/collaboration/secrets.test.js src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/isolated-publication.test.ts
+deno run -A scripts/run-tests.js src/shared/worktree-registry.test.ts src/shared/workflow/controller-registry.integration.test.ts src/plan-store.test.js src/shared/collaboration/secrets.test.js src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/isolated-publication.test.ts
 deno task seams:check
 deno task ci
 ```

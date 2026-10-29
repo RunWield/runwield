@@ -18,14 +18,30 @@ A normal FEATURE flow is:
 
 1. Planner writes the Plan.
 2. Plannotator opens in the browser for user review.
-3. Feedback returns the Plan to Planner; Approve records execution metadata and marks it ready for work.
+3. Review chat lets Planner reply or revise; approval records execution metadata and prepares the Plan for work.
 4. RunWield dispatches the recorded `executionAgent`.
 5. Workflow Validation runs.
 6. The Plan becomes RunWield Verified only after delivery evidence and, for worktree execution, proof of merge-back.
 
-Plannotator is the browser review surface RunWield opens for Plan review. Outcomes are Approve, Approve for Later, and
-Feedback. FEATURE Plan Review exposes `executionAgent` and `collaborationRecommendation` controls so the user can select
-the execution owner and autonomous or Pair collaboration recommendation.
+Plannotator is the browser Plan review surface. Approve & Run authorizes execution; Approve for Later prepares the Plan
+without starting it. FEATURE review exposes `executionAgent` and `collaborationRecommendation` controls.
+
+During review, reply in chat to explain, clarify, or ask back. Revise the Plan and call `plan_written` when the answer
+changes scope, behavior, a decision, or verification. When in doubt, revise. Do not call `plan_written` for an unchanged
+Plan. RunWield keeps the same review open after a reply, including after an Agent error or canceled turn. Canceling the
+review itself ends it without reopening.
+
+Opening review or discussing a Plan preserves its status. A meaningful revision to an `approved`, `ready_for_work`, or
+`ready_for_decomposition` Plan returns it to `draft`; formatting-only changes preserve the status.
+
+Chat queues annotations, file annotations, images, direct edits, and question answers by default. Each type has an X
+that excludes it from the next send without deleting it. Send accepts a message, queued context, or both. Submit answer
+sends only that question's answer, marks it sent, and removes it from the queue. It is disabled while the Agent works.
+The Annotations pane has Send Annotations only on a surface without chat.
+
+After a reply-only turn since the latest revision, approval offers Ask Planner (or Architect) to update the Plan,
+Approve as is, or Cancel. Approve as is continues to the existing open-questions confirmation. Remaining review context
+goes with approval.
 
 ## Validation, review, and repair
 
@@ -41,13 +57,19 @@ Records list confirmed entries under `## Deviations from Plan`. Canceled, stale,
 not change the Plan. If the session is lost before the write, ask for confirmation again. If it is lost after the write,
 retrying the same tool call recovers the saved entry by tool-call identity and does not replay transcript approval.
 
+For an Epic child, RunWield also projects confirmed entries into one managed child block under `### Child Plan Deviations`
+in the Epic's Objective. The child remains authoritative; the Epic's deviation front matter stays unchanged. The block
+and Integration Notes are written in the execution checkout and travel with child delivery, not through the primary
+checkout. Retries and publication checkpoints restore a missing projection. Integration review reports outcomes changed
+only by approved deviations as advisories naming the outcome and child, not findings. Other defects and unmet replacement
+requirements remain findings. Epic Work Records collect each child entry once. Sequence children keep ordinary recording.
+
 `codereview` controls the Code Review gate after local validation and Semantic Review pass and before merge-back: `none`
 skips the gate, `ask` prompts the user, and `always` requires it.
 
 ## Statuses users see
 
 - `draft`: Plan exists but review is not complete.
-- `feedback`: user feedback or interrupted feedback handling returned it to planning.
 - `approved`: user approved it, but preparation is not complete.
 - `ready_for_decomposition`: approved PROJECT Epic is ready for Slicer.
 - `ready_for_work`: FEATURE can execute, or PROJECT Epic can offer child selection.

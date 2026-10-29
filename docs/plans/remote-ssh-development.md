@@ -15,7 +15,7 @@ affectedPaths:
     - "src/ui/review/"
     - "src/ui/workspace/server.js"
     - "scripts/compile.js"
-    - "scripts/release-assets.js"
+    - "scripts/release-assets.ts"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
@@ -66,7 +66,7 @@ establishes ordinary remote turns, saved Sessions, workflows, or a release platf
 - Local browser Plan Review and Code Review. Connected-only execution and saved continuation after reconnect.
 
 **Out of scope:** Unattended work, source sync, required local clones, hostile-server isolation, multi-user
-collaboration, hosted Workspace registration, remote ACP clients, moving an existing local Session to another checkout,
+collaboration, remote ACP clients, moving an existing local Session to another checkout,
 and automatic installation of arbitrary project/custom-skill dependencies. Browser close alone does not disconnect work.
 
 ### Product ownership
@@ -244,8 +244,8 @@ host.
 
 Core file/shell/Git/Cymbal/build/test tools operate remotely. Personal Mnemoteca operations operate locally.
 Network-only personal integrations can run locally when they need laptop configuration; they must not turn into laptop
-project filesystem tools. Work Record retrieval reads canonical remote records. Team Memory still derives from trusted
-remote project evidence; local personal storage does not bypass trust or make raw transcripts shared knowledge.
+project filesystem tools. Work Record retrieval reads canonical remote records; personal storage remains local and
+raw transcripts do not become shared knowledge.
 
 **Reviewable integration default:** Personal MCP servers run on the laptop with their existing credentials; their tool
 calls/results are forwarded. Project-defined servers run remotely. Project override/disable rules still apply, and each
@@ -363,7 +363,7 @@ local stdio subprocesses. Moving text alone does not move resource files or pres
 
 `review-launcher.ts` calls `BrowserPort.open`; the review server binds loopback and resolves an in-process pending
 promise. Frontend URLs are same-origin. `review-agent-handlers.js` starts Guided Review as another `wld` process. Whole
-origin forwarding and inherited remote context fit the existing design; hosted Workspace is not required.
+origin forwarding and inherited remote context fit the existing personal workflow.
 
 Release packaging already creates Linux x64 and ARM64 binaries. The ordinary installer can mutate profiles and install
 unpinned helpers, so it is not a ready remote bootstrap. Existing private helper packaging provides a pattern, not proof
@@ -482,7 +482,7 @@ killed tunnel is not a partition test.
 | Honest trust and compatibility          | Notice states the full laptop `.wld` is mounted and standard SFTP allows broad account-level access; no sandbox claim; build/provider claims reflect tested artifacts.                                                   | Local personal environment; Remote connection and setup       |
 
 **Protected behavior:** Ordinary local TUI, ACP, and Workspace; settings precedence; Agent/model selection; private
-transcripts and dormant resume; operation-scoped native locks; Memory scopes; trusted Team Memory; Plan approval;
+transcripts and dormant resume; operation-scoped native locks; Memory scopes; Plan approval;
 validation, AI review, Code Review, worktree protection, and confirmed publication. Browser-only Workspace disconnect
 behavior does not change. Existing local Session directories/IDs and Memory collections are not migrated.
 
@@ -502,6 +502,18 @@ under project policy. The implementation that establishes remote connections upd
 proposed **Remote SSH connection** and the changed Core/Session/Project Runtime State relationships. It remains an
 ordinary Session, not a new Session type. Accept/update ADR-018 and align ADR-015's local-path/writer descriptions with
 the implemented extension without reintroducing leases. Actual decomposition is left to Slicer.
+
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
+
+**remote-ssh-development/07-carry-remote-context-through-delivery-workflows**
+
+- Check that connection cleanup removes transient background log directories after a forced TUI kill. The process exit handler cannot run after SIGKILL. (src/shared/remote/background-task-logs.ts; child08 connection supervisor shutdown)
+
+<!-- runwield:integration-notes:end child="remote-ssh-development/07-carry-remote-context-through-delivery-workflows" -->
 
 ## Edge Cases & Considerations
 

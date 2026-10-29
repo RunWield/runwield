@@ -30,7 +30,7 @@ display name. Supply project API keys as `credentials.publicKey` and `credential
 read. HTTP is permitted only for loopback test servers; Core must explicitly authorize that exception.
 
 No public npm publication, hosted Cloud certification, or compatibility with untested self-hosted releases is claimed.
-The [RunWield Free Use License](./LICENSE) applies to this package.
+The [MIT License](./LICENSE) applies to this package.
 
 ## Contract
 

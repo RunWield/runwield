@@ -19,6 +19,19 @@ import {
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { runArchiveTransition, type TransitionResult } from "../../shared/workflow/state-transition.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import {
+    confirmMissingManagedProjectDirectory,
+    confirmProjectDirectory,
+    DirectoryStartupCanceled,
+} from "../../ui/tui/directory-warning.ts";
+
+async function confirmArchivePlanRoot(cwd: string, name: string): Promise<void> {
+    const location = await resolveWorkflowPlanLocation(cwd, name, { migrateRegistry: false, readOnly: true });
+    const confirmed = location.missingExecutionCheckout
+        ? await confirmMissingManagedProjectDirectory(location.documentRoot)
+        : await confirmProjectDirectory(location.documentRoot);
+    if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
+}
 
 type PlanEntry = Awaited<ReturnType<typeof listPlans>>[number];
 type PlanStatus = PlanEntry["attrs"]["status"];
@@ -125,11 +138,13 @@ function normalizePlanNameArgument(target: string): string {
 
 async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<{ name: string; revision?: string }> {
     const normalizedName = normalizePlanNameArgument(target);
+    await confirmArchivePlanRoot(cwd, normalizedName);
     const byName = (await resolveWorkflowPlanLocation(cwd, normalizedName, { readOnly: true })).plan;
     if (byName) return { name: normalizedName, revision: byName.revision };
     const matches = (await listPlans(cwd)).filter((plan) => plan.attrs.planId === target);
     if (matches.length > 1) throw new Error(`Duplicate planId values found for ${target}; use a Plan name instead.`);
     if (matches.length !== 1) throw new Error(`Active Plan not found: ${target}`);
+    await confirmArchivePlanRoot(cwd, matches[0].name);
     const loaded = await loadPlan(getPlanDocumentRoot(matches[0].path), matches[0].name);
     if (!loaded) throw new Error(`Active Plan not found: ${matches[0].name}`);
     return { name: matches[0].name, revision: loaded.revision };
@@ -161,6 +176,7 @@ async function archivePlansByStatusTransactionally(
         .filter((plan) => !isChildFeatureArchiveCandidate(plan) && plan.attrs.status === status)
         .sort((a, b) => a.name.localeCompare(b.name));
     const matchingPlans = matchingParentPlans.flatMap((plan) => [plan, ...(childrenByParent.get(plan.name) || [])]);
+    for (const plan of matchingPlans) await confirmArchivePlanRoot(cwd, plan.name);
     const matched = matchingPlans.map((plan) => ({ name: plan.name, relativePath: relative(cwd, plan.path) }));
     const archived: BulkArchivePlanEntry[] = [];
     const failed: BulkArchivePlanFailure[] = [];
@@ -219,6 +235,7 @@ export async function runPlansArchiveCommand(argv: string[]): Promise<void> {
         if (!target) throw new Error("Missing archived Plan name or id for restore.");
         if (positionals.length > 2) throw new Error(`Unexpected restore argument: ${positionals[2]}`);
         const source = await loadArchivedPlan(getCwd(), target);
+        if (!(await confirmProjectDirectory(source ? getPlanDocumentRoot(source.path) : getCwd()))) return;
         const restored = unwrapArchiveTransitionValue<RestoredPlan>(
             await runArchiveTransition({
                 projectRoot: source ? getPlanDocumentRoot(source.path) : getCwd(),

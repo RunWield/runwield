@@ -19,9 +19,10 @@ devServerHmr: true
 createdAt: "2026-09-20T01:12:35-04:00"
 origin: "internal"
 userVerifiedAt: null
-status: "ready_for_work"
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 epicBaseCommit: "da55b44d463c4a6797c87792ce3856aa57b0ab29"
+status: "implemented"
+epicIntegrationReport: "docs/plans/reliable-usage-dashboard-and-langfuse-export/integration-report.md"
 ---
 
 # Reliable Usage, Workspace Dashboard, and Langfuse Export
@@ -38,8 +39,7 @@ optional Langfuse export plugin. It does not build a developer productivity scor
 - Pi, Claude CLI, and Antigravity CLI. Include ordinary Sessions and RunWield-started auxiliary model calls, not only
   planned implementation. Coverage does not promise identical upstream detail.
 - Link available measurements to Sessions, Plans, validation, repair, and confirmed publication. Do not invent links.
-- Local measurement remains **opt-in**. An absent setting records nothing. Preserve explicit user opt-outs, per the
-  [owner’s 2026-10-06 decision](reliable-usage-dashboard-and-langfuse-export/01-core-measurement-history-and-default-on-recording.md#epic-scope-changes).
+- Local measurement is **opt-in**. Off or unset records nothing. Preserve explicit settings and scope precedence.
 - Show metrics that were actually collected, including understood legacy records. Never mine old transcripts to create
   historical metrics. Disabled periods remain gaps after re-enabling.
 - Keep local measurements until the user deletes them. No automatic age-based expiry.
@@ -180,8 +180,8 @@ where possible rather than rescanning years of data per browser request. A durab
 load warrants it, and must remain rebuildable without transcripts.
 
 The existing `workflowMetrics` boolean/object setting stays compatible. Normalize both forms, preserve existing scope
-precedence and explicit false values. An absent setting remains disabled. Existing explicit opt-outs are not overwritten
-during upgrade. Display local recording and separate export permission clearly in settings.
+precedence and explicit false values, and keep the absent-setting default disabled. Do not enable recording during
+upgrade. Display the effective local recording state and the separate export state clearly in settings.
 
 Recording control changes create a collection epoch. An invocation is eligible only if collection was enabled at its
 start and remains in that epoch when its observation is accepted. Disabling stops recording immediately and rejects late
@@ -433,9 +433,9 @@ These are architectural boundaries, not an allowlist, implementation checklist o
   loading or implicit permission to export.
 - Owner routes, safe Project serializers, `WorkspaceLayout.astro`, loaders and `RunWieldPrimitives.tsx`: existing
   browser access control and visual patterns.
-- [Complete Tool-Call Metrics](archived/complete-tool-call-metrics.md) and
+- The former **Complete Tool-Call Metrics** draft and
   [extension-consent work](reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind.md): reconcile overlaps during later planning against
-  current source. Tool advertisement/schema-token optimization is not added merely because the sibling draft names it.
+  current source. Tool advertisement/schema-token optimization is not added merely because the former draft named it.
 
 ## Verification Plan
 
@@ -453,7 +453,7 @@ The following named scenarios identify the observable product outcomes and their
 
 | Outcome / proposed acceptance scenario      | Evidence that distinguishes delivery from a counterfeit                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Core — Record by opt-in, respect gaps**   | Fresh configuration records nothing; explicit enablement records, and explicit false does not. An upgrade fixture combines explicit false, real v1 metrics, transcript-only activity and later enablement: old metrics stay visible, old unknown periods remain unknown. Work between disable/re-enable produces no records, aggregates or exports after restart/replay. A crossing invocation is excluded.                                                                        |
+| **Core — Record by opt-in, respect gaps**   | Fresh configuration records nothing; explicit enablement records; explicit false does not. An upgrade fixture combines explicit false, real v1 metrics, transcript-only activity and later enablement: old metrics stay visible, old unknown periods remain unknown. Work between disable/re-enable produces no records, aggregates or exports after restart/replay. A crossing invocation is excluded.                                                                            |
 | **Core — Include all supported work**       | Known Pi, Claude and agy usage plus delegation, AI review, compaction and vision calls contributes once. Duplicate chunks and parent/cumulative totals do not double-count. A CLI cancellation exposes missing usage rather than zero. Fixtures establish field provenance; real CLI samples confirm tested versions.                                                                                                                                                              |
 | **Core — Persist truthful measurements**    | Concurrent Sessions/processes retain valid, uniquely identified records. Kill/restart around writes exposes only persisted evidence and explicit incomplete records. Reporting/cache rebuild leaves models, transcripts and Plans untouched. Disk failure does not stop work or pretend measurements were saved.                                                                                                                                                                   |
 | **Core — Preserve outcome meaning**         | A failed validation, repair, and confirmed publication yields one delivered attempt and separate attempt counts. Kill/restart before both publication prune paths yields one durable observation or explicit incomplete/unverified coverage, never blocked publication or invented history. Repeated cleanup does not add publication. Interruption is ongoing; non-Plan work is not undelivered failure.                                                                          |
@@ -476,8 +476,8 @@ unconfirmed/missing delivery disclosed. A synthetic-only demo is not a completed
 exporting real records require owner authorization; do not upload existing history to prove the new-only path.
 
 Protect existing Session/home navigation, design-system behavior, pairing, Project access, explicit recording opt-outs,
-Session authority, worktree protection, redaction and truthful workflow completion. Expected changes are local recording
-by explicit opt-in, real reportable measurements instead of zero-filled absence, independent exporter loading, and visible
+Session authority, worktree protection, redaction and truthful workflow completion. Local recording stays opt-in. Expected changes are
+real reportable measurements instead of zero-filled absence, independent exporter loading, and visible
 collection/delivery gaps. Historical metrics reconstruction must never exist.
 
 ### Proposed domain language
@@ -559,6 +559,14 @@ Left by the reviewers of individual children for the integration review. These a
   src/shared/workflow/metrics-export-record.ts; packages/langfuse-exporter/exporter.ts map)
 
 <!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
+**reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status**
+
+- Check allowlist edits when an unavailable approved Project's directory no longer exists. Workspace preserves that root, but Core currently calls realpathSync for every retained root, which can prevent edits to the remaining Projects. (src/ui/workspace/server/owner-usage-settings.ts::preserveUnavailableRoots; src/shared/workflow/metrics-export-grants.ts::saveDestinationGrant)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
 
 ## Edge Cases & Considerations
 

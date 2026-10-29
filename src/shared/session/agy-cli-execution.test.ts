@@ -19,6 +19,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
+import { ReviewInspection } from "../workflow/review-inspection.ts";
+import { createLedger } from "../workflow/review-ledger.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import type { SessionRuntimeEvent } from "./session-runtime-events.js";
@@ -846,8 +848,13 @@ test("every eligible Agy role invokes its real lifecycle tool through configured
             userRequest: "review the change through validation",
             cwd,
             reviewerMode: "discovery",
-            customTools: [],
-            sessionManager: validation.createInMemorySessionManager(cwd),
+            review: {
+                fullDiff: "",
+                repairDiff: "",
+                requiredScope: "full",
+                inspection: new ReviewInspection([]),
+            },
+            ledger: createLedger(),
         });
         assertEquals(reviewResult.outcome, "completed");
         if (reviewResult.outcome !== "completed") throw new Error("Agy review did not complete");
@@ -1203,7 +1210,13 @@ test("Agy retry reconstructs only committed transcript after classified failure"
         delete process.env["RUNWIELD_AGY_MALFORMED_AFTER_MCP"];
         await fsWriteFile(logPath, "");
 
-        await runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "bad stream turn" });
+        // The retry continues the failed request on purpose, so it declares that intent.
+        await runRootTurn({
+            hostedSession,
+            agentName: AGENTS.GUIDE,
+            userRequest: "bad stream turn",
+            resumePreviousRequest: true,
+        });
 
         branch = getRootSessionBranchEntries(manager) as BranchEntryRecord[];
         const branchText = JSON.stringify(branch);

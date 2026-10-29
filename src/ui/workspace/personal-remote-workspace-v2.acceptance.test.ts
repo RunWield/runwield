@@ -17,7 +17,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { writeWorkRecord } from "../../shared/work-records/store.js";
+import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { ownerProjectSessionsApi, ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";

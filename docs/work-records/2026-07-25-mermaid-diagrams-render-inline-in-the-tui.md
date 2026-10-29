@@ -11,16 +11,12 @@ provenance:
         - "981d9e35-8c77-4638-bdf2-47e40119302b"
 ---
 
-# Mermaid diagrams render inline in the TUI
+# Inline TUI Mermaid diagrams
 
 ## Summary
 
-Completed verified TUI support for rendering finished top-level Mermaid fences as compact Unicode diagrams while
-preserving canonical source fallback for streaming, invalid, unsupported, nested, or too-wide diagrams. Agent messages
-now use the Mermaid-aware Markdown renderer, Planner and Architect prompts guide terminal-readable diagrams, and
-focused/manual checks plus the full `deno task ci` gate passed.
+The TUI renders finished top-level Mermaid fences as compact Unicode diagrams. Streaming, invalid, unsupported, nested, or overly wide diagrams retain canonical source presentation.
 
 ## Future Planning Notes
 
-Keep Mermaid source canonical and treat terminal rendering as presentation-only. Width-safe fallback and conservative
-diagram guidance are important for avoiding misleading wrapped or clipped topology in terminal surfaces.
+Mermaid source remains canonical. Terminal rendering is presentation-only and requires width-safe fallback to avoid misleading topology.

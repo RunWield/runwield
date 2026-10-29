@@ -9,7 +9,7 @@ import { argv, env, platform } from "node:process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
-import { verifyBuildArtifact } from "./build-metadata.js";
+import { verifyBuildArtifact } from "./build-metadata.ts";
 import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -63,7 +63,10 @@ export async function checkBunPackage(
             // while this verifier can still read expected bytes for comparison.
             const sandbox = `(version 1)(allow default)(deny file-read* (subpath ${JSON.stringify(ROOT)}))`;
             const command = platform === "darwin" ? "/usr/bin/sandbox-exec" : relocated;
-            const commandArgs = platform === "darwin" ? ["-p", sandbox, relocated, ...args] : args;
+            // Qualification deliberately runs from its disposable home, not a user project.
+            const acknowledgedArgs = ["--allow-system-directory", ...args];
+            const commandArgs =
+                platform === "darwin" ? ["-p", sandbox, relocated, ...acknowledgedArgs] : acknowledgedArgs;
             const child = spawn(command, commandArgs, { cwd: home, env: childEnv, stdio: ["pipe", "pipe", "pipe"] });
             let output = "";
             child.stdout.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));
@@ -140,6 +143,27 @@ export async function checkBunPackage(
             equal(page.status, 200, running.output());
             const html = await page.text();
             match(html, /Pair RunWield Workspace/);
+            match(html, /data-workspace-sidebar-restore/);
+            // The unbundled shell imports shared browser modules outside /_astro.
+            // Qualify them from the relocated executable as well as hashed assets.
+            const shellResponse = await fetch(`${base}/workspace-shell.js`);
+            equal(shellResponse.status, 200);
+            const shellSource = await shellResponse.text();
+            match(shellSource, /installWorkspaceShellBrowser/);
+            const imports = [...shellSource.matchAll(/from\s+["']([^"']+)["']/g)];
+            ok(imports.length > 0);
+            for (const [, specifier] of imports) {
+                const assetUrl = new URL(specifier, `${base}/workspace-shell.js`);
+                equal(assetUrl.origin, base);
+                const response = await fetch(assetUrl);
+                equal(response.status, 200, assetUrl.pathname);
+                match(response.headers.get("content-type") || "", /(?:text|application)\/javascript/i);
+                deepEqual(
+                    new Uint8Array(await response.arrayBuffer()),
+                    new Uint8Array(await readFile(join(ROOT, "src/ui", assetUrl.pathname))),
+                    assetUrl.pathname,
+                );
+            }
             equal(page.headers.get("x-frame-options"), "DENY");
             const assets = [...html.matchAll(/(?:src|href)="(\/_astro\/[^"?]+\.(?:js|css))"/g)].map((item) => item[1]);
             ok(assets.length > 0);

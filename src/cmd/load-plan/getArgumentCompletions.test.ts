@@ -52,3 +52,27 @@ test("malformed Plan autocomplete stays quiet while loading still reports the pa
         }
     });
 });
+
+test("child completions use numeric order across mixed names and statuses", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const root = await repository.checkout();
+        const previousCwd = getCwd();
+        try {
+            for (const [name, order, status] of [
+                ["99-first", 1, "draft"],
+                ["middle", 2, "ready_for_work"],
+                ["01-last", 10, "failed"],
+            ] as const) {
+                await savePlan(root, `epic/${name}`, `# ${name}`, { parentPlan: "epic", order, status });
+            }
+            process.chdir(root);
+            assertEquals(
+                (await getLoadPlanCompletions("epic/")).map((item) => item.value),
+                ["epic/99-first", "epic/middle", "epic/01-last"],
+            );
+        } finally {
+            process.chdir(previousCwd);
+            await fsRm(root, { recursive: true });
+        }
+    });
+});

@@ -1,0 +1,50 @@
+diff --git a/src/service.ts b/src/service.ts
+index 6c84879..212d65a 100644
+--- a/src/service.ts
++++ b/src/service.ts
+@@ -1,11 +1,17 @@
+ import { verifyCapability } from "./capabilities.ts";
+ import { parseBoardLink } from "./links.ts";
+-import { readBoard } from "./boards.ts";
++import { readBoard, renameBoard } from "./boards.ts";
+ import type { LinkResult } from "./model.ts";
+
+-export async function handleBoardLink(root: string, key: string, href: string): Promise<LinkResult> {
++export async function handleBoardLink(root: string, key: string, href: string, title?: string): Promise<LinkResult> {
+     const link = parseBoardLink(href);
+     const capability = verifyCapability(key, link.token);
+     if (capability.boardId !== link.boardId) return { status: 403, displayRole: link.displayRole };
++    if (title !== undefined) {
++        const role = link.displayRole;
++        if (role !== "maintainer") return { status: 403, displayRole: link.displayRole };
++        const board = await renameBoard(root, link.boardId, title);
++        return { status: 200, displayRole: link.displayRole, board };
++    }
+     return { status: 200, displayRole: link.displayRole, board: await readBoard(root, link.boardId) };
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 5dad06f..6008c81 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -47,3 +47,21 @@ await withBoards(async (root) => {
+     await assert.rejects(handleBoardLink(root, key, url.href), /Invalid capability/);
+ });
+ console.log("PASS editing signed claims does not produce a valid capability");
++await withBoards(async (root) => {
++    const result = await handleBoardLink(root, key, linkFor("maintainer"), "  Autumn show  ");
++    assert.equal(result.status, 200);
++    assert.equal((await handleBoardLink(root, key, linkFor("reviewer"))).board?.title, "Autumn show");
++});
++console.log("PASS maintainer renames are visible through a later read");
++await withBoards(async (root) => {
++    assert.equal((await handleBoardLink(root, key, linkFor("reviewer"), "Unapproved")).status, 403);
++    assert.equal((await handleBoardLink(root, key, linkFor("reviewer"))).board?.title, "Exhibition");
++});
++console.log("PASS ordinary reviewer links cannot rename boards");
++await withBoards(async (root) => {
++    const url = new URL(linkFor("maintainer"));
++    url.searchParams.set("board", "private");
++    assert.equal((await handleBoardLink(root, key, url.href, "Unapproved")).status, 403);
++    assert.equal((await handleBoardLink(root, key, linkFor("reviewer", "private"))).board?.title, "Private notes");
++});
++console.log("PASS a maintainer cannot rename outside its board scope");

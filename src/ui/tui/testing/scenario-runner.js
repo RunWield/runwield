@@ -38,13 +38,13 @@ import {
     GOLDEN_FAUX_MODEL,
     GOLDEN_FAUX_PROVIDER,
     writeGoldenModelConfig,
-} from "./isolated-environment.js";
+} from "./isolated-environment.ts";
 import {
     ScriptedHumanReviewSurface,
     ScriptedInteractionSurface,
     ScriptedReviewSurface,
 } from "./scripted-review-surface.js";
-import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 import {
     getCwd,
@@ -95,21 +95,47 @@ function createGoldenReviewBrowser(
     onDecision,
     onHumanReviewDecision,
 ) {
-    return {
+    const browser = {
         /** @param {string} url */
         async open(url) {
             if (url.includes("/review/code")) {
                 if (!humanReviewSurface) throw new Error("Unexpected Code Review interaction.");
                 const response = humanReviewSurface.submit({ url });
                 if (response.manual) return false;
-                const opened = await createScriptedReviewBrowser(response.approved ? "decision" : "feedback", {
-                    approved: response.approved,
-                    feedback: response.feedback,
-                    annotations: response.annotations,
-                    images: response.images,
-                    reviewType: "code",
-                }).browser.open(url);
+                const opened = await createScriptedReviewBrowser(
+                    response.conversationTurn ? "deny" : response.approved ? "decision" : "feedback",
+                    {
+                        approved: response.approved,
+                        conversationTurn: response.conversationTurn,
+                        feedback: response.feedback,
+                        annotations: response.annotations,
+                        images: response.images,
+                        reviewType: "code",
+                    },
+                ).browser.open(url);
                 onHumanReviewDecision?.(response);
+                if (response.conversationTurn) {
+                    const page = new URL(url);
+                    const token = page.searchParams.get("token");
+                    void (async () => {
+                        for (let attempt = 0; attempt < 1000; attempt++) {
+                            await new Promise((resolve) => setTimeout(resolve, 10));
+                            const status = await fetch(
+                                new URL(`/api/review/conversation?token=${token}`, page.origin),
+                                {
+                                    headers: { "x-runwield-review-token": token || "" },
+                                },
+                            )
+                                .then((result) => result.json())
+                                .catch(() => null);
+                            if (status?.revision >= humanReviewSurface.consumed.length) {
+                                await browser.open(url);
+                                return;
+                            }
+                        }
+                        throw new Error("The Code Review conversation never exposed a new round.");
+                    })();
+                }
                 return opened;
             }
             if (!reviewSurface) throw new Error("Unexpected Plan Review interaction.");
@@ -135,20 +161,43 @@ function createGoldenReviewBrowser(
                 response.collaborationRecommendation || (includeExecutionPolicy ? "autonomous" : undefined);
             const body = {
                 approved: response.approved,
+                conversationTurn: response.conversationTurn,
                 feedback: response.feedback,
                 approvalAction,
                 ...(executionAgent ? { executionAgent } : {}),
                 ...(collaborationRecommendation ? { collaborationRecommendation } : {}),
                 ...(editedPlan ? { plan: editedPlan } : {}),
             };
+            onDecision?.(response);
             const opened = await createScriptedReviewBrowser(
                 response.approved ? "decision" : "deny",
                 body,
             ).browser.open(url);
-            onDecision?.(response);
+            if (response.conversationTurn) {
+                // A chat round reuses its page: there is no second browser.open.
+                // Drive the next human answer only after RunWield exposes a new round.
+                const page = new URL(url);
+                const token = page.searchParams.get("token");
+                void (async () => {
+                    for (let attempt = 0; attempt < 1000; attempt++) {
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                        const status = await fetch(new URL(`/api/review/conversation?token=${token}`, page.origin), {
+                            headers: { "x-runwield-review-token": token || "" },
+                        })
+                            .then((result) => result.json())
+                            .catch(() => null);
+                        if (status?.revision >= reviewSurface.consumed.length) {
+                            await browser.open(url);
+                            return;
+                        }
+                    }
+                    throw new Error("The conversation never exposed a new live review round.");
+                })();
+            }
             return opened;
         },
     };
+    return browser;
 }
 
 /**
@@ -157,7 +206,7 @@ function createGoldenReviewBrowser(
  *
  * @param {string} directory
  * @param {string} expectedStatus
- * @returns {{ status?: unknown, updatedAt?: unknown }}
+ * @returns {{ status?: unknown, updatedAt?: unknown, markdown?: string }}
  */
 function findFixturePlanLifecycle(directory, expectedStatus) {
     try {
@@ -167,8 +216,10 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
                 const nested = findFixturePlanLifecycle(path, expectedStatus);
                 if (nested.status === expectedStatus) return nested;
             } else if (entry.isFile() && entry.name.endsWith(".md")) {
-                const attrs = parsePlanFrontMatter(fsReadFileSync(path, "utf8")).attrs;
-                if (attrs.status === expectedStatus) return { status: attrs.status, updatedAt: attrs.updatedAt };
+                const markdown = fsReadFileSync(path, "utf8");
+                const attrs = parsePlanFrontMatter(markdown).attrs;
+                if (attrs.status === expectedStatus)
+                    return { status: attrs.status, updatedAt: attrs.updatedAt, markdown };
             }
         }
     } catch {
@@ -917,6 +968,11 @@ async function runComposedTuiScenario(scenario, options) {
         let restartedTuiHistory = "";
         /** @type {Array<{ event: string, status?: unknown, updatedAt?: unknown }>} */
         const persistedLifecycleEvents = [];
+        /** @type {string | undefined} */
+        let reviewDocumentBeforeConversation;
+        /** @typedef {{ before?: string, after?: string }} ConversationDocumentObservation */
+        /** @type {ConversationDocumentObservation[]} */
+        const conversationDocuments = [];
         const writeHeartbeat = async () => {
             if (!options.heartbeatPath) return;
             await fsMkdir(join(options.heartbeatPath, ".."), { recursive: true }).catch(() => {});
@@ -952,6 +1008,15 @@ async function runComposedTuiScenario(scenario, options) {
         const pendingReviewLifecycleObservations = [];
         /** @param {ReturnType<ScriptedReviewSurface['submit']>} response */
         const observeReviewDecision = (response) => {
+            if (response.conversationTurn) {
+                events.push("interaction:PLAN_REVIEW:conversation");
+                reviewDocumentBeforeConversation = findFixturePlanLifecycle(
+                    join(getCwd(), "docs", "plans"),
+                    "draft",
+                ).markdown;
+                pendingReviewLifecycleObservations.push(response);
+                return;
+            }
             const event = response.approved ? "review_approved" : "review_feedback";
             events.push(`interaction:PLAN_REVIEW:${response.approved ? "approved" : "feedback"}`);
             events.push(event);
@@ -1152,7 +1217,6 @@ async function runComposedTuiScenario(scenario, options) {
                                             title: "Golden Work Record",
                                             summary:
                                                 "Recorded the completed Golden Planned Change for planning memory.",
-                                            deviationsFromPlan: "None.",
                                         },
                                     },
                                 ],
@@ -1344,9 +1408,14 @@ async function runComposedTuiScenario(scenario, options) {
                     if (interaction.message) events.push(`runtime:interaction-message:${interaction.message}`);
                     if (interaction.interactionType === "plan_review") {
                         const response = pendingReviewLifecycleObservations.shift();
-                        if (response) {
+                        if (response?.conversationTurn) {
+                            conversationDocuments.push({
+                                before: reviewDocumentBeforeConversation,
+                                after: findFixturePlanLifecycle(join(getCwd(), "docs", "plans"), "draft").markdown,
+                            });
+                        } else if (response) {
                             const eventName = response.approved ? "review_approved" : "review_feedback";
-                            const expectedStatus = response.approved ? "approved" : "feedback";
+                            const expectedStatus = response.approved ? "approved" : "draft";
                             const lifecycle = findFixturePlanLifecycle(join(getCwd(), "docs", "plans"), expectedStatus);
                             persistedLifecycleEvents.push({
                                 event: eventName,
@@ -2305,7 +2374,7 @@ async function runComposedTuiScenario(scenario, options) {
                             : null;
                         plans.push({ name: planName, attrs, controllerState: controller?.state || null });
                     }
-                    const { listWorkRecords } = await import("../../../shared/work-records/store.js");
+                    const { listWorkRecords } = await import("../../../shared/work-records/store.ts");
                     const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
                     const capturedProjectState = {
                         runtimeSnapshot: composition.runtime.getSessionSnapshot(composition.sessionId),
@@ -2934,6 +3003,7 @@ async function runComposedTuiScenario(scenario, options) {
                 state.planReview = {
                     attrs: parsePlanFrontMatter(parsedPlan).attrs,
                     lifecycleEvents: persistedLifecycleEvents,
+                    conversationDocuments,
                     consumed: reviewSurface.consumed,
                     plan: parsedPlan,
                 };

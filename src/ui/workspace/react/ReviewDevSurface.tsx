@@ -696,7 +696,26 @@ const GUIDE_DEV_VARIANTS = [
     { id: "long-title", label: "Long title" },
 ];
 
-const PLAN_DEV_VARIANTS = ["feature", "dense", "project", "sequence", "stale", "read-only"];
+const QUESTION_PLAN_FIXTURE = PLAN_FIXTURE.replace(
+    "## Approach",
+    `## Questions
+
+\`\`\`wld-question
+{"id":"scope","type":"multiple_choice","prompt":"Which accounts can use saved links?","choices":[{"value":"admins","label":"Admins only"},{"value":"all","label":"All members"}],"default":"admins"}
+\`\`\`
+
+\`\`\`wld-question
+{"id":"redirect","type":"yes_no","prompt":"Keep redirects for old links?","default":true}
+\`\`\`
+
+\`\`\`wld-question
+{"id":"message","type":"text","prompt":"What should the redirect message say?","default":"Opening the renamed Plan."}
+\`\`\`
+
+## Approach`,
+);
+
+const PLAN_DEV_VARIANTS = ["questions", "feature", "dense", "project", "sequence", "stale", "read-only"];
 
 function buildCodeReviewDevPayload(variant) {
     const base = {
@@ -854,7 +873,12 @@ export function ReviewDevSurface({ surface, presentation = "standalone", variant
                   reviewNotice: planNotice,
               }
             : {
-                  plan: planVariant === "dense" ? DENSE_PLAN_FIXTURE : PLAN_FIXTURE,
+                  plan:
+                      planVariant === "questions"
+                          ? QUESTION_PLAN_FIXTURE
+                          : planVariant === "dense"
+                            ? DENSE_PLAN_FIXTURE
+                            : PLAN_FIXTURE,
                   previousPlan: SECOND_PLAN_FIXTURE,
                   planVersions: [
                       { plan: INITIAL_PLAN_FIXTURE, timestamp: "2026-07-13T14:00:00.000Z" },

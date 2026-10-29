@@ -109,6 +109,12 @@ function linkWithToken(path: string) {
                 <div class="workspace-main-shell">
                     <header class:list={["workspace-main-header", surfaceTitle && "workspace-main-surface-header"]} data-board-header={boardHeader || undefined}>
                         <div class="workspace-main-header-left" data-workspace-main-header-left>
+                            <button class="rw-icon-button workspace-sidebar-restore" type="button" data-workspace-sidebar-restore aria-label="Open Workspace sidebar" title="Open Workspace sidebar">
+                                <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
+                                    <path d="M5 4v16M19 4v16" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M9 6l6 6-6 6" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </button>
                             {Astro.slots.has("header-tabs") ? <slot name="header-tabs" /> : surfaceTitle ? (
                                 <strong class="workspace-main-session-name" data-workspace-surface-title>{surfaceTitle}</strong>
                             ) : (

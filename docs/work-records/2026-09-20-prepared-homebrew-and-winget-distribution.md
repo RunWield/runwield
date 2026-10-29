@@ -11,21 +11,16 @@ provenance:
         - "363954ee-cdaa-4014-b749-b1fcc9bd90d7"
 ---
 
-# Prepared Homebrew and WinGet distribution
+# Homebrew and WinGet distribution preparation
 
 ## Summary
 
-Closed the Epic done enough after both child plans reached validated. RunWield now has release tooling and package-owned
-update behavior for a Homebrew tap, including RunWield and Mnemoteca formulas, plus a complete Windows x64 package path
-with bundled helpers, native runtime support, WinGet manifest generation, and publication guidance. This establishes
-tested distribution readiness, not public catalog availability.
+The Epic was closed as done enough. RunWield provides Homebrew release tooling and package-owned update behavior, including RunWield and Mnemoteca formulas. Windows x64 packaging includes bundled helpers, native runtime support, WinGet manifest generation, and publication guidance. Package preparation does not establish public catalog availability.
 
-## Deferred Work
+## Out of Scope
 
-The owner must publish the matching Stable release, create or update `gandazgul/homebrew-tap`, repeat checks against the
-published assets, and submit and confirm the WinGet listing. Linux Homebrew and Windows arm64 remain outside this Epic.
+This work does not include Linux Homebrew or Windows arm64 packaging.
 
 ## Future Planning Notes
 
-Treat package preparation and public availability as separate states. Generate formulas and WinGet manifests only from
-immutable Stable release bytes, then rerun package checks before publishing or submitting.
+Treat package preparation and public availability as separate facts. Generate formulas and WinGet manifests from immutable Stable release bytes and verify those bytes before publishing or submitting.

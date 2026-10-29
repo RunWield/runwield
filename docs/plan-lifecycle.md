@@ -55,6 +55,10 @@ PROJECT Plans are non-executable containers. `type: epic` (or absent) uses Archi
 `type: sequence` uses a brief Planner-authored overview and complete child Plans reviewed together. Both store children
 under `docs/plans/<container-name>/`, linked with `parentPlan`, ordered with `order`, and connected by sibling
 `dependencies` (stable Plan IDs or legacy names).
+New child filenames use descriptive slugs without ordinal prefixes. Change Front Matter `order` to reorder children;
+keep paths, Plan IDs, and dependency references stable. Existing numbered filenames remain valid. Child menus and
+child-filtered completions use numeric order; top-level menus keep status/type priority. Missing or duplicate child
+orders allow manual browsing but block automatic next-child execution.
 
 Planner submits a Sequence through `plan_written({ planName, plans: [{ planName }, ...] })`. The optional `plans` list
 must match the complete child set in order; omitting it reloads that set for a later review. One tab per document
@@ -70,11 +74,30 @@ after set. The live first-child handoff is published only after the acceptance t
 before publication, or publication fails, the group stays saved and can be reopened for execution. Child continuation
 follows the existing PROJECT order, dependency, hold and recovery rules.
 
+## Review conversation and reopening
+
+Opening an approved or ready Plan for review does not cancel its approval. A conversation turn records no Plan Event
+and writes no Plan bytes unless the owner saves a direct edit. A meaningful saved edit or Agent revision presented
+through `plan_written` moves `approved`, `ready_for_work`, or `ready_for_decomposition` to `draft` through
+`review_reopened`. Formatting-only changes preserve the status.
+
+Planner or Architect replies in chat for explanation, clarification, or another question. It revises and calls
+`plan_written` when the answer changes scope, behavior, a decision, or verification; when in doubt, it revises.
+RunWield restores the same review after a reply-only turn, including after an Agent error or canceled turn. The chat
+shows errors. A long turn has no review timeout. Explicit review cancellation, including Escape while the Agent works,
+does not reopen the review. The same rules apply to direct saved-Plan, `/plan-review`, Epic, and Sequence reviews.
+
+Approval still runs the existing readiness, question settlement, and execution or Slicer handoff. The browser warns
+about completed conversation turns after the latest revision and keeps the existing open-questions confirmation. See
+[Workspace Browser Plan review](prd/runwield-workspace-prd.md#browser-plan-review-and-workflow) for the queue and warning.
+A standalone surface without chat retains Send Annotations, which records `review_feedback` to `draft`.
+
 ## Statuses
 
-`draft`: A Plan exists but has not completed a Review Loop.
+`draft`: A Plan exists and needs approval, including a meaningfully revised approved or ready Plan.
 
-`feedback`: The Review Loop returned user feedback, or the planning agent was interrupted while handling feedback.
+Legacy `feedback` and `in_review` read as `draft` everywhere. Reads leave the file unchanged; a later write saves the
+normalized status. Neither legacy value is a board column or manual status target.
 
 `approved`: The Review Loop ended with user approval, but pre-execution preparation may still be unfinished.
 
@@ -91,9 +114,11 @@ not executable implementation work.
 when one is recorded.
 
 `implemented`: Implementation work finished in the execution worktree and is ready for the next Mechanical Validation
-phase. CI failure or Semantic Review or Code Review feedback returns here so the next validation call restarts at CI
-with durable retry counters. For an Epic with its own branch, `implemented` means every included child is delivered to
-the Epic branch and the integration gate has not passed on the current branch head.
+phase. CI failure, Semantic Review findings, or Code Review repair returns here so the next validation call restarts
+at CI with durable retry counters. A Git-backed Code Review conversation turn returns here only when the reviewed patch
+changes; a reply leaves the Plan `reviewed`. Non-Git in-place turns and non-conversation feedback always start repair.
+For an Epic with its own branch, `implemented` means every included child is delivered to the Epic branch and the
+integration gate has not passed on the current branch head.
 
 Mechanical validation progress is controller state, not a new public Plan status. The Plan stays `implemented` when CI
 passes; `validationPhase: semantic` ensures a fresh process resumes review without rerunning passed CI.
@@ -157,37 +182,37 @@ changing the Plan state machine.
 
 ## Events
 
-| Event                                | From                                                                                                        | To                                                       | Notes                                                                                                                                                                                                                          |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `review_feedback`                    | `draft`, `feedback`, `approved`                                                                             | `feedback`                                               | The user returned Feedback from Plannotator.                                                                                                                                                                                   |
-| `review_approved`                    | `draft`, `feedback`, `approved`                                                                             | `approved`                                               | User approval is durable before the Readiness Gate runs.                                                                                                                                                                       |
-| `epic_readiness_passed`              | `approved`                                                                                                  | `ready_for_decomposition`                                | PROJECT Epics pass approval into decomposition; they are not executable yet.                                                                                                                                                   |
-| `decomposition_finalized`            | `approved`, `ready_for_decomposition`                                                                       | `ready_for_work`                                         | Slicer finalized at least one child FEATURE Plan, so the Epic can offer child selection.                                                                                                                                       |
-| `readiness_passed`                   | `approved`                                                                                                  | `ready_for_work`                                         | FEATURE Plans pass without an LLM call.                                                                                                                                                                                        |
-| `execution_started`                  | `ready_for_work`                                                                                            | `in_progress`                                            | Captures `executionBaselineTree` and records active worktree metadata before executable Plan work begins.                                                                                                                      |
-| `execution_failed`                   | `in_progress`                                                                                               | `failed`                                                 | Sets `failureReason`, `failedAt`, and `worktreeStatus: "execution_failed"` when a reason is available.                                                                                                                         |
-| `implementation_finished`            | `in_progress`                                                                                               | `implemented`                                            | Sets `implementedAt` and `worktreeStatus: "completed"`; Workflow Validation still needs to run.                                                                                                                                |
-| `mechanical_validation_failed`       | `implemented`                                                                                               | `implemented`                                            | Increments `validationCiAttempts`, resets semantic rounds, records CI failure context, and returns for a later validation call.                                                                                                |
-| `mechanical_validation_passed`       | `implemented`                                                                                               | `implemented`                                            | Saves `validationPhase: semantic`; a restart continues at review.                                                                                                                                                              |
-| `semantic_review_feedback`           | `implemented` with passed CI (legacy `validated_ci`)                                                        | `implemented`                                            | Records feedback and resets the phase to mechanical for the repaired implementation.                                                                                                                                           |
-| `semantic_review_passed`             | `implemented` with passed CI (legacy `validated_ci`)                                                        | `reviewed`                                               | Review passed; human review and delivery remain.                                                                                                                                                                               |
-| `validation_failed`                  | `implemented`, `validated_ci`, `reviewed`                                                                   | `implemented`                                            | Records a failed validation attempt while preserving recoverable execution ownership; resets phase counters on implemented re-entry.                                                                                           |
-| `validation_passed`                  | `reviewed`                                                                                                  | `reviewed` during preparation; `verified` after delivery | Git publication finalizes the committed target metadata only after merge. Non-Git verification completes in place.                                                                                                             |
-| `recovery_continue`                  | `in_progress`, `failed`                                                                                     | `ready_for_work`                                         | Records the retry in the authoritative execution Plan before the normal execution-start transition returns it to `in_progress`; the primary-checkout copy is not read or rewritten.                                            |
-| `recovery_reset`                     | `in_progress`, `failed`, `implemented`                                                                      | `ready_for_work`                                         | Records that recovery abandoned the current attempt before retrying.                                                                                                                                                           |
-| `review_reopened`                    | `ready_for_decomposition`, `ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified` | `feedback`                                               | The user chose to revise the Plan instead of continuing execution.                                                                                                                                                             |
-| `epic_done_enough`                   | `ready_for_work`, `implemented`, `reviewed`, `verified`                                                     | `closed_without_verification`                            | Deliberate closure retains the explicit done-enough completion mode and child visibility.                                                                                                                                      |
-| `epic_children_delivered`            | `ready_for_work`                                                                                            | `implemented`                                            | Every included child of an Epic with its own branch is delivered: its delivered commit is contained in the Epic branch, or the user closed or accepted it. Sets `implementedAt`.                                               |
-| `epic_integration_passed`            | `implemented`                                                                                               | `reviewed`                                               | Records the checked Epic commit and final target; does not merge.                                                                                                                                                              |
-| `epic_integration_failed`            | `implemented`                                                                                               | `implemented`                                            | The integration gate found problems. Records `failureReason` and the report path in `epicIntegrationReport`; RunWield adds a draft repair child for Planner.                                                                   |
-| `epic_integration_stale`             | `reviewed`                                                                                                  | `implemented`                                            | Implementation changes invalidate the checked Epic commit.                                                                                                                                                                     |
-| `epic_publication_confirmed`         | `reviewed`                                                                                                  | `verified`                                               | Git proves the checked Epic commit is on its final target.                                                                                                                                                                     |
-| `manual_status_change`               | Board-safe non-terminal statuses                                                                            | Dynamic target                                           | User-driven board movement among `draft`, `feedback`, `approved`, `ready_for_work`, `in_progress`, `implemented`; `ready_for_decomposition` is included only for Epics. Records an event instead of editing `status` directly. |
-| `manual_closed_without_verification` | Board-safe non-terminal statuses                                                                            | `closed_without_verification`                            | Terminal manual closure without Workflow Validation; does not set `verifiedAt` or review metadata.                                                                                                                             |
-| `manual_user_verified`               | Board-safe non-terminal statuses                                                                            | `user_verified`                                          | Terminal user attestation with required `userVerificationNote`; sets `userVerifiedAt`, never sets `verifiedAt`, and preserves failure, execution, review, Delivery Evidence, and worktree facts as history.                    |
-| `plan_held`                          | Any non-terminal, non-closed status                                                                         | `on_hold`                                                | Records `heldFromStatus`, `heldAt`, optional `holdReason`, and optional `holdStalenessBaseline`; preserves recovery/worktree metadata.                                                                                         |
-| `hold_resumed`                       | `on_hold`                                                                                                   | `heldFromStatus`                                         | Caller must run the Resume Check first and provide/read the held-from status; clears hold metadata.                                                                                                                            |
-| `hold_reset_to_draft`                | `on_hold`                                                                                                   | `draft`                                                  | Clears hold and execution/recovery/validation fields while preserving identity/context fields and Plan body.                                                                                                                   |
+| Event                                | From                                                                                                                                     | To                                                       | Notes                                                                                                                                                                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `review_feedback`                    | `draft`, `approved`                                                                                                                      | `draft`                                                  | Non-conversation feedback from a no-chat review surface; chat does not record this event.                                                                                                                          |
+| `review_approved`                    | `draft`, `approved`                                                                                                                      | `approved`                                               | User approval is durable before the Readiness Gate runs.                                                                                                                                                           |
+| `epic_readiness_passed`              | `approved`                                                                                                                               | `ready_for_decomposition`                                | PROJECT Epics pass approval into decomposition; they are not executable yet.                                                                                                                                       |
+| `decomposition_finalized`            | `approved`, `ready_for_decomposition`                                                                                                    | `ready_for_work`                                         | Slicer finalized at least one child FEATURE Plan, so the Epic can offer child selection.                                                                                                                           |
+| `readiness_passed`                   | `approved`                                                                                                                               | `ready_for_work`                                         | FEATURE Plans pass without an LLM call.                                                                                                                                                                            |
+| `execution_started`                  | `ready_for_work`                                                                                                                         | `in_progress`                                            | Captures `executionBaselineTree` and records active worktree metadata before executable Plan work begins.                                                                                                          |
+| `execution_failed`                   | `in_progress`                                                                                                                            | `failed`                                                 | Sets `failureReason`, `failedAt`, and `worktreeStatus: "execution_failed"` when a reason is available.                                                                                                             |
+| `implementation_finished`            | `in_progress`                                                                                                                            | `implemented`                                            | Sets `implementedAt` and `worktreeStatus: "completed"`; Workflow Validation still needs to run.                                                                                                                    |
+| `mechanical_validation_failed`       | `implemented`                                                                                                                            | `implemented`                                            | Increments `validationCiAttempts`, resets semantic rounds, records CI failure context, and returns for a later validation call.                                                                                    |
+| `mechanical_validation_passed`       | `implemented`                                                                                                                            | `implemented`                                            | Saves `validationPhase: semantic`; a restart continues at review.                                                                                                                                                  |
+| `semantic_review_feedback`           | `implemented` with passed CI (legacy `validated_ci`)                                                                                     | `implemented`                                            | Records feedback and resets the phase to mechanical for the repaired implementation.                                                                                                                               |
+| `semantic_review_passed`             | `implemented` with passed CI (legacy `validated_ci`)                                                                                     | `reviewed`                                               | Review passed; human review and delivery remain.                                                                                                                                                                   |
+| `validation_failed`                  | `implemented`, `validated_ci`, `reviewed`                                                                                                | `implemented`                                            | Records a failed validation attempt while preserving recoverable execution ownership; resets phase counters on implemented re-entry.                                                                               |
+| `validation_passed`                  | `reviewed`                                                                                                                               | `reviewed` during preparation; `verified` after delivery | Git publication finalizes the committed target metadata only after merge. Non-Git verification completes in place.                                                                                                 |
+| `recovery_continue`                  | `in_progress`, `failed`                                                                                                                  | `ready_for_work`                                         | Records the retry in the authoritative execution Plan before the normal execution-start transition returns it to `in_progress`; the primary-checkout copy is not read or rewritten.                                |
+| `recovery_reset`                     | `in_progress`, `failed`, `implemented`                                                                                                   | `ready_for_work`                                         | Records that recovery abandoned the current attempt before retrying.                                                                                                                                               |
+| `review_reopened`                    | `approved`, `ready_for_decomposition`, `ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified`, `user_verified` | `draft`                                                  | A meaningful approved/ready review revision, or an explicit return from execution or a terminal outcome to planning.                                                                                               |
+| `epic_done_enough`                   | `ready_for_work`, `implemented`, `reviewed`, `verified`                                                                                  | `closed_without_verification`                            | Deliberate closure retains the explicit done-enough completion mode and child visibility.                                                                                                                          |
+| `epic_children_delivered`            | `ready_for_work`                                                                                                                         | `implemented`                                            | Every included child of an Epic with its own branch is delivered: its delivered commit is contained in the Epic branch, or the user closed or accepted it. Sets `implementedAt`.                                   |
+| `epic_integration_passed`            | `implemented`                                                                                                                            | `reviewed`                                               | Records the checked Epic commit and final target; does not merge.                                                                                                                                                  |
+| `epic_integration_failed`            | `implemented`                                                                                                                            | `implemented`                                            | The integration gate found problems. Records `failureReason` and the report path in `epicIntegrationReport`; RunWield adds a draft repair child for Planner.                                                       |
+| `epic_integration_stale`             | `reviewed`                                                                                                                               | `implemented`                                            | Implementation changes invalidate the checked Epic commit.                                                                                                                                                         |
+| `epic_publication_confirmed`         | `reviewed`                                                                                                                               | `verified`                                               | Git proves the checked Epic commit is on its final target.                                                                                                                                                         |
+| `manual_status_change`               | Board-safe non-terminal statuses                                                                                                         | Dynamic target                                           | User-driven board movement among `draft`, `approved`, `ready_for_work`, `in_progress`, `implemented`; `ready_for_decomposition` is included only for Epics. Records an event instead of editing `status` directly. |
+| `manual_closed_without_verification` | Board-safe non-terminal statuses                                                                                                         | `closed_without_verification`                            | Terminal manual closure without Workflow Validation; does not set `verifiedAt` or review metadata.                                                                                                                 |
+| `manual_user_verified`               | Board-safe non-terminal statuses                                                                                                         | `user_verified`                                          | Terminal user attestation with required `userVerificationNote`; sets `userVerifiedAt`, never sets `verifiedAt`, and preserves failure, execution, review, Delivery Evidence, and worktree facts as history.        |
+| `plan_held`                          | Any non-terminal, non-closed status                                                                                                      | `on_hold`                                                | Records `heldFromStatus`, `heldAt`, optional `holdReason`, and optional `holdStalenessBaseline`; preserves recovery/worktree metadata.                                                                             |
+| `hold_resumed`                       | `on_hold`                                                                                                                                | `heldFromStatus`                                         | Caller must run the Resume Check first and provide/read the held-from status; clears hold metadata.                                                                                                                |
+| `hold_reset_to_draft`                | `on_hold`                                                                                                                                | `draft`                                                  | Clears hold and execution/recovery/validation fields while preserving identity/context fields and Plan body.                                                                                                       |
 
 ## Transaction Inventory
 
@@ -196,7 +221,7 @@ caller inputs, locked resources, owned effects, success proof, rollback limit, a
 
 | Event/writer                                                | Required inputs                                                 | Locked resources                                                     | Owned effects                                                                      | Success proof                                                              | Rollback limit                                                            | Recovery action                                        |
 | ----------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `review_feedback`                                           | Review feedback payload                                         | Plan                                                                 | Feedback metadata                                                                  | Status `feedback`                                                          | None                                                                      | Review retry                                           |
+| `review_feedback`                                           | Review feedback payload                                         | Plan                                                                 | Feedback metadata                                                                  | Status `draft`                                                             | None                                                                      | Review retry                                           |
 | `review_approved`                                           | Approved Plan markdown                                          | Plan                                                                 | Approval metadata                                                                  | Status `approved`                                                          | None                                                                      | Review retry                                           |
 | `readiness_passed`                                          | FEATURE approved Plan                                           | Plan                                                                 | Ready-for-work metadata                                                            | Status `ready_for_work`                                                    | None                                                                      | Review reopen                                          |
 | `epic_readiness_passed`                                     | PROJECT approved Plan                                           | Plan                                                                 | Ready-for-decomposition metadata                                                   | Status `ready_for_decomposition`                                           | None                                                                      | Review reopen                                          |
@@ -211,7 +236,7 @@ caller inputs, locked resources, owned effects, success proof, rollback limit, a
 | `direct_delivery_publication`                               | Sealed artifact identities, target and attempt                  | Publication owner, exact attempt registry revision, target CAS/lease | Verified target metadata, approved prepared records, publication receipt           | Final artifact state plus target ancestry                                  | Never rewind published target; preserve recoverable candidate             | Reconcile Git and retry publication/cleanup            |
 | `recovery_continue`                                         | Resume decision                                                 | Plan, attempt                                                        | Ready-for-work retry metadata                                                      | Current attempt retained                                                   | None                                                                      | Recovery retry                                         |
 | `recovery_reset` / `recovery_recreate` / `recovery_abandon` | Recovery action                                                 | Plan, attempt                                                        | Attempt reset/recreate/abandon metadata                                            | Exact attempt identity                                                     | Owned registry/worktree cleanup only                                      | Recovery retry/manual recovery                         |
-| `review_reopened`                                           | Reopen decision                                                 | Plan                                                                 | Feedback metadata                                                                  | Status `feedback`                                                          | None                                                                      | Review loop                                            |
+| `review_reopened`                                           | Meaningful revision or explicit recovery reopen decision        | Plan                                                                 | Draft reset metadata                                                               | Status `draft`                                                             | None                                                                      | Review loop                                            |
 | `epic_done_enough`                                          | Explicit user closure decision and summary                      | Epic Plan                                                            | Closed-without-verification state and done-enough completion mode                  | Saved closure decision and metadata                                        | No rollback of child implementation or delivery                           | Reopen Epic or load remaining children                 |
 | Epic integration and publication events                     | Settled child evidence, checked Epic commit, final target proof | Epic Plan and controller revision; Git target read                   | Implemented/reviewed state, stale-pass reset, or verified completion               | Exact reviewed implementation and final-target ancestry                    | Do not merge or rewind Epic/target on a status update                     | Rerun stale gate or reconcile external delivery        |
 | `manual_status_change`                                      | Workspace lifecycle action                                      | Plan                                                                 | Board-safe status metadata                                                         | Requested status/timestamp                                                 | None                                                                      | Workspace retry                                        |
@@ -247,9 +272,18 @@ own Planner session can reshape it again. A sibling that has started stays as it
 
 Each child's Semantic Review judges only that child's correctness, with the Epic's objective and siblings as context.
 Its Integration Notes are written to a RunWield-managed `### Integration Notes` subsection of the Epic's Verification
-Plan; the Integration Reviewer reads them as places to look. The Integration Reviewer is its own subagent: it reads
-selectively from the Epic outcomes and notes instead of reading every line again, and can hand large areas to read-only
-delegates.
+Plan; the Integration Reviewer reads them as places to look. The notes are written in the child's execution checkout
+and reach the Epic branch with child delivery, without changing the primary copy.
+
+Confirmed child Plan Deviations also travel in that checkout's Epic document, under `### Child Plan Deviations` in the
+Objective. Each child has one managed block projected from its authoritative `planDeviations`; the Epic's own deviation
+front matter stays unchanged. Recording, same-call retries, and publication checkpoints synchronize the projection.
+Integration review treats the replacements as user-approved: a gap caused only by a deviation is an advisory naming the
+affected Epic outcome and child, not a finding. Other defects and unmet replacement requirements remain findings. Epic
+Work Records still collect child front matter once, not the projected blocks. Sequence containers do not get these blocks.
+
+The Integration Reviewer is its own subagent: it reads selectively from the Epic outcomes and notes instead of reading
+every line again, and can hand large areas to read-only delegates.
 
 Reading or archiving an Epic child never prepares a planning worktree for it: archive, restore, and Work Record
 generation resolve the local document read-only. Planning worktrees start only when Planner or execution starts the
@@ -274,8 +308,13 @@ runs the project's checks, then an integration review of the whole Epic diff fro
 then Code Review per the `codereview` setting. A pass records `epic_integration_passed`. Findings write
 `docs/plans/<epic>/integration-report.md`, record `epic_integration_failed`, and add a draft repair child under the Epic
 that Planner starts from. The repair child is reviewed and run like any other child, and its delivery runs the gate
-again. The user can mark the Epic done enough at any point. RunWield never merges the Epic branch into the primary
-branch; the user merges it or opens a pull request. A later load verifies the checked Epic commit against its recorded
+again. When an implemented Epic has only unstarted gate repair drafts left, its load-plan menu offers **Retry the
+integration gate** and names the drafts and report. A passing retry records the Epic as reviewed and closes each repair
+draft through `manual_closed_without_verification`, with a reason that names the checked commit. It preserves the draft
+body and identity. New findings update the newest draft's checked commit and Findings section, preserving other content
+and metadata. A pause leaves drafts unchanged. Started repairs and other undelivered children block retry. The automatic
+gate still waits for repair delivery. The user can mark the Epic done enough at any point. RunWield never merges the
+Epic branch into the primary branch; the user merges it or opens a pull request. A later load verifies the checked Epic commit against its recorded
 final target before recording `epic_publication_confirmed`. Plan-only completion metadata does not invalidate the
 reviewed implementation.
 
@@ -286,7 +325,7 @@ branch only when the user names one.
 ## Manual Board Movement and Closure
 
 Board actions are lifecycle events, not direct Front Matter edits. Generic board movement uses `manual_status_change`
-and may move both directions only within the safe board set: `draft`, `feedback`, `approved`, `ready_for_work`,
+and may move both directions only within the safe board set: `draft`, `approved`, `ready_for_work`,
 `in_progress`, and `implemented`. For PROJECT Epics, `ready_for_decomposition` is also board-safe.
 
 Generic board movement cannot enter or leave `failed`, cannot produce `verified` or `user_verified`, cannot enter
@@ -409,17 +448,18 @@ For worktree-backed plans:
    patch still compares the pre-repair tree with current files. A missing target, missing HEAD, or absent ancestry fails
    the comparison without falling back to `main`, an alternate diff, the recovery baseline, or an empty patch.
 
-   Review narrows as rounds progress: rounds one and two review the implementation against the whole Plan, and rounds
-   three and above only verify the open findings and check the latest repair for regressions. Two full sweeps give a
-   requirement overlooked in round one a second independent look; narrowing after that is what lets the loop terminate
-   instead of rediscovering the implementation indefinitely.
+    Review narrows as rounds progress: rounds one and two review the implementation against the whole Plan, and rounds
+    three and above only verify the open findings and check the latest repair for regressions. Two full sweeps give a
+    requirement overlooked in round one a second independent look; narrowing after that is what lets the loop terminate
+    instead of rediscovering the implementation indefinitely.
 
-   The Reviewer never receives an inlined diff — it reads changes through the bounded `review_diff` tool in every round,
-   so there is one delivery path regardless of size. A decision reached without inspecting the diff is not accepted.
+    The Reviewer never receives an inlined diff — it reads changes through the bounded `review_diff` tool in every round,
+    so there is one delivery path regardless of size. A decision reached without inspecting the diff is not accepted.
 
-   Findings carry stable identities in a Review Issue Ledger that lives for the attempt. Later rounds resolve items,
-   keep them open, and append newly discovered ones; identities are never reused or renumbered. Code smells are reported
-   as non-blocking advisories rather than as findings, so an accumulating maintainability backlog cannot stall the loop.
+    Findings carry stable identities in a Review Issue Ledger that lives for the attempt. Later rounds resolve items,
+    keep them open, and append newly discovered ones; identities are never reused or renumbered. Code smells are reported
+    as non-blocking advisories rather than as findings, so an accumulating maintainability backlog cannot stall the loop.
+
 5. A rejection dispatches the Reviewer-Feedback Engineer, which repairs the open findings in a fresh isolated session
    seeded with the Plan, the findings, and diff access. It does not inherit the execution transcript, and it reports a
    per-item disposition that the next round independently verifies — a repair claim is evidence, never resolution.
@@ -427,18 +467,31 @@ For worktree-backed plans:
    open Code Review now. There is no dead end: the work is never left with nowhere to go.
 7. If `codereview` is `ask` or `always`, RunWield opens or offers Plannotator Code Review after Semantic Review passes
    and before merge-back. The optional `guidedReview` setting can generate a Guided Review Explainer inside that
-   already-open Code Review, but it does not create a Plan Status, Plan Event, or Front Matter field. User feedback goes
-   to the Reviewer-Feedback Engineer in the same fresh-session way, along with the annotations and images, and Code
-   Review then reopens. Code Review always sees the same full proposed branch patch as AI review, never a repair-scoped
-   one. Reload resolves the recorded target and execution HEAD again and includes current committed and uncommitted
+   already-open Code Review, but it does not create a Plan Status, Plan Event, or Front Matter field. A conversation
+   turn goes to the Reviewer-Feedback Engineer in a fresh isolated session with the conversation history, annotations,
+   images, and diff access. Engineer can reply, edit code, or both. Code Review always sees the same full proposed branch
+   patch as AI review, never a repair-scoped one. Reload resolves the recorded target and execution HEAD again and
+   includes current committed and uncommitted
    files. User approval reached through the round-limit escape hatch is authoritative and permits merge-back even though
    Semantic Review never approved; the record distinguishes that case.
 
-   Once the change is in a human's hands the loop belongs to them: CI reruns and code review reopens after every
-   feedback round, for as many rounds as they give, and automatic Semantic Review rounds do not resume. **The only exits
-   are approval or quitting the review.** Feedback never exhausts a budget, and the three-round semantic cap does not
-   apply—it counts automatic rounds, not user rounds. Interrupting and resuming mid-cycle returns to Code Review rather
-   than restarting Semantic Review.
+    For Git execution, RunWield compares the reviewed patch before and after the turn, after its own metadata writes.
+    The patch decides, not the Agent's report. An identical patch reopens Code Review immediately with the reply and the
+    same diff. No CI starts, and Delivery Evidence, review decision and timestamp, Plan Status, and CI results stay
+    unchanged. A plain-text answer needs no repair completion signal.
+
+    A changed patch records “Changes requested”, invalidates the prior approval and timestamp, and returns the Plan to
+    `implemented`. Completed repair records its evidence, reruns CI, and reopens Code Review with the fresh diff and the
+    same conversation. An edit blocked before completion stays in repair with its blocker. Non-Git in-place projects
+    have no patch identity, so every conversation turn retains the repair-and-check flow. Non-conversation feedback
+    retains that flow too. Scope changes agreed in chat become authority only through a confirmed
+    [Plan Deviation](prd/runwield-core-prd.md#plan-deviations).
+
+    Once the change is in a human's hands the loop belongs to them: automatic Semantic Review rounds do not resume after
+    owner-requested changes. **The only exits are approval or quitting the review.** Conversation and repair rounds have
+    no automatic budget; the three-round semantic cap counts automatic rounds, not user rounds. Interrupting and
+    resuming mid-cycle returns to Code Review rather than restarting Semantic Review.
+
 8. If validation fails, RunWield keeps Plan Status `implemented`, records the failure and mechanical restart phase, and
    leaves the completed execution attempt and worktree available for recovery.
 9. After review passes, RunWield seals the implementation candidate and records its commit in candidate Delivery
@@ -465,9 +518,11 @@ For worktree-backed plans:
 Publication recovery is defined by [ADR-016](adr/016-proof-bearing-publication-state-machine.md). Legacy lifecycle
 labels are interpreted using saved validation and delivery evidence; status strings alone do not prove publication.
 
-Code Review has no separate public status. An offer, cancellation, or pending decision keeps the Plan `reviewed`; user
-feedback returns it to `implemented` for fresh CI and then back to human review. Final review metadata records whether
-Code Review was not required, skipped, or approved. Recovery preserves canonical human-review mode, decision, and
+Code Review has no separate public status. An offer, cancellation, pending decision, or reply-only Git conversation
+keeps the Plan `reviewed`. A conversation turn that changes the patch returns it to `implemented` for fresh CI and then
+back to human review with the same conversation and no AI review rerun. Non-Git in-place turns and non-conversation
+feedback always use that repair flow. Final review metadata records whether Code Review was not required, skipped, or
+approved. Recovery preserves canonical human-review mode, decision, and
 timestamp when no newer result exists. Restarting execution, resetting recovery, or reopening the Plan clears stale
 review and completion evidence.
 
@@ -604,7 +659,9 @@ Recovery actions are deliberately scoped to the execution worktree:
   abandoned registry record. The result says which artifacts remain. Incorrect identity or partial cleanup preserves
   recovery evidence; each completed Git and registry effect is recorded for retry. Publication cleanup remains governed
   by ADR-016.
-- **Re-open for review**: Moves the plan back to `feedback` so it can be revised instead of continued.
+- **Re-open for review**: Explicit recovery returns the Plan to `draft` so it can be revised instead of continued.
+  This differs from opening an approved or ready Plan for ordinary review, which preserves its status until a
+  meaningful revision.
 
 Legacy plans that have an `executionBaselineTree` but no worktree metadata keep the older baseline-tree reset path. That
 path checks that the current checkout already matches the recorded snapshot and refuses to overwrite newer changes.
@@ -656,7 +713,7 @@ cleanup with confirmation. Work Record generation uses the accepted document and
 User Verified Plans satisfy child dependencies and Epic completion accounting, but reports must keep them separate from
 proof-bearing RunWield `verified` Plans. A mixed Epic can advance when every child is either RunWield Verified with
 mode-appropriate Delivery Evidence or User Verified. The manual action does not start automatic next-child execution.
-Re-opening from `user_verified` returns to `feedback` and clears stale user attestation fields.
+Re-opening from `user_verified` returns to `draft` and clears stale user attestation fields.
 
 Canonical domain term follow-up: `User Verified Plan` should be added to `docs/domain-language.md` by Ideator/Init in a
 separate context update; this feature intentionally leaves `docs/domain-language.md` and ADRs unchanged.

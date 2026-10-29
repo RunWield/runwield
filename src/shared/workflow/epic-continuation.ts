@@ -1,3 +1,4 @@
+import { epicChildOrderProblem } from "./epic-child-order.ts";
 import { projectPlanType } from "../project-plan.ts";
 /**
  * @module shared/workflow/epic-continuation
@@ -18,7 +19,7 @@ import { executePlan, runPlanningAgent } from "./workflow.js";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 import { buildTriageReport } from "./workflow-prompts.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { buildPlanSummary } from "../plan-presentation.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
@@ -72,7 +73,7 @@ function isActiveProjectEpic(attrs: PlanFrontMatter | undefined): boolean {
 
 /** The continuation action a child Plan's status calls for, if any. */
 function actionForStatus(status: string): EpicContinuationResolution["kind"] | null {
-    if (status === "draft" || status === "feedback") return "plan";
+    if (status === "draft") return "plan";
     if (status === "approved") return "readiness_execute";
     if (status === "ready_for_work") return "execute";
     return null;
@@ -173,6 +174,8 @@ export async function resolveEpicContinuation({
         .sort(compareChildPlansByOrder);
     const next = siblings.find((plan) => !TERMINAL_CHILD_STATUSES.has(plan.attrs.status));
     if (!next) return { kind: "none", reason: "no_remaining_children", completedPlanName, parentPlanName };
+    const orderProblem = epicChildOrderProblem(siblings);
+    if (orderProblem) return { kind: "blocked", reason: orderProblem, completedPlanName, parentPlanName };
 
     const childPlanName = next.name;
     const childStatus = next.attrs.status;

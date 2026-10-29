@@ -132,11 +132,9 @@ Each child descriptor must include:
   truly applies to that child; otherwise choose the more specific child kind. When updating an existing child draft,
   preserve its current Work Kind unless the user changes the slice's nature; omit `workKind` in the descriptor to
   preserve the existing child value.
-- `dependencies` — durable sibling child plan identifiers when sequencing matters; otherwise an empty array. Use the
-  exact generated child plan name (`epic-name/01-child-slug`) or exact sibling child segment (`01-child-slug`),
-  including the two-digit `order` prefix that RunWield writes into child filenames. Derive the segment from the child
-  descriptor's `order` plus slugified `title` (for example, order `2` and title `Add Search` becomes `02-add-search`).
-  Use these prefixed identifiers rather than unprefixed slugs (`add-search`) or human-readable titles (`Add Search`).
+- `dependencies` — durable sibling Plan IDs or exact child names when prerequisites matter; otherwise an empty array.
+  New children use descriptive slugs without ordinal prefixes (`epic-name/add-search` or `add-search`). Existing numbered
+  filenames remain valid: use their exact names or Plan IDs. Reordering changes `order`, not names or dependency references.
 - `affectedPaths` — high-signal paths expected to change, if known.
 - `tickets` — optional direct child Ticket References as provider-neutral objects with at least `url`. Include this only
   when the user identified those external URLs as Tickets for that specific child. When updating an existing child, omit

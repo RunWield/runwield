@@ -22,7 +22,7 @@ import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/i
 import { addEntry, withWorktreeRegistryLockAtPath } from "../../../shared/worktree-registry.js";
 import { getRunWieldRuntimeDir } from "../../../constants.js";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.js";
-import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.js";
+import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import {
     getWorkspaceSearchRefreshMarker,
     requestWorkspaceSearchRefresh,

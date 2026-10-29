@@ -20,6 +20,7 @@ const EXPECTED_PROMPT_FILES = [
     "delegated-read-agent-prompt.md",
     "init-agent-prompt.md",
     "integration-reviewer-prompt.md",
+    "integration-reviewer-verify-prompt.md",
     "manual-qa-prompt.md",
     "reviewer-feedback-engineer.md",
     "reviewer-prompt.md",
@@ -36,13 +37,13 @@ function sourcePromptPath(fileName: string) {
 
 test("subagent prompt files live only in the subagent definitions directory", async () => {
     const entries = [];
-    for await (const entry of (await opendir(join("src", "agent-definitions", "subagent-definitions")))) {
+    for await (const entry of await opendir(join("src", "agent-definitions", "subagent-definitions"))) {
         if (entry.isFile()) entries.push(entry.name);
     }
     entries.sort();
 
     const roleEntries = [];
-    for await (const entry of (await opendir(join("src", "agent-definitions", "subagent-definitions", "roles")))) {
+    for await (const entry of await opendir(join("src", "agent-definitions", "subagent-definitions", "roles"))) {
         if (entry.isFile()) roleEntries.push(entry.name);
     }
     roleEntries.sort();
@@ -50,11 +51,7 @@ test("subagent prompt files live only in the subagent definitions directory", as
     assertEquals(entries, EXPECTED_PROMPT_FILES);
     assertEquals(roleEntries, EXPECTED_ROLE_OVERLAY_FILES);
     const oldPromptDirectory = join("src", "agent-definitions", "workflow-" + "prompts");
-    await assertRejects(
-        () => fsStat(oldPromptDirectory),
-        Error,
-        "ENOENT",
-    );
+    await assertRejects(() => fsStat(oldPromptDirectory), Error, "ENOENT");
 });
 
 test("every registered subagent loads from the moved bundled prompt files", async () => {
@@ -82,45 +79,43 @@ test("every registered subagent loads from the moved bundled prompt files", asyn
 
 test("read delegates can inspect GitHub and GitLab without forge mutation commands", async () => {
     const definition = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
-    for (
-        const command of [
-            "gh pr list",
-            "gh pr view 123",
-            "gh pr diff 123",
-            "gh pr checks 123",
-            "gh pr status",
-            "gh issue list",
-            "gh issue view 123",
-            "gh issue status",
-            "gh repo view owner/repo",
-            "glab mr list",
-            "glab mr view 123",
-            "glab mr diff 123",
-            "glab issue list",
-            "glab issue view 123",
-            "glab repo view group/repo",
-        ]
-    ) checkBashCommand(command, definition.bashAllowedCommands);
-    for (
-        const command of [
-            "gh pr create",
-            "gh pr merge 123",
-            "gh pr checkout 123",
-            "gh pr comment 123 --body text",
-            "gh issue edit 123",
-            "gh issue delete 123",
-            "gh repo delete owner/repo",
-            "gh api repos/owner/repo",
-            "glab mr create",
-            "glab mr merge 123",
-            "glab mr checkout 123",
-            "glab mr note 123 --message text",
-            "glab issue update 123",
-            "glab issue close 123",
-            "glab repo delete group/repo",
-            "glab api projects",
-        ]
-    ) assertThrows(() => checkBashCommand(command, definition.bashAllowedCommands));
+    for (const command of [
+        "gh pr list",
+        "gh pr view 123",
+        "gh pr diff 123",
+        "gh pr checks 123",
+        "gh pr status",
+        "gh issue list",
+        "gh issue view 123",
+        "gh issue status",
+        "gh repo view owner/repo",
+        "glab mr list",
+        "glab mr view 123",
+        "glab mr diff 123",
+        "glab issue list",
+        "glab issue view 123",
+        "glab repo view group/repo",
+    ])
+        checkBashCommand(command, definition.bashAllowedCommands);
+    for (const command of [
+        "gh pr create",
+        "gh pr merge 123",
+        "gh pr checkout 123",
+        "gh pr comment 123 --body text",
+        "gh issue edit 123",
+        "gh issue delete 123",
+        "gh repo delete owner/repo",
+        "gh api repos/owner/repo",
+        "glab mr create",
+        "glab mr merge 123",
+        "glab mr checkout 123",
+        "glab mr note 123 --message text",
+        "glab issue update 123",
+        "glab issue close 123",
+        "glab repo delete group/repo",
+        "glab api projects",
+    ])
+        assertThrows(() => checkBashCommand(command, definition.bashAllowedCommands));
 });
 
 test("read-delegate forge inspection cannot remove a parent shell restriction", async () => {
@@ -247,14 +242,12 @@ test("full-agent subagents keep shared system-prompt composition and runtime nam
 test("Init prompt focuses on project setup without a test-seam audit", async () => {
     const init = await loadSubAgentDefinition(SUBAGENTS.INIT);
 
-    for (
-        const phrase of [
-            "Possible test-seam risks",
-            "Test-seam risk discovery",
-            "evaluate test seams",
-            "fixture-based refactor",
-        ]
-    ) {
+    for (const phrase of [
+        "Possible test-seam risks",
+        "Test-seam risk discovery",
+        "evaluate test seams",
+        "fixture-based refactor",
+    ]) {
         assertEquals(init.systemPrompt.includes(phrase), false, `${phrase} should belong to the opt-in prompt`);
     }
     assertStringIncludes(init.systemPrompt, "Confirm the project verification command");
@@ -315,4 +308,12 @@ test("an unregistered delegated role fails the load and names the valid roles", 
 
     assertStringIncludes(error.message, "Unknown delegated role: researcher");
     assertStringIncludes(error.message, "verification-adversary");
+});
+
+test("Slicer dependencies use descriptive names and retain exact legacy references", async () => {
+    const { systemPrompt } = await loadSubAgentDefinition(SUBAGENTS.SLICER);
+    const prompt = systemPrompt.replaceAll(/\s+/g, " ");
+    assertStringIncludes(prompt, "descriptive slugs without ordinal prefixes");
+    assertStringIncludes(prompt, "Reordering changes `order`, not names or dependency references");
+    assertEquals(prompt.includes("including the two-digit `order` prefix"), false);
 });

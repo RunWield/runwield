@@ -12,25 +12,12 @@ provenance:
         - "4695664f-ee36-4be9-860b-f8f58b6e66ab"
 ---
 
-# Simplified validation and lifecycle messages
+# Shared validation and lifecycle wording
 
 ## Summary
 
-RunWield now uses clearer owner-facing wording for validation progress, blocked recovery, Workspace status, TUI handoff,
-Plans Doctor guidance, and related documentation. Shared presentation helpers align TUI and Workspace labels for
-tests/CI, AI code review, human review, repair, merge, paused, failed, and complete states while keeping internal terms
-available where they are still technical details.
-
-## Deviations from Plan
-
-Full `deno task ci` was attempted twice and timed out during the long test phase after earlier CI checks passed. Manual
-headed-browser Workspace inspection was skipped because no browser-control tool was available.
-
-## Deferred Work
-
-Manual headed-browser Workspace inspection remains useful if browser-control tooling is available later.
+RunWield uses shared owner-facing wording for validation progress, blocked recovery, Workspace status, TUI handoff, and Plans Doctor guidance. Presentation helpers align labels for tests and CI, AI review, Code Review, repair, merge, and lifecycle outcomes. Internal technical identifiers remain distinct from display language.
 
 ## Future Planning Notes
 
-For copy-only lifecycle changes, keep shared label helpers small and avoid creating a new lifecycle presenter. Long
-full-test phases may need more than a 1200s timeout or a focused verification strategy.
+Keep copy-only lifecycle changes in small shared label helpers. Display wording must not become a separate lifecycle authority.

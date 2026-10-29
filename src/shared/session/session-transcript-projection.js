@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { open as fsOpen } from "node:fs/promises";
-import { mkdir as fsMkdir, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { stat as fsStat } from "node:fs/promises";
 /*
  * @module shared/session/session-transcript-projection
  * Non-mutating committed-prefix Session Transcript reader and semantic projector.
@@ -374,7 +374,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                         messageId,
                         toolCallId,
                         ...(replayTools.get(toolCallId) || describeRuntimeTool("tool", undefined)),
-                        ...normalizeRuntimeToolResult("[tool result replayed]"),
+                        ...normalizeRuntimeToolResult(typed.content),
                         isError: Boolean(typed.is_error || typed.isError),
                         durationMs: finishReplayTool(toolCallId, common.timestamp),
                     });
@@ -506,6 +506,27 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                 messageId: entryMessageId(value, `${sessionId}:${backend}-backend-status`, segmentId),
                 message,
                 level: backendStatusLevel(value.data || {}),
+            });
+            continue;
+        }
+        if (value.type === "custom" && value.customType === "runwield.loop_guard_stop") {
+            const reason = typeof value.data?.reason === "string" ? value.data.reason : "";
+            const message =
+                reason === "model_turn_limit"
+                    ? "Stopped this request after its model request limit. Your Session is saved; send a new instruction to continue."
+                    : reason === "repeated_tool_result"
+                      ? "Stopped this request after the same tool call and result repeated. Your Session is saved; send a new instruction to continue."
+                      : reason === "repeating_tool_cycle"
+                        ? "Stopped this request after a tool call and result cycle repeated. Your Session is saved; send a new instruction to continue."
+                        : "Stopped this request to prevent an unbounded tool loop.";
+            events.push({
+                ...common,
+                type: RuntimeEventTypes.SYSTEM_STATUS,
+                eventId: makeEventId(value, RuntimeEventTypes.SYSTEM_STATUS, 0, segmentId),
+                messageId: entryMessageId(value, `${sessionId}:loop-guard`, segmentId),
+                message,
+                level: "warning",
+                header: "RunWield",
             });
             continue;
         }
@@ -1111,61 +1132,4 @@ export function getProjectedLastAssistantText(entries) {
         if (text) return text;
     }
     return null;
-}
-
-/** @param {unknown[]} entries @param {{ cwd: string, sessionId: string }} options @param {string} outputPath */
-export async function exportProjectedTranscript(entries, options, outputPath) {
-    const filePath = resolve(outputPath);
-    const parent = dirname(filePath);
-    await fsMkdir(parent, { recursive: true });
-    if (filePath.toLowerCase().endsWith(".jsonl")) {
-        const lines = entries.map((entry) => JSON.stringify(entry));
-        await fsWriteFile(filePath, `${lines.join("\n")}\n`);
-        return filePath;
-    }
-    const escapeHtml = (/** @type {string} */ value) =>
-        value
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .replaceAll('"', "&quot;")
-            .replaceAll("'", "&#39;");
-    let skipNextNamedInvocation = "";
-    const rows = entries
-        .flatMap((entry) => {
-            const value = /** @type {any} */ (entry || {});
-            const namedInvocationText = namedInvocationDisplayText(value);
-            const displayText =
-                namedInvocationText ||
-                projectedDisplayText(value.message?.content ?? value.content ?? JSON.stringify(value));
-            if (
-                skipNextNamedInvocation &&
-                value.type === "message" &&
-                value.message?.role === "user" &&
-                displayText === skipNextNamedInvocation
-            ) {
-                skipNextNamedInvocation = "";
-                return [];
-            }
-            skipNextNamedInvocation = namedInvocationText || "";
-            const text = escapeHtml(displayText);
-            return [
-                `<section class="entry"><header>${escapeHtml(value.type || "entry")}</header><pre>${text}</pre></section>`,
-            ];
-        })
-        .join("\n");
-    await fsWriteFile(
-        filePath,
-        [
-            "<!doctype html>",
-            "<html lang='en'><head><meta charset='utf-8' />",
-            `<title>RunWield Session Export — ${escapeHtml(options.sessionId)}</title></head><body>`,
-            `<h1>RunWield Session Export — ${escapeHtml(options.sessionId)}</h1>`,
-            `<div>cwd: ${escapeHtml(options.cwd)}</div>`,
-            rows,
-            "</body></html>",
-            "",
-        ].join("\n"),
-    );
-    return filePath;
 }

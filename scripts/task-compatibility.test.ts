@@ -144,8 +144,8 @@ test("original compound task names preserve argument boundaries and prerequisite
             task: "workspace:check",
             args: ["--minimumSeverity", "error"],
             last: {
-                path: "node_modules/astro/bin/astro.mjs",
-                args: ["check", "--tsconfig", "tsconfig.json", "--minimumSeverity", "error"],
+                path: "scripts/check-workspace.ts",
+                args: ["--minimumSeverity", "error"],
             },
         },
         {
@@ -161,12 +161,12 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "package:windows",
             args: ["--binary", "a directory/wld.exe"],
-            last: { path: "scripts/package-windows.js", args: ["--binary", "a directory/wld.exe"] },
+            last: { path: "scripts/package-windows.ts", args: ["--binary", "a directory/wld.exe"] },
         },
         {
             task: "prototype",
             args: ["example", "--", "--port", "4321"],
-            last: { path: "scripts/run-prototype.js", args: ["example", "--", "--port", "4321"] },
+            last: { path: "scripts/run-prototype.ts", args: ["example", "--", "--port", "4321"] },
         },
     ];
     // These fixture programs stand in for subprocess boundaries only. The actual
@@ -175,7 +175,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         ...new Set([
             ...cases.map((entry) => entry.last.path),
             "scripts/check-bun-runtime.ts",
-            "scripts/write-version.js",
+            "scripts/write-version.ts",
             "scripts/public-docs.ts",
         ]),
     ];

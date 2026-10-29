@@ -6,7 +6,7 @@
 import { isAbsolute, join } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { appendWorkflowMetric, isWorkflowMetricsEnabled, resolveCollectionEpoch } from "./metrics-journal.ts";
 export { isWorkflowMetricsEnabled } from "./metrics-journal.ts";
 
@@ -294,7 +294,7 @@ const V2_EVENTS = {
     repair_round_finished: ["outcome", "phase"],
     publication_confirmed: ["outcome", "planKind"],
     workflow_abandoned: ["outcome"],
-    workflow_transition_committed: ["outcome"],
+    workflow_transition_committed: ["outcome", "operation"],
     implementation_finished: ["outcome"],
     plan_execution_result: ["outcome"],
     implementation_checkpoint_failed: ["outcome"],
@@ -302,6 +302,14 @@ const V2_EVENTS = {
     feature_project_outcome: ["outcome", "phase"],
     review_complete: ["outcome", "findingCount", "advisoryCount"],
     guided_review_generation_result: ["outcome", "elapsedMs", "sectionCount", "failureKind"],
+    ai_review_generation_result: [
+        "outcome",
+        "elapsedMs",
+        "annotationCount",
+        "counts",
+        "costAvailability",
+        "failureKind",
+    ],
     execution_started: ["sourceSurface", "userInitiated"],
     execution_finished: ["outcome", "reason", "elapsedMs", "callCount", "coverage"],
     retry_started: ["retrySource", "attempt", "maxAttempts", "delayMs"],
@@ -435,6 +443,7 @@ const V2_EVENT_CATEGORIES = {
     feature_project_outcome: "execution",
     review_complete: "validation",
     guided_review_generation_result: "validation",
+    ai_review_generation_result: "validation",
     execution_started: "execution",
     execution_finished: "execution",
     retry_started: "execution",
@@ -476,6 +485,7 @@ const V2_ENUMS = {
         "execution_error",
         "execution_canceled",
         "execution_settled",
+        "runaway_loop_guard",
         "canceled",
         "failed",
         "aborted",
@@ -646,6 +656,47 @@ const V2_ENUMS = {
         "planning",
     ]),
     sourceSurface: new Set(["tui", "workspace", "acp", "cli", "headless"]),
+    operation: new Set([
+        "plan_event:review_feedback",
+        "plan_event:review_approved",
+        "plan_event:readiness_passed",
+        "plan_event:epic_readiness_passed",
+        "plan_event:decomposition_finalized",
+        "plan_event:execution_started",
+        "plan_event:execution_failed",
+        "plan_event:implementation_finished",
+        "plan_event:mechanical_validation_failed",
+        "plan_event:mechanical_validation_passed",
+        "plan_event:semantic_review_feedback",
+        "plan_event:semantic_review_passed",
+        "plan_event:validation_failed",
+        "plan_event:validation_passed",
+        "plan_event:recovery_continue",
+        "plan_event:recovery_reset",
+        "plan_event:review_reopened",
+        "plan_event:epic_done_enough",
+        "plan_event:epic_children_delivered",
+        "plan_event:epic_integration_passed",
+        "plan_event:epic_integration_failed",
+        "plan_event:epic_integration_stale",
+        "plan_event:epic_publication_confirmed",
+        "plan_event:manual_status_change",
+        "plan_event:manual_closed_without_verification",
+        "plan_event:manual_user_verified",
+        "plan_event:plan_held",
+        "plan_event:hold_resumed",
+        "plan_event:hold_reset_to_draft",
+        "plan_review_feedback",
+        "plan_review_approved",
+        "sequence_review_feedback",
+        "sequence_review_approved",
+        "review_reopened",
+        "collaboration_update",
+        "collaboration_clear",
+        "plan_review_write",
+        "implementation_checkpoint",
+        "epic_decomposition_finalize",
+    ]),
 };
 for (const manager of ["npm", "pnpm", "yarn", "bun"]) {
     for (const task of ["test", "check", "lint", "fmt", "ci", "build"]) {
@@ -677,6 +728,7 @@ const V2_LINKS = new Set([
 const V2_NUMBERS = new Set([
     "reasoningTokens",
     "sectionCount",
+    "annotationCount",
     "round",
     "initialFindingCount",
     "missedOriginalCount",
@@ -814,6 +866,12 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
             else if (typeof value === "number" && Number.isFinite(value) && value >= 0) record[key] = value;
         } else if (key === "isError" || key === "truncated" || key === "userInitiated") {
             if (typeof value === "boolean" || value === null) record[key] = value;
+        } else if (key === "counts" && isPlainObject(value)) {
+            record.counts = Object.fromEntries(
+                ["standards", "spec", "tests"]
+                    .filter((axis) => allowNonNegativeInteger(value[axis]) !== undefined)
+                    .map((axis) => [axis, value[axis]]),
+            );
         } else if (key === "coverage" && isPlainObject(value)) {
             record.coverage = Object.fromEntries(
                 ["tools", "usage", "context"]

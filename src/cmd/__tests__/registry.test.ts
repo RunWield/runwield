@@ -60,6 +60,15 @@ test("getCommandDefinition resolves alias", () => {
     assertEquals(command?.name, "agent");
 });
 
+test("load-plans resolves to load-plan on CLI and enabled slash surfaces", () => {
+    assertEquals(getCommandDefinition("load-plans")?.name, "load-plan");
+    for (const surface of ["tui", "acp"] as const) {
+        assertEquals(getSlashCommandDefinition("load-plans", surface)?.name, "load-plan");
+        assertEquals(getSlashCommandInvocationNames(surface).includes("load-plans"), true);
+    }
+    assertEquals(getSlashCommandDefinition("load-plans", "workspace"), undefined);
+});
+
 test("getCliCommandDefinitions excludes slash-only commands", () => {
     const commands = getCliCommandDefinitions();
     assertEquals(

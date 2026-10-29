@@ -8,7 +8,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runConfiguredGuideCommand,
+    runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
 
 const absent = { inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, costUsd: null };
@@ -48,7 +48,7 @@ async function runJob(cwd, scenario) {
         token: "usage-fixture",
         reviewPayload,
         runGuideCommand: scenario.command
-            ? runConfiguredGuideCommand
+            ? runWldJobCommand
             : (_prompt, _signal, _cwd, progress) => {
                   for (const frame of scenario.frames) progress?.onUsage?.(frame);
                   if (scenario.fails) return Promise.reject(new Error("provider failed"));

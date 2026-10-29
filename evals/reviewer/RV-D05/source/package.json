@@ -1,0 +1,13 @@
+{
+    "name": "archive-maintenance",
+    "private": true,
+    "type": "module",
+    "packageManager": "bun@1.4.3",
+    "engines": {
+        "bun": "1.4.3"
+    },
+    "scripts": {
+        "test": "bun tests/public.ts"
+    },
+    "trustedDependencies": []
+}

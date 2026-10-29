@@ -12,14 +12,11 @@ provenance:
         - "12d49502-432a-4d2a-8c5e-475ff0a869f4"
 ---
 
-# Validated Laptop-Owned Remote Save Proof
+# Laptop-owned remote Session save proof
 
 ## Summary
 
-Validated an isolated proof of real Pi turns over SSH with synchronous, laptop-owned Session saves. Native locks, save
-ordering, five fault/recovery cases, duplicate and authentication checks, stale-delivery rejection, and compiled
-macOS/Linux paths passed. Results support design review, not production adoption. Production code, dependencies,
-configuration, and tests were unchanged; proof code and raw evidence remain ignored.
+An isolated proof demonstrates real Pi turns over SSH with synchronous, laptop-owned Session saves, native locks, and ordered persistence. Its recovery, authentication, duplicate-detection, and stale-delivery checks support storage-design review rather than production adoption. The proof does not change production code, dependencies, configuration, or tests.
 
 ## Deviations from Plan
 
@@ -30,14 +27,10 @@ configuration, and tests were unchanged; proof code and raw evidence remain igno
    The execution checkout locks Pi 1.0.0. The owner approved using that version without changing production
    dependencies.
 
-## Deferred Work
+## Out of Scope
 
-Owner usability judgment and the storage-design decision remain open; production child03 stays paused. Production
-integration, Pi lifecycle paths outside the intercepted hooks, rollover, attachments, broader provider/platform
-coverage, network partitions, and power-loss durability remain unqualified.
+This work does not include production integration, Pi lifecycle paths outside the intercepted hooks, rollover, attachments, broader provider or platform coverage, network partitions, or power-loss durability.
 
 ## Future Planning Notes
 
-Keyboard response was 77/327/841/2581 ms with added acknowledgement delays of 0/50/150/500 ms, and 4967 ms during a
-stall. Independent Stop took 642 ms. These are samples, not latency promises. Recovery must discard unsaved Pi state and
-reload laptop evidence without replaying external actions; a save acknowledgement is not a distributed transaction.
+Recovery must discard unsaved Pi state and reload laptop evidence without replaying external actions. A save acknowledgement is not a distributed transaction.

@@ -1,3 +1,8 @@
+import {
+    parsePlanQuestions,
+    formatPlanQuestionAnswers,
+    type PlanQuestionAnswer,
+} from "../../../shared/plan-questions.ts";
 import type { Annotation, Block, CodeAnnotation, ImageAttachment } from "@plannotator/ui/types.ts";
 import { exportAnnotations, exportCodeFileAnnotations } from "@plannotator/ui/utils/parser.ts";
 import { composeRunWieldPlanFeedback } from "./plan-review-direct-edits.ts";
@@ -11,6 +16,7 @@ export interface PlanReviewFeedbackInput {
     codeAnnotations: CodeAnnotation[];
     basePlan: string;
     reviewedPlan: string;
+    questionAnswers?: PlanQuestionAnswer[];
 }
 
 export function buildPlanReviewFeedback(input: PlanReviewFeedbackInput): string {
@@ -21,7 +27,12 @@ export function buildPlanReviewFeedback(input: PlanReviewFeedbackInput): string 
     const planFeedback = composeRunWieldPlanFeedback(annotationFeedback, input.basePlan, input.reviewedPlan);
     const codeFeedback = exportCodeFileAnnotations(input.codeAnnotations).trim();
 
-    if (!codeFeedback) return planFeedback;
-    if (planFeedback === NO_CHANGES) return codeFeedback;
-    return `${planFeedback}\n\n${codeFeedback}`;
+    const questionFeedback = formatPlanQuestionAnswers(
+        parsePlanQuestions(input.reviewedPlan),
+        input.questionAnswers ?? [],
+    );
+    const sections = [planFeedback, codeFeedback, questionFeedback].filter(
+        (section) => section && section !== NO_CHANGES,
+    );
+    return sections.join("\n\n") || NO_CHANGES;
 }

@@ -208,7 +208,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {boolean|null} [devServerHmr] - Whether the dev server is expected to support hot module reload
  * @property {string} createdAt - ISO timestamp
  * @property {string} [planId] - Durable project-scoped resource identity for Workspace URLs
- * @property {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} status
+ * @property {"draft"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} status
  * @property {"internal"|"external"} [origin] - "internal" = created by a RunWield agent; "external" = a pre-existing markdown file loaded from an arbitrary path and resumed with RunWield
  * @property {string} [parentPlan] - Canonical parent plan name for child FEATURE plans
  * @property {number} [order] - Epic child FEATURE execution order.
@@ -227,6 +227,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {string} [deliveryBranch] - Recorded landing branch, independent of setting changes
  * @property {string} [targetBranch] - User-selected target branch, independent of the current execution attempt
  * @property {string|null} [validatedCommit] - Validated implementation commit; durable after runtime cleanup
+ * @property {"mechanical"|"semantic"|"delivery"} [validationPhase] - Current Workflow Validation phase while status stays "implemented"
  * @property {PlanFrontMatter["status"]|null} [heldFromStatus] - Status captured before the Plan moved to on_hold
  * @property {string|null} [heldAt] - ISO timestamp when the Plan was put on hold
  * @property {string|null} [holdReason] - Optional human reason for the hold
@@ -275,7 +276,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {import('./shared/ticket-references.js').TicketReference[]} [tickets] - Direct child Ticket References; omitted preserves existing child references, [] clears.
  * @property {string} content - Planner-format markdown body for the child planned change.
  * @property {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"} [workKind] - Optional child Work Kind.
- * @property {number} [order] - Optional stable execution order used in front matter and the file name.
+ * @property {number} [order] - Optional execution order stored in front matter, independent of the file name.
  * @property {number} [sequence] - Deprecated alias for order.
  */
 
@@ -532,7 +533,6 @@ function joinFrontMatterAndBody(frontMatter, body) {
 
 const PLAN_STATUSES = new Set([
     "draft",
-    "feedback",
     "approved",
     "ready_for_decomposition",
     "ready_for_work",
@@ -557,7 +557,6 @@ const PLAN_LIST_STATUS_ORDER = new Map([
     ["ready_for_work", 2],
     ["ready_for_decomposition", 3],
     ["draft", 4],
-    ["feedback", 5],
     ["approved", 6],
     ["in_progress", 7],
     ["verified", 8],
@@ -576,7 +575,8 @@ const PLAN_LIST_CLASSIFICATION_ORDER = new Map([
 const LEGACY_PLAN_STATUSES = new Map([
     ["validated_reviewer", "reviewed"],
     ["completed", "verified"],
-    ["in_review", "feedback"],
+    ["feedback", "draft"],
+    ["in_review", "draft"],
     // Older/manual recovery copies used this to mean implementation was done
     // and Workflow Validation had not started yet.
     ["ready_for_review", "implemented"],
@@ -892,10 +892,7 @@ function normalizeNonNegativeInteger(value) {
 function normalizePlanStatusForOptionalHold(status) {
     if (status === null) return null;
     if (typeof status !== "string") return undefined;
-    const normalized = normalizePlanStatus(status);
-    return normalized === DEFAULT_FRONT_MATTER.status && status !== DEFAULT_FRONT_MATTER.status
-        ? undefined
-        : normalized;
+    return canonicalPlanStatus(status);
 }
 
 /**
@@ -2191,18 +2188,6 @@ function slugifyPlanTitle(title) {
 }
 
 /**
- * @param {number | undefined} sequence
- * @returns {string}
- */
-function formatChildSequencePrefix(sequence) {
-    if (sequence === undefined) return "";
-    if (!Number.isInteger(sequence) || sequence < 0) {
-        throw new Error(`Child plan sequence must be a non-negative integer: ${sequence}`);
-    }
-    return `${String(sequence).padStart(2, "0")}-`;
-}
-
-/**
  * @param {unknown} child
  * @returns {ChildFeaturePlanDescriptor}
  */
@@ -2232,14 +2217,48 @@ function validateChildFeaturePlanDescriptor(child) {
 }
 
 /**
- * @param {ChildFeaturePlanDescriptor} child
- * @returns {string}
+ * Resolve child names before writes so materialization and finalization lock the same files.
+ * Exact descriptive names take precedence; unique legacy numbered names keep their identity.
+ *
+ * @param {string} cwd
+ * @param {string} epicPlanName
+ * @param {ChildFeaturePlanDescriptor[]} children
+ * @returns {Promise<string[]>}
  */
-function buildChildPlanNameSegment(child) {
-    const slug = slugifyPlanTitle(child.title);
-    if (!slug) throw new Error(`Child plan title must produce a valid plan name: ${child.title}`);
-    return `${formatChildSequencePrefix(child.order)}${slug}`;
+export async function resolveChildPlanNames(cwd, epicPlanName, children) {
+    const { name: parent, segments } = canonicalizeStoredPlanName(epicPlanName);
+    if (segments.length !== 1) {
+        throw new Error(`Parent Epic plan name must be a top-level plan: ${epicPlanName}`);
+    }
+    if (!Array.isArray(children)) throw new Error("Child plans must be an array");
+    const existing = await listPlans(cwd);
+    const names = new Set(existing.map((plan) => plan.name));
+    const seen = new Set();
+    return children.map((rawChild) => {
+        const child = validateChildFeaturePlanDescriptor(rawChild);
+        const slug = slugifyPlanTitle(child.title);
+        if (!slug) throw new Error(`Child plan title must produce a valid plan name: ${child.title}`);
+        let name = `${parent}/${slug}`;
+        if (!names.has(name)) {
+            const matches = existing.filter((plan) => {
+                const parts = plan.name.split("/");
+                return parts.length === 2 && parts[0] === parent && parts[1].replace(/^\d{2,}-/, "") === slug;
+            });
+            if (matches.length > 1) throw new Error(`Ambiguous legacy child plan name: ${name}`);
+            if (matches.length === 1) name = matches[0].name;
+        }
+        if (seen.has(name)) throw new Error(`Duplicate child plan name: ${name}`);
+        seen.add(name);
+        return name;
+    });
 }
+
+/**
+ * @typedef {Object} ChildPlanWritePrecondition
+ * @property {"created" | "updated"} action
+ * @property {string} [expectedRevision]
+ * @property {string} [planId]
+ */
 
 /**
  * Save draft child FEATURE plans below `docs/plans/<epicPlanName>/`.
@@ -2263,18 +2282,15 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
 
     /** @type {Array<{ child: ChildFeaturePlanDescriptor, name: string, filePath: string }>} */
     const validatedChildren = [];
-    const seen = new Set();
+    const childNames = await resolveChildPlanNames(cwd, parentPlanName, children);
 
-    for (const rawChild of children) {
+    for (const [index, rawChild] of children.entries()) {
         const child = validateChildFeaturePlanDescriptor(rawChild);
-        const childSegment = buildChildPlanNameSegment(child);
-        const childPlanName = `${parentPlanName}/${childSegment}`;
+        const childPlanName = childNames[index];
         const { name, filePath, segments } = getStoredPlanLocation(cwd, childPlanName);
         if (segments.length !== 2 || segments[0] !== parentPlanName) {
             throw new Error(`Invalid child plan name: ${childPlanName}`);
         }
-        if (seen.has(name)) throw new Error(`Duplicate child plan name: ${name}`);
-        seen.add(name);
         const policy = resolvePlanExecutionPolicy({
             classification: ROUTING_INTENT_PLANNED_CHANGE,
             executionAgent: child.executionAgent,
@@ -2285,7 +2301,7 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
         validatedChildren.push({ child, name, filePath });
     }
 
-    /** @type {Map<string, { action: "created" | "updated", expectedRevision?: string }>} */
+    /** @type {Map<string, ChildPlanWritePrecondition>} */
     const writePreconditions = new Map();
     for (const { name, filePath } of validatedChildren) {
         let action = /** @type {"created" | "updated"} */ ("created");
@@ -2293,6 +2309,10 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
         let childExpectedRevision = options.expectedRevisions?.[name] || options.expectedRevision;
         const existingChild = await loadPlanFileStrict(filePath);
         if (existingChild.kind === "loaded") {
+            assertSharedPlanWriteAllowed(existingChild.attrs, options);
+            if (existingChild.attrs.status !== "draft") {
+                throw new Error(`Cannot regenerate non-draft child plan: ${name}`);
+            }
             action = "updated";
             childExpectedRevision = childExpectedRevision || existingChild.revision;
             if (childExpectedRevision !== existingChild.revision) {
@@ -2307,7 +2327,11 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
                 planIssueMessage(existingChild) || `Plan is not writable: ${filePath}`,
             );
         }
-        writePreconditions.set(name, { action, expectedRevision: childExpectedRevision });
+        writePreconditions.set(name, {
+            action,
+            expectedRevision: childExpectedRevision,
+            planId: existingChild.kind === "loaded" ? existingChild.attrs.planId : undefined,
+        });
     }
 
     /** @type {SavedChildFeaturePlan[]} */
@@ -2328,6 +2352,7 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
             order: child.order,
             affectedPaths,
         };
+        if (precondition.planId) metadata.planId = precondition.planId;
         const workKind = normalizeWorkKind(child.workKind);
         if (workKind) metadata.workKind = workKind;
         const policyResult = resolvePlanExecutionPolicy({
@@ -2872,8 +2897,9 @@ export async function listPlans(cwd) {
 
 /**
  * List saved plans, reading target-branch children only for `onlyEpic` when it
- * is given. Reading an Epic's target branch fetches it and reads every Plan on
- * it, so a lookup scoped to one Epic must not pay that for every other Epic.
+ * is given. Catalog evidence uses existing Git snapshots; remote refresh belongs
+ * to the selected Epic's workflow. A scoped lookup also avoids reading every
+ * Plan on unrelated Epic branches.
  *
  * @param {string} cwd
  * @param {string | null} onlyEpic
@@ -2901,7 +2927,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (!repository.ok) throw new Error(repository.message);
             let targetChildren;
             try {
-                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
+                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name, {
+                    refresh: false,
+                });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (
@@ -3625,7 +3653,7 @@ export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {
 /**
  * Compare Epic child plans by explicit order first, then canonical name.
  *
- * @template {{ name: string, attrs: PlanFrontMatter }} T
+ * @template {{ name: string, attrs: Pick<PlanFrontMatter, "order"> }} T
  * @param {T} a
  * @param {T} b
  * @returns {number}
@@ -3643,7 +3671,7 @@ export function compareChildPlansByOrder(a, b) {
  * @param {string} name
  * @returns {boolean}
  */
-function isHiddenPlanName(name) {
+export function isHiddenPlanName(name) {
     return HIDDEN_PLAN_DIRS.has(name.split("/")[0] || "");
 }
 
@@ -3705,18 +3733,46 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
             throw new Error(`Plan is archived or hidden and cannot be assigned a planId: ${name}`);
         }
 
-        let reservedPlanIds = options.reservedPlanIds;
-        if (!reservedPlanIds) {
-            const plans = await listPlans(cwd);
-            const byId = groupExistingPlanIds(plans);
-            assertNoDuplicatePlanIds(byId);
-            reservedPlanIds = new Set(byId.keys());
-            for (const attempt of await listControllerDocumentWorktrees(cwd)) {
-                if (attempt.planId) reservedPlanIds.add(attempt.planId);
-            }
+        const attempts = await listControllerDocumentWorktrees(cwd);
+        const registered = attempts.filter((attempt) => attempt.planName === name);
+        if (registered.length > 1) {
+            throw new Error(
+                `Registered Plan ${name} has ambiguous document authority. Your files have not been changed.`,
+            );
+        }
+        const registeredPlanId = normalizePlanId(registered[0]?.planId);
+        let planId = normalizePlanId(plan.attrs.planId);
+        if (registeredPlanId && planId && registeredPlanId !== planId) {
+            throw new Error(
+                `Registered Plan ${name} does not match the saved Plan ID. Your files have not been changed.`,
+            );
+        }
+        if (
+            registeredPlanId &&
+            attempts.some(
+                (attempt) => attempt.planName !== name && normalizePlanId(attempt.planId) === registeredPlanId,
+            )
+        ) {
+            throw new Error(
+                `Registered Plan ID ${registeredPlanId} belongs to multiple Plans. Your files have not been changed.`,
+            );
+        }
+        const plans = await listPlans(cwd);
+        const byId = groupExistingPlanIds(plans);
+        assertNoDuplicatePlanIds(byId);
+        if (registeredPlanId && byId.get(registeredPlanId)?.some((other) => other.name !== name)) {
+            throw new Error(
+                `Registered Plan ID ${registeredPlanId} belongs to another Plan. Your files have not been changed.`,
+            );
+        }
+        const reservedPlanIds = options.reservedPlanIds || new Set(byId.keys());
+        // Registry IDs are already assigned identities, not just collision reservations.
+        // Read them even during explicit catalog backfills, which supply their own set.
+        for (const attempt of attempts) {
+            const id = normalizePlanId(attempt.planId);
+            if (id) reservedPlanIds.add(id);
         }
         const idGenerator = options.idGenerator || (() => crypto.randomUUID());
-        let planId = normalizePlanId(plan.attrs.planId);
         let markdown = plan.markdown;
         let attrs = { ...plan.attrs, planId };
 
@@ -3740,9 +3796,12 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
         }
 
         if (!planId) {
-            do {
-                planId = normalizePlanId(idGenerator());
-            } while (!planId || reservedPlanIds.has(planId));
+            planId = registeredPlanId;
+            if (!planId) {
+                do {
+                    planId = normalizePlanId(idGenerator());
+                } while (!planId || reservedPlanIds.has(planId));
+            }
             assertSharedPlanWriteAllowed(plan.attrs, options);
             attrs = { ...plan.attrs, planId };
             await bindControllerPlanIdentity(cwd, { planName: name, planId });

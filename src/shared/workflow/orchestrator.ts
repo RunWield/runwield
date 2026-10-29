@@ -23,16 +23,18 @@
  * iterates without rebuilding LLM context.
  */
 
-import { AGENTS, isPlannedChangeClassification, normalizeRoutingIntent } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { ensurePlansDir, loadPlan } from "../../plan-store.js";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
+import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.js";
 import { runRootTurn } from "../session/session.js";
 import { getAgentDisplayName } from "../session/agents.js";
-import { sanitizeSessionName } from "../session/session-name.ts";
+import { sanitizeSessionName } from "../session-name.ts";
+import { normalizeTriageOutcome, type TriageOutcome, type TriageOutcomeInput } from "./triage-outcome.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
@@ -51,7 +53,7 @@ import {
     runSlicerAgent,
 } from "./workflow.js";
 import { runMechanicalValidation, shouldRunWorkflowValidation, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
-import { runWorkflowValidationToStableBoundary } from "./validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import type { LocalCIPort } from "./validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -59,28 +61,6 @@ import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../sessio
 import { waitForWorkflowToolEvent, WorkflowStepCompleted } from "./workflow-tool-events.ts";
 
 export { runLocalCI, runMechanicalValidation } from "./validation.ts";
-
-type RoutingIntent = "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT";
-type PlanClassification = "PLANNED_CHANGE" | "FEATURE" | "PROJECT";
-type WorkKind = "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
-
-export interface TriageOutcome {
-    routingIntent: RoutingIntent;
-    classification?: PlanClassification;
-    workKind?: WorkKind;
-    complexity: "LOW" | "MEDIUM" | "HIGH";
-    summary: string;
-    sessionName?: string;
-}
-
-interface TriageOutcomeInput {
-    routingIntent?: RoutingIntent | "FEATURE";
-    classification?: PlanClassification | "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX";
-    workKind?: WorkKind;
-    complexity?: "LOW" | "MEDIUM" | "HIGH";
-    summary?: string;
-    sessionName?: string;
-}
 
 interface TriageToolResultMessage {
     role: "toolResult";
@@ -224,52 +204,6 @@ async function confirmNonGitQuickFixExecution(
     if (response.outcome !== "selected" || response.value !== "proceed") return false;
     await rememberNonGitExecutionConsent("quickFix", projectRoot);
     return true;
-}
-
-/**
- * Normalize a routing value supplied by tool details.
- */
-function asRoutingIntent(value: string | null | undefined): RoutingIntent | null {
-    const normalized = normalizeRoutingIntent(value);
-    if (!normalized) return null;
-    return normalized;
-}
-
-/**
- * Normalize canonical `routingIntent` details and legacy `classification`
- * details into a Routing Intent outcome. Plan Classification is preserved only
- * for plan-producing intents.
- *
- * Return a canonical outcome only when the required routing fields are present.
- */
-function normalizeTriageOutcome(details: TriageOutcomeInput | null | undefined): TriageOutcome | null {
-    if (!details) return null;
-    const routingIntent = asRoutingIntent(details.routingIntent) || asRoutingIntent(details.classification);
-    if (!routingIntent) return null;
-
-    if (!details.complexity || !details.summary) return null;
-    const outcome: TriageOutcome = {
-        routingIntent,
-        complexity: details.complexity,
-        summary: details.summary,
-        ...(details.workKind ? { workKind: details.workKind } : {}),
-    };
-    const sessionName = sanitizeSessionName(details.sessionName);
-    if (sessionName) {
-        outcome.sessionName = sessionName;
-    } else {
-        delete outcome.sessionName;
-    }
-
-    if (routingIntent === "PLANNED_CHANGE") {
-        outcome.classification = "PLANNED_CHANGE";
-    } else if (routingIntent === "PROJECT") {
-        outcome.classification = "PROJECT";
-    } else {
-        delete outcome.classification;
-    }
-
-    return outcome;
 }
 
 /**
@@ -649,8 +583,9 @@ export async function dispatchPostTriage({
             });
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            const executionOwner =
-                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
+            const executionOwner = resolvePlanExecutionRuntimeAgent(
+                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta),
+            );
             await recordMetric({
                 category: "execution",
                 event: "feature_project_outcome",
@@ -674,8 +609,9 @@ export async function dispatchPostTriage({
             return;
         }
 
-        const executionOwner =
-            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
+        const executionOwner = resolvePlanExecutionRuntimeAgent(
+            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta),
+        );
         const executionDecision = decidePostExecution(executionResult, {
             planName,
             triageMeta: decisionTriageMeta,

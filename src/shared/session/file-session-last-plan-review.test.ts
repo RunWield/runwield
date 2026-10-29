@@ -17,7 +17,7 @@ import process from "node:process";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { encodeCwdForSessionDir } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 test("the latest Plan review is readable from another store before the writer settles", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));

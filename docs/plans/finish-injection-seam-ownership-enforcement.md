@@ -6,9 +6,8 @@ complexity: "HIGH"
 affectedPaths:
     - "AGENTS.md"
     - "docs/domain-language.md"
-    - "docs/plans/deep-semantic-source-modules.md"
     - "scripts/check-injection-seams.js"
-    - "scripts/check-injection-seams.test.js"
+    - "scripts/check-injection-seams.test.ts"
     - "scripts/external-capability-ports.json"
     - "src/shared/git-port.ts"
     - "src/shared/package-resources.ts"
@@ -31,7 +30,7 @@ affectedPaths:
     - "src/shared/workflow/validation-*.ts"
     - "src/shared/workflow/validation-test-helpers.js"
     - "src/shared/workflow/validation-*.test.*"
-    - "src/shared/session/architecture-boundary.test.js"
+    - "src/shared/session/architecture-boundary.test.ts"
     - "src/shared/workflow/architecture-boundary.test.ts"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -186,7 +185,7 @@ the Implementation Steps need, including files not named here. Stop and report o
 intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk
 grows, or the Verification Plan no longer proves the objective.
 
-- `scripts/check-injection-seams.js` and `scripts/check-injection-seams.test.js` — resolve and validate required
+- `scripts/check-injection-seams.js` and `scripts/check-injection-seams.test.ts` — resolve and validate required
   behavioral contracts against the exact ownership manifest; preserve optional-fallback and test-hook detection.
 - `scripts/external-capability-ports.json` — declare every current genuine production external capability with no debt
   or internal-machinery entries.
@@ -207,8 +206,6 @@ grows, or the Verification Plan no longer proves the objective.
   prove real composition and preserve behavior after the test-only replacement points disappear.
 - `docs/domain-language.md` — update **Session-Independent Validation Engine** to describe the implemented runtime
   context and narrow Agent/interaction capabilities; do not present `ValidationSessionPort` as current truth.
-- `docs/plans/deep-semantic-source-modules.md` — update the future move map and checks to move the resulting
-  declarations, with no legacy `ValidationSessionPort` exception.
 
 The completed and archived Init seam-risk Plan is deliberately outside the change surface. Its behavior is a
 compatibility constraint, not a document to revise.
@@ -224,7 +221,7 @@ compatibility constraint, not a document to revise.
   composition without opening a browser or calling a model.
 - `src/shared/work-records/mnemoteca-port.ts#WorkRecordMnemotecaPort` — shared external Mnemoteca process execution for
   Work Records and Sleep.
-- `src/shared/session/architecture-boundary.test.js` and `src/shared/workflow/architecture-boundary.test.ts` — existing
+- `src/shared/session/architecture-boundary.test.ts` and `src/shared/workflow/architecture-boundary.test.ts` — existing
   import and ownership fences for the validation engine.
 - Existing network, browser, clipboard, CI, process, and model-discovery ports — retain them when their complete member
   set belongs to one external owner.
@@ -272,8 +269,7 @@ compatibility constraint, not a document to revise.
   real RunWield composition and fixture environments. Fakes remain only for manifest-declared external capabilities and
   fail loudly if a scenario unexpectedly reaches a real browser, model, CI process, terminal host, network, or Mnemoteca
   process.
-- `docs/domain-language.md`, `AGENTS.md`, and `docs/plans/deep-semantic-source-modules.md` describe the implemented
-  names, ownership rule, and move sequence. The glossary no longer names `ValidationSessionPort`, and no customer-facing
+- `docs/domain-language.md` and `AGENTS.md` describe the implemented names and ownership rule. The glossary no longer names `ValidationSessionPort`, and no customer-facing
   Init prompt or check exposes this repository-private manifest.
 
 ## Approval Confirmation
@@ -283,13 +279,13 @@ session-independent validation extraction rather than replacing their historical
 
 ## Verification Plan
 
-- Automated checker contract: `deno run -A scripts/run-tests.js scripts/check-injection-seams.test.js`. Tests must fail
+- Automated checker contract: `deno run -A scripts/run-tests.js scripts/check-injection-seams.test.ts`. Tests must fail
   for an undeclared imported `*Port`, a local all-required mixed port, a constructor-injected renamed collaborator, a
   stale manifest member, a missing declaration, a manifest entry for known RunWield machinery, and a declared generic
   dispatcher that routes an operation discriminator to both external and RunWield-owned work. They must pass for exact
   cohesive external declarations and ordinary immutable data.
 - Automated focused behavior:
-  `deno run -A scripts/run-tests.js src/shared/git-port.test.ts src/shared/package-resources.test.ts src/shared/extensions/wld-extension-manifest.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts src/cmd/auth/index.test.ts src/cmd/sleep/index.test.ts src/cmd/router/index.test.ts src/cmd/agents/index.test.ts src/cmd/init/index.test.ts src/cmd/init/init-verification-confirmation.integration.test.ts src/cmd/resume/index.test.ts src/ui/theme/theme-discovery.test.ts src/ui/tui/boot-banner.test.ts src/ui/tui/system-notifications.test.ts src/shared/session/architecture-boundary.test.js src/shared/workflow/architecture-boundary.test.ts`.
+  `deno run -A scripts/run-tests.js src/shared/git-port.test.ts src/shared/package-resources.test.ts src/shared/extensions/wld-extension-manifest.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts src/cmd/auth/index.test.ts src/cmd/sleep/index.test.ts src/cmd/router/index.test.ts src/cmd/agents/index.test.ts src/cmd/init/index.test.ts src/cmd/init/init-verification-confirmation.integration.test.ts src/cmd/resume/index.test.ts src/ui/theme/theme-discovery.test.ts src/ui/tui/boot-banner.test.ts src/ui/tui/system-notifications.test.ts src/shared/session/architecture-boundary.test.ts src/shared/workflow/architecture-boundary.test.ts`.
 - Automated execution and validation behavior:
   `deno run -A scripts/run-tests.js src/shared/workflow/workflow.test.js src/shared/workflow/execution-progress.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/authority-continuation.integration.test.ts src/shared/workflow/orchestrator.test.ts src/shared/workflow/validation-*.test.*`.
 - Automated repository gates: `deno task seams:check`, then `deno task ci`. The seam check reports zero without changing
@@ -298,13 +294,13 @@ session-independent validation extraction rather than replacing their historical
   `scripts/run-tests.js`. Both runs use separate sandboxed homes, projects, Plans, and repositories and produce no lock,
   journal, or settings contention.
 - Mutation proof:
-  - add an internal method such as `recordWorkflowMetric` to a declared external port; the manifest/checker test fails;
-  - restore an optional `SemanticReviewPort` fallback; `seams:check` fails;
-  - replace `ValidationRuntimeContext` with a plain object or construct it from an unapproved module; the architecture
-    test fails;
-  - bypass real Worktree lookup, settings consent, workflow metric recording, Runtime event emission, or
-    post-verification handoffs; a focused behavioral test fails;
-  - remove the explicit Agent fake from a semantic-review scenario; the test fails loudly before any real model call.
+    - add an internal method such as `recordWorkflowMetric` to a declared external port; the manifest/checker test fails;
+    - restore an optional `SemanticReviewPort` fallback; `seams:check` fails;
+    - replace `ValidationRuntimeContext` with a plain object or construct it from an unapproved module; the architecture
+      test fails;
+    - bypass real Worktree lookup, settings consent, workflow metric recording, Runtime event emission, or
+      post-verification handoffs; a focused behavioral test fails;
+    - remove the explicit Agent fake from a semantic-review scenario; the test fails loudly before any real model call.
 - Preserved behavior: Workflow Validation still protects phase order, lifecycle transitions, repair limits,
   pause/resume, reviewer convergence, human review, publication, progress events, Manual QA, and Work Record outcomes.
   Router, Agent, Init, Resume, Sleep, auth, theme, boot banner, notification, package, and extension behavior remains
@@ -342,9 +338,6 @@ session-independent validation extraction rather than replacing their historical
   path for the Attached Workflow coordinator.
 - Tests that mutate `HOME`, `PATH`, or cwd use `withProcessGlobalTestLock`; all source cwd/home reads use `getCwd()` and
   `getHomeDir()` at call time.
-- Do not execute this Plan concurrently with `docs/plans/deep-semantic-source-modules.md`. Finish this ownership change
-  first and then update the source-move Plan to move the resulting modules. If the move lands first, translate paths to
-  the moved modules without restoring a legacy-port exception.
 - The archived Init seam-risk work is complete. Keep it advisory and language-neutral; do not modify its archived Plan
   or introduce `wld check` ownership enforcement.
 - Pure formatters and data transforms do not need ports.

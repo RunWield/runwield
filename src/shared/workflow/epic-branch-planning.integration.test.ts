@@ -833,7 +833,7 @@ for (const action of ["resume", "planner_re_review", "review", "proceed"]) {
                     "latest published code\n",
                 );
                 if (action === "planner_re_review")
-                    assertEquals((await loadPlan(entries[0].path, "epic/02-next"))?.attrs.status, "feedback");
+                    assertEquals((await loadPlan(entries[0].path, "epic/02-next"))?.attrs.status, "draft");
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
             }
@@ -841,7 +841,7 @@ for (const action of ["resume", "planner_re_review", "review", "proceed"]) {
     });
 }
 
-for (const status of ["approved", "ready_for_work"]) {
+for (const status of ["approved", "ready_for_work"] as const) {
     test(`${status} Sequence child execution creates and promotes a worktree from the newest remote head`, async () => {
         const repo = await journeyFixture.checkout();
         const head = await advanceRemoteEpic(repo, status);

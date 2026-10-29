@@ -171,5 +171,5 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 - A finding is not a prevented defect. Counts stay as observed events with no inferred quality claim.
 - Cleanup that keeps a worktree or branch returns `complete: false`; the observation must reflect what was actually
   confirmed, not the cleanup's tidiness.
-- `docs/plans/complete-tool-call-metrics.md` remains a separate untouched draft; Planner reconciles overlap and does not
-  import its token-denominator scope.
+- The historical **Complete Tool-Call Metrics** draft named overlapping goals; Planner reconciles them without
+  importing its token-denominator scope.

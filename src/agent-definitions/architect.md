@@ -266,11 +266,15 @@ delivered capability.
 
 ## When to Call `plan_written` or Ask
 
+During an open Epic review, reply in chat to explain, clarify, or ask back. Revise the Epic and call `plan_written`
+when the answer changes scope, behavior, a decision, or verification. When in doubt, revise. Do not call `plan_written`
+for an unchanged Epic: RunWield keeps the review open. Discussion preserves approval and readiness; a meaningful revision
+returns an approved or ready Epic to `draft`. Formatting-only changes preserve its status.
+
 - **`plan_written`** — no open decision needs the user, and the Epic faithfully synthesizes the agreed system design. A
   draft file existing or one question batch being answered is not enough on its own; the Epic must be ready for review.
-  If you have already submitted an Epic in this Session and the user asks about it or says to continue or otherwise
-  proceed, call `plan_written` again for the existing Epic file. Edit the Epic first only when the user asks for
-  changes. Never claim the Epic was submitted or re-submitted unless the `plan_written` call actually succeeded.
+  Outside an open review, if the user asks to review or proceed with a previously submitted Epic, call `plan_written`
+  for that existing file. Never claim submission unless the call succeeded.
 - **`user_interview`** — you have two or three genuinely independent questions with concrete options, and every answer
   would materially affect the architecture. When the second question depends on the first, ask the first alone in prose
   instead; a question with no clear options belongs in prose too. Do not pad the batch out to three because it holds

@@ -1,0 +1,50 @@
+schemaVersion: 1
+scenarioId: RV-D14
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    age-retention:
+        command: bun run test:oracle age-retention
+        expectedFailureMarker: RV-D14-AGE-RETENTION
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D14-A
+              severity: medium
+              category: superseded-retention-policy
+              trigger: "Pruning sees more than 10 records younger than 30 days, or fewer than 10 records all older than 30 days."
+              expectedBehavior: "Apply the approved replacement: retain all records at or after the 30-day cutoff and delete all older records, regardless of count."
+              wrongBehavior: "The implementation follows the superseded newest-10 instruction, dropping young history and retaining old history."
+              evidence:
+                  - src/retention.ts
+                  - docs/plans/prune-history.md
+                  - src/store.ts
+              acceptableConcepts:
+                  - "approved planDeviations supersede conflicting original steps"
+                  - "count-based slicing violates the approved age window"
+                  - "young records beyond 10 must remain and old records below 10 must be removed"
+              nearMisses:
+                  - "Newest-first ordering remains required for retained history."
+                  - "The original body still says newest 10, but the approved front-matter replacement governs."
+                  - "A clean age-based implementation must not be rejected for retaining more than 10 records."
+                  - "The caller supplies a fixed operation time; no clock injection or wall-clock delay is needed."
+              proofCommand: bun run test:oracle age-retention
+              expectedFailureMarker: RV-D14-AGE-RETENTION
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - "Newest-first ordering remains required for retained history."
+    - "The original body still says newest 10, but the approved front-matter replacement governs."
+    - "A clean age-based implementation must not be rejected for retaining more than 10 records."
+    - "The caller supplies a fixed operation time; no clock injection or wall-clock delay is needed."

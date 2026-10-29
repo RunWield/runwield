@@ -23,15 +23,10 @@ The product promise is:
 
 Change Request Delivery is a supported delivery and review mode, not RunWield's default direction. The default posture
 is RunWield-native: intent, review, and memory are RunWield capabilities, and the Forge serves as the remote git host
-and merge substrate. Today that default loop is Core's Local Human Code Review plus Direct Delivery. RunWield Workspace
-later adds assignable human review and a Workspace merge component so teams can replace the pull-request loop entirely.
+and merge substrate. Today that default loop is Core's Local Human Code Review plus Direct Delivery.
 
 A repository, team, or instance can explicitly move the review gate to the Forge by selecting Change Request Delivery,
 or run both gates through Dual Review. The choice is team policy, and the two gates never synchronize state.
-
-The future Workspace default converges on this same machinery: a Workspace-merge flow still publishes a labeled Forge
-Change Request as the CI-and-merge envelope — attributed to the correct humans and gated on green checks — while intent,
-review, and memory live in RunWield. Change Request Delivery therefore builds the bridge and most of the destination.
 
 ## Problem Statement
 
@@ -131,7 +126,7 @@ Folding is strictly additive:
   declare it; otherwise the suggestion stays pending until explicitly accepted. Headless completion does not imply
   approval. Earlier records remain available with their original completion and confidence labels.
 
-The same folding rule applies to feedback from any review source: Forge review today, and Workspace-hosted review later.
+The same folding rule applies to feedback from any review source: including Forge review.
 
 ### Publication Candidate
 

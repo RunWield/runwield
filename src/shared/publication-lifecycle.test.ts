@@ -2,7 +2,6 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
-import { buildWorkRecordIndexDocument } from "./work-records/index-adapter.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { parsePlanFrontMatter } from "../plan-store.js";
@@ -38,7 +37,7 @@ const fixture = defineGitFixture(async (root) => {
                 createdAt: "2026-01-01T00:00:00.000Z",
                 provenance: { sourcePlans: [planId] },
             },
-            "# Feature\n\n## Summary\n\nAdded a feature; publication pending. Full test suite has not run.\n\n## Deferred Work\n\nKeyboard navigation remains deferred.\n",
+            "# Feature\n\n## Summary\n\nSearch results use a local cache.\n\n## Out of Scope\n\nThis work does not include keyboard navigation.\n",
         ),
     );
     await git(root, ["add", "."]);
@@ -69,18 +68,10 @@ for (const autocrlf of [false, true]) {
                     "approved",
                 );
                 const finalized = parseWorkRecordMarkdown(await git(root, ["show", `${target}:${recordPath}`]));
-                assertStringIncludes(finalized.summary, `Delivery destination: \`${target}\``);
-                assertEquals(finalized.summary.includes("publication pending"), false);
-                assertStringIncludes(
-                    finalized.body,
-                    "> Added a feature; publication pending. Full test suite has not run.",
-                );
-                assertStringIncludes(finalized.body, "> Keyboard navigation remains deferred.");
-                assertStringIncludes(
-                    buildWorkRecordIndexDocument(finalized),
-                    "> Keyboard navigation remains deferred.",
-                );
-                assertStringIncludes(finalized.summary, "no additional or full test suite is claimed");
+                const sealed = parseWorkRecordMarkdown(await git(root, ["show", `${candidate}:${recordPath}`]));
+                assertEquals(finalized.body, sealed.body);
+                assertEquals(finalized.body.includes(candidate), false);
+                assertEquals(finalized.body.includes("Historical pre-publication notes"), false);
                 assertEquals(
                     await hasFinalizedPublicationLifecycle(
                         root,
@@ -256,3 +247,68 @@ test("already published legacy metadata still proves delivery without rewriting 
         await fsRm(root, { recursive: true });
     }
 });
+
+for (const edited of [false, true]) {
+    test(`publication retry preserves an exact legacy wrapper (edited: ${edited})`, async () => {
+        const root = await fixture.checkout();
+        try {
+            const candidate = await git(root, ["rev-parse", "HEAD"]);
+            const original = parseWorkRecordMarkdown(await fsReadFile(join(root, recordPath), "utf8"));
+            const legacyBody = [
+                `# ${original.title}`,
+                "",
+                "## Summary",
+                "",
+                "Delivery metadata has been finalized for this validated change.",
+                `Candidate containing the implementation and draft record: \`${candidate}\`.`,
+                "Delivery destination: `main`.",
+                "This record accompanies the delivery commit. The publication receipt confirms whether that commit reached its destination; this metadata alone does not prove a remote push or a merge into another branch.",
+                "",
+                "Validation scope is the configured workflow gate. See the delivery card's test results for the actual command output; no additional or full test suite is claimed here.",
+                "",
+                "## Historical pre-publication notes",
+                "",
+                "The recorder draft below is preserved verbatim as historical context. Its publication-pending and outstanding-validation statements describe the earlier snapshot, not the current delivery status. Implementation details, deviations and deferred work remain available here; consult the delivery evidence for final validation outcomes.",
+                "",
+                ...original.body.split("\n").map((line) => `> ${line}`),
+                ...(edited ? ["Unreviewed claim."] : []),
+            ].join("\n");
+            const legacy = formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, legacyBody);
+            await fsWriteFile(join(root, recordPath), legacy);
+            if (edited) {
+                await assertRejects(
+                    () => finalizePublicationLifecycle(root, "feature", candidate, [planPath], "main"),
+                    Error,
+                    "outside its sealed publication",
+                );
+                assertEquals(
+                    parsePlanFrontMatter(await fsReadFile(join(root, planPath), "utf8")).attrs.status,
+                    "reviewed",
+                );
+            } else {
+                assertEquals(await finalizePublicationLifecycle(root, "feature", candidate, [planPath], "main"), [
+                    planPath,
+                ]);
+                assertEquals(await finalizePublicationLifecycle(root, "feature", candidate, [planPath], "main"), []);
+                await git(root, ["add", "docs"]);
+                await git(root, ["commit", "-m", "Historical wrapper publication"]);
+                const published = await git(root, ["rev-parse", "HEAD"]);
+                assertEquals(
+                    await hasFinalizedPublicationLifecycle(
+                        root,
+                        published,
+                        "feature",
+                        planId,
+                        candidate,
+                        [planPath],
+                        "main",
+                    ),
+                    true,
+                );
+            }
+            assertEquals(await fsReadFile(join(root, recordPath), "utf8"), legacy);
+        } finally {
+            await fsRm(root, { recursive: true });
+        }
+    });
+}

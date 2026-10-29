@@ -18,6 +18,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  *
  * @typedef {Object} ReviewDecisionFields
  * @property {string} [plan]
+ * @property {import("../../../../shared/plan-questions.ts").PlanQuestionAnswer[]} [questionAnswers]
  * @property {string} [savedPath]
  * @property {string} [agentSwitch]
  * @property {string} [permissionMode]
@@ -38,6 +39,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
  * @property {ReviewPlanSave} [planSave]
+ * @property {number} [reviewRevision]
  *
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
@@ -45,11 +47,26 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [classification]
  * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
+ * @property {number} [reviewRevision]
  *
  * @typedef {Object} ReviewRequestState
  * @property {string} cwd
  * @property {string} [reviewToken]
  * @property {ReviewPayload} [reviewPayload]
+ * @property {ReviewDecisionSink} [onDecision]
+ * @property {boolean} [keepConversationTurns]
+ *
+ * @typedef {Object} ReviewDecisionReceipt
+ * @property {string} operationId Core-created durable operation identity.
+ * @property {string} workflowId
+ * @property {string} actionId
+ * @property {string} attemptId
+ * @property {string} generation
+ * @property {string} decisionKey Candidate-bound validation decision identity.
+ *
+ * @callback ReviewDecisionSink
+ * @param {ReviewDecision} decision
+ * @returns {Promise<void | ReviewDecisionReceipt>}
  *
  * @typedef {Object} ReviewRequestContext
  * @property {Request} req
@@ -117,6 +134,14 @@ export async function reviewDecisionApi(ctx) {
         if (executionPolicy instanceof Response) return executionPolicy;
         return {
             approved: true,
+            ...(Array.isArray(body.questionAnswers) && {
+                questionAnswers: body.questionAnswers.filter(
+                    (answer) =>
+                        answer &&
+                        typeof answer.id === "string" &&
+                        (typeof answer.value === "boolean" || typeof answer.value === "string"),
+                ),
+            }),
             feedback: typeof body.feedback === "string" ? body.feedback : undefined,
             annotations: Array.isArray(body.annotations) ? body.annotations : [],
             ...reviewImageDecisionFields(body),
@@ -147,8 +172,9 @@ export async function reviewDenyApi(ctx) {
 export async function reviewFeedbackApi(ctx) {
     return await resolveFromRequest(ctx, (body) => ({
         approved: body.approved === true,
-        ...(["post_comments", "approve_pr", "approve_commit"].includes(String(body.reviewAction)) &&
-            { reviewAction: body.reviewAction }),
+        ...(["post_comments", "approve_pr", "approve_commit"].includes(String(body.reviewAction)) && {
+            reviewAction: body.reviewAction,
+        }),
         feedback: typeof body.feedback === "string" ? body.feedback : "",
         annotations: Array.isArray(body.annotations) ? body.annotations : [],
         ...reviewImageDecisionFields(body),
@@ -230,6 +256,16 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
+    if (
+        ctx.state?.reviewPayload?.reviewRevision !== undefined &&
+        body?.reviewRevision !== ctx.state.reviewPayload.reviewRevision
+    ) {
+        return jsonError(
+            "stale_sequence_review",
+            "This browser page shows a superseded review revision. Reload it.",
+            409,
+        );
+    }
     const decision = createDecision(body || {});
     if (decision instanceof Response) return decision;
     if (ctx.state?.reviewPayload?.sequenceDocuments && !decision.exit) {
@@ -240,10 +276,19 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
-    if (!resolveReviewDecision(token, decision)) {
+    /** @type {void | ReviewDecisionReceipt} */
+    let receipt = undefined;
+    if (ctx.state?.onDecision) {
+        try {
+            receipt = await ctx.state.onDecision(decision);
+        } catch (error) {
+            return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
+        }
+    }
+    if (!(decision.conversationTurn && ctx.state?.keepConversationTurns) && !resolveReviewDecision(token, decision)) {
         return jsonError("review_not_found", "Review expired or completed.", 404);
     }
-    return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, ...receipt }, { headers: { "cache-control": "no-store" } });
 }
 
 /**
@@ -276,9 +321,9 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
     if (!executionAgent) {
         return jsonError(
             "invalid_execution_agent",
-            `Invalid executionAgent: ${
-                String(body.executionAgent)
-            }. Supported values are engineer and frontend-engineer.`,
+            `Invalid executionAgent: ${String(
+                body.executionAgent,
+            )}. Supported values are engineer and frontend-engineer.`,
             400,
         );
     }
@@ -286,9 +331,9 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
     if (!collaborationRecommendation) {
         return jsonError(
             "invalid_collaboration_recommendation",
-            `Invalid collaborationRecommendation: ${
-                String(body.collaborationRecommendation)
-            }. Supported values are autonomous and pair.`,
+            `Invalid collaborationRecommendation: ${String(
+                body.collaborationRecommendation,
+            )}. Supported values are autonomous and pair.`,
             400,
         );
     }
@@ -297,11 +342,12 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
 
 /** @param {ReviewPayload} [reviewPayload] */
 function trustedReviewClassification(reviewPayload) {
-    const classification = typeof reviewPayload?.classification === "string"
-        ? reviewPayload.classification
-        : typeof reviewPayload?.frontmatter?.classification === "string"
-        ? reviewPayload.frontmatter.classification
-        : "PLANNED_CHANGE";
+    const classification =
+        typeof reviewPayload?.classification === "string"
+            ? reviewPayload.classification
+            : typeof reviewPayload?.frontmatter?.classification === "string"
+              ? reviewPayload.frontmatter.classification
+              : "PLANNED_CHANGE";
     return normalizePlanClassification(classification);
 }
 

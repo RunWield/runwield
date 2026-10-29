@@ -10,7 +10,7 @@ import {
     getWorktreeReviewDiff,
     WorktreeReviewComparisonError,
 } from "../../shared/workflow/git-snapshot.ts";
-import { parseDiffFiles } from "../../shared/workflow/review-diff-tool.js";
+import { parseDiffFiles } from "../../shared/workflow/review-diff-tool.ts";
 import {
     git,
     makeRecordedSession,

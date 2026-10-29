@@ -667,14 +667,19 @@ async function resolveValidationExecutionContextInScope({
         }
         persistedLegacyExecutionMode = currentExecutionPlan.attrs.executionMode !== "worktree";
     }
-    await recordResolutionMetric({
-        cwd: projectRoot,
-        planName,
-        reason: selected.source,
-        recovered: selected.source === "durable_recovery",
-        planFileRestored: Boolean(restoredPlanFile),
-        worktreeId,
-    });
+    // A host reviewer continuation resolves the same round again. Its checkpoint
+    // already records that round's context; process re-entry is not another check.
+    if (!attrs.validationCheckpoint?.hostReview) {
+        await recordResolutionMetric({
+            cwd: projectRoot,
+            planName,
+            reason: selected.source,
+            recovered: selected.source === "durable_recovery",
+            planFileRestored: Boolean(restoredPlanFile),
+            worktreeId,
+        });
+    }
+
     return {
         kind: "ok",
         context: {

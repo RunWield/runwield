@@ -45,6 +45,14 @@ and its Plan is authoritative. The primary copy may remain stale, missing, malfo
 RunWield does not mirror status or execution metadata into that copy and does not require it to agree with the selected
 document.
 
+For target-family discovery and child selection, the primary checkout supplies local Plan edits and untracked children
+only when it is on that target branch. Otherwise Git target snapshots supply the family, not unrelated checkout files.
+Registered documents keep their authority over the child body, lifecycle, and order. A saved planning copy cannot
+restore a child removed from the target family. This keeps the picker and selected document on the same source without
+importing another branch's drafts. On first Resume planning, only the selected local Plan is copied into the registered
+planning worktree; a missing Plan ID is assigned on that copy. The code baseline stays at the latest target snapshot.
+The source files stay unchanged, and local drafts are not committed or published to the target branch.
+
 Document operations lock and update the selected document. Registry operations resolve the primary project's shared
 runtime directory even when called from a linked worktree. Callers must distinguish the document directory, execution
 directory, and shared registry directory; one `cwd` cannot stand for all three.

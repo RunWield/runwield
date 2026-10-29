@@ -1,0 +1,128 @@
+diff --git a/src/publication.ts b/src/publication.ts
+index ea2f3aa5f..d6b9fe998 100644
+--- a/src/publication.ts
++++ b/src/publication.ts
+@@ -1,4 +1,4 @@
+-import { saveAttempt } from "./attempts.ts";
++import { readAttempt, saveAttempt } from "./attempts.ts";
+ import { git, gitResult } from "./git.ts";
+ import type { PublicationAttempt, PublicationRequest } from "./model.ts";
+ 
+@@ -50,3 +50,16 @@ export async function publishValidated(
+         error: null,
+     });
+ }
++
++export async function retryPublication(workspace: string, path: string): Promise<PublicationAttempt> {
++    const saved = await readAttempt(path);
++    if (saved.status === "published") return saved;
++    const target = fetchTarget(workspace, saved.remote, saved.targetRef);
++    const preparedCommit = saved.preparedCommit;
++    return send(workspace, path, {
++        ...saved,
++        preparedCommit,
++        expectedTarget: target,
++        status: "pending",
++    });
++}
+diff --git a/tests/public.ts b/tests/public.ts
+index 4b17a3a..ba1edcc 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -1,7 +1,8 @@
+ import assert from "node:assert/strict";
++import { rename } from "node:fs/promises";
+ import { readAttempt } from "../src/attempts.ts";
+ import { git } from "../src/git.ts";
+-import { publishValidated } from "../src/publication.ts";
++import { publishValidated, retryPublication } from "../src/publication.ts";
+ import { rejectPushes, withPublicationFixture } from "./git-fixture.ts";
+ 
+ await withPublicationFixture(async (f) => {
+@@ -45,3 +46,55 @@ await withPublicationFixture(async (f) => {
+     assert.equal(git(f.remote, ["rev-parse", "refs/heads/main"]), f.initialTarget);
+ });
+ console.log("PASS unavailable candidates do not change the target");
++
++await withPublicationFixture(async (f) => {
++    await rejectPushes(f, true);
++    const pending = await publishValidated(f.repair, f.attemptFile, {
++        remote: f.remote,
++        targetRef: "refs/heads/main",
++        candidate: f.candidate,
++    });
++    assert.equal(pending.status, "pending");
++    await rejectPushes(f, false);
++    const result = await retryPublication(f.repair, f.attemptFile);
++    assert.equal(result.status, "published");
++    assert.equal(result.error, null);
++    assert.equal(result.candidate, f.candidate);
++    assert.equal(git(f.remote, ["rev-parse", "refs/heads/main"]), result.preparedCommit);
++    git(f.remote, ["merge-base", "--is-ancestor", f.candidate, result.preparedCommit]);
++    assert.deepEqual(await readAttempt(f.attemptFile), result);
++});
++console.log("PASS a saved pending attempt publishes when the remote becomes available");
++
++await withPublicationFixture(async (f) => {
++    await rejectPushes(f, true);
++    await publishValidated(f.repair, f.attemptFile, {
++        remote: f.remote,
++        targetRef: "refs/heads/main",
++        candidate: f.candidate,
++    });
++    const previous = await readAttempt(f.attemptFile);
++    await rejectPushes(f, true, "Retry blocked by updated policy");
++    const result = await retryPublication(f.repair, f.attemptFile);
++    assert.equal(result.status, "pending");
++    assert.match(previous.error ?? "", /Publication maintenance window/);
++    assert.match(result.error ?? "", /Retry blocked by updated policy/, "Retry must record the current rejection");
++    assert.notEqual(result.error, previous.error);
++    assert.equal(result.candidate, f.candidate);
++    assert.equal(git(f.remote, ["rev-parse", "refs/heads/main"]), f.initialTarget);
++    assert.deepEqual(await readAttempt(f.attemptFile), result);
++});
++console.log("PASS a rejected retry retains its candidate and diagnostic record");
++
++await withPublicationFixture(async (f) => {
++    const published = await publishValidated(f.repair, f.attemptFile, {
++        remote: f.remote,
++        targetRef: "refs/heads/main",
++        candidate: f.candidate,
++    });
++    assert.equal(published.status, "published");
++    await rename(f.remote, f.remote + ".offline");
++    assert.deepEqual(await retryPublication(f.repair, f.attemptFile), published);
++    assert.deepEqual(await readAttempt(f.attemptFile), published);
++});
++console.log("PASS a completed attempt can be read without contacting the remote");
+diff --git a/README.md b/README.md
+index 819261abe..e4658e953 100644
+--- a/README.md
++++ b/README.md
+@@ -8,6 +8,9 @@ with its error for a later operator action. A successful push is recorded as pub
+ validated commit ID. The repair workspace must be clean and exclusively owned by the service. Attempt files live
+ outside its working tree. Validation of the supplied candidate is the caller's responsibility.
+ 
++`retryPublication(workspace, attemptFile)` resumes a pending send from its saved record. A completed attempt returns
++without contacting the remote. Rejected retries keep their candidate and diagnostic information.
++
+ Use Bun 1.4.3 and Git. Run `bun run test`. Tests create disposable local repositories outside this project. They do not
+ use the materialized project's Git history or global Git configuration.
+ 
+diff --git a/tests/git-fixture.ts b/tests/git-fixture.ts
+index bcb08bb..41f08ac 100644
+--- a/tests/git-fixture.ts
++++ b/tests/git-fixture.ts
+@@ -39,10 +39,10 @@ export async function withPublicationFixture(run: (fixture: PublicationFixture)
+     }
+ }
+
+-export async function rejectPushes(fixture: PublicationFixture, reject: boolean): Promise<void> {
++export async function rejectPushes(fixture: PublicationFixture, reject: boolean, message = "Publication maintenance window"): Promise<void> {
+     const hook = join(fixture.remote, "hooks", "pre-receive");
+     if (reject) {
+-        await writeFile(hook, "#!/bin/sh\necho 'Publication maintenance window' >&2\nexit 1\n");
++        await writeFile(hook, `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(message)} >&2\nexit 1\n`);
+         await chmod(hook, 0o755);
+     } else {
+         await rm(hook, { force: true });

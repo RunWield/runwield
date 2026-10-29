@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
+import { getCwd } from "../src/constants.js";
+import { spawnNativeProcess } from "../src/shared/foreground-process.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
-import process from "node:process";
-
 import { runWithSnip, writeSnipCommandResult } from "./run-with-snip.ts";
+
+import process from "node:process";
 
 export const PRE_TEST_TASKS = [
     "submodules:check",
@@ -64,19 +66,37 @@ export interface CiOptions {
 }
 
 export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {}): Promise<CiResult> {
-    const preTestRuns = PRE_TEST_TASKS.map((taskName) => settleTask(taskName, executeTask));
-    const preTestResults = await Promise.all(preTestRuns);
-    const preTestFailures = failedTasks(preTestResults);
+    // CI must keep running after the display sleeps. -w also releases the assertion if this process exits.
+    const sleepInhibitor =
+        (process.platform === "win32" ? "windows" : process.platform) === "darwin"
+            ? spawnNativeProcess("/usr/bin/caffeinate", {
+                  args: ["-i", "-w", String(process.pid)],
+                  stdin: "null",
+                  stdout: "null",
+                  stderr: "null",
+                  cwd: getCwd(),
+              })
+            : null;
+    try {
+        const preTestRuns = PRE_TEST_TASKS.map((taskName) => settleTask(taskName, executeTask));
+        const preTestResults = await Promise.all(preTestRuns);
+        const preTestFailures = failedTasks(preTestResults);
 
-    if (preTestFailures.length > 0) {
-        printFailureSummary(preTestFailures);
-        return { exitCode: 1, failures: preTestFailures };
+        if (preTestFailures.length > 0) {
+            printFailureSummary(preTestFailures);
+            return { exitCode: 1, failures: preTestFailures };
+        }
+
+        const testResult = await settleTask(options.sourceOnly ? "test:suite" : "test:all:suite", executeTask);
+        const testFailures = failedTasks([testResult]);
+        printFailureSummary(testFailures);
+        return { exitCode: testResult.code, failures: testFailures };
+    } finally {
+        if (sleepInhibitor) {
+            sleepInhibitor.kill("SIGTERM");
+            await sleepInhibitor.status;
+        }
     }
-
-    const testResult = await settleTask(options.sourceOnly ? "test:suite" : "test:all:suite", executeTask);
-    const testFailures = failedTasks([testResult]);
-    printFailureSummary(testFailures);
-    return { exitCode: testResult.code, failures: testFailures };
 }
 
 async function executeRuntimeTask(taskName: CiTaskName, failFast: boolean): Promise<CiTaskResult> {

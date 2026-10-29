@@ -362,6 +362,13 @@ test("completion after generated turn acceptance prevents final model dispatch",
                 const completions: Array<Promise<{ details: { outcome: string } }>> = [];
                 let generatedTurnId = "";
                 let preparationHeld = false;
+                let enteredPreparationWait = () => {};
+                const preparationWaitEntered = new Promise<void>((resolve) => (enteredPreparationWait = resolve));
+                const waitForPreparation = session.waitForAgentSteeringPreparations.bind(session);
+                session.waitForAgentSteeringPreparations = () => {
+                    if (preparationHeld) enteredPreparationWait();
+                    return waitForPreparation();
+                };
                 let settleGeneratedOperation = () => {};
                 const generatedOperationSettled = new Promise<void>((resolve) => (settleGeneratedOperation = resolve));
                 runtime.subscribeSessionEvents(created.sessionId, (event) => {
@@ -396,6 +403,13 @@ test("completion after generated turn acceptance prevents final model dispatch",
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
                 assert(session.generatedTaskTurnId, "Generated turn was not accepted");
+                // Observe the real wait instead of assuming prompt preparation finishes within a fixed delay.
+                await Promise.race([
+                    preparationWaitEntered,
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(Error("Generated turn did not enter preparation wait")), 10_000),
+                    ),
+                ]);
                 const tool = createTaskCompletedTool({ hostedSession: session, agentName: "engineer" });
                 // @ts-expect-error Direct execution ignores extension context.
                 completions.push(tool.execute("final", { message: "- Done." }));

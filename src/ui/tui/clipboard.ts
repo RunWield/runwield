@@ -23,7 +23,6 @@ export interface ClipboardSystemPort {
 }
 
 export interface ClipboardReader {
-    hasClipboardImage(): Promise<boolean>;
     readClipboardImage(): Promise<{ base64: string; mimeType: "image/png" } | null>;
 }
 
@@ -60,31 +59,28 @@ export function createClipboardReader(port: ClipboardSystemPort): ClipboardReade
         return "none"
       end try`,
         ]);
-        return new TextDecoder().decode(result.stdout).trim() === "image";
+        return result.success && new TextDecoder().decode(result.stdout).trim() === "image";
     }
 
     async function readClipboardImage(): Promise<{ base64: string; mimeType: "image/png" } | null> {
-        if (!await hasClipboardImage()) return null;
-
-        const tempFile = await port.makeTempFile({
-            prefix: "runwield-clipboard-",
-            suffix: ".png",
-        });
-        const extractResult = await port.runCommand("osascript", [
-            "-e",
-            `set tempFile to "${tempFile}"
-      set theImage to the clipboard as «class PNGf»
-      set theFile to open for access POSIX file tempFile with write permission
-      write theImage to theFile
-      close access theFile`,
-        ]);
-
-        if (!extractResult.success) {
-            await port.remove(tempFile).catch(() => {});
-            return null;
-        }
-
+        let tempFile: string | undefined;
         try {
+            if (!(await hasClipboardImage())) return null;
+            tempFile = await port.makeTempFile({
+                prefix: "runwield-clipboard-",
+                suffix: ".png",
+            });
+            const extractResult = await port.runCommand("osascript", [
+                "-e",
+                `set tempFile to "${tempFile}"
+          set theImage to the clipboard as «class PNGf»
+          set theFile to open for access POSIX file tempFile with write permission
+          write theImage to theFile
+          close access theFile`,
+            ]);
+
+            if (!extractResult.success) return null;
+
             const base64Result = await port.runCommand("base64", ["-i", tempFile]);
             if (base64Result.success) {
                 return {
@@ -93,18 +89,17 @@ export function createClipboardReader(port: ClipboardSystemPort): ClipboardReade
                 };
             }
         } catch {
-            // A missing or failing system encoder means clipboard image paste is unavailable.
+            // A failed clipboard command or encoder makes this paste unavailable.
         } finally {
-            await port.remove(tempFile).catch(() => {});
+            if (tempFile) await port.remove(tempFile).catch(() => {});
         }
 
         return null;
     }
 
-    return { hasClipboardImage, readClipboardImage };
+    return { readClipboardImage };
 }
 
 const systemClipboard = createClipboardReader(systemClipboardPort);
 
-export const hasClipboardImage = systemClipboard.hasClipboardImage;
 export const readClipboardImage = systemClipboard.readClipboardImage;

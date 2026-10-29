@@ -125,7 +125,7 @@ configuration, PRDs, ADRs and the glossary. Executable proof code must remain ig
 - Child02's `src/shared/remote/control.ts`, `supervisor.ts` and model proof — reuse established transport/security and
   isolation patterns. This planning checkout is stale; execute from source containing completed children 01 and 02 and
   record its revision. Do not reconstruct or overwrite those completed implementations.
-- `scripts/run-prototype.js` — existing launcher; no per-proof root task.
+- `scripts/run-prototype.ts` — existing launcher; no per-proof root task.
 
 ## Implementation Steps
 

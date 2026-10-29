@@ -31,7 +31,7 @@ interface PromptSessionResult {
     error?: string;
     replacementSessionId?: string;
     templateNewSession?: boolean;
-    _validationResult?: import("./workflows.ts").RuntimeValidationResult | null;
+    _validationResult?: import("./workflow-options.ts").RuntimeValidationResult | null;
     namedInvocation?: {
         kind: string;
         name: string;
@@ -638,6 +638,7 @@ export class RuntimeTurns {
                 hostedSession.id,
                 {
                     planName: validationResult.planName || workflow?.planName || options.planName || "",
+                    suppressEpicContinuation: true,
                     planContent: options.planContent,
                     triageMeta: workflow?.triageMeta || options.triageMeta || {},
                 },
@@ -689,6 +690,7 @@ export class RuntimeTurns {
     cancelSession(sessionId: string) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, aborted: false, error: "not_found" };
+        session.planReviewConversations.canceled = true;
         const hasBackgroundWork =
             session.backgroundTasks.activeCount > 0 || session.backgroundTasks.pendingCompletions().length > 0;
         void session.backgroundTasks.cancelAllAndSuppress();

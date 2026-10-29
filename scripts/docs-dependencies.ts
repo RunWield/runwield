@@ -9,7 +9,8 @@ export async function prepareDocsDependencies(root: string): Promise<void> {
     const repository = fileURLToPath(new URL("../", import.meta.url));
     const modules = join(repository, "docs-site", "node_modules");
     const store = await realpath(join(modules, ".bun"));
-    const destination = join(root, "docs-site", "node_modules", ".bun");
+    const destinationRoot = await realpath(root);
+    const destination = join(destinationRoot, "docs-site", "node_modules", ".bun");
     const visited = new Set<string>();
     const links: Array<{ source: string; destination: string }> = [];
     async function copyDependencies(sourceRoot: string, destinationRoot: string, topLevel = false): Promise<void> {
@@ -56,7 +57,7 @@ export async function prepareDocsDependencies(root: string): Promise<void> {
         }
     }
     await visitModules(modules);
-    await copyDependencies(modules, join(root, "docs-site", "node_modules"), true);
+    await copyDependencies(modules, join(destinationRoot, "docs-site", "node_modules"), true);
     for (const link of links) {
         const original = await realpath(link.source);
         const child = relative(store, original);

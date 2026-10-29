@@ -3,7 +3,7 @@
 A Session is one conversation with RunWield. Sessions are saved automatically, so you can resume them later in the
 terminal or in [Workspace](workspace.md).
 
-RunWield's Sessions work like Pi's. For the Session tree, forking, cloning, export, and compaction, see
+For the Session tree, forking, cloning, and compaction, see
 [Pi Sessions](https://pi.dev/docs/latest/sessions) and [Pi Compaction](https://pi.dev/docs/latest/compaction).
 
 ## Starting and resuming
@@ -18,14 +18,31 @@ Run `wld` to start a Session. Inside it:
 /session         # show Session information and token totals
 /context         # show how much of the model's context window is in use
 /compact         # compact the conversation to free context
-/export          # export to HTML or JSONL
-/share           # upload as a secret GitHub Gist
+/export          # export the complete Session to HTML
+/export out.json # export raw entries from every segment to JSON
+/share           # share HTML and JSON in one secret Gist with a preview link
 ```
 
 RunWield saves Sessions under `~/.wld/sessions/`.
 
 When you resume a large Session, RunWield can offer to compact it first. Set the threshold with
 [`compactOnResumeThresholdPercent`](settings.md#runwield-custom-keys).
+
+## Exporting and sharing
+
+`/export` includes all committed planning, execution, and repair segments, plus Session details, artifacts, and Plan
+Associations. With no path it writes a timestamped HTML file in the Session's project directory. Use `/export out.json`
+for a versioned JSON document with each segment's raw entries. `.jsonl` export is retired; use `.json` instead.
+
+HTML works offline and shows segment headings, Markdown messages, expandable tool calls, and collapsed thinking. Image
+attachments appear as `[image]`; JSON keeps their raw data. Export does not change the Session. During a turn it includes
+only the last committed history. In-memory helper Agent transcripts and Background Task logs are not included; their
+results are included when recorded in the parent Session.
+
+`/share` requires the authenticated [GitHub CLI](https://cli.github.com/). It uploads `runwield-session.html` and
+`runwield-session.json` to one secret Gist and prints the Gist URL and a `gistpreview.github.io` HTML preview link.
+**Anyone with the secret Gist link can read both files, including thinking and full tool output.** Check the content
+before sharing. The preview uses an external service; the Gist link remains available if that service is down.
 
 ## Session names
 
