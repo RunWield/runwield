@@ -361,7 +361,7 @@
     "src/shared/session/file-session-plan-review-rollover.test.ts",
     "src/shared/session/file-session-storage.test.ts",
     "src/shared/session/file-session-store-owner.test.ts",
-    "src/shared/session/file-session-store.test.js",
+    "src/shared/session/file-session-store.test.ts",
     "src/shared/session/hosted-session.test.js",
     "src/shared/session/image-attachments.test.js",
     "src/shared/session/legacy-workflow-replay.test.ts",
