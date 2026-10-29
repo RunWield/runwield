@@ -692,6 +692,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
 - Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
 - Given a new Plan, identity assignment does not reuse the registered ID of a Plan whose execution document is missing.
+- Given a same-name catalog copy and another Plan sharing its registered ID, authority replacement or removal selects
+  the same-name copy regardless of filesystem order. With available authority, identity preparation and explicit
+  backfill reject the collision without changing either document. Missing or archived authority hides only its own
+  copy. Renamed Plans retain identity-based discovery when no same-name copy exists.
   **Requirement: Continue Attached delivery through the shared completion authority.**
 
 After accepted semantic review, Attached validation continues automatically into configured Code Review, recording, and
