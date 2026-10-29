@@ -170,7 +170,6 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
                 ownerInstanceId: "managed-read-test",
             });
             const adopted = runtime.adoptManagedSession({ session, generation: 0 });
-            const outputPath = join(home, "export.jsonl");
             const exercised = new Set<string>();
             const run = async (name: string, action: () => void | Promise<void>) => {
                 exercised.add(name);
@@ -190,8 +189,8 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
                     // Missing skills still exercise the runtime read path.
                 }
             });
-            await run("exportSession", async () => {
-                await runtime.exportSession(adopted.sessionId, outputPath);
+            await run("readSessionExport", async () => {
+                await runtime.readSessionExport(adopted.sessionId);
             });
             await run("getLastAssistantText", async () => {
                 assertEquals(await runtime.getLastAssistantText(adopted.sessionId), "Committed hello.");

@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { RunWieldButton, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
+import { RunWieldDialog } from "../../design-system/components/react/RunWieldDialog.tsx";
+import { CLEAR_HISTORY_STATEMENT } from "./UsageSettings.tsx";
+import type { UsageSettingsResponse } from "../server/owner-usage-settings.ts";
 import { UsageTrend } from "../../design-system/components/react/UsageTrend.tsx";
 import type { OwnerUsageLink, OwnerUsageReport } from "../server/owner-usage.ts";
 import type { UsageMeasure, UsagePeriod, UsageTotals } from "../../../shared/workflow/usage-reporting.ts";
@@ -24,6 +27,7 @@ interface UsageBreakdownRow {
     label: string;
     totals: UsageTotals;
     links?: OwnerUsageLink[];
+    notice?: ReactNode;
 }
 
 function Breakdown({ rows, caption }: { rows: UsageBreakdownRow[]; caption: string }) {
@@ -45,6 +49,7 @@ function Breakdown({ rows, caption }: { rows: UsageBreakdownRow[]; caption: stri
                             <th scope="row">
                                 {row.label}
                                 {row.links && <Destinations links={row.links} />}
+                                {row.notice}
                             </th>
                             <td>
                                 <Measure measure={row.totals.tokens} />
@@ -84,6 +89,105 @@ function Destinations({ links }: { links: OwnerUsageLink[] }) {
     );
 }
 
+interface UsageStatusStripProps {
+    recording: OwnerUsageReport["recording"];
+    exportStatus: OwnerUsageReport["export"];
+}
+
+export function UsageStatusStrip({ recording, exportStatus }: UsageStatusStripProps) {
+    const enabled = recording.projects.filter((project) => project.enabled).length;
+    const recordingLabel =
+        enabled === 0
+            ? "Recording off"
+            : enabled === recording.projects.length
+              ? "Recording on"
+              : `Recording on for ${enabled} of ${recording.projects.length} Projects`;
+    return (
+        <section className="rw-usage-status-strip" aria-label="Recording and export status">
+            <strong>{recordingLabel}</strong>
+            {!exportStatus.available && <p>Export is unavailable on this host.</p>}
+            {exportStatus.available && !exportStatus.destinations.length && (
+                <p>Export off — no destinations configured.</p>
+            )}
+            {exportStatus.destinations.map((destination) => (
+                <p key={destination.destinationId}>
+                    Export: {destination.exporterId} — {destination.counts.accepted} accepted,{" "}
+                    {destination.counts.pending} pending, {destination.counts.confirmed} confirmed,{" "}
+                    {destination.counts.unconfirmed} delivery unconfirmed, {destination.counts.rejected} rejected
+                </p>
+            ))}
+            <a href="/usage/settings">Usage settings</a>
+        </section>
+    );
+}
+
+interface UsageHistoryClearNoticeProps {
+    projectId: string;
+    label: string;
+    onCleared: (message: string) => void;
+}
+
+export function UsageHistoryClearNotice({ projectId, label, onCleared }: UsageHistoryClearNoticeProps) {
+    const [open, setOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+    async function retry() {
+        setBusy(true);
+        setError("");
+        try {
+            const csrf =
+                document.cookie
+                    .split("; ")
+                    .find((cookie) => cookie.startsWith("rw_owner_csrf="))
+                    ?.slice("rw_owner_csrf=".length) || "";
+            const response = await fetch("/api/owner/usage/clear", {
+                method: "POST",
+                headers: { "content-type": "application/json", "x-runwield-csrf": decodeURIComponent(csrf) },
+                body: JSON.stringify({ projectIds: [projectId], confirmed: true }),
+            });
+            const next: UsageSettingsResponse & { error?: string } = await response.json();
+            if (!response.ok) throw new Error(next.error || "History could not be cleared. Try again.");
+            const result = next.result?.cleared?.find((item) => item.projectId === projectId);
+            if (result?.cleared !== true) throw new Error(result?.reason || "Clear did not finish. Try again.");
+            setOpen(false);
+            onCleared(
+                `${label}: history cleared.${result.deliveryInFlight ? " A request already sent cannot be recalled." : ""}`,
+            );
+        } catch (caught) {
+            setError(caught instanceof Error ? caught.message : "History could not be cleared. Try again.");
+        } finally {
+            setBusy(false);
+        }
+    }
+    return (
+        <div className="notice warning" role="status">
+            <p>
+                <strong>Clear did not finish</strong> — {label}. Old measurements are hidden until the clear finishes.
+            </p>
+            <RunWieldDialog
+                open={open}
+                onOpenChange={setOpen}
+                busy={busy}
+                trigger={<RunWieldButton>Retry clear</RunWieldButton>}
+                title={`Retry clear for ${label}?`}
+                description={CLEAR_HISTORY_STATEMENT}
+                footer={
+                    <>
+                        <RunWieldButton disabled={busy} onClick={() => setOpen(false)}>
+                            Cancel
+                        </RunWieldButton>
+                        <RunWieldButton variant="danger" disabled={busy} onClick={() => void retry()}>
+                            {busy ? <RunWieldThinkingDots label="Clearing history" /> : "Retry clear"}
+                        </RunWieldButton>
+                    </>
+                }
+            >
+                {error && <p role="alert">{error}</p>}
+            </RunWieldDialog>
+        </div>
+    );
+}
+
 export function UsageReport() {
     const [report, setReport] = useState<OwnerUsageReport | null>(null);
     const [loading, setLoading] = useState(true);
@@ -95,6 +199,7 @@ export function UsageReport() {
     const [custom, setCustom] = useState(false);
     const [range, setRange] = useState<UsagePeriod | null>(null);
     const [refresh, setRefresh] = useState(0);
+    const [clearResult, setClearResult] = useState("");
     useEffect(() => {
         const controller = new AbortController();
         const params = new URLSearchParams({ preset });
@@ -127,6 +232,7 @@ export function UsageReport() {
     return (
         <div className="rw-usage-page">
             <h1>Usage</h1>
+            {report && <UsageStatusStrip recording={report.recording} exportStatus={report.export} />}
             <form
                 className="rw-usage-filters"
                 onSubmit={(event) => {
@@ -209,6 +315,7 @@ export function UsageReport() {
                     <RunWieldButton onClick={() => setRefresh((value) => value + 1)}>Retry</RunWieldButton>
                 </div>
             )}
+            {clearResult && <p role="status">{clearResult}</p>}
             {report && totals && !error && (
                 <div aria-busy={loading}>
                     <p className="rw-usage-context">
@@ -369,6 +476,16 @@ export function UsageReport() {
                                 (project.aliases.length > 1 ? " (shared history)" : ""),
                             totals: project.totals,
                             links: [...project.links, ...project.incomplete, ...project.ongoing],
+                            notice: project.coverage.historyClearPending && (
+                                <UsageHistoryClearNotice
+                                    projectId={project.projectId}
+                                    label={project.aliases.map((alias) => alias.label).join(" / ")}
+                                    onCleared={(message) => {
+                                        setClearResult(message);
+                                        setRefresh((value) => value + 1);
+                                    }}
+                                />
+                            ),
                         }))}
                     />
                     <Breakdown

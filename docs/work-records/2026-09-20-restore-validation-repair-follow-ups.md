@@ -12,18 +12,12 @@ provenance:
         - "b8850b02-7ef6-4d15-a7f7-dfe876ecd519"
 ---
 
-# Restore Validation Repair Follow-ups
+# Validation Repair follow-up recovery
 
 ## Summary
 
-Fixed paused Validation Repair Engineer follow-ups when valid Project-stored transcripts retain a worktree cwd.
-Transcript reopening now preserves storage validation, identity, locking, and generation guards. Repair thinking now
-falls back from repair-specific settings to Engineer settings, then defaults, while preserving explicit overrides and
-`off`. Added four regression tests and updated the Core PRD and settings documentation. Focused tests and the full
-`deno task ci` passed with 368 files and no failures.
+Paused Validation Repair Engineer follow-ups reopen valid Project-stored transcripts even when execution uses a worktree working directory. Reopening preserves storage validation, identity, locking, and generation guards. Repair thinking resolves through repair-specific settings, Engineer settings, then defaults, while preserving explicit overrides and off.
 
 ## Future Planning Notes
 
-Keep transcript storage authority separate from the Agent working directory when Project storage and execution worktrees
-differ. Resolve repair model and thinking independently through repair-specific settings, Engineer settings, then
-defaults.
+Keep transcript storage authority separate from Agent working directory. Resolve repair model and thinking independently through repair-specific settings, Engineer settings, then defaults.

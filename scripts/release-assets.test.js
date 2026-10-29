@@ -13,13 +13,15 @@ import {
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
+import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.ts";
+import { expectedReleaseAssetNames } from "./release.js";
+import { sha256File } from "./build-metadata.ts";
 
-async function fixture() {
+/** @param {string} tag */
+async function fixture(tag = "v1.2.3") {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const input = join(root, "input");
     await fsMkdir(input);
-    const tag = "v1.2.3";
     const names = releaseAssetNames(tag);
     for (const name of names.filter((name) => !name.endsWith(".sha256") && name !== "SHA256SUMS")) {
         if (/-(darwin-(arm64|x64)|linux-(arm64|x64))\.tar\.gz$/.test(name)) {
@@ -35,7 +37,8 @@ async function fixture() {
             const binary = new TextEncoder().encode(name);
             await fsWriteFile(join(stage, "wld"), binary);
             const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", binary)))
-                .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+                .map((byte) => byte.toString(16).padStart(2, "0"))
+                .join("");
             await fsWriteFile(
                 join(stage, "wld.build.json"),
                 JSON.stringify({
@@ -43,19 +46,21 @@ async function fixture() {
                     protocol: 1,
                     buildId: "a".repeat(64),
                     target,
-                    version: "v1.2.3",
+                    version: tag,
                     sha256,
                 }),
             );
+            await fsCopyFile(new URL("../LICENSE", import.meta.url), join(stage, "LICENSE"));
             const result = await captureScriptProcess("tar", {
-                args: ["-czf", join(input, name), "-C", stage, "wld", "wld.build.json"],
+                args: ["-czf", join(input, name), "-C", stage, "wld", "wld.build.json", "LICENSE"],
             });
             if (!result.success) throw new Error("Could not create test archive");
         } else await fsWriteFile(join(input, name), name);
         const bytes = await fsReadFile(join(input, name));
         if (names.includes(`${name}.sha256`)) {
             const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
-                .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+                .map((byte) => byte.toString(16).padStart(2, "0"))
+                .join("");
             await fsWriteFile(join(input, `${name}.sha256`), `${digest}  ${name}\n`);
         }
     }
@@ -67,6 +72,7 @@ test("release assets exclude incidental package JSON and produce a unique flat s
     try {
         await fsMkdir(join(f.input, "other"));
         await fsWriteFile(join(f.input, "package.json"), "{}");
+        await fsWriteFile(join(f.input, `wld-${f.tag}-windows-x64.zip`), "not part of new publication");
         await fsWriteFile(join(f.input, "other/package.json"), "{}");
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const names = Array.fromAsync(await fsReaddir(f.output, { withFileTypes: true }), (entry) => entry.name);
@@ -89,12 +95,26 @@ for (const failure of ["duplicate", "missing", "corrupt", "unsafe checksum", "pu
             else if (failure === "unsafe checksum") {
                 await fsWriteFile(join(f.input, `${name}.sha256`), `${"a".repeat(64)}  ../escape\n`);
             } else await fsWriteFile(join(f.input, "SHA256SUMS"), `${"a".repeat(64)}  ${name}\n`);
+            const metadata = join(f.root, "published.json");
+            await fsWriteFile(metadata, JSON.stringify({ assets: [] }));
             await assertRejects(
-                () => prepareReleaseAssets(f.input, f.output, f.tag, failure === "published checksum", "unused.json"),
+                () =>
+                    prepareReleaseAssets(
+                        f.input,
+                        f.output,
+                        f.tag,
+                        failure === "published checksum",
+                        failure === "published checksum" ? metadata : "",
+                    ),
                 Error,
                 failure === "published checksum" ? "Published SHA256SUMS" : "",
             );
-            assertEquals(await fsStat(f.output).then(() => true).catch(() => false), false);
+            assertEquals(
+                await fsStat(f.output)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
         } finally {
             await fsRm(f.root, { recursive: true });
         }
@@ -110,7 +130,8 @@ for (const corruptMetadata of [false, true]) {
             for (const name of releaseAssetNames(f.tag)) {
                 const bytes = await fsReadFile(join(f.output, name));
                 const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
-                    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+                    .map((byte) => byte.toString(16).padStart(2, "0"))
+                    .join("");
                 assets.push({ name, digest: `sha256:${digest}` });
             }
             const metadata = join(f.root, "published.json");
@@ -145,14 +166,16 @@ for (const field of ["buildId", "version"]) {
             const metadata = JSON.parse(await fsReadFile(metadataPath, "utf8"));
             metadata[field] = field === "buildId" ? "b".repeat(64) : "v9.8.7";
             await fsWriteFile(metadataPath, JSON.stringify(metadata));
+            await fsCopyFile(new URL("../LICENSE", import.meta.url), join(stage, "LICENSE"));
             const result = await captureScriptProcess("tar", {
-                args: ["-czf", join(f.input, name), "-C", stage, "wld", "wld.build.json"],
+                args: ["-czf", join(f.input, name), "-C", stage, "wld", "wld.build.json", "LICENSE"],
             });
             if (!result.success) throw new Error("Could not create test archive");
             const digest = Array.from(
                 new Uint8Array(await crypto.subtle.digest("SHA-256", await fsReadFile(join(f.input, name)))),
             )
-                .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+                .map((byte) => byte.toString(16).padStart(2, "0"))
+                .join("");
             await fsWriteFile(join(f.input, `${name}.sha256`), `${digest}  ${name}\n`);
             await assertRejects(() => prepareReleaseAssets(f.input, f.output, f.tag), Error, "does not match launcher");
         } finally {
@@ -174,3 +197,252 @@ test("published release recovery requires independent asset digests", async () =
         await fsRm(f.root, { recursive: true });
     }
 });
+
+for (const tag of ["v1.2.3", "v1.2.3-rc.1"]) {
+    test(`${tag} upload set includes docs only for Stable`, () => {
+        const expected = [...expectedReleaseAssetNames(tag)];
+        if (tag === "v1.2.3") expected.push(`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`);
+        assertEquals(releaseAssetNames(tag).sort(), expected.sort());
+        assertEquals(
+            releaseAssetNames(tag).some((name) => name.includes("windows")),
+            false,
+        );
+    });
+}
+
+test("Candidate publication does not need or stage docs assets", async () => {
+    const f = await fixture("v1.2.3-rc.1");
+    try {
+        await fsWriteFile(join(f.input, `runwield-docs-${f.tag}.tar.gz`), "incidental docs");
+        await prepareReleaseAssets(f.input, f.output, f.tag);
+        assertEquals((await fsReaddir(f.output)).sort(), releaseAssetNames(f.tag).sort());
+    } finally {
+        await fsRm(f.root, { recursive: true });
+    }
+});
+
+for (const suffixes of [[".tar.gz"], [".tar.gz.sha256"], [".tar.gz", ".tar.gz.sha256"]]) {
+    test(`new Stable publication rejects missing docs assets: ${suffixes.join(" and ")}`, async () => {
+        const f = await fixture();
+        try {
+            for (const suffix of suffixes) await fsRm(join(f.input, `runwield-docs-${f.tag}${suffix}`));
+            const name = `runwield-docs-${f.tag}${suffixes[0]}`;
+            await assertRejects(() => prepareReleaseAssets(f.input, f.output, f.tag), Error, `Expected one ${name}`);
+            assertEquals(
+                await fsStat(f.output)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}
+
+test("Stable SHA256SUMS covers all archives including the docs archive", async () => {
+    const f = await fixture();
+    try {
+        await prepareReleaseAssets(f.input, f.output, f.tag);
+        const sums = (await fsReadFile(join(f.output, "SHA256SUMS"), "utf8")).trim().split("\n").sort();
+        const checksums = await Promise.all(
+            releaseAssetNames(f.tag)
+                .filter((name) => name.endsWith(".sha256"))
+                .map(async (name) => (await fsReadFile(join(f.output, name), "utf8")).trim()),
+        );
+        const docs = `runwield-docs-${f.tag}.tar.gz`;
+        assertEquals(sums, checksums.sort());
+        assertEquals(sums.includes(`${await sha256File(join(f.output, docs))}  ${docs}`), true);
+    } finally {
+        await fsRm(f.root, { recursive: true });
+    }
+});
+
+test("Stable publication rejects a corrupt docs archive before staging", async () => {
+    const f = await fixture();
+    try {
+        const name = `runwield-docs-${f.tag}.tar.gz`;
+        await fsWriteFile(join(f.input, name), "changed docs");
+        await assertRejects(
+            () => prepareReleaseAssets(f.input, f.output, f.tag),
+            Error,
+            `Release checksum mismatch: ${name}.sha256`,
+        );
+        assertEquals(
+            await fsStat(f.output)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
+    } finally {
+        await fsRm(f.root, { recursive: true });
+    }
+});
+
+async function legacyFixture() {
+    const f = await fixture();
+    for (const suffix of [".tar.gz", ".tar.gz.sha256"]) {
+        await fsRm(join(f.input, `runwield-docs-${f.tag}${suffix}`));
+    }
+    const names = await fsReaddir(f.input);
+    const sums = await Promise.all(
+        names
+            .filter((name) => name.endsWith(".sha256"))
+            .map(async (name) => (await fsReadFile(join(f.input, name), "utf8")).trim()),
+    );
+    await fsWriteFile(join(f.input, "SHA256SUMS"), `${sums.join("\n")}\n`);
+    const assets = [];
+    for (const name of [...names, "SHA256SUMS"]) {
+        assets.push({ name, digest: `sha256:${await sha256File(join(f.input, name))}` });
+    }
+    const metadata = join(f.root, "published.json");
+    await fsWriteFile(metadata, JSON.stringify({ assets }));
+    return { ...f, metadata, assets };
+}
+
+for (const missing of [false, true]) {
+    test(`published recovery retains original Windows bytes and rejects missing files: ${missing}`, async () => {
+        const f = await legacyFixture();
+        try {
+            const name = `wld-${f.tag}-windows-x64.zip`;
+            const path = join(f.input, name);
+            await fsWriteFile(path, "original Windows package");
+            const sum = `${await sha256File(path)}  ${name}\n`;
+            await fsWriteFile(`${path}.sha256`, sum);
+            const previousSums = await fsReadFile(join(f.input, "SHA256SUMS"), "utf8");
+            await fsWriteFile(join(f.input, "SHA256SUMS"), previousSums + sum);
+            const names = await fsReaddir(f.input);
+            const assets = [];
+            for (const file of names) {
+                assets.push({ name: file, digest: `sha256:${await sha256File(join(f.input, file))}` });
+            }
+            await fsWriteFile(f.metadata, JSON.stringify({ assets }));
+            if (missing) {
+                await fsRm(path);
+                await assertRejects(
+                    () => prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata),
+                    Error,
+                    `Expected one ${name}; found 0`,
+                );
+            } else {
+                await prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata);
+                assertEquals(await fsReadFile(join(f.output, name)), await fsReadFile(path));
+                assertEquals(await fsReadFile(join(f.output, "SHA256SUMS"), "utf8"), previousSums + sum);
+            }
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}
+
+test("published legacy Stable recovery preserves a release with neither docs asset in metadata", async () => {
+    const f = await legacyFixture();
+    try {
+        await prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata);
+        assertEquals((await fsReaddir(f.output)).sort(), f.assets.map((asset) => asset.name).sort());
+        for (const { name } of f.assets) {
+            assertEquals(await fsReadFile(join(f.output, name)), await fsReadFile(join(f.input, name)));
+        }
+    } finally {
+        await fsRm(f.root, { recursive: true });
+    }
+});
+
+for (const suffix of [".tar.gz", ".tar.gz.sha256"]) {
+    test(`published Stable recovery rejects metadata with only the docs ${suffix} asset`, async () => {
+        const f = await legacyFixture();
+        try {
+            // The local files and SHA256SUMS form a valid legacy release. Partial
+            // GitHub metadata must not silently select that legacy contract.
+            f.assets.push({ name: `runwield-docs-${f.tag}${suffix}`, digest: `sha256:${"a".repeat(64)}` });
+            await fsWriteFile(f.metadata, JSON.stringify({ assets: f.assets }));
+            await assertRejects(
+                () => prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata),
+                Error,
+                "incomplete docs asset set",
+            );
+            assertEquals(
+                await fsStat(f.output)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}
+
+test("published Stable recovery requires docs files when metadata lists both assets", async () => {
+    const f = await legacyFixture();
+    try {
+        for (const suffix of [".tar.gz", ".tar.gz.sha256"]) {
+            f.assets.push({ name: `runwield-docs-${f.tag}${suffix}`, digest: `sha256:${"a".repeat(64)}` });
+        }
+        await fsWriteFile(f.metadata, JSON.stringify({ assets: f.assets }));
+        await assertRejects(
+            () => prepareReleaseAssets(f.input, f.output, f.tag, true, f.metadata),
+            Error,
+            `Expected one runwield-docs-${f.tag}.tar.gz`,
+        );
+        assertEquals(
+            await fsStat(f.output)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
+    } finally {
+        await fsRm(f.root, { recursive: true });
+    }
+});
+
+test("published Stable recovery verifies the independent docs digest", async () => {
+    const f = await fixture();
+    try {
+        await prepareReleaseAssets(f.input, f.output, f.tag);
+        const docs = `runwield-docs-${f.tag}.tar.gz`;
+        const assets = [];
+        for (const name of releaseAssetNames(f.tag)) {
+            assets.push({
+                name,
+                digest: `sha256:${name === docs ? "a".repeat(64) : await sha256File(join(f.output, name))}`,
+            });
+        }
+        const metadata = join(f.root, "published.json");
+        await fsWriteFile(metadata, JSON.stringify({ assets }));
+        const recovered = join(f.root, "recovered");
+        await assertRejects(
+            () => prepareReleaseAssets(f.output, recovered, f.tag, true, metadata),
+            Error,
+            `Published asset digest missing or mismatched: ${docs}`,
+        );
+        assertEquals(
+            await fsStat(recovered)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
+    } finally {
+        await fsRm(f.root, { recursive: true });
+    }
+});
+
+for (const includeLicense of [false, true]) {
+    test(`MIT publication rejects ${includeLicense ? "incorrect" : "missing"} license text`, async () => {
+        const f = await fixture("v0.14.0-rc.1");
+        try {
+            const name = `wld-${f.tag}-darwin-arm64.tar.gz`;
+            const stage = join(f.root, "stage-darwin-arm64");
+            await fsWriteFile(join(stage, "LICENSE"), "obsolete license");
+            const members = ["wld", "wld.build.json", ...(includeLicense ? ["LICENSE"] : [])];
+            const packed = await captureScriptProcess("tar", {
+                args: ["-czf", join(f.input, name), "-C", stage, ...members],
+            });
+            assertEquals(packed.success, true);
+            await fsWriteFile(join(f.input, `${name}.sha256`), `${await sha256File(join(f.input, name))}  ${name}\n`);
+            await assertRejects(() => prepareReleaseAssets(f.input, f.output, f.tag), Error, "source LICENSE");
+        } finally {
+            await fsRm(f.root, { recursive: true });
+        }
+    });
+}

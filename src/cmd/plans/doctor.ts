@@ -3,6 +3,7 @@ import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 import { effectiveDeliveryBranch } from "../../shared/workflow/plan-branch.ts";
+import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "../../ui/tui/directory-warning.ts";
 /**
  * @module cmd/plans/doctor
  * Report and safely repair Plan/worktree lifecycle drift.
@@ -1249,6 +1250,18 @@ export async function runPlansDoctorCommand(
     }
     const checkOnly = Boolean(parsed.check);
     const projectRoot = getCwd();
+    const layout = resolveProjectRuntimeLayout(projectRoot);
+    for (const root of new Set([projectRoot, layout.primary.checkoutRoot])) {
+        if (!await confirmProjectDirectory(root)) return;
+    }
+    // Runtime adoption and doctor repairs can write inside registered checkouts.
+    // Inspect their roots before entering the runtime, including missing targets.
+    const inspection = await inspectProjectRuntimeLayout(projectRoot);
+    const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
+    const adoptionRoots = inspection.kind === "pending" ? inspection.selectedCheckoutRoots : [];
+    for (const root of new Set([...adoptionRoots, ...registry.entries.map((entry) => entry.path)])) {
+        if (!await confirmMissingManagedProjectDirectory(root)) return;
+    }
     const result = await runPlansDoctor(projectRoot, !checkOnly);
     if (checkOnly) {
         console.log(

@@ -13,10 +13,16 @@ wld install /absolute/path/to/langfuse-exporter
 ```
 
 RunWield asks for metrics-exporter code approval. Declining approval leaves the package installed but not executable.
-Approval alone does not authorize export. The installer can normalize the saved source to a relative identity; use the
-installed exporter's resolved source when creating a grant. Core must also hold an owner grant for the selected local
-Projects and the Langfuse destination. The grant starts at consent; it does not export prior history. Credentials are
-stored by Core, not by this package. Moving the directory or changing its version requires new code approval.
+Approval alone does not authorize export. Open **Usage → Settings** in Workspace and choose **Add destination**.
+Select `langfuse`, enter the Langfuse endpoint and external project ID, and explicitly choose the local Projects to
+export. Enter **Public key** (`publicKey`) and **Secret key** (`secretKey`) from that Langfuse project. Use the
+**Credentials** tab to replace or remove them later. Saved credentials never return to the browser; Core stores them in
+its private credentials file, not `settings.json` or this package.
+
+The grant starts at consent; it does not export prior history. New Projects are not exported automatically. The
+**Delivery status** tab shows Core's counts and codes. **Destination** holds endpoint changes and revoke, with
+confirmation of the new-boundary and in-flight limits. For local protocol testing, select **Local development endpoint**
+with a loopback HTTP endpoint. Moving the package directory or changing its version requires new code approval.
 
 Use the Langfuse region origin as the endpoint, for example `https://cloud.langfuse.com` or
 `https://us.cloud.langfuse.com`. The destination's `externalProject` must be the Langfuse **project ID**, not its
@@ -24,12 +30,12 @@ display name. Supply project API keys as `credentials.publicKey` and `credential
 read. HTTP is permitted only for loopback test servers; Core must explicitly authorize that exception.
 
 No public npm publication, hosted Cloud certification, or compatibility with untested self-hosted releases is claimed.
-The [RunWield Free Use License](./LICENSE) applies to this package.
+The [MIT License](./LICENSE) applies to this package.
 
 ## Contract
 
-The manifest declares `wld.metricsExporter: { contract: 1, id: "langfuse", entry: "./exporter.ts" }`. Core's approved
-export worker calls these named exports:
+The manifest declares contract `1`, ID `langfuse`, entry `./exporter.ts`, and the `publicKey` and secret `secretKey`
+credential fields under `wld.metricsExporter`. Core's approved export worker calls these named exports:
 
 - `deliver(observation, context)` returns `accepted`, `not_accepted` with `retryable`, `needs_correction`, or
   `permanent`, or `uncertain`.
@@ -68,8 +74,11 @@ Usage rules:
   `reasoning_available`, and individual `missing_*` flags. A partial row's Langfuse total is only the sum of known
   buckets, not a complete measurement.
 - Only a finite, nonnegative, supplied USD cost with `reported` or `calculated` evidence is sent as `{total: amount}`.
-  Reported zero is retained. The native model name is sent only with that cost. Without cost, the model is metadata
-  only. Langfuse may still add its own calculated cost; readback does not treat that as matching RunWield evidence.
+  Explicit partial or unavailable cost sends neither native cost nor a native model name. Known subtotals remain in
+  metadata with `cost_complete=false`. Token and cost coverage are independent; complete agy catalog cost can accompany
+  partial tokens. Rows without explicit cost coverage retain their earlier mapping. Reported zero is retained. The
+  native model name is sent only with native cost; otherwise it stays in metadata. Langfuse-added cost does not match
+  RunWield evidence.
 - Valid measured start and end use their ISO times. Otherwise the span has zero duration at `occurredAt`, marked
   `timing_measured=false`. CLI measured timing is subprocess timing, not model-server latency.
 

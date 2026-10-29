@@ -80,6 +80,7 @@ interface JournaledResource {
 
 /** Canonical Plan snapshot handed to transition callbacks. */
 type PlanSnapshot = Awaited<ReturnType<typeof loadPlan>>;
+type RecoveryRecord = Awaited<ReturnType<typeof listTransitionRecoveryRecords>>[number];
 
 /** Record a durably-completed external effect in the transition journal. */
 type MarkEffect = (effect: string, proof?: Record<string, unknown>) => Promise<void>;
@@ -538,6 +539,7 @@ async function runSemanticTransition<T>({
     verify,
     irreversibleEffects = [],
     supersedesUnresolved = false,
+    supersedesOperations = [],
 }: TransitionOptionsBase & {
     operation: string;
     resources: TransitionResource[];
@@ -565,6 +567,8 @@ async function runSemanticTransition<T>({
      * record it exists to clear, and the Plan is stranded for good.
      */
     supersedesUnresolved?: boolean;
+    /** Resume only named operations; unrelated uncertainty still blocks. */
+    supersedesOperations?: string[];
 }): Promise<TransitionResult> {
     const transitionId = crypto.randomUUID();
     const completedEffects: Array<{ effect: string; proof?: Record<string, unknown>; completedAt: string }> = [];
@@ -663,8 +667,15 @@ async function runSemanticTransition<T>({
                         return isOwnershipResourceKey(key) && resourceKeys.has(key);
                     });
                 };
-                const conflictingRecoveryRecord = existingRecoveryRecords.find(conflictsWithThisTransition);
-                if (conflictingRecoveryRecord && !supersedesUnresolved) {
+                const canSupersede = (record: RecoveryRecord) =>
+                    supersedesUnresolved ||
+                    (record.planName === planName &&
+                        typeof record.operation === "string" &&
+                        supersedesOperations.includes(record.operation));
+                const conflictingRecoveryRecord = existingRecoveryRecords.find(
+                    (record) => conflictsWithThisTransition(record) && !canSupersede(record),
+                );
+                if (conflictingRecoveryRecord) {
                     return {
                         status: "blocked",
                         transitionId,
@@ -673,9 +684,9 @@ async function runSemanticTransition<T>({
                         recoveryActions: unresolvedTransitionActions(planName),
                     };
                 }
-                const supersededRecords = supersedesUnresolved
-                    ? existingRecoveryRecords.filter(conflictsWithThisTransition)
-                    : [];
+                const supersededRecords = existingRecoveryRecords.filter(
+                    (record) => conflictsWithThisTransition(record) && canSupersede(record),
+                );
                 if (expectedRevision !== undefined) {
                     const precondition = classifyPlanPrecondition(expectedRevision, beforePlan);
                     if (precondition.stale) {
@@ -766,6 +777,8 @@ async function runSemanticTransition<T>({
                     await recordWorkflowOutcome(projectRoot, {
                         category: "recovery",
                         event: "workflow_transition_committed",
+                        operation,
+                        planId: afterPlan?.attrs.planId || beforePlan?.attrs.planId,
                         operationId: transitionId,
                         transitionId,
                         planName,
@@ -877,10 +890,13 @@ export async function runExecutionPreparationTransition<T>({
     targetRef,
     expectedRevision,
     expectedPlanEvent = true,
+    resumeInterrupted = false,
     prepare,
     verifyPreparation,
 }: TransitionOptionsBase & {
     expectedPlanEvent?: boolean;
+    /** Original source authority proved this first preparation is safe to resume. */
+    resumeInterrupted?: boolean;
     prepare: (ctx: RollbackTransitionContext) => Promise<T>;
     verifyPreparation?: (value: T, ctx: BaseTransitionContext) => Promise<unknown> | unknown;
 }): Promise<TransitionResult> {
@@ -892,6 +908,7 @@ export async function runExecutionPreparationTransition<T>({
         planName,
         worktreeId,
         operation: "execution_preparation",
+        supersedesOperations: resumeInterrupted ? ["execution_preparation"] : [],
         resources,
         expectedRevision,
         expectedEffects: expectedPlanEvent ? ["plan_event_recorded"] : [],
@@ -1044,6 +1061,8 @@ async function runPlanTransition<T>({
             await recordWorkflowOutcome(projectRoot, {
                 category: "recovery",
                 event: "workflow_transition_committed",
+                operation,
+                planId: beforePlan?.attrs.planId,
                 operationId: transitionId,
                 transitionId,
                 planName,
@@ -1134,10 +1153,18 @@ export async function runPlanLifecycleEventTransition<T>(
     },
 ): Promise<TransitionResult> {
     if (opts.resources && opts.resources.length > 0) {
+        const plan = opts.event === "validation_passed" ? await loadPlan(opts.projectRoot, opts.planName) : null;
+        // In-place verification has no Git effect to replay. Complete a stopped
+        // metadata write under the normal Plan CAS, without replaying model work.
+        const interruptedInPlaceVerification =
+            plan?.attrs.status === "reviewed" &&
+            plan.attrs.deliveryEvidence?.mode === "non_git_in_place" &&
+            Boolean(plan.attrs.validatedAt);
         return await runSemanticTransition({
             projectRoot: opts.projectRoot,
             planName: opts.planName,
             worktreeId: opts.worktreeId,
+            supersedesOperations: interruptedInPlaceVerification ? ["plan_event:validation_passed"] : [],
             operation: `plan_event:${opts.event}`,
             resources: opts.resources,
             expectedRevision: opts.expectedRevision,
@@ -1664,6 +1691,7 @@ export async function applyReviewedPlanMarkdown({
 export async function runImplementationCheckpointTransition<T>(
     opts: TransitionOptionsBase & {
         checkpointProof?: Record<string, unknown>;
+        resumeInterrupted?: boolean;
         checkpoint: (ctx: EffectTransitionContext) => Promise<T>;
     },
 ): Promise<TransitionResult> {
@@ -1674,6 +1702,7 @@ export async function runImplementationCheckpointTransition<T>(
         planName: opts.planName,
         worktreeId: opts.worktreeId,
         operation: "implementation_checkpoint",
+        supersedesOperations: opts.resumeInterrupted ? ["implementation_checkpoint"] : [],
         resources,
         expectedRevision: opts.expectedRevision,
         apply: async (ctx) => {

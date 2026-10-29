@@ -11,16 +11,12 @@ provenance:
         - "adcd3dea-10bd-4f5e-98b9-9477809b315d"
 ---
 
-# Adapt Pi ModelRuntime Upgrade
+# Pi ModelRuntime integration
 
 ## Summary
 
-RunWield was adapted to Pi 0.82.1 model/auth runtime APIs while keeping Earendil dependencies upgradeable. The change
-added cached ModelRuntime integration, RunWield model facade compatibility, createAgentSession modelRuntime wiring, TUI
-model selector runtime support, streamFunction temperature wrapping, and end-to-end max thinking-level support.
-Verification passed with check, targeted session/model tests, lint, full test, and CI tasks.
+RunWield uses cached Pi ModelRuntime integration for model and authentication APIs, Agent Session creation, and TUI model selection. The integration preserves the model facade, temperature wrapping, and maximum thinking-level support.
 
 ## Future Planning Notes
 
-Future Pi upgrades should treat ModelRuntime as the public integration boundary, avoid private or removed SDK APIs, and
-keep deno.json imports range-based while allowing deno.lock to record resolved package versions.
+Pi integrations use public ModelRuntime contracts rather than private or removed APIs. The Deno-era dependency policy separates allowed import ranges from locked resolutions.

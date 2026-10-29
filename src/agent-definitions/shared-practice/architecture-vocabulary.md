@@ -1,6 +1,6 @@
 ---
 name: Shared Architecture Vocabulary
-description: "Precise terms for structure, ownership, and invariants in planning documents. Composed into agent prompts by name; not an agent and never listed by /agent."
+description: "Precise terms for structure, ownership, and invariants in planning documents."
 ---
 
 ## Architecture Vocabulary

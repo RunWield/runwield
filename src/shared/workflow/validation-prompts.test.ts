@@ -83,6 +83,25 @@ Implement the screen.
     assertEquals(config.prompt.includes("Plan content is supplied by the validation request"), false);
 });
 
+test("attached reviewer prompts reference the approved Plan instead of inlining it", () => {
+    const planMarker = "oversized-plan-body-".repeat(4000);
+    const config = buildSemanticReviewAttempt(
+        1,
+        undefined,
+        { semanticRound: 1, reviewLedger: { items: [], sequence: 0 }, repairBaselineTree: "", lastRepairReport: "" },
+        "discovery",
+        "diff --git a/src/app.js b/src/app.js",
+        "",
+        planMarker,
+        undefined,
+        "",
+        "docs/plans/large-plan.md",
+    );
+
+    assertStringIncludes(config.prompt, "Read the complete approved Plan at docs/plans/large-plan.md.");
+    assertEquals(config.prompt.includes(planMarker), false);
+});
+
 test("bundled discovery reviewer prompt states an approval default", async () => {
     const prompt = await readBundledPrompt("reviewer-prompt.md");
 
@@ -295,4 +314,17 @@ test("bundled reviewer-feedback engineer stops in prose on an unreachable findin
     assertStringIncludes(prompt, "Do not call `task_completed`");
     assertStringIncludes(prompt, "end your turn in plain text");
     assertStringIncludes(prompt, "When every supplied item is settled, get one accepted `task_completed` call");
+});
+
+test("Epic verification loads the integration prompt with shared review practice and a read-only ceiling", async () => {
+    const discovery = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER);
+    const verify = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER, { reviewerMode: "verify" });
+    assertStringIncludes(discovery.systemPrompt, "one full review");
+    assertStringIncludes(verify.systemPrompt, "Do not sweep the Epic again");
+    assertStringIncludes(verify.systemPrompt, 'scope: "repair"');
+    assertStringIncludes(verify.systemPrompt, 'origin: "repair_regression"');
+    assertStringIncludes(verify.systemPrompt, "Every open ID must");
+    assertStringIncludes(verify.systemPrompt, "Your Default Is Approval");
+    assertEquals(verify.tools, discovery.tools);
+    assertEquals(verify.tools, ["read", "grep", "find", "ls", "review_diff", "review_complete", "delegate_agent"]);
 });

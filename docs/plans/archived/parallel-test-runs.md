@@ -44,7 +44,7 @@ remain serial. Enabling the flag immediately is unsafe because some modules curr
 - bundled Agent Definitions and Skills are removed and recopied under the process-captured `~/.wld` path even during
   source runs, allowing parallel test workers to race over the same caches;
 - Session catalog and tool-policy tests temporarily mutate the real Project's `.wld` overrides;
-- the ACP CLI test runs `scripts/write-version.js` inside a test worker even though the test task already prepares the
+- the ACP CLI test runs `scripts/write-version.ts` inside a test worker even though the test task already prepares the
   generated version before starting the suite.
 
 The agreed direction is to remove these shared-state hazards and parallelize the full suite. Do not introduce a
@@ -69,7 +69,7 @@ scheduler:
    an isolated HOME.
 2. Move Project override fixtures to unique temporary Project roots. Tests must pass those roots through existing
    `loadAgentDef`, catalog, and settings interfaces instead of changing the repository's actual `.wld` tree.
-3. Keep `scripts/write-version.js` as the single task-level preparation step. The ACP test should only launch the CLI
+3. Keep `scripts/write-version.ts` as the single task-level preparation step. The ACP test should only launch the CLI
    and assert ACP behavior; it must not rewrite source files from a worker.
 4. Add `--parallel` to the existing test tasks and rely on Deno's CPU-aware default scheduling. Preserve the standard
    `DENO_JOBS` environment override so callers can cap parallelism, including `DENO_JOBS=1` for serial-style diagnosis.
@@ -88,7 +88,7 @@ scheduler:
   source-run assertions to prove bundled Agent Definition and Skill paths resolve from `src/` without HOME cache writes.
 - `src/shared/session/__tests__/session-tools-policy.test.js` — create router and Planner overrides under temporary
   Project roots and load every affected Agent Definition through that explicit root instead of `CWD`.
-- `src/acp/server.test.js` — remove the redundant `scripts/write-version.js` child process from the ACP CLI smoke test.
+- `src/acp/server.test.js` — remove the redundant `scripts/write-version.ts` child process from the ACP CLI smoke test.
 - `scripts/standalone-resource-smoke.js` — add a release-only probe that imports the real Agent Definition and Skill
   resource resolvers, verifies standalone extraction paths are under HOME, and reads representative extracted files.
 - `scripts/release-check.js` — compile the resource probe with the bundled Agent Definition and Skill directories,

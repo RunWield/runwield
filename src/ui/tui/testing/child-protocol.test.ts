@@ -6,7 +6,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../../test
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { runGoldenScenarioChildProcess } from "./child-protocol.js";
-import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.js";
+import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.ts";
 
 test("Golden scenarios reject a timeout even after the child reports success", async () => {
     const fixtureRoot = await fsMkdtemp(join(tmpdir(), "golden-success-then-hang-"));

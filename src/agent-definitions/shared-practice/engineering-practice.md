@@ -1,6 +1,6 @@
 ---
 name: Shared Engineering Practice
-description: "Practice rules true of every RunWield engineering persona regardless of task type. Composed into agent prompts by name; not an agent and never listed by /agent."
+description: "Practice rules true of every RunWield engineering persona regardless of task type."
 ---
 
 ## Engineering Practice

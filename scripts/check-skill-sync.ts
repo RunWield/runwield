@@ -1,9 +1,14 @@
 #!/usr/bin/env bun
-import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+    stat as fsStat,
+} from "node:fs/promises";
 import process from "node:process";
 
 /**
- * Keeps the installable skills under `skills/` in step with the Agent Definitions they were derived from.
+ * Keeps the RunWield/skills checkout under `skills/` in step with the Agent Definitions they were derived from.
  *
  * A skill derived from an Agent Definition records the hash of both files. When either side changes, this check fails
  * and names the side that moved, so the edit is carried across before the baseline is accepted again with
@@ -15,9 +20,8 @@ import process from "node:process";
  * It also holds the skills to their reason for existing: they are installed in projects that have never heard of
  * RunWield, so RunWield names, Agent handoffs, and RunWield tool names must not survive the port.
  *
- * Finally it guards the published surface. `npx skills add gandazgul/runwield` offers every skill it finds in the
- * repository's skill container directories, so a skill vendored for our own use would be handed to strangers unless it
- * opts out.
+ * Finally it guards the standalone published surface. `npx skills add RunWield/skills` installs from the small
+ * skills repository. Core pins that checkout as a submodule; checks are local and never fetch or publish.
  */
 
 import { fileURLToPath as fromFileUrl } from "node:url";
@@ -25,6 +29,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 const BASELINE_PATH = new URL("./skill-sync-baseline.json", import.meta.url);
 const REPO_ROOT = new URL("../", import.meta.url);
 const REPO_ROOT_PATH = fromFileUrl(REPO_ROOT).replace(/\/$/, "");
+const SKILLS_ROOT_PATH = `${REPO_ROOT_PATH}/skills`;
 
 export interface SupportFileHash {
     /** Repository-relative path of a Markdown file that ships with the skill. */
@@ -79,12 +84,16 @@ export function findSkillSyncDrift(recorded: PublishedSkill[], current: Publishe
         const actualFiles = new Map((actual.supportFiles ?? []).map((file) => [file.path, file.hash]));
         const supportFilesAdded = [...actualFiles.keys()].filter((path) => !recordedFiles.has(path));
         const supportFilesRemoved = [...recordedFiles.keys()].filter((path) => !actualFiles.has(path));
-        const supportFilesChanged = [...actualFiles].filter(([path, hash]) =>
-            recordedFiles.has(path) && recordedFiles.get(path) !== hash
-        ).map(([path]) => path);
+        const supportFilesChanged = [...actualFiles]
+            .filter(([path, hash]) => recordedFiles.has(path) && recordedFiles.get(path) !== hash)
+            .map(([path]) => path);
 
-        const moved = sourceChanged || skillChanged || supportFilesAdded.length > 0 ||
-            supportFilesRemoved.length > 0 || supportFilesChanged.length > 0;
+        const moved =
+            sourceChanged ||
+            skillChanged ||
+            supportFilesAdded.length > 0 ||
+            supportFilesRemoved.length > 0 ||
+            supportFilesChanged.length > 0;
         if (moved) {
             drift.push({
                 source: entry.source,
@@ -187,7 +196,7 @@ export function formatLeaks(leaks: ProjectSpecificLeak[]): string {
 
 /**
  * The directories the skills CLI treats as skill containers, mirroring its own priority list. It walks each one three
- * levels deep; a directory that does not exist is simply empty.
+ * levels deep; root-level skill directories are also offered. Missing directories are empty.
  */
 const SKILL_CONTAINER_DIRS = [
     "skills",
@@ -221,9 +230,7 @@ export function isInternalSkill(content: string): boolean {
  */
 export function findUnpublishedSkills(discovered: DiscoveredSkill[], publishedPaths: string[]): string[] {
     const published = new Set(publishedPaths);
-    return discovered
-        .filter((skill) => !published.has(skill.path) && !skill.internal)
-        .map((skill) => skill.path);
+    return discovered.filter((skill) => !published.has(skill.path) && !skill.internal).map((skill) => skill.path);
 }
 
 export function formatUnpublishedSkills(paths: string[]): string {
@@ -242,22 +249,24 @@ export function formatUnpublishedSkills(paths: string[]): string {
 export async function discoverSkillsInContainers(rootPath: string): Promise<DiscoveredSkill[]> {
     const discovered: DiscoveredSkill[] = [];
 
-    const walk = async (relativeDir: string, depth: number): Promise<void> => {
+    const walk = async (relativeDir: string, depth: number, maxDepth = SKILL_CONTAINER_DEPTH): Promise<void> => {
         let entries: import("node:fs").Dirent[];
         try {
             entries = await Array.fromAsync(await fsReaddir(`${rootPath}/${relativeDir}`, { withFileTypes: true }));
-        } catch {
-            return;
+        } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+            throw error;
         }
         for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-            if (!entry.isDirectory()) continue;
-            const childDir = `${relativeDir}/${entry.name}`;
+            if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue;
+            const childDir = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
             const skillPath = `${childDir}/SKILL.md`;
             let content: string;
             try {
                 content = await fsReadFile(`${rootPath}/${skillPath}`, "utf8");
-            } catch {
-                if (depth < SKILL_CONTAINER_DEPTH) await walk(childDir, depth + 1);
+            } catch (error) {
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+                if (depth < maxDepth) await walk(childDir, depth + 1, maxDepth);
                 continue;
             }
             // The CLI stops descending below a skill it found, so a nested SKILL.md is never offered.
@@ -265,6 +274,7 @@ export async function discoverSkillsInContainers(rootPath: string): Promise<Disc
         }
     };
 
+    await walk("", 1, 1);
     for (const container of SKILL_CONTAINER_DIRS) await walk(container, 1);
     return discovered;
 }
@@ -295,29 +305,33 @@ export async function collectPublishedSkillFiles(rootPath: string, skillPath: st
 async function hashFile(relativePath: string): Promise<string> {
     const content = await fsReadFile(new URL(relativePath, REPO_ROOT));
     const digest = await crypto.subtle.digest("SHA-256", content);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /**
  * Rebuilds each recorded entry from the files on disk, discovering support files rather than trusting the baseline.
  */
 export async function readCurrentSkills(skills: PublishedSkill[]): Promise<PublishedSkill[]> {
-    return await Promise.all(skills.map(async (entry) => {
-        const [, ...supportPaths] = await collectPublishedSkillFiles(REPO_ROOT_PATH, entry.skill);
-        const supportFiles = await Promise.all(
-            supportPaths.map(async (path) => ({ path, hash: await hashFile(path) })),
-        );
-        const current: PublishedSkill = {
-            skill: entry.skill,
-            skillHash: await hashFile(entry.skill),
-            supportFiles,
-        };
-        if (entry.source !== undefined) {
-            current.source = entry.source;
-            current.sourceHash = await hashFile(entry.source);
-        }
-        return current;
-    }));
+    return await Promise.all(
+        skills.map(async (entry) => {
+            const [, ...supportPaths] = await collectPublishedSkillFiles(REPO_ROOT_PATH, entry.skill);
+            const supportFiles = await Promise.all(
+                supportPaths.map(async (path) => ({ path, hash: await hashFile(path) })),
+            );
+            const current: PublishedSkill = {
+                skill: entry.skill,
+                skillHash: await hashFile(entry.skill),
+                supportFiles,
+            };
+            if (entry.source !== undefined) {
+                current.source = entry.source;
+                current.sourceHash = await hashFile(entry.source);
+            }
+            return current;
+        }),
+    );
 }
 
 async function readBaseline(): Promise<SkillSyncBaseline> {
@@ -338,16 +352,32 @@ function forBaselineFile(entry: PublishedSkill): PublishedSkill {
     };
 }
 
-if (import.meta.main) {
-    const baseline = await readBaseline();
-    const current = await readCurrentSkills(baseline.skills);
-
-    if (process.argv.slice(2).includes("--update")) {
-        const skills = current.map(forBaselineFile);
-        await fsWriteFile(BASELINE_PATH, `${JSON.stringify({ skills }, null, 4)}\n`);
-        console.log("Updated scripts/skill-sync-baseline.json.");
-        process.exit(0);
+/** Validate installation metadata in the standalone skills repository. */
+export async function validateSkillsManifest(rootPath: string, publishedPaths: string[]): Promise<string[]> {
+    const manifest = JSON.parse(await fsReadFile(`${rootPath}/.claude-plugin/plugin.json`, "utf8"));
+    const expected = publishedPaths.map((path) => `./${path.slice(0, path.lastIndexOf("/"))}`).sort();
+    if (!Array.isArray(manifest.skills) || JSON.stringify([...manifest.skills].sort()) !== JSON.stringify(expected)) {
+        return ["skills/.claude-plugin/plugin.json must list exactly the published skill directories."];
     }
+    return [];
+}
+
+async function main(): Promise<void> {
+    try {
+        await fsStat(`${SKILLS_ROOT_PATH}/.git`);
+    } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        throw new Error("Skills checkout is missing. Run: git submodule update --init skills");
+    }
+
+    const baseline = await readBaseline();
+    for (const entry of baseline.skills) {
+        if (!entry.skill.startsWith("skills/") || entry.skill.split("/").includes("..")) {
+            throw new Error(`Published skill must be inside the skills checkout: ${entry.skill}`);
+        }
+    }
+    const current = await readCurrentSkills(baseline.skills);
+    const publishedPaths = baseline.skills.map((entry) => entry.skill.slice("skills/".length));
 
     const leaks: ProjectSpecificLeak[] = [];
     for (const entry of current) {
@@ -355,25 +385,29 @@ if (import.meta.main) {
             leaks.push(...findProjectSpecificLeaks(path, await fsReadFile(new URL(path, REPO_ROOT), "utf8")));
         }
     }
-    if (leaks.length > 0) {
-        console.error(formatLeaks(leaks));
-        process.exit(1);
-    }
+    if (leaks.length > 0) throw new Error(formatLeaks(leaks));
 
-    const unpublished = findUnpublishedSkills(
-        await discoverSkillsInContainers(REPO_ROOT_PATH),
-        baseline.skills.map((entry) => entry.skill),
-    );
-    if (unpublished.length > 0) {
-        console.error(formatUnpublishedSkills(unpublished));
-        process.exit(1);
+    const unpublished = findUnpublishedSkills(await discoverSkillsInContainers(SKILLS_ROOT_PATH), publishedPaths);
+    if (unpublished.length > 0) throw new Error(formatUnpublishedSkills(unpublished));
+    const manifestErrors = await validateSkillsManifest(SKILLS_ROOT_PATH, publishedPaths);
+    if (manifestErrors.length > 0) throw new Error(manifestErrors.join("\n"));
+
+    if (process.argv.slice(2).includes("--update")) {
+        const skills = current.map(forBaselineFile);
+        await fsWriteFile(BASELINE_PATH, `${JSON.stringify({ skills }, null, 4)}\n`);
+        console.log("Updated scripts/skill-sync-baseline.json after validating the skills checkout.");
+        console.log("Review and publish skills/ changes separately, then record its submodule revision in Core.");
+        return;
     }
 
     const drift = findSkillSyncDrift(baseline.skills, current);
-    if (drift.length > 0) {
-        console.error(formatDrift(drift));
-        process.exit(1);
-    }
+    if (drift.length > 0) throw new Error(formatDrift(drift));
+    console.log(`Skill sync baseline matches ${baseline.skills.length} published skills in RunWield/skills.`);
+}
 
-    console.log(`Skill sync baseline matches ${baseline.skills.length} published skills.`);
+if (import.meta.main) {
+    main().catch((error: Error) => {
+        console.error(error.message);
+        process.exitCode = 1;
+    });
 }

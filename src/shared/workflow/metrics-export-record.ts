@@ -58,6 +58,7 @@ const FIELDS: Record<MetricsExportKind, string[]> = {
         "costAmount",
         "costCurrency",
         "costSource",
+        "costAvailability",
         "measurementAvailability",
         "unavailableReason",
         "aggregationBasis",

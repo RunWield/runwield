@@ -20,6 +20,7 @@ export interface WorkflowOutcome {
     historyEpoch?: string;
     attemptId?: string;
     transitionId?: string;
+    operation?: string;
     roundId?: string;
     attempt?: number;
     round?: number;

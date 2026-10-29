@@ -339,7 +339,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/remote/model-proof-config.ts",
             "src/constants.js",
             "runtime-root.js",
-            "scripts/build-metadata.js",
+            "scripts/build-metadata.ts",
             "src/shared/version.js",
         ])
             await fsCopyFile(path, join(root, path));

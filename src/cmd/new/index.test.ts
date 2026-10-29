@@ -5,7 +5,7 @@ import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { initTUIWithPair, stopTUI } from "../../ui/tui/tui.ts";
-import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.js";
+import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runNewCommand } from "./index.ts";
 

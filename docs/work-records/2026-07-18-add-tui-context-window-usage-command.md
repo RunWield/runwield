@@ -11,10 +11,8 @@ provenance:
         - "e438dbf6-4278-4d74-b7f5-a8c071cc4e00"
 ---
 
-# Add TUI context-window usage command
+# TUI context-window usage inspection
 
 ## Summary
 
-Implemented and verified the TUI-only `/context` command. It reports active Agent Session context-window usage,
-estimated resident categories, loaded instruction files, and advertised Skills while preserving Runtime boundaries and
-distinguishing estimated, provider-reported, and post-compaction unknown usage.
+The TUI-only `/context` command reports active Agent Session context usage, estimated resident categories, loaded instructions, and advertised Skills. It distinguishes estimates, provider-reported usage, and unknown usage after compaction while preserving runtime boundaries.

@@ -8,7 +8,7 @@ import type { PlanFrontMatter } from "../../plan-store.js";
 import type { AssociationPurpose } from "../session/plan-association.ts";
 
 /**
- * @typedef {"approved_execute" | "approved_decompose" | "saved" | "feedback" | "canceled" | "repair_required" | "no_call"} PlanOutcome
+ * @typedef {"approved_execute" | "approved_decompose" | "saved" | "conversation" | "feedback" | "canceled" | "repair_required" | "no_call"} PlanOutcome
  */
 
 /**
@@ -39,20 +39,18 @@ export interface RunPlanningAgentOptions {
     signal?: AbortSignal;
 }
 
-export async function runPlanningAgent(
-    {
-        agentName,
-        initialRequest,
-        triageMeta,
-        sessionManager,
-        hostedSession,
-        images,
-        planName,
-        associationPurpose = "planning",
-        cwd,
-        signal,
-    }: RunPlanningAgentOptions,
-): Promise<PlanOutcomeResult> {
+export async function runPlanningAgent({
+    agentName,
+    initialRequest,
+    triageMeta,
+    sessionManager,
+    hostedSession,
+    images,
+    planName,
+    associationPurpose = "planning",
+    cwd,
+    signal,
+}: RunPlanningAgentOptions): Promise<PlanOutcomeResult> {
     if (!hostedSession) throw new Error("runPlanningAgent: hostedSession is required");
 
     // Callers resuming or re-reviewing an existing Plan already know its name.
@@ -83,11 +81,14 @@ export async function runPlanningAgent(
         rootAgentSession: hostedSession.getRootAgentSession(),
         signal,
     });
-    const event = terminalEvent?.kind === "plan_written" ? terminalEvent : claimWorkflowToolEvent(hostedSession, {
-        kinds: ["plan_written"],
-        owningSession: null,
-        ...(turnId ? { turnId } : {}),
-    });
+    const event =
+        terminalEvent?.kind === "plan_written"
+            ? terminalEvent
+            : claimWorkflowToolEvent(hostedSession, {
+                  kinds: ["plan_written"],
+                  owningSession: null,
+                  ...(turnId ? { turnId } : {}),
+              });
     if (event?.kind !== "plan_written") return { outcome: "no_call" as const };
     settleWorkflowToolEvent(hostedSession, event);
     return event.payload as PlanOutcomeResult;

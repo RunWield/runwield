@@ -23,12 +23,13 @@ const REVIEWER_FEEDBACK_ENGINEER_FILE = "reviewer-feedback-engineer.md";
 const REVIEWER_PROMPT_FILE = "reviewer-prompt.md";
 const REVIEWER_VERIFY_PROMPT_FILE = "reviewer-verify-prompt.md";
 const INTEGRATION_REVIEWER_PROMPT_FILE = "integration-reviewer-prompt.md";
+const INTEGRATION_REVIEWER_VERIFY_PROMPT_FILE = "integration-reviewer-verify-prompt.md";
 const SLICER_PROMPT_FILE = "slicer-prompt.md";
 const VERIFICATION_ADVERSARY_ROLE_FILE = "verification-adversary.md";
 
 export type ReviewerSubAgentMode = "discovery" | "verify";
 export type SubAgentDefinitionLoadMode = "barePrompt" | "fullAgent";
-export type SubAgentDefinitionId = typeof SUBAGENTS[keyof typeof SUBAGENTS];
+export type SubAgentDefinitionId = (typeof SUBAGENTS)[keyof typeof SUBAGENTS];
 
 /** The most authority a delegated role may ever receive, regardless of the requested mode. */
 export type DelegatedAuthority = "read" | "write";
@@ -67,6 +68,7 @@ export interface DelegatedRoleDefinition {
 }
 
 export interface LoadSubAgentDefinitionOptions {
+    projectRoot?: string;
     reviewerMode?: ReviewerSubAgentMode;
     delegatedRole?: DelegatedRoleId;
 }
@@ -173,6 +175,7 @@ export const SUBAGENT_DEFINITIONS: Readonly<Record<SubAgentDefinitionId, SubAgen
         displayNameFallback: "Integration Reviewer",
         loadMode: "barePrompt",
         file: INTEGRATION_REVIEWER_PROMPT_FILE,
+        verifyFile: INTEGRATION_REVIEWER_VERIFY_PROMPT_FILE,
         allowedTools: INTEGRATION_REVIEWER_SUBAGENT_TOOLS,
     }),
     [SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER]: Object.freeze({
@@ -221,9 +224,11 @@ function delay(ms: number) {
 }
 
 function isRecoverableBundledPromptReadError(error: Error) {
-    return error instanceof Error && "code" in error && error.code === "ENOENT" ||
+    return (
+        (error instanceof Error && "code" in error && error.code === "ENOENT") ||
         (error instanceof TypeError && /Unexpected end of input|Prompt file was empty/i.test(error.message)) ||
-        error.message.startsWith("Bundled agent asset is missing:");
+        error.message.startsWith("Bundled agent asset is missing:")
+    );
 }
 
 function normalizeBundledPromptFrontMatter(parsed: ParsedPromptFrontMatter): ParsedPromptFrontMatter {
@@ -231,7 +236,10 @@ function normalizeBundledPromptFrontMatter(parsed: ParsedPromptFrontMatter): Par
     const attrs: PromptFrontMatterAttrs = {};
     for (const [key, value] of Object.entries(sourceAttrs)) {
         if (
-            typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null ||
+            typeof value === "string" ||
+            typeof value === "number" ||
+            typeof value === "boolean" ||
+            value === null ||
             (Array.isArray(value) && value.every((item) => typeof item === "string"))
         ) {
             attrs[key] = value;
@@ -241,15 +249,11 @@ function normalizeBundledPromptFrontMatter(parsed: ParsedPromptFrontMatter): Par
 }
 
 function subagentRelativePath(definition: SubAgentDefinition, reviewerMode: ReviewerSubAgentMode) {
-    const file = definition.id === SUBAGENTS.REVIEWER && reviewerMode === "verify" && definition.verifyFile
-        ? definition.verifyFile
-        : definition.file;
+    const file = reviewerMode === "verify" && definition.verifyFile ? definition.verifyFile : definition.file;
     return join(SUBAGENT_DEFINITIONS_DIR, file);
 }
 
-async function readBundledPromptFrontMatter(
-    relativePath: string,
-) {
+async function readBundledPromptFrontMatter(relativePath: string) {
     let lastError: Error = new Error("Bundled prompt read failed.");
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
@@ -294,6 +298,7 @@ async function readBundledPromptFrontMatter(
 export async function loadBarePromptDefinition(
     definition: SubAgentDefinition,
     relativePath: string,
+    projectRoot?: string,
 ): Promise<AgentDefinition> {
     if (!definition.allowedTools && !definition.toolFree) {
         throw new Error(
@@ -309,13 +314,13 @@ export async function loadBarePromptDefinition(
                 "Remove the field so the file cannot claim a ceiling it does not set.",
         );
     }
-    const displayName = typeof attrs.name === "string" && attrs.name.trim()
-        ? attrs.name.trim()
-        : definition.displayNameFallback;
+    const displayName =
+        typeof attrs.name === "string" && attrs.name.trim() ? attrs.name.trim() : definition.displayNameFallback;
     const description = typeof attrs.description === "string" ? attrs.description.trim() : "";
     const sharedPracticePrompt = await composeSharedPracticePrompt(
         attrs.sharedPractice,
         definition.agentName,
+        projectRoot,
     );
 
     return {
@@ -332,10 +337,7 @@ export async function loadBarePromptDefinition(
     };
 }
 
-async function loadFullAgentDefinition(
-    definition: SubAgentDefinition,
-    relativePath: string,
-): Promise<AgentDefinition> {
+async function loadFullAgentDefinition(definition: SubAgentDefinition, relativePath: string): Promise<AgentDefinition> {
     const promptPath = await ensureBundledAgentDefFile(relativePath);
     return await loadAgentDefFromPath(promptPath, { agentName: definition.agentName });
 }
@@ -374,7 +376,7 @@ export async function loadSubAgentDefinition(
         return await loadFullAgentDefinition(definition, relativePath);
     }
 
-    const agentDef = await loadBarePromptDefinition(definition, relativePath);
+    const agentDef = await loadBarePromptDefinition(definition, relativePath, options.projectRoot);
     if (id !== SUBAGENTS.DELEGATED && id !== SUBAGENTS.DELEGATED_READ) return agentDef;
 
     const role = getDelegatedRole(options.delegatedRole);

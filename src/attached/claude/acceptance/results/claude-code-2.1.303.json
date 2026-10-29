@@ -1,0 +1,260 @@
+{
+    "schemaVersion": 1,
+    "outcome": "pass",
+    "testDate": "2026-10-21T18:10:26.292Z",
+    "claudeVersion": "2.1.303",
+    "coreVersion": "6cdb8218b",
+    "coreCommit": "6cdb8218b280328365a859fe18926cfcfb987a52",
+    "coreSourceDigest": "f20bdf99f618b15ea6b5d5693f7cd677fec623491df040329238cc1af82f5a42",
+    "coreSourceDirty": true,
+    "adapterContract": 1,
+    "adapterVersion": "0.2.1",
+    "activationAssessment": "untested_newer",
+    "permissions": "bypass-in-throwaway",
+    "checks": [
+        {
+            "id": "evidence-readable",
+            "outcome": "pass",
+            "evidence": ["run.json", "snapshots/", "logs/"]
+        },
+        {
+            "id": "core-source",
+            "outcome": "pass",
+            "evidence": ["run.json"]
+        },
+        {
+            "id": "run-identity",
+            "outcome": "pass",
+            "evidence": ["run.json"]
+        },
+        {
+            "id": "stale-adapter",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/initial.json",
+                "snapshots/stale-adapter.json",
+                "logs/claude/stale-adapter.jsonl",
+                "logs/processes.jsonl"
+            ]
+        },
+        {
+            "id": "step-01-install",
+            "outcome": "pass",
+            "evidence": ["logs/plugins.jsonl"]
+        },
+        {
+            "id": "inactive-before",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/installed.json",
+                "snapshots/inactive-before.json",
+                "logs/claude/inactive-before.jsonl"
+            ]
+        },
+        {
+            "id": "step-02-uninitialized-activation",
+            "outcome": "pass",
+            "evidence": ["snapshots/initial.json", "snapshots/activated.json"]
+        },
+        {
+            "id": "step-03-explicit-request",
+            "outcome": "pass",
+            "evidence": ["snapshots/activated.json", "logs/claude/request.jsonl"]
+        },
+        {
+            "id": "step-04-triage",
+            "outcome": "pass",
+            "evidence": ["snapshots/triaged.json"]
+        },
+        {
+            "id": "step-05-plan",
+            "outcome": "pass",
+            "evidence": ["snapshots/plan-review.json"]
+        },
+        {
+            "id": "step-06-plan-review-and-chat",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/plan-review.json",
+                "snapshots/plan-chat.json",
+                "snapshots/plan-change.json",
+                "snapshots/plan-feedback.json",
+                "logs/http.jsonl"
+            ]
+        },
+        {
+            "id": "step-07-plan-approval",
+            "outcome": "pass",
+            "evidence": ["snapshots/plan-restored.json", "snapshots/plan-approved.json", "logs/http.jsonl"]
+        },
+        {
+            "id": "step-08-isolated-execution",
+            "outcome": "pass",
+            "evidence": ["snapshots/implemented.json"]
+        },
+        {
+            "id": "step-09-implementation",
+            "outcome": "pass",
+            "evidence": ["snapshots/implemented.json"]
+        },
+        {
+            "id": "disable",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/implemented.json",
+                "snapshots/disabled.json",
+                "logs/plugins.jsonl",
+                "logs/claude/disabled.jsonl"
+            ]
+        },
+        {
+            "id": "uninstall",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/disabled.json",
+                "snapshots/uninstalled.json",
+                "logs/plugins.jsonl",
+                "logs/claude/uninstalled.jsonl"
+            ]
+        },
+        {
+            "id": "reinstall",
+            "outcome": "pass",
+            "evidence": ["snapshots/uninstalled.json", "snapshots/reinstalled.json", "logs/plugins.jsonl"]
+        },
+        {
+            "id": "step-10-ci-and-resume",
+            "outcome": "pass",
+            "evidence": ["snapshots/ci-started.json", "snapshots/ci-killed.json", "snapshots/ci-resumed.json"]
+        },
+        {
+            "id": "step-11-finding-repair-rereview",
+            "outcome": "pass",
+            "evidence": ["snapshots/review-blocked.json", "snapshots/code-review.json"]
+        },
+        {
+            "id": "step-12-code-review-and-chat",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/code-review.json",
+                "snapshots/code-chat.json",
+                "snapshots/code-change.json",
+                "snapshots/code-approved.json",
+                "logs/http.jsonl"
+            ]
+        },
+        {
+            "id": "step-13-publication",
+            "outcome": "pass",
+            "evidence": ["snapshots/delivered.json"]
+        },
+        {
+            "id": "step-14-work-record",
+            "outcome": "pass",
+            "evidence": ["snapshots/delivered.json"]
+        },
+        {
+            "id": "step-15-interruptions",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/plan-killed.json",
+                "snapshots/plan-restored.json",
+                "snapshots/ci-killed.json",
+                "snapshots/ci-resumed.json",
+                "logs/http.jsonl",
+                "logs/processes.jsonl"
+            ]
+        },
+        {
+            "id": "step-16-inactive-after",
+            "outcome": "pass",
+            "evidence": [
+                "snapshots/delivered.json",
+                "snapshots/inactive-after.json",
+                "logs/claude/inactive-after.jsonl"
+            ]
+        },
+        {
+            "id": "lifecycle-events",
+            "outcome": "pass",
+            "evidence": ["snapshots/delivered.json"]
+        },
+        {
+            "id": "invoking-branch",
+            "outcome": "pass",
+            "evidence": ["snapshots/"]
+        },
+        {
+            "id": "workflow-identity",
+            "outcome": "pass",
+            "evidence": ["snapshots/"]
+        },
+        {
+            "id": "operation-provenance",
+            "outcome": "pass",
+            "evidence": ["snapshots/", "logs/claude/", "logs/http.jsonl"]
+        },
+        {
+            "id": "host-version",
+            "outcome": "pass",
+            "evidence": ["run.json", "snapshots/"]
+        },
+        {
+            "id": "read-only-driver",
+            "outcome": "pass",
+            "evidence": ["shim-argv.jsonl"]
+        },
+        {
+            "id": "no-core-model-calls",
+            "outcome": "pass",
+            "evidence": ["sentinel-binaries.log", "proxy-sink.log"]
+        },
+        {
+            "id": "sentinel-absence",
+            "outcome": "pass",
+            "evidence": ["runwield-home/", "fixture/", "fixture/git/"]
+        }
+    ],
+    "provenance": {
+        "acceptedOperations": 34,
+        "matchedOperations": 34,
+        "httpRequests": 16,
+        "shimCalls": 8
+    },
+    "proposedMatrixEntry": {
+        "version": "2.1.303",
+        "testDate": "2026-10-21T18:10:26.292Z",
+        "coreVersion": "6cdb8218b",
+        "coreCommit": "6cdb8218b280328365a859fe18926cfcfb987a52",
+        "coreSourceDigest": "f20bdf99f618b15ea6b5d5693f7cd677fec623491df040329238cc1af82f5a42",
+        "coreSourceDirty": true,
+        "adapterContract": 1,
+        "evidenceSource": "src/attached/claude/acceptance/results/claude-code-2.1.303.json",
+        "capabilities": [
+            "step-01-install",
+            "step-02-uninitialized-activation",
+            "step-03-explicit-request",
+            "step-04-triage",
+            "step-05-plan",
+            "step-06-plan-review-and-chat",
+            "step-07-plan-approval",
+            "step-08-isolated-execution",
+            "step-09-implementation",
+            "step-10-ci-and-resume",
+            "step-11-finding-repair-rereview",
+            "step-12-code-review-and-chat",
+            "step-13-publication",
+            "step-14-work-record",
+            "step-15-interruptions",
+            "step-16-inactive-after"
+        ],
+        "limits": [
+            "Claude Code FEATURE Preview only",
+            "MCP_TOOL_TIMEOUT=600000",
+            "No /runwield:init",
+            "No hooks or tool restrictions",
+            "Role boundaries are instructions, not enforcement",
+            "Headless permissions bypassed only in the throwaway world"
+        ]
+    }
+}

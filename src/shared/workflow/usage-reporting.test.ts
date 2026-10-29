@@ -71,6 +71,38 @@ test("report returns exact settled totals, backend/model values and durable wate
     });
 });
 
+for (const coverage of ["complete", "partial", "unavailable", undefined]) {
+    test(`cost coverage is independent of token coverage: ${coverage ?? "legacy"}`, async () => {
+        await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+            await journal(projectRoot, [
+                enabled,
+                usage("2026-11-01T16:00:00Z", {
+                    measurementAvailability: "partial",
+                    ...(coverage ? { costAvailability: coverage } : {}),
+                }),
+                watermark,
+            ]);
+            const report = new UsageReporter().query([projectRoot], period, zone);
+            assertEquals(report.totals.estimatedCostUsd.value, 0.5);
+            assertEquals(report.totals.estimatedCostUsd.exclusions, coverage === "complete" ? 0 : 1);
+            assertEquals(report.totals.tokens.exclusions, 1);
+        });
+    });
+}
+
+test("repair start and finish under one round count once", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        await journal(projectRoot, [
+            enabled,
+            row("repair_round", "2026-11-01T15:30:00Z", { roundId: "round", attemptId: "attempt" }),
+            row("repair_round", "2026-11-01T15:30:01Z", { roundId: "round", attemptId: "attempt" }),
+            row("repair_round_finished", "2026-11-01T15:31:00Z", { roundId: "round", attemptId: "attempt" }),
+            watermark,
+        ]);
+        assertEquals(new UsageReporter().query([projectRoot], period, zone).totals.repairRounds, 1);
+    });
+});
+
 test("incomplete operations stay separate with no settled spend or latency", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
@@ -508,6 +540,7 @@ test("interrupted clear hides old rows and the next writer completes deletion", 
         );
         const fenced = new UsageReporter().query([projectRoot], period, zone);
         assertEquals(fenced.projects[0].coverage.unavailable, true);
+        assertEquals(fenced.projects[0].coverage.historyClearPending, true);
         assertEquals(fenced.projects[0].links, []);
         assert(
             (

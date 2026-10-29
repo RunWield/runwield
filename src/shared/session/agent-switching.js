@@ -8,7 +8,6 @@ import { readPersistedActiveAgentName, readPersistedManualModelState } from "./a
 import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
 import {
     appendDebugLog,
-    clearAgentSessionQueueForTransition,
     ensureRootAgentSession,
     getConfiguredAgentModel,
     getRootSessionSwitchState,
@@ -17,14 +16,6 @@ import {
     shouldReuseExistingRootSession,
 } from "./session.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
-import {
-    claimWorkflowToolEvent,
-    listPendingWorkflowToolEvents,
-    settleWorkflowToolEvent,
-    waitForWorkflowToolEvent,
-    WorkflowStepCompleted,
-} from "../workflow/workflow-tool-events.ts";
-
 /** @type {WeakMap<import('./hosted-session.js').HostedSession, { agentName: string, model?: string, cwd?: string }>} */
 const switchMetadata = new WeakMap();
 
@@ -65,13 +56,30 @@ function releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName) {
     const planName = typeof workflow.planName === "string" && workflow.planName ? workflow.planName : "quick-fix";
     hostedSession.clearActiveExecutionWorkflow();
     const target = agentName || hostedSession.getRootAgentName() || "the selected Agent";
-    const message = planName === "quick-fix"
-        ? `User switched to ${target}; QUICK_FIX workflow ownership was released. There is no resumable Plan, and working-tree edits remain in place.`
-        : `User switched to ${target}; planned workflow ownership for ${planName} was released. Plan and worktree recovery evidence remain available through /load-plan.`;
+    const message =
+        planName === "quick-fix"
+            ? `User switched to ${target}; QUICK_FIX workflow ownership was released. There is no resumable Plan, and working-tree edits remain in place.`
+            : `User switched to ${target}; planned workflow ownership for ${planName} was released. Plan and worktree recovery evidence remain available through /load-plan.`;
     emitHostedSessionRuntimeEvent(hostedSession, {
         type: RuntimeEventTypes.SYSTEM_STATUS,
         level: "info",
         message,
+    });
+}
+
+/**
+ * Release the selected Agent for RunWield-owned work without disposing its context.
+ *
+ * @param {import('./hosted-session.js').HostedSession} hostedSession
+ */
+export function releaseActiveAgent(hostedSession) {
+    hostedSession.assertActive();
+    hostedSession.setRootAgentName(null);
+    while (hostedSession.getActiveAgentInfo()) hostedSession.popAgentInfo();
+    emitHostedSessionRuntimeEvent(hostedSession, {
+        type: RuntimeEventTypes.AGENT_CHANGED,
+        agentName: "",
+        busyLines: [],
     });
 }
 
@@ -87,8 +95,8 @@ function releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName) {
 export async function switchActiveAgent(hostedSession, options) {
     if (!hostedSession) throw new Error("switchActiveAgent requires a HostedSession");
     hostedSession.assertActive();
-    const managedOperationCapability = options.managedOperationCapability ||
-        hostedSession.getManagedOperationCapability?.() || undefined;
+    const managedOperationCapability =
+        options.managedOperationCapability || hostedSession.getManagedOperationCapability?.() || undefined;
     const agentName = String(options?.agentName || "").trim();
     if (!agentName) throw new Error("switchActiveAgent requires an agentName");
     const activeTransitionId = hostedSession.getAgentTransitionId?.() || null;
@@ -108,8 +116,8 @@ export async function switchActiveAgent(hostedSession, options) {
     const sessionManager = options.sessionManager || hostedSession.getRootSessionManager?.() || undefined;
     const persistedAgentName = readPersistedActiveAgentName(sessionManager);
     const selectionAgent = previousAgentName || persistedAgentName || hostedSession.getActiveAgentInfo?.()?.agentName;
-    const changesAgent = !!selectionAgent &&
-        normalizeAgentInternalName(selectionAgent) !== normalizeAgentInternalName(agentName);
+    const changesAgent =
+        !!selectionAgent && normalizeAgentInternalName(selectionAgent) !== normalizeAgentInternalName(agentName);
     const inheritedManualModel = (() => {
         if (!changesAgent && hostedSession.isUserModelOverride?.()) {
             return activeModelState.provider && !activeModelState.model.startsWith(`${activeModelState.provider}/`)
@@ -123,18 +131,21 @@ export async function switchActiveAgent(hostedSession, options) {
     const modelOverride = options.model ?? inheritedManualModel;
     const cwdProvided = Object.hasOwn(options, "cwd") && typeof options.cwd === "string" && options.cwd.length > 0;
     const requestedCwd = cwdProvided ? String(options.cwd) : "";
-    const configuredModel = modelOverride === undefined
-        ? getConfiguredAgentModel(agentName, requestedCwd || hostedSession.cwd)
-        : undefined;
+    const configuredModel =
+        modelOverride === undefined ? getConfiguredAgentModel(agentName, requestedCwd || hostedSession.cwd) : undefined;
     const requestedModel = modelOverride ?? configuredModel;
     const modelChanged = requestedModel !== undefined && requestedModel !== effectiveModel;
     const effectiveCwd = rootSwitchState?.cwd ?? previousSwitch?.cwd ?? hostedSession.cwd;
     const cwdChanged = cwdProvided && options.cwd !== effectiveCwd;
     const customRootConfigurationProvided = Boolean(
-        options.subAgentDefinition || options.customTools || options.mcpRootTools || options.toolNames ||
-            options.triageMeta ||
-            options.projectStateContext !== undefined || options.includeEditFallback !== undefined ||
-            options.debugLogPath,
+        options.subAgentDefinition ||
+        options.customTools ||
+        options.mcpRootTools ||
+        options.toolNames ||
+        options.triageMeta ||
+        options.projectStateContext !== undefined ||
+        options.includeEditFallback !== undefined ||
+        options.debugLogPath,
     );
     const rootOptions = {
         agentName,
@@ -154,8 +165,12 @@ export async function switchActiveAgent(hostedSession, options) {
         debugLogPath: options.debugLogPath,
         managedOperationCapability,
     };
-    const canReuseRoot = previousRootSession && !options.forceRebuild && !modelChanged &&
-        !cwdChanged && !customRootConfigurationProvided &&
+    const canReuseRoot =
+        previousRootSession &&
+        !options.forceRebuild &&
+        !modelChanged &&
+        !cwdChanged &&
+        !customRootConfigurationProvided &&
         shouldReuseExistingRootSession({ agentName }, previousAgentName);
     const shouldRebuildRoot = !canReuseRoot;
     const nextMetadata = {
@@ -165,9 +180,10 @@ export async function switchActiveAgent(hostedSession, options) {
     };
     const previousHandlerMetadata = typeof previousHandler === "function" ? handlerMetadata.get(previousHandler) : null;
     const canReuseHandler = Boolean(
-        previousHandler && previousHandlerMetadata &&
-            previousHandlerMetadata.agentName === agentName &&
-            !customRootConfigurationProvided,
+        previousHandler &&
+        previousHandlerMetadata &&
+        previousHandlerMetadata.agentName === agentName &&
+        !customRootConfigurationProvided,
     );
 
     if (!shouldRebuildRoot && canReuseHandler) {
@@ -251,7 +267,8 @@ export async function switchActiveAgent(hostedSession, options) {
         // before it has a durable root. Ordinary first activation stays silent
         // because there is no selected Agent identity yet.
         const previousRootIdentity = previousAgentName || persistedAgentName || selectionAgent || "";
-        const rootHandoff = Boolean(previousRootIdentity) &&
+        const rootHandoff =
+            Boolean(previousRootIdentity) &&
             normalizeAgentInternalName(previousRootIdentity) !== normalizeAgentInternalName(committedAgentName);
         const committedBusyLines = getAgentBusyLines(committedAgentName, hostedSession.cwd);
         emitHostedSessionRuntimeEvent(hostedSession, {
@@ -285,6 +302,8 @@ export async function switchActiveAgent(hostedSession, options) {
  * @property {boolean} [includeEditFallback]
  * @property {string} [debugLogPath]
  * @property {import('./request-dispatch.ts').RequestDispatchKind} [dispatchKind]
+ * @property {boolean} [resumePreviousRequest] True when continuing the preceding failed or interrupted request.
+ * @property {string} [taskId] Stable identity for the controller-owned task being continued.
  * @property {AbortSignal} [signal]
  */
 
@@ -313,6 +332,8 @@ export async function runActiveAgentTurn(options) {
         includeEditFallback,
         debugLogPath,
         dispatchKind,
+        resumePreviousRequest,
+        taskId,
         signal,
     } = options;
 
@@ -340,130 +361,11 @@ export async function runActiveAgentTurn(options) {
         userRequest,
         images,
         dispatchKind,
+        resumePreviousRequest,
+        taskId,
         signal,
     });
 }
 
-/**
- * @typedef {{ dispose?: () => void | Promise<void>, agent?: { state?: { messages?: import('@earendil-works/pi-agent-core').AgentMessage[] } } }} RootAgentSessionState
- */
-
-/**
- * @typedef {Object} RootWorkflowTurnOptions
- * @property {import('./hosted-session.js').HostedSession} hostedSession
- * @property {string} agentName
- * @property {string} userRequest
- * @property {import('./types.js').ImageAttachment[]} [images]
- * @property {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [customTools]
- * @property {RootAgentSessionState | null} rootAgentSession
- * @property {AbortSignal} [signal]
- */
-
-/**
- * @param {RootWorkflowTurnOptions} args
- * @returns {Promise<{ messages: import('@earendil-works/pi-agent-core').AgentMessage[], event: import('../workflow/workflow-tool-events.ts').WorkflowToolEvent | null }>}
- */
-export async function runRootTurnUntilRootWorkflowEvent(args) {
-    const waitController = new AbortController();
-    const turnController = new AbortController();
-    const abortBoth = () => {
-        const reason = args.signal?.reason || new DOMException("Root workflow turn canceled.", "AbortError");
-        waitController.abort(reason);
-        turnController.abort(reason);
-    };
-    if (args.signal?.aborted) abortBoth();
-    args.signal?.addEventListener("abort", abortBoth, { once: true });
-
-    /** @type {{ kinds: import("../workflow/workflow-tool-events.ts").WorkflowToolEventKind[], owningSession: RootAgentSessionState | null, excludeEventIds: string[] }} */
-    const claimOptions = {
-        kinds: ["triage_report", "plan_written"],
-        owningSession: args.rootAgentSession,
-        excludeEventIds: listPendingWorkflowToolEvents(args.hostedSession).map((event) => event.eventId),
-    };
-    const eventPromise = waitForWorkflowToolEvent(args.hostedSession, {
-        ...claimOptions,
-        signal: waitController.signal,
-    });
-    const turnPromise = runRootTurn({
-        hostedSession: args.hostedSession,
-        agentName: args.agentName,
-        userRequest: args.userRequest,
-        images: args.images,
-        customTools: args.customTools,
-        signal: turnController.signal,
-    });
-
-    try {
-        const first = await Promise.race([
-            eventPromise.then((event) => ({ kind: /** @type {const} */ ("event"), event })),
-            turnPromise.then((messages) => ({ kind: /** @type {const} */ ("turn"), messages })),
-        ]);
-        /** @param {import('../workflow/workflow-tool-events.ts').WorkflowToolEvent} event */
-        const stopForTerminalEvent = async (event) => {
-            if (!args.hostedSession.isAgentTransitioning()) args.hostedSession.beginAgentTransition();
-            try {
-                clearAgentSessionQueueForTransition(args.rootAgentSession);
-            } catch (error) {
-                turnController.abort(new WorkflowStepCompleted());
-                await turnPromise.catch(() => undefined);
-                const transitionId = args.hostedSession.getAgentTransitionId();
-                if (transitionId) args.hostedSession.completeAgentTransition(transitionId);
-                throw error;
-            }
-            turnController.abort(new WorkflowStepCompleted());
-            await turnPromise.catch(() => undefined);
-            return { messages: [], event };
-        };
-        if (first.kind === "event") {
-            if (
-                first.event.kind === "plan_written" &&
-                (/** @type {import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload} */ (first.event
-                        .payload)).outcome === "feedback"
-            ) {
-                let feedbackEvent = first.event;
-                const excludedEventIds = [...claimOptions.excludeEventIds, feedbackEvent.eventId];
-                while (true) {
-                    const feedbackWaitController = new AbortController();
-                    const nextEventPromise = waitForWorkflowToolEvent(args.hostedSession, {
-                        ...claimOptions,
-                        excludeEventIds: excludedEventIds,
-                        signal: feedbackWaitController.signal,
-                    });
-                    try {
-                        const next = await Promise.race([
-                            nextEventPromise.then((event) => ({ kind: /** @type {const} */ ("event"), event })),
-                            turnPromise.then((messages) => ({ kind: /** @type {const} */ ("turn"), messages })),
-                        ]);
-                        if (next.kind === "turn") return { messages: next.messages, event: feedbackEvent };
-                        excludedEventIds.push(next.event.eventId);
-                        if (
-                            next.event.kind === "plan_written" &&
-                            (/** @type {import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload} */ (next
-                                    .event.payload)).outcome === "feedback"
-                        ) {
-                            settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
-                            feedbackEvent = next.event;
-                            continue;
-                        }
-                        settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
-                        return await stopForTerminalEvent(next.event);
-                    } finally {
-                        feedbackWaitController.abort();
-                        await nextEventPromise.catch(() => undefined);
-                    }
-                }
-            }
-            return await stopForTerminalEvent(first.event);
-        }
-        waitController.abort(new DOMException("Agent turn finished without root workflow event.", "AbortError"));
-        const waitedEvent = await eventPromise.catch(() => null);
-        return {
-            messages: first.messages,
-            event: waitedEvent || claimWorkflowToolEvent(args.hostedSession, claimOptions),
-        };
-    } finally {
-        waitController.abort();
-        await eventPromise.catch(() => undefined);
-        args.signal?.removeEventListener("abort", abortBoth);
-    }
-}
+// Keep the legacy module export on the same implementation as planning and interactive turns.
+export { runRootTurnUntilRootWorkflowEvent } from "./root-workflow-turn.ts";

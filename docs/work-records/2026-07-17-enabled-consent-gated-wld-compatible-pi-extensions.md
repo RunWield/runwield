@@ -11,20 +11,12 @@ provenance:
         - "44407264-433c-4ac6-93a3-6a3aa0a46f77"
 ---
 
-# Enabled consent-gated WLD-compatible Pi extensions
+# Consent-gated Pi code extensions
 
 ## Summary
 
-RunWield can now recognize, install, persist, and load Pi-shaped code extensions that explicitly declare WLD
-compatibility. Installation requires clear user consent and defaults to denial in non-interactive flows, while passive
-themes and prompts remain available and incompatible extensions and skills remain ignored. Manifest filtering, session
-loading, help text, settings documentation, and automated coverage were added and verified.
-
-## Deferred Work
-
-Skills remain unsupported. Package prompt support is tracked separately.
+RunWield recognizes, installs, persists, and loads Pi-shaped code extensions that explicitly declare RunWield compatibility. Installation requires clear user consent and defaults to denial in noninteractive flows. Passive themes and prompts remain available, while incompatible executable extensions are ignored.
 
 ## Future Planning Notes
 
-Treat compatibility metadata as author self-attestation rather than vetting or sandboxing. Future extension API versions
-should define an explicit compatibility and migration policy.
+Compatibility metadata is author self-attestation, not vetting or sandboxing. Extension API version changes need explicit compatibility and migration rules.

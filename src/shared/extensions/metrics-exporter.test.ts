@@ -235,3 +235,56 @@ test("missing version binds approval to an empty version and local file edits ke
         assert(typeof saved[0].approvedAt === "string");
     });
 });
+
+const credentialFields = [
+    { key: "publicKey", label: "Public key", secret: false },
+    { key: "secretKey", label: "Secret key", secret: true },
+];
+
+test("exporter exposes declared credential fields without changing approval identity", async () => {
+    await withExporterFixture(async ({ packageRoot }) => {
+        const settings = getSettingsManager();
+        settings.setPackages([packageRoot]);
+        await settings.flush();
+        await approveMetricsExporter((await listInstalledMetricsExporters())[0]);
+        const approval = getCustomSetting("metricsExporterApprovals", "global");
+        const path = join(packageRoot, "package.json");
+        const manifest = JSON.parse(await fsReadFile(path, "utf8"));
+        manifest.wld.metricsExporter.credentials = credentialFields;
+        await fsWriteFile(path, JSON.stringify(manifest));
+        assertEquals((await readMetricsExporterDeclaration(packageRoot))?.credentials, credentialFields);
+        const [exporter] = await listInstalledMetricsExporters();
+        assertEquals(exporter.credentialFields, credentialFields);
+        assertEquals(exporter.approved, true);
+        manifest.wld.metricsExporter.credentials[0].label = "Account key";
+        await fsWriteFile(path, JSON.stringify(manifest));
+        assertEquals((await listInstalledMetricsExporters())[0].approved, true);
+        assertEquals(getCustomSetting("metricsExporterApprovals", "global"), approval);
+    });
+});
+
+for (const fields of [
+    null,
+    {},
+    "secretKey",
+    Array.from({ length: 9 }, (_, i) => ({ key: `key${i}`, label: "Key", secret: true })),
+    [{ key: "1key", label: "Key", secret: true }],
+    [{ key: "a".repeat(65), label: "Key", secret: true }],
+    [{ key: "key-name", label: "Key", secret: true }],
+    [{ key: "key", label: " ", secret: true }],
+    [{ key: "key", label: "a".repeat(65), secret: true }],
+    [{ key: "key", label: "Key", secret: "yes" }],
+    [{ key: "key", label: "Key" }],
+    [credentialFields[0], credentialFields[0]],
+    [null],
+]) {
+    test(`exporter declaration rejects malformed credential fields ${JSON.stringify(fields)}`, async () => {
+        await withExporterFixture(async ({ packageRoot }) => {
+            const path = join(packageRoot, "package.json");
+            const manifest = JSON.parse(await fsReadFile(path, "utf8"));
+            manifest.wld.metricsExporter.credentials = fields;
+            await fsWriteFile(path, JSON.stringify(manifest));
+            assertEquals(await readMetricsExporterDeclaration(packageRoot), null);
+        });
+    });
+}

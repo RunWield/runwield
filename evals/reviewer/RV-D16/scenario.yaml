@@ -1,0 +1,20 @@
+schemaVersion: 1
+scenarioId: RV-D16
+track: discovery
+group: cross-file-context
+fixtureRevision: 1
+planPath: docs/plans/date-summary-export.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - shared-date-helper
+    - local-calendar-reminders
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate

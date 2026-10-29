@@ -15,7 +15,7 @@ import {
 
 import { basename, dirname, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME, WORKTREE_BRANCH_PREFIX } from "../constants.js";
-import { encodeCwdForSessionDir } from "./session/root-session.js";
+import { encodeCwdForSessionDir } from "./project-directory-key.ts";
 import {
     captureWorktreeProjectContext,
     isTransferredProjectContext,
@@ -24,7 +24,8 @@ import {
     recordedProjectContextPaths,
 } from "./worktree-project-context.ts";
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
-import { getWorkflowDiff } from "./workflow/git-snapshot.ts";
+import { resolvePublicationUpstream } from "./publication-target.ts";
+import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
 import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
 import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import {
@@ -219,6 +220,7 @@ async function isPreparationChange(root, path, baseRef, targetRef) {
  * @param {string} opts.baseRef
  * @param {string} [opts.targetRef]
  * @param {boolean} [opts.includeWorkingTree]
+ * @param {string} [opts.publishedRef] Published target whose identical committed files are not local implementation.
  * @returns {Promise<boolean>}
  */
 export async function hasExecutionChangesSince({
@@ -226,6 +228,7 @@ export async function hasExecutionChangesSince({
     baseRef,
     targetRef = "HEAD",
     includeWorkingTree = false,
+    publishedRef,
 }) {
     const committed = parseNameOnlyPaths(
         await runGit(worktreePath, ["diff", "--name-only", `${baseRef}..${targetRef}`, "--"]),
@@ -240,6 +243,20 @@ export async function hasExecutionChangesSince({
     for (const { paths, ref } of checks) {
         for (const path of paths) {
             if (!(await isPreparationChange(worktreePath, path, ref ? baseRef : "HEAD", ref))) {
+                if (ref && publishedRef) {
+                    const comparison = await runGitResult(worktreePath, [
+                        "diff",
+                        "--quiet",
+                        publishedRef,
+                        ref,
+                        "--",
+                        path,
+                    ]);
+                    if (comparison.code === 0) continue;
+                    if (comparison.code !== 1) {
+                        throw new Error(`Could not compare published file ${path}: ${comparison.stderr}`);
+                    }
+                }
                 return true;
             }
         }
@@ -366,25 +383,27 @@ async function assertValidTargetBranchName(projectRoot, branch) {
 /**
  * @param {string} projectRoot
  * @param {string} branch
- * @returns {Promise<boolean>}
+ * @returns {Promise<string | null>}
  */
-async function remoteBranchExists(projectRoot, branch) {
-    const remoteResult = await runGitResult(projectRoot, ["remote", "get-url", "origin"]);
-    if (remoteResult.code !== 0) return false;
-
+async function fetchPublicationTargetRef(projectRoot, branch) {
+    const upstream = await resolvePublicationUpstream(projectRoot, branch);
+    if (!upstream) return null;
+    const remoteRef = `refs/remotes/${upstream.remote}/${upstream.branch}`;
     const fetchResult = await runGitResult(projectRoot, [
         "fetch",
-        "origin",
-        `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+        upstream.remote,
+        `+refs/heads/${upstream.branch}:${remoteRef}`,
     ]);
     if (fetchResult.code !== 0) {
         const message = fetchResult.stderr || fetchResult.stdout;
         if (message.includes("couldn't find remote ref")) {
-            return false;
+            return null;
         }
-        throw new Error(`Could not check remote target branch origin/${branch}: ${message}`.trim());
+        throw new Error(
+            `Could not check remote target branch ${upstream.remote}/${upstream.branch}: ${message}`.trim(),
+        );
     }
-    return await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`);
+    return remoteRef;
 }
 
 /**
@@ -394,9 +413,7 @@ async function remoteBranchExists(projectRoot, branch) {
  */
 async function createLocalBranchFromDefault(projectRoot, branch) {
     const defaultBranch = await resolveRepositoryDefaultBranch(projectRoot);
-    const defaultRef = (await remoteBranchExists(projectRoot, defaultBranch))
-        ? `refs/remotes/origin/${defaultBranch}`
-        : `refs/heads/${defaultBranch}`;
+    const defaultRef = (await fetchPublicationTargetRef(projectRoot, defaultBranch)) ?? `refs/heads/${defaultBranch}`;
     await runGit(projectRoot, ["branch", branch, defaultRef]);
     return { baseRef: `refs/heads/${branch}`, baseBranch: branch };
 }
@@ -412,7 +429,7 @@ export async function resolveRepositoryDefaultBranch(projectRoot) {
         const head = await runGitResult(projectRoot, ["ls-remote", "--symref", "origin", "HEAD"]);
         const branch = head.code === 0 ? head.stdout.match(/^ref: refs\/heads\/([^\t\n]+)\tHEAD/m)?.[1] : undefined;
         for (const candidate of [...new Set([branch, "main", "master"].filter(Boolean))]) {
-            if (candidate && (await remoteBranchExists(projectRoot, candidate))) return candidate;
+            if (candidate && (await fetchPublicationTargetRef(projectRoot, candidate))) return candidate;
         }
     }
     const configured = await runGitResult(projectRoot, ["config", "--get", "init.defaultBranch"]);
@@ -469,8 +486,9 @@ export async function resolveCurrentCheckoutBranch(projectRoot) {
 export async function prepareTargetBranchRef(projectRoot, branch) {
     await assertGitRepository(projectRoot, "Preparing an execution target branch");
     const target = await resolveTargetBranchName(projectRoot, branch);
-    if (await remoteBranchExists(projectRoot, target)) {
-        return { baseRef: `refs/remotes/origin/${target}`, baseBranch: target };
+    const remoteRef = await fetchPublicationTargetRef(projectRoot, target);
+    if (remoteRef) {
+        return { baseRef: remoteRef, baseBranch: target };
     }
 
     if (typeof branch === "string" && branch.trim().startsWith("origin/")) {
@@ -497,15 +515,16 @@ export async function ensureTargetBranchRef(projectRoot, branch, sourceBranch) {
     const target = await resolveTargetBranchName(projectRoot, branch);
     if (await gitRefExists(projectRoot, `refs/heads/${target}`)) return { branch: target, created: false };
     let sourceRef;
-    if (await remoteBranchExists(projectRoot, target)) {
-        sourceRef = `refs/remotes/origin/${target}`;
+    const remoteRef = await fetchPublicationTargetRef(projectRoot, target);
+    if (remoteRef) {
+        sourceRef = remoteRef;
     } else if (sourceBranch) {
         const source = await resolveTargetBranchName(projectRoot, sourceBranch);
-        sourceRef = (await remoteBranchExists(projectRoot, source))
-            ? `refs/remotes/origin/${source}`
-            : !sourceBranch.startsWith("origin/") && (await gitRefExists(projectRoot, `refs/heads/${source}`))
-              ? `refs/heads/${source}`
-              : undefined;
+        sourceRef =
+            (await fetchPublicationTargetRef(projectRoot, source)) ??
+            (!sourceBranch.startsWith("origin/") && (await gitRefExists(projectRoot, `refs/heads/${source}`))
+                ? `refs/heads/${source}`
+                : undefined);
         if (!sourceRef) throw new Error(`Source branch does not exist: ${sourceBranch}`);
     } else {
         await createLocalBranchFromDefault(projectRoot, target);
@@ -664,7 +683,21 @@ async function commitDirtyWorktreeState(
                 }
             }
             const ordinaryPaths = allowedDirtyPaths.filter((path) => !forcedPaths.has(path));
-            if (ordinaryPaths.length > 0) await runGit(worktreePath, ["add", "-A", "--", ...ordinaryPaths]);
+            if (ordinaryPaths.length > 0) {
+                // Staged deletions and rename sources no longer match an add pathspec.
+                const stageablePaths = parseNulPaths(
+                    await runGit(worktreePath, [
+                        "ls-files",
+                        "--cached",
+                        "--others",
+                        "--exclude-standard",
+                        "-z",
+                        "--",
+                        ...ordinaryPaths,
+                    ]),
+                );
+                if (stageablePaths.length > 0) await runGit(worktreePath, ["add", "-A", "--", ...stageablePaths]);
+            }
         }
     } else {
         await stageDirtyPathsExceptOwnedRuntime(worktreePath);
@@ -1009,7 +1042,7 @@ export async function getWorktreeStatus({ path, branch, baseTree }) {
         try {
             diff = await getWorkflowDiff(path, baseTree);
         } catch {
-            diff = await runGit(path, ["diff"]);
+            diff = await runGit(path, ["diff", ...REVIEW_DIFF_FORMAT_ARGS]);
         }
     } else {
         diff = await getWorkflowDiff(path, undefined);

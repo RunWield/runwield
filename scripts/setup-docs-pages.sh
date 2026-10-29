@@ -220,14 +220,18 @@ REPOSITORY="gandazgul/runwield"
 banner "RunWield documentation site setup"
 
 stage "Release-aligned documentation branch"
-say "This starts the reviewed bootstrap workflow after the implementation reaches the default branch."
+say "Documentation deploys from docs/stable after Stable publication. This wizard does not change product tags."
 if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
   warn "GitHub CLI is not authenticated. Run: gh auth login"
-  SKIPPED+=("Run the publish-docs workflow with bootstrap=true")
+  SKIPPED+=("Deploy the latest Stable manual from docs/stable")
+elif ! gh api "repos/$REPOSITORY/git/ref/heads/docs/stable" >/dev/null 2>&1; then
+  warn "Cannot verify docs/stable. Check access and the branch before deployment."
+  note "If the branch does not exist, follow the disposable-checkout bootstrap steps in docs/releasing.md."
+  SKIPPED+=("Prepare docs/stable and dispatch docs.yml from that branch")
 else
-  confirm "Start the publish-docs bootstrap for the latest Stable release?" && \
-    gh workflow run docs.yml --repo "$REPOSITORY" -f bootstrap=true
-  step "Open the workflow run and wait for its sync and deploy jobs to pass."
+  confirm "Deploy the latest Stable manual from docs/stable?" && \
+    gh workflow run docs.yml --repo "$REPOSITORY" --ref docs/stable
+  step "Open the workflow run and wait for its deploy job to pass."
   open_url "https://github.com/$REPOSITORY/actions/workflows/docs.yml"
   pause "Continue after the deployment passes."
 fi

@@ -11,19 +11,16 @@ provenance:
         - "daa36ef2-5d66-4794-a61a-562d9253817c"
 ---
 
-# Added batched Cymbal show and outline tooling
+# Batched Cymbal show and outline tooling
 
 ## Summary
 
-Implemented and verified the `code_batch` custom tool, enabling agents to batch up to five known `show` and `outline`
-operations with sequential execution, per-operation error isolation, labeled output, and bounded truncation. Integrated
-the tool into relevant agent toolsets and prompt guidance.
+The code_batch tool executes up to five known Cymbal show and outline operations sequentially. Each operation has isolated errors, labeled output, and bounded truncation, so Agents can retrieve related code context in one request.
 
-## Deferred Work
+## Out of Scope
 
-Batch search and project-context snapshot operations remain out of scope due to context-growth and portability concerns.
+This work does not include batch search or project-context snapshots.
 
 ## Future Planning Notes
 
-Consider search batching separately if a deterministic query limit and strict output budget can preserve predictable
-context usage.
+Code retrieval batches need deterministic operation limits and strict output budgets to keep context use predictable.

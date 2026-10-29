@@ -513,6 +513,7 @@ test("provider switch continues a failed request without changing execution owne
                 userRequest: planBody,
                 sessionManager,
                 dispatchKind: "plan_execution",
+                resumePreviousRequest: true,
             });
 
             const transcript = sessionManager.getBranch()

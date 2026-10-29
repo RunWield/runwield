@@ -66,28 +66,32 @@ export interface TuiSessionSidebarSnapshot {
 
 export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot): SessionSidebarProjection {
     const savedProgress = snapshot.workflowContext?.validationProgress;
-    const progress: LiveValidationProgress | null | undefined = savedProgress?.outcome === "running" &&
-            snapshot.busy === false && !snapshot.workflowContext?.liveCodeReview &&
-            !snapshot.workflowContext?.livePlanReview
-        ? {
-            ...savedProgress,
-            outcome: "paused",
-            message: "Work is paused. Resume from the saved checkpoint.",
-            checks: {
-                ci: savedProgress.checks.ci === "running" ? "canceled" : savedProgress.checks.ci,
-                semanticReview: savedProgress.checks.semanticReview === "running"
-                    ? "canceled"
-                    : savedProgress.checks.semanticReview,
-                humanReview: savedProgress.checks.humanReview === "running"
-                    ? "canceled"
-                    : savedProgress.checks.humanReview,
-                merge: savedProgress.checks.merge === "running" ? "canceled" : savedProgress.checks.merge,
-            },
-        }
-        : savedProgress || snapshot.validationProgress;
+    const progress: LiveValidationProgress | null | undefined =
+        savedProgress?.outcome === "running" &&
+        snapshot.busy === false &&
+        !snapshot.workflowContext?.liveCodeReview &&
+        !snapshot.workflowContext?.livePlanReview
+            ? {
+                  ...savedProgress,
+                  outcome: "paused",
+                  message: "Work is paused. Resume from the saved checkpoint.",
+                  checks: {
+                      ci: savedProgress.checks.ci === "running" ? "canceled" : savedProgress.checks.ci,
+                      semanticReview:
+                          savedProgress.checks.semanticReview === "running"
+                              ? "canceled"
+                              : savedProgress.checks.semanticReview,
+                      humanReview:
+                          savedProgress.checks.humanReview === "running"
+                              ? "canceled"
+                              : savedProgress.checks.humanReview,
+                      merge: savedProgress.checks.merge === "running" ? "canceled" : savedProgress.checks.merge,
+                  },
+              }
+            : savedProgress || snapshot.validationProgress;
     const activeWorkflow = snapshot.activeExecutionWorkflow;
-    const plan = activeWorkflow?.planName || snapshot.workflowContext?.planName || snapshot.workflowContext?.planId ||
-        "";
+    const plan =
+        activeWorkflow?.planName || snapshot.workflowContext?.planName || snapshot.workflowContext?.planId || "";
     const epic = activeWorkflow?.planName
         ? activeWorkflow.triageMeta?.parentPlan || ""
         : snapshot.workflowContext?.parentPlan || "";
@@ -127,8 +131,10 @@ export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot)
         artifacts: snapshot.artifacts,
     });
     if (
-        !snapshot.busy && !snapshot.workflowContext?.liveQuestion && snapshot.workflowContext?.canReopenPlanReview &&
-        ["draft", "feedback", "approved", "ready_for_work"].includes(snapshot.workflowContext.status || "draft")
+        !snapshot.busy &&
+        !snapshot.workflowContext?.liveQuestion &&
+        snapshot.workflowContext?.canReopenPlanReview &&
+        ["draft", "approved", "ready_for_work"].includes(snapshot.workflowContext.status || "draft")
     ) {
         projection.workflow.action = {
             kind: "review_plan",
@@ -138,7 +144,8 @@ export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot)
     }
     const action = projection.workflow.action;
     if (
-        action && (["answer_agent", "open_session", "open_plan", "resume_from_hold"].includes(action.kind) ||
+        action &&
+        (["answer_agent", "open_session", "open_plan", "resume_from_hold"].includes(action.kind) ||
             progress?.outcome === "verified")
     ) {
         projection.workflow.action = null;
@@ -148,13 +155,14 @@ export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot)
         action.label = "Open Code Review";
     } else if (action?.kind === "resume" || action?.kind === "recover") {
         const stage = projection.workflow.currentStage?.id;
-        action.label = stage === "code_review"
-            ? "Reopen Code Review"
-            : stage === "repair"
-            ? "Resume repair"
-            : ["mechanical", "semantic", "delivery"].includes(stage || "")
-            ? "Resume validation"
-            : "Resume implementation";
+        action.label =
+            stage === "code_review"
+                ? "Reopen Code Review"
+                : stage === "repair"
+                  ? "Resume repair"
+                  : ["mechanical", "semantic", "delivery"].includes(stage || "")
+                    ? "Resume validation"
+                    : "Resume implementation";
     }
     return projection;
 }
@@ -248,22 +256,23 @@ export class TuiSessionSidebar {
             if (projection.workflow.stages.length) {
                 content.push("");
                 for (const [index, stage] of projection.workflow.stages.entries()) {
-                    const marker = stage.state === "blocked"
-                        ? "!"
-                        : stage.state === "paused"
-                        ? "Ⅱ"
-                        : stage.state === "completed"
-                        ? "✓"
-                        : stage.current
-                        ? "●"
-                        : "○";
+                    const marker =
+                        stage.state === "blocked"
+                            ? "!"
+                            : stage.state === "paused"
+                              ? "Ⅱ"
+                              : stage.state === "completed"
+                                ? "✓"
+                                : stage.current
+                                  ? "●"
+                                  : "○";
                     const connector = index === 0 ? " " : "│";
                     content.push(fit(`${connector} ${marker} ${stage.label}`, inner));
                     if (stage.current) content.push(theme.fg("dim", fit(`│ ${stage.detail}`, inner)));
                 }
-                for (
-                    const connection of projection.workflow.connections.filter((item) => item.kind === "repair_return")
-                ) {
+                for (const connection of projection.workflow.connections.filter(
+                    (item) => item.kind === "repair_return",
+                )) {
                     content.push(theme.fg("dim", fit(`└ ${connection.from} returns to ${connection.to}`, inner)));
                 }
             }

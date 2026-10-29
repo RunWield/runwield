@@ -99,6 +99,24 @@ test(
     },
 );
 
+test("relinking a Project keeps its new directory available", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-relink-health-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, "owner.sqlite3") });
+    try {
+        const originalRoot = join(dir, "Original Project");
+        const newRoot = join(dir, "Relinked Project");
+        await fsMkdir(originalRoot);
+        await fsMkdir(newRoot);
+        const project = registerProject(database, { root: originalRoot });
+        relinkProject(database, { projectId: project.projectId, newRoot });
+        assertEquals(requireEnabledProjectRoot(database, project.projectId), await fsRealpath(newRoot));
+        assertEquals(getProjectHealth(database, project.projectId).status, "available");
+    } finally {
+        database.close();
+        await fsRm(dir, { recursive: true });
+    }
+});
+
 test("disabled Projects stay disabled on duplicate registration", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-disabled-"));
     const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
@@ -376,6 +394,55 @@ test("Project registration rejects files", async () => {
         const file = join(dir, `not-directory`);
         await fsWriteFile(file, "x");
         assertThrows(() => registerProject(database, { root: file }), Error, "must be a directory");
+    } finally {
+        database.close();
+        await fsRm(dir, { recursive: true });
+    }
+});
+
+test("home registration and relink require root-bound consent before writes", async () => {
+    const { getHomeDir } = await import("../../constants.js");
+    const { DirectoryConfirmationRequired } = await import("../project-directory.ts");
+    const dir = await fsMkdtemp(join(tmpdir(), "project-consent-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+    try {
+        const root = getHomeDir();
+        const required = assertThrows(() => registerProject(database, { root }), DirectoryConfirmationRequired);
+        assertEquals(listProjects(database), []);
+        const ordinary = registerProject(database, { root: dir });
+        const evidence = listProjectRootEvidence(database, ordinary.projectId);
+        assertThrows(
+            () => relinkProject(database, { projectId: ordinary.projectId, newRoot: root }),
+            DirectoryConfirmationRequired,
+        );
+        assertEquals(listProjectRootEvidence(database, ordinary.projectId), evidence);
+        const alias = `${dir}/alias`;
+        await fsSymlink(root, alias);
+        assertThrows(
+            () => registerProject(database, { root: alias, directoryConfirmation: required.confirmation }),
+            DirectoryConfirmationRequired,
+        );
+        const relinked = relinkProject(database, {
+            projectId: ordinary.projectId,
+            newRoot: root,
+            directoryConfirmation: required.confirmation,
+        });
+        assertEquals(relinked.currentRoot, await fsRealpath(root));
+        assertThrows(() => registerProject(database, { root }), DirectoryConfirmationRequired);
+        assertEquals(
+            registerProject(database, { root, directoryConfirmation: required.confirmation }).projectId,
+            ordinary.projectId,
+        );
+        const aliasConsent = assertThrows(
+            () => registerProject(database, { root: alias }),
+            DirectoryConfirmationRequired,
+        );
+        await fsRm(alias);
+        await fsSymlink("/", alias);
+        assertThrows(
+            () => registerProject(database, { root: alias, directoryConfirmation: aliasConsent.confirmation }),
+            DirectoryConfirmationRequired,
+        );
     } finally {
         database.close();
         await fsRm(dir, { recursive: true });

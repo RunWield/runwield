@@ -17,7 +17,7 @@ import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp } from "./server.js";
-import { loadOwnerDashboard, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
+import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
 
 type StreamFrame = {
     type: string;
@@ -718,3 +718,75 @@ test("archived Sessions stay under Plans in dashboard and sidebar but leave stan
         await fixture.cleanup();
     }
 });
+
+test("top-level sidebar priority stays ahead of explicit Plan order in both readers", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "sidebar-order-priority-"));
+    const root = join(dir, "project");
+    await fsMkdir(root);
+    const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+    try {
+        store.registerProject({ root, displayName: "Priority" });
+        await savePlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
+        await savePlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
+        const continuation = {
+            operations: new Map(),
+            listSessions() {
+                return Promise.resolve({ sessions: [] });
+            },
+        };
+        for (const projects of [
+            (await loadOwnerDashboard(store, continuation)).projects,
+            await loadOwnerSidebar(store, continuation),
+        ]) {
+            assertEquals(
+                projects[0].plans.map((plan) => plan.planId),
+                ["ready-id", "held-id"],
+            );
+        }
+    } finally {
+        store.close();
+        await fsRm(dir, { recursive: true });
+    }
+});
+
+for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
+    test(`${reader.name} keeps sibling order ahead of sidebar priority`, async () => {
+        const dir = await fsMkdtemp(join(tmpdir(), "sidebar-child-order-"));
+        const root = join(dir, "project");
+        await fsMkdir(root);
+        const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+        try {
+            store.registerProject({ root, displayName: "Children" });
+            for (const child of [
+                { name: "z-first", order: 1, status: "on_hold" },
+                { name: "a-last", order: 10, status: "ready_for_work" },
+                { name: "b-unordered", status: "draft" },
+            ]) {
+                await savePlan(root, `epic/${child.name}`, `# ${child.name}`, {
+                    planId: child.name,
+                    parentPlan: "epic",
+                    order: child.order,
+                    status: child.status,
+                });
+            }
+            await savePlan(root, "unrelated", "# Unrelated", {
+                planId: "unrelated",
+                status: "draft",
+            });
+            const result = await reader(store, {
+                operations: new Map(),
+                listSessions() {
+                    return Promise.resolve({ sessions: [] });
+                },
+            });
+            const projects = Array.isArray(result) ? result : result.projects;
+            assertEquals(
+                projects[0].plans.filter((plan) => plan.planId !== "unrelated").map((plan) => plan.planId),
+                ["z-first", "a-last", "b-unordered"],
+            );
+        } finally {
+            store.close();
+            await fsRm(dir, { recursive: true });
+        }
+    });
+}

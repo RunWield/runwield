@@ -41,7 +41,7 @@ validation, memory, or Workspace goals need a distinct product surface.
 - **Work protection:** RunWield preserves user work and asks before any action that could destroy it.
 - **Tool-driven workflow:** Agents declare intent with workflow tools; orchestration code owns lifecycle transitions,
   execution, validation, and recovery.
-- **Local-first control:** Core is fully useful without the hosted Workspace.
+- **Local-first control:** Core provides an independently useful local workflow.
 - **Context parsimony:** Agents use targeted project context, memory recall, code intelligence, and Plan artifacts.
 - **Pi compatibility by default:** RunWield follows Pi Coding Agent conventions where its product vision allows.
 - **Extensible but guarded:** Users customize Agents, skills, prompt templates, and tools; protected workflow tools keep
@@ -207,6 +207,8 @@ manual edits apply after `/reload`. Hiding the mascot keeps the written identity
 
 - Given an Agent change, the mascot changes to that Agent's prop; a delegated invocation keeps its parent's mascot.
 - Given a busy turn, the mascot animates until an answer, an owner wait, or settlement, and restarts when work resumes.
+- Given Code Review approval or skip, publication clears the selected Agent. The TUI shows Base and the default
+  working text, not the previous repair Agent. A real publication repair turn shows its own Agent while it runs.
 - Given a terminal resize, the mascot stays centered and the conversation and composer stay usable.
 - Given `mascot: false`, the rail, compact dock, and Workspace composer show no mascot; toggling back restores it.
 
@@ -247,17 +249,41 @@ conversation history, global settings, memory, and external sources are separate
 **Scope and maturity:** Current baseline.
 
 **Requirement: Apply the user's review decision to the saved Plan.** Planner or Architect presents a saved Plan for
-review. Users can approve and run, approve for later, give feedback, or cancel. Feedback returns to the planning
-conversation for revision. Approval leads to a readiness check; a Plan that needs repair explains what blocks it.
-Formatting-only changes during review keep the decision valid. Changes to Plan meaning, code, execution policy, or
-workflow evidence require review of the current Plan.
+review. Users can approve and run, approve for later, discuss the Plan, or cancel. Epics offer Approve & Slice.
+Approval leads to a readiness check; a Plan that needs repair explains what blocks it. Formatting-only changes during
+review keep the decision valid. Changes to Plan meaning, code, execution policy, or workflow evidence require review of
+the current Plan.
+
+**Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
+It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
+in doubt, it revises. A reply-only turn writes nothing to the Plan file. RunWield keeps the same review and conversation
+open after the turn without requiring another tool call. A long turn has no review timeout. These rules apply to
+initial, direct saved-Plan, `/plan-review`, Epic, and Sequence reviews.
+
+Opening review or discussing a Plan preserves its status. A meaningful revision by the Agent or a saved owner edit
+returns an `approved`, `ready_for_work`, or `ready_for_decomposition` Plan to `draft`. Formatting-only changes preserve
+its status. An Agent error or canceled turn appears in chat and RunWield restores the review. Explicit review
+cancellation, including Escape while the Agent works, ends the review without reopening it.
+
+**Requirement: Keep approval context.** Review input still queued at approval goes to the execution Agent or Slicer.
+The browser queue and approval warning follow
+[Workspace Browser Plan review](runwield-workspace-prd.md#browser-plan-review-and-workflow). Send Annotations is not a
+review action when chat is available. A standalone surface without chat retains that feedback action.
+
+**Requirement: Settle embedded Plan Questions on approval.** Browser approval replaces each valid `wld-question`
+block in the reviewed Plan with its question and answer in place. An owner answer is marked “answered in review”. An
+unanswered question uses its recommended default, marked “recommended; not answered in review”. Without a default, it
+records “Not answered. Engineer decides.” This happens before the approved Plan is saved, for both approval actions.
+Feedback leaves question blocks available for the planning conversation. Invalid blocks stay unchanged. The bundled
+Agents do not write these blocks; local Planner instructions can opt in. Sequence approval applies the same settlement
+rules to each reviewed document, including child Plans.
 
 **Requirement: Discuss an Epic with Architect during review.** While an Epic is open for review, the user can chat with
-Architect on the review page across several rounds in the same live Session. Architect can revise the Epic and publish
-the next review round on the same page. Only explicit review actions (Send Annotations, cancel, Approve for Later,
-Approve & Slice) decide the review. A model turn starts when the user sends a message.
+Architect on the review page across rounds in the same live Session. Architect can reply without editing or revise
+the Epic on the same page. Only approval or cancellation ends the conversational review. A model turn starts when the
+user sends a message.
 
-**Requirement: Open saved Plans directly for review.** Loading a draft, feedback, approved, or ready-for-work Plan with
+**Requirement: Open saved Plans directly for review.** Loading a draft, approved, or ready-for-work Plan with
 a valid execution policy offers direct Plan Review. Users inspect and annotate the saved Plan, and the decision follows
 the normal review flow.
 
@@ -273,7 +299,20 @@ stays light, terminal animations pause during human input, and the decision cont
 
 - Given an Epic open for review, the user exchanges two messages with Architect and both replies stay on the review
   page; the review stays open until an explicit review action.
-- Given a saved Plan, when the user submits feedback, the planning conversation receives it and can revise the Plan.
+- Given a draft, approved, or ready Plan in review, when the owner asks a question and the Agent only replies, the
+  Plan file and status stay unchanged, and approval remains available on the same page.
+- Given an approved, ready-for-work, or ready-for-decomposition Plan, a meaningful Agent revision or saved owner edit
+  returns it to draft. Formatting-only changes preserve the status.
+- Given a conversation turn that finishes without `plan_written`, including an Agent error or canceled turn, RunWield
+  restores the review with the same conversation and shows any error. Explicitly canceling the review does not restore it.
+- Given a direct saved-Plan, Epic, or Sequence review, reply-only turns keep review available and approval keeps its
+  existing readiness, group decision, and Agent handoff behavior.
+- Given queued review input at approval, the next Agent receives that context.
+- Given two valid Plan Questions, one answered and one open with a default, browser approval saves the owner answer and
+  the recommended answer with their labels, with no raw question fences. Approval still rejects a changed Plan and
+  applies a repeated decision only once.
+- Given a Plan Question without an owner answer or default, approval records that Engineer decides. Feedback instead
+  keeps the block in the saved Plan.
 - When the user approves for later, the Plan waits; when they approve and run, readiness is checked first.
 - Given an open review, when a commit hook reformats the Plan, the decision still applies; a change to instructions,
   code, links, or execution policy requires a new decision.
@@ -301,7 +340,11 @@ decisions.
 **Requirement: Generated Plans are easy to read.** Planner starts each section with its main point, keeps one idea per
 short paragraph, and uses lists for separate points. Implementation Steps and the Verification Plan stay exact. Planner
 can mark the few points a reader must not miss with a WARNING, NOTE, or TIP callout. Callouts are optional authoring
-guidance; Plans in any style stay valid.
+guidance; Plans in any style stay valid. New Plan filenames and headings are descriptive, without ordinal prefixes.
+Child sequence belongs in Front Matter `order`. Reordering keeps filenames, Plan IDs, and dependency references stable;
+existing numbered filenames remain valid. Top-level menus keep status/type priority. Child menus and child-filtered
+completions use numeric `order`, independent of filenames and status. Display fallbacks for missing or equal orders do
+not authorize automatic execution.
 
 **Requirement: Domain reasoning fits the user's project.** For changes that affect domain behavior, Architect and
 Planner identify the relevant concepts, identities, rules, owners, consistency needs, and external translations in the
@@ -325,6 +368,13 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given an adopted Plan, loading it again keeps its age, identity, and decisions.
 - Given a new Plan from Planner, each section leads with its point, the key risk is easy to find, and every step and
   verification item is exact.
+- Given new child Plans, their filenames have no generated ordinal prefix; changing only `order` changes child menu
+  position without changing their paths, Plan IDs, or prerequisite references.
+- Given an existing numbered child draft, regeneration keeps its path when it is the unique legacy name match;
+  ambiguous matches and attempts to regenerate non-draft children are rejected before writes. Filename digits never
+  supply missing order metadata.
+- Given top-level Plans with explicit orders, their menus retain status/type priority; child-filtered completions use
+  child order instead.
 - Given a change to domain rules, the Epic or Plan names their owners and consistency needs and carries them into
   verification in the project's conventions.
 - Given a consequential architectural choice, the Epic names affected dependencies, lasting effects, and what changing
@@ -337,11 +387,11 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 [Plan lifecycle reference](../plan-lifecycle.md) defines each technical status.
 
 **Requirement: Distinguish readiness, validation, delivery, and manual acceptance.** Plan status tells users whether
-work needs review, can start, is running, needs recovery, or is complete. Users can tell apart drafts, feedback,
+work needs review, can start, is running, needs recovery, or is complete. Users can tell apart drafts,
 approval, readiness, work in progress, implementation, review, delivery, manual acceptance, failure, and hold. UI, CLI,
 Plan documents, dependencies, and Work Records use the same meanings.
 
-The ordinary lifecycle is `draft → feedback/approved → ready_for_work → implemented → reviewed → verified`:
+The ordinary lifecycle is `draft → approved → ready_for_work → implemented → reviewed → verified`:
 
 - **Implemented** means the work is done and validation is in progress or pending.
 - **Reviewed** means review passed and delivery is pending.
@@ -356,12 +406,22 @@ Lifecycle rules:
 - `on_hold` pauses work and resumes from the previous stage.
 - Board actions follow the same rules as CLI and TUI actions.
 
+**Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
+matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,
+and load-plan paths. No user migration is needed. A later write uses `draft`. The board has no Feedback column or
+manual `feedback` target. Review revisions follow [Plan review](#plan-review).
+
 **Requirement: Record the owner's acceptance as User Verified.** Users can mark a Plan `user_verified` with a
 verification note. This satisfies dependencies and Epic completion and stays visibly distinct from RunWield
 verification. User Verification ends the execution workflow and carries the accepted Plan and note to the primary
 checkout. RunWield asks before it removes the execution worktree; declining keeps the checkout, and Archive asks again.
 Unmerged branch commits stay recoverable. A User Verified Plan can be archived when no recoverable work would be lost.
 User Verified and RunWield Verified Plans share one terminal menu: Archive, Re-open for review, View, and Cancel.
+
+**Requirement: Archive without blocking the conversation.** After required confirmations, Load Plan runs Plan and
+Epic archive writes and retention checks in the background. It reopens the Load Plan menu with pending archives
+excluded, so the user can select another Plan without waiting. If no Plans remain, it returns to chat. It reports
+completion or failure in the conversation. A repeat request for the same pending archive does not start a second archive.
 
 **Requirement: Deliberate closure.** Users can mark an Epic done enough, with a summary, when its delivered children
 meet the goal; this records a done-enough completion. `closed_without_verification` records the user's deliberate
@@ -370,6 +430,9 @@ verification.
 
 **Acceptance scenarios:**
 
+- Given a saved `feedback` or `in_review` Plan, the board and load-plan show and handle it as draft without changing
+  its bytes on read. A later write saves draft.
+- Given five reply-only review turns, the Plan file and status are unchanged.
 - Given implemented work whose delivery failed, the Plan shows validation and publication as separate outcomes and
   offers a recovery action.
 - Given a Plan marked User Verified with a note, dependency and Epic checks accept it, and every view labels it
@@ -377,6 +440,10 @@ verification.
 - Given a Plan in an execution worktree, User Verification saves the Plan and note in the primary checkout, asks to
   remove the worktree, and generates the Work Record. Reloading offers the shared terminal menu.
 - Given the user declines worktree removal, the execution files stay; Archive asks again.
+- Given a confirmed Plan or Epic archive waiting for storage, Load Plan reopens its menu before the write completes,
+  excludes pending archives, and reports the result later. If no Plans remain, it returns to chat. A repeat request
+  reports that the archive is already running.
+- Given a background archive that fails, the conversation reports the failure and does not claim completion.
 - Given the user closes a Plan without verification, the Plan records that outcome and its reason.
 - Given an unpublished workflow, User Verification labels it unpublished, and a canceled turn keeps the workflow open.
 
@@ -411,10 +478,23 @@ worktree owns the document, even if the source copy changes or is removed. The r
 Plan ID; it does not replace document content. A failed creation that was rolled back does not transfer document
 ownership.
 
+**Requirement: Child selection reflects the authoritative document.** When the primary checkout is on the Epic target
+branch, child discovery and selection include its local edits and valid untracked child Plans. On any other branch,
+checkout files do not enter the target family. Registered planning and execution documents retain their content,
+lifecycle, and order authority; a saved planning document does not restore a child removed from the target catalog.
+The picker shows distinct child-relative paths without repeating the Epic parent prefix and orders children by explicit
+Front Matter `order`, never filename prefixes. Mixed numbered and descriptive child names follow that same rule,
+including when statuses differ. Generated integration repairs take their next order from child metadata, including
+children available only on the target branch, not from filename digits.
+Missing or duplicate order blocks the next-child shortcut and automatic continuation with a clear explanation; manual
+selection and reading remain available.
+
 **Requirement: Each child starts with the preceding children's published code.** Before the next child is prepared,
 Core fetches the latest Epic branch. The child's planning worktree starts from, or imports, that commit while keeping
-its saved scope and status. The refreshed commit is the child's baseline. A failed fetch keeps continuation
-recoverable.
+its saved scope and status. The refreshed commit is the child's baseline. If the Epic history was rewritten, Core
+carries only the child's planning changes onto the current target and retains the old planning head for recovery.
+Committed files that already match the published target do not block refresh. Unpublished implementation changes are
+never discarded. A failed fetch keeps continuation recoverable.
 
 **Requirement: A child worktree starts only with a session.** Core creates a child's planning worktree only when
 planning, review, re-review, execution, or automatic continuation starts a session in that child. It starts from the
@@ -432,15 +512,40 @@ conflicting requirements or started work need the user's decision.
 
 Each child's review judges that child's own correctness, with the Epic as context. A reviewer can leave Integration
 Notes for the later integration review in the Epic's `### Integration Notes` subsection. The saved-note message names
-the parent Epic and states that the notes guide its integration review.
+the parent Epic and states that the notes guide its integration review. Integration Notes and confirmed child deviation
+blocks are written in the child's execution checkout and travel with its delivery to the Epic branch, not through a
+write to the primary checkout.
 
 **Requirement: An Epic finishes through its integration gate.** The Epic is implemented when every included child is
 delivered to the Epic branch. The integration gate then checks the exact branch head as one change: the project's
-checks, an integration review of the whole Epic diff, and Code Review per the user's `codereview` setting. A pass
-marks the Epic reviewed for that commit. Findings go to an Epic report and become a draft repair child that the user
-reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
-implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
-an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
+checks, an integration review of the whole Epic diff, and Code Review per the user's `codereview` setting. Before
+checks or review, the temporary checkout initializes submodules recursively and runs the configured
+`worktree_setup_command`. Both reviews use the Epic document from that exact branch head, not the primary checkout.
+Missing branch requirements or failed checkout setup pause the gate without creating a repair child. A pass
+marks the Epic reviewed for that commit. Integration review treats confirmed child deviations as user-approved
+replacements: a gap caused only by a deviation is not a finding. It names each affected Epic outcome and source child
+in an advisory. Defects unrelated to the deviation, and work its replacement requires, remain findings.
+
+The gate keeps a persistent Review Issue Ledger with stable finding IDs. Its first tracked review checks the whole
+Epic; later reviews confirm or reject open IDs and check only changes since the last checked commit for regressions.
+Reports and repair children retain those IDs and rejection reasons. Before the third review, findings create a draft
+repair child that the user reviews like any child. From the third review onward, RunWield asks the user to plan another
+repair, review the whole Epic in Code Review, or stop. Code Review takeover requires passing project checks. Approval
+records the user's decision, not AI approval; open AI findings remain in the ledger. Code Review change requests create
+a repair child without another limit prompt. An unanswered prompt pauses with the report and ledger saved. Existing
+Epics without saved review state count their earlier integration repair children toward the limit; their first tracked
+review still checks the whole Epic to establish the ledger.
+
+A later commit on the Epic branch returns the Epic to implemented. The ledger and round count persist, and the next
+review verifies findings and the new changes. The user merges the reviewed Epic branch or opens a pull request. Child
+manual checks are collected in an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
+
+If an implemented Epic is blocked only by gate-created repair children still in draft, its load-plan menu offers
+**Retry the integration gate** and names the drafts and report. A passing retry closes all open repair drafts without
+verification, with a reason that names the checked commit; it does not delete them. New findings replace the newest
+draft's Findings and checked commit while preserving its identity and other sections. A pause leaves drafts unchanged.
+A started repair or any undelivered non-repair child blocks retry. The automatic gate still requires every child to be
+settled; it does not skip repair drafts.
 
 **Requirement: Hold and resume.** **On hold** means paused and resumable. A held Plan keeps its previous stage and an
 optional reason. **Resume from hold** checks for relevant changes or missing work, then resumes, warns, or offers
@@ -452,13 +557,24 @@ siblings active. Listings show held work separately from active and finished wor
 **Acceptance scenarios:**
 
 - Given a new Epic without its branch, starting the first child creates the branch from the latest primary branch with
-  the child drafts on it; the user's checkout is unchanged.
+  the Epic requirements and child drafts on it; the user's checkout is unchanged. Branch preparation adds a missing Epic
+  document but does not replace requirements already on the branch with a primary-checkout copy.
 - Given Planner renumbers children on the Epic branch, `/load-plan` lists the new names, excludes removed names, and
   opens the selected branch Plan without restoring stale checkout drafts. A renamed child's saved planning edits stay
   in its planning worktree.
 - Given an existing default Epic branch and completed children, but no recorded Epic target, `/load-plan` lists that
   branch's current children and opens its next child, not a stale primary-checkout name.
+- Given the primary checkout on the Epic target branch, a local child order edit and an untracked new child appear in
+  the picker and selection opens those same documents. A known older remote snapshot does not hide them. First Resume
+  planning transfers only the selected Plan to its registered planning worktree, assigns a missing ID on the copy, and
+  uses the latest target snapshot for code. Source files and the target branch are unchanged; no draft is published.
+- Given nested children `epic/frontend/setup` and `epic/backend/setup`, the picker shows `frontend/setup` and
+  `backend/setup`, not identical `setup` labels or the repeated Epic prefix.
+- Given missing or duplicate child order, the picker explains the ambiguity and offers no next-child shortcut;
+  automatic continuation blocks, while viewing an individual child still works. Filename numbers never resolve the tie.
 - Given an unstarted child, loading, selecting, viewing, or canceling creates no worktree and changes no Git refs.
+- Given completed Slicer decomposition, resuming a draft child in the same Session opens its planning worktree with
+  Planner active. The handoff does not reload or restore the Epic-scoped Slicer as a selectable Agent.
 - Given a target-branch child without a Plan ID, starting its session creates a durable identity and planning worktree.
   Repeated or concurrent session preparation reuses both without changing the primary checkout or publishing to the Epic
   branch.
@@ -468,17 +584,48 @@ siblings active. Listings show held work separately from active and finished wor
   automatically. A stale ownership reference from that failed creation does not block the retry.
 - Given an established planning document, loading keeps its saved contents and identity even when its source copy is
   removed. A missing established document is not replaced by an older source copy.
+- Given AI review rejects a child and repair then passes validation, continuation opens the next child once. A reply
+  that completes the repair succeeds and returns the replacement Session, without retrying the closed child Session.
+  Direct validation also continues once.
 - Given a child published from another checkout, preparing the next child includes that publication.
 - Given the next child already has a planning worktree with saved edits, continuation imports the published code and
   keeps those edits.
+- Given the Epic branch was rewritten after the next child's planning worktree was created, continuation moves that
+  worktree onto the new Epic branch, keeps saved scope and status, and does not merge the replaced code history. A retry
+  settles the same refresh.
+- Given saved committed changes whose files already match the published Epic branch, continuation imports publication
+  and keeps saved Plan edits instead of reporting implementation changes.
+- Given unpublished implementation changes in that child worktree, continuation preserves them and refuses the planning refresh.
+- Given conflicting saved scope, continuation preserves both versions without leaving an unfinished merge.
 - Given a last child that has validated but not finished publishing, the Epic is not yet implemented.
 - Given all children delivered, a passing integration gate marks the Epic reviewed for that branch head; the primary
   branch is unchanged.
-- Given gate findings, the Epic report lists them and a draft repair child opens in Planner; its delivery runs the gate
-  again.
+- Given a fresh gate checkout with submodules and a configured setup command, submodules are initialized before setup,
+  and setup completes before checks or review. Setup failure pauses the gate and removes the temporary checkout.
+- Given different Epic requirements in the primary checkout and checked branch, review uses the checked branch document.
+  If that document is missing, the gate pauses instead of using the primary copy.
+- Given gate findings before the third review, the report and draft repair child list stable IDs; delivery runs a
+  verify-only review that confirms or rejects those IDs and checks the repair delta for regressions.
+- Given a verify result that omits an open ID, the gate requests a verdict on that ID instead of accepting the result.
+- Given findings at or after the third review, no child is created before the user chooses. Another repair creates one
+  child or updates the newest open repair draft; stop or no answer pauses with the report and ledger saved.
+- Given passing checks at the review limit, the user can approve the whole Epic in Code Review. The Epic becomes
+  reviewed with human takeover evidence, not AI approval. Failing checks exclude that choice.
+- Given Code Review changes at any round, a repair child carries them without another limit prompt.
+- Given an Epic with two earlier integration repair children and no saved review state, its first tracked full review
+  counts as round three and findings require a user decision.
+- Given an implemented Epic blocked only by an unstarted gate repair draft, including a draft only in the primary
+  checkout, load-plan offers **Retry the integration gate** and names the draft and report. A passing retry marks the
+  Epic reviewed and closes the draft without verification with a reason that names the checked commit.
+- Given new findings on a retry, the newest open repair draft receives the findings and checked commit without a new
+  child. Its Plan ID, order, status, target, and other sections stay unchanged. A paused retry changes no draft.
+- Given a started repair child or an undelivered ordinary child, no retry option is offered. An open repair draft still
+  blocks the automatic gate.
 - Given Planner moves scope into an approved, unstarted sibling, the sibling returns to draft with the change.
-- Given a child review with Integration Notes, the notes appear in the Epic's subsection and reach the integration
-  review.
+- Given a child review with Integration Notes, the notes appear in the execution checkout's Epic subsection, travel
+  with child delivery, and reach the branch-head integration review; the primary copy is unchanged.
+- Given a delivered child deviation that removes an Epic outcome, integration review reports the outcome and source
+  child as an advisory, not a finding. Other integration defects still block approval.
 - Given an approved Epic, saved draft children stay drafts until finalization and their own approval.
 - Given an independently held child, holding and resuming the parent leaves it held.
 - Given enough delivered children to meet the goal, the user marks the Epic done enough and the remaining children stay
@@ -498,11 +645,15 @@ graph TD
     C --> D[Verification Command]
     D --> E[AI review]
     E --> F[Code Review]
-    F --> G[Publication]
+    F -->|approve or skip| G[Publication]
     G --> H[verified]
     D -->|fails| R[Repair]
     E -->|findings| R
-    F -->|feedback| R
+    F -->|patch changed| HR[Owner-requested repair]
+    HR --> HC[Verification Command]
+    HC --> F
+    HC -->|fails| HR
+    F -->|reply only| F
     R --> D
 ```
 
@@ -525,6 +676,11 @@ attempt when it cannot get a positive answer about that item. An empty, unreadab
 result means "could not tell". It does not mean "dead", "finished", "clean", or "passed". RunWield never releases,
 reaps, takes over, or retries an item because a query was empty or failed. It never reports success on that basis.
 
+**Requirement: Test success requires current execution evidence.** RunWield's own isolated test runner counts a file
+as passing only after a successful process exit and a fresh report of executed tests. Missing or empty evidence fails
+validation; explicitly skipped tests remain skipped. Reusing a report directory cannot reuse evidence from an earlier
+invocation, including for files that fail-fast leaves unexecuted.
+
 **Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.** When the user must act,
 RunWield explains what happened, what it is protecting, what is missing, the action the user can take, what Retry will
 continue, and what each choice means. It offers deliberate abandonment with work preserved at the safest recoverable
@@ -532,12 +688,61 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 **Acceptance scenarios:**
 
+- Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
+  other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
+- Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
+- Given a new Plan, identity assignment does not reuse the registered ID of a Plan whose execution document is missing.
+  **Requirement: Continue Attached delivery through the shared completion authority.**
+
+After accepted semantic review, Attached validation continues automatically into configured Code Review, recording, and
+publication, as Core execution does. It does not stop at `awaiting_delivery`. Saved child 05 `reviewed` records resume
+the same delivery flow. Shared publication owns sealing, landing-branch proof, lifecycle settlement, and cleanup;
+Attached coordination does not create a second publication authority.
+
+Git Verified and Attached `delivered` closure require shared publication proof. Passed local checks, staged metadata,
+host prose, or a successful subprocess alone are not proof. Non-Git work keeps consented shared in-place completion, not
+Git publication; its host recording runs before Verified. An interruption retains Plans, work, records, and useful
+recovery evidence. Recovery reconciles uncertain effects and does not repeat accepted work. Failed publication, retry
+limits, cancellation, and quota loss leave continuation available, not automatic abandonment.
+
+Attached delivery starts no Core model turns and needs no RunWield model preset. The external host owns Recorder and
+repair reasoning. Core keeps its existing Recorder and Manual QA turns. Attached skips Core Manual QA, including the
+Epic-child checklist artifact; its host can suggest checks after delivery without saving them or claiming they ran.
+[Connect](runwield-connect-prd.md#shared-plan-and-verification-outcomes) owns the host interaction requirements.
+
+**Attached delivery maturity:** Automated real-Git and fresh-process checks cover shared delivery and recovery. The
+integrated Claude headless result, tested source identity, permissions limits, and Preview release boundary are owned by
+[Connect Preview Acceptance](runwield-connect-prd.md#preview-acceptance). Attached review chat uses the host
+conversation and restores pending turns after process loss; see
+[Connect review experience](runwield-connect-prd.md#shared-plan-and-verification-outcomes). Core review chat keeps its
+existing repair Agent behavior.
+
+**Acceptance scenarios: Attached completion and recovery.**
+
+- **Shared automatic continuation:** Given accepted semantic review or a saved child 05 `reviewed` record, Attached
+  continues into Core's configured delivery gates without an `awaiting_delivery` stop or a separate delivery command.
+- **Proven Git closure:** Given no publication proof, Attached cannot report Verified or close as `delivered`. Shared
+  proof of landing permits both outcomes; it does not claim an onward merge from a Plan Branch.
+- **Non-Git completion:** Given consented non-Git work, host recording precedes shared in-place completion and Verified.
+  The result makes no Git publication claim.
+- **Saved-point recovery:** Given interruption at Code Review, recording, accepted sections, sealing, publication, or
+  cleanup, a fresh process resumes from durable evidence without repeating accepted effects. Uncertain publication is
+  reconciled before retry. Recoverable work and artifacts stay available.
+- **No hidden model turn:** Given Attached delivery without RunWield presets, all repair and Recorder calls use the
+  external host. No Core Recorder or Manual QA turn starts, and no Attached checklist artifact is saved. Core execution
+  retains its own post-verification turns.
 - Given stale locks, inconsistent settings or storage, or mismatched Plan bookkeeping, RunWield restores its own state
   and continues.
+- Given a restarted process or a reused PID, validation compares process birth evidence with its saved owner and
+  resumes the preserved checkpoint when the original owner is provably gone. A live matching owner still excludes
+  another validation run; unavailable process identity evidence never authorizes takeover.
 - Given a lock whose run status query returns an empty or unreadable result, recovery keeps the lock and the work
   continues.
 - Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current
   and does not act on that result.
+- Given a previously passing test file replaced by an early successful exit or no tests, the next test run fails
+  and does not retain the previous passing report.
+- Given a file containing only explicitly skipped tests, the runner reports it as skipped rather than passed.
 - Given exhausted automatic attempts, the same workflow stays open and recoverable.
 - Given a genuine external prerequisite, the user receives a specific action plus Retry and abandonment choices; Retry
   continues the preserved workflow.
@@ -617,6 +822,14 @@ Retrying the same call returns the saved entry. Ordinary feedback and direct Pla
 Canceled, unsupported, or stale confirmation leaves the requirement as it was; a changed Plan revision or execution
 identity invalidates a pending confirmation. A host without confirmation support keeps the work and stops the turn.
 
+**Requirement: Epic readers see child deviations.** A confirmed deviation in an Epic child also appears in a managed
+`### Child Plan Deviations` subsection under the Epic's Objective. Each child has one replaceable block. The child
+Plan's `planDeviations` remains authoritative; neither the Epic's own deviation front matter nor Work Record aggregation
+uses that projection as a second source. Recording and same-call retries synchronize the block in the execution
+checkout. Publication retries synchronization before its checkpoints. A projection error does not revoke the saved
+child entry. Missing or collaboration-locked parents are left unchanged. Standalone and Sequence Plans keep ordinary
+recording without an Epic projection.
+
 **Acceptance scenarios:**
 
 - Given Pair or autonomous execution, when the user requests a conflicting requirement, the Agent asks for explicit
@@ -627,6 +840,15 @@ identity invalidates a pending confirmation. A host without confirmation support
   checkout.
 - Given a recorded replacement, reload, independent review, and the Work Record keep it.
 - Given canceled confirmation or a changed Plan revision, the effective requirement stays as it was.
+- Given an Epic child and accepted confirmation, both the child entry and its Epic block contain the exact superseded
+  requirement, replacement, optional reason, and approval time; the Epic's front matter is unchanged.
+- Given the same call retried after interruption, one child entry and one Epic block remain. A missing projection is
+  restored before publication sealing.
+- Given deviations from two children, replacing one block preserves the other and user-owned Objective text.
+- Given canceled, unsupported, or stale confirmation, the Epic stays byte-identical.
+- Given a standalone Plan or Sequence child, recording changes only the execution Plan.
+- Given child delivery, its Epic block reaches the branch-head integration review and the Epic Work Record lists the
+  child deviation once.
 
 #### Validation
 
@@ -647,12 +869,18 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+runtime and cannot report success without running the Astro checker.
+
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
 progress display comes from the confirmed validation and publication results of the current attempt.
 
 **Acceptance scenarios:**
 
+- Given a missing or unloadable Workspace checker dependency, `workspace:check` exits nonzero with a recovery message.
+- Given an intentional Astro type error, `workspace:check` executes checking and exits nonzero with its diagnostic.
 - Given no configured command, validation asks once; repair and resumed validation reuse the saved command, and the
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
@@ -702,11 +930,33 @@ implementation intact; continuing validation through `load-plan` offers the choi
 
 **Requirement: Canceling a review leaves it pending.** Canceling an open Code Review, including with Escape, leaves
 approval pending and records no decision or revision. The UI states that review is pending and offers Retry or Plan
-resume; reopening presents a working review link. Completed checks and the implementation stay available. Explicitly
-submitted feedback starts repair and records the decision and revision, followed by checks and another Code Review.
+resume; reopening presents a working review link. Completed checks and the implementation stay available.
 
-**Requirement: Reach the live review from the terminal.** While a decision is pending, the TUI shows a clickable live
-review URL, including for resumed and direct reviews and when the browser does not open automatically. The settled
+**Requirement: Let the reviewed patch decide whether chat requests changes.** Engineer can answer, edit code, or both.
+For Git execution, RunWield compares the full reviewed patch before and after each Code Review conversation turn, after
+its own metadata writes. The patch itself decides, not the Agent's report:
+
+- **Unchanged patch:** the conversation continues and Code Review reopens immediately with the same diff. No CI run
+  starts. The review decision and timestamp, Delivery Evidence, Plan Status (`reviewed`), and CI results stay unchanged.
+- **Changed patch:** RunWield records “Changes requested”, invalidates the prior approval and timestamp, records
+  `changes_requested`, and returns the Plan to `implemented`. Once repair completes, RunWield records completed repair
+  evidence, runs CI, skips automatic AI review, and reopens Code Review with the fresh diff and the same conversation.
+  An edit that stops on a blocker keeps the repair pending; it does not reopen review over unfinished work.
+
+A non-Git in-place project has no patch identity: every conversation turn uses the repair-and-check flow, even a
+question. Non-conversation feedback from a no-chat surface also keeps that flow. Standalone Code Review (`wld review`)
+is unchanged; see [Standalone code review](#standalone-code-review).
+
+**Requirement: Scope changes need confirmed Plan authority.** If Code Review chat agrees to change the Plan's scope,
+Engineer proposes a [Plan Deviation](#plan-deviations). Only dedicated owner confirmation makes the replacement
+authoritative for execution, AI review, and Work Records. Agreement in chat alone does not replace the requirement.
+
+**Requirement: Reach the live review from the terminal.** From launch until a decision arrives, the TUI shows
+“Waiting for Code Review”. When the review surface is ready, the card also shows a clickable live review URL,
+including for resumed and direct reviews and when the browser does not open automatically. The normal message input
+is hidden during Plan review and Code Review. It returns with its draft text when review ends, including on approval,
+cancellation, or failure. During Code Review, the validation progress and results card is also hidden so the review
+message and live link stay visible. The card returns with its current results when review ends. The settled review
 card shows the outcome.
 
 **Requirement: Edit review policies in settings.** The `/settings` menu edits the Code Review and Guided Review policies
@@ -721,6 +971,18 @@ Guided Review keeps its `auto` option; stored review `none` is labeled **Never**
   again.
 - Given repeated terminal cancellation, the Plan stays `reviewed` with no recorded decision; Retry presents a working
   link, and approval records one decision.
+- Given a Git-backed Plan in Code Review, when the owner asks why a change was made and Engineer only replies, review
+  reopens with the same patch and approval remains available. No CI starts, no Delivery Evidence changes, the decision
+  and timestamp stay unchanged, and the Plan stays `reviewed`.
+- Given Engineer reports a fix without changing the patch, the turn has the same reply-only result. An edit reverted
+  within the turn also leaves the patch unchanged.
+- Given the owner requests a fix and Engineer completes an edit, RunWield records “Changes requested” and completed
+  repair evidence, invalidates approval, runs CI, skips AI review, and reopens Code Review with the new diff and earlier
+  conversation.
+- Given a non-Git in-place project, a chat question still starts repair and CI because patch identity is unavailable.
+- Given a no-chat review surface, submitted feedback still starts repair, checks, and another Code Review.
+- Given chat agreement to drop a Plan requirement, the original requirement remains authoritative until the owner
+  confirms a Plan Deviation. Canceling confirmation leaves it unchanged.
 - Given policy edits, they survive reload; a global edit leaves an explicit project override in place.
 
 #### Delivery and publication
@@ -809,9 +1071,85 @@ are reset, and earlier publication evidence and repairs are kept. An unchanged c
 integration that may already be pushed keeps its publication proof. A publication retry recovers unstaged
 formatting-only Plan drift and keeps changed definitions, body text, and staged or committed changes.
 
+Acceptance scenarios:
+
+- Given an implemented Plan with review findings and committed and uncommitted repairs, when the user revises and
+  approves it again, execution continues in the same worktree with the approved revision and all repairs intact.
+- Given a restarted Session without cached execution details, approval finds the existing attempt in the registry
+  instead of creating a replacement. The primary checkout's unrelated edits remain unchanged.
+- Given an explicitly abandoned attempt, approval does not reactivate it or discard its preserved files.
+
+**Requirement: RunWield repairs its own machinery automatically.**
+
+Internal inconsistencies involving locks, settings, storage, lifecycle metadata, registries, or Plan synchronization are
+RunWield's responsibility. It diagnoses, reconciles, repairs, and continues automatically without requiring the user to
+inspect files, choose storage strategies, run internal repair commands, or understand bookkeeping. These repairs stay
+out of the ordinary user experience. Detailed diagnostics remain available for deliberate support/developer inspection;
+an explanatory error message alone does not satisfy recovery.
+
+Automatic repair preserves user content, truthful validation, and real permissions. It must not guess that work was
+published, overwrite user decisions, repeat uncertain external side effects, or destroy work to make internal state
+consistent. A broken internal state never removes the obligation to retain and recover the workflow.
+
+**Requirement: Settle implementation effects before accepting completion.**
+
+Shared completion holds the Plan and attempt locks while it checks issued document evidence, restores a missing
+execution Plan from its recorded baseline, and settles lifecycle, Git checkpoint, journal, and registry effects. A
+recorded `implementation_finished` event alone does not prove that checkpoint settlement finished. Retry completes
+remaining effects without repeating the lifecycle event. Carriers may require the issued Plan revision and body;
+ordinary Session completion does not acquire that extra requirement.
+
+**Acceptance scenarios (current shared execution preparation and completion):**
+
+- Given remembered planned-work consent in a non-Git project and process loss after preparation, when preparation is
+  retried against the same `in_progress` Plan, Core continues in the same files without repeating the execution-start
+  lifecycle transition. It reconciles proven settled preparation journals before retry. The Attached carrier uses this
+  same authority; its host journey is owned by
+  [Connect isolated implementation](runwield-connect-prd.md#isolated-implementation).
+- Given process loss after a first Git worktree is registered but before its Plan is materialized, retry reconciles the
+  original source preparation evidence before document selection and continues the same attempt. It still requires the
+  approved source revision and the existing worktree safety checks.
+- Given process loss after `implementation_finished` but before the Git checkpoint or registry settlement, completion
+  retry saves the worker changes, settles the journal and registry, and only then accepts implementation.
+- Given completion bound to an issued Plan and a body edit while completion waits for the Plan lock, Core rejects the
+  stale completion without recording implementation. Baseline restoration and replay after complete Core settlement
+  still work when the issued body is unchanged.
+
+**Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.**
+
+When the user genuinely must act, explain what happened, what RunWield is protecting, the specific missing evidence or
+external prerequisite, the action they can take, what Retry will continue, and what each choice means. Offer deliberate
+abandonment with work preserved at the safest recoverable point. Commands are copy-ready with real values when an
+external action actually requires a command; never substitute internal labels, hashes, or a generic "restore from
+backup" instruction. Waiting for that action remains part of the open workflow. Do not make repetitive retry clicks the
+normal way to repair RunWield-owned inconsistencies.
+
+**Requirement: Universal Plan Deviation availability.**
+
+Plan Engineer and Frontend Engineer always have `record_plan_deviation` during Plan execution, independent of
+collaboration style or Execution Backend. Availability remains intact after Session restore, compaction, segment
+handoff, and validation repair. The focused Validation Repair Engineer also has this capability. Tool availability does
+not grant authority to write without an active execution Plan and checkout, or after execution pauses or stops.
+Execution ownership is durable from the first execution turn, before any Pair checkpoint. The next writable turn
+restores it automatically under the Session Writer Lock. An explicit clear, pause, or Stop survives restore and
+compaction; missing cached state must not undo those decisions.
+
+**Requirement: Explicit Plan Deviation confirmation and durability.**
+
+An effective Plan requirement changes only after dedicated user confirmation records the exact superseded requirement,
+replacement requirement, and optional reason in the authoritative execution Plan. Confirmed entries survive reload and
+supersede conflicting original text in execution, Semantic Review, and Work Records. Retrying a committed tool-call ID
+returns the saved entry without another write or transcript approval replay. Ordinary feedback and direct Plan-file
+edits are not confirmed deviations. Canceled, unsupported, blocked, or stale confirmation leaves the requirement
+unchanged. A changed execution identity or Plan revision invalidates pending confirmation. Unsupported confirmation
+preserves work and stops the turn without creating Pair checkpoint state in autonomous execution.
 **Requirement: Missing execution documents stay contained.** When one Plan's execution document is missing, other
 Plans' catalog reads and validation continue. Loading the affected Plan reports the exact missing path and keeps all
 work, runtime state, and its Plan ID.
+
+**Requirement: Continuation evidence does not wait on unrelated remotes.** Catalog and Plan action evidence reads use
+existing local Git snapshots and registered execution documents without fetching Epic branches. Remote refresh stays
+with the selected Epic's workflow preparation; continuing an existing implementation does not refresh other Epics.
 
 **Acceptance scenarios:**
 
@@ -830,6 +1168,8 @@ work, runtime state, and its Plan ID.
   an unfinished attempt receives the normal recovery check.
 - Given two Plans and a missing execution document for one, the other Plan's reads and validation succeed, and loading
   the affected Plan names the missing path.
+- Given an in-progress Plan and unrelated Epics with remote branches, choosing Continue and Proceed loads execution
+  evidence without fetching those branches and preserves the selected Plan's worktree authority.
 
 ### Semantic review and repair
 
@@ -848,13 +1188,17 @@ repair that weakens a test to resolve a finding is a repair-introduced regressio
 
 **Requirement: Review one proposed branch patch.** For Git execution, review sees the branch's proposed change relative
 to its recorded target branch: committed, staged, unstaged, and untracked work, with target-only changes excluded. The
-same patch supplies AI review, repair context, and Code Review, including after reload. A missing target, missing
-execution commit, or unrelated history is a recoverable comparison failure.
+same patch supplies AI review, repair context, and Code Review, including after reload. Before-file text uses the same
+comparison base. Review follows the publication target's selected remote, not a stale local branch; local-only delivery
+uses the local target. A recorded remote target cannot silently become a local comparison if its remote is unavailable.
+A missing target, missing execution commit, or unrelated history is a recoverable comparison failure.
+Review patches use one fixed format, independent of user Git settings for prefixes, colors, external diff programs, and relative paths.
 
 **Requirement: Read the change before deciding.** The Reviewer receives the approved Plan. Rounds one and two read the
 complete diff of every changed file; round two also verifies earlier findings. Round three onward reads the complete
 repair diff and assesses every open issue. An approval or rejection with unread parts returns those parts and the
-instructions to read them, in the same review.
+instructions to read them, in the same review. A non-empty patch with no readable file headers stops the review with a
+clear reason before a Reviewer runs; it does not count as an empty change and cannot receive approval.
 
 **Requirement: Distinguish repair claims from confirmed fixes.** Issue states are `new`, `fix claimed`,
 `fix confirmed`, and `fix rejected`. Each finding keeps its identity across rounds, with open and resolved items
@@ -863,14 +1207,20 @@ with a reason. Only confirmed fixes close issues. States and reasons survive rec
 findings, defects missed earlier, repair-introduced defects, and issues still open.
 
 **Requirement: Focused repair.** Semantic and Code Review repairs run with focused, fresh context in the same Session
-and Plan workflow, including for Frontend Engineer work. Feedback, annotations, and images reach the repair Agent;
-unclear references lead to a clarification question.
+and Plan workflow, including for Frontend Engineer work. Feedback, annotations, images, and prior Code Review
+conversation reach the Agent; unclear references lead to a clarification question. A Git-backed Code Review conversation
+turn can end with a plain-text reply without a repair completion signal. It records no repair-start evidence. The
+[Code Review gate](#code-review-gate) uses patch identity to distinguish a reply from a repair and requires a confirmed
+[Plan Deviation](#plan-deviations) for scope changes; non-Git in-place turns always use repair.
 
 **Requirement: Hand the decision to the user after automatic rounds.** After three automatic rounds and their repairs
-and checks, users choose another verification round or Code Review. In Code Review, feedback starts repair and checks,
-then returns to Code Review, for as many rounds as the user wants. Users can nudge a stalled Reviewer or repair Agent
-in its existing conversation. Every pause explains what continuing will do. The round limit bounds automatic effort;
-the workflow continues under [Workflow completion](#workflow-completion-and-automatic-recovery).
+and checks, users choose another verification round or Code Review. In Git-backed Code Review, only a conversation
+turn that changes the reviewed patch returns to checks; a reply-only turn keeps the decision, evidence, status, and CI
+results. After an owner-requested repair, CI runs and Code Review reopens in the same conversation without another AI
+review. Non-conversation feedback and non-Git in-place turns retain repair and checks. User rounds have no automatic
+limit. Users can nudge a stalled Reviewer or repair Agent in its existing conversation. Every pause explains what
+continuing will do. The round limit bounds automatic effort; the workflow continues under
+[Workflow completion](#workflow-completion-and-automatic-recovery).
 
 **Requirement: Useful advisories.** Final nonblocking advisories go with the delivered Plan as labeled
 post-validation context, once. Review quality is judged by useful convergence and escaped defects.
@@ -878,6 +1228,10 @@ post-validation context, once. Review quality is judged by useful convergence an
 **Acceptance scenarios:**
 
 - Given a missing Plan requirement, the finding stays visible through repair until the Reviewer confirms the fix.
+- Given user Git settings that change diff prefixes, colors, external diff output, or relative paths, review lists every
+  changed file with its repository path and requires reading it.
+- Given a non-empty review patch with no readable file headers, the review round stops with a clear reason and no
+  Reviewer approval is recorded.
 - Given an unread diff chunk, a verdict attempt returns its path and read command; the review continues and completes
   after every required chunk is read.
 - Given a round-one rejection, round two checks the whole implementation and earlier findings; later rounds check open
@@ -889,12 +1243,81 @@ post-validation context, once. Review quality is judged by useful convergence an
 - Given a test that would pass with a plausible wrong implementation, review reports a blocking finding that names it;
   weak but honest assertions stay advisory.
 - Given target work imported after execution started, the patch shows only the branch's own changes.
-- Given a missing target branch or unrelated histories, review stops with a recoverable comparison failure.
-- After the automatic rounds, when the user chooses Code Review, feedback leads to repair and checks and returns to
-  Code Review.
+- Given a retained worktree and a local target behind the selected remote target, all review surfaces exclude work already
+  delivered to that remote and retain every committed and uncommitted proposal. Before-file text matches that patch.
+- Given a missing required remote target, a missing target branch, or unrelated histories, review stops with a recoverable
+  comparison failure instead of substituting a stale local branch.
+- After the automatic rounds, when the user chooses Code Review and Engineer completes a requested patch change,
+  checks run and the same Code Review conversation reopens; automatic AI review does not resume.
+- Given a Git-backed Code Review question, a plain-text answer with no patch change reopens review without repair
+  evidence or another CI run, as specified by the [Code Review gate](#code-review-gate).
+- Given an edit that stops on a blocker, the prior approval is invalidated and the repair stays pending with its blocker;
+  review does not reopen over unfinished work.
 
 **Requirement: Suggest code by editing the diff.**
 
+The Reviewer receives the actual approved Plan content. Rounds one and two must read the complete diff for every changed
+file. Round three onward must read the complete repair diff and assess every open issue; those rounds do not rediscover
+unrelated defects in the original change. Both approving and rejecting require complete coverage of the relevant diff.
+An incomplete decision returns the unread file chunks and instructions for reading them, in the same review context.
+Listing files, rereading one chunk, or reading the wrong diff scope cannot satisfy coverage. Coverage proves that the
+code was supplied to the Reviewer, not that the judgment is correct.
+
+**Requirement: Bind saved human approval to the current candidate.**
+
+Attached Code Review uses the shared page and the project's `codeReview` mode (`none`, `ask`, or `always`). Core saves
+its pending wait with the candidate diff hash. Approval must match the current hash; changed code cannot use stale
+approval. In Core and Attached, a saved reviewed candidate that changes before approval returns to Mechanical
+Validation, configured CI, and Semantic Review before a new Code Review. Older checkpoints without candidate identity
+keep their existing continuation behavior until the next Semantic Review. Submitted Feedback becomes a `human_feedback`
+repair action for a fresh host worker. Core reruns configured re-verification before a new human review round. The host
+owns repair reasoning, not review gates.
+
+**Acceptance scenarios: Saved Attached Code Review.**
+
+- **Diff-bound approval:** Given a saved human review and a changed candidate, Core rejects the old approval and does
+  not publish. A fresh process restores the pending review without inventing a decision.
+- **Changed candidate re-verification:** Given a reviewed candidate that changes before approval, the next validation
+  run reruns Mechanical Validation, configured CI, and Semantic Review before presenting a new Code Review, in Core
+  and Attached.
+- **Feedback re-verification:** Given submitted human Feedback, a fresh host worker repairs it. Core reruns configured
+  re-verification, then presents the repaired diff in a new Code Review round before publication.
+
+**Requirement: Distinguish repair claims from confirmed fixes.**
+
+Issue states are `new`, `fix claimed`, `fix confirmed`, and `fix rejected`. Accepted repair completion claims a fix for
+each supplied open issue. Independent review confirms or rejects each claim; rejection retains the issue identity and
+explains what is still wrong. Only confirmed fixes close issues. These states and rejection reasons survive recovery.
+Metrics separately distinguish first-round findings, defects missed in the original change, repair-introduced defects,
+and existing issues still open. Origin is Reviewer attribution for diagnosis, not a new issue state or proof of cause.
+
+Semantic and human-feedback repairs receive focused, fresh context in the same user-visible Session and Plan workflow.
+Human feedback, annotations, and images must survive the handoff. Unclear references require clarification, not guesses.
+Repair is about correctness; it does not introduce Pair design checkpoints.
+
+After three automatic rounds and their repair/checks, users choose another verification round or Human Code Review.
+Choosing human review transfers the decision to the user: feedback triggers repair and CI, then returns to human review.
+No automatic round limit ends a human-driven review. A stalled Reviewer or repair Agent can be nudged in its existing
+conversation with progress preserved; every pause explains what continuing will do.
+
+When Code Review is offered, users can open it, skip it, or close the prompt to come back later. Closing keeps the
+review pending and preserves the Plan and its implementation without publishing. Loading the Plan again with `load-plan`
+and continuing validation offers the same choice again. If the reviewed code changed, validation runs again first.
+
+Canceling an open Code Review, including Escape in the terminal, leaves approval pending. Cancellation status text and
+unsubmitted draft fields never become revision feedback, approval, or counted review/revision receipts. The UI clearly
+states that review is pending and offers Retry or Plan resume; reopening presents a current working review link.
+Previously completed checks and the implementation remain available. Explicitly submitted feedback still starts repair
+and records the corresponding review decision and revision, followed by checks and another Code Review.
+
+The round limit bounds automatic review effort, not workflow life. The user can continue toward publication or
+deliberately abandon; an exhausted or stalled review cannot become an automatic terminal outcome. Internal dispatch,
+lock, and bookkeeping failures use [automatic workflow recovery](#execution-validation-and-recovery), not another review
+decision for the user.
+
+Final nonblocking advisories may accompany the delivered Plan as clearly labeled post-validation context, never new
+approved requirements or a full review diary. Revalidation must not duplicate them. Review quality is judged by useful
+convergence without more escaped defects, not approval rate alone.
 Code Review settings provide an experimental **Edit code to suggest** switch, off by default. There is no announcement
 or first-run prompt. When enabled, Edit is available in the all-files diff on both standalone and Workspace review
 pages, one file at a time, but not in Guided Review. Finished edits become suggestion annotations in the feedback. The
@@ -943,6 +1366,16 @@ pushes.
   `origin HEAD` as upstream when needed. RunWield confirms a clean tree, a new HEAD, and upstream equality. A failed
   push keeps the commit; a retry publishes it without another commit. Detached HEAD disables the action.
 
+**Requirement: Draft annotations with AI review.** Standalone Code Review offers a manual **Run AI Review** control
+beside Guided Review. It discloses the additional LLM call, supports cancellation, and shows elapsed time, model,
+usage, and cost when available. It runs the bundled `review` skill (including project overrides), not Semantic Review,
+with sequential Standards, Spec, and Tests passes. It finds the spec without asking; without a spec, it grades no
+invented requirements. Findings become ordinary editable, deletable annotations labeled **AI review**, with their axis
+and blocking or advisory severity in the text. Line annotations must fit a diff hunk on the cited side; other findings
+fall back to file or general annotations and retain their cited location. Completion shows per-axis counts and the spec
+source, or reports no issues. Reruns replace only unedited AI annotations. Results from an older patch add nothing.
+Validation-time Code Review does not offer this control.
+
 **Requirement: Protect review work.** Closing the review publishes nothing. On completion, cancellation, or
 interruption, RunWield closes its Sessions and removes only its own clean worktrees whose HEAD equals upstream. Dirty
 or unpushed work stays, and RunWield reports its path and branch. Engineer starts after checkout setup completes. The
@@ -950,10 +1383,13 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
 
 **Acceptance scenarios:**
 
-- Given staged, unstaged, and untracked edits, `wld review` shows all three and Guided Review explains the diff.
+- Given staged, unstaged, and untracked edits, `wld review` shows all three. Guided Review starts only when the
+  owner clicks its toolbar button, not when review opens or the diff refreshes, regardless of diff size.
 - Given a local branch, review opens without a worktree; an Engineer request creates one and the next diff includes its
   edits.
 - Given a PR in a matching remote, Post comments and Approve reach the Forge; a foreign repository is rejected.
+  In a checkout or linked worktree, a repository mismatch prints a concise error and exits with code 1, without a
+  stack trace or runtime-crash recovery advice.
 - Given a moved remote head, posting refreshes the review and marks Guided Review stale; local edits and commits stay
   protected.
 - Given failed checkout setup, an unchanged unused worktree is removed and the next Engineer request retries; changes
@@ -963,6 +1399,17 @@ terminal prints the review link, progress, result, cleanup outcome, and Engineer
   approval with the existing commit.
 - Given review exit, clean created checkouts at upstream are removed, and dirty, unpushed, reused, and primary
   checkouts remain.
+- Given an AI finding on a changed line, its annotation keeps the file, line range, and old or new side. A cited line
+  outside the hunks becomes a file annotation; an unchanged file becomes a general annotation with the cited location.
+- Given generated annotations, the owner can edit or delete them. Post comments and Approve keep their text, position,
+  and side; Send to Engineer includes the remaining annotation text, including axis and severity.
+- Given a rerun, owner annotations and edited AI annotations remain; unedited AI annotations are replaced.
+- Given a patch change during a run, completion reports an older diff and adds no annotations.
+- Given no discoverable spec, AI review reports no spec and makes no Spec findings against invented requirements.
+- Given a compiled review command and a different `wld` installation on PATH, AI review and Guided Review use the
+  running executable, not the other installation. Explicit provider command overrides remain available.
+- Given malformed output or provider failure, the job reports an error and the owner can rerun it.
+- Given validation-time Code Review, Run AI Review is absent; existing validation and Guided Review remain available.
 
 ### Frontend engineering and pair execution
 
@@ -978,7 +1425,8 @@ noninteractive hosts work autonomously. In Pair mode, the execution Agent implem
 reports it in the normal conversation, and ends the turn. The user can ask questions while implementation stays
 paused, request a revision, continue,
 switch to autonomous work, or stop with work preserved, through the normal composer. Iteration keeps the same
-workflow, worktree, tools, attempt, and conversation.
+workflow, execution Agent, worktree, tools, attempt, and conversation. A checkpoint does not switch Plan Engineer to
+the Quick Fix Engineer.
 
 **Requirement: Readable checkpoint reports.** Reports use Markdown with bold section titles and blank lines between
 sections, with evidence, diagnostics, and proposed next increments in separate sections. The TUI shows reports
@@ -998,6 +1446,7 @@ or feedback text.
 - Given Pair on TUI, Workspace, or ACP, when an increment is ready, its report ends the turn and the conversation
   accepts questions, revisions, continuation, autonomous switching, or Stop.
 - Given a report with evidence, diagnostics, and a next increment, the TUI shows it rendered and expanded.
+- Given a Plan Engineer checkpoint, Plan Engineer stays active while waiting for feedback and after continuation.
 - Given an open checkpoint, only a later accepted user turn resolves it.
 - Given a final increment, Workflow Validation starts after the user accepts it and the Agent submits completion again.
 - Given a stopped Pair execution, work and workflow state stay available for a later resume.
@@ -1034,6 +1483,31 @@ theme activates only its theme content. See the [theme reference](../user-docume
 **Scope and maturity:** Current baseline. A compressed Project Brief and further code-intelligence improvements are
 target scope.
 
+**Requirement: Confirm home and system folder use.**
+
+Before local project CLI dispatch or direct TUI startup, RunWield warns “System or home folder detected. Continue?” with
+the selected path and Continue/Quit choices. Quit is the default; cancellation stops before project work or Session
+creation. The policy matches the current account home, filesystem roots, and a fixed cross-platform system-directory
+list by exact normalized or canonical equality. Symlink aliases match; ordinary descendants and similarly named folders
+do not. Consent applies only to the same inspected directory in this invocation, not a persistent trusted-folder
+setting.
+
+Noninteractive project commands refuse with nonzero status and stderr guidance unless a leading
+`--allow-system-directory` flag acknowledges the directory. This flag does not consume piped request input, change
+`--continue`, or bypass Init's file consent. Help, version, global commands, Workspace services, ACP, MCP, and remote
+connections retain their existing behavior. This warning is consent, not a security sandbox or universal unsafe-path
+detector.
+
+**Acceptance scenarios:**
+
+- Given an exact home or listed system directory, when project startup begins, no project work starts before Continue.
+  Quit, Escape, Ctrl-C, and cancellation stop startup. A later process asks again.
+- Given Continue, automatic Init, Tutorial, and empty-folder starter offers are absent and their stored markers are
+  unchanged. Explicit Init and Onboard remain available with their normal consent.
+- Given an ordinary descendant such as `~/projects/app`, `/opt/app`, or `/tmp/app`, startup keeps its normal offers.
+- Given piped `guided-review` input at home, startup refuses before reading it unless the leading acknowledgement is
+  supplied.
+
 **Requirement: Preserve useful project facts and retrieve relevant context.**
 
 - **Mnemoteca:** project and global persistent memory for preferences, project facts, and critical context.
@@ -1041,7 +1515,9 @@ target scope.
   project context, store memories, and record initialization.
 - **Sleep:** `wld sleep` and `/sleep` clean up memory and context.
 - **Cymbal:** semantic and structural code intelligence for search, symbol lookup, impact analysis, and tracing.
-- **Snip:** optional filtering of command output into compact diagnostics.
+- **Snip:** optional, fail-open filtering of command output into compact diagnostics. RunWield wraps only an eligible
+  leading plain command, preserving shell syntax, exit status, and output destinations under the Snip filtering contract.
+  Unsupported constructs, live expansions, and stderr redirections pass through unchanged.
 - **Project context:** `docs/domain-language.md`, memories, settings, and Plan files hold durable project knowledge.
 
 **Requirement: Discover and retain both project commands during Init.** Init discovers repository-supported verification
@@ -1092,6 +1568,9 @@ for truncated content. Failed code queries report failure; a successful empty qu
 - Given a superseded or mixed Memory, Sleep keeps a verified current lesson and the backup keeps the old record.
 - Given a glossary map, Agents follow its links regardless of code layout.
 - Given batched reads where one target is missing, the successful results stay visible in request order.
+- Given a shell loop, conditional, function, group, heredoc, or stderr redirection, Snip leaves the command unchanged.
+- Given an eligible leading command followed by a pipeline or `&&`/`||` chain, Snip wraps only that command, runs it
+  once, preserves its exit status and output destinations, and leaves the rest of the shell program unchanged.
 
 **Target: concise project briefing.** Compressed project context where it is useful, without filling every prompt.
 Future code-intelligence work addresses demonstrated gaps in finding code, understanding dependencies, and assessing
@@ -1100,6 +1579,8 @@ change impact.
 ### Tutorial
 
 **Scope and maturity:** Current TUI baseline. Workspace-native Tutorial controls are deferred.
+
+Home and classified system folders are not eligible for automatic offers, even after Continue.
 
 **Requirement: Offer an optional guided first change.** On one eligible new TUI Session, RunWield offers a Tutorial
 after model setup and the Init decision. The offer shows the current project and states that starting makes a real
@@ -1148,6 +1629,12 @@ the image. Missing fallback setup explains the fix and keeps typed text and imag
 change before Send. Standalone releases resize images cleanly. See [vision fallback
 settings](../user-documentation/settings.md#visionfallback).
 
+**Requirement: Paste clipboard images on demand.** In the TUI, Ctrl-V reads a clipboard image only when the user presses
+it. RunWield does not read or watch the clipboard while idle, including across focus changes, Session replacement,
+and concurrent Sessions. If an explicit paste finds no image, the composer shows "No image in clipboard" until the next
+input or a successful image paste. A clipboard read that finishes after view disposal adds no preview or attachment and
+requests no render. Keyboard help lists Ctrl-V for image paste.
+
 **Requirement: Agents can inspect images.** The Agent can ask `see_image` about a saved Session attachment or a
 referenced project image. Descriptions include readable text, visual state, and uncertainty. Resumed Sessions keep
 access to their own attachments. **Target:** deleting a Session also removes its images.
@@ -1161,6 +1648,9 @@ access to their own attachments. **Target:** deleting a Session also removes its
 - Given a text-only model and no fallback, sending an image shows setup guidance and keeps the message and preview.
 - Given a resumed Session with saved images, its own attachments stay available.
 - Given a standalone release, resizing an image produces a valid image at the requested size.
+- Given several idle TUI Sessions on macOS, no clipboard process starts until the user presses Ctrl-V.
+- Given Ctrl-V with no image available, the composer shows "No image in clipboard"; the next input clears it.
+- Given a clipboard image read that finishes after view disposal, no preview, attachment, or render is added.
 
 ### Image generation
 
@@ -1211,18 +1701,18 @@ or Session. Failures, text-only output, malformed bytes, cancellation, and timeo
 authorship are follow-up scope.
 
 **Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise, repository-owned
-Markdown accounts of what completed work produced and what future planning should remember. They keep meaningful
-deviations, deferred scope, concrete lessons, source Plan links, Ticket links, and useful evidence. Identity and links
-survive renaming, and search can be rebuilt from the documents.
+Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
+lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
+defects. Identity and links survive renaming, and search can be rebuilt from the documents.
 
 - Eligible top-level completed Plans and Epics receive auto-approved records by default. An Epic record summarizes its
   relevant children, including deferred and archived work.
 - Completion labels distinguish RunWield verification, user verification with its note, closure without verification
   with its reason, and done-enough Epics. Missing historical closure reasons are disclosed.
-- A record describes its delivery stage accurately. A record written before publication stays pending until the merge
-  finalizes, and a restart reuses it. After publication, it names the exact confirmed published commit, and earlier
-  Recorder prose stays as pre-publication notes. Publication and test receipts state what was confirmed. A search-index
-  failure is reported separately from successful delivery.
+- A record written before publication stays pending until the merge finalizes, and a restart reuses it. Publication
+  approves the record without rewriting its body. The delivered commit lives only in the source Plan's Delivery
+  Evidence, reached through the record's source Plan provenance. A search-index failure is reported separately from
+  successful delivery.
 
 **Requirement: Recording is best effort and recoverable.** Recording failure leaves the completed Plan and its delivery
 intact. The completion notice shows both outcomes and offers **Retry Work Record**, which regenerates only that Plan's
@@ -1240,6 +1730,46 @@ Guide and Recorder can inspect historical records with their labels. Retrieval i
 knowledge is a Workspace requirement. Older records with a `Result` section read as summaries; an invalid record stops
 backfill with its filename and the required repair.
 
+**Requirement: Accept host Recorder sections through shared record rules.**
+
+For Attached delivery, Core saves a Recorder action with canonical Plan, diff, and validation evidence. The host returns
+structured `work_record_completed` sections. Shared Core validation, persistence, deduplication, and indexing remain
+authoritative; host conversation text is not a record source. Accepted sections survive process loss and are reused
+before publication sealing, not generated again.
+
+An invalid submission returns its validation errors and allows one retry. A second invalid submission saves the record
+failure and permits publication to continue. Recording failure never blocks or reverses proven delivery. The completion
+notice shows both outcomes and the existing backfill option. Attached supersession proposals resolve as “decide later”;
+the notice names `wld wr supersede`. A proposal alone does not replace a current record.
+
+**Acceptance scenarios: Attached recording.**
+
+- **Shared canonical recording:** Given valid host sections from canonical artifacts, Core persists and indexes the
+  eligible record under its existing rules, without importing host transcripts or starting a Core Recorder Session.
+- **One invalid retry:** Given an invalid submission, Core returns errors for one retry. A second invalid submission
+  saves failure, continues publication, and reports recording separately from delivery.
+- **Reuse accepted sections:** Given process loss after accepted sections but before publication, recovery reuses the
+  same sections and record identity. It does not repeat recording or fabricate publication proof.
+- **Deferred replacement:** Given an Attached supersession proposal, the earlier record remains current. The completion
+  notice names `wld wr supersede` for later confirmation.
+
+**Acceptance scenario: Recorder recovery and partial completion.** Given a completed eligible Plan, when the Recorder
+returns text without submitting its tool event, one corrective turn can finish the record. If both turns omit the event,
+no record is fabricated; the Plan retains the failure reason and successful delivery is labeled with the remaining Work
+Record failure and retry command. Failures while reading existing records are also retained on the source Plan before
+delivery; remote publication reports that outcome from the sealed Plan even after worktree cleanup. When the last child
+completes an Epic, final completion reports the parent Epic's recording outcome, including after remote cleanup.
+
+Core retrieval is Project-scoped. Cross-Project knowledge and browser navigation are Workspace requirements. Richer
+cross-artifact authorship, manual/imported record creation, and guidance for substantial retrospective edits remain
+follow-up product questions.
+
+**Target: explicit external provenance.** A maintainer may explicitly record substantial externally contributed work,
+including the source change, contributor, reviewing maintainer, and validation that actually ran. These records are
+opt-in and cannot claim RunWield validation. No merge is required to have a Plan or Work Record: Git owns commit-level
+history, and RunWield-owned merges should clearly point back to their Plans. Optional record review, historical
+compression/reorganization without changing source Plans, and richer authorship remain separately labeled follow-up
+scope.
 **Requirement: Maintain records deliberately.** Minor corrections update a record. A later record replaces an earlier
 one through a user-confirmed relation, including a declaration in an approved Plan. Archival and restoration keep the
 record and its completion meaning. Records come from completed Plans; QUICK_FIX work and ordinary external merges have
@@ -1248,6 +1778,9 @@ Git history.
 **Acceptance scenarios:**
 
 - Given an eligible completed Plan, the record links its source and labels how completion was established.
+- Given no recorded Plan Deviations, the record has no Deviations from Plan section.
+- Given publication, the approved record body equals its pre-publication body.
+- Given user verification, the record states the attestation and cleaned note once.
 - Given delivered code and a failed record, the completion menu offers **Retry Work Record**; a retry regenerates only
   that record, and repeating a successful retry keeps one record.
 - Given Recorder returns text without submitting its record, one corrective turn can finish it; if both turns omit it,
@@ -1285,6 +1818,11 @@ ID, and a relative entry that stays inside the real installed package path. The 
 resource. Core lists only user-scope installed exporters and their approval state; it resolves approved entries without
 importing code. Session startup never loads an exporter entry through the Pi extension path.
 
+The declaration can include up to eight credential fields. Each has a unique key matching
+`^[A-Za-z][A-Za-z0-9_]{0,63}$`, a non-empty label of at most 64 characters, and a boolean `secret` value. Malformed fields
+invalidate the declaration. Core exposes the field shape for Workspace forms without executing exporter code. Field
+changes do not change approval identity.
+
 `wld install` asks a separate default-no exporter approval question for any new or existing unapproved exporter. Only
 `y` or `yes` saves approval. Core confirms the saved record before reporting approval. Host-global approval binds the
 exporter ID, configured user source, real installed path, and package version; Project settings cannot grant it or
@@ -1303,6 +1841,8 @@ control npm lifecycle scripts. Core delivery requires a separate [Export grant](
 - Given a change to ID, source, real installed path, or version, Core reports the exporter unapproved without a settings
   write. Reinstalling asks again. Local file edits without a version change keep approval.
 - Given removal, the source's approvals are deleted, other approvals remain, and a later reinstall asks again.
+- Given valid credential fields, discovery exposes them. Malformed, duplicate, or oversized fields invalidate the
+  declaration. Changing only valid credential fields preserves saved code approval.
 
 Package update trust policy and reconciliation of historical code-extension consent remain deferred. Existing
 unrestricted or filtered code-extension registrations are preserved, not relabeled as historical consent.
@@ -1336,6 +1876,18 @@ left out of the catalog. With external skills
 disabled, the catalog uses project `.wld`, home `.wld`, and bundled skills. The bundled `review` Skill reviews a
 user-selected PR or change against project standards, the requested behavior, and test strength; it complements the
 workflow Reviewer.
+
+**Requirement: Portable skills install independently.** Guide, Ideator, and Review are available from
+[RunWield/skills](https://github.com/RunWield/skills) without downloading Core. They work in other coding agents and
+projects without requiring RunWield-specific tools. Core maintenance detects changes to the portable skills, their
+supporting documents, and the source definitions they adapt, so maintainers review wording drift before accepting it.
+
+**Acceptance scenarios:**
+
+- A user installs the portable skills from their dedicated repository without installing Core.
+- A source definition or portable skill changes; the synchronization check fails and names the files requiring review.
+- A new supporting document or unintended published skill is detected; validation reports it rather than silently
+  accepting a stale inventory.
 
 **Requirement: Named Invocations keep their full expansion.** Skill and Prompt Template invocations inject full
 instructions when invoked and reach the active model with the current Agent's instructions and tools. The saved
@@ -1462,8 +2014,9 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
-**Scope and maturity:** Current shell installation and Candidate release baseline. Homebrew and WinGet packages are
-prepared; public availability waits for owner publication. Runtime layout changes during upgrades follow
+**Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. Homebrew packages are
+prepared; public availability waits for owner publication. Windows releases and checks, including WinGet manifest
+preparation and submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout changes during upgrades follow
 [Work protection](#work-protection).
 
 **Requirement: Install through a shell installer or a package manager.** Users install RunWield as a standalone binary
@@ -1480,7 +2033,7 @@ Homebrew:
 - Stable package installs update through the package manager; Candidate and exact-version installer options apply to
   shell installs.
 
-WinGet:
+WinGet (retained packaging capability; publication and checks paused):
 
 - Windows x64 ZIP assets with `wld.exe`, package metadata, helper executables, and license notices;
 - pinned helper URLs and SHA-256 values, with Git for Windows as a package dependency;
@@ -1503,11 +2056,12 @@ commit and stabilize later Candidates on the series' Release Branch with reviewe
 continues on `main`. Stable promotion uses the exact tested Candidate.
 
 **Requirement: Qualify packages before publication and keep published bytes.** Candidate and Stable releases pass
-native Windows and macOS Homebrew package checks before GitHub publication; a failed or timed-out check blocks
+native Linux/macOS archive and macOS Homebrew package checks before GitHub publication; a failed or timed-out check blocks
 publication. Candidate checks leave Stable channels unchanged. Package recovery keeps the released tag and asset bytes,
 verifies the existing assets, and resumes package publication. Missing or inconsistent assets stop publication.
 Workspace runtime packaging waits for the final server manifest and its imports; it does not bundle an intermediate
-manifest placeholder.
+manifest placeholder. Unix archives include the source license notice; new MIT release publication rejects a missing
+or incorrect notice while recovery preserves already published bytes.
 
 **Acceptance scenarios:**
 
@@ -1517,7 +2071,8 @@ manifest placeholder.
 - Given a loose Windows executable, `wld update` gives Windows package guidance.
 - Given missing helpers in a package install, RunWield tells the user to repair the package.
 - Given a new Homebrew install, Ketch comes from Homebrew Core.
-- Given a Stable release while WinGet submission is paused, the workflow prepares manifest artifacts.
+- Given a release while Windows publication is paused, it publishes only Linux/macOS assets, runs no Windows jobs,
+  and prepares no WinGet manifests. Existing Windows releases remain unchanged.
 - Given an available Candidate, Enter or Yes starts the update; No or Ctrl-D cancels it.
 - Given Git under `%LOCALAPPDATA%/Programs/Git`, an Agent creates a branch through Bash without `shellPath`.
 - Given RC1, the Candidate tag and new Release Branch point to the same committed source.
@@ -1525,6 +2080,7 @@ manifest placeholder.
   feature work.
 - Given a tested Candidate and an advanced Release Branch, Stable uses the tested commit.
 - Given a failed package check, no GitHub Release is created.
+- Given a new MIT release archive with a missing or incorrect license notice, publication is blocked.
 - Given an Astro server entry whose manifest is still being written, Workspace runtime packaging waits for the final
   manifest before it invokes the bundler.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.
@@ -1657,6 +2213,20 @@ Required outcomes:
   resume;
 - intact local Sessions stay usable through TUI and ACP when Workspace registration or pairing is rebuilt.
 
+**Requirement: Export or share the complete Session.** `/export` writes every committed Session Transcript Segment in
+order, with Session identity, name, project path, timestamps, artifacts, and Plan Associations. HTML is a self-contained
+RunWield page with segment headings, Markdown messages, expandable tools, and collapsed thinking. JSON preserves each
+segment's raw entries in a versioned `runwield.session-export` document. `.jsonl` export is retired; the command points
+to `.json` instead. Reads verify all segment evidence and do not change the Session. During a turn, they include only
+committed history. A new empty Session can export without creating a saved Session.
+
+`/share` uploads HTML and JSON to one secret GitHub Gist and reports the Gist URL and an HTML preview link. Both files
+include thinking and full tool output. Anyone with the link can read them. Current scope excludes in-memory Delegated
+Agent, validation, and AI review transcripts and Background Task logs; results recorded in the parent transcript stay
+included. This Gist path is separate from the undelivered
+[Workspace snapshot sharing](runwield-workspace-prd.md#session-snapshot-sharing) and
+[browser download](runwield-workspace-prd.md#session-export) capabilities.
+
 **Requirement: Archive a Session reversibly.** Archive hides a Session from ordinary history and TUI resume lists,
 through ACP or Workspace. Archive and Unarchive keep the Session ID, every transcript segment, Plan Associations, and
 workflow state. Associated Plans still link to it. Direct links and explicit loading work and keep the archive state.
@@ -1675,6 +2245,36 @@ of the latest accepted user input: a message, steering, a queued follow-up, or a
 reconnecting an observer, rejected input, and automated continuation keep the current destination. Workspace-originated
 turns always send an Agent-stop event at settlement. Delivery follows the destination's permission and notification
 settings. ACP reports turn completion through its protocol, and only the destination surface alerts.
+
+#### Bounded model and tool loops
+
+**Requirement: Stop runaway model and tool loops.** Each Pi-backed request has a durable budget of 100 model
+requests, counting each Pi turn start, including automatic tool continuations. A provider retry counts when its next
+turn starts; the retry notification is not another request. The count is recorded before each request and remains
+attached to the same request when its controller-owned task resumes after failure or process restart. Automatic retries
+and corrective nudges of one unfinished review also share that review's request budget; a later review round starts a
+new budget. A new user instruction starts a new request budget. Stop before starting another model request once the
+budget is exhausted, preserve the Session, and show the reason and a clear action to send a new instruction. Also stop
+the current request when an exact tool call and result repeats three times consecutively, or an exact cycle of up to
+three tool call/result pairs repeats three times. Persist only hashes of tool names, arguments, and results for this
+check; never duplicate raw tool inputs or outputs into guard records. A saved stop blocks that request after Session
+reopen and does not mark the Session or its enclosing workflow complete.
+
+**Acceptance scenarios:**
+
+- Given a model repeatedly requests the same tool with the same result, when the third identical pair completes,
+  RunWield stops before another model request and records a visible, recoverable stop reason.
+- Given a model repeats a cycle of two or three exact tool call/result pairs three times, when the cycle completes,
+  RunWield stops before another model request and records a visible, recoverable stop reason.
+- Given one request reaches 100 model requests, when a retry or process restart continues it, RunWield stops before
+  request 101. A provider retry contributes one count when its next turn starts.
+- Given one unfinished automatic review, when a controller retry or a regenerated corrective nudge starts another
+  backend attempt, RunWield keeps the same request budget and stops before model request 101; the corrective text still
+  reaches the model. A new review round or a new user instruction starts a new request.
+- Given an interrupted controller-owned task is explicitly resumed after process restart, RunWield keeps its request
+  ID and count even if recovery regenerates the prompt; matching text from fresh user input starts a new request.
+- Given a loop guard stops a request, when the Session is reopened, the stop remains in its transcript and the user can
+  send a new instruction; replaying the stopped request does not call the model or complete successfully.
 
 #### Background tasks
 
@@ -1700,6 +2300,13 @@ a test result.
 
 **Acceptance scenarios:**
 
+- Given planning, execution, and repair segments, `/export` includes them in order with Session Manifest facts; JSON
+  preserves their raw entries and HTML shows their messages and expandable activity.
+- Given a changed seal or missing transcript, export fails without publishing a partial Session.
+- Given `/export out.jsonl`, the command writes nothing and explains how to use `.json`.
+- Given an empty Session, export succeeds without creating Session persistence.
+- Given authenticated GitHub CLI access, `/share` creates one secret Gist with HTML and JSON and prints both the Gist
+  URL and its HTML preview URL; recorded parent results stay included but in-memory helper transcripts do not.
 - Given a saved Session archived through ACP or Workspace, ordinary history and TUI resume omit it, its Plans link to
   it as archived, and its transcript and state are unchanged; Unarchive restores the same Session.
 - Given a fresh empty composer, opening it creates no runtime state; the first submitted work does.
@@ -1755,11 +2362,12 @@ hold delivery evidence. Scenarios guide verification; test coverage is establish
 linked execution, usage, command, and workflow-outcome records. The journal writer implements bounded cross-process
 locking, sync, epoch control, and repair. Core reporting, history deletion, exporter approval, and export coordination
 are current. A first-party [Langfuse exporter package](../../packages/langfuse-exporter/README.md) implements the
-Langfuse Cloud v4 protocol. The personal Workspace usage report is current; browser export controls remain target
-behavior.
+Langfuse Cloud v4 protocol. The personal Workspace usage report and
+[usage settings](runwield-workspace-prd.md#personal-usage-and-outcomes) are current.
 
 Installed exporter discovery and [saved host approval](#metrics-exporter-approval) are separate from destination
-consent. Core functions manage Export grants; this capability has no command-line setup flow.
+consent. Workspace usage settings manage Export grants and write-only credentials through Core functions. Executable
+code approval remains host-only through `wld install`; there is no command-line destination setup flow.
 
 **Requirement: Record structured workflow observations locally, with opt-in and no sensitive content.** With
 `workflowMetrics` enabled, RunWield records ordered tool usage, token usage, cost, context snapshots, compaction,
@@ -1770,6 +2378,26 @@ Records hold metadata only: prompts, diffs, tool results, file contents, and cre
 reduced to coarse command labels; memory calls record their action and scope. Usage records keep exact token, cache,
 and cost values. Each execution records its available tools. Background tasks and delegates keep links to their
 parent. Missing measurements are marked unavailable or partial.
+
+Each Code Review decision records a `code_review_decision` event with the decision, prior AI review round count,
+AI approval or human takeover outcome, and Code Review round within the delivery attempt. Feedback presence and
+annotation count are metadata only; feedback text, annotation content, and images stay out of metrics. Missing AI
+review evidence is marked unavailable, not approved.
+
+**Acceptance scenarios:**
+
+- Given `workflowMetrics` off or unset, no metrics records are written.
+- Given it is on, an Agent turn records ordered events with tool exposures, tool durations, model usage, and latency.
+- Given a Bash command with arguments or pipelines, the record holds coarse command labels only.
+- Given background delegated work, records keep the parent tool call, parent execution, and task identity.
+- Given a tool error, rejection, cancellation, or incomplete call, the record shows the observed outcome.
+- Given a template or Skill command that starts Agent work, one invocation ID links it to the execution; a picker
+  closed without a choice records cancellation.
+- Given manual `/compact` outside an Agent turn, the compaction is recorded under the Session and command.
+- Given AI approval followed by Code Review changes requested, one decision event identifies both outcomes and the
+  prior AI review round count without feedback or annotation content.
+- Given human takeover at the AI round limit and a second Code Review request for changes, the event identifies
+  human takeover and Code Review round two. Closing or skipping review records no decision event.
 
 **Requirement: Usage observations describe only content-free Core activity observed while enabled.** A Usage observation
 belongs to one primary Project history and collection epoch. Session and Plan links identify observed relationships;
@@ -1803,9 +2431,12 @@ Native usage buckets are non-overlapping. Cache-inclusive input is reduced only 
 Unknown cache basis keeps counts in metadata only. Reasoning is split from output. Partial rows send only known buckets,
 never zero for missing counts, and carry `usage_complete=false` with missing-bucket flags. Langfuse sums those sent
 buckets: its partial-row token total is a known subtotal, not a complete measurement. Cost carries Core's reported or
-calculated source. Unavailable cost sends neither cost details nor a native model name. Reported zero stays zero. A
-native model name is sent only with supplied cost. Langfuse can add its own calculated cost to vendor totals without an
-estimate label; that is destination behavior, not additional RunWield cost evidence.
+calculated source. Partial or unavailable cost sends neither cost details nor a native model name. A known partial
+subtotal stays in metadata with `cost_complete=false`, not in the vendor's native cost total. Cost coverage is separate
+from token coverage: complete catalog cost can accompany partial tokens. Older rows keep their prior coverage rule.
+Reported zero stays zero. A native model name is sent only with supplied complete cost. Langfuse can add its own
+calculated cost to vendor totals without an estimate label; that is destination behavior, not additional RunWield cost
+evidence.
 
 Measured generation timestamps come from the row's observed edges. An unmeasured generation has zero duration at its
 observation time and `timing_measured=false`; this does not establish measured zero latency. The package performs no
@@ -1828,11 +2459,13 @@ outcome. The explicit remote model proof turn is not a Usage source; its vision 
 **Requirement: Cross-process recording has bounded lock acquisition and truthful persistence.** All writers to the
 primary Project journal take an OS file lock before the same `proper-lockfile` lock, including linked worktrees and
 separate Core processes. The OS lock does not expire while a writer is paused. Current epoch checkpoints avoid scans of
-retained history. If a checkpoint is missing or behind, each locked call reads at most 256 KiB of new journal bytes and
-commits recovery progress. Calls report non-persistence while recovery is pending; later calls resume recording after
-the checkpoint reaches the journal tail. Recovery preserves retained rows and does not replay skipped observations. Each
-invocation bounds lock acquisition to approximately one second. A persistence success requires synchronous append and
-file sync; it does not promise complete coverage. Timeout, compromised lock, storage failure, disabled collection, and
+retained history. If a checkpoint is missing or behind, each lock acquisition reads at most 256 KiB of new journal bytes
+and commits recovery progress. A recording call reports non-persistence while recovery is pending and starts automatic
+recovery without waiting for more observations. Recovery releases the guard between chunks. Export authorization and
+history clear wait for a complete checkpoint before taking their action. Later recording resumes after recovery;
+retained rows stay unchanged and skipped observations are not replayed. Each recording invocation bounds lock
+acquisition to approximately one second. A persistence success requires synchronous append and file sync; it does not
+promise complete coverage. Timeout, compromised lock, storage failure, disabled collection, and
 stale collection boundaries return non-persistence without blocking delivery or claiming saved data. Captured
 observation identity and epoch stay fixed during an acquisition retry. No failed observation is queued for replay.
 
@@ -1846,14 +2479,17 @@ boundary. History epochs identify local Project measurement histories independen
 **Requirement: Workflow outcomes count observed operations, not inferred delivery.** Each validation attempt and repair
 round has its own operation identity. Attempt numbers and round numbers are labels, not deduplication keys. A confirmed
 publication observation uses a deterministic identity from the delivery attempt. Repeated cleanup does not count that
-publication twice. Committed transitions keep their transition identity; review findings remain observed findings, not
+publication twice. Committed transitions keep their transition identity, allowlisted operation, and known stable Plan identity; review findings remain observed findings, not
 claims of prevented defects. Tool fan-out is not model-request fan-out.
 
 **Requirement: Publication recording precedes removal of attempt evidence and cannot gate delivery.** Both cleanup paths
 await a bounded, non-fatal recording attempt before pruning. Confirmed publication is observed even when cleanup keeps
 user files or a branch. A retained controller marker distinguishes complete, incomplete, and unverified observation
-coverage. A recording failure does not block or reverse publication. A process interruption cannot invent an
-observation. Git evidence and Plan Front Matter remain delivery authority under
+coverage. Recording reuses classification from the retained delivery and its captured history epoch; redundant
+metadata reads do not consume the append budget. Before recording, Core retains incomplete coverage with a content-free
+reason. Only confirmed persistence makes it complete. Failed, timed-out, interrupted, and legacy unverified observations
+are not queued for replay by later cleanup or restart. A recording failure does not block or reverse publication. A
+process interruption cannot invent an observation. Git evidence and Plan Front Matter remain delivery authority under
 [Execution, validation, and recovery](#execution-validation-and-recovery). Confirmed publication and deliberate user
 abandonment remain the only delivery conclusions. An interrupted Agent turn is ongoing work, not abandonment. An open
 Session without an observed delivery workflow is not an undelivered failure.
@@ -1861,7 +2497,9 @@ Session without an observed delivery workflow is not an undelivered failure.
 **Requirement: Plan attribution uses committed, time-scoped associations.** A Session observation links to a Plan only
 when its committed Plan Association covers the observation time and transcript segment. A new association ends the
 previous scope in that segment; a sealed segment ends its scope. General discussion has no Plan link. A Session that
-touches multiple Plans does not assign each observation to every Plan. A delivery attempt's committed registry
+touches multiple Plans does not assign each observation to every Plan. Model usage uses the known workflow Plan scope
+and observed model time, not delayed reconciliation time. A later association cannot claim an earlier model call.
+A delivery attempt's committed registry
 association identifies its Plan independently of Session ownership. Missing attribution stays absent. Outcome records
 retain operation, transition, or confirmed delivery identity and exclude free-form errors.
 
@@ -1904,7 +2542,8 @@ Clear shares the writer lock, commits a fresh History epoch, and resets journal 
 durable clear intent prevents crash recovery from exposing old rows. Delayed observations captured in an older epoch are
 rejected across processes. Restart, cache rebuild, and legacy readers cannot restore deleted history. New activity
 records normally after clear. Export reads pending payloads only from the journal. Clear preserves content-free delivery
-fences and reports an already authorized delivery that cannot be recalled.
+fences and reports an already authorized delivery that cannot be recalled. Reporting marks a pending clear explicitly
+in Project coverage while hiding old rows, so Workspace can offer a readable retry rather than treat it as settled data.
 
 **Acceptance scenarios:**
 
@@ -1928,10 +2567,17 @@ fences and reports an already authorized delivery that cannot be recalled.
 - Given either full cleanup or an attempt already at `cleanup_complete`, when cleanup repeats, its stable publication
   identity produces no second journal row. Keeping user files does not remove the confirmed-publication observation.
 - Given disabled collection or an unwritable journal, publication still completes and prunes. Where controller evidence
-  can be retained, coverage is incomplete. A process death before recording leaves unverified coverage and no invented
-  outcome; a death after recording and before prune leaves the durable observation for restart.
+  can be retained, coverage is incomplete with a content-free reason. A process death before recording leaves
+  incomplete coverage and no invented outcome; restart does not backfill the missed measurement. A death after recording
+  and before prune keeps the durable observation without resending it.
+- Given either cleanup path and slow or failed auxiliary coverage storage, delivery and cleanup do not wait beyond the
+  existing recording budget. Coverage stays incomplete unless its persistence was confirmed. Already retained delivery
+  classification reaches append without another Git metadata read.
 - Given disjoint committed Plan Association time scopes in one Session, observations link only to the matching Plan at
   that time. Unassigned discussion and uncommitted associations do not create Plan links.
+- Given a model call before a Plan association and delayed usage reconciliation after it, the earlier call stays
+  unlinked. A call in committed implementation links to its observed workflow Plan, even if reconciliation follows
+  a later Plan association.
 - Given an interrupted repair turn or a non-Plan Session, measurements do not label the workflow abandoned or count an
   open Session as an undelivered failure. A parallel tool batch creates no model-request fan-out claim.
 - Given `workflowMetrics` disabled or unset with no prior enabled history, when turns, tool calls, or slash commands
@@ -1962,6 +2608,9 @@ fences and reports an already authorized delivery that cannot be recalled.
 - Given a complete priced request, reported-zero request, unavailable-cost request, partial agy turn, and complete CLI
   aggregate, Langfuse receives one content-free observation per attempt with the corresponding native fields and flags.
   Partial buckets stay absent; the aggregate creates no child generations or second parent total.
+- Given a Guided Review cost subtotal with partial cost coverage, Langfuse receives the subtotal in metadata with
+  `cost_complete=false`, without native cost details or a native model name. A partial-token agy turn with complete
+  catalog cost still sends native cost. Local cost coverage follows the separate cost fact.
 - Given uncertain ingestion or delayed readback, the exporter does not retry. Matching native readback confirms
   presence, including equivalent empty native representations and fully identical unmerged versions. This does not
   authorize a retry or claim exactly-once ingestion. Vendor-invented buckets, costs, complete values, or conflicting
@@ -1993,6 +2642,10 @@ fences and reports an already authorized delivery that cannot be recalled.
   only the incomplete tail is removed, and an explicit `measurement_gap` records the lost bytes.
 - Given corrupt interior lines, when repair runs, those lines remain and gap evidence surfaces their line numbers;
   successful persistence of a later observation does not claim complete historical coverage.
+- Given a large history with a missing checkpoint, one recording call starts bounded automatic recovery. Recovery
+  continues without new observations, and later work records without reconstructing skipped activity.
+- Given recovery in progress, export authorization and clear wait for stable history. A clear does not restore removed
+  rows when background recovery continues.
 
 #### Export consent
 
@@ -2093,7 +2746,7 @@ Core includes the local browser client that `wld plans ui` launches and the CLI 
 The [Workspace local Plan management capability](runwield-workspace-prd.md#local-plan-management) and
 [shared Plan collaboration capability](runwield-workspace-prd.md#shared-plan-collaboration) own their surface
 requirements and use Core's [Plan lifecycle](#plan-lifecycle), [Plan review](#plan-review), and
-[execution and recovery](#execution-validation-and-recovery). Local use is complete without hosted Workspace.
+[execution and recovery](#execution-validation-and-recovery). Local use needs no RunWield account or subscription.
 
 ## Delivery and Architectural References
 
@@ -2105,7 +2758,7 @@ collaboration and broader code-intelligence improvements are separate follow-up 
 - [Project runtime state](../adr/017-project-runtime-state-under-wld-internal.md)
 - [ACP compatibility](runwield-acp-protocol-prd.md) and [implementation details](../acp-implementation-details.md)
 - [Workspace requirements](runwield-workspace-prd.md) and
-  [continuation readiness Plan](../plans/workspace-session-continuation-readiness.md)
+  [continuation readiness Plan](../plans/archived/workspace-session-continuation-readiness.md)
 
 ## Success Metrics
 

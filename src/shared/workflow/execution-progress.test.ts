@@ -130,6 +130,7 @@ test("execution preparation progress reports fresh worktree setup before launchi
                 "Creating the worktree from base branch",
                 `Created worktree ${workflow.worktreeBranch} from base branch`,
                 "Copying the Plan into the worktree...",
+                "Copied the Plan into the worktree.",
                 "Marking the Plan as in progress...",
                 "Starting Plan Engineer...",
             ]);
@@ -554,7 +555,7 @@ test("execution starts with registered sibling scope moves and leftover planning
         await updatePlanFrontMatter(
             worktree.path,
             "legacy-plan",
-            { status: "feedback" },
+            { status: "draft" },
             {},
             {
                 expectedRevision: legacy.revision,
@@ -580,7 +581,7 @@ test("execution starts with registered sibling scope moves and leftover planning
         assertEquals((await loadPlan(worktree.path, planName))?.attrs.status, "in_progress");
         assertStringIncludes((await loadPlan(siblingWorktree.path, siblingName))!.body, "laptop-owned save bridge");
         assertEquals((await loadPlan(siblingWorktree.path, siblingName))?.attrs.status, "draft");
-        assertEquals((await loadPlan(worktree.path, "legacy-plan"))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(worktree.path, "legacy-plan"))?.attrs.status, "draft");
         assertStringIncludes(
             await git(worktree.path, ["show", "HEAD:docs/plans/save-proof.md"]),
             "Earlier planning proof",

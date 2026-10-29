@@ -124,6 +124,7 @@ async function makeRealRecoveryProject(
 ): Promise<RealRecoveryProject> {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-recovery-real-"));
     await runGit(projectRoot, ["init", "-b", "main"]);
+    await runGit(projectRoot, ["config", "core.autocrlf", "false"]);
     await runGit(projectRoot, ["config", "user.email", "runwield@example.test"]);
     await runGit(projectRoot, ["config", "user.name", "RunWield Test"]);
     await savePlan(projectRoot, "recovery-contract", "# Plan\n\nrecovery fixture\n", {
@@ -959,7 +960,7 @@ test("discarded execution refreshes the surviving Plan before reopening review",
         };
         assertEquals(await handlePlanRecovery(options), "review");
         assertEquals(clearedExecution, true);
-        assertEquals((await loadPlan(project.projectRoot, project.plan.planName))?.attrs.status, "feedback");
+        assertEquals((await loadPlan(project.projectRoot, project.plan.planName))?.attrs.status, "draft");
         assertEquals((await loadPlan(project.projectRoot, project.plan.planName))?.body, primary.body);
         assertEquals((await findWorktreeRegistryEntryById(project.projectRoot, "discard-review"))?.status, "abandoned");
     } finally {

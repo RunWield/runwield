@@ -11,18 +11,16 @@ provenance:
         - "08b0feb2-348b-4a47-a754-53c9d29bace9"
 ---
 
-# Session Host Multi-session Refactor
+# Session Host multi-session isolation
 
 ## Summary
 
-Completed and verified all six child features. RunWield now uses SessionHost and HostedSession boundaries to isolate
-agent runtime, TUI, routing, handoffs, workflow execution, validation, model state, and session state while preserving
-existing TUI behavior.
+The Epic was closed as done enough. RunWield uses SessionHost and HostedSession boundaries to isolate Agent runtime, TUI, routing, handoffs, workflow execution, validation, model state, and Session state while preserving existing TUI behavior.
 
-## Deferred Work
+## Out of Scope
 
-ACP integration and external clients such as Takopi, Telegram, Slack, Discord, and Workspace remain outside this epic.
+This work does not include external clients such as Takopi, Telegram, Slack, or Discord.
 
 ## Future Planning Notes
 
-Use the HostedSession boundary and multi-session isolation coverage as the foundation for subsequent ACP roadmap slices.
+Session adapters must preserve the HostedSession boundary and isolation between Sessions.

@@ -46,13 +46,13 @@ Working example:
         "router": {
             "model": "openai/gpt-5-mini",
             "thinkingLevel": "minimal",
-            "temperature": 0.1
+            "temperature": 0.1,
         },
         "engineer": {
             "model": "anthropic/claude-sonnet-4-5",
             "thinkingLevel": "high",
-            "temperature": 0.4
-        }
+            "temperature": 0.4,
+        },
     },
     "activeModelPreset": "cheap",
     "modelPresets": {
@@ -61,30 +61,30 @@ Working example:
                 "router": {
                     "model": "openai/gpt-5-mini",
                     "thinkingLevel": "minimal",
-                    "temperature": 0.1
+                    "temperature": 0.1,
                 },
                 "planner": {
                     "model": "anthropic/claude-haiku-4-5",
                     "thinkingLevel": "low",
-                    "temperature": 0.3
-                }
-            }
+                    "temperature": 0.3,
+                },
+            },
         },
         "quality": {
             "agents": {
                 "router": {
                     "model": "anthropic/claude-sonnet-4-5",
                     "thinkingLevel": "medium",
-                    "temperature": 0.1
+                    "temperature": 0.1,
                 },
                 "engineer": {
                     "model": "anthropic/claude-opus-4-5",
                     "thinkingLevel": "xhigh",
-                    "temperature": 0.4
-                }
-            }
-        }
-    }
+                    "temperature": 0.4,
+                },
+            },
+        },
+    },
 }
 ```
 
@@ -123,8 +123,14 @@ rotation keeps the boundary. No Project is added automatically.
 
 This key holds no secrets. Credentials live separately in `~/.wld/metrics-export/credentials.json` with owner-only
 permissions; status shows only configured or not configured. Exporter package approval and local `workflowMetrics`
-collection opt-in are separate permissions. Core functions manage grants; Workspace controls and Langfuse remain planned
-capabilities. Do not advise a command-line setup flow.
+collection opt-in are separate permissions. Workspace **Usage → Settings** manages destinations through Core grants;
+the first-party Langfuse exporter supports Langfuse Cloud v4. Do not advise a command-line setup flow.
+
+Recording is off by default. Set `workflowMetrics` to `true` or `{ "enabled": true }` to opt in. Turning it off stops
+new measurements but keeps existing history until deletion. **Clear history** removes only selected Project measurement
+history and pending export payloads, not Sessions, Plans, worktrees, settings, or remote data. A pending clear keeps the
+Report readable with old measurements hidden. **Clear did not finish** offers **Retry clear**, with confirmation, beside
+the affected Project. Retry works with recording off and does not enable recording.
 
 ## Other user-facing keys
 

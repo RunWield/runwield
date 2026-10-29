@@ -3,7 +3,7 @@
  * Canonical Work Record retrieval hydrated from Markdown, using Mnemoteca only for candidates.
  */
 
-import { findWorkRecordById, listWorkRecords } from "./store.js";
+import { findWorkRecordById, listWorkRecords } from "./store.ts";
 import { formatWorkRecordScopeLabel, isCurrentWorkRecord, workRecordNotices } from "./list.ts";
 import {
     getWorkRecordIndexCollectionName,

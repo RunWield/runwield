@@ -47,8 +47,11 @@ export function readLatestTaskCompletedMessage(messages, fromIndex) {
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
         if (
-            msg && "role" in msg && msg.role === "toolResult" &&
-            "toolName" in msg && msg.toolName === "task_completed"
+            msg &&
+            "role" in msg &&
+            msg.role === "toolResult" &&
+            "toolName" in msg &&
+            msg.toolName === "task_completed"
         ) {
             return extractTaskCompletedMessage(/** @type {{ details?: unknown }} */ (msg).details);
         }
@@ -75,12 +78,14 @@ export function extractAssistantOutput(messages) {
         const msg = messages[i];
 
         if (
-            !taskCompletedMessage && msg && "role" in msg && msg.role === "toolResult" &&
-            "toolName" in msg && msg.toolName === "task_completed"
+            !taskCompletedMessage &&
+            msg &&
+            "role" in msg &&
+            msg.role === "toolResult" &&
+            "toolName" in msg &&
+            msg.toolName === "task_completed"
         ) {
-            taskCompletedMessage = extractTaskCompletedMessage(
-                /** @type {{ details?: unknown }} */ (msg).details,
-            );
+            taskCompletedMessage = extractTaskCompletedMessage(/** @type {{ details?: unknown }} */ (msg).details);
         }
 
         if (!("role" in msg) || msg.role !== "assistant") continue;
@@ -149,8 +154,11 @@ export function readLatestReviewOutcome(messages, fromIndex) {
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
         if (
-            msg && "role" in msg && msg.role === "toolResult" &&
-            "toolName" in msg && msg.toolName === "review_complete"
+            msg &&
+            "role" in msg &&
+            msg.role === "toolResult" &&
+            "toolName" in msg &&
+            msg.toolName === "review_complete"
         ) {
             const details = readWorkflowResultDetails(msg.details);
             const outcome = details?.outcome;
@@ -173,7 +181,7 @@ export function readLatestReviewOutcome(messages, fromIndex) {
 }
 
 /**
- * @typedef {"approved_execute" | "approved_decompose" | "saved" | "feedback" | "canceled" | "repair_required" | "no_call"} PlanOutcome
+ * @typedef {"approved_execute" | "approved_decompose" | "saved" | "feedback" | "conversation" | "canceled" | "repair_required" | "no_call"} PlanOutcome
  */
 
 /**
@@ -199,10 +207,7 @@ export function readLatestPlanOutcome(messages, fromIndex) {
     const start = fromIndex != null ? fromIndex : 0;
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
-        if (
-            msg && "role" in msg && msg.role === "toolResult" &&
-            "toolName" in msg && msg.toolName === "plan_written"
-        ) {
+        if (msg && "role" in msg && msg.role === "toolResult" && "toolName" in msg && msg.toolName === "plan_written") {
             const details = readWorkflowResultDetails(msg.details);
             const outcome = details?.outcome;
             if (outcome) {
@@ -270,8 +275,11 @@ export function readLatestTaskCompletedReport(messages, fromIndex) {
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
         if (
-            msg && "role" in msg && msg.role === "toolResult" &&
-            "toolName" in msg && msg.toolName === "task_completed"
+            msg &&
+            "role" in msg &&
+            msg.role === "toolResult" &&
+            "toolName" in msg &&
+            msg.toolName === "task_completed"
         ) {
             const details = readWorkflowResultDetails(msg.details);
             if (details?.outcome === "task_completed") {

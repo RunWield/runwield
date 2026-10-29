@@ -13,6 +13,7 @@ import { defineGitFixture, git as fixtureGit } from "../git-test-fixture.ts";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     captureWorktreeTree,
+    diffTrees,
     getWorkflowDiff,
     getWorktreeReviewDiff,
     listCommitsTouchingPathsSince,
@@ -22,6 +23,8 @@ import {
     WorktreeReviewComparisonError,
     WorktreeReviewTargetError,
 } from "./git-snapshot.ts";
+import { parseDiffFiles } from "./review-diff-tool.ts";
+import { getWorktreeStatus } from "../worktree.js";
 import { GitRepositoryRequiredError } from "../git.ts";
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -511,6 +514,72 @@ test("review base file rejects an unavailable target", async () => {
     const cwd = await reviewBaseFixture.checkout();
     try {
         await assertRejects(() => readWorktreeReviewBaseFile(cwd, "missing", "shared.js"), WorktreeReviewTargetError);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+const reviewFormatFixture = defineGitFixture(async (cwd) => {
+    await fsMkdir(join(cwd, "nested"));
+    await fsWriteFile(join(cwd, "nested/file.txt"), "before\n");
+    await fixtureGit(cwd, ["add", "."]);
+    await fixtureGit(cwd, ["commit", "-m", "review baseline"]);
+});
+
+const reviewFormatSettings = [
+    [["diff.noprefix", "true"]],
+    [["diff.mnemonicPrefix", "true"]],
+    [
+        ["diff.srcPrefix", "source/"],
+        ["diff.dstPrefix", "destination/"],
+    ],
+    [["color.diff", "always"]],
+    [["color.ui", "always"]],
+    [["diff.relative", "true"]],
+    [["diff.external", "external-script"]],
+];
+
+for (const settings of reviewFormatSettings) {
+    test(`review patches keep repository paths and bytes with ${settings.map(([key]) => key).join(" and ")}`, async () => {
+        const cwd = await reviewFormatFixture.checkout();
+        try {
+            const base = await fixtureGit(cwd, ["rev-parse", "HEAD^{tree}"]);
+            await fsWriteFile(join(cwd, "nested/file.txt"), "after\n");
+            const current = await captureWorktreeTree(cwd);
+            const expected = await git(cwd, ["diff", `${base}..${current}`]);
+            const script = join(cwd, ".git", "external-diff.sh");
+            await fsWriteFile(script, "printf 'external diff output\\n'\n");
+            for (const [key, value] of settings) {
+                await fixtureGit(cwd, ["config", key, value === "external-script" ? `sh "${script}"` : value]);
+            }
+            // Run from a subfolder so diff.relative and mnemonic worktree prefixes take effect.
+            const nested = join(cwd, "nested");
+            const patches = [
+                await diffTrees(nested, base, current),
+                await getWorktreeReviewDiff(nested, "main"),
+                await getWorkflowDiff(nested, undefined),
+                (await getWorktreeStatus({ projectRoot: cwd, path: nested, baseTree: "missing-review-base" })).diff,
+            ];
+            for (const patch of patches) {
+                assertEquals(
+                    parseDiffFiles(patch).map((file) => file.path),
+                    ["nested/file.txt"],
+                );
+                assertEquals(patch, expected);
+            }
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
+}
+
+test("review tree diff keeps the default Git patch bytes", async () => {
+    const cwd = await reviewFormatFixture.checkout();
+    try {
+        const base = await fixtureGit(cwd, ["rev-parse", "HEAD^{tree}"]);
+        await fsWriteFile(join(cwd, "nested/file.txt"), "after\n");
+        const current = await captureWorktreeTree(cwd);
+        assertEquals(await diffTrees(cwd, base, current), await git(cwd, ["diff", `${base}..${current}`]));
     } finally {
         await fsRm(cwd, { recursive: true });
     }

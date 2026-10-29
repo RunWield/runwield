@@ -17,7 +17,7 @@ import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
  * @returns {Promise<import('./session-runtime-interactions.js').RuntimeInteractionResponse>}
  */
 export async function requestLocalReviewInteraction(request, signal, options = {}) {
-    const meta = /** @type {Record<string, any>} */ (request._meta || {});
+    const meta = /** @type {Record<string, any>} */ request._meta || {};
     if (request.type === RuntimeInteractionTypes.PLAN_REVIEW) {
         const result = await submitPlanForReview({
             cwd: meta.cwd,
@@ -41,8 +41,8 @@ export async function requestLocalReviewInteraction(request, signal, options = {
             outcome: result.canceled
                 ? RuntimeInteractionOutcomes.CANCELED
                 : result.approved
-                ? RuntimeInteractionOutcomes.ACCEPTED
-                : RuntimeInteractionOutcomes.SELECTED,
+                  ? RuntimeInteractionOutcomes.ACCEPTED
+                  : RuntimeInteractionOutcomes.SELECTED,
             _meta: result,
         };
     }
@@ -55,6 +55,7 @@ export async function requestLocalReviewInteraction(request, signal, options = {
             planAttrs: meta.planAttrs,
             executionCwd: meta.executionCwd,
             targetBranch: typeof meta.targetBranch === "string" ? meta.targetBranch : undefined,
+            targetBaseRef: typeof meta.targetBaseRef === "string" ? meta.targetBaseRef : undefined,
             guidedReview: meta.guidedReview,
             reviewConversation: meta.reviewConversation,
             agentLabel: typeof meta.agentLabel === "string" ? meta.agentLabel : undefined,
@@ -63,11 +64,12 @@ export async function requestLocalReviewInteraction(request, signal, options = {
             onSurfaceReady: typeof meta.onSurfaceReady === "function" ? meta.onSurfaceReady : options.onSurfaceReady,
         });
         return {
-            outcome: result.canceled || result.exit
-                ? RuntimeInteractionOutcomes.CANCELED
-                : result.approved
-                ? RuntimeInteractionOutcomes.ACCEPTED
-                : RuntimeInteractionOutcomes.SELECTED,
+            outcome:
+                result.canceled || result.exit
+                    ? RuntimeInteractionOutcomes.CANCELED
+                    : result.approved
+                      ? RuntimeInteractionOutcomes.ACCEPTED
+                      : RuntimeInteractionOutcomes.SELECTED,
             _meta: result,
         };
     }

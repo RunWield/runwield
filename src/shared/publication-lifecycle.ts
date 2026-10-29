@@ -5,7 +5,7 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
 /** Finalize only the Plan and Work Record documents owned by a sealed delivery. */
 import { join } from "node:path";
 import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-store.js";
-import { listWorkRecords } from "./work-records/store.js";
+import { listWorkRecords } from "./work-records/store.ts";
 import { syncWorkRecordToIndex } from "./work-records/index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./work-records/mnemoteca-port.ts";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.js";
@@ -38,8 +38,8 @@ async function matchesGitDocument(
     return hashes[0] === hashes[1];
 }
 
-/** Preserve recorder prose as history; lifecycle facts are owned by publication. */
-function finalizedRecord(sealedRecord: string, sealedCommit: string, targetBranch?: string): string {
+/** Match only the exact wrapper emitted by older publishers; never write this form. */
+function legacyWrappedRecord(sealedRecord: string, sealedCommit: string, targetBranch?: string): string {
     const original = parseWorkRecordMarkdown(sealedRecord);
     if (original.attrs.status !== "pending_verification") {
         return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
@@ -63,6 +63,12 @@ function finalizedRecord(sealedRecord: string, sealedCommit: string, targetBranc
         ...original.body.split("\n").map((line) => `> ${line}`),
     ].join("\n");
     return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, body);
+}
+
+/** Publication approves the sealed content without changing its prose. */
+function finalizedRecord(sealedRecord: string): string {
+    const original = parseWorkRecordMarkdown(sealedRecord);
+    return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
 }
 
 /**
@@ -120,17 +126,23 @@ export async function finalizePublicationLifecycle(
         }
         const sealedRecord = await sealedDocument(cwd, sealedCommit, recordPath);
         if (!sealedRecord) throw new Error(`Work Record is absent from the sealed candidate: ${recordPath}`);
-        const original = parseWorkRecordMarkdown(sealedRecord);
-        const legacyApproved = formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
-        const approved = finalizedRecord(sealedRecord, sealedCommit, targetBranch);
+        const approved = finalizedRecord(sealedRecord);
+        const legacyWrapped = await matchesGitDocument(
+            cwd,
+            recordPath,
+            recordText,
+            legacyWrappedRecord(sealedRecord, sealedCommit, targetBranch),
+        );
         if (
             !(await matchesGitDocument(cwd, recordPath, recordText, sealedRecord)) &&
             !(await matchesGitDocument(cwd, recordPath, recordText, approved)) &&
-            !(await matchesGitDocument(cwd, recordPath, recordText, legacyApproved))
+            !legacyWrapped
         ) {
             throw new Error(`Work Record changed outside its sealed publication: ${recordPath}`);
         }
-        if (!(await matchesGitDocument(cwd, recordPath, recordText, approved))) writes.set(recordPath, approved);
+        if (!legacyWrapped && !(await matchesGitDocument(cwd, recordPath, recordText, approved))) {
+            writes.set(recordPath, approved);
+        }
         const predecessorIds =
             typeof record.attrs.supersedes === "string" ? [record.attrs.supersedes] : record.attrs.supersedes || [];
         if (predecessorIds.length) {
@@ -188,11 +200,10 @@ export async function hasFinalizedPublicationLifecycle(
             const originalText = await sealedDocument(cwd, sealedCommit, source.workRecord.path);
             const finalText = await sealedDocument(cwd, commit, source.workRecord.path);
             if (!originalText || !finalText) return false;
-            const record = parseWorkRecordMarkdown(originalText);
-            // Previously published versions finalized only frontmatter; their proof remains valid.
+            // Both historical wrapper publication and status-only approval remain valid proof.
             if (
-                finalText !== finalizedRecord(originalText, sealedCommit, targetBranch) &&
-                finalText !== formatWorkRecordMarkdown({ ...record.attrs, status: "approved" }, record.body)
+                finalText !== finalizedRecord(originalText) &&
+                finalText !== legacyWrappedRecord(originalText, sealedCommit, targetBranch)
             ) {
                 return false;
             }
@@ -307,7 +318,7 @@ export async function finalizeLocalPublicationLifecycle(
     }
 }
 
-/** Derive the search index from confirmed published bytes, never the pending candidate. */
+/** Derive the index and observed Plan classifications from the same confirmed published bytes. */
 export async function indexPublishedWorkRecords(
     projectRoot: string,
     gitRoot: string,
@@ -315,7 +326,8 @@ export async function indexPublishedWorkRecords(
     planPaths: string[],
     mnemotecaPort: WorkRecordMnemotecaPort,
     sourcePlanCommit = commit,
-): Promise<void> {
+): Promise<Map<string, string>> {
+    const planKinds = new Map<string, string>();
     const linkedIds = new Set<string>();
     for (const path of planPaths) {
         // The original delivery owns these record identities even if its Plan
@@ -323,11 +335,12 @@ export async function indexPublishedWorkRecords(
         const text = await sealedDocument(gitRoot, sourcePlanCommit, path);
         if (!text) continue;
         const source = parsePlanFrontMatter(text).attrs;
+        if (source.planId && source.classification) planKinds.set(source.planId, source.classification);
         if (source.workRecord?.status === "generated" && source.workRecord.recordId) {
             linkedIds.add(source.workRecord.recordId);
         }
     }
-    if (!linkedIds.size) return;
+    if (!linkedIds.size) return planKinds;
     const paths = (await git(gitRoot, ["ls-tree", "-r", "--name-only", commit, "--", "docs/work-records/"]))
         .split("\n")
         .filter((path) => path.endsWith(".md"));
@@ -342,4 +355,5 @@ export async function indexPublishedWorkRecords(
             await syncWorkRecordToIndex(projectRoot, record, { mnemotecaPort });
         }
     }
+    return planKinds;
 }

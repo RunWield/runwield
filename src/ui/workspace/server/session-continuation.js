@@ -1,3 +1,9 @@
+/**
+ * @typedef {Object} CodeReviewRefreshContext
+ * @property {string} cwd
+ * @property {string} targetBranch
+ * @property {string} [targetBaseRef]
+ */
 import fs, { stat as fsStat } from "node:fs/promises";
 /**
  * @typedef {Object} LiveCodeReviewOptions
@@ -217,9 +223,15 @@ function safeArtifactReviewReference(request) {
 function readPlanReviewDecisionMeta(response) {
     if (!response || typeof response !== "object") return {};
     const source = /** @type {Record<string, unknown>} */ (response);
-    return source._meta && typeof source._meta === "object"
-        ? /** @type {Record<string, unknown>} */ (source._meta)
-        : source;
+    const decision =
+        source._meta && typeof source._meta === "object"
+            ? /** @type {Record<string, unknown>} */ (source._meta)
+            : source;
+    // Feedback and review chat may omit approved, but an explicit decision must be boolean.
+    if (Object.hasOwn(decision, "approved") && typeof decision.approved !== "boolean") {
+        throw new Error("Plan review approved must be a boolean.");
+    }
+    return decision;
 }
 
 /** @param {unknown} response @returns {import("../../../shared/session/session-runtime-interactions.js").RuntimeInteractionResponse} */
@@ -360,7 +372,7 @@ export class WorkspaceSessionContinuationService {
         this.createRequests = new Map();
         /** @type {Map<string, PendingCreateRequest>} */
         this.pendingCreateRequests = new Map();
-        /** @type {Map<string, { cwd: string, targetBranch: string }>} */
+        /** @type {Map<string, CodeReviewRefreshContext>} */
         this.codeReviewRefreshContexts = new Map();
         /** @type {Map<string, { sessionId: string, unsubscribe: () => void }>} */
         this.retainedSessions = new Map();
@@ -391,6 +403,9 @@ export class WorkspaceSessionContinuationService {
     close() {
         if (this.closing) return this.closing;
         this.closing = (async () => {
+            // Accepted operations can wait for a model or a browser answer. Cancel
+            // those waits before draining them, while their store is still open.
+            for (const session of this.runtime.listSessions()) this.runtime.cancelSession(session.id);
             while (this.backgroundOperations.size) await Promise.all(this.backgroundOperations);
             await Promise.all(this.closingRetainedSessions.values());
             await this.runtime.closeAllSessionsWhenIdle();
@@ -1276,6 +1291,7 @@ export class WorkspaceSessionContinuationService {
                 this.codeReviewRefreshContexts.set(`${operationId}:${interactionId}`, {
                     cwd: executionCwd,
                     targetBranch,
+                    ...(typeof meta.targetBaseRef === "string" ? { targetBaseRef: meta.targetBaseRef } : {}),
                 });
             }
         }
@@ -2286,7 +2302,7 @@ export class WorkspaceSessionContinuationService {
         let rawPatch = String(codeReview.rawPatch);
         if (refresh) {
             try {
-                rawPatch = await getWorktreeReviewDiff(refresh.cwd, refresh.targetBranch);
+                rawPatch = await getWorktreeReviewDiff(refresh.cwd, refresh.targetBranch, refresh.targetBaseRef);
             } catch (error) {
                 if (error instanceof WorktreeReviewComparisonError) throw error;
                 // Keep the last complete interaction patch while the checkout is temporarily unreadable.

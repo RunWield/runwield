@@ -11,7 +11,7 @@ import { createChatInputController } from "./chat-input-controller.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
     const deadline = performance.now() + 5000;

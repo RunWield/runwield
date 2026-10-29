@@ -1,5 +1,13 @@
 /** Controller-owned state. None of these fields belongs in a Plan document. */
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
+import type { ReviewLedger } from "./review-ledger.ts";
+
+export type EpicIntegrationReviewState = {
+    round: number;
+    ledger: ReviewLedger;
+    checkedCommit: string;
+    userTakeoverAt?: string | null;
+};
 
 export type WorktreeDeliveryEvidence = {
     version: 1;
@@ -14,12 +22,22 @@ export type NonGitDeliveryEvidence = {
     mode: "non_git_in_place";
 };
 
+export type PublicationObservation = {
+    attemptId: string;
+    eventId: string;
+    historyEpoch?: string;
+    coverage: "unverified" | "complete" | "incomplete";
+    /** Fixed recorder reason only. Never retain exception text or filesystem paths. */
+    reason?: string;
+};
+
 export type WorkflowControllerState = {
     updatedAt?: string;
     /** Document location may outlive execution, e.g. while revising a retired attempt. */
     documentWorktreeId?: string | null;
     executionMode?: "worktree" | "non_git_in_place" | null;
     validationCheckpoint?: ValidationCheckpoint | null;
+    epicIntegrationReview?: EpicIntegrationReviewState;
     /** Passed phase owned by this Plan execution; reset whenever implementation changes. */
     validationPhase?: "mechanical" | "semantic" | "delivery";
     validationCiAttempts?: number;
@@ -31,12 +49,7 @@ export type WorkflowControllerState = {
     verifiedAt?: string | null;
     publicationReceipt?: { validatedCommit: string; publishedCommit: string; targetBranch: string } | null;
     recordingSource?: { commit: string; planName: string; planId: string };
-    publicationObservation?: {
-        attemptId: string;
-        eventId: string;
-        historyEpoch?: string;
-        coverage: "unverified" | "complete" | "incomplete";
-    };
+    publicationObservation?: PublicationObservation;
     executionReport?: string | null;
     humanReviewMode?: "none" | "ask" | "always" | null;
     humanReviewDecision?: "not_required" | "skipped" | "approved" | "changes_requested" | null;
@@ -56,6 +69,7 @@ export const CONTROLLER_STATE_FIELDS = [
     "documentWorktreeId",
     "executionMode",
     "validationCheckpoint",
+    "epicIntegrationReview",
     "validationPhase",
     "validationCiAttempts",
     "validationSemanticRounds",

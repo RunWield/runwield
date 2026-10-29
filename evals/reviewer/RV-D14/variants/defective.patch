@@ -1,0 +1,15 @@
+diff --git a/src/retention.ts b/src/retention.ts
+--- a/src/retention.ts
++++ b/src/retention.ts
+@@ -1,5 +1,9 @@
+ import type { HistoryRecord } from "./model.ts";
++import { listHistory, saveHistory } from "./store.ts";
+ 
+-export async function pruneHistory(_root: string, _now: Date): Promise<HistoryRecord[]> {
+-    throw new Error("History pruning is not available yet");
++export async function pruneHistory(root: string, now: Date): Promise<HistoryRecord[]> {
++    const records = (await listHistory(root)).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
++    const retained = records.slice(0, 10);
++    await saveHistory(root, retained);
++    return retained;
+ }

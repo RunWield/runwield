@@ -2,3 +2,7 @@
 	path = third_party/plannotator
 	url = https://github.com/backnotprop/plannotator.git
 	branch = main
+[submodule "skills"]
+	path = skills
+	url = https://github.com/RunWield/skills.git
+	branch = main

@@ -12,17 +12,12 @@ provenance:
         - "54c6f794-252f-4210-be53-ca5bf50c5ff1"
 ---
 
-# Configurable Bash Allowlists for Guide and Delegates
+# Configurable bash allowlists for Guide and delegates
 
 ## Summary
 
-Delivered configurable bash command allowlists for Agent and subagent definitions, with inherited parent limits,
-inspection defaults for Guide and read delegates, and checks before Pi bash and RunWield background shell execution.
-Root Session rebuilds refresh the policy; restricted Pi Sessions skip Snip. Updated configuration and product
-documentation. Workflow validation completed after focused tests passed (84 tests, 0 failures), along with type, seam,
-skill-sync, and diff checks.
+Agent and subagent definitions support configurable bash command allowlists with inherited parent limits and inspection defaults for Guide and read delegates. Checks run before Pi bash and RunWield background shell execution. Root Session rebuilds refresh the policy, and restricted Pi Sessions skip Snip.
 
 ## Future Planning Notes
 
-The filter is best-effort, not a sandbox, and does not govern native external-host shells. Scripted child turns
-confirmed that denials reach delegates, but live-model compliance with blocker instructions was not tested.
+The command filter is best-effort, not a sandbox. It does not govern native external-host shells.

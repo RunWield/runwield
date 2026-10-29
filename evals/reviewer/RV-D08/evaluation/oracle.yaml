@@ -1,0 +1,54 @@
+schemaVersion: 1
+scenarioId: RV-D08
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: Only disposable verification trees receive these files and scripts, never Reviewer projects.
+proofs:
+    single-consumer:
+        command: bun run test:oracle single-consumer
+        expectedFailureMarker: RV-D08-SINGLE-CONSUMER
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D08-A
+              severity: medium
+              category: completion-ownership
+              trigger: Deliver one completed live repair task through TaskService.completeTask while validation owns that repair.
+              expectedBehavior: Exactly one validation owner consumes the result and records one transition; restart recovery uses saved evidence without replay.
+              wrongBehavior: The root listener consumes the repair and the validation owner consumes the same event again, recording duplicate consumers and transitions.
+              evidence:
+                  - src/service.ts
+                  - src/validation.ts
+                  - src/store.ts
+                  - AGENTS.md
+              acceptableConcepts:
+                  - two live owners consume one repair completion
+                  - root completion listener must not duplicate validation ownership
+                  - restart recovery is evidence-based rather than a second live consumer
+              nearMisses:
+                  - General task completion still belongs to the application listener.
+                  - A persisted completion with a repairing phase must remain recoverable after restart.
+                  - Repeated recovery after a consumed completion must not add another transition.
+              proofCommand: bun run test:oracle single-consumer
+              expectedFailureMarker: RV-D08-SINGLE-CONSUMER
+        validationOutcomes:
+            bun run test: fail
+        publicFailureMarker: Recorded repair must have one validation-owned consumption
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+        validationOutcomes:
+            bun run test: pass
+cleanNearMisses:
+    - General task completion still belongs to the application listener.
+    - A persisted completion with a repairing phase must remain recoverable after restart.
+    - Repeated recovery after a consumed completion must not add another transition.

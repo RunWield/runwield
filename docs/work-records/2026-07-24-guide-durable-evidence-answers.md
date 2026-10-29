@@ -11,21 +11,8 @@ provenance:
         - "9e60ab53-4e03-4293-91c3-39ca8df76826"
 ---
 
-# Guide durable-evidence answers
+# Guide durable-evidence inquiry
 
 ## Summary
 
-Guide now has evidence-first project inquiry instructions that map durable artifact locations, authority hierarchy,
-citation/status rules, and exclusions for raw Session Transcripts and local metrics. ADRs were migrated to required
-machine-readable `status: accepted` front matter, the ADR format now requires the status enum, and repository tests lock
-in the Guide and ADR contracts. Verification passed with formatting checks, focused tests, Workspace build-related
-tests, and final `deno task ci`.
-
-## Deviations from Plan
-
-Existing Workspace tests needed a local Workspace build; `deno task workspace:build` resolved the missing build artifact
-before the affected tests and full CI passed.
-
-## Deferred Work
-
-Manual live Guide smoke testing was not run because model API credentials were unavailable in the environment.
+Guide answers project questions through durable artifacts, authority hierarchy, citations, and explicit status distinctions rather than raw Session transcripts or local metrics. ADRs require machine-readable status metadata.

@@ -32,7 +32,7 @@ import { buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 
 /** Sibling statuses Planner may still reshape. */
-const RESHAPEABLE_STATUSES = new Set(["draft", "feedback", "approved", "ready_for_work"]);
+const RESHAPEABLE_STATUSES = new Set(["draft", "approved", "ready_for_work"]);
 /** Reshaped siblings in these statuses go back to draft: their approval covered different scope. */
 const APPROVED_STATUSES = new Set(["approved", "ready_for_work"]);
 
@@ -122,9 +122,13 @@ export async function prepareEditedSiblingPlans(
     const epicPlanName = typeof plan?.attrs.parentPlan === "string" ? plan.attrs.parentPlan.trim() : "";
     if (!epicPlanName) return [];
     const prefix = `docs/plans/${epicPlanName}/`;
-    const siblingPaths = (await changedPaths(worktreePath)).filter((path) =>
-        path.startsWith(prefix) && path.endsWith(".md") && path !== planRelativePath &&
-        !path.slice(prefix.length).includes("/") && !EPIC_ARTIFACT_FILE_NAMES.includes(path.slice(prefix.length))
+    const siblingPaths = (await changedPaths(worktreePath)).filter(
+        (path) =>
+            path.startsWith(prefix) &&
+            path.endsWith(".md") &&
+            path !== planRelativePath &&
+            !path.slice(prefix.length).includes("/") &&
+            !EPIC_ARTIFACT_FILE_NAMES.includes(path.slice(prefix.length)),
     );
     if (siblingPaths.length === 0) return [];
 
@@ -143,50 +147,48 @@ export async function prepareEditedSiblingPlans(
         if (incoming === base) continue;
         const authority = registered.find((entry) => entry.planName === siblingName);
         const authorityRoot = authority?.path || worktreePath;
-        const synchronized = await withPlanCatalogLock(
-            authorityRoot,
-            () =>
-                withPlanLock(authorityRoot, siblingName, async () => {
-                    const authoritative = await loadPlan(authorityRoot, siblingName);
-                    if (!authoritative || authoritative.attrs.planId !== sibling.attrs.planId) {
-                        throw new Error(
-                            `Cannot confirm the authoritative Plan identity for ${siblingName}. Both copies are preserved.`,
-                        );
-                    }
-                    const sameWorktree = await fsRealpath(authorityRoot) === await fsRealpath(worktreePath);
-                    const currentScope = scopeMarkdown(authoritative.markdown);
-                    // A previous attempt may already have synchronized this scope and the
-                    // sibling may since have started. Refresh the copy without reshaping it.
-                    if (!sameWorktree && currentScope === incoming) {
-                        return authoritative.markdown;
-                    }
-                    if (!RESHAPEABLE_STATUSES.has(String(authoritative.attrs.status))) {
-                        throw new Error(
-                            `${siblingName} has already started (${authoritative.attrs.status}), so its Plan stays as it is. ` +
-                                `Undo the edit to ${path} and put that work in a new child instead.`,
-                        );
-                    }
-                    const merged = await mergeSiblingScope(
-                        worktreePath,
-                        siblingName,
-                        currentScope,
-                        base,
-                        incoming,
+        const synchronized = await withPlanCatalogLock(authorityRoot, () =>
+            withPlanLock(authorityRoot, siblingName, async () => {
+                const authoritative = await loadPlan(authorityRoot, siblingName);
+                if (!authoritative || authoritative.attrs.planId !== sibling.attrs.planId) {
+                    throw new Error(
+                        `Cannot confirm the authoritative Plan identity for ${siblingName}. Both copies are preserved.`,
                     );
-                    await savePlan(authorityRoot, siblingName, merged, { status: authoritative.attrs.status }, {
+                }
+                const sameWorktree = (await fsRealpath(authorityRoot)) === (await fsRealpath(worktreePath));
+                const currentScope = scopeMarkdown(authoritative.markdown);
+                // A previous attempt may already have synchronized this scope and the
+                // sibling may since have started. Refresh the copy without reshaping it.
+                if (!sameWorktree && currentScope === incoming) {
+                    return authoritative.markdown;
+                }
+                if (!RESHAPEABLE_STATUSES.has(String(authoritative.attrs.status))) {
+                    throw new Error(
+                        `${siblingName} has already started (${authoritative.attrs.status}), so its Plan stays as it is. ` +
+                            `Undo the edit to ${path} and put that work in a new child instead.`,
+                    );
+                }
+                const merged = await mergeSiblingScope(worktreePath, siblingName, currentScope, base, incoming);
+                await savePlan(
+                    authorityRoot,
+                    siblingName,
+                    merged,
+                    { status: authoritative.attrs.status },
+                    {
                         expectedRevision: authoritative.revision,
-                    });
-                    // A retry must not revoke a new approval of scope already synchronized
-                    // into the authoritative worktree since the previous preparation.
-                    if (sameWorktree || merged !== currentScope) {
-                        await resetReshapedApproval(authorityRoot, siblingName);
-                    }
-                    if (!sameWorktree) {
-                        const settled = await loadPlan(authorityRoot, siblingName);
-                        if (!settled) throw new Error(`Plan disappeared while synchronizing ${siblingName}.`);
-                        return settled.markdown;
-                    }
-                }),
+                    },
+                );
+                // A retry must not revoke a new approval of scope already synchronized
+                // into the authoritative worktree since the previous preparation.
+                if (sameWorktree || merged !== currentScope) {
+                    await resetReshapedApproval(authorityRoot, siblingName);
+                }
+                if (!sameWorktree) {
+                    const settled = await loadPlan(authorityRoot, siblingName);
+                    if (!settled) throw new Error(`Plan disappeared while synchronizing ${siblingName}.`);
+                    return settled.markdown;
+                }
+            }),
         );
         // Never hold one worktree's Plan lock while acquiring another's.
         if (synchronized !== undefined) {

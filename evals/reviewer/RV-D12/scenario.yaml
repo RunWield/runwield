@@ -1,0 +1,20 @@
+schemaVersion: 1
+scenarioId: RV-D12
+track: discovery
+group: architecture
+fixtureRevision: 2
+planPath: docs/plans/cover-registration-persistence.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - architecture
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate
+    architectureCommand: bun run seams:check

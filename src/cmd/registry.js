@@ -35,7 +35,7 @@ import { getAgentDisplayName } from "../shared/session/agents.js";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
 /** Known CLI / slash command names. Defined alongside the registry so adding a new command only touches one file. */
-/** @type {Readonly<{ROUTER: string, ONBOARD: string, AGENT: string, MODEL: string, LOGIN: string, LOGOUT: string, STATUS: string, EXPORT: string, SHARE: string, LOAD_PLAN: string, REVIEW: string, PLAN_REVIEW: string, RESUME: string, NEW: string, NAME: string, SESSION: string, PLANS: string, WR: string, SLEEP: string, HELP: string, VERSION: string, UPDATE: string, QUIT: string, EXIT: string, INIT: string, THEME: string, INSTALL: string, REMOVE: string, COMPACT: string, SETTINGS: string, RELOAD: string, SNIP_FILTERS: string, COPY: string, CONTEXT: string, ACP: string, MCP: string, WORKSPACE: string, REMOTE: string}>} */
+/** @type {Readonly<{ROUTER: string, ONBOARD: string, AGENT: string, MODEL: string, LOGIN: string, LOGOUT: string, STATUS: string, EXPORT: string, SHARE: string, LOAD_PLAN: string, REVIEW: string, PLAN_REVIEW: string, RESUME: string, NEW: string, NAME: string, SESSION: string, PLANS: string, WR: string, SLEEP: string, HELP: string, VERSION: string, UPDATE: string, QUIT: string, EXIT: string, INIT: string, THEME: string, INSTALL: string, REMOVE: string, COMPACT: string, SETTINGS: string, RELOAD: string, SNIP_FILTERS: string, COPY: string, CONTEXT: string, ACP: string, MCP: string, WORKSPACE: string, REMOTE: string, ATTACHED: string}>} */
 export const COMMAND_NAMES = Object.freeze({
     ROUTER: "router",
     ONBOARD: "onboard",
@@ -75,6 +75,7 @@ export const COMMAND_NAMES = Object.freeze({
     MCP: "mcp",
     WORKSPACE: "workspace",
     REMOTE: "remote",
+    ATTACHED: "attached",
 });
 
 /** @param {...string} parts */
@@ -149,6 +150,29 @@ export const commandRegistry = {
         execute: async (args) => {
             const { runRemoteCommand } = await import("./remote/index.ts");
             await runRemoteCommand(args);
+        },
+        surfaces: ["cli"],
+    },
+    [COMMAND_NAMES.ATTACHED]: {
+        name: COMMAND_NAMES.ATTACHED,
+        displayName: "Attached Workflow",
+        description: "Coordinate an Attached Workflow for an External Agent Host",
+        summary: "Start, continue, and inspect one Attached Workflow through bounded JSON operations.",
+        usage: [
+            `${bin("attached activate < input.json")}`,
+            `${bin("attached triage_report < input.json")}`,
+            `${bin("attached status < input.json")}`,
+            `${bin("attached plan_written < input.json")}`,
+            `${bin("attached mcp")}`,
+        ],
+        notes: [
+            "Each operation reads one JSON object from stdin, prints one JSON result, and exits; rejections exit with code 1.",
+            "attached mcp serves the same operations as MCP tools over stdio for RunWield Connect host adapters.",
+            "Records live under ~/.wld/attached/. Activation and Triage write nothing to the repository.",
+        ],
+        execute: async (args) => {
+            const { runAttachedCommand } = await import("./attached/index.ts");
+            await runAttachedCommand(args);
         },
         surfaces: ["cli"],
     },
@@ -339,6 +363,7 @@ export const commandRegistry = {
     },
     [COMMAND_NAMES.LOAD_PLAN]: {
         name: COMMAND_NAMES.LOAD_PLAN,
+        aliases: ["load-plans"],
         displayName: "Load Plan",
         description: "Load and continue a saved plan",
         summary: "Load a saved plan by name or file path and continue work on it.",
@@ -445,12 +470,13 @@ export const commandRegistry = {
     [COMMAND_NAMES.SHARE]: {
         name: COMMAND_NAMES.SHARE,
         displayName: "Share",
-        description: "Share current session as a secret GitHub Gist",
-        summary: "Export the current session JSONL snapshot and upload it as a secret GitHub Gist.",
+        description: "Share the complete Session as a secret GitHub Gist",
+        summary: "Upload complete Session HTML and JSON to one secret GitHub Gist with a preview link.",
         usage: ["/share"],
         notes: [
             "Requires GitHub CLI ('gh') to be installed and authenticated.",
-            "Saves session as a secret (private) Gist.",
+            "Uploads runwield-session.html and runwield-session.json, including thinking and tool output.",
+            "Shows the Gist URL and an HTML preview link. Anyone with the secret Gist link can read it.",
         ],
         execute: (argv, options) => runShareCommand(argv, { ...options, githubCli: SYSTEM_GITHUB_CLI_PORT }),
         surfaces: ["slash"],
@@ -459,12 +485,13 @@ export const commandRegistry = {
     [COMMAND_NAMES.EXPORT]: {
         name: COMMAND_NAMES.EXPORT,
         displayName: "Export",
-        description: "Export current session (HTML default, or specify .html/.jsonl path)",
-        summary: "Export current interactive session to HTML (default) or JSONL.",
-        usage: ["/export", "/export output.html", "/export output.jsonl"],
+        description: "Export the complete Session (HTML default, or specify a .json path)",
+        summary: "Export all committed Session segments and Manifest facts to HTML or JSON.",
+        usage: ["/export", "/export output.html", "/export output.json"],
         notes: [
             "Slash command only (interactive session).",
-            "Default output path is session-<iso-datetime>.html in the current working directory.",
+            "Default output path is session-<iso-datetime>.html in the Session project directory.",
+            "JSONL export is retired. Use a .json path instead.",
         ],
         execute: runExportCommand,
         surfaces: ["slash"],
@@ -731,7 +758,7 @@ export const commandRegistry = {
         description: "Install a package source",
         summary:
             "Install package themes, prompt templates, and WLD-compatible extensions from npm, git, or local path.",
-        usage: [`${bin("install npm:<spec>")}`, `${bin("install git:<url>")}`, `${bin("install <path>")}`],
+        usage: [`${bin("install npm:<spec>")}`, `${bin("install git:<url>")}`, `${bin("install local:<path>")}`],
         notes: [
             "Theme (.json) resources and passive prompt templates are registered.",
             "Pi package skills are ignored; install them separately with `npx skills add <source>`.",
@@ -897,4 +924,27 @@ export function getSlashCommandDefinition(commandName, slashSurface = "tui") {
     const command = getCommandDefinition(commandName);
     if (!command || !hasCommandSurface(command, "slash", slashSurface)) return undefined;
     return command;
+}
+
+/** Project-directory policy stays beside the CLI registry and alias resolution.
+ * @param {string | undefined} name
+ * @param {string[]} args
+ */
+export function requiresProjectDirectoryConsent(name, args = []) {
+    if (name === "guided-review" || name === "ai-review") return true;
+    const command = getCommandDefinition(name);
+    if (!command) return true;
+    if (!hasCommandSurface(command, "cli")) return false;
+    if (command.name === COMMAND_NAMES.AGENT) return args.length > 0;
+    return [
+        COMMAND_NAMES.ROUTER,
+        COMMAND_NAMES.ONBOARD,
+        COMMAND_NAMES.LOAD_PLAN,
+        COMMAND_NAMES.REVIEW,
+        COMMAND_NAMES.RESUME,
+        COMMAND_NAMES.PLANS,
+        COMMAND_NAMES.WR,
+        COMMAND_NAMES.SLEEP,
+        COMMAND_NAMES.INIT,
+    ].includes(command.name);
 }

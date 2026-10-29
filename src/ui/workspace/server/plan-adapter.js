@@ -48,11 +48,6 @@ export const STATUS_META = {
         label: "Draft",
         description: "Plans still being shaped.",
     },
-    feedback: {
-        status: "feedback",
-        label: "Feedback",
-        description: "Plans waiting on review or revisions.",
-    },
     approved: {
         status: "approved",
         label: "Approved",
@@ -349,18 +344,19 @@ function annotatePlanHierarchy(plans) {
         const hierarchyRole = plan.isEpic
             ? "epic"
             : plan.isChild && !parentEpic
-            ? "orphan-child"
-            : plan.isChild
-            ? "child"
-            : "top-level";
+              ? "orphan-child"
+              : plan.isChild
+                ? "child"
+                : "top-level";
         return {
             ...plan,
             hierarchyRole,
             parentResolved: plan.isChild ? Boolean(parentEpic) : true,
             parentPlanId: parentEpic?.planId || "",
-            orphanReason: plan.isChild && !parentEpic
-                ? `parentPlan \"${plan.parentPlan}\" does not match a loaded PROJECT Epic.`
-                : "",
+            orphanReason:
+                plan.isChild && !parentEpic
+                    ? `parentPlan \"${plan.parentPlan}\" does not match a loaded PROJECT Epic.`
+                    : "",
         };
     });
 }
@@ -411,8 +407,8 @@ function enrichChildrenWithDependencies(children, parentPlanName, dependencySour
  * @param {string} status
  */
 function topLevelCardsForStatus(plans, status) {
-    return plans.filter((plan) =>
-        String(plan.status) === status && (plan.isEpic || plan.hierarchyRole === "top-level")
+    return plans.filter(
+        (plan) => String(plan.status) === status && (plan.isEpic || plan.hierarchyRole === "top-level"),
     );
 }
 
@@ -433,8 +429,8 @@ function childHealth(children) {
         held: children.filter((child) => child.status === "on_hold"),
         blocked: children.filter((child) => child.blockedByDependencies),
         missingDependencies: children.filter((child) => child.missingDependencyCount > 0),
-        implemented: children.filter((child) =>
-            child.status === "implemented" || child.status === "validated_ci" || child.status === "reviewed"
+        implemented: children.filter(
+            (child) => child.status === "implemented" || child.status === "validated_ci" || child.status === "reviewed",
         ),
     };
 }
@@ -569,9 +565,10 @@ export function serializePlanError(error) {
     if (error instanceof SharedPlanLockError) {
         return { error: message, blockedReason: error.blockedReason, repair: error.repair };
     }
-    const repair = message.includes("Duplicate planId") || message.includes("duplicate")
-        ? "Repair duplicate planId values in Plan front matter so each non-archived Plan has a unique planId."
-        : "Check Plan front matter and ensure the requested planId belongs to a non-archived Plan in this checkout.";
+    const repair =
+        message.includes("Duplicate planId") || message.includes("duplicate")
+            ? "Repair duplicate planId values in Plan front matter so each non-archived Plan has a unique planId."
+            : "Check Plan front matter and ensure the requested planId belongs to a non-archived Plan in this checkout.";
     return { error: message, repair };
 }
 
@@ -606,11 +603,14 @@ export async function loadWorkspaceDetail(cwd, planId, options = {}) {
     if (options.reviewOnly) return { ...serializePlanDetail(baseResource), path: baseResource.path };
     const resource = isProjectPlan(baseResource.attrs) ? baseResource : await loadPlanBodyById(cwd, planId);
     const summaries = await loadPlanSummaries(cwd);
-    return projectWorkspaceDetail({
-        ...resource,
-        workspaceKey: await sha256Hex(cwd),
-        capabilities: { bodyEditing: !isProjectPlan(resource.attrs) },
-    }, summaries);
+    return projectWorkspaceDetail(
+        {
+            ...resource,
+            workspaceKey: await sha256Hex(cwd),
+            capabilities: { bodyEditing: !isProjectPlan(resource.attrs) },
+        },
+        summaries,
+    );
 }
 
 /**
@@ -636,11 +636,14 @@ export async function saveWorkspacePlanBody(cwd, planId, body, expectedBodyHash,
     if (!expectedRevision) throw new Error("Workspace body save requires expectedRevision.");
     const saved = await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision });
     const summaries = await loadPlanSummaries(cwd);
-    return projectWorkspaceDetail({
-        ...saved,
-        workspaceKey: await sha256Hex(cwd),
-        capabilities: { bodyEditing: true },
-    }, summaries);
+    return projectWorkspaceDetail(
+        {
+            ...saved,
+            workspaceKey: await sha256Hex(cwd),
+            capabilities: { bodyEditing: true },
+        },
+        summaries,
+    );
 }
 
 /**
@@ -725,8 +728,8 @@ export async function runWorkspaceResumeCheck(cwd, attrs) {
         message: failures.length
             ? "Resume Check failed."
             : warnings.length
-            ? "Resume Check needs confirmation."
-            : "Resume Check passed.",
+              ? "Resume Check needs confirmation."
+              : "Resume Check passed.",
     };
 }
 
@@ -748,9 +751,8 @@ function validateLifecycleActionPayload(payload, options = {}) {
         if (!targetStatus || !isKnownStatus(targetStatus)) throw new Error("Unknown or missing targetStatus.");
     }
     if (action === PLAN_LIFECYCLE_ACTIONS.CLOSE_WITHOUT_VERIFICATION) {
-        const reason = typeof body.closedWithoutVerificationReason === "string"
-            ? body.closedWithoutVerificationReason.trim()
-            : "";
+        const reason =
+            typeof body.closedWithoutVerificationReason === "string" ? body.closedWithoutVerificationReason.trim() : "";
         if (!reason) throw new Error("A close-without-verification reason is required.");
         body.closedWithoutVerificationReason = reason;
     }
@@ -804,12 +806,12 @@ export function applyWorkspaceLifecycleActionInMemory(plan, payload) {
         event = "plan_held";
         if (typeof request.holdReason === "string") details.holdReason = request.holdReason;
         details.heldFromStatus = currentStatus;
-        details.holdStalenessBaseline = typeof attrs.executionBaselineTree === "string"
-            ? attrs.executionBaselineTree
-            : undefined;
-        message = attrs.classification === "PROJECT"
-            ? "Epic put on hold. Child Plan statuses were not changed."
-            : "Plan put on hold.";
+        details.holdStalenessBaseline =
+            typeof attrs.executionBaselineTree === "string" ? attrs.executionBaselineTree : undefined;
+        message =
+            attrs.classification === "PROJECT"
+                ? "Epic put on hold. Child Plan statuses were not changed."
+                : "Plan put on hold.";
     } else if (action === PLAN_LIFECYCLE_ACTIONS.RESUME_FROM_HOLD) {
         if (!metadata.canResumeFromHold) throw new Error(metadata.blockedReasons.resume_from_hold);
         event = "hold_resumed";
@@ -896,12 +898,12 @@ export async function applyWorkspaceLifecycleAction(cwd, planId, payload, option
         targetStatus: typeof request.targetStatus === "string" ? request.targetStatus : undefined,
         holdReason: typeof request.holdReason === "string" ? request.holdReason : undefined,
         acceptResumeWarnings: request.acceptResumeWarnings === true,
-        userVerificationNote: typeof request.userVerificationNote === "string"
-            ? request.userVerificationNote
-            : undefined,
-        closedWithoutVerificationReason: typeof request.closedWithoutVerificationReason === "string"
-            ? request.closedWithoutVerificationReason
-            : undefined,
+        userVerificationNote:
+            typeof request.userVerificationNote === "string" ? request.userVerificationNote : undefined,
+        closedWithoutVerificationReason:
+            typeof request.closedWithoutVerificationReason === "string"
+                ? request.closedWithoutVerificationReason
+                : undefined,
     });
     if (result.kind === "refresh_required") {
         return { blocked: true, status: 409, body: { error: result.message, result } };

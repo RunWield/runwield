@@ -265,6 +265,7 @@ export class ClaudeCliExecutionSession {
 
         const recorder = new ExecutionMetricsRecorder({
             projectRoot: this.cwd,
+            hostedSession: this.hostedSession ?? undefined,
             commandId: this.hostedSession?.activeCommandInvocationId || undefined,
             sessionId: this.sessionManager.getSessionId(),
             managedSessionId: this.hostedSession?.getManagedMetadata()?.runwieldSessionId,
@@ -456,6 +457,7 @@ export class ClaudeCliExecutionSession {
                                 cacheWriteTokens: observation.usage.cacheWriteTokens,
                                 costUsd: observation.usage.costUsd,
                                 costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
+                                costAvailability: observation.usage.costUsd === null ? "unavailable" : "complete",
                                 inputCacheBasis: "excludes_cache",
                                 startedAt:
                                     observation.aggregationBasis === "alternative"

@@ -64,8 +64,7 @@ Owning Core PRD capabilities and proposed changes:
   [Work protection](../prd/runwield-core-prd.md#work-protection): preserve saved work across clients and protect user
   files.
 
-Automatic Epic branch creation remains in
-[Plan Packages and Independent Validation](plan-packages-and-independent-validation.md). This change uses an existing
+The earlier Plan Packages and Independent Validation Plan was removed on 2026-10-26. This change uses an existing
 recorded Epic target. It does not add Epic publication, integrated validation, or a Sequence release branch. No
 requirement is removed.
 
@@ -251,7 +250,7 @@ deno run -A scripts/run-tests.js src/shared/session/agent-switching.test.js
 deno run -A scripts/run-tests.js src/shared/session/session-runtime.test.js
 deno run -A scripts/run-tests.js src/tools/__tests__/plan-written.test.js
 deno run -A scripts/run-tests.js src/shared/workflow/workflow.test.js
-deno run -A scripts/run-tests.js src/shared/workflow/execution-plan-file.test.js
+deno run -A scripts/run-tests.js src/shared/workflow/execution-plan-file.test.ts
 deno task seams:check
 deno task ci
 ```

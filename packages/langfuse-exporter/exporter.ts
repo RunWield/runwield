@@ -100,6 +100,7 @@ const FIELDS: Record<MetricsExportKind, string[]> = {
         "costAmount",
         "costCurrency",
         "costSource",
+        "costAvailability",
         "measurementAvailability",
         "unavailableReason",
         "aggregationBasis",
@@ -138,6 +139,7 @@ const ENUMS: Record<string, string[]> = {
     usageKind: ["turn", "request", "compaction", "summary", "standalone"],
     costCurrency: ["USD"],
     costSource: ["reported", "calculated", "unavailable"],
+    costAvailability: ["complete", "partial", "unavailable"],
     measurementAvailability: ["complete", "partial", "unavailable"],
     aggregationBasis: ["turn", "request", "alternative"],
     inputCacheBasis: ["excludes_cache", "includes_cache", "unknown"],
@@ -358,6 +360,7 @@ async function map(o: MetricsExportObservation): Promise<Mapped> {
             ["input", "output", "input_cache_read", "input_cache_creation"].every((k) => Object.hasOwn(usage!, k));
         const amount = metadata.costAmount;
         if (
+            !["partial", "unavailable"].includes(String(metadata.costAvailability)) &&
             ["reported", "calculated"].includes(String(metadata.costSource)) &&
             metadata.costCurrency === "USD" &&
             typeof amount === "number" &&
@@ -367,6 +370,7 @@ async function map(o: MetricsExportObservation): Promise<Mapped> {
             cost = { total: amount };
             if (typeof metadata.model === "string") model = metadata.model;
         }
+        metadata.cost_complete = cost !== undefined;
         metadata.cost_available = cost !== undefined;
         metadata.missing_cost = cost === undefined;
     }

@@ -1,0 +1,67 @@
+schemaVersion: 1
+scenarioId: RV-D04
+advisoryPolicy: supported-only
+verification:
+    copyFiles:
+        evaluation/proofs.ts: .verification/proofs.ts
+    packageScripts:
+        test:oracle: bun .verification/proofs.ts
+    isolation: >-
+        Only a disposable verification tree receives these files and scripts. Never copy them into a Reviewer
+        project.
+proofs:
+    project-scope:
+        command: bun run test:oracle project-scope
+        expectedFailureMarker: RV-D04-CACHE-SCOPE
+    owner-scope:
+        command: bun run test:oracle owner-scope
+        expectedFailureMarker: RV-D04-CACHE-SCOPE
+    plan-scope:
+        command: bun run test:oracle plan-scope
+        expectedFailureMarker: RV-D04-CACHE-SCOPE
+variants:
+    A:
+        patch: variants/defective.patch
+        patchBase: source
+        expectedDecision: reject
+        defects:
+            - defectId: RV-D04-A
+              severity: high
+              category: cache-scope-isolation
+              trigger: >-
+                  Two Plan references share the display name Delivery but differ in projectId, ownerId, or
+                  planId. Read both with one SummaryBrowser.
+              expectedBehavior: Each read returns the summary stored under that stable project, owner, and Plan identity.
+              wrongBehavior: >-
+                  The second read returns the first scope's cached content. A title collision can disclose
+                  another owner's content.
+              evidence:
+                  - src/browser.ts
+                  - src/repository.ts
+                  - src/model.ts
+              acceptableConcepts:
+                  - cache key uses display name
+                  - cross-project or cross-owner summary reuse
+                  - stable project, owner, and Plan identifiers must all participate
+              nearMisses:
+                  - Repeated reads inside one refresh intentionally reuse the snapshot.
+                  - Refresh intentionally clears all summaries.
+                  - A cache is not itself a prohibited injection seam.
+              proofCommand: bun run test:oracle project-scope
+              expectedFailureMarker: RV-D04-CACHE-SCOPE
+              additionalProofCommands:
+                  - bun run test:oracle owner-scope
+                  - bun run test:oracle plan-scope
+              evidenceNotes:
+                  src/browser.ts: SummaryBrowser.load cache key
+                  src/repository.ts: PlanRepository.file stable storage identity
+                  src/model.ts: PlanRef
+    B:
+        patch: variants/clean.patch
+        patchBase: source
+        expectedDecision: approve
+        defects: []
+cleanNearMisses:
+    - Repeated reads inside one refresh intentionally reuse the snapshot.
+    - Refresh intentionally clears all summaries.
+    - A cache is not itself a prohibited injection seam.

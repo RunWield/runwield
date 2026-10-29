@@ -11,10 +11,8 @@ provenance:
         - "01c43109-3a48-479e-aa1b-6c86e8ca3c14"
 ---
 
-# Retired the old PROJECT task-DAG execution path
+# Epic decomposition execution model
 
 ## Summary
 
-New PROJECT/Epic workflows now use Epic decomposition and normal child FEATURE execution instead of Slicer-generated
-task tables or task-DAG execution. Legacy project executor and task-scheduling modules remain import-safe and tested for
-possible future reuse, with regression coverage preventing accidental reactivation.
+New PROJECT workflows use Epic decomposition and normal child Plan execution instead of generated task tables or task-DAG execution. Legacy execution and scheduling modules remain import-safe but inactive in this model.

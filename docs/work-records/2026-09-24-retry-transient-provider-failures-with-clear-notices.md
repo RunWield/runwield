@@ -12,11 +12,8 @@ provenance:
         - "01d970e6-db23-4636-887d-b29193831935"
 ---
 
-# Retry transient provider failures with clear notices
+# Transient provider failure recovery and notices
 
 ## Summary
 
-Validated recovery now routes unexpected provider EOF through Pi’s existing retry policy, preserving the default three
-retries with 2/4/8-second waits. Shared live and saved Session notices describe failures safely without hiding raw
-diagnostics; cancellation, partial output, tool execution, and replay remain intact. The Core PRD, settings guide, and
-regression tests were updated.
+Unexpected provider EOF uses Pi’s existing retry policy. Shared live and saved Session notices describe failures safely without hiding raw diagnostics. Cancellation, partial output, tool execution, and replay retain their existing behavior.

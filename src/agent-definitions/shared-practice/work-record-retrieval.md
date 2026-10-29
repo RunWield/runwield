@@ -1,6 +1,6 @@
 ---
 name: Shared Work Record Retrieval Practice
-description: "How personas that read project history retrieve and weigh Work Records. Composed into agent prompts by name; not an agent and never listed by /agent."
+description: "How personas that read project history retrieve and weigh Work Records."
 ---
 
 ## Work Record Retrieval

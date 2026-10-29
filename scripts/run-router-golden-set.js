@@ -112,16 +112,19 @@ export function createBenchmarkBashNudgeTool() {
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             callCount++;
             const command = typeof params?.command === "string" ? params.command : "";
-            const repeatedCallNudge = callCount > 1
-                ? `\n\nRepeated bash attempt #${callCount}: stop calling bash in this benchmark row. Call triage_report now unless one non-bash read tool is essential.`
-                : "";
+            const repeatedCallNudge =
+                callCount > 1
+                    ? `\n\nRepeated bash attempt #${callCount}: stop calling bash in this benchmark row. Call triage_report now unless one non-bash read tool is essential.`
+                    : "";
             return {
-                content: [{
-                    type: "text",
-                    text: command
-                        ? `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}\n\nRequested command: ${command}`
-                        : `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}`,
-                }],
+                content: [
+                    {
+                        type: "text",
+                        text: command
+                            ? `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}\n\nRequested command: ${command}`
+                            : `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}`,
+                    },
+                ],
                 details: {
                     blocked: true,
                     callCount,
@@ -242,7 +245,7 @@ async function readExistingCsv(path) {
     try {
         return parseCsv(await fsReadFile(path, "utf8"));
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
 }
@@ -272,7 +275,7 @@ async function runContextGit(cwd, args) {
  *   runAgentSession?: RouterAgentRunner,
  *   customTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
  * }} [options]
- * @returns {Promise<import('../src/shared/workflow/orchestrator.ts').TriageOutcome>}
+ * @returns {Promise<import('../src/shared/workflow/triage-outcome.ts').TriageOutcome>}
  */
 export async function runRouterForGoldenRequest(requestText, options = {}) {
     const agentOptions = /** @type {RouterAgentRunOptions} */ ({
@@ -307,7 +310,11 @@ export async function runRouterForGoldenRequest(requestText, options = {}) {
 
     try {
         const messages = options.rowTimeoutMs
-            ? await withAbortTimeout(messagesPromise.then((result) => result), options.rowTimeoutMs, cancel)
+            ? await withAbortTimeout(
+                  messagesPromise.then((result) => result),
+                  options.rowTimeoutMs,
+                  cancel,
+              )
             : await messagesPromise;
         if (!Array.isArray(messages)) throw new Error(messages.error || "Router operation was refused.");
         const triage = readLatestTriageOutcomeFn(messages);
@@ -471,23 +478,25 @@ export async function main(argv) {
     });
 
     if (args.help) {
-        console.log([
-            "Usage: bun scripts/run-router-golden-set.js [options]",
-            "",
-            "Runs the real Router against labelled Router judgement rows.",
-            "",
-            "Options:",
-            `  --csv <path>          Golden CSV input (default: ${getDefaultRouterGoldenCsvPath()})`,
-            `  --out, -o <path>     CSV output (default: ${getDefaultRouterResultCsvPath()})`,
-            "  --limit <n>          Run only the first n selected rows",
-            "  --model, -m <ref>    Override Router model, e.g. provider/model",
-            "  --thinking-level <level> Override thinking: off, minimal, low, medium, high, xhigh, max",
-            "  --temperature <n>    Override sampling temperature (0–2; provider support varies)",
-            "  --cwd <path>         Discovery cwd and source repository for contextCommit pins",
-            "  CSV contextCommit    Optional full commit hash; discovery uses a detached temporary worktree",
-            `  --row-timeout-ms <n> Per-row timeout (default: ${DEFAULT_ROW_TIMEOUT_MS})`,
-            "  --rerun              Rerun selected rows instead of resuming unfinished rows",
-        ].join("\n"));
+        console.log(
+            [
+                "Usage: bun scripts/run-router-golden-set.js [options]",
+                "",
+                "Runs the real Router against labelled Router judgement rows.",
+                "",
+                "Options:",
+                `  --csv <path>          Golden CSV input (default: ${getDefaultRouterGoldenCsvPath()})`,
+                `  --out, -o <path>     CSV output (default: ${getDefaultRouterResultCsvPath()})`,
+                "  --limit <n>          Run only the first n selected rows",
+                "  --model, -m <ref>    Override Router model, e.g. provider/model",
+                "  --thinking-level <level> Override thinking: off, minimal, low, medium, high, xhigh, max",
+                "  --temperature <n>    Override sampling temperature (0–2; provider support varies)",
+                "  --cwd <path>         Discovery cwd and source repository for contextCommit pins",
+                "  CSV contextCommit    Optional full commit hash; discovery uses a detached temporary worktree",
+                `  --row-timeout-ms <n> Per-row timeout (default: ${DEFAULT_ROW_TIMEOUT_MS})`,
+                "  --rerun              Rerun selected rows instead of resuming unfinished rows",
+            ].join("\n"),
+        );
         return;
     }
 
@@ -500,7 +509,9 @@ export async function main(argv) {
     const temperatureOverride = temperatureText === undefined ? undefined : Number(temperatureText);
     if (
         temperatureOverride !== undefined &&
-        (temperatureText === "" || !Number.isFinite(temperatureOverride) || temperatureOverride < 0 ||
+        (temperatureText === "" ||
+            !Number.isFinite(temperatureOverride) ||
+            temperatureOverride < 0 ||
             temperatureOverride > 2)
     ) {
         throw new Error("Invalid --temperature. Use a finite number from 0 to 2.");

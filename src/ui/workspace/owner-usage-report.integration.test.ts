@@ -1,5 +1,16 @@
+import process from "node:process";
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { setCustomSetting } from "../../shared/settings.js";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { mkdir as fsMkdir, writeFile as fsWriteFile, rm as fsRm, rename as fsRename } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    writeFile as fsWriteFile,
+    readFile as fsReadFile,
+    rm as fsRm,
+    rename as fsRename,
+    symlink as fsSymlink,
+} from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -61,7 +72,12 @@ function pairedHeaders(store: ReturnType<typeof openOwnerCoordinationStore>) {
     const pairing = store.createPairingRequest();
     store.approvePairingRequest(pairing.code);
     const device = store.claimPairingRequest(pairing.proof);
-    return { cookie: `rw_owner_device=${encodeURIComponent(device.credential)}` };
+    return {
+        cookie: `rw_owner_device=${encodeURIComponent(device.credential)}; rw_owner_csrf=${encodeURIComponent(device.csrf)}`,
+        "x-runwield-csrf": device.csrf,
+        origin,
+        "content-type": "application/json",
+    };
 }
 function reportUrl(projectId = "") {
     const params = new URLSearchParams(period);
@@ -347,3 +363,139 @@ test("shared history links resolve targets in a second authorized worktree", asy
         }
     });
 });
+
+test("owner usage explains a pending history clear and reads again after recovery", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+        const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
+        const project = store.registerProject({ root: projectRoot, displayName: "A" });
+        const root = store.requireEnabledProjectRoot(project.projectId);
+        await journal(root, [usage()]);
+        await setCustomSetting("workflowMetrics", false, "project", root);
+        const marker = join(dirname(getWorkflowMetricsFilePath(root)), "clear.json");
+        const historyMarker =
+            JSON.stringify({
+                v: 1,
+                event: "history_epoch",
+                historyEpoch: "fresh",
+                collectionEpoch: "off",
+                enabled: false,
+                ts: "2026-09-02T00:00:00Z",
+            }) + "\n";
+        await fsWriteFile(
+            marker,
+            JSON.stringify({
+                state: {
+                    v: 1,
+                    historyEpoch: "fresh",
+                    collectionEpoch: { id: "off", enabled: false },
+                    journalBytes: new TextEncoder().encode(historyMarker).length,
+                    journalLines: 1,
+                },
+                marker: historyMarker,
+            }),
+        );
+        const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
+        try {
+            const headers = pairedHeaders(store);
+            const intentBeforeRead = await fsReadFile(marker, "utf8");
+            const response = await app.handler()(new Request(reportUrl(), { headers }));
+            assertEquals(response.status, 200);
+            assertEquals(await fsReadFile(marker, "utf8"), intentBeforeRead);
+            const pending: OwnerUsageReport = await response.json();
+            assertEquals(JSON.stringify(pending).includes("history_clear_pending"), false);
+            assertEquals(pending.projects[0].coverage.historyClearPending, true);
+            assertEquals(pending.projects[0].links, []);
+            assertEquals(pending.totals.tokens.value, 0);
+            assertEquals(pending.daily[0].tokens, null);
+            assertEquals(pending.recording.projects[0].enabled, false);
+            const retried = await app.handler()(
+                new Request(`${origin}/api/owner/usage/clear`, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({ projectIds: [project.projectId], confirmed: true }),
+                }),
+            );
+            assertEquals(retried.status, 200);
+            assertEquals((await retried.json()).result.cleared[0].cleared, true);
+            const recovered = await app.handler()(new Request(reportUrl(), { headers }));
+            assertEquals(recovered.status, 200);
+            const settled: OwnerUsageReport = await recovered.json();
+            assertEquals(settled.projects[0].coverage.historyClearPending, false);
+            assertEquals(settled.totals.tokens.value, 0);
+            assertEquals(settled.recording.projects[0].enabled, false);
+        } finally {
+            await app.close();
+            store.close();
+        }
+    });
+});
+
+test(
+    "repeated concurrent history changes return a readable report and keep stable Projects",
+    {
+        skip: process.platform === "win32",
+    },
+    async () => {
+        await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
+            const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
+            const unstable = store.registerProject({ root: projectRoot, displayName: "Clearing" });
+            const stableRoot = join(projectRoot, "stable");
+            await fsMkdir(stableRoot);
+            const stable = store.registerProject({ root: stableRoot, displayName: "Stable" });
+            const root = store.requireEnabledProjectRoot(unstable.projectId);
+            await journal(root, [usage()]);
+            await journal(store.requireEnabledProjectRoot(stable.projectId), [usage()]);
+            const statePath = join(dirname(getWorkflowMetricsFilePath(root)), "state.json");
+            const pipes = Array.from({ length: 9 }, (_, index) => `${statePath}.${index}`);
+            assertEquals((await captureForegroundProcess("mkfifo", { args: pipes, cwd: getCwd() })).code, 0);
+            await fsSymlink(pipes[0], statePath);
+            // A real filesystem boundary supplies two consistent reads followed by a new
+            // epoch at the final snapshot check, for each of the three bounded attempts.
+            // Each read has its own pipe; replacing the link before sending guarantees EOF
+            // without sleeps or a writer racing to reopen the same reader.
+            const writer = spawnNativeProcess(process.execPath, {
+                args: [
+                    "-e",
+                    `
+                const fs = require("node:fs");
+                const path = process.argv[1];
+                for (let read = 0; read < 9; read++) {
+                    const epoch = read % 3 === 2 ? "changed" : "initial";
+                    const fd = fs.openSync(path + "." + read, "w");
+                    if (read < 8) fs.symlinkSync(path + "." + (read + 1), path + ".next");
+                    else fs.writeFileSync(path + ".next", JSON.stringify({ historyEpoch: "settled" }));
+                    fs.renameSync(path + ".next", path);
+                    fs.writeSync(fd, JSON.stringify({ historyEpoch: epoch }));
+                    fs.closeSync(fd);
+                }
+            `,
+                    statePath,
+                ],
+                cwd: getCwd(),
+                stdin: "null",
+                stdout: "null",
+                stderr: "piped",
+            });
+            const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
+            try {
+                const response = await app.handler()(new Request(reportUrl(), { headers: pairedHeaders(store) }));
+                assertEquals(response.status, 200);
+                const report: OwnerUsageReport = await response.json();
+                const clearing = report.projects.find((project) => project.projectId === unstable.projectId)!;
+                assertEquals(clearing.coverage.historyClearPending, true);
+                assertEquals(clearing.links, []);
+                assertEquals(clearing.totals.tokens.value, 0);
+                assertEquals(
+                    report.projects.find((project) => project.projectId === stable.projectId)?.totals.tokens.value,
+                    19,
+                );
+                assertEquals(report.totals.tokens.value, 19);
+            } finally {
+                writer.kill();
+                await writer.status;
+                await app.close();
+                store.close();
+            }
+        });
+    },
+);

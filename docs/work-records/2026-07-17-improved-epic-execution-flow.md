@@ -11,10 +11,8 @@ provenance:
         - "c31f62a7-aec3-4830-94c6-6bc7b65f9aeb"
 ---
 
-# Improved Epic execution flow
+# Contextual Epic child execution
 
 ## Summary
 
-Updated `/load-plan` to keep child FEATURE plans out of the top-level menu and provide ordered, contextual child
-selection within Epics. Added persisted child order metadata, richer plan labels with status and dependency context, and
-a shortcut to load the next non-verified child while preserving direct loading and existing execution safeguards.
+The /load-plan menu groups child FEATURE Plans under their Epics rather than at the top level. Persisted child order and labels provide status and dependency context. A shortcut selects the next non-verified child while preserving direct loading and execution safeguards.

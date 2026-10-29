@@ -1,4 +1,6 @@
 import { loadOwnerUsage } from "../server/owner-usage.ts";
+import { loadUsageSettings, mutateUsageSettings, UsageSettingsError } from "../server/owner-usage-settings.ts";
+import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 /** @module ui/workspace/routes/owner-api */
 
@@ -113,6 +115,16 @@ function sanitizeOwnerDashboardFrame(value) {
 
 /** @param {unknown} error */
 export function ownerErrorJson(error, status = 400) {
+    if (error instanceof DirectoryConfirmationRequired) {
+        return ownerJson(
+            {
+                code: error.code,
+                error: error.message,
+                confirmation: error.confirmation,
+            },
+            409,
+        );
+    }
     return ownerJson({ error: sanitizeOwnerError(error) }, status);
 }
 
@@ -211,6 +223,38 @@ export async function ownerUsageApi(ctx) {
     }
 }
 
+/**
+ * @typedef {Object} OwnerUsageSettingsContext
+ * @property {{ store: Parameters<typeof loadUsageSettings>[0] }} state
+ * @property {Request} req
+ * @property {{ action?: string }} params
+ * @property {URL} url
+ */
+/** @param {OwnerUsageSettingsContext} ctx */
+export async function ownerUsageSettingsApi(ctx) {
+    try {
+        return ownerJson(await loadUsageSettings(ctx.state.store));
+    } catch (error) {
+        return ownerErrorJson(error);
+    }
+}
+
+/** @param {OwnerUsageSettingsContext} ctx */
+export async function ownerUsageSettingsMutationApi(ctx) {
+    let body;
+    try {
+        body = await readJson(ctx.req);
+    } catch {
+        return ownerJson({ error: "Invalid request body." }, 400);
+    }
+    try {
+        const action = ctx.url.pathname === "/api/owner/usage/clear" ? "clear" : ctx.params.action || "";
+        return ownerJson(await mutateUsageSettings(ctx.state.store, action, body));
+    } catch (error) {
+        return ownerErrorJson(error, error instanceof UsageSettingsError ? error.status : 400);
+    }
+}
+
 /** @param {any} ctx */
 export async function ownerDashboardApi(ctx) {
     try {
@@ -294,7 +338,11 @@ export async function registerProjectApi(ctx) {
     try {
         const body = await readJson(ctx.req);
         if (!body.root) throw new Error("Project root is required.");
-        const project = ctx.state.store.registerProject({ root: String(body.root), displayName: body.displayName });
+        const project = ctx.state.store.registerProject({
+            root: String(body.root),
+            displayName: body.displayName,
+            directoryConfirmation: body.directoryConfirmation,
+        });
         return ownerJson(
             {
                 project: serializeOwnerProject(project, ctx.state.store.getProjectHealth(project.projectId)),
@@ -315,7 +363,11 @@ export async function projectActionApi(ctx) {
         else if (body.action === "enable") ctx.state.store.setProjectEnabled(projectId, true);
         else if (body.action === "remove") ctx.state.store.removeProject(projectId);
         else if (body.action === "relink") {
-            ctx.state.store.relinkProject({ projectId, newRoot: String(body.newRoot || "") });
+            ctx.state.store.relinkProject({
+                projectId,
+                newRoot: String(body.newRoot || ""),
+                directoryConfirmation: body.directoryConfirmation,
+            });
         } else if (body.action === "rescan") {
             requireOwnerProjectRoot(ctx.state.store, projectId);
             const result = await ctx.state.store.catalogProjectSessions(projectId, { fullRescan: true });

@@ -1,3 +1,4 @@
+import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { resolve } from "node:path";
 import { Marked } from "marked";
@@ -25,6 +26,8 @@ import type { PlanWorktreeExpectation } from "./plan-actions.ts";
 
 export interface SharedPlanReviewDecision {
     approved?: boolean;
+    conversationTurn?: boolean;
+    questionAnswers?: PlanQuestionAnswer[];
     feedback?: string;
     approvalAction?: PlanApprovalAction;
     plan?: string;
@@ -45,6 +48,7 @@ export interface SharedPlanReviewActionOptions {
     planPath: string;
     planWithFrontMatter: string;
     planRevision: string;
+    expectedControllerRevision?: number;
     originalAttrs: PlanFrontMatter;
     trustedClassification?: PlanFrontMatter["classification"];
     trustedWorkKind?: PlanFrontMatter["workKind"];
@@ -55,6 +59,7 @@ export interface SharedPlanReviewActionOptions {
 
 export interface SharedPlanReviewActionResult {
     approved: boolean;
+    conversationTurn?: boolean;
     feedback?: string;
     approvalAction?: PlanApprovalAction;
     planAttrs?: PlanFrontMatter;
@@ -105,10 +110,10 @@ export function reviewSourceStillMatches(
 ): boolean {
     const canonicalAttrs = (attrs: PlanFrontMatter) =>
         planDocumentMarkdown(injectFrontMatter("", stripRuntimeFields(attrs)));
-    const bodyMatches = current.body === originalBody ||
+    const bodyMatches =
+        current.body === originalBody ||
         reviewMarkdown.parse(current.body, { async: false }) === reviewMarkdown.parse(originalBody, { async: false });
-    return bodyMatches &&
-        canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs);
+    return bodyMatches && canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs);
 }
 
 function validatedClassification(
@@ -166,6 +171,7 @@ export async function applySharedPlanReviewDecision({
     planPath,
     planWithFrontMatter,
     planRevision,
+    expectedControllerRevision,
     originalAttrs,
     trustedClassification,
     trustedWorkKind,
@@ -196,7 +202,8 @@ export async function applySharedPlanReviewDecision({
     } catch (error) {
         return reviewRejected(error instanceof Error ? error.message : String(error));
     }
-    const approved = decision.approved === true;
+    const conversationTurn = decision.conversationTurn === true;
+    const approved = !conversationTurn && decision.approved === true;
     const canonicalClassification = validatedClassification(trustedClassification);
     if (!canonicalClassification) return reviewRejected("Plan review classification is not supported.");
     if (expectedSessionId && reviewEvidence?.runwieldSessionId !== expectedSessionId) {
@@ -209,15 +216,31 @@ export async function applySharedPlanReviewDecision({
     }
     const approvedPolicy = readApprovedExecutionPolicy(decision);
     if (
-        approved && decision.approvalAction === PLAN_APPROVAL_ACTIONS.RUN &&
-        canonicalClassification === "PLANNED_CHANGE" && !approvedPolicy
+        approved &&
+        decision.approvalAction === PLAN_APPROVAL_ACTIONS.RUN &&
+        canonicalClassification === "PLANNED_CHANGE" &&
+        !approvedPolicy
     ) {
         return reviewRejected("Plan review execution policy is not valid.");
     }
     const evidenceIssue = await validateReviewEvidence(cwd, planName, reviewEvidence);
     if (evidenceIssue) return evidenceIssue;
 
+    // A chat message is not a lifecycle decision. Validate the saved source even
+    // when there is no edit, but do not normalize or rewrite its bytes.
+    if (conversationTurn && (typeof decision.plan !== "string" || decision.plan === planWithFrontMatter)) {
+        const current = await loadPlanFileStrict(planPath);
+        if (
+            current.kind !== "loaded" ||
+            (current.revision !== planRevision &&
+                !reviewSourceStillMatches(current, originalAttrs, splitPlanMarkdownBody(planWithFrontMatter).body))
+        )
+            return reviewRejected("Plan changed while review was open. Reload the Plan and review again.");
+        return { approved: false, conversationTurn: true, feedback: decision.feedback, revision: current.revision };
+    }
+
     let reviewedPlan = typeof decision.plan === "string" ? decision.plan : planWithFrontMatter;
+    if (approved) reviewedPlan = resolvePlanQuestions(reviewedPlan, decision.questionAnswers);
     const canonicalReviewOverrides = {
         classification: canonicalClassification,
         type: originalAttrs.type,
@@ -239,13 +262,21 @@ export async function applySharedPlanReviewDecision({
     reviewedPlan = injectFrontMatter(reviewedPlan, canonicalReviewOverrides);
     const reviewedAttrs = parsePlanFrontMatter(reviewedPlan).attrs;
     const reviewBaseBody = splitPlanMarkdownBody(planWithFrontMatter).body;
+    const meaningChanged = !reviewSourceStillMatches(
+        { attrs: reviewedAttrs, body: splitPlanMarkdownBody(reviewedPlan).body },
+        originalAttrs,
+        reviewBaseBody,
+    );
+    const revisionCancelsApproval =
+        meaningChanged &&
+        ["approved", "ready_for_work", "ready_for_decomposition"].includes(originalAttrs.status || "");
     const canonicalPlanPath = getStoredPlanPath(cwd, planName);
     let lifecycleMeta: PlanFrontMatter = reviewedAttrs;
     let committedRevision: string | undefined;
     if (resolve(canonicalPlanPath) === resolve(planPath)) {
         const reopenWorktreeId = isPlanReviewableWithoutReopen(originalAttrs.status)
             ? undefined
-            : originalAttrs.worktreeId ?? undefined;
+            : (originalAttrs.worktreeId ?? undefined);
         const reviewTransition = await runPlanReviewDecisionTransition({
             projectRoot: cwd,
             planName,
@@ -254,8 +285,10 @@ export async function applySharedPlanReviewDecision({
             decide: async ({ beforePlan }) => {
                 if (!beforePlan) throw new Error(`Plan not found: ${planName}`);
                 if (
-                    beforePlan.revision !== planRevision &&
-                    !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody)
+                    (expectedControllerRevision !== undefined &&
+                        beforePlan.controllerRevision !== expectedControllerRevision) ||
+                    (beforePlan.revision !== planRevision &&
+                        !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody))
                 ) {
                     throw new Error(
                         "Plan changed after review opened; reload the review before applying this decision.",
@@ -264,21 +297,23 @@ export async function applySharedPlanReviewDecision({
                 let nextMarkdown = reviewedPlan;
                 let nextAttrs = { ...beforePlan.attrs, ...stripRuntimeFields(reviewedAttrs) };
                 let status = beforePlan.attrs.status;
-                if (!isPlanReviewableWithoutReopen(status)) {
+                if ((!conversationTurn && !isPlanReviewableWithoutReopen(status)) || revisionCancelsApproval) {
                     const reopenUpdates = buildPlanEventUpdates("review_reopened", status, {
                         triageMeta: nextAttrs,
                     });
                     nextMarkdown = injectFrontMatter(nextMarkdown, reopenUpdates);
                     nextAttrs = { ...nextAttrs, ...reopenUpdates };
-                    status = "feedback";
+                    status = "draft";
                 }
-                const event = approved ? "review_approved" : "review_feedback";
-                const eventUpdates = buildPlanEventUpdates(event, status, {
-                    triageMeta: nextAttrs,
-                    failureReason: decision.feedback,
-                });
-                nextMarkdown = injectFrontMatter(nextMarkdown, eventUpdates);
-                nextAttrs = { ...nextAttrs, ...eventUpdates };
+                if (!conversationTurn) {
+                    const event = approved ? "review_approved" : "review_feedback";
+                    const eventUpdates = buildPlanEventUpdates(event, status, {
+                        triageMeta: nextAttrs,
+                        failureReason: decision.feedback,
+                    });
+                    nextMarkdown = injectFrontMatter(nextMarkdown, eventUpdates);
+                    nextAttrs = { ...nextAttrs, ...eventUpdates };
+                }
                 await writeControllerState(
                     cwd,
                     { planName, planId: beforePlan.attrs.planId },
@@ -299,8 +334,8 @@ export async function applySharedPlanReviewDecision({
         if (reviewTransition.status !== "committed") {
             return {
                 approved: false,
-                feedback: reviewTransition.message ||
-                    "Plan changed while review was open. Reload the Plan and review again.",
+                feedback:
+                    reviewTransition.message || "Plan changed while review was open. Reload the Plan and review again.",
                 cancellationReason: "stale_plan_review",
             };
         }
@@ -332,7 +367,7 @@ export async function applySharedPlanReviewDecision({
         }
 
         const statusAllowsReview = isPlanReviewableWithoutReopen(originalAttrs.status);
-        if (!statusAllowsReview) {
+        if ((!conversationTurn && !statusAllowsReview) || revisionCancelsApproval) {
             const reopenedMeta = await recordPlanEvent({
                 cwd,
                 planName,
@@ -343,7 +378,7 @@ export async function applySharedPlanReviewDecision({
             });
             if (reopenedMeta) lifecycleMeta = { ...lifecycleMeta, ...reopenedMeta };
         }
-        const postReopenStatus = statusAllowsReview ? originalAttrs.status : "feedback";
+        const postReopenStatus = statusAllowsReview ? originalAttrs.status : "draft";
         if (approved) {
             const approvedMeta = await recordPlanEvent({
                 cwd,
@@ -354,7 +389,7 @@ export async function applySharedPlanReviewDecision({
                 expectedRevision: committedRevision,
             });
             if (approvedMeta) lifecycleMeta = { ...lifecycleMeta, ...approvedMeta };
-        } else {
+        } else if (!conversationTurn) {
             const feedbackMeta = await recordPlanEvent({
                 cwd,
                 planName,
@@ -371,6 +406,7 @@ export async function applySharedPlanReviewDecision({
 
     return {
         approved,
+        ...(conversationTurn && { conversationTurn: true }),
         feedback: decision.feedback,
         ...(decision.approvalAction && { approvalAction: decision.approvalAction }),
         ...(approved && { planAttrs: lifecycleMeta }),

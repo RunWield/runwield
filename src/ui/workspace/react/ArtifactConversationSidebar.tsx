@@ -1,3 +1,4 @@
+import { ReviewQueue, type ReviewQueueProps } from "./ReviewQueue.tsx";
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
@@ -15,6 +16,7 @@ export interface ArtifactConversationSidebarProps {
     messages: ArtifactConversationMessage[];
     composer: string;
     attachedContextLabel?: string;
+    queue?: ReviewQueueProps;
     working: boolean;
     disabled?: boolean;
     error?: string;
@@ -25,7 +27,14 @@ export interface ArtifactConversationSidebarProps {
 
 export function ArtifactConversationSidebar(props: ArtifactConversationSidebarProps) {
     const transcriptRef = useRef<HTMLDivElement>(null);
-    const canSend = Boolean(props.composer.trim() || props.attachedContextLabel) && !props.working && !props.disabled;
+    const canSend =
+        Boolean(
+            props.composer.trim() ||
+            props.attachedContextLabel ||
+            props.queue?.items.some((item) => item.count > 0 && item.included),
+        ) &&
+        !props.working &&
+        !props.disabled;
     const artifactLabel = props.artifactLabel || "Plan";
 
     useEffect(() => {
@@ -49,8 +58,8 @@ export function ArtifactConversationSidebar(props: ArtifactConversationSidebarPr
                         </span>
                         <h3>Talk through the {artifactLabel}</h3>
                         <p>
-                            Ask {props.agentLabel} to clarify or revise something. The updated {artifactLabel}{" "}
-                            will appear here with its changes highlighted.
+                            Ask {props.agentLabel} to clarify or revise something. The updated {artifactLabel} will
+                            appear here with its changes highlighted.
                         </p>
                     </div>
                 )}
@@ -66,13 +75,12 @@ export function ArtifactConversationSidebar(props: ArtifactConversationSidebarPr
                 ))}
                 {props.working && (
                     <div className="rw-artifact-conversation-working">
-                        <RunWieldThinkingDots
-                            label={`${props.agentLabel} is reviewing the ${artifactLabel}…`}
-                        />
+                        <RunWieldThinkingDots label={`${props.agentLabel} is reviewing the ${artifactLabel}…`} />
                     </div>
                 )}
             </div>
             <div className="rw-artifact-conversation-composer">
+                {props.queue && <ReviewQueue {...props.queue} disabled={props.working || props.disabled} />}
                 {props.attachedContextLabel && (
                     <div className="rw-artifact-conversation-context">
                         <span>{props.attachedContextLabel}</span>
@@ -86,11 +94,16 @@ export function ArtifactConversationSidebar(props: ArtifactConversationSidebarPr
                     value={props.composer}
                     onChange={(event) => props.onComposerChange(event.target.value)}
                     onKeyDown={handleKeyDown}
+                    aria-label={`Message ${props.agentLabel}`}
                     placeholder={`Message ${props.agentLabel}…`}
                     rows={4}
                     disabled={props.working || props.disabled}
                 />
-                {props.error && <p className="rw-artifact-conversation-error" role="alert">{props.error}</p>}
+                {props.error && (
+                    <p className="rw-artifact-conversation-error" role="alert">
+                        {props.error}
+                    </p>
+                )}
                 <div className="rw-artifact-conversation-submit">
                     <span>⌘↵</span>
                     <button

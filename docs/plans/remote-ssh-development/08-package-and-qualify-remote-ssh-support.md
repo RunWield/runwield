@@ -5,7 +5,7 @@ workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
     - "scripts/compile.js"
-    - "scripts/release-assets.js"
+    - "scripts/release-assets.ts"
     - "scripts/release-check.js"
     - "src/cmd/install/"
     - "src/cmd/update/"
@@ -65,7 +65,7 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `scripts/compile.js`, `scripts/release-assets.js`, release checks, and helper packaging — produce verified matching
+- `scripts/compile.js`, `scripts/release-assets.ts`, release checks, and helper packaging — produce verified matching
   remote runtimes and compatible dependency assets for Linux x64 and ARM64.
 - Installer/update/runtime preparation modules — install only private versioned remote cache resources and repair
   interrupted setup without changing profiles or personal storage.

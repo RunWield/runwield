@@ -11,8 +11,8 @@ affectedPaths:
     - "src/shared/remote/"
     - "src/ui/tui/"
     - "scripts/compile.js"
-    - "scripts/write-version.js"
-    - "scripts/release-assets.js"
+    - "scripts/write-version.ts"
+    - "scripts/release-assets.ts"
     - "docs/domain-language.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
     - "docs/prd/runwield-core-prd.md"
@@ -117,7 +117,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   interactive terminal transport, or graceful deadline. Preserve their existing callers' cancellation behavior.
 - `src/ui/tui/` — compose the dormant connection view from existing terminal components without chat, settings, model,
   onboarding, or persistence startup. Do not redesign ordinary chat.
-- `scripts/compile.js`, `scripts/write-version.js`, `scripts/release-assets.js`, and generated build metadata — bind
+- `scripts/compile.js`, `scripts/write-version.ts`, `scripts/release-assets.ts`, and generated build metadata — bind
   launcher and remote artifacts to the same build inputs/protocol and verify transferred bytes. Reuse current GNU/Linux
   target names and checksum conventions; do not introduce another release/version authority.
 - CLI/help, connection/process, compile/asset, and TUI tests — prove wrong-machine prevention, startup isolation,
@@ -205,10 +205,10 @@ Use only `deno run -A scripts/run-tests.js` or `deno task test`; never direct `d
 real temporary directories/Git fixtures. External SSH/network/process/clock boundaries may be controlled; do not replace
 owned preparation, authentication, or cleanup with injected success results.
 
-- **Commands:** generate existing source-run version metadata with `deno run -A scripts/write-version.js`. Run new tests
+- **Commands:** generate existing source-run version metadata with `deno run -A scripts/write-version.ts`. Run new tests
   with `deno run -A scripts/run-tests.js src/cmd/remote/ src/shared/remote/`. Include connection-view tests there or add
   their exact paths to this command. Run preserved boundary tests with
-  `deno run -A scripts/run-tests.js src/cmd/__tests__/registry.test.ts src/cmd/help/index.test.ts src/cli-context-files.test.ts src/shared/foreground-process.test.ts src/shared/agent-browser-session.test.ts src/shared/package-install.test.ts scripts/compile.test.js scripts/write-version.test.js scripts/release-assets.test.js src/ui/tui/chat-session.test.ts src/ui/tui/tui-manager.test.ts src/ui/tui/tui-crash-guards.test.ts`.
+  `deno run -A scripts/run-tests.js src/cmd/__tests__/registry.test.ts src/cmd/help/index.test.ts src/cli-context-files.test.ts src/shared/foreground-process.test.ts src/shared/agent-browser-session.test.ts src/shared/package-install.test.ts scripts/compile.test.js scripts/write-version.test.ts scripts/release-assets.test.js src/ui/tui/chat-session.test.ts src/ui/tui/tui-manager.test.ts src/ui/tui/tui-crash-guards.test.ts`.
   Run `deno task doc-links:check` and `deno task seams:check`. Workflow Validation runs full CI separately.
 - **Target and dispatch tests:** exercise the actual CLI with an isolated SSH executable fixture, then the production
   bootstrap through a real shell and temporary filesystem. Cover both command forms, remote home, relative paths,

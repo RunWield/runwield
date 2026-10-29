@@ -11,16 +11,12 @@ provenance:
         - "589dd642-b83f-4f61-ae00-9ac2f570653f"
 ---
 
-# Unified runtime helper installation
+# Rootless runtime helper installation
 
 ## Summary
 
-RunWield's rootless installer now provides the runtime helper binaries needed for a usable standalone install,
-preserving existing user-managed helpers and treating Snip as optional. The new-user UX container now exercises the
-checked-in installer as an unprivileged user instead of baking local binaries, so onboarding validation follows the
-published release path.
+The rootless installer supplies helper binaries for standalone use, preserves user-managed helpers, and treats Snip as optional. The onboarding container exercises the published installer as an unprivileged user.
 
 ## Future Planning Notes
 
-The UX image validates latest published-release onboarding, not uncompiled checkout changes; use separate
-source/developer flows when validating local CLI changes.
+Published-release onboarding and local source validation are separate concerns.

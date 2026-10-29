@@ -28,10 +28,9 @@ test("Workspace sidebar resizing respects panel and conversation bounds", () => 
 
 test("Workspace home stays on the Attention Dashboard and reuses its sidebar", async () => {
     const { document, sidebar } = installFakeBrowser("/");
-    const stored = new Map([[
-        LAST_SESSION_KEY,
-        JSON.stringify({ projectId: "project-a", runwieldSessionId: "session-a" }),
-    ]]);
+    const stored = new Map([
+        [LAST_SESSION_KEY, JSON.stringify({ projectId: "project-a", runwieldSessionId: "session-a" })],
+    ]);
     Object.defineProperty(globalThis, "localStorage", {
         configurable: true,
         value: { getItem: (key) => stored.get(key) || null, setItem: (key, value) => stored.set(key, value) },
@@ -40,14 +39,18 @@ test("Workspace home stays on the Attention Dashboard and reuses its sidebar", a
     const requests = [];
     globalThis.fetch = (url) => {
         requests.push(url);
-        return Promise.resolve(Response.json({
-            projects: [{
-                projectId: "project-a",
-                displayName: "Project A",
-                enabled: true,
-                sessions: [{ runwieldSessionId: "session-a", displayName: "Recent conversation" }],
-            }],
-        }));
+        return Promise.resolve(
+            Response.json({
+                projects: [
+                    {
+                        projectId: "project-a",
+                        displayName: "Project A",
+                        enabled: true,
+                        sessions: [{ runwieldSessionId: "session-a", displayName: "Recent conversation" }],
+                    },
+                ],
+            }),
+        );
     };
     const destinations = [];
     document.addEventListener("runwield:workspace-navigate", (event) => {
@@ -79,7 +82,11 @@ class FakeClassList {
         this.element = element;
     }
     _classes() {
-        return new Set(String(this.element.className || "").split(/\s+/).filter(Boolean));
+        return new Set(
+            String(this.element.className || "")
+                .split(/\s+/)
+                .filter(Boolean),
+        );
     }
     add(...names) {
         const classes = this._classes();
@@ -111,21 +118,26 @@ class FakeElement {
         this.styles = new Map();
         this.style = { setProperty: (name, value) => this.styles.set(name, value) };
         this.className = "";
-        this.dataset = new Proxy({}, {
-            set: (_target, key, value) => {
-                this.setAttribute(
-                    `data-${String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
-                    value,
-                );
-                return true;
+        this.dataset = new Proxy(
+            {},
+            {
+                set: (_target, key, value) => {
+                    this.setAttribute(
+                        `data-${String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+                        value,
+                    );
+                    return true;
+                },
+                deleteProperty: (_target, key) => {
+                    this.removeAttribute(
+                        `data-${String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+                    );
+                    return true;
+                },
+                get: (_target, key) =>
+                    this.getAttribute(`data-${String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`),
             },
-            deleteProperty: (_target, key) => {
-                this.removeAttribute(`data-${String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`);
-                return true;
-            },
-            get: (_target, key) =>
-                this.getAttribute(`data-${String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`),
-        });
+        );
         this.classList = new FakeClassList(this);
         this._textContent = "";
     }
@@ -192,7 +204,7 @@ class FakeElement {
     }
     replaceChildren(...nodes) {
         this._textContent = "";
-        this.children.forEach((child) => child.parentElement = null);
+        this.children.forEach((child) => (child.parentElement = null));
         this.children = [];
         this.append(...nodes);
     }
@@ -351,21 +363,24 @@ test("Workspace sidebar reconciliation keeps only loaded older Sessions while in
             sessions: [{ runwieldSessionId: "new", displayName: "New Session" }],
         },
     );
-    assertEquals(order.map((session) => session.runwieldSessionId), ["new", "loaded-old"]);
+    assertEquals(
+        order.map((session) => session.runwieldSessionId),
+        ["new", "loaded-old"],
+    );
 });
 
 test("Workspace sidebar drops active omitted Sessions after the user navigates away", () => {
     const { sidebar } = installFakeBrowser("/projects/project-a/sessions/omitted");
     const payload = {
-        projects: [{
-            projectId: "project-a",
-            displayName: "Project A",
-            enabled: true,
-            hasMoreSessions: true,
-            sessions: [
-                { runwieldSessionId: "session-a", displayName: "Alpha", state: "idle" },
-            ],
-        }],
+        projects: [
+            {
+                projectId: "project-a",
+                displayName: "Project A",
+                enabled: true,
+                hasMoreSessions: true,
+                sessions: [{ runwieldSessionId: "session-a", displayName: "Alpha", state: "idle" }],
+            },
+        ],
     };
 
     applySessionName({ projectId: "project-a", runwieldSessionId: "omitted", name: "An older conversation" });
@@ -382,41 +397,57 @@ test("Workspace sidebar drops active omitted Sessions after the user navigates a
 
 test("Workspace sidebar project reconciliation removes Projects omitted by the server", () => {
     const order = sidebarProjectOrder(
-        [{ projectId: "project-a", sessions: [] }, { projectId: "loaded-project", sessions: [] }],
+        [
+            { projectId: "project-a", sessions: [] },
+            { projectId: "loaded-project", sessions: [] },
+        ],
         [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }],
     );
-    assertEquals(order.map((project) => project.projectId), ["project-a"]);
+    assertEquals(
+        order.map((project) => project.projectId),
+        ["project-a"],
+    );
 });
 
 test("Workspace sidebar updates rows in place, inserts new Sessions, removes stale rows, and preserves expansion", () => {
     const { sidebar } = installFakeBrowser();
     const current = { kind: "session", projectId: "project-a", runwieldSessionId: "session-a" };
-    renderSidebar({
-        projects: [{
-            projectId: "project-a",
-            displayName: "Project A",
-            enabled: true,
-            sessions: [
-                { runwieldSessionId: "session-a", displayName: "Alpha", state: "idle" },
-                { runwieldSessionId: "ordinary", displayName: "Ordinary", state: "idle" },
+    renderSidebar(
+        {
+            projects: [
+                {
+                    projectId: "project-a",
+                    displayName: "Project A",
+                    enabled: true,
+                    sessions: [
+                        { runwieldSessionId: "session-a", displayName: "Alpha", state: "idle" },
+                        { runwieldSessionId: "ordinary", displayName: "Ordinary", state: "idle" },
+                    ],
+                },
             ],
-        }],
-    }, current);
+        },
+        current,
+    );
     const project = sidebar.querySelector('[data-sidebar-project="project-a"]');
     project.setAttribute("open", "");
     const alpha = sidebar.querySelector('[data-sidebar-session="session-a"]');
 
-    renderSidebar({
-        projects: [{
-            projectId: "project-a",
-            displayName: "Project A",
-            enabled: true,
-            sessions: [
-                { runwieldSessionId: "new-session", displayName: "New", state: "idle" },
-                { runwieldSessionId: "session-a", displayName: "Alpha Renamed", state: "busy" },
+    renderSidebar(
+        {
+            projects: [
+                {
+                    projectId: "project-a",
+                    displayName: "Project A",
+                    enabled: true,
+                    sessions: [
+                        { runwieldSessionId: "new-session", displayName: "New", state: "idle" },
+                        { runwieldSessionId: "session-a", displayName: "Alpha Renamed", state: "busy" },
+                    ],
+                },
             ],
-        }],
-    }, current);
+        },
+        current,
+    );
 
     assertStrictEquals(sidebar.querySelector('[data-sidebar-session="session-a"]'), alpha);
     assertEquals(alpha.querySelector("span").textContent, "Alpha Renamed");
@@ -430,18 +461,20 @@ test("Workspace sidebar updates rows in place, inserts new Sessions, removes sta
 test("Workspace sidebar refresh keeps focus on Show more controls", () => {
     const { document, sidebar } = installFakeBrowser("/projects/project-a/plans/plan-1");
     const payload = {
-        projects: [{
-            projectId: "project-a",
-            displayName: "Project A",
-            enabled: true,
-            plans: Array.from({ length: 6 }, (_, index) => ({
-                planId: `plan-${index + 1}`,
-                title: `Plan ${index + 1}`,
-                status: "ready_for_work",
-                statusLabel: "Ready",
-            })),
-            sessions: [],
-        }],
+        projects: [
+            {
+                projectId: "project-a",
+                displayName: "Project A",
+                enabled: true,
+                plans: Array.from({ length: 6 }, (_, index) => ({
+                    planId: `plan-${index + 1}`,
+                    title: `Plan ${index + 1}`,
+                    status: "ready_for_work",
+                    statusLabel: "Ready",
+                })),
+                sessions: [],
+            },
+        ],
     };
 
     renderSidebar(payload, currentRouteFromUrl(globalThis.location.href));
@@ -455,25 +488,31 @@ test("Workspace sidebar refresh keeps focus on Show more controls", () => {
 
 test("Workspace sidebar active route uses both Project and Session keys", () => {
     installFakeBrowser("/projects/project-b/sessions/shared");
-    renderSidebar({
-        projects: [
-            {
-                projectId: "project-a",
-                displayName: "Project A",
-                enabled: true,
-                sessions: [{ runwieldSessionId: "shared", displayName: "Wrong" }],
-            },
-            {
-                projectId: "project-b",
-                displayName: "Project B",
-                enabled: true,
-                sessions: [{ runwieldSessionId: "shared", displayName: "Right" }],
-            },
-        ],
-    }, { kind: "session", projectId: "project-b", runwieldSessionId: "shared" });
+    renderSidebar(
+        {
+            projects: [
+                {
+                    projectId: "project-a",
+                    displayName: "Project A",
+                    enabled: true,
+                    sessions: [{ runwieldSessionId: "shared", displayName: "Wrong" }],
+                },
+                {
+                    projectId: "project-b",
+                    displayName: "Project B",
+                    enabled: true,
+                    sessions: [{ runwieldSessionId: "shared", displayName: "Right" }],
+                },
+            ],
+        },
+        { kind: "session", projectId: "project-b", runwieldSessionId: "shared" },
+    );
     applyActiveRoute({ kind: "session", projectId: "project-b", runwieldSessionId: "shared" });
     const rows = globalThis.document.querySelectorAll('[data-sidebar-session="shared"]');
-    assertEquals(rows.map((row) => row.classList.contains("active")), [false, true]);
+    assertEquals(
+        rows.map((row) => row.classList.contains("active")),
+        [false, true],
+    );
     assertStringIncludes(globalThis.document.querySelector("[data-workspace-main-session-name]").textContent, "Right");
 });
 
@@ -572,6 +611,7 @@ test("Workspace owner layout persists the real sidebar and owns navigation", asy
     assertStringIncludes(layout, 'document.addEventListener("runwield:workspace-navigate"');
     assertEquals(layout.includes("__runwieldWorkspaceNavigate"), false);
     assertStringIncludes(layout, '<script is:inline type="module" src="/workspace-shell.js"></script>');
+    assertStringIncludes(layout, 'data-workspace-sidebar-restore aria-label="Open Workspace sidebar"');
 });
 
 test("artifact and review headers keep one surface title and a reachable Workspace restore control", () => {
@@ -584,7 +624,9 @@ test("artifact and review headers keep one surface title and a reachable Workspa
     const payload = { projects: [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }] };
     const current = currentRouteFromUrl(globalThis.location.href);
     renderSidebar(payload, current);
+    const restore = header.querySelector("[data-workspace-sidebar-restore]");
     renderSidebar(payload, current);
+    assertStrictEquals(header.querySelector("[data-workspace-sidebar-restore]"), restore);
     assertEquals(header.querySelector("[data-workspace-main-session-name]"), null);
     assertEquals(header.children.length, 2);
     assertStrictEquals(header.children[1], title);
@@ -636,9 +678,9 @@ test("Workspace mobile navigation fills each Project before slow workflow detail
         assertEquals(project.getAttribute("open"), "");
         assertEquals(sidebar.scrollTop, 312);
         assert(
-            document.querySelector(".workspace-shell-with-sidebar").classList.contains(
-                "workspace-sidebar-overlay-open",
-            ),
+            document
+                .querySelector(".workspace-shell-with-sidebar")
+                .classList.contains("workspace-sidebar-overlay-open"),
         );
         assertStringIncludes(sidebar.textContent, "No Sessions yet.");
     } finally {
@@ -663,19 +705,21 @@ test("Workspace sidebar keeps controls when Projects fail to load", async () => 
 
 test("Show more loads five unseen Sessions, survives refresh and failure, and keeps paging", async () => {
     const { sidebar } = installFakeBrowser("/projects/project-a/sessions/s1");
-    const sessions = Array.from(
-        { length: 5 },
-        (_, i) => ({ runwieldSessionId: `s${i + 1}`, displayName: `Session ${i + 1}` }),
-    );
+    const sessions = Array.from({ length: 5 }, (_, i) => ({
+        runwieldSessionId: `s${i + 1}`,
+        displayName: `Session ${i + 1}`,
+    }));
     const payload = {
-        projects: [{
-            projectId: "project-a",
-            displayName: "A",
-            enabled: true,
-            hasMoreSessions: true,
-            sessions,
-            plans: [{ planId: "nested", title: "Nested", status: "ready_for_work", sessions: [] }],
-        }],
+        projects: [
+            {
+                projectId: "project-a",
+                displayName: "A",
+                enabled: true,
+                hasMoreSessions: true,
+                sessions,
+                plans: [{ planId: "nested", title: "Nested", status: "ready_for_work", sessions: [] }],
+            },
+        ],
     };
     const current = currentRouteFromUrl(globalThis.location.href);
     renderSidebar(payload, current);
@@ -700,10 +744,10 @@ test("Show more loads five unseen Sessions, survives refresh and failure, and ke
         assertStringIncludes(button.textContent, "Loading");
         pending.resolve(
             Response.json({
-                sessions: Array.from(
-                    { length: 5 },
-                    (_, i) => ({ runwieldSessionId: `s${i + 6}`, displayName: `Session ${i + 6}` }),
-                ),
+                sessions: Array.from({ length: 5 }, (_, i) => ({
+                    runwieldSessionId: `s${i + 6}`,
+                    displayName: `Session ${i + 6}`,
+                })),
                 hasNext: true,
             }),
         );
@@ -754,24 +798,33 @@ test("New Session link prefers current enabled Project, then remembered enabled 
 
 test("Plan-associated sidebar Sessions keep open links and show Archived status", () => {
     const { document } = installFakeBrowser();
-    renderSidebar({
-        projects: [{
-            projectId: "project-a",
-            displayName: "Project A",
-            enabled: true,
-            sessions: [],
-            plans: [{
-                planId: "plan-a",
-                title: "Plan A",
-                sessions: [{
-                    runwieldSessionId: "saved",
-                    displayName: "Saved conversation",
-                    state: "idle",
-                    archivedAt: "2026-10-02",
-                }],
-            }],
-        }],
-    }, { kind: "plan", projectId: "project-a", planId: "plan-a" });
+    renderSidebar(
+        {
+            projects: [
+                {
+                    projectId: "project-a",
+                    displayName: "Project A",
+                    enabled: true,
+                    sessions: [],
+                    plans: [
+                        {
+                            planId: "plan-a",
+                            title: "Plan A",
+                            sessions: [
+                                {
+                                    runwieldSessionId: "saved",
+                                    displayName: "Saved conversation",
+                                    state: "idle",
+                                    archivedAt: "2026-10-02",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        { kind: "plan", projectId: "project-a", planId: "plan-a" },
+    );
     const row = document.querySelector('[data-sidebar-session="saved"]');
     assertEquals(row.href, "/projects/project-a/sessions/saved");
     assertEquals(row.querySelector("small").textContent, "Archived");

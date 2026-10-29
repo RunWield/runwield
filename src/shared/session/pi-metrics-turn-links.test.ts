@@ -46,8 +46,9 @@ test("Pi assistant usage keeps observed message timing before settlement", async
     await withRuntimeCommandFixture("metrics-pi-timing-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         await fsWriteFile(`${projectRoot}/fixture.txt`, "safe fixture\n");
+        const observedAt = Date.parse("2026-09-01T12:00:00.000Z");
         setModelResponseFactories([
-            () => fauxAssistantMessage(fauxToolCall("read", { path: "fixture.txt" })),
+            () => ({ ...fauxAssistantMessage(fauxToolCall("read", { path: "fixture.txt" })), timestamp: observedAt }),
             async () => {
                 // The first assistant finished before this second model request and settlement.
                 await new Promise((resolve) => setTimeout(resolve, 30));
@@ -75,7 +76,9 @@ test("Pi assistant usage keeps observed message timing before settlement", async
                 assert(Date.parse(row.endedAt) <= turns[index].completedAt);
                 assertNotEquals(row.startedAt, row.ts);
             }
-            assert(Date.parse(usage[0].endedAt) < Date.parse(usage[0].ts));
+            assertEquals(usage[0].ts, usage[0].endedAt);
+            assertNotEquals(usage[0].ts, new Date(observedAt).toISOString());
+            assert(Date.parse(usage[0].endedAt) < turns[1].completedAt);
             assert(Date.parse(usage[0].endedAt) <= turns[1].requestStartedAt);
             assertNotEquals(usage[0].startedAt, usage[1].startedAt);
         } finally {

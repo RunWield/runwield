@@ -148,6 +148,13 @@ steps need.
 - Existing backend fixtures (`src/shared/session/backends/agy-cli/fixtures/`, claude stream-parser tests) — extend with
   the three-way provenance payloads rather than building new harnesses.
 - `withWorkflowMetricsFixture` (`src/testing/workflow-metrics-fixture.ts`) for observation-level tests.
+- The child 01 collection contract, observation and attempt identity, and epoch eligibility — callers supply facts, not
+  persistence policy.
+- Existing backend adapter boundaries — subprocesses and vendor network calls stay real external boundaries and remain
+  legitimate seams.
+- `defineGitFixture` and `withProcessGlobalTestLock` for real repositories and sandboxed HOME.
+- The historical **Complete Tool-Call Metrics** draft named overlapping tool-coverage goals. Its advertised-tool and
+  schema-token denominator is outside this Epic's scope and must not be added.
 
 ## Implementation Steps
 

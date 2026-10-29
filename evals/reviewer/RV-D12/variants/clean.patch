@@ -1,0 +1,31 @@
+diff --git a/tests/public.ts b/tests/public.ts
+index 26567cd..23728db 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -49,5 +49,26 @@ await check("catalog outage is not reported as a successful registration", async
+         await rm(root, { recursive: true, force: true });
+     }
+ });
++await check("successful registration remains available", async () => {
++    const root = await mkdtemp(join(tmpdir(), "registry-"));
++    try {
++        await registerProject(root, "atlas", catalog);
++        // Reopen through the public persistence API, not the registration return value.
++        assert.deepEqual(await listRegistry(root), [{ id: "atlas", label: "Atlas" }], "REGISTRATION_NOT_DURABLE");
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
++await check("a busy registry refuses registration without adding an entry", async () => {
++    const root = await mkdtemp(join(tmpdir(), "registry-"));
++    try {
++        await withRegistryLock(root, async () => {
++            await assert.rejects(() => registerProject(root, "atlas", catalog), /Registry busy/);
++        });
++        assert.deepEqual(await listRegistry(root), []);
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++});
+ 
+ console.log(`# tests ${passed}`);

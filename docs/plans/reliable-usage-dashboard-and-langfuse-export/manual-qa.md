@@ -140,3 +140,32 @@ Manual verification steps for reliable-usage-dashboard-and-langfuse-export/08-la
       values.
 
 <!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
+<!-- runwield:manual-qa:start child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
+## Workspace Export Settings and Delivery Status
+
+Manual verification steps for reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status
+
+- [ ] Open `/usage` and `/usage/settings`; confirm the Report and Settings tabs, active-tab highlight, status strip, and Back navigation work.
+- [ ] In Settings, inspect recording state and each available exporter state. Confirm an unapproved exporter has no destination form, and an approved exporter can create a destination.
+- [ ] Create a destination with a loopback HTTP endpoint and credentials. Confirm the local-development badge appears and the credential fields clear after save; verify the secret is absent from Network responses, browser storage, and page source.
+- [ ] Confirm delivery counts and explanations appear. Confirm no retry or resend control is available.
+- [ ] Use the dialogs to clear history and revoke a destination. Confirm the warnings appear before each action, Sessions and Plans remain after clear, and `/usage` still loads.
+- [ ] At 390 px and compact desktop width, use the keyboard to reach controls and operate dialogs; confirm focus returns to each dialog trigger.
+
+<!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
+<!-- runwield:manual-qa:start child="reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance" -->
+
+## End-to-End Usage and Export Acceptance
+
+Manual verification steps for reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance
+
+- [ ] Run the live journey with the owner on a real Project. Check all three backends, interruption, repair, abandonment, disabled recording, and restart results in `/usage`.
+- [ ] Open `/usage` on desktop and phone. Confirm both show the same time zone, days, and totals, and that pending or failed clears leave the report readable with a clear status.
+- [ ] Compare `/usage` totals with the disposable Langfuse project's received counts and sums. Confirm partial cost has no native cost or model name, and each difference has a visible explanation.
+- [ ] After a lost export response, confirm the item is unconfirmed and is not sent again, while later items still arrive.
+- [ ] Clear usage during the journey. Confirm Sessions, Plans, and worktrees remain, and inspect the report and Langfuse data for private content.
+
+<!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance" -->

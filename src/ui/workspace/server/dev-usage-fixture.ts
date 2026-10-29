@@ -4,7 +4,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
 import { getWorkflowMetricsFilePath } from "../../../shared/workflow/metrics.js";
-import { loadOwnerUsage } from "./owner-usage.ts";
+import { loadOwnerUsageReport } from "./owner-usage.ts";
+import { devUsageSettings } from "./dev-usage-settings-fixture.ts";
 
 async function createFixture() {
     const root = await mkdtemp(join(tmpdir(), "runwield-usage-preview-"));
@@ -80,5 +81,17 @@ const fixture = createFixture();
 
 /** Surface Lab uses real registered temporary Projects and Core aggregation, not precomputed totals. */
 export async function devUsageReport(params: URLSearchParams) {
-    return await loadOwnerUsage(await fixture, params);
+    const settings = devUsageSettings();
+    return {
+        ...(await loadOwnerUsageReport(await fixture, params)),
+        recording: settings.recording,
+        export: {
+            available: settings.exportAvailable,
+            destinations: settings.destinations.map(({ destinationId, exporterId, counts }) => ({
+                destinationId,
+                exporterId,
+                counts,
+            })),
+        },
+    };
 }

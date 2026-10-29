@@ -11,16 +11,12 @@ provenance:
         - "b6fd8e18-ea6f-4b7b-a446-0d30ec8d303c"
 ---
 
-# Pinned TUI validation handoff panel
+# Persistent TUI validation handoff panel
 
 ## Summary
 
-Completed a verified FEATURE that adds structured validation-progress state and a persistent TUI panel above the input.
-The panel keeps Workflow/Mechanical Validation progress plus the latest Engineer and Reviewer reports visible while
-preserving the transcript as chronological history, and ACP receives the same structured progress metadata without
-changing visible status text.
+A persistent TUI panel keeps validation progress and the latest Engineer and Reviewer reports visible above the input. The transcript remains chronological history, and ACP receives the same structured progress metadata without changes to visible status text.
 
 ## Future Planning Notes
 
-Future validation UI work should continue using complete Runtime validation-progress snapshots rather than parsing
-status copy, with TUI/ACP remaining consumers of the shared SessionRuntime event contract.
+Validation surfaces consume complete SessionRuntime progress snapshots rather than parsing status text.

@@ -1,0 +1,20 @@
+schemaVersion: 1
+scenarioId: RV-D10
+track: discovery
+group: correctness-beyond-plan
+fixtureRevision: 2
+planPath: docs/plans/resume-saved-publication.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - repair-publication-retry
+    - git-target-history
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: pass-for-every-candidate

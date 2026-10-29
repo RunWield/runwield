@@ -87,6 +87,7 @@ export async function resolvePhaseContext(
                   worktreeId: context.worktreeId,
                   worktreeBranch: context.worktreeBranch,
                   ...(context.worktreeBaseBranch ? { worktreeBaseBranch: context.worktreeBaseBranch } : {}),
+                  ...(context.worktreeBaseRef ? { worktreeBaseRef: context.worktreeBaseRef } : {}),
               }
             : { executionMode: "non_git_in_place", nonGitInPlace: true }),
     };
@@ -102,6 +103,7 @@ export async function resolvePhaseContext(
             worktreeId: context.executionMode === "worktree" ? context.worktreeId : undefined,
             worktreeBranch: context.executionMode === "worktree" ? context.worktreeBranch : undefined,
             worktreeBaseBranch: context.executionMode === "worktree" ? context.worktreeBaseBranch : undefined,
+            worktreeBaseRef: context.executionMode === "worktree" ? context.worktreeBaseRef : undefined,
             nonGitInPlace: context.executionMode === "non_git_in_place",
             workflowBase,
         },

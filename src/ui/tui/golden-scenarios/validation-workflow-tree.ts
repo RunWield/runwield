@@ -35,6 +35,7 @@ export {
     validationTreeHumanReviewAskOpenApproveScenario,
     validationTreeHumanReviewAskSkipScenario,
     validationTreeHumanReviewFeedbackRepairApproveScenario,
+    validationTreeHumanReviewReplyApproveScenario,
     validationTreeHumanReviewNoAnswerRetryScenario,
     validationTreeHumanReviewNoAnswerStopScenario,
     validationTreeHumanReviewNoneScenario,

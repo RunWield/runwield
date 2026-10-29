@@ -7,7 +7,7 @@ import { git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.js";
-import { listWorkRecords, writeWorkRecord } from "./store.js";
+import { listWorkRecords, writeWorkRecord } from "./store.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "./auto-generation.ts";
 

@@ -11,15 +11,12 @@ provenance:
         - "8db5439a-35d9-439b-a434-95f01adf1843"
 ---
 
-# Frontend Framework Skill Restructured
+# Frontend framework Skill reference structure
 
 ## Summary
 
-Reworked the bundled frontend-framework Skill into a concise convention-first reference index with separate engineering,
-UX, and visual-design guides plus a scoped Apache-2.0 license package. Verification passed via Markdown formatting
-checks, bundled-skill release checks, scenario audits, and `deno task ci`.
+The frontend-framework Skill provides a concise, convention-first index with separate engineering, UX, and visual-design guides and a scoped Apache-2.0 license package.
 
 ## Future Planning Notes
 
-The Skill intentionally keeps a broad trigger description so one frontend Skill can cover engineering, UX, and visual
-design without introducing another model-invoked skill. Browser mechanics remain delegated to `agent-browser-use`.
+A broad trigger keeps frontend engineering, UX, and visual design within one Skill. Browser mechanics remain delegated to `agent-browser-use`.

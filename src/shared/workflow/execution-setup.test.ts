@@ -489,3 +489,22 @@ test("ignored setup settings survive a postcommit receipt interruption without a
         await f.cleanup();
     }
 });
+
+test("host-neutral execution prepares configured dependencies before commit hooks", async () => {
+    const f = await fixture();
+    try {
+        const workflow = await startActiveExecutionWorkflow({
+            cwd: f.root,
+            planName,
+            triageMeta: { classification: "PLANNED_CHANGE", planId: "setup-plan" },
+            currentStatus: "ready_for_work",
+            ports: createExecutionStartPorts(),
+        });
+        assert(workflow.executionCwd);
+        assert.equal(await readFile(join(workflow.executionCwd, "node_modules/runs"), "utf8"), "run\n");
+        assert.equal(await readFile(join(workflow.executionCwd, "node_modules/hook-runs"), "utf8"), "hook\n");
+        assert.equal((await readExecutionSetup(workflow.executionCwd))?.state, "prepared");
+    } finally {
+        await f.cleanup();
+    }
+});

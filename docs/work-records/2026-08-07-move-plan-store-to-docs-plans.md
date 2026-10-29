@@ -12,21 +12,12 @@ provenance:
         - "cef05b40-ce1e-49db-b065-1a2054b3d8e8"
 ---
 
-# Move Plan Store to docs/plans
+# Canonical documentation Plan store
 
 ## Summary
 
-RunWield now uses `docs/plans/` as the only canonical Plan store. Runtime code, tools, CLI flows, TUI and workflow
-surfaces, docs, release guidance, scripts, tests, and tracked Plan files were updated for the clean break. Legacy
-`plans/` files are ignored, and no tracked Plan Markdown remains under `plans/`. Workflow Validation passed, including
-targeted tests, `deno task test`, and `deno task ci`.
-
-## Deviations from Plan
-
-Implementation also fixed a discovered `plans doctor` root/path bug so active Plans under `docs/plans/` do not
-false-report `plan_not_found`.
+RunWield discovers and manages Plans through the canonical documentation Plan store. Legacy top-level Plan storage is ignored rather than treated as a second authority. Plans Doctor resolves active Plans through the canonical store.
 
 ## Future Planning Notes
 
-Clean-break storage moves need explicit negative tests for the old path and objective filesystem checks, not only
-rewritten positive path assertions.
+Clean-break storage migrations need negative coverage for the retired location as well as positive coverage for the new authority.

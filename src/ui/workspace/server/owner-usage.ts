@@ -1,20 +1,18 @@
+import { loadUsageSummary } from "./owner-usage-settings.ts";
 import { queryUsageReport, usageProjectIdentityForRoot } from "../../../shared/workflow/usage-reporting.ts";
 import type { UsageLink } from "../../../shared/workflow/usage-reporting.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
-import type { OwnerProjectSession, OwnerProjectStore } from "./owner-projects.ts";
+import type { OwnerProjectStore } from "./owner-projects.ts";
+import type { FileSessionStore } from "../../../shared/session/file-session-store-types.ts";
 import { loadWorkspaceDetail } from "./plan-adapter.js";
 
-interface UsageOwnerSession extends OwnerProjectSession {
-    displayName?: string | null;
-}
-
 interface UsageOwnerStore extends OwnerProjectStore {
-    getSessionById(sessionId: string, projectId: string): UsageOwnerSession | null;
+    listProjectSessions: FileSessionStore["listProjectSessions"];
 }
 
 interface UsageDestination {
     href: string;
-    label: string;
+    label?: string;
 }
 
 export interface OwnerUsageLink extends UsageLink {
@@ -31,7 +29,7 @@ function shiftDate(date: string, days: number) {
 }
 
 /** Authorization and local labels belong here; all measurement arithmetic stays in Core. */
-export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchParams) {
+export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSearchParams) {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const today = new Intl.DateTimeFormat("en-CA", {
         timeZone,
@@ -62,24 +60,36 @@ export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchPa
             const aliases = indexes.map((index) => authorized[index]);
             const owner = aliases[0];
             const planDestinations = new Map<string, Promise<UsageDestination | undefined>>();
+            const sessionIds = new Set(
+                [...project.links, ...project.incomplete, ...project.ongoing].flatMap((link) =>
+                    link.sessionId ? [link.sessionId] : [],
+                ),
+            );
+            const sessionDestinations = new Map<string, UsageDestination>();
+            if (sessionIds.size) {
+                for (const alias of aliases) {
+                    const listed = await store.listProjectSessions(alias.projectId, {
+                        all: true,
+                        archiveState: "all",
+                        catalog: false,
+                    });
+                    for (const session of listed.sessions) {
+                        const id = session.runwieldSessionId;
+                        if (
+                            !sessionIds.has(id) ||
+                            sessionDestinations.has(id) ||
+                            !sessionBelongsToOwnerProject(store, session, alias.projectId)
+                        )
+                            continue;
+                        sessionDestinations.set(id, {
+                            href: `/projects/${encodeURIComponent(alias.projectId)}/sessions/${encodeURIComponent(id)}`,
+                            label: session.displayName || undefined,
+                        });
+                    }
+                }
+            }
             async function destination(link: UsageLink): Promise<OwnerUsageLink> {
-                const sessionTarget = link.sessionId
-                    ? aliases
-                          .map((alias) => ({
-                              projectId: alias.projectId,
-                              session: store.getSessionById(link.sessionId!, alias.projectId),
-                          }))
-                          .find(
-                              (target) =>
-                                  target.session &&
-                                  sessionBelongsToOwnerProject(store, target.session, target.projectId),
-                          )
-                    : undefined;
-                const sessionHref = sessionTarget
-                    ? `/projects/${encodeURIComponent(sessionTarget.projectId)}/sessions/${encodeURIComponent(
-                          link.sessionId!,
-                      )}`
-                    : undefined;
+                const session = link.sessionId ? sessionDestinations.get(link.sessionId) : undefined;
                 if (link.planId && !planDestinations.has(link.planId)) {
                     const planId = link.planId;
                     planDestinations.set(
@@ -108,8 +118,8 @@ export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchPa
                 return {
                     ...link,
                     projectId: owner.projectId,
-                    sessionHref,
-                    sessionLabel: sessionTarget?.session?.displayName || undefined,
+                    sessionHref: session?.href,
+                    sessionLabel: session?.label,
                     planHref: plan?.href,
                     planLabel: plan?.label,
                 };
@@ -142,6 +152,10 @@ export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchPa
                       : project.lifecycle,
             })),
     };
+}
+
+export async function loadOwnerUsage(store: UsageOwnerStore, params: URLSearchParams) {
+    return { ...(await loadOwnerUsageReport(store, params)), ...(await loadUsageSummary(store)) };
 }
 
 export type OwnerUsageReport = Awaited<ReturnType<typeof loadOwnerUsage>>;

@@ -74,6 +74,16 @@ when no cost is known. Do not turn missing cost into zero. Summary figures keep 
 the values. Coverage notices distinguish pending measurements from settled spend, identify excluded Projects, and keep
 the host time zone and recorded-through marker visible.
 
+Usage settings keeps each destination's identity, endpoint, approval, and compact delivery summary visible above its
+**Approved Projects**, **Credentials**, **Delivery status**, and **Destination** tabs. Use `RunWieldTabs` from
+`src/ui/design-system/components/react/RunWieldPrimitives.tsx` with `variant="underline"` to reuse
+`.rw-underline-tabs`. Keep panels mounted with a controlled value so switching tabs preserves unsaved input. Each
+destination has its own tab state and a distinct accessible label. On phones, the tab rail scrolls within the card.
+
+Project checklists in `usage.css` have a bounded scroll area, a selected count, and search for lists longer than eight
+Projects. Search filters the visible rows, not the saved selection. Local recording rows also scroll within their
+section so a large Project registry does not push exporter controls far down the page.
+
 Use `--rw-*` semantic colors, existing rectangular controls, and two summary columns on phone. Wide tables scroll inside
 a focusable, named region rather than widening the page. Project rows may show deduplicated, verified Session and Plan
 links with readable labels; do not add raw event-ID lists.
@@ -139,6 +149,9 @@ negative margins or extra top padding to simulate a shared row. The navigation b
 scrolls. Embedded workflow content uses its host's tab header and scroll area, with compact square rows and separators,
 not a second heading or nested card stack.
 
+Render the Workspace sidebar opener in the initial header markup, and retain that same button during navigation data
+updates. The collapsed mobile drawer must remain reachable before Project and Session lists finish loading.
+
 ## Component architecture
 
 ### Connection feedback
@@ -172,6 +185,13 @@ ARIA behavior.
 Plan and Code Review share `ReviewCompletion` for successful decisions. Workspace reviews return to the originating
 Session in the same tab; standalone reviews retain the completion overlay and its auto-close preference. Workspace must
 never mount the standalone auto-close behavior.
+
+### Embedded Plan Questions
+
+Each Plan Question uses one `.rw-question-card` around a `.rw-question-field` fieldset. The prompt is its legend.
+Inside `.rw-plan-question-mounted`, radio options are borderless rows, not separate cards. The Other text field has no
+border or nested surface; its focus outline stays visible. Use the shared `--rw-*` surface, text, border, and accent
+tokens.
 
 ### Delivery evidence card
 
@@ -225,12 +245,22 @@ Do not wrap a whole section, a step list, or a verification list in a callout, a
 box. A marker with text on the same line is an ordinary quote. The Changes view shows callouts as plain quotes with
 their text intact; matching callout styling there is deferred.
 
+### Plan Review document defaults
+
+Plan Review starts Wide unless a valid standalone width choice is saved. Workspace review uses the full document width.
+The front matter card starts hidden; a framed `.rw-review-toolbar-trigger` in the View toolbar switches between Show
+front matter and Hide front matter and exposes `aria-expanded`. It shares its border, fill, spacing, and active state
+with Files. Use the document-field icon, a tooltip, and an accessible label; keep the icon visible when toolbar text is
+hidden on phones. Omit the toggle for documents without front matter.
+Edit keeps the full Markdown and editable YAML, independent of the card's visibility.
+
 ### Phone review layout
 
 Embedded reviews constrain the Workspace grid column to the viewport. At phone widths, header actions and document
 controls wrap; every sidebar-state combination uses one document column, with open sidebars shown as overlays. The
 document scroll area takes the remaining height below the header and controls. Only standalone reviews reserve space for
-a fixed bottom action bar. Long prose and metadata wrap inside the document instead of widening the page.
+a fixed bottom action bar. Long prose and metadata wrap inside the document instead of widening the page. Plan document
+actions occupy their own row above the title so hidden front matter cannot leave the title beside a floating toolbar.
 
 ### Shared loaders
 
@@ -460,6 +490,10 @@ keyboard focus, and a fixed compact 28px height at every viewport width. Menu na
 Projects and Devices are peer Workspace-level views in `SettingsLayout.astro`. Their shared underline tabs sit in the
 Workspace header; content has matching panel spacing on both sides with a 64rem maximum width. Cards and Project rows on
 Projects, Project Settings, and Devices use square corners. Project rows open that Project’s settings as a child page.
+
+Usage Report and Settings use the same header pattern and 64rem content width. `UsageLayout.astro` owns the two links,
+the `header-tabs` slot, and active `aria-current="page"`. `/usage` and `/usage/settings` remain separate routes for direct
+links and browser Back; do not duplicate their tab markup in each page.
 Its header replaces the tabs with a **Back to Projects** control and **Project settings** title. Keep the Project name
 and root status as compact context inside the content. Do not repeat Plan Board or New Session actions here. Devices
 lists Workspace-wide paired browsers and never inherits a Project-specific scope. Device rows place the shared `badge`
@@ -615,7 +649,7 @@ Use the shell pattern for full-page browser surfaces:
 - main content below navigation.
 
 The shell should feel like a local tool, not a marketing site. Avoid large hero sections, decorative imagery, and sparse
-SaaS-dashboard layouts.
+dashboard layouts.
 
 ### Tabs
 
@@ -681,20 +715,41 @@ size, blue border, focus ring, and surface.
 
 Use the **Review action button** pattern for a prominent safe action in Plan Review, Code Review, and read-only review
 surfaces. The CSS hooks are `.rw-review-action` for wrappers around Plannotator buttons and `.rw-review-action-button`
-for native buttons. Use it for actions such as **Send Annotations** or **Close** when the action must stay easy to find
+for native buttons. Use it for actions such as **Send to Planner** or **Close** when the action must stay easy to find
 inside the review surface. Do not use it for destructive outcomes or low-emphasis toolbar controls.
 
 Use the **Artifact conversation** pattern when the active workflow agent can discuss and revise the artifact without
 leaving its review surface. Render `ArtifactConversationSidebar` inside an existing review sidebar, keep its message and
 operation wiring in the owning surface, and use the shared `.rw-artifact-conversation-*` classes. Review context is
-attached explicitly as a removable chip; attaching review notes enables Send without requiring message text. Removing
-the attachment disables Send again if the message is empty. Only one agent turn may be active at a time. Code Review's
-Send Annotations action uses this same repair conversation when available; approval remains explicit. When a revised
-Plan arrives, replace the readable artifact in place and open a before/after diff automatically. Code Review refreshes
+queued automatically for Plan Review and validation-time Code Review through the **Review Queue** pattern below.
+Only one agent turn may be active at a time; approval remains explicit. When a revised Plan arrives, replace the readable
+artifact in place and open a before/after diff automatically. A reply-only round keeps the current document view and
+controls. These surfaces select chat by default; their Annotations pane only edits notes when chat is available, with
+no feedback-decision or attach-to-chat button. A surface without a conversation retains Send Annotations above the
+annotation list. Standalone Code Review keeps its existing explicit context attachment. Code Review refreshes
 its existing diff while retaining the transcript, selected file, diff collapse choices, active Guided Review/diff view,
 and collapsed guide sections. Mark retained guide prose as belonging to an earlier revision and offer regeneration; do
 not replace the owner's navigation state during a repair. The component is artifact-neutral so Plan Review, Code Review,
 and later review surfaces can share the same transcript, composer, working, and error states.
+
+### Review Queue
+
+`ReviewQueue` is the shared per-type inclusion control above the artifact conversation composer. Use
+`.rw-review-queue` and `.rw-review-queue-item` from the shared component stylesheet, with semantic surface, text, border,
+radius, and spacing tokens. The compact rectangular chips wrap inside the rail. Each shows a count, a type, and an
+accessible X control that excludes that type from the next send without deleting it. Excluded types use a dashed border,
+visible “excluded” text, and a plus control to include them again. Controls have 44px touch targets on compact screens.
+
+Plan annotations, file annotations, images, direct edits, and unsent answers are included by default. Validation-time
+Code Review includes annotations, attachments, and edit suggestions by default. Send accepts text, included queue items,
+or both. After acceptance, remove only sent items and restore inclusion for the next send. A busy
+Agent disables queue controls, Send, and Submit answer; a failed request keeps the draft. Sequence tabs share inclusion
+and counts across the whole group. Approval forwards all remaining items regardless of one-send exclusions.
+
+Embedded Plan Questions offer Submit answer for an entered answer. It sends only that answer, marks it “Answer sent”,
+and removes it from the unsent queue. Changing the answer makes it unsent again. Retain the chosen answer for approval.
+After a completed reply-only turn, Plan approval uses the existing compact confirmation-dialog treatment with Ask Agent
+to update the Plan, Approve as is, and Cancel. Approve as is continues to the open-questions confirmation.
 
 ### Boards and columns
 
@@ -754,9 +809,11 @@ workflow-critical changes.
 
 ### Dialogs
 
-Dialog is a general modal primitive for browser surfaces that need focused confirmation, short forms, or blocking
-workflow decisions. Workspace does not currently provide a source pattern for dialogs, so new dialogs should preserve
-the Workspace visual language while using Radix-compatible React behavior for accessibility and interaction behavior.
+`RunWieldDialog` in `src/ui/design-system/components/react/RunWieldDialog.tsx` is the shared modal primitive for focused
+confirmation, short forms, or blocking workflow decisions. It uses installed Radix Dialog behavior and the semantic
+`.rw-dialog-*` styles in `components.css`. Supply a trigger, title, description, optional body, footer, controlled open
+state, and a busy flag. The title labels the dialog; focus is trapped and returns to the trigger on dismissal. Escape
+closes it unless a request is running. Busy state blocks outside dismissal and Escape; callers disable their actions.
 
 Dialog should be flexible rather than confirmation-only:
 
@@ -818,7 +875,7 @@ buttons, links styled as actions, inputs, tabs, search fields, cards, or panels.
 
 Status color intent:
 
-- draft and feedback: muted/default;
+- draft: muted/default;
 - approved, ready for decomposition, ready for work: accent;
 - in progress and implemented: warning;
 - verified: success;
@@ -891,8 +948,9 @@ Plannotator-specific mapping:
 
 - plan review page: use the shell plus a detail-panel layout;
 - Plan title, summary, Front Matter, and markdown body: follow Plan Detail and MarkdownView patterns;
-- annotation submission: label the action **Send Annotations** and place it directly below the annotation sidebar
-  heading, above the annotation list, using the Review action button pattern so it remains visible;
+- annotation submission: in Plan Review and validation-time Code Review, use the Review Queue above chat; render
+  **Send Annotations** above the annotation list only when no conversation is available. Standalone Code Review keeps
+  its current Send Annotations action;
 - approve/save: primary action when it is the normal forward path;
 - request changes or deny: danger action when it sends Feedback back to the planning Agent;
 - comments and annotations: use badge, notice, and metadata patterns before inventing a separate comment aesthetic;
@@ -965,7 +1023,7 @@ automated score does not establish visual acceptance.
 ## Non-goals for v1
 
 - No marketing-page layouts or effects; brand colors and website typography are shared.
-- No large-radius, oversized SaaS-dashboard component language.
+- No large-radius, oversized dashboard component language.
 - No requirement to extract a full component library immediately.
 - No generated palette replacing the approved brand or browser theme modules.
 - No browser theme picker or light theme in the current scope; keep future themes easy to swap.
@@ -1056,6 +1114,14 @@ chapter. Shared `.rw-guide-*` block styles live in `src/ui/design-system/compone
 Guided Review generation controls must disclose that generation can use an additional LLM call. When auto-generation
 finishes, show a non-stealing **Guided Review ready** affordance instead of switching the reviewer away from plain Diff.
 
+Standalone Code Review places **Run AI Review** beside the Guided Review generation control, using the existing
+`rw-guide-actions` toolbar, button, and status styles with `--rw-*` semantic tokens. It never starts automatically and
+its title discloses an additional LLM call. While running, **Cancel** replaces the button; the status shows elapsed time,
+model, tokens, and cost when available. Completion shows Standards, Spec, and Tests counts and the spec source, or
+reports no issues. Errors and results for an older diff stay in the status area without changing annotations.
+Generated annotations use the existing annotation styles and show **AI review** as author. Their text includes axis and
+blocking or advisory severity; color alone must not carry that meaning. Validation-time Code Review has no such control.
+
 ### User Verified status intent
 
 Use the explicit label **User Verified** for `user_verified`. It is a closed/successful lifecycle outcome, but not
@@ -1125,3 +1191,11 @@ Artifact links sit beside the corresponding evidence row (and the approved Plan 
 button group or “in browser” suffix. TUI mouse links open the same registered artifact reader; Esc then Alt+] remains
 the keyboard path. An explicitly skipped Code Review replaces its selection controls with the ordinary RunWield status
 “Code Review skipped”. Dismissed offers remain pending and do not claim a decision.
+
+## Confirmation dialog
+
+`RunWieldConfirmationDialog.tsx` is the shared compact Continue/Quit modal for Project root consent. It uses a native
+`dialog` for keyboard containment and Escape dismissal, initially focuses Quit, and restores focus on close. The detail
+wraps long entered paths. `.rw-confirmation-dialog` and its detail/actions classes use semantic `--rw-*` surface, text,
+border, and page-background tokens with existing rectangular action buttons. Use it for a cancelable warning; it is not
+an authentication prompt or a destructive-operation approval. Add and relink share `ProjectRootForm.tsx`.

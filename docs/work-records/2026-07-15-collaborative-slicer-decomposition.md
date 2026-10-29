@@ -12,13 +12,8 @@ provenance:
           note: Defines Slicer's collaborative decomposition posture, current capabilities, child-plan format, and finalization behavior.
 ---
 
-# Collaborative Slicer Decomposition
+# Collaborative Slicer decomposition
 
 ## Summary
 
-Slicer now works as a practical product and engineering partner instead of enforcing a rigid interview and confirmation
-protocol. Its prompt encourages concrete recommendations, independent repository discovery, consequential questions,
-visible low-risk assumptions, natural iteration, and continuity across refinements or recoverable finalization failures.
-The prompt is self-contained, recognizes ordinary user agreement without ceremony, delegates lifecycle validation to the
-available finalization capability, and describes only the current forward workflow while preserving canonical child
-FEATURE plan structure.
+Slicer works as a practical product and engineering partner instead of enforcing a rigid interview and confirmation protocol. Its prompt encourages concrete recommendations, independent repository discovery, consequential questions, visible low-risk assumptions, natural iteration, and continuity across refinements or recoverable finalization failures. The prompt is self-contained, recognizes ordinary user agreement without ceremony, delegates lifecycle validation to the available finalization capability, and preserves canonical child FEATURE Plan structure.

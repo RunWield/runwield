@@ -11,17 +11,12 @@ provenance:
         - "78ae72a3-3535-4c8d-af2a-1ea5b0e91787"
 ---
 
-# Added GitHub-hosted settings JSON schema
+# GitHub-hosted settings JSON schema
 
 ## Summary
 
-Added a permissive draft 2020-12 schema for RunWield and inherited Pi settings, published it as a GitHub release asset,
-and documented the $schema URL for global and project JSONC settings. Schema parsing and formatting checks passed.
-
-## Deviations from Plan
-
-Merge-back required resolving a concurrent docs/settings.md conflict; the intended feature scope was preserved.
+RunWield publishes a permissive draft 2020-12 JSON schema for RunWield and inherited Pi settings as a GitHub release asset. Global and project JSONC settings can reference the published schema.
 
 ## Future Planning Notes
 
-Keep config.schema.json synchronized when public settings are added or changed.
+Keep the settings schema synchronized with public settings changes.
