@@ -214,6 +214,40 @@ function workflow(snapshot: JsonMap): JsonMap | null {
     if (files.length !== 1 || typeof files[0].text !== "string") return null;
     return map(JSON.parse(files[0].text));
 }
+function invokingCheckoutUnchanged(before: JsonMap, after: JsonMap): boolean {
+    const planName = field(workflow(after), "plan", "planName");
+    const owned = (path: string) =>
+        path === ".gitignore" ||
+        path.startsWith(".wld/") ||
+        (typeof planName === "string" && path === `docs/plans/${planName}.md`);
+    const source = (snapshot: JsonMap) =>
+        snapshotFiles(snapshot)
+            .filter(
+                (file) =>
+                    typeof file.path === "string" && file.path.startsWith("fixture/") && !owned(file.path.slice(8)),
+            )
+            .map((file) => [file.path, file.sha256])
+            .sort(([a], [b]) => String(a).localeCompare(String(b)));
+    const status = (snapshot: JsonMap) => {
+        const value = field(snapshot, "git", "status");
+        return typeof value === "string"
+            ? value
+                  .split(/\r?\n/)
+                  .filter((line) => line && !owned(line.slice(3)))
+                  .sort()
+            : null;
+    };
+    return (
+        typeof field(before, "git", "head") === "string" &&
+        typeof field(before, "git", "branch") === "string" &&
+        field(before, "git", "head") === field(after, "git", "head") &&
+        field(before, "git", "branch") === field(after, "git", "branch") &&
+        status(before) !== null &&
+        status(after) !== null &&
+        JSON.stringify(status(before)) === JSON.stringify(status(after)) &&
+        JSON.stringify(source(before)) === JSON.stringify(source(after))
+    );
+}
 export function assessExecution(before: JsonMap, implemented: JsonMap): Check {
     const record = workflow(implemented);
     const cwd = field(record, "execution", "executionCwd");
@@ -223,6 +257,7 @@ export function assessExecution(before: JsonMap, implemented: JsonMap): Check {
     const files = snapshotFiles(implemented);
     const passed =
         !!prefix &&
+        invokingCheckoutUnchanged(before, implemented) &&
         field(record, "execution", "executionMode") === "worktree" &&
         files.some((file) => file.path === `${prefix}/greet.sh`) &&
         !files.some((file) => file.path === "fixture/greet.sh") &&
@@ -231,7 +266,7 @@ export function assessExecution(before: JsonMap, implemented: JsonMap): Check {
     return {
         id: "execution-isolation",
         outcome: passed ? "pass" : "fail",
-        detail: "Implementation must exist in Core's isolated checkout while the original validation command remains unchanged.",
+        detail: "Implementation must stay in Core's checkout; invoking source bytes, branch, HEAD, and protected Git status must remain unchanged.",
     };
 }
 export function assessCi(killed: JsonMap, deliveredSnapshot: JsonMap): Check {
@@ -258,7 +293,15 @@ export async function assessDurableArtifacts(root: string): Promise<Check[]> {
     for (const name of ["inactive-before", "implemented", "ci-killed", "delivered"])
         snapshots.push(JSON.parse(await readFile(join(root, "snapshots", `${name}.json`), "utf8")));
     const [before, implemented, killed, final] = snapshots;
-    const checks = [assessExecution(before, implemented), assessCi(killed, final)];
+    const checks: Check[] = [
+        assessExecution(before, implemented),
+        assessCi(killed, final),
+        {
+            id: "invoking-checkout-preserved",
+            outcome: invokingCheckoutUnchanged(before, final) ? "pass" : "fail",
+            detail: "Delivery preserves invoking source and Git state, allowing only the current Plan, Core lifecycle files, and .gitignore setup.",
+        },
+    ];
     const record = workflow(final);
     const planId = field(record, "plan", "planId"),
         planName = field(record, "plan", "planName");

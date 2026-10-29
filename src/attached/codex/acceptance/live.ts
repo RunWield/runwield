@@ -13,6 +13,7 @@ import {
     hostedReview,
 } from "./collector.ts";
 import type { AcceptanceOptions } from "./driver.ts";
+import { HostAuthenticationError } from "./host.ts";
 
 const FEATURE =
     "Add sh ./greet.sh NAME: print Hello, NAME!, preserve names with spaces, and reject a missing name with nonzero exit plus usage on stderr. Add a README usage example and focused tests. Keep check.sh unchanged. Use an isolated RunWield worktree and default Plan Branch delivery. The verification command is sh ./check.sh. Browser decisions will come from the review page. If interrupted validation offers retry, choose retry and continue. Repair until success. Do not ask the harness to operate RunWield internals.";
@@ -47,6 +48,7 @@ export async function runLiveAcceptance(options: AcceptanceOptions): Promise<Acc
     try {
         Object.assign(summary, await world.prepare());
         prepared = true;
+        await world.checkLiveAuthentication();
         await world.prepareLive();
         const skill = join(world.root, "marketplace/src/attached/codex/plugin/skills/run/SKILL.md");
         await readFile(skill, "utf8");
@@ -154,15 +156,23 @@ export async function runLiveAcceptance(options: AcceptanceOptions): Promise<Acc
               : "pass";
         if (summary.outcome === "blocked") summary.blockedPrerequisite = "independent-review-provenance";
     } catch (error) {
-        summary.outcome = error instanceof PrerequisiteError ? "blocked" : "fail";
-        summary.blockedPrerequisite = error instanceof PrerequisiteError ? error.prerequisite : null;
+        const prerequisite =
+            error instanceof PrerequisiteError
+                ? error.prerequisite
+                : error instanceof HostAuthenticationError
+                  ? "codex-host-authentication"
+                  : null;
+        summary.outcome = prerequisite ? "blocked" : "fail";
+        summary.blockedPrerequisite = prerequisite;
         summary.checks.push({
             id: "live-journey",
-            outcome: "fail",
+            outcome: prerequisite ? "unproven" : "fail",
             detail:
                 error instanceof PrerequisiteError
                     ? error.message
-                    : `The real Codex skill journey stopped at ${checkpoint}. No passing qualification is claimed.`,
+                    : error instanceof HostAuthenticationError
+                      ? `Codex host authentication is ${error.reason}; the live journey is unproven.`
+                      : `The real Codex skill journey stopped at ${checkpoint}. No passing qualification is claimed.`,
         });
     } finally {
         await world.close();

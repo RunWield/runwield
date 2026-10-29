@@ -235,12 +235,20 @@ test("inspect-only review state does not prove the browser listener has been res
     equal(hostedReview({ ...state, review: { url: "http://127.0.0.1/review?token=fixture" } }, "code_review"), false);
 });
 test("durable evidence rejects original-checkout edits and altered validation commands", () => {
-    const before = { files: [{ path: "fixture/check.sh", sha256: "baseline" }] };
+    const before = {
+        git: { head: "baseline-commit", branch: "main", status: "" },
+        files: [
+            { path: "fixture/check.sh", sha256: "baseline" },
+            { path: "fixture/README.md", sha256: "readme" },
+        ],
+    };
     const implemented = {
+        git: { ...before.git, status: "?? .gitignore\n?? docs/plans/greeting.md\n" },
         files: [
             {
                 path: "runwield-home/workflows/wf.json",
                 text: JSON.stringify({
+                    plan: { planName: "greeting" },
                     execution: {
                         executionMode: "worktree",
                         executionCwd: "/world/runwield-home/.wld/worktrees/fixture",
@@ -249,12 +257,52 @@ test("durable evidence rejects original-checkout edits and altered validation co
             },
             { path: "runwield-home/.wld/worktrees/fixture/greet.sh" },
             { path: "runwield-home/.wld/worktrees/fixture/check.sh", sha256: "baseline" },
+            ...before.files,
+            { path: "fixture/.gitignore", sha256: "core-ignore" },
+            { path: "fixture/.wld/internal/layout.json", sha256: "core-layout" },
+            { path: "fixture/docs/plans/greeting.md", sha256: "core-plan" },
         ],
     };
     equal(assessExecution(before, implemented).outcome, "pass");
-    equal(assessExecution(before, { files: [...implemented.files, { path: "fixture/greet.sh" }] }).outcome, "fail");
-    implemented.files[2].sha256 = "tampered";
-    equal(assessExecution(before, implemented).outcome, "fail");
+    equal(
+        assessExecution(before, { ...implemented, files: [...implemented.files, { path: "fixture/greet.sh" }] })
+            .outcome,
+        "fail",
+    );
+    for (const path of ["fixture/README.md", "fixture/check.sh"]) {
+        equal(
+            assessExecution(before, {
+                ...implemented,
+                files: implemented.files.map((file) =>
+                    file.path === path ? { ...file, sha256: "edited-in-wrong-checkout" } : file,
+                ),
+            }).outcome,
+            "fail",
+        );
+        equal(
+            assessExecution(before, { ...implemented, files: implemented.files.filter((file) => file.path !== path) })
+                .outcome,
+            "fail",
+        );
+    }
+    for (const change of [{ head: "wrong-commit" }, { branch: "wrong-branch" }, { status: "M  README.md\n" }])
+        equal(assessExecution(before, { ...implemented, git: { ...implemented.git, ...change } }).outcome, "fail");
+    equal(
+        assessExecution(before, {
+            ...implemented,
+            files: [...implemented.files, { path: "fixture/docs/plans/unrelated.md", sha256: "not-current-plan" }],
+        }).outcome,
+        "fail",
+    );
+    equal(
+        assessExecution(before, {
+            ...implemented,
+            files: implemented.files.map((file) =>
+                file.path === "runwield-home/.wld/worktrees/fixture/check.sh" ? { ...file, sha256: "tampered" } : file,
+            ),
+        }).outcome,
+        "fail",
+    );
 });
 test("slow-check evidence rejects duplicate execution and surviving interrupted checks", () => {
     const killed = { ciRuns: ["cancelled"] };
