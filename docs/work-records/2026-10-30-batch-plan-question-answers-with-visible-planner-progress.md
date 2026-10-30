@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "f9135cce-db44-430d-865a-01bfd3844671"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "73fd73fa-ac48-4a34-9a95-f3131dae73b4"
 ---
-
 # Batch Plan Question answers with visible Planner progress
 
 ## Summary
