@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 /** Child completion combines current definitions with already-published branch history. */
@@ -24,19 +25,33 @@ export async function findCompletionSiblings(cwd: string, parentPlan: string) {
             primaryChild &&
             (primaryChild.attrs.planId !== child.attrs.planId ||
                 primaryChild.attrs.parentPlan !== child.attrs.parentPlan)
-        ) continue;
+        )
+            continue;
         if (await loadArchivedPlan(primaryRoot, child.name)) continue;
         // The attempt's recorded target snapshot must contain this exact completed
         // document. A status edited into the checkout is not publication evidence.
         const committed = await captureForegroundProcess("git", {
             cwd,
+            env: { GIT_NO_LAZY_FETCH: "1" },
             args: ["show", `${attempt.baseCommit}:docs/plans/${child.name}.md`],
         });
         if (
             committed.success &&
             new TextDecoder().decode(committed.stdout) ===
-                await fsReadFile(join(cwd, `docs/plans/${child.name}.md`), "utf8")
-        ) siblings.set(child.name, child);
+                (await fsReadFile(join(cwd, `docs/plans/${child.name}.md`), "utf8"))
+        )
+            siblings.set(child.name, child);
     }
     return [...siblings.values()];
+}
+
+/** A lifecycle action confirms publication before reading completion siblings. */
+export async function prepareCompletionSiblings(cwd: string, parentPlan: string) {
+    const primaryRoot = resolvePrimaryCheckoutRoot(cwd);
+    const definitions = new Map(
+        (await findPlansByParent(primaryRoot, parentPlan)).map((child) => [child.name, primaryRoot]),
+    );
+    for (const child of await findPlansByParent(cwd, parentPlan)) definitions.set(child.name, cwd);
+    for (const [name, root] of definitions) await preparePlanWorkflow(root, name);
+    return await findCompletionSiblings(cwd, parentPlan);
 }

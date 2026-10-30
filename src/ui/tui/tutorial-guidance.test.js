@@ -1,4 +1,7 @@
 import { test } from "node:test";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -77,13 +80,7 @@ test("tutorial explanations follow semantic workflow events", () => {
 test("tutorial verified recap requires exact verified status", async () => {
     await withRuntimeCommandFixture("tutorial-manual-status-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
-        for (
-            const status of /** @type {const} */ ([
-                "implemented",
-                "user_verified",
-                "closed_without_verification",
-            ])
-        ) {
+        for (const status of /** @type {const} */ (["implemented", "user_verified", "closed_without_verification"])) {
             const planId = `${status}-plan-id`;
             const planName = `${status}-plan`;
             await savePlan(projectRoot, planName, `# ${planName}\n`, {
@@ -92,10 +89,14 @@ test("tutorial verified recap requires exact verified status", async () => {
                 classification: "PLANNED_CHANGE",
                 complexity: "LOW",
             });
-            await writeControllerState(projectRoot, { planId, planName }, {
-                verifiedAt: "2026-01-01T00:00:00.000Z",
-                deliveryEvidence: { version: 1, mode: "non_git_in_place" },
-            });
+            await writeControllerState(
+                projectRoot,
+                { planId, planName },
+                {
+                    verifiedAt: "2026-01-01T00:00:00.000Z",
+                    deliveryEvidence: { version: 1, mode: "non_git_in_place" },
+                },
+            );
 
             const runtime = createSessionRuntime();
             const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
@@ -147,10 +148,14 @@ test("verified tutorial recap links available review and QA artifacts", async ()
             classification: "PLANNED_CHANGE",
             complexity: "LOW",
         });
-        await writeControllerState(projectRoot, { planId, planName }, {
-            verifiedAt: "2026-01-01T00:00:00.000Z",
-            deliveryEvidence: { version: 1, mode: "non_git_in_place" },
-        });
+        await writeControllerState(
+            projectRoot,
+            { planId, planName },
+            {
+                verifiedAt: "2026-01-01T00:00:00.000Z",
+                deliveryEvidence: { version: 1, mode: "non_git_in_place" },
+            },
+        );
         const snapshot = {
             cwd: projectRoot,
             workflowContext: { planId },
@@ -162,12 +167,14 @@ test("verified tutorial recap links available review and QA artifacts", async ()
                 recapShown: false,
                 planId,
             },
-            artifacts: [{
-                artifactId: "qa-report",
-                kind: "report",
-                path: "docs/reports/manual-qa.md",
-                title: "Manual QA report",
-            }],
+            artifacts: [
+                {
+                    artifactId: "qa-report",
+                    kind: "report",
+                    path: "docs/reports/manual-qa.md",
+                    title: "Manual QA report",
+                },
+            ],
         };
         /** @type {string[]} */
         const messages = [];
@@ -175,12 +182,12 @@ test("verified tutorial recap links available review and QA artifacts", async ()
             runtime: /** @type {any} */ ({
                 getSessionSnapshot: () => snapshot,
                 getSessionProjectRoot: () => projectRoot,
-                updateTutorialContext: /** @param {string} _sessionId @param {TutorialUpdate} update */
-                    (_sessionId, update) => {
-                        snapshot.tutorialContext.recapShown = update.recapShown || false;
-                        snapshot.tutorialContext.shownExplanationIds = update.shownExplanationIds || [];
-                        return Promise.resolve({ ok: true });
-                    },
+                /** @param {string} _sessionId @param {TutorialUpdate} update */
+                updateTutorialContext: (_sessionId, update) => {
+                    snapshot.tutorialContext.recapShown = update.recapShown || false;
+                    snapshot.tutorialContext.shownExplanationIds = update.shownExplanationIds || [];
+                    return Promise.resolve({ ok: true });
+                },
             }),
             sessionId: "session-1",
             uiAPI: /** @type {any} */ ({
@@ -234,11 +241,13 @@ test("tutorial pause before Plan approval settles cancellation and reloads saved
                 if (event.type === RuntimeEventTypes.CANCELLATION) cancellationEvents.push(event);
             });
             assertEquals(
-                (await runtime.requestInteraction(created.sessionId, {
-                    type: "plan_review",
-                    prompt: "Review Plan",
-                    _meta: { planId: "plan-1", planName: "plan", planningAgentName: "planner" },
-                })).outcome,
+                (
+                    await runtime.requestInteraction(created.sessionId, {
+                        type: "plan_review",
+                        prompt: "Review Plan",
+                        _meta: { planId: "plan-1", planName: "plan", planningAgentName: "planner" },
+                    })
+                ).outcome,
                 "accepted",
             );
             const reviewEvent = reviewEvents[0];
@@ -251,11 +260,13 @@ test("tutorial pause before Plan approval settles cancellation and reloads saved
                 uiAPI: /** @type {any} */ ({
                     appendSystemMessage() {},
                     promptSelect: async () => {
-                        activeReviews.push(runtime.requestInteraction(created.sessionId, {
-                            type: "plan_review",
-                            prompt: "Review Plan before approval",
-                            _meta: { planId: "plan-1", planName: "plan", planningAgentName: "planner" },
-                        }));
+                        activeReviews.push(
+                            runtime.requestInteraction(created.sessionId, {
+                                type: "plan_review",
+                                prompt: "Review Plan before approval",
+                                _meta: { planId: "plan-1", planName: "plan", planningAgentName: "planner" },
+                            }),
+                        );
                         while (reviewEvents.length < 2) await new Promise((resolve) => setTimeout(resolve, 1));
                         return "pause";
                     },
@@ -268,10 +279,10 @@ test("tutorial pause before Plan approval settles cancellation and reloads saved
             assertEquals(cancellationEvents.length, 1);
             assertEquals(cancellationEvents[0].aborted, true);
             assertEquals(runtime.getSessionSnapshot(created.sessionId)?.busy, false);
-            assertEquals(
-                runtime.getSessionSnapshot(created.sessionId)?.tutorialContext?.shownExplanationIds,
-                ["choose-improvement", "plan-review"],
-            );
+            assertEquals(runtime.getSessionSnapshot(created.sessionId)?.tutorialContext?.shownExplanationIds, [
+                "choose-improvement",
+                "plan-review",
+            ]);
             runwieldSessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
         } finally {
             await runtime.closeAllSessionsWhenIdle();
@@ -285,10 +296,10 @@ test("tutorial pause before Plan approval settles cancellation and reloads saved
                 resumeSessionId: runwieldSessionId,
             });
             assertEquals(restarted.getSessionSnapshot(loaded.sessionId)?.tutorialContext?.planId, "plan-1");
-            assertEquals(
-                restarted.getSessionSnapshot(loaded.sessionId)?.tutorialContext?.shownExplanationIds,
-                ["choose-improvement", "plan-review"],
-            );
+            assertEquals(restarted.getSessionSnapshot(loaded.sessionId)?.tutorialContext?.shownExplanationIds, [
+                "choose-improvement",
+                "plan-review",
+            ]);
         } finally {
             await restarted.closeAllSessionsWhenIdle();
         }
@@ -353,11 +364,11 @@ test("tutorial discloses Init placeholder verification", async () => {
         await presentTutorialEvent({
             runtime: /** @type {any} */ ({
                 getSessionSnapshot: () => snapshot,
-                updateTutorialContext: /** @param {string} _sessionId @param {TutorialUpdate} update */
-                    (_sessionId, update) => {
-                        snapshot.tutorialContext.shownExplanationIds = update.shownExplanationIds || [];
-                        return Promise.resolve({ ok: true });
-                    },
+                /** @param {string} _sessionId @param {TutorialUpdate} update */
+                updateTutorialContext: (_sessionId, update) => {
+                    snapshot.tutorialContext.shownExplanationIds = update.shownExplanationIds || [];
+                    return Promise.resolve({ ok: true });
+                },
             }),
             sessionId: "session-1",
             uiAPI: /** @type {any} */ ({
@@ -422,11 +433,13 @@ test("tutorial guidance persists deduplication and requires an associated Plan f
             assertEquals(messages.length, 1, "verified recap needs committed Plan identity");
 
             assertEquals(
-                (await runtime.recordPlanAssociation(sessionId, {
-                    planId: "plan-1",
-                    planName: "small-change",
-                    purpose: "planning",
-                })).ok,
+                (
+                    await runtime.recordPlanAssociation(sessionId, {
+                        planId: "plan-1",
+                        planName: "small-change",
+                        purpose: "planning",
+                    })
+                ).ok,
                 true,
             );
             assertEquals((await runtime.updateTutorialContext(sessionId, { planId: "plan-1" })).ok, true);
@@ -452,10 +465,14 @@ test("completed tutorial recap restores after reload without changing saved prog
             status: "verified",
             classification: "PLANNED_CHANGE",
         });
-        await writeControllerState(projectRoot, { planId, planName }, {
-            verifiedAt: "2026-01-01T00:00:00.000Z",
-            deliveryEvidence: { version: 1, mode: "non_git_in_place" },
-        });
+        await writeControllerState(
+            projectRoot,
+            { planId, planName },
+            {
+                verifiedAt: "2026-01-01T00:00:00.000Z",
+                deliveryEvidence: { version: 1, mode: "non_git_in_place" },
+            },
+        );
         /** @type {string[]} */
         const messages = [];
         const uiAPI = /** @type {any} */ ({
@@ -513,6 +530,28 @@ test("completed tutorial recap restores after reload without changing saved prog
             await restoreVerifiedTutorialRecap({ runtime: restarted, sessionId: loaded.sessionId, uiAPI });
             assertEquals(messages, [], "A persisted completion flag alone must not restore an unproven recap.");
             assertEquals(restarted.getSessionSnapshot(loaded.sessionId)?.tutorialContext, savedContext);
+            // A legacy document hint is pending authority, not permission to import it for a recap.
+            const planPath = join(projectRoot, "docs/plans", `${planName}.md`);
+            const legacyMarkdown = (await readFile(planPath, "utf8")).replace(
+                "---\n",
+                "---\nverifiedAt: 2026-01-01T00:00:00.000Z\n",
+            );
+            await writeFile(planPath, legacyMarkdown);
+            const internalRoot = resolveProjectRuntimeLayout(projectRoot).primary.internalRoot;
+            const paths = await readdir(internalRoot, { recursive: true, withFileTypes: true });
+            const files = paths.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name));
+            const beforeFiles = await Promise.all(files.map((path) => readFile(path, "base64")));
+            for (let repeat = 0; repeat < 2; repeat++) {
+                await restoreVerifiedTutorialRecap({ runtime: restarted, sessionId: loaded.sessionId, uiAPI });
+                assertEquals(messages, []);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            assertEquals(await readFile(planPath, "utf8"), legacyMarkdown);
+            assertEquals(await Promise.all(files.map((path) => readFile(path, "base64"))), beforeFiles);
+            assertEquals(
+                (await readdir(internalRoot, { recursive: true })).sort(),
+                paths.map((entry) => join(entry.parentPath, entry.name).slice(internalRoot.length + 1)).sort(),
+            );
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             await restarted.closeAllSessionsWhenIdle();

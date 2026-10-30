@@ -253,7 +253,7 @@ export async function loadPublicationAttempt(
 ): Promise<PublicationAttempt | null> {
     // Registry reads validate the runtime layout under their own read scope.
     // Do not repeat the same preflight immediately before entering that boundary.
-    const entry = await findById(projectRoot, attemptId, { migrate: false });
+    const entry = await findById(projectRoot, attemptId);
     if (!entry?.publication) return null;
     assertPublicationAttempt(entry.publication);
     return entry.publication;
@@ -269,7 +269,7 @@ export async function startPublicationAttempt(args: {
     validatedCommit: string;
     targetHeadAtSeal: string;
 }): Promise<PublicationAttempt> {
-    const entry = await findById(args.projectRoot, args.attemptId, { migrate: false });
+    const entry = await findById(args.projectRoot, args.attemptId);
     if (!entry) throw new Error(`Worktree registry entry not found: ${args.attemptId}`);
     if (!entry.planId) throw new Error(`Worktree registry entry ${args.attemptId} has no Plan identity.`);
     if (entry.publication) {

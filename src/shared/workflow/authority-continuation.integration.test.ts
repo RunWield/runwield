@@ -31,7 +31,7 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execu
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { createPublicationAttempt } from "./publication-attempt.ts";
-import { findCompletionSiblings } from "./plan-family.ts";
+import { findCompletionSiblings, prepareCompletionSiblings } from "./plan-family.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 
@@ -345,7 +345,9 @@ test("Epic completion reads published siblings without a permanent controller re
         await git(root, ["commit", "-m", "Published sibling"]);
         const tree = await addTree(root, directory, "a", "epic/a");
         await git(root, ["switch", "main"]);
-        const siblings = await findCompletionSiblings(tree, "epic");
+        const passive = await findCompletionSiblings(tree, "epic");
+        assertEquals(passive.find((child) => child.name === "epic/b")?.attrs.status, "ready_for_work");
+        const siblings = await prepareCompletionSiblings(tree, "epic");
         const b = siblings.find((child) => child.name === "epic/b");
         assertEquals(b?.attrs.status, "verified");
         assertEquals(b?.attrs.deliveryEvidence, undefined);

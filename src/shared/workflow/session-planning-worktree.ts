@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { loadPlan, mergeFrontMatterText } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
@@ -11,6 +12,7 @@ import { preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 
 /** Prepare the authoritative Plan document immediately before a workflow session starts. */
 export async function prepareSessionPlanningWorktree(projectRoot: string, planName: string) {
+    await preparePlanWorkflow(projectRoot, planName);
     const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const attempt = await findActiveByPlanName(registryRoot, planName);
     if (

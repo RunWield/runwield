@@ -18,12 +18,14 @@ import { pid, platform } from "node:process";
  */
 
 import { dirname } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./lock-file-snapshot.ts";
 import { getLockHostname, isPidAlive } from "./process-liveness.ts";
 import { CLI_BIN } from "../constants.js";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
 import {
     enterProjectRuntime,
+    checkedProjectRuntimeLayout,
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
 } from "./project-runtime-layout.ts";
@@ -31,6 +33,9 @@ import { inspectPlanIdentityDocuments } from "./workflow/plan-diagnostic-evidenc
 import { assertPublicationAttempt } from "./workflow/publication-attempt.ts";
 
 /** @typedef {import("./lock-file-snapshot.ts").LockFileSnapshot} LockFileSnapshot */
+
+/** @type {AsyncLocalStorage<import("./project-runtime-layout.ts").ProjectRuntimeLayout>} */
+const registryMutation = new AsyncLocalStorage();
 
 const LOCK_TIMEOUT_MS = 30_000;
 const LOCK_RETRY_MS = 50;
@@ -160,7 +165,11 @@ function delay(ms) {
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
 async function runGitResult(cwd, args) {
-    const { code, stdout, stderr } = await captureForegroundProcess("git", { args, cwd });
+    const { code, stdout, stderr } = await captureForegroundProcess("git", {
+        args,
+        cwd,
+        env: { GIT_NO_LAZY_FETCH: "1" },
+    });
     const decoder = new TextDecoder();
     return { code, stdout: decoder.decode(stdout), stderr: decoder.decode(stderr) };
 }
@@ -292,11 +301,10 @@ function hasUnresolvedLegacyNonterminalEntries(entries) {
 
 /**
  * @param {string} projectRoot
- * @param {{ migrate?: boolean, planResources?: Array<{ name: string, attrs: { planId?: string, worktreeId?: string|null } }> }} [options]
  * @returns {Promise<WorktreeRegistryEntry[]>}
  */
-async function readRegistry(projectRoot, options = {}) {
-    const layout = await enterProjectRuntime(projectRoot);
+async function readRegistry(projectRoot) {
+    const layout = registryMutation.getStore() || (await checkedProjectRuntimeLayout(projectRoot));
     try {
         const inspected = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
         if (inspected.readError) throw inspected.readError;
@@ -320,10 +328,6 @@ async function readRegistry(projectRoot, options = {}) {
             );
         }
         const entries = inspected.entries;
-        const migrated =
-            options.migrate === false || !Array.isArray(options.planResources)
-                ? false
-                : await migrateLegacyRegistryEntries(projectRoot, entries, options.planResources);
         // Reading is deliberately permissive. Two unfinished attempts for one Plan
         // make *that Plan's* lookups ambiguous; they say nothing about any other
         // Plan, and refusing every read over it made one damaged record disable every
@@ -332,13 +336,6 @@ async function readRegistry(projectRoot, options = {}) {
         // refuse to create a second live attempt, so a permissive read cannot let one
         // in. Lookups below fail only when the entry they were asked for is the
         // ambiguous one.
-        const hasUnresolvedLegacy = hasUnresolvedLegacyNonterminalEntries(entries);
-        if (
-            options.migrate !== false &&
-            ((migrated && !hasUnresolvedLegacy) || (inspected.version < 2 && !hasUnresolvedLegacy))
-        ) {
-            await writeRegistry(projectRoot, entries);
-        }
         return entries;
     } catch (error) {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
@@ -383,7 +380,9 @@ function assertNoDuplicateNonterminalAttempt(entries, candidate) {
  * @param {WorktreeRegistryEntry[]} entries
  */
 async function writeRegistry(projectRoot, entries) {
-    const path = (await enterProjectRuntime(projectRoot)).primary.worktreeRegistryPath;
+    const layout = registryMutation.getStore();
+    if (!layout) throw new Error("Registry writes require mutation admission and the registry lock.");
+    const path = layout.primary.worktreeRegistryPath;
     await fsMkdir(dirname(path), { recursive: true });
     const tmp = `${path}.${crypto.randomUUID()}.tmp`;
     const payload = `${JSON.stringify({ version: 2, entries }, null, 2)}\n`;
@@ -487,7 +486,9 @@ export async function withWorktreeRegistryLockAtPath(lockPath, fn) {
 export async function withWorktreeRegistryLock(projectRoot, fn) {
     return await withProjectRuntimeReadScope(async () => {
         const layout = await enterProjectRuntime(projectRoot);
-        return await withWorktreeRegistryLockAtPath(layout.primary.worktreeRegistryLockPath, fn);
+        return await withWorktreeRegistryLockAtPath(layout.primary.worktreeRegistryLockPath, () =>
+            registryMutation.run(layout, fn),
+        );
     });
 }
 
@@ -665,24 +666,32 @@ export async function inspectWorktreeRegistryAtPath(registryPath) {
  * @returns {Promise<{ version: number, entries: WorktreeRegistryEntry[], integrityIssues: Array<{ kind: string, message: string, ids: string[] }>, readError?: Error }>}
  */
 export async function inspectWorktreeRegistry(projectRoot) {
-    const layout = await enterProjectRuntime(projectRoot);
+    const layout = registryMutation.getStore() || (await checkedProjectRuntimeLayout(projectRoot));
     return await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
 }
 
-/** @param {string} projectRoot @param {{ migrate?: boolean }} [options] */
-export async function listEntries(projectRoot, options = {}) {
-    return await withProjectRuntimeReadScope(async () => {
-        const inspection = options.migrate === false ? null : await inspectWorktreeRegistry(projectRoot);
-        const needsIdentityMigration = inspection?.entries.some((entry) => !entry.planId);
-        const planResources =
-            inspection && needsIdentityMigration
-                ? await inspectPlanIdentityDocuments(resolvePrimaryCheckoutRoot(projectRoot), inspection.entries).catch(
-                      () => [],
-                  )
-                : undefined;
-        return await withWorktreeRegistryLock(projectRoot, () =>
-            readRegistry(projectRoot, { ...options, planResources }),
-        );
+/** @param {string} projectRoot */
+export async function listEntries(projectRoot) {
+    return await withProjectRuntimeReadScope(() => readRegistry(projectRoot));
+}
+
+/** Upgrade registry schema and bind legacy identities only for a deliberate action.
+ * @param {string} projectRoot
+ */
+export async function prepareWorktreeRegistry(projectRoot) {
+    return await withWorktreeRegistryLock(projectRoot, async () => {
+        const layout = registryMutation.getStore();
+        if (!layout) throw new Error("Registry preparation requires its mutation lock.");
+        const inspection = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
+        const entries = await readRegistry(projectRoot);
+        const resources = entries.some((entry) => !entry.planId)
+            ? await inspectPlanIdentityDocuments(resolvePrimaryCheckoutRoot(projectRoot), entries)
+            : [];
+        const migrated = await migrateLegacyRegistryEntries(projectRoot, entries, resources);
+        if (!hasUnresolvedLegacyNonterminalEntries(entries) && (migrated || inspection.version < 2)) {
+            await writeRegistry(projectRoot, entries);
+        }
+        return entries;
     });
 }
 
@@ -1208,10 +1217,9 @@ export async function findByPlanName(projectRoot, planName) {
  *
  * @param {string} projectRoot
  * @param {string} planName
- * @param {{ migrate?: boolean }} [options]
  */
-export async function findActiveByPlanName(projectRoot, planName, options = {}) {
-    const entries = await listEntries(projectRoot, options);
+export async function findActiveByPlanName(projectRoot, planName) {
+    const entries = await listEntries(projectRoot);
     const matches = entries.filter(
         (entry) => entry.planName === planName && entry.status !== "planning" && NONTERMINAL_STATUSES.has(entry.status),
     );
@@ -1276,15 +1284,11 @@ export async function readPlanActionWorktreeEvidence(projectRoot, planId) {
 /**
  * Look up one registry entry by attempt id.
  *
- * Pass `{ migrate: false }` when the registry itself must remain untouched.
- * Migrating reads inspect raw Plan identity evidence without changing Plan files.
- *
  * @param {string} projectRoot
  * @param {string} id
- * @param {{ migrate?: boolean }} [options]
  */
-export async function findById(projectRoot, id, options = {}) {
-    const entries = await listEntries(projectRoot, options);
+export async function findById(projectRoot, id) {
+    const entries = await listEntries(projectRoot);
     return entries.find((entry) => entry.id === id) || null;
 }
 

@@ -1,3 +1,4 @@
+import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { makeTempDirectory } from "./testing/temp-file.ts";
 import { hostname } from "node:os";
 import { testWithFsPermissions } from "./testing/file-test.ts";
@@ -111,6 +112,14 @@ test("controller-only updates preserve a formatted validated Plan byte for byte"
 
 /** @param {string} cwd @param {string} planName */
 async function recordActiveAttempt(cwd, planName) {
+    const path = join(cwd, "execution");
+    const baseCommit = await git(cwd, ["rev-parse", "HEAD"]);
+    await git(cwd, ["worktree", "add", "-b", "worktree/test", path]);
+    await fsMkdir(join(path, "docs/plans"), { recursive: true });
+    await fsWriteFile(
+        join(path, "docs/plans", `${planName}.md`),
+        await fsReadFile(join(cwd, "docs/plans", `${planName}.md`)),
+    );
     const registryPath = getWorktreeRegistryPath(cwd);
     await fsMkdir(dirname(registryPath), { recursive: true });
     await fsWriteFile(
@@ -121,11 +130,11 @@ async function recordActiveAttempt(cwd, planName) {
                 {
                     id: "attempt-one",
                     planName,
-                    path: cwd,
+                    path,
                     branch: "worktree/test",
                     baseBranch: "main",
                     baseRef: "refs/heads/main",
-                    baseCommit: "a".repeat(40),
+                    baseCommit,
                     status: "active",
                     createdAt: "2026-01-01T00:00:00.000Z",
                     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -651,19 +660,14 @@ testWithFs("ensurePlanIdentity backfills missing planId while preserving body ex
 });
 
 testWithFs(
-    "listPlanResources preserves existing IDs, hides archived plans, and retries generated collisions",
+    "listPlanResources preserves existing IDs and hides archived Plans without assigning identities",
     async () => {
         const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
         try {
             await savePlan(cwd, "existing", "# Existing", { planId: "existing-id" });
             await savePlan(cwd, "missing", "# Missing");
             await savePlan(cwd, "archived/hidden", "# Hidden");
-            const ids = ["existing-id", "new-id"];
-
-            const resources = await listPlanResources(cwd, {
-                backfillMissing: true,
-                idGenerator: () => ids.shift() || "fallback-id",
-            });
+            const resources = await listPlanResources(cwd);
 
             assertEquals(
                 resources.map((resource) => resource.planName),
@@ -671,7 +675,7 @@ testWithFs(
             );
             assertEquals(
                 resources.map((resource) => resource.planId),
-                ["existing-id", "new-id"],
+                ["existing-id", ""],
             );
         } finally {
             await fsRm(cwd, { recursive: true });
@@ -686,11 +690,7 @@ testWithFs("listPlanResources throws repair-oriented duplicate planId errors bef
         await savePlan(cwd, "b", "# B", { planId: "dup" });
         await savePlan(cwd, "missing", "# Missing");
 
-        await assertRejects(
-            () => listPlanResources(cwd, { idGenerator: () => "new" }),
-            Error,
-            "Duplicate planId values found",
-        );
+        await assertRejects(() => listPlanResources(cwd), Error, "Duplicate planId values found");
         assertEquals((await loadPlan(cwd, "missing"))?.attrs.planId, undefined);
     } finally {
         await fsRm(cwd, { recursive: true });
@@ -879,6 +879,7 @@ testWithFs("plan-store saves and reloads on-hold metadata without normalizing to
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "held-plan", "## Objective\nPause", {
+            planId: "held-plan-id",
             classification: "FEATURE",
             complexity: "MEDIUM",
             summary: "Paused plan",
@@ -1202,8 +1203,10 @@ testWithFs("archivePlan allows terminal closure and requires force for non-termi
     }
 });
 
+const archiveAttemptFixture = defineCommittedGitFixture({ "README.md": "Archive guards\n" });
+
 testWithFs("archivePlan refuses recoverable worktree states and refuses overwrites", async () => {
-    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const cwd = await archiveAttemptFixture.checkout();
     try {
         await savePlan(cwd, "busy", "# Busy", { status: "verified", worktreeStatus: "active" });
         await recordActiveAttempt(cwd, "busy");
@@ -1292,7 +1295,7 @@ testWithFs("archivePlansByStatus ignores children when parent status does not ma
 });
 
 testWithFs("archivePlansByStatus keeps archiving safe matches when other matches fail", async () => {
-    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const cwd = await archiveAttemptFixture.checkout();
     try {
         await savePlan(cwd, "ok", "# OK", { status: "verified" });
         await savePlan(cwd, "blocked", "# Blocked", { status: "verified", worktreeStatus: "active" });
@@ -2263,47 +2266,13 @@ testWithFs("listPlanResources detects duplicate existing planIds before backfill
         await savePlan(cwd, "missing", "# Missing");
         const before = await fsReadFile(join(cwd, `docs/plans/missing.md`), "utf8");
 
-        await assertRejects(
-            () => listPlanResources(cwd, { idGenerator: () => "should-not-write" }),
-            Error,
-            "Duplicate planId",
-        );
+        await assertRejects(() => listPlanResources(cwd), Error, "Duplicate planId");
         const after = await fsReadFile(join(cwd, `docs/plans/missing.md`), "utf8");
         assertEquals(after, before);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
 });
-
-testWithFs(
-    "listPlanResources backfills missing IDs, retries generated collisions, and hides archived plans",
-    async () => {
-        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-        try {
-            await savePlan(cwd, "a", "# A", { planId: "existing" });
-            await savePlan(cwd, "b", "# B");
-            await savePlan(cwd, "archived/old", "# Old");
-            const ids = ["existing", "generated"];
-
-            const resources = await listPlanResources(cwd, {
-                backfillMissing: true,
-                idGenerator: () => ids.shift() || "unused",
-            });
-
-            assertEquals(
-                resources.map((resource) => resource.name),
-                ["a", "b"],
-            );
-            assertEquals(
-                resources.map((resource) => resource.planId),
-                ["existing", "generated"],
-            );
-            assertEquals((await loadPlan(cwd, "archived/old"))?.attrs.planId, undefined);
-        } finally {
-            await fsRm(cwd, { recursive: true });
-        }
-    },
-);
 
 testWithFs("findPlanById resolves non-archived resources and reports unknown IDs", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
@@ -3111,7 +3080,7 @@ test("a Plan lock left by a dead process is reclaimed immediately", async () => 
     }
 });
 
-testWithFs("listPlanResources does not write Plan files unless backfill is requested", async () => {
+testWithFs("listPlanResources leaves identity assignment to explicit preparation", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-plan-resources-readonly-" });
     try {
         await savePlan(cwd, "no-id", "# No Id\n", {
@@ -3130,8 +3099,8 @@ testWithFs("listPlanResources does not write Plan files unless backfill is reque
         assertEquals(listed[0].planId, "");
         assertEquals((await loadPlan(cwd, "no-id"))?.revision, before?.revision);
 
-        const healed = await listPlanResources(cwd, { backfillMissing: true, idGenerator: () => "minted-id" });
-        assertEquals(healed[0].planId, "minted-id");
+        const healed = await ensurePlanIdentity(cwd, "no-id", { idGenerator: () => "minted-id" });
+        assertEquals(healed.planId, "minted-id");
         assertEquals((await loadPlan(cwd, "no-id"))?.attrs.planId, "minted-id");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});

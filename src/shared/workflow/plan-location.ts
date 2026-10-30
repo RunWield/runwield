@@ -5,8 +5,12 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { isGitRepository } from "../git.ts";
 import { isSequencePlan } from "../project-plan.ts";
-import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
-import { listControllerDocumentWorktrees } from "./controller-registry.ts";
+import { inspectProjectRuntimeReadAccess, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
+import {
+    assertControllerDocumentAvailable,
+    inspectControllerDocumentWorktrees,
+    listControllerDocumentWorktrees,
+} from "./controller-registry.ts";
 import { findTargetBranchPlan } from "./planning-worktree.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
 import {
@@ -19,7 +23,6 @@ export { recoverMissingExecutionWorktreesForPlanLoading } from "./execution-work
 export type { MissingExecutionWorktreeRecovery } from "./execution-worktree-rescue.ts";
 
 interface ResolveWorkflowPlanLocationOptions {
-    migrateRegistry?: boolean;
     /** Explicit child loading reads the published family, not sibling copies in the parent's planning checkout. */
     loadFromTarget?: boolean;
     /** Return an unstarted Plan snapshot instead of requiring a writable document root. Lookups never prepare worktrees. */
@@ -67,10 +70,18 @@ async function resolveWorkflowPlanLocationInScope(
 ) {
     planName = canonicalizeStoredPlanName(planName).name;
     const registryRoot = resolvePrimaryCheckoutRoot(cwd);
-    const registryReadOptions = options.migrateRegistry === false ? { migrate: false } : undefined;
+    if (options.readOnly && (await inspectProjectRuntimeReadAccess(cwd)).kind === "pending") {
+        // Partly moved stores cannot select document authority. Keep safe local bytes browseable.
+        return { registryRoot, documentRoot: cwd, plan: await loadPlan(cwd, planName) };
+    }
     let registeredParentTarget = "";
-    const attempt = await findActiveByPlanName(registryRoot, planName, registryReadOptions);
+    const attempt = await findActiveByPlanName(registryRoot, planName);
     if (attempt && !isPublicationCleanupPending(attempt.publication)) {
+        // A missing execution checkout can use separate Git recovery evidence, never foreign bytes.
+        if (await executionWorktreePathExists(attempt.path)) {
+            const [checked] = await inspectControllerDocumentWorktrees(registryRoot, [attempt]);
+            assertControllerDocumentAvailable(checked);
+        }
         const plan = await loadPlan(attempt.path, planName);
         const recoveredWorktree: MissingExecutionWorktreeRecovery | undefined = undefined;
         if (plan) {
@@ -98,6 +109,7 @@ async function resolveWorkflowPlanLocationInScope(
             (entry) => entry.planName === planName,
         );
         if (registered) {
+            assertControllerDocumentAvailable(registered);
             const plan = await loadPlan(registered.path, planName);
             if (plan && (!registered.planId || plan.attrs.planId === registered.planId)) {
                 return { registryRoot, documentRoot: registered.path, plan };
@@ -115,6 +127,7 @@ async function resolveWorkflowPlanLocationInScope(
             parentName &&
             (await listControllerDocumentWorktrees(registryRoot)).find((entry) => entry.planName === parentName);
         if (parentEntry) {
+            assertControllerDocumentAvailable(parentEntry);
             const parent = await loadPlan(parentEntry.path, parentName);
             if (!parent || (parentEntry.planId && parent.attrs.planId !== parentEntry.planId)) {
                 throw new Error(`The registered parent Plan ${parentName} is missing or has a different identity.`);

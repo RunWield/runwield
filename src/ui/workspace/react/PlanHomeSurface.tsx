@@ -7,8 +7,14 @@ import { WorkflowSidebar } from "./WorkflowSidebar.tsx";
 import { buildWorkflowPresentation } from "../../../shared/workflow/workflow-presentation.ts";
 
 function ownerCookie(name) {
-    return document.cookie.split("; ").find((value) => value.startsWith(`${name}=`))?.split("=").slice(1).join("=") ||
-        "";
+    return (
+        document.cookie
+            .split("; ")
+            .find((value) => value.startsWith(`${name}=`))
+            ?.split("=")
+            .slice(1)
+            .join("=") || ""
+    );
 }
 
 async function ownerFetch(url, options = {}) {
@@ -39,16 +45,18 @@ function buildPresentation(payload, progress) {
         status: progress?.overall?.state === "completed" ? "verified" : progress?.plan?.status || payload.status,
         validationPhase: progress?.plan?.validationPhase || payload.attrs?.validationPhase,
         progressFacts: progressFacts(progress || payload.workflow),
-        degradedMessage: typeof progress?.degraded?.message === "string"
-            ? progress.degraded.message
-            : typeof payload.workflow?.degradedMessage === "string"
-            ? payload.workflow.degradedMessage
-            : "",
-        sessionState: typeof progress?.session?.state === "string"
-            ? progress.session.state
-            : typeof payload.workflow?.sessionState === "string"
-            ? payload.workflow.sessionState
-            : "",
+        degradedMessage:
+            typeof progress?.degraded?.message === "string"
+                ? progress.degraded.message
+                : typeof payload.workflow?.degradedMessage === "string"
+                  ? payload.workflow.degradedMessage
+                  : "",
+        sessionState:
+            typeof progress?.session?.state === "string"
+                ? progress.session.state
+                : typeof payload.workflow?.sessionState === "string"
+                  ? payload.workflow.sessionState
+                  : "",
         hasWorkingSession: Boolean(
             valueFromProgress(payload, progress, "sessionHref") || progress?.session?.runwieldSessionId,
         ),
@@ -116,16 +124,28 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
         }
     }
 
-    const artifactPayload = useMemo(() => ({
-        markdown: payload.markdown || payload.body || "",
-        mode: payload.mode || "dev",
-        artifactKind: "plan",
-        title: payload.title || payload.planName || "Plan",
-        artifactPath: payload.artifactPath,
-        returnHref: payload.returnHref || "/",
-        returnLabel: payload.returnLabel || "Back",
-        imageBaseDir: payload.imageBaseDir,
-    }), [payload]);
+    const artifactPayload = useMemo(
+        () => ({
+            markdown: payload.markdown || payload.body || "",
+            mode: payload.mode || "dev",
+            artifactKind: "plan",
+            title: payload.title || payload.planName || "Plan",
+            artifactPath: payload.artifactPath,
+            returnHref: payload.returnHref || "/",
+            returnLabel: payload.returnLabel || "Back",
+            imageBaseDir: payload.imageBaseDir,
+            notices: [
+                ...new Set(
+                    [
+                        ...(payload.notices || []),
+                        ...(payload.readAvailability?.kind === "pending" ? [payload.readAvailability.message] : []),
+                        progress?.degraded?.message || payload.workflow?.degradedMessage,
+                    ].filter(Boolean),
+                ),
+            ],
+        }),
+        [payload, progress],
+    );
     const workflow = useMemo(() => buildPresentation(payload, progress), [payload, progress]);
 
     return (

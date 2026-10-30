@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./shared/workflow/plan-preparation.ts";
 import { test } from "node:test";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -100,7 +101,7 @@ for (const status of ["completed", "planning"] as const) {
             assertEquals(await readFile(f.primaryPath, "utf8"), mergeFrontMatterText(f.primary, { planId }));
             assertEquals(await readFile(join(f.tree, "docs/plans/epic/child.md"), "utf8"), authorityBefore);
             assertEquals(await listEntries(f.root), registryBefore);
-            const children = await findTargetBranchPlansByParent(f.root, "main", "epic", { refresh: false });
+            const children = await findTargetBranchPlansByParent(f.root, "main", "epic");
             assertEquals(
                 children.map((child) => child.attrs.planId),
                 [planId],
@@ -114,6 +115,8 @@ for (const status of ["completed", "planning"] as const) {
             assertEquals(opened.plan?.attrs.planId, planId);
             assertEquals(opened.plan?.body, "# Authoritative child\n\nImplemented body.\n");
             if (status === "completed") {
+                assertEquals((await loadPlanActionEvidence(f.root, planId)).kind, "invalid_action");
+                await preparePlanWorkflow(f.root, planName);
                 const evidence = await loadPlanActionEvidence(f.root, planId);
                 assertEquals(evidence.kind, "success");
                 if (evidence.kind === "success") assertEquals(evidence.evidence.status, "implemented");
@@ -124,10 +127,12 @@ for (const status of ["completed", "planning"] as const) {
     });
 }
 
-test("explicit identity backfill reuses the registered ID even when the document authority is anonymous", async () => {
+test("explicit identity preparation reuses the registered ID for an anonymous document authority", async () => {
     const f = await registeredPlan("completed", true);
     try {
-        const plans = await listPlanResources(f.root, { backfillMissing: true });
+        await ensurePlanIdentity(f.root, planName);
+        await ensurePlanIdentity(f.tree, planName);
+        const plans = await listPlanResources(f.root);
         assertEquals(plans.find((plan) => plan.name === planName)?.planId, planId);
         assertEquals((await loadPlan(f.root, planName))?.attrs.planId, planId);
         assertEquals(await readFile(f.primaryPath, "utf8"), mergeFrontMatterText(f.primary, { planId }));
@@ -136,7 +141,7 @@ test("explicit identity backfill reuses the registered ID even when the document
     }
 });
 
-test("explicit backfill reserves registered IDs for unrelated new Plans", async () => {
+test("explicit identity preparation reserves registered IDs for unrelated new Plans", async () => {
     const f = await registeredPlan();
     try {
         // A missing authority is absent from the catalog, but its identity remains reserved.
@@ -144,10 +149,8 @@ test("explicit backfill reserves registered IDs for unrelated new Plans", async 
         await rm(join(f.tree, "docs/plans/epic/child.md"));
         await savePlan(f.root, "new", "# New\n", { status: "draft" });
         const ids = [planId, "unique-new-id"];
-        const plans = await listPlanResources(f.root, {
-            backfillMissing: true,
-            idGenerator: () => ids.shift() || "unexpected",
-        });
+        await ensurePlanIdentity(f.root, "new", { idGenerator: () => ids.shift() || "unexpected" });
+        const plans = await listPlanResources(f.root);
         assertEquals(plans.find((plan) => plan.name === "new")?.planId, "unique-new-id");
     } finally {
         await f.cleanup();
@@ -181,32 +184,23 @@ test("identity preparation refuses ambiguous registered authority without changi
 });
 
 for (const collisionOrder of ["before", "after"] as const) {
-    for (const backfillMissing of [false, true]) {
-        test(`registered identity cannot overwrite another catalog Plan's ID (backfill=${backfillMissing}, collision=${collisionOrder})`, async () => {
-            const f = await registeredPlan("completed", true, collisionOrder);
-            try {
-                const otherPath = f.otherPath;
-                const authorityPath = join(f.tree, `docs/plans/${f.planName}.md`);
-                const otherBefore = await readFile(otherPath, "utf8");
-                const authorityBefore = await readFile(authorityPath, "utf8");
-                const registryBefore = await listEntries(f.root);
-                await assertRejects(
-                    () =>
-                        backfillMissing
-                            ? listPlanResources(f.root, { backfillMissing: true })
-                            : ensurePlanIdentity(f.root, f.planName),
-                    Error,
-                    "belongs to another Plan",
-                );
-                assertEquals(await readFile(f.primaryPath, "utf8"), f.primary);
-                assertEquals(await readFile(otherPath, "utf8"), otherBefore);
-                assertEquals(await readFile(authorityPath, "utf8"), authorityBefore);
-                assertEquals(await listEntries(f.root), registryBefore);
-            } finally {
-                await f.cleanup();
-            }
-        });
-    }
+    test(`registered identity cannot overwrite another catalog Plan's ID (collision=${collisionOrder})`, async () => {
+        const f = await registeredPlan("completed", true, collisionOrder);
+        try {
+            const otherPath = f.otherPath;
+            const authorityPath = join(f.tree, `docs/plans/${f.planName}.md`);
+            const otherBefore = await readFile(otherPath, "utf8");
+            const authorityBefore = await readFile(authorityPath, "utf8");
+            const registryBefore = await listEntries(f.root);
+            await assertRejects(() => ensurePlanIdentity(f.root, f.planName), Error, "belongs to another Plan");
+            assertEquals(await readFile(f.primaryPath, "utf8"), f.primary);
+            assertEquals(await readFile(otherPath, "utf8"), otherBefore);
+            assertEquals(await readFile(authorityPath, "utf8"), authorityBefore);
+            assertEquals(await listEntries(f.root), registryBefore);
+        } finally {
+            await f.cleanup();
+        }
+    });
 
     test(`target catalog overlay preserves a competing Plan ID (collision=${collisionOrder})`, async () => {
         const f = await registeredPlan("completed", false, collisionOrder);

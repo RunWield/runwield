@@ -141,7 +141,7 @@ export async function runCrashCase(mode: PublicationMode, crashAfter: string, ad
             assert(targetHeadAfter !== primaryHead);
             assertEquals(await fsReadFile(`${projectRoot}/untracked-user-file.txt`, "utf8"), "do not touch\n");
         }
-        assertEquals(await findById(projectRoot, "attempt-1", { migrate: false }), null);
+        assertEquals(await findById(projectRoot, "attempt-1"), null);
         assertEquals(
             await fsStat(worktree.path)
                 .then(() => true)

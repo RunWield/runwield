@@ -1,5 +1,6 @@
-import { findPlanEvidenceById, normalizeDeliveryEvidence } from "../../../plan-store.js";
-import { isCommitPublishedToTarget } from "../../../shared/isolated-publication.ts";
+import { hasApplicablePublicationReceipt } from "../../../shared/workflow/publication-receipt.ts";
+import type { PlanReadAvailability } from "../../../plan-store.js";
+import { findPlanById } from "../../../plan-store.js";
 import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
 import {
     isValidationCheckpoint,
@@ -17,14 +18,7 @@ import {
 } from "../../../shared/workflow/workflow-presentation.ts";
 
 export type ProgressOverallState =
-    | "waiting"
-    | "running"
-    | "repairing"
-    | "paused"
-    | "needs_attention"
-    | "delivering"
-    | "completed"
-    | "degraded";
+    "waiting" | "running" | "repairing" | "paused" | "needs_attention" | "delivering" | "completed" | "degraded";
 
 export type ProgressStageState =
     | "pending"
@@ -46,6 +40,7 @@ type PlanEvidence = {
     attrs: PlanAttrs;
     body: string;
     markdown: string;
+    readAvailability?: PlanReadAvailability;
 };
 type OwnerSession = {
     runwieldSessionId: string;
@@ -111,6 +106,7 @@ type SafeSessionSegment = {
 
 export type OwnerPlanProgress = {
     ok: boolean;
+    readAvailability?: PlanReadAvailability;
     readOnly: true;
     projectId: string;
     plan: {
@@ -207,7 +203,8 @@ function progressFactsFromEvidence(
     const facts: WorkflowProgressFact[] = [];
     const checkpoint = checkpointFrom(evidence.attrs);
     if (
-        checkpoint && registry &&
+        checkpoint &&
+        registry &&
         validationCheckpointCanResume(
             checkpoint,
             registry.id,
@@ -268,32 +265,33 @@ function progressFromSharedPresentation(
             item.id === "mechanical"
                 ? validationStageLabel("ci")
                 : item.id === "semantic"
-                ? validationStageLabel("semantic_review")
-                : item.label,
+                  ? validationStageLabel("semantic_review")
+                  : item.label,
             toProgressStageState(item.id, item.state),
             item.detail,
             updatedAt,
-        )
+        ),
     );
     if (published) {
         const delivery = stages.find((item) => item.id === "delivery");
         if (delivery) delivery.state = "completed";
     }
-    const priority = stages.find((item) => ["failed", "needs_attention", "paused", "running"].includes(item.state)) ||
-        stages.at(-1);
-    const overallState: ProgressOverallState = priority?.state === "failed" || priority?.state === "needs_attention"
-        ? "needs_attention"
-        : priority?.state === "paused"
-        ? "paused"
-        : priority?.id === "repair" && priority?.state === "running"
-        ? "repairing"
-        : priority?.id === "delivery" && priority?.state === "running"
-        ? "delivering"
-        : stages.at(-1)?.state === "completed"
-        ? "completed"
-        : priority?.state === "running"
-        ? "running"
-        : "waiting";
+    const priority =
+        stages.find((item) => ["failed", "needs_attention", "paused", "running"].includes(item.state)) || stages.at(-1);
+    const overallState: ProgressOverallState =
+        priority?.state === "failed" || priority?.state === "needs_attention"
+            ? "needs_attention"
+            : priority?.state === "paused"
+              ? "paused"
+              : priority?.id === "repair" && priority?.state === "running"
+                ? "repairing"
+                : priority?.id === "delivery" && priority?.state === "running"
+                  ? "delivering"
+                  : stages.at(-1)?.state === "completed"
+                    ? "completed"
+                    : priority?.state === "running"
+                      ? "running"
+                      : "waiting";
     return { stages, overallState, updatedAt, progressFacts: facts };
 }
 
@@ -301,6 +299,7 @@ function degraded(projectId: string, plan: PlanEvidence, code: string, message: 
     const updatedAt = text(plan.attrs.updatedAt) || null;
     return {
         ok: false,
+        readAvailability: plan.readAvailability,
         readOnly: true,
         projectId,
         plan: {
@@ -360,9 +359,9 @@ async function sessionProjection(store: OwnerStore, projectId: string, planId: s
         activeAgent: activation?.activeAgentName || null,
         projectionState,
         segments,
-        progressUrl: `/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}?session=${
-            encodeURIComponent(runwieldSessionId)
-        }`,
+        progressUrl: `/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}?session=${encodeURIComponent(
+            runwieldSessionId,
+        )}`,
     };
 }
 
@@ -371,21 +370,34 @@ export async function loadOwnerPlanProgress(
     options: { projectId: string; planId: string; runwieldSessionId?: string | null },
 ): Promise<OwnerPlanProgress> {
     const projectRoot = requireOwnerProjectRoot(store, options.projectId);
-    const primary = await findPlanEvidenceById(projectRoot, options.planId) as PlanEvidence;
+    const resource = await findPlanById(projectRoot, options.planId);
+    const primary = resource as PlanEvidence;
+    if (primary.readAvailability?.kind === "pending") {
+        return degraded(
+            options.projectId,
+            primary,
+            "workflow_details_pending",
+            primary.readAvailability.message || "Workflow details pending. Load this Plan to prepare its workflow.",
+        );
+    }
     let registry: WorktreeRegistryEntry | null = null;
-    let authoritative = primary;
+    const authoritative = primary;
     let published = false;
     try {
         registry = await findByPlanId(projectRoot, primary.planId);
-        if (registry?.path) authoritative = await findPlanEvidenceById(registry.path, primary.planId) as PlanEvidence;
-        const delivery = normalizeDeliveryEvidence(authoritative.attrs.deliveryEvidence);
-        if (!registry && delivery?.mode === "worktree_merge") {
-            published = await isCommitPublishedToTarget({
-                projectRoot,
-                targetBranch: delivery.targetBranch,
-                commit: delivery.executionCommit,
-            });
+        // The canonical resource already selected and checked document authority.
+        // A registry path alone must not authorize another repository.
+        if (authoritative.readAvailability?.kind === "pending") {
+            return degraded(
+                options.projectId,
+                authoritative,
+                "workflow_details_pending",
+                authoritative.readAvailability.message || "Workflow details pending.",
+            );
         }
+        // The controller owns receipt identity and invalidation. Browsing never obtains remote proof.
+        published =
+            !registry && hasApplicablePublicationReceipt(resource.attrs) && authoritative.attrs.status === "verified";
     } catch (error) {
         return degraded(
             options.projectId,
@@ -394,20 +406,49 @@ export async function loadOwnerPlanProgress(
             error instanceof Error ? error.message : String(error),
         );
     }
-    const derived = progressFromSharedPresentation(authoritative, registry, published);
+
+    const delivery = authoritative.attrs.deliveryEvidence;
+    const publicationUnconfirmed =
+        !registry &&
+        !published &&
+        delivery &&
+        !Array.isArray(delivery) &&
+        typeof delivery === "object" &&
+        delivery.mode === "worktree_merge";
+    const publicationNotice = "Publication is unconfirmed. No applicable saved publication receipt is available.";
+    // A raw terminal label is not publication proof. Document bytes keep that label;
+    // progress projects unfinished delivery until the lifecycle owner confirms publication.
+    const progressEvidence =
+        publicationUnconfirmed && authoritative.attrs.status === "verified"
+            ? { ...authoritative, attrs: { ...authoritative.attrs, status: "reviewed", validationPhase: "delivery" } }
+            : authoritative;
+    const derived = progressFromSharedPresentation(progressEvidence, registry, published);
+    if (publicationUnconfirmed) {
+        derived.overallState = "delivering";
+        const completion = derived.stages.find((item) => item.id === "completion");
+        if (completion) completion.state = "pending";
+        const deliveryStage = derived.stages.find((item) => item.id === "delivery");
+        if (deliveryStage) {
+            deliveryStage.detail = publicationNotice;
+            deliveryStage.state = "unknown";
+        }
+    }
     const session = await sessionProjection(store, options.projectId, primary.planId, options.runwieldSessionId || "");
-    const settled = derived.overallState === "completed" || derived.overallState === "needs_attention" ||
+    const settled =
+        derived.overallState === "completed" ||
+        derived.overallState === "needs_attention" ||
         derived.overallState === "paused";
     return {
         ok: true,
+        readAvailability: authoritative.readAvailability,
         readOnly: true,
         projectId: options.projectId,
         plan: {
             planId: primary.planId,
             planName: primary.planName,
             title: planTitle(authoritative),
-            status: published ? "verified" : text(authoritative.attrs.status, "draft"),
-            validationPhase: savedValidationPhase(authoritative.attrs),
+            status: published ? "verified" : text(progressEvidence.attrs.status, "draft"),
+            validationPhase: savedValidationPhase(progressEvidence.attrs),
             classification: text(primary.attrs.classification, "PLANNED_CHANGE"),
             executionAgent: text(primary.attrs.executionAgent) || null,
             updatedAt: derived.updatedAt,
@@ -415,9 +456,10 @@ export async function loadOwnerPlanProgress(
         overall: {
             state: derived.overallState,
             label: derived.overallState.replaceAll("_", " "),
-            detail:
-                derived.stages.find((item) => ["running", "needs_attention", "paused", "failed"].includes(item.state))
-                    ?.detail || "Progress is available.",
+            detail: publicationUnconfirmed
+                ? publicationNotice
+                : derived.stages.find((item) => ["running", "needs_attention", "paused", "failed"].includes(item.state))
+                      ?.detail || "Progress is available.",
             updatedAt: derived.updatedAt,
             settled,
         },

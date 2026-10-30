@@ -1,3 +1,4 @@
+import type { PlanReadAvailability } from "../../../plan-store.js";
 /** @module ui/workspace/server/owner-dashboard */
 
 import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.js";
@@ -35,6 +36,7 @@ type PlanAttrs = {
 };
 
 type OwnerPlan = {
+    readAvailability?: PlanReadAvailability;
     planId: string;
     title?: string;
     name?: string;
@@ -242,7 +244,7 @@ function planUpdatedAt(plan: OwnerPlan): string {
 }
 
 function isDashboardEligible(plan: OwnerPlan): boolean {
-    if (!safeText(plan.planId).trim()) return false;
+    if (!safeText(plan.planId).trim() || plan.readAvailability?.kind === "pending") return false;
     if (planStatus(plan) === "on_hold") return false;
     if (isSequencePlan(plan.attrs || {})) return false;
     return true;
@@ -546,6 +548,19 @@ async function projectPayload(
     if (root) {
         try {
             plans = (await loadPlanSummaries(root)) as OwnerPlan[];
+            const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");
+            if (pending) {
+                diagnostics.push({
+                    source: "plans-reader",
+                    message:
+                        pending.readAvailability?.message ||
+                        "Workflow details pending. Load this Plan to prepare its workflow.",
+                    repairHref: `/projects/${encodeURIComponent(project.projectId)}/plans`,
+                    repairLabel: "Browse Plans",
+                });
+                reportFailure(CATEGORY_ORDER);
+                plans = plans.filter((plan) => plan.readAvailability?.kind !== "pending");
+            }
         } catch (error) {
             diagnostics.push({
                 source: "plans-reader",
@@ -917,7 +932,18 @@ export async function loadOwnerSidebar(
                     const plansRead = (async (): Promise<OwnerPlan[]> => {
                         if (!root) return [];
                         try {
-                            return (await loadPlanSummaries(root)) as OwnerPlan[];
+                            const plans = (await loadPlanSummaries(root)) as OwnerPlan[];
+                            const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");
+                            if (pending)
+                                diagnostics.push({
+                                    source: "plans-reader",
+                                    message:
+                                        pending.readAvailability?.message ||
+                                        "Workflow details pending. Load this Plan to prepare its workflow.",
+                                    repairHref: `/projects/${encodeURIComponent(record.projectId)}/plans`,
+                                    repairLabel: "Browse Plans",
+                                });
+                            return plans.filter((plan) => plan.readAvailability?.kind !== "pending");
                         } catch (error) {
                             diagnostics.push({
                                 source: "plans-reader",

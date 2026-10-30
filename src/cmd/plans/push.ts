@@ -1,3 +1,5 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 /**
  * @module cmd/plans/push
  * Push the current local shared Plan body as a new encrypted remote Revision.
@@ -19,7 +21,6 @@ import {
 import { buildCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansPushArgs {
     target?: string;
@@ -131,13 +132,14 @@ function redactedError(error: Error, secrets: string[]): string {
 
 export async function pushPlanRevision(pushOptions: PushPlanRevisionOptions): Promise<PushedPlanRevision> {
     const cwd = pushOptions.cwd || getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const now = new Date().toISOString();
     const target = pushOptions.target;
     const selected = (await listPlans(cwd)).filter((plan) => plan.name === target || plan.attrs.planId === target);
     if (selected.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
+    await preparePlanWorkflow(cwd, selected[0]?.name || target);
     await resolveWorkflowPlanLocation(cwd, selected[0]?.name || target);
-    const resource = findResourceByNameOrId(await listPlanResources(cwd, { backfillMissing: false }), target);
+    const resource = findResourceByNameOrId(await listPlanResources(cwd), target);
     if (!resource) throw new Error(`Active Plan not found: ${target}`);
     const attrs = resource.attrs || {};
     if (!hasCompleteRemoteCanonicalMetadata(attrs)) {
@@ -308,7 +310,7 @@ export async function runPlansPushCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const pushed = await pushPlanRevision({
         target: parsed.target as string,
         cwd,

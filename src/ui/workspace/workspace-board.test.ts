@@ -397,7 +397,9 @@ test("workspace adapter exposes Epic dependency health done-enough held and orph
             planId: "done-id",
             classification: "FEATURE",
             parentPlan: "epic",
-            status: "validated",
+            status: "verified",
+            verifiedAt: "2026-01-01T00:00:00.000Z",
+            deliveryEvidence: { version: 1, mode: "non_git_in_place" },
         });
         await savePlan(cwd, "epic/02-blocked", "# Blocked", {
             planId: "blocked-id",

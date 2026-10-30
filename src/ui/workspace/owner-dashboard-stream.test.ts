@@ -141,7 +141,7 @@ test("dashboard keeps Promise identity and publishes later Project while first w
     }
 });
 
-test("dashboard completion waits for an empty Project's registry read", async () => {
+test("dashboard reads an empty Project without waiting for its registry writer lock", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-empty-"));
     const root = join(dir, "project");
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
@@ -164,7 +164,7 @@ test("dashboard completion waits for an empty Project's registry read", async ()
                 return Promise.resolve({ sessions: [] });
             },
         };
-        // Hold the real registry lock so unfinished filesystem work cannot win a timing race.
+        // Passive reads use the saved registry and do not acquire the writer lock.
         await withWorktreeRegistryLock(root, async () => {
             dashboardRead = loadOwnerDashboard(store, continuation);
             await sessionsReached;
@@ -175,7 +175,7 @@ test("dashboard completion waits for an empty Project's registry read", async ()
                         timeout = setTimeout(() => resolve("waiting for registry"), 100);
                     }),
                 ]),
-                "waiting for registry",
+                "completed",
             );
         });
         const payload = await dashboardRead!;
@@ -198,7 +198,7 @@ test("dashboard completion waits for an empty Project's registry read", async ()
     }
 });
 
-test("one Project streams a finished row and registry failure before its unrelated live socket responds", async () => {
+test("one Project streams a finished row before its unrelated live socket responds", async () => {
     if (process.platform === "win32") return; // The live connection uses a named pipe there.
     const fixture = await makeManagedSessionFixture();
     const { store, session, project } = fixture;
@@ -244,22 +244,6 @@ test("one Project streams a finished row and registry failure before its unrelat
             status: "validated",
         });
         await enterProjectRuntime(fixture.projectRoot);
-        const registryPath = getWorktreeRegistryPath(fixture.projectRoot);
-        await fsMkdir(dirname(registryPath), { recursive: true });
-        const attempt = (id: string) => ({
-            id,
-            planName: "validated",
-            planId: "validated-plan",
-            baseBranch: "main",
-            baseRef: "HEAD",
-            baseCommit: "abc123",
-            branch: `runwield/worktree/validated-${id}`,
-            path: `${fixture.projectRoot}/${id}`,
-            status: "active",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-        await fsWriteFile(registryPath, JSON.stringify({ version: 2, entries: [attempt("a"), attempt("b")] }));
         let proof = store.acquireSessionActivation({
             runwieldSessionId: session.runwieldSessionId,
             projectId: project.projectId,
@@ -328,11 +312,10 @@ test("one Project streams a finished row and registry failure before its unrelat
                 const frame = await nextFrame(reader!);
                 if (
                     frame.sections.some((section) => section.items.some((item) => item.planId === "early-plan")) &&
-                    frame.sectionProgress["recently-finished"]?.failed &&
-                    !frame.sectionProgress["recently-finished"].pending
+                    !frame.sectionProgress["recently-finished"]?.pending
                 ) {
                     assertEquals(frame.type, "snapshot");
-                    assertEquals(frame.sectionProgress["recently-finished"], { pending: false, failed: true });
+                    assertEquals(frame.sectionProgress["recently-finished"], { pending: false, failed: false });
                     assertEquals(frame.progress, { pending: true, completedProjects: 0, totalProjects: 1 });
                     assertEquals(
                         frame.sections

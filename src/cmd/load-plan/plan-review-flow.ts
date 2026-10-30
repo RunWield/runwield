@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { buildPlanConversationRequest } from "../../shared/workflow/plan-review-conversation.ts";
 import { isSequencePlan } from "../../shared/project-plan.ts";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared/workflow/sequence-review.ts";
@@ -102,6 +103,7 @@ export async function reviewLoadedPlanDirectly({
     runSlicerAgent,
     session,
 }: DirectReviewOptions): Promise<DirectPlanReviewResult> {
+    await preparePlanWorkflow(projectRoot, plan.planName);
     assertRecoveryWorktreeIsManaged(plan.planName, await resolveRecoveryWorktree(projectRoot, plan));
 
     const rearm = async (): Promise<DirectPlanReviewResult> => {

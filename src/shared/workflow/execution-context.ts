@@ -1,3 +1,4 @@
+import { preparePlanController } from "./plan-preparation.ts";
 import { resolve } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.js";
-import { loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
 import {
     describeRegistryAmbiguity,
     findActiveByPlanName as findWorktreeRegistryEntryByPlanName,
@@ -224,6 +225,9 @@ async function recordResolutionMetric({
 export async function resolveValidationExecutionContext(
     options: ResolveValidationExecutionContextOptions,
 ): Promise<ValidationContextResolution> {
+    const documentRoot = await preparePlanController(options.projectRoot, options.planName);
+    const document = await loadPlan(documentRoot, options.planName);
+    if (document && !document.attrs.planId) await ensurePlanIdentity(documentRoot, options.planName);
     return await withProjectRuntimeReadScope(() => resolveValidationExecutionContextInScope(options));
 }
 
@@ -649,6 +653,7 @@ async function resolveValidationExecutionContextInScope({
         selfHealNotices.push({ kind: "execution_plan_fixed", planName });
     }
 
+    await preparePlanController(canonicalWorktreePath, planName);
     let persistedLegacyExecutionMode = false;
     const currentExecutionPlan = await loadPlan(canonicalWorktreePath, planName);
     if (currentExecutionPlan) {

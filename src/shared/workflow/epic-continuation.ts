@@ -30,7 +30,7 @@ import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { isGitRepository } from "../git.ts";
-import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
@@ -119,7 +119,9 @@ export async function resolveEpicContinuation({
         completedTargetBranch &&
         (await isGitRepository(cwd))
     ) {
-        const targetCompleted = (await findTargetBranchPlansByParent(cwd, completedTargetBranch, parentPlanName)).find(
+        const targetCompleted = (
+            await prepareTargetBranchPlansByParent(cwd, completedTargetBranch, parentPlanName)
+        ).find(
             (plan) =>
                 plan.name === completedPlanName ||
                 Boolean(completedAttrs?.planId && plan.attrs.planId === completedAttrs.planId),
@@ -161,7 +163,7 @@ export async function resolveEpicContinuation({
     const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
     const family =
         targetBranch && (await isGitRepository(cwd))
-            ? await findTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
+            ? await prepareTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
             : await findPlansByParent(cwd, parentPlanName);
     const siblings = family
         .filter((plan) => isPlannedChangeClassification(plan.attrs.classification))

@@ -248,7 +248,7 @@ export function buildEffectProver(
 }
 
 export async function runGitLines(projectRoot: string, args: string[]) {
-    const command = captureForegroundProcess("git", { args, cwd: projectRoot });
+    const command = captureForegroundProcess("git", { args, cwd: projectRoot, env: { GIT_NO_LAZY_FETCH: "1" } });
     const { code, stdout } = await command;
     if (code !== 0) return [];
     return new TextDecoder()
@@ -262,6 +262,7 @@ export async function isGitAncestor(projectRoot: string, ancestor: string, ref: 
     const command = captureForegroundProcess("git", {
         args: ["merge-base", "--is-ancestor", ancestor, ref],
         cwd: projectRoot,
+        env: { GIT_NO_LAZY_FETCH: "1" },
     });
     const { code } = await command;
     return code === 0;

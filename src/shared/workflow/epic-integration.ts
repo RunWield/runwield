@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -44,7 +45,7 @@ import type { HostedSession } from "../session/hosted-session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
@@ -200,7 +201,9 @@ async function isChildSettled(
     child: { path: string; attrs: PlanFrontMatter },
 ): Promise<boolean> {
     const status = child.attrs.status;
-    if (!FINISHED_CHILD_STATUSES.has(status)) return false;
+    // Passive reads leave a legacy validated document unconfirmed (reviewed).
+    // Its recorded commit can still prove delivery to this exact Epic head.
+    if (!FINISHED_CHILD_STATUSES.has(status) && status !== "reviewed") return false;
     if (status === "user_verified" || status === "closed_without_verification") return true;
     const evidence = child.attrs.deliveryEvidence;
     if (evidence?.mode === "non_git_in_place") return true;
@@ -293,6 +296,14 @@ export async function readEpicDeliveryState(
  * Safe to call after any child delivery and on every load.
  */
 export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: string): Promise<EpicReconcileResult> {
+    const prepared = await preparePlanWorkflow(projectRoot, epicPlanName);
+    const branch = epicBranchOf(prepared.plan?.attrs);
+    if (branch && (await isGitRepository(projectRoot))) {
+        await prepareTargetBranchPlansByParent(projectRoot, branch, epicPlanName);
+        for (const child of await findPlansByParent(prepared.documentRoot, epicPlanName)) {
+            await preparePlanWorkflow(projectRoot, child.name);
+        }
+    }
     const state = await readEpicDeliveryState(projectRoot, epicPlanName);
     if (!state) return { state: null, gateReady: false, gateRetryReady: false };
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);

@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { isEpicPlan, isProjectPlan } from "../project-plan.ts";
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "../project-plan.ts";
 /**
@@ -22,7 +23,7 @@ import {
 import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../collaboration/lock.ts";
 import { runPlanLifecycleEventTransition } from "./state-transition.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { findCompletionSiblings } from "./plan-family.ts";
+import { findCompletionSiblings, prepareCompletionSiblings } from "./plan-family.ts";
 
 export class PlanLifecycleTransitionError extends Error {
     /**
@@ -1022,6 +1023,7 @@ async function advanceParentEpicWhenAllChildrenVerified({ cwd, planName, event, 
  * @returns {Promise<import('../../plan-store.js').PlanFrontMatter>}
  */
 export async function recordPlanEvent({ cwd, planName, event, currentStatus, details = {}, expectedRevision }) {
+    await preparePlanWorkflow(cwd, planName);
     // The caller's project root locates the controller, not necessarily the Plan.
     // Resolve once before the transaction, then keep that document locked even
     // if the event retires its execution attempt.
@@ -1087,7 +1089,7 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                 typeof preflightPlan.attrs.parentPlan === "string"
                     ? preflightPlan.attrs.parentPlan
                     : "";
-            const siblings = parentPlanName ? await findCompletionSiblings(cwd, parentPlanName) : [];
+            const siblings = parentPlanName ? await prepareCompletionSiblings(cwd, parentPlanName) : [];
             const siblingPaths = new Map(siblings.map((child) => [child.name, child.path]));
             /** @type {import('./state-transition.ts').TransitionResource[]} */
             const resources = [

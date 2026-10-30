@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 /**
  * @module cmd/plans/archive
  * Archive, list, and restore saved Plans.
@@ -26,7 +27,8 @@ import {
 } from "../../ui/tui/directory-warning.ts";
 
 async function confirmArchivePlanRoot(cwd: string, name: string): Promise<void> {
-    const location = await resolveWorkflowPlanLocation(cwd, name, { migrateRegistry: false, readOnly: true });
+    await preparePlanWorkflow(cwd, name);
+    const location = await resolveWorkflowPlanLocation(cwd, name, { readOnly: true });
     const confirmed = location.missingExecutionCheckout
         ? await confirmMissingManagedProjectDirectory(location.documentRoot)
         : await confirmProjectDirectory(location.documentRoot);
@@ -80,6 +82,8 @@ function printArchivedPlans(plans: Awaited<ReturnType<typeof listArchivedPlans>>
     console.log("\n[RunWield] Archived plans:\n");
     for (const plan of plans) {
         console.log(`  ${plan.name}`);
+        if (plan.readAvailability?.kind === "pending")
+            console.log(`    ${plan.readAvailability.message || "Workflow details pending."}`);
         console.log(`    Path: ${plan.relativePath}`);
         if (plan.planId) console.log(`    Plan ID: ${plan.planId}`);
         console.log(`    Status: ${plan.status}`);
@@ -162,6 +166,7 @@ async function archivePlansByStatusTransactionally(
     status: PlanStatus,
     archiveOptions: ArchiveOptions,
 ): Promise<BulkArchiveResult> {
+    for (const plan of await listPlans(cwd)) await preparePlanWorkflow(cwd, plan.name);
     const plans = await listPlans(cwd);
     const childrenByParent = new Map<string, PlanEntry[]>();
     for (const plan of plans) {

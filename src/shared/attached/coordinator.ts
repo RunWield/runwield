@@ -302,7 +302,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         const receipt = delivered?.attrs.publicationReceipt;
         if (
             receipt &&
-            !(await findActiveByPlanName(record.projectRoot, record.plan.planName, { migrate: false })) &&
+            !(await findActiveByPlanName(record.projectRoot, record.plan.planName)) &&
             (await isCommitPublishedToTarget({
                 projectRoot: record.projectRoot,
                 targetBranch: receipt.targetBranch,
@@ -334,7 +334,6 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     const location = executionRoot
         ? { plan: await loadPlan(executionRoot, record.plan.planName).catch(() => null), archived: false }
         : await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
-              migrateRegistry: false,
               readOnly: true,
           });
     const { plan, archived } = location;
@@ -369,7 +368,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         record.state === "validating" &&
         status === "verified" &&
         (plan?.attrs.deliveryEvidence?.mode === "non_git_in_place" ||
-            (await findActiveByPlanName(record.projectRoot, record.plan.planName, { migrate: false })))
+            (await findActiveByPlanName(record.projectRoot, record.plan.planName)))
     )
         return record;
     if (record.state === "validating" && ["implemented", "validated_ci", "reviewed"].includes(status || "")) {
@@ -391,7 +390,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         // checkpoint and registry settlement. Keep the issued action for retry.
         if (record.execution.executionMode === "worktree") {
             const entry = record.execution.worktreeId
-                ? await findById(record.projectRoot, record.execution.worktreeId, { migrate: false })
+                ? await findById(record.projectRoot, record.execution.worktreeId)
                 : null;
             if (entry?.status !== "completed") return record;
         }
@@ -725,7 +724,7 @@ async function submitPlanDocument(
         planName = canonicalizeStoredPlanName(payload.planName).name;
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
-        location = await resolveWorkflowPlanLocation(projectRoot, planName, { migrateRegistry: false, readOnly: true });
+        location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
@@ -869,7 +868,7 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                     preparationSource = await reconcileExecutionPreparationLocation(
                         location.projectRoot,
                         current.plan.planName,
-                        { migrateRegistry: false, readOnly: true },
+                        { readOnly: true },
                     );
                 }
                 if (preparationSource?.plan?.attrs.status !== "ready_for_work") {
@@ -927,7 +926,6 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                 const source =
                     preparationSource ||
                     (await reconcileExecutionPreparationLocation(location.projectRoot, current.plan.planName, {
-                        migrateRegistry: false,
                         readOnly: true,
                     }));
                 if (!source.plan || source.plan.attrs.planId !== current.plan.planId) {
@@ -937,7 +935,7 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                 // If preparation committed before the Attached write, Core can adopt its existing live attempt.
                 const recoveredAttempt =
                     status === "in_progress" &&
-                    (await listEntries(location.projectRoot, { migrate: false })).some(
+                    (await listEntries(location.projectRoot)).some(
                         (entry) =>
                             entry.planId === current.plan?.planId &&
                             entry.path === source.documentRoot &&
@@ -1054,7 +1052,7 @@ export async function taskCompleted(
                     if (!execution.worktreeId || !execution.executionCwd || !execution.worktreeBranch) {
                         throw new Error("Execution worktree authority is incomplete.");
                     }
-                    const entry = await findById(location.projectRoot, execution.worktreeId, { migrate: false });
+                    const entry = await findById(location.projectRoot, execution.worktreeId);
                     if (
                         !entry ||
                         entry.planId !== current.plan.planId ||
@@ -1141,7 +1139,6 @@ export async function openAttachedReviewRound(
                 return { result: { kind: "not_pending", workflow: await viewOf(current) } };
             }
             const { plan, documentRoot } = await resolveWorkflowPlanLocation(projectRoot, current.plan.planName, {
-                migrateRegistry: false,
                 readOnly: true,
             });
             if (!plan) throw new Error(`Plan not found: ${current.plan.planName}`);
@@ -1353,7 +1350,6 @@ export async function saveAttachedReviewChat(
             throw new Error("Core validation is running. Retry after it returns.");
         if (planRound && current.plan) {
             const { plan } = await resolveWorkflowPlanLocation(projectRoot, current.plan.planName, {
-                migrateRegistry: false,
                 readOnly: true,
             });
             if (!plan || plan.revision !== planRevision || current.review?.planRevision !== planRevision)
@@ -1464,7 +1460,6 @@ async function reviewReply(
                 };
             if (planRound && current.plan) {
                 const { plan } = await resolveWorkflowPlanLocation(envelope.projectRoot, current.plan.planName, {
-                    migrateRegistry: false,
                     readOnly: true,
                 });
                 if (!plan || plan.revision !== current.review?.planRevision)
@@ -1859,7 +1854,7 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
             const location = await resolveWorkflowPlanLocation(
                 workflow.execution?.executionCwd || envelope.projectRoot,
                 workflow.plan.planName,
-                { migrateRegistry: false, readOnly: true },
+                { readOnly: true },
             );
             text =
                 envelope.content === "execution_report"
@@ -2258,11 +2253,10 @@ async function validateAttachedReviewerCandidate(
 ): Promise<void> {
     if (!record.plan) throw new Error("The Plan is missing.");
     const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
-        migrateRegistry: false,
         readOnly: true,
     });
     if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
-    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName, { migrate: false });
+    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
     await assertHostReviewerCandidate({
         cwd: source.documentRoot,
         baseBranch: source.plan.attrs.worktreeBaseBranch || "",

@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { bashFixtureExecutable } from "../../../scripts/bash-fixture.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
@@ -1827,6 +1828,7 @@ test("load-plan recovery rejects replaced worktree registry evidence before muta
                 createdAt: "2026-01-01T00:00:00.000Z",
                 updatedAt: "2026-01-01T00:00:00.000Z",
             });
+            await preparePlanWorkflow(projectRoot, "failed-worktree");
             const evidence = await loadPlanActionEvidence(projectRoot, "plan-failed-worktree");
             if (evidence.kind !== "success") throw new Error(evidence.message);
             // Replace the actual attempt, not a retired Plan front-matter pointer.

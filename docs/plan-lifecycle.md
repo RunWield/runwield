@@ -40,6 +40,36 @@ supplies applicable defaults.
 Adoption is idempotent. Existing front matter is not reinitialized; identity can be ensured without resetting lifecycle
 decisions or age. Recheck under the lock so concurrent adoption cannot replace an identity already established.
 
+## Passive reads and action preparation
+
+Listing, indexing, browsing, body lookup, and progress reads inspect existing checked local evidence. They do not create
+or change Plan/runtime files, reconcile ignore rules, assign IDs, fetch or clone Git data, change refs/worktrees, probe
+writer locks, clean journals, or schedule those effects. In-memory reuse and the search service's own derived index and
+status writes are allowed. Target-only documents are parsed directly from local Git objects, not temporary files.
+
+Runtime inspection distinguishes fresh state, safe adopted authority, pending preparation, and blocked access. A fresh
+Project needs no runtime storage. Ready reads retain registered document-worktree and controller authority, including
+when legacy recovery input returns. Unmigrated or interrupted stores are not combined. Unsafe or unreadable authority
+keeps its diagnostic instead of becoming an authoritative empty catalog. See
+[ADR-017](adr/017-project-runtime-state-under-wld-internal.md).
+
+`PlanReadAvailability` carries `ready` or `pending` separately from `attrs` and Front Matter. Missing identity,
+controller import, or runtime adoption can leave workflow details pending while safe local documents remain browseable.
+Missing local target evidence is unavailable, not proof that an Epic has no children. Pending is not a lifecycle status,
+a Plan Event, adoption, or permission to execute. The board retains ID-less drafts through name-based navigation;
+search skips them and withholds uncertain Plan facts when canonical authority is pending.
+
+`inspectControllerView` and registry list/find calls do not import or migrate. Deliberate saves, selected/named
+`/load-plan`, lifecycle actions, execution, recovery, and publication own required preparation. Registry preparation
+enters runtime before its lock; controller preparation imports legacy state and clears obsolete recovery hints under
+existing authority rules. Actions recheck current evidence and revisions after preparation, not from pending read
+projections. Inspection reuse expires with the read operation and never satisfies later action entry.
+
+Passive progress shows applicable saved publication evidence without obtaining remote proof. A valid controller receipt
+can retain established completion after attempt cleanup; missing or invalidated evidence stays unconfirmed. Reopening
+or a new execution invalidates prior completion evidence. Publication and recovery actions still need fresh target proof
+before new success or cleanup, as required by [ADR-016](adr/016-proof-bearing-publication-state-machine.md).
+
 ## State ownership
 
 Before execution starts, Plan lifecycle metadata is canonical in the target project's Plan file. Once RunWield activates
