@@ -5,7 +5,7 @@ workKind: "BUG_FIX"
 complexity: "MEDIUM"
 affectedPaths:
     - "src/ui/workspace/server.js"
-    - "src/ui/workspace/workspace-local-server.test.js"
+    - "src/ui/workspace/workspace-local-server.test.ts"
     - "scripts/build-workspace-runtime.ts"
     - "docs/prd/runwield-workspace-prd.md"
 executionAgent: "engineer"
@@ -154,7 +154,7 @@ Run these focused commands from the execution checkout:
 ```sh
 deno task workspace:build
 deno run -A scripts/build-workspace-runtime.ts
-deno run -A scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-local-server.test.js scripts/build-workspace-runtime.test.ts
+deno run -A scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-local-server.test.ts scripts/build-workspace-runtime.test.ts
 deno run -A scripts/workspace-memory-check.ts --scenario renderer
 deno task seams:check
 ```

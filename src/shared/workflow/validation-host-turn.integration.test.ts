@@ -67,6 +67,7 @@ test("fresh network-denied host turns validate real work without a Session or hi
         const metricsFiles = new Set([
             metricsPath,
             metricsPath + ".lock",
+            await canonicalPath(join(getHomeDir(), ".wld/workflow-metrics/recording.guard")),
             ...["state.json", ".journal.guard", ".journal.lock"].map((name) => join(dirname(metricsPath), name)),
         ]);
         const deliveryEvidenceRoot = await canonicalPath(layout.primary.deliveryEvidenceRoot);

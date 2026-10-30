@@ -18,11 +18,17 @@ devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-09-20T01:12:35-04:00"
 origin: "internal"
-userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 epicBaseCommit: "da55b44d463c4a6797c87792ce3856aa57b0ab29"
-status: "implemented"
 epicIntegrationReport: "docs/plans/reliable-usage-dashboard-and-langfuse-export/integration-report.md"
+status: "user_verified"
+userVerifiedAt: "2026-10-30T02:47:05.309Z"
+userVerificationNote: "the last 2 reviewer issues are small"
+workRecord:
+    status: "generated"
+    recordId: "64b330de-7010-49a0-a1e6-28abda2f37d1"
+    path: "docs/work-records/2026-10-30-personal-usage-reporting-and-optional-langfuse-export.md"
+    lastAttemptAt: "2026-10-30T02:47:46.609Z"
 ---
 
 # Reliable Usage, Workspace Dashboard, and Langfuse Export
