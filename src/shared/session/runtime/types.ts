@@ -93,6 +93,7 @@ export interface PromptSessionResult {
     replacementSessionId?: string;
     templateNewSession?: boolean;
     _validationResult?: import("./workflow-options.ts").RuntimeValidationResult | null;
+    _executionToStart?: import("./workflow-options.ts").RuntimeExecutePlanOptions;
     namedInvocation?: {
         kind: string;
         name: string;

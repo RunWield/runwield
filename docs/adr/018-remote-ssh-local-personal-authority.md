@@ -29,13 +29,14 @@ intended scope. Filesystem confinement and hostile-server isolation are not firs
 Split execution from personal authority:
 
 - Remote Core owns the TUI, Agent loop, and project tools. Workflow capabilities follow the same execution boundary;
-  their delivery scope is defined in the [Remote SSH PRD](../prd/remote-ssh-prd.md).
+  their product scope is defined in [Core Remote connection](../prd/runwield-core-prd.md#remote-connection).
 - The laptop owns authenticated model requests, personal-data services, and authoritative Session bundles.
 - OpenSSH supplies terminal transport and forwarding. A connection-scoped laptop service supplies model and personal
   operations; no permanent daemon or hosted Workspace dependency is required.
 - Remote SSHFS mounts the laptop's full `~/.wld` at a fresh private remote path through standard OpenSSH SFTP. Personal
   settings, Agents, prompts, and Skill file edits use laptop files directly, without resource copies or synchronization.
-  The remote project and its `.wld` stay on the server. Other enabled personal resource roots can be mounted explicitly.
+  The remote project and its `.wld` stay on the server. Enabled agents and installed package roots can be mounted
+  explicitly. Arbitrary personal roots are not supported.
 - Session persistence does not use the personal mount. An in-memory remote Pi manager sends each entry through a
   synchronous save bridge. The laptop writes and synchronizes the evidence before it acknowledges the save. Metadata,
   compaction, and attachments use the same ownership boundary. No second saved remote transcript is created.
@@ -140,6 +141,6 @@ single-writer guarantees.
   server. A future transport change must preserve bundle format, identity, ownership, and save-before-progress
   semantics.
 
-The [Remote SSH Epic](../plans/remote-ssh-development.md) owns implementation and qualification work. The
-[Remote SSH PRD](../prd/remote-ssh-prd.md) distinguishes delivered conversation, workflow, and local review behavior
-from remaining release qualification.
+[Core Remote connection](../prd/runwield-core-prd.md#remote-connection) owns connection and review placement.
+[Core workflow recovery](../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) and
+[laptop-owned Session saves](../prd/runwield-core-prd.md#laptop-owned-remote-session-saves) own continuity and uncertainty.

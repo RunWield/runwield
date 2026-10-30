@@ -6,6 +6,7 @@ import {
     type AssistantMessageEvent,
     type AssistantMessageEventStream,
     type Context,
+    cleanupSessionResources,
     createAssistantMessageEventStream,
     createProvider,
     InMemoryCredentialStore,
@@ -16,12 +17,11 @@ import {
 } from "@earendil-works/pi-ai";
 
 /** Only display and planning fields cross the connection; endpoint and auth data never do. */
-export type RemoteModel =
-    & Pick<
-        Model<Api>,
-        "id" | "name" | "api" | "provider" | "reasoning" | "input" | "cost" | "contextWindow" | "maxTokens"
-    >
-    & Pick<Model<Api>, "thinkingLevelMap" | "inputLimits" | "promptCache">;
+export type RemoteModel = Pick<
+    Model<Api>,
+    "id" | "name" | "api" | "provider" | "reasoning" | "input" | "cost" | "contextWindow" | "maxTokens"
+> &
+    Pick<Model<Api>, "thinkingLevelMap" | "inputLimits" | "promptCache">;
 export interface RemoteProvider {
     id: string;
     name: string;
@@ -138,7 +138,8 @@ function safeOptions(
         // Only this bounded loader disables extensions. Pi passes its Agent-loop callbacks
         // through to providers; these already execute in that remote Agent, not in the laptop stream.
         if (
-            callbackPolicy === "no-extensions" && new Set([
+            callbackPolicy === "no-extensions" &&
+            new Set([
                 "onPayload",
                 "onResponse",
                 "onProviderStreamEvent",
@@ -155,11 +156,14 @@ function safeOptions(
                 "getSteeringMessages",
                 "getFollowUpMessages",
             ]).has(key)
-        ) continue;
+        )
+            continue;
         if (
-            callbackPolicy === "no-extensions" && key === "headers" &&
+            callbackPolicy === "no-extensions" &&
+            key === "headers" &&
             Object.keys(Reflect.get(options, key) ?? {}).length === 0
-        ) continue;
+        )
+            continue;
         if (!optionKeys.has(key) && Reflect.get(options, key) !== undefined) {
             throw new Error(`Unsupported remote model option: ${key}`);
         }
@@ -266,11 +270,12 @@ function safeMessage(message: AssistantMessage): AssistantMessage {
         },
         stopReason,
         // Provider errors can contain request URLs or headers. Do not export their raw text.
-        errorMessage: stopReason === "aborted"
-            ? "Model request cancelled"
-            : stopReason === "error"
-            ? safeProviderDiagnostic(errorMessage)
-            : errorMessage,
+        errorMessage:
+            stopReason === "aborted"
+                ? "Model request cancelled"
+                : stopReason === "error"
+                  ? safeProviderDiagnostic(errorMessage)
+                  : errorMessage,
         rawStopReason: stopReason === "error" || stopReason === "aborted" ? undefined : rawStopReason,
         endTurn,
         timestamp,
@@ -351,6 +356,7 @@ function failure(model: Model<Api>, reason: string, stopReason: "error" | "abort
 export class LocalModelBridge {
     private readonly active = new Map<string, AbortController>();
     private readonly completed = new Set<string>();
+    private readonly providerSessions = new Set<string>();
     private closed = false;
     constructor(private readonly runtime: ModelRuntime) {}
 
@@ -358,20 +364,26 @@ export class LocalModelBridge {
         if (this.closed) throw new Error("Model bridge closed");
         const available = await this.runtime.getAvailable();
         return {
-            providers: this.runtime.getProviders().filter((provider) => !isExternalCliProvider(provider.id)).map((
-                provider,
-            ) => ({
-                id: provider.id,
-                name: provider.name,
-                available: this.runtime.hasConfiguredAuth(provider.id),
-                oauth: this.runtime.isUsingOAuth(provider.id),
-                subscription: this.runtime.isUsingSubscription(provider.id),
-            })),
-            models: this.runtime.getModels().filter((model) => !isExternalCliProvider(model.provider)).map(safeModel),
-            available: available.filter(({ provider }) => !isExternalCliProvider(provider)).map(({ provider, id }) => ({
-                provider,
-                id,
-            })),
+            providers: this.runtime
+                .getProviders()
+                .filter((provider) => !isExternalCliProvider(provider.id))
+                .map((provider) => ({
+                    id: provider.id,
+                    name: provider.name,
+                    available: this.runtime.hasConfiguredAuth(provider.id),
+                    oauth: this.runtime.isUsingOAuth(provider.id),
+                    subscription: this.runtime.isUsingSubscription(provider.id),
+                })),
+            models: this.runtime
+                .getModels()
+                .filter((model) => !isExternalCliProvider(model.provider))
+                .map(safeModel),
+            available: available
+                .filter(({ provider }) => !isExternalCliProvider(provider))
+                .map(({ provider, id }) => ({
+                    provider,
+                    id,
+                })),
         };
     }
 
@@ -384,11 +396,15 @@ export class LocalModelBridge {
         this.closed = true;
         for (const controller of this.active.values()) controller.abort();
         this.active.clear();
+        for (const sessionId of this.providerSessions) cleanupSessionResources(sessionId);
+        this.providerSessions.clear();
     }
 
     stream(request: StreamRequest): Response {
         if (
-            this.closed || !/^[a-zA-Z0-9_-]{1,100}$/.test(request.id) || this.completed.has(request.id) ||
+            this.closed ||
+            !/^[a-zA-Z0-9_-]{1,100}$/.test(request.id) ||
+            this.completed.has(request.id) ||
             this.active.has(request.id)
         ) {
             return new Response(null, { status: 409 });
@@ -396,6 +412,7 @@ export class LocalModelBridge {
         if (isExternalCliProvider(request.provider)) return new Response(null, { status: 404 });
         const model = this.runtime.getModel(request.provider, request.model);
         if (!model || !this.runtime.hasConfiguredAuth(request.provider)) return new Response(null, { status: 404 });
+        if (request.options.sessionId) this.providerSessions.add(request.options.sessionId);
         this.completed.add(request.id); // A retry must not issue a second paid request.
         const abort = new AbortController();
         this.active.set(request.id, abort);
@@ -414,18 +431,26 @@ export class LocalModelBridge {
                     this.active.delete(request.id);
                     try {
                         controller.close();
-                    } catch { /* disconnected */ }
+                    } catch {
+                        /* disconnected */
+                    }
                 };
-                abort.signal.addEventListener("abort", () => {
-                    try {
-                        send({
-                            type: "error",
-                            reason: "aborted",
-                            error: failure(model, "Model request cancelled", "aborted"),
-                        });
-                    } catch { /* disconnected */ }
-                    finish();
-                }, { once: true });
+                abort.signal.addEventListener(
+                    "abort",
+                    () => {
+                        try {
+                            send({
+                                type: "error",
+                                reason: "aborted",
+                                error: failure(model, "Model request cancelled", "aborted"),
+                            });
+                        } catch {
+                            /* disconnected */
+                        }
+                        finish();
+                    },
+                    { once: true },
+                );
                 void (async () => {
                     try {
                         const options: ModelsSimpleStreamOptions & ModelsApiStreamOptions<Api> = {
@@ -488,9 +513,16 @@ async function readBounded(request: Request): Promise<StreamRequest> {
     }
     const data: StreamRequest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
     if (
-        !data || typeof data.id !== "string" || typeof data.provider !== "string" || typeof data.model !== "string" ||
-        typeof data.simple !== "boolean" || !data.context || !data.options || typeof data.options !== "object"
-    ) throw new Error("Invalid model request");
+        !data ||
+        typeof data.id !== "string" ||
+        typeof data.provider !== "string" ||
+        typeof data.model !== "string" ||
+        typeof data.simple !== "boolean" ||
+        !data.context ||
+        !data.options ||
+        typeof data.options !== "object"
+    )
+        throw new Error("Invalid model request");
     safeOptions(data.options);
     return data;
 }
@@ -538,8 +570,10 @@ function remoteStream(
     let cancelAck: Promise<void> | undefined;
     const stop = () => {
         transportAbort.abort();
-        cancelAck ??= call(connection, `cancel/${id}`, { method: "POST", signal: AbortSignal.timeout(4_000) })
-            .then(() => {}, () => {});
+        cancelAck ??= call(connection, `cancel/${id}`, { method: "POST", signal: AbortSignal.timeout(4_000) }).then(
+            () => {},
+            () => {},
+        );
     };
     options.signal?.addEventListener("abort", stop, { once: true });
     void (async () => {
@@ -610,9 +644,9 @@ export async function createRemoteModelRuntime(
         refreshOnCreate: false,
     });
     const providers = new Map(
-        catalog.providers.filter((provider) => !isExternalCliProvider(provider.id)).map((
-            provider,
-        ) => [provider.id, provider]),
+        catalog.providers
+            .filter((provider) => !isExternalCliProvider(provider.id))
+            .map((provider) => [provider.id, provider]),
     );
     for (const provider of runtime.getProviders()) {
         if (!isExternalCliProvider(provider.id) && !providers.has(provider.id)) {
@@ -626,10 +660,12 @@ export async function createRemoteModelRuntime(
         }
     }
     for (const provider of providers.values()) {
-        const models: Model<Api>[] = catalog.models.filter((model) => model.provider === provider.id).map((model) => ({
-            ...model,
-            baseUrl: "",
-        }));
+        const models: Model<Api>[] = catalog.models
+            .filter((model) => model.provider === provider.id)
+            .map((model) => ({
+                ...model,
+                baseUrl: "",
+            }));
         const permitted = new Set(
             catalog.available.filter((model) => model.provider === provider.id).map((model) => model.id),
         );
@@ -663,9 +699,9 @@ export async function createRemoteModelRuntime(
         catalog.providers.filter((provider) => provider.available && provider.oauth).map((provider) => provider.id),
     );
     const subscriptions = new Set(
-        catalog.providers.filter((provider) => provider.available && provider.subscription).map((provider) =>
-            provider.id
-        ),
+        catalog.providers
+            .filter((provider) => provider.available && provider.subscription)
+            .map((provider) => provider.id),
     );
     runtime.isUsingOAuth = (providerId) => oauth.has(providerId);
     runtime.isUsingSubscription = (providerId) => subscriptions.has(providerId);

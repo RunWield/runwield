@@ -71,7 +71,7 @@ These parts already work and stay as they are:
 - The review UI and Session-save Worker are compiled into the binary.
 
 **Owning requirements.** The change delivers part of
-[Remote connection and setup → Prepare RunWield automatically](../../prd/remote-ssh-prd.md#remote-connection-and-setup)
+[Remote connection and setup → Prepare RunWield automatically](../../prd/runwield-core-prd.md#remote-connection)
 and changes [Core Installation and updates](../../prd/runwield-core-prd.md#installation-and-updates) and
 [Core Remote connection → Prepare a matching development runtime](../../prd/runwield-core-prd.md#remote-connection).
 The remote host prerequisites change: `cymbal` and `ketch` no longer need to be on the server `PATH`.

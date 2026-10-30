@@ -66,7 +66,7 @@ and operation registry. The store constructs remote owners with the same native-
 Remote root managers construct their save bridge from connection data. Callers cannot supply replacement stores,
 registries, or persistence bridges. Tests use real bundles and locks, with faults at network or process boundaries.
 
-Pi's synchronous persistence hooks wait for each exact-byte save acknowledgement. A dedicated Deno Worker handles
+Pi's synchronous persistence hooks wait for each exact-byte save acknowledgement. A dedicated Worker handles
 network progress and notifies the calling thread through shared memory. The laptop writes and synchronizes the bytes
 before acknowledging them. Save acknowledgement is separate from final generation publication. Identical retries return
 the saved receipt without appending again; conflicting identities and settled operations are refused.
@@ -267,6 +267,9 @@ ordered manifest, committed generation evidence, or writer state. Embedded RunWi
 replacing it.
 
 ### Persist remote Sessions through SFTP or an asynchronous save queue
+
+The product contract is
+[Core laptop-owned remote Session saves](../prd/runwield-core-prd.md#laptop-owned-remote-session-saves).
 
 The owner selected synchronous laptop-owned saves after the Session-save proof. Mounted locks cannot establish native
 cross-machine exclusion. Guarded stock SFTP and a custom Session SFTP server were set aside; the personal-resource mount

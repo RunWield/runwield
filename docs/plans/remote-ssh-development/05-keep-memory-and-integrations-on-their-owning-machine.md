@@ -59,8 +59,8 @@ A remote Session also fails unless `mnemoteca` is installed on the server: `buil
 | `/sleep` (`src/cmd/sleep/index.ts`)                              | `basename(cwd)`                 | `runwield-…-480c7b59` (wrong) |
 
 This child delivers the Memory and integration placement part of the Remote SSH PRD
-[Local personal environment](../../prd/remote-ssh-prd.md#local-personal-environment) and
-[Local memories and saved Sessions](../../prd/remote-ssh-prd.md#local-memories-and-saved-sessions) capabilities: the
+[Local personal environment](../../prd/runwield-core-prd.md#agent-and-skill-customization) and
+[Local memories and saved Sessions](../../prd/runwield-core-prd.md#session-continuity) capabilities: the
 **Read and update the same local memories** requirement and the Memory part of **Keep project knowledge correctly
 scoped**. It changes the PRD's "ask once when the mapping is ambiguous" rule, as decided below.
 

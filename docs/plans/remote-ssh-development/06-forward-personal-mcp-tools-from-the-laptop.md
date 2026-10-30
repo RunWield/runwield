@@ -44,12 +44,12 @@ personal MCP servers run on the laptop with their existing credentials, and thei
 ### Owning requirements and current evidence
 
 - **Change:** Core [Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization),
-  **Trusted MCP tools**, and Remote SSH [Local personal environment](../../prd/remote-ssh-prd.md#local-personal-environment),
+  **Trusted MCP tools**, and Remote SSH [Local personal environment](../../prd/runwield-core-prd.md#agent-and-skill-customization),
   **Run MCP servers on their owning machine**, gain callable personal servers. Replace the current
   `not started remotely` limitation only when forwarding is implemented.
 - **Preserve:** project override/disable and file-safety rules; root Agent access across handoff; no inherited MCP
   access for delegated or isolated Agents; native Pi names, resources, updates, progress, results, and reconnect.
-- **Preserve:** [Disconnect and recovery](../../prd/remote-ssh-prd.md#disconnect-and-recovery) stops owned work and does
+- **Preserve:** [Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) stops owned work and does
   not replay uncertain tool effects. This child adds its laptop server processes to existing connection cleanup.
 - **Architecture:** accepted [ADR-0019](../../adr/0019-pi-owned-mcp-integration.md) now gives Pi ownership of MCP
   behavior. `McpIntegration.call` in the old draft does not exist. Public `createMcpExtension` and `McpTransport` in the

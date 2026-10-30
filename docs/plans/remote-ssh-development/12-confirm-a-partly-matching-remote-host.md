@@ -54,7 +54,7 @@ fingerprint alone is sufficient. Ambiguous equivalence requires confirmation, no
 Owning requirement: [Core → Keep a remote project locator separate from execution
 cwd](../../prd/runwield-core-prd.md#project-context-and-initialization). It currently says a changed hostname, port, or
 fingerprint "creates a distinct target and never merges history" and that "Ambiguous host confirmation for Sessions
-remains target scope." The transient [Remote SSH PRD](../../prd/remote-ssh-prd.md#local-memories-and-saved-sessions)
+remains target scope." The transient [Remote SSH PRD](../../prd/runwield-core-prd.md#session-continuity)
 says the same. This child delivers that target scope.
 
 ## Objective

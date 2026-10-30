@@ -229,6 +229,9 @@ export async function runRemoteSupervisor(): Promise<void> {
     let childStopped = false;
     let stopActive: (() => void) | undefined;
     let childExited = false;
+    let confirmCleanup: (() => Promise<boolean>) | undefined;
+    let cleanupHealthTimer: ReturnType<typeof setInterval> | undefined;
+    const cleanupHealthAbort = new AbortController();
     let connection: Socket | undefined;
     const setupHealthAbort = new AbortController();
     // Owned by this connection, including the bootstrap proof before the view exists.
@@ -410,6 +413,8 @@ export async function runRemoteSupervisor(): Promise<void> {
         child = spawnNativeProcess(process.execPath, {
             args: ["--remote-view"],
             cwd: header.view.cwd,
+            // The supervisor also removes transient logs when SIGKILL skips view cleanup.
+            env: { TMPDIR: socketDirectory },
             stdin: "piped",
             stdout: "inherit",
             stderr: "inherit",
@@ -500,8 +505,10 @@ export async function runRemoteSupervisor(): Promise<void> {
                 }
             }
         })();
+        let normalViewExit = false;
         try {
-            await Promise.race([view.status, ending]);
+            const result = await Promise.race([view.status, ending]);
+            normalViewExit = result?.success === true && !stopped;
         } finally {
             stop();
             await monitor;
@@ -518,7 +525,13 @@ export async function runRemoteSupervisor(): Promise<void> {
             process.off("SIGINT", onSignal);
             process.off("SIGTERM", onSignal);
             process.off("SIGHUP", onSignal);
-            await control(header, "shutdown").catch(() => undefined);
+            if (normalViewExit) {
+                confirmCleanup = () => control(header, "shutdown");
+                // Descendant grace and mount cleanup can exceed the laptop health deadline.
+                cleanupHealthTimer = setInterval(() => {
+                    void control(header, "health", undefined, cleanupHealthAbort.signal).catch(() => undefined);
+                }, PERIOD_MS);
+            }
         }
         if (mountLost) throw new Error("Laptop personal mount lost; remote work stopped");
     } catch (error) {
@@ -536,9 +549,19 @@ export async function runRemoteSupervisor(): Promise<void> {
         } catch {
             /* Already closed after admission. */
         }
-        await fsRm(socketDirectory, { recursive: true }).catch(() => undefined);
+        let connectionRemoved = true;
+        await fsRm(socketDirectory, { recursive: true, force: true }).catch((error) => {
+            connectionRemoved = false;
+            console.error("Remote connection directory cleanup failed:", error);
+        });
+        let mountClosed = false;
         if (personalMount) {
-            await personalMount.close().catch((error) => console.error("Remote mount cleanup failed:", error));
+            await personalMount.close().then(
+                () => {
+                    mountClosed = true;
+                },
+                (error) => console.error("Remote mount cleanup failed:", error),
+            );
         }
         const helpersStopped = await terminateOwnedLinuxDescendants(true);
         const terminationConfirmed = workStopped && helpersStopped;
@@ -547,8 +570,15 @@ export async function runRemoteSupervisor(): Promise<void> {
             process.off(signal, onEarlyClosure);
         }
         await stty(originalMode).catch(() => undefined);
-        if (!terminationConfirmed && !failed) {
-            await Promise.reject(new Error("Remote owned process termination is unconfirmed"));
+        if (cleanupHealthTimer !== undefined) clearInterval(cleanupHealthTimer);
+        cleanupHealthAbort.abort();
+        if (terminationConfirmed && connectionRemoved && mountClosed && !failed) {
+            await confirmCleanup?.().catch(() => undefined);
+        }
+        if (!failed) {
+            if (!terminationConfirmed) throw new Error("Remote owned process termination is unconfirmed");
+            if (!connectionRemoved) throw new Error("Remote connection directory cleanup is unconfirmed");
+            if (personalMount && !mountClosed) throw new Error("Remote mount cleanup is unconfirmed");
         }
     }
 }

@@ -11,6 +11,7 @@ import { serveHttp } from "../http-server.ts";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
 import {
+    chmod as fsChmod,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -37,6 +38,9 @@ import { writeFile as fsWriteFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { spawn } from "node:child_process";
 import { runRemoteSupervisor } from "./src/shared/remote/supervisor.ts";
+import { configureRemotePersonalResources } from "./src/shared/remote/personal-resources.ts";
+import { remoteBackgroundTaskLogDirectory } from "./src/shared/remote/background-task-logs.ts";
+import { HostedSession } from "./src/shared/session/hosted-session.js";
 if (process.argv.slice(2)[0] === "--remote-supervisor") await runRemoteSupervisor();
 else if (process.argv.slice(2)[0] === "--remote-model-proof") {
     const reader = Readable.toWeb(process.stdin).getReader();
@@ -55,7 +59,15 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
             bytes.push(byte);
         }
     }
-    await fsWriteFile("view-header", new TextDecoder().decode(new Uint8Array(bytes)));
+    const header = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
+    await fsWriteFile("view-header", JSON.stringify(header));
+    if (process.env.WLD_SUPERVISOR_BACKGROUND_CASE === "1") {
+        configureRemotePersonalResources(header.resources);
+        const session = new HostedSession({ id: crypto.randomUUID(), cwd: header.cwd });
+        const task = session.backgroundTasks.startShell({ command: "printf background-output; sleep 120", cwd: header.cwd });
+        await fsWriteFile("background-log-directory", remoteBackgroundTaskLogDirectory()!);
+        await fsWriteFile("background-log-path", task.log_path);
+    }
     await fsWriteFile("view-path", process.env.PATH ?? "");
     reader.releaseLock();
     process.on("SIGTERM", () => {});
@@ -154,7 +166,9 @@ async function compiledSupervisor(): Promise<string> {
     await fsWriteFile(source, supervisorSource);
     await fsWriteFile(
         join(root, "entry.ts"),
-        entry.replace('"./src/shared/remote/supervisor.ts"', JSON.stringify(source)),
+        entry.replace(/"(\.\/src\/[^"\n]+)"/g, (_match, relative: string) =>
+            JSON.stringify(relative === "./src/shared/remote/supervisor.ts" ? source : join(getCwd(), relative)),
+        ),
     );
     const executable = join(root, "supervisor");
     const result = await captureForegroundProcess(process.execPath, {
@@ -179,6 +193,23 @@ async function running(pid: number): Promise<boolean> {
     }
 }
 
+interface SupervisorCleanupReceipt {
+    ownedProcessesRunning: boolean[];
+    mountDirectoryRemoved: boolean;
+    connectionDirectoryRemoved: boolean;
+    unrelatedRunning: boolean;
+}
+
+async function directoryRemoved(path: string): Promise<boolean> {
+    return await fsStat(path).then(
+        () => false,
+        (error) => {
+            assertEquals(error.code, "ENOENT");
+            return true;
+        },
+    );
+}
+
 for (const scenario of [
     "blocked",
     "kill-view",
@@ -189,9 +220,16 @@ for (const scenario of [
     "partial-header",
     "silent-control",
     "model-proof-stall",
+    "background-logs",
+    "cleanup-before-shutdown",
+    "connection-directory-cleanup-failure",
 ]) {
     test(
-        `production supervisor cleans up on ${scenario} without stopping unrelated work`,
+        scenario === "cleanup-before-shutdown"
+            ? "production supervisor acknowledges normal exit only after owned process, mount, and connection cleanup"
+            : scenario === "connection-directory-cleanup-failure"
+              ? "production supervisor reports connection-directory cleanup failure without confirming shutdown"
+              : `production supervisor cleans up on ${scenario} without stopping unrelated work`,
         {
             // Opt in on a Linux host with working SSHFS and /dev/fuse, as in sftp-mount.test.ts.
             skip: process.platform !== "linux" || sshfsStallTestDisabled() || process.getuid?.() === 0,
@@ -210,23 +248,42 @@ for (const scenario of [
                 stdout: "null",
                 stderr: "null",
             });
+            let cleanupReceipt: SupervisorCleanupReceipt | undefined;
             const proxyAbort = new AbortController();
-            const proxy =
-                scenario === "silent-control"
-                    ? serveHttp(
-                          {
-                              hostname: "127.0.0.1",
-                              port: 0,
-                              signal: proxyAbort.signal,
-                              onListen() {},
-                          },
-                          (request) => {
-                              if (new URL(request.url).pathname === "/health")
-                                  return new Response(new ReadableStream());
-                              return fetch(`http://127.0.0.1:${service.port}${new URL(request.url).pathname}`, request);
-                          },
-                      )
-                    : undefined;
+            const proxy = ["silent-control", "cleanup-before-shutdown"].includes(scenario)
+                ? serveHttp(
+                      {
+                          hostname: "127.0.0.1",
+                          port: 0,
+                          signal: proxyAbort.signal,
+                          onListen() {},
+                      },
+                      async (request) => {
+                          const path = new URL(request.url).pathname;
+                          if (scenario === "silent-control" && path === "/health")
+                              return new Response(new ReadableStream());
+                          // Sample the real resources at receipt, before forwarding the existing request.
+                          // A local health timeout cannot create this authenticated peer receipt.
+                          const sample =
+                              scenario === "cleanup-before-shutdown" &&
+                              path === "/shutdown" &&
+                              request.method === "POST" &&
+                              request.headers.get("Authorization") === `Bearer ${service.credential}`
+                                  ? {
+                                        ownedProcessesRunning: await Promise.all(
+                                            [view, descendant, ...extraDescendants].map(running),
+                                        ),
+                                        mountDirectoryRemoved: await directoryRemoved(mountDirectory),
+                                        connectionDirectoryRemoved: await directoryRemoved(socketDirectory),
+                                        unrelatedRunning: await running(unrelated.pid),
+                                    }
+                                  : undefined;
+                          const response = await fetch(`http://127.0.0.1:${service.port}${path}`, request);
+                          if (sample && response.ok && service.status().shutdown) cleanupReceipt = sample;
+                          return response;
+                      },
+                  )
+                : undefined;
             const port = proxy?.addr.transport === "tcp" ? proxy.addr.port : service.port;
             if (scenario === "model-proof-stall") await fsWriteFile(join(root, "sentinel.txt"), "sentinel");
             const header = JSON.stringify({
@@ -248,7 +305,10 @@ for (const scenario of [
                 // The supervisor must survive launcher death to perform its own cleanup.
                 // Bun's test-runner guardian would otherwise kill it before its handlers run.
                 // This fixture retains explicit PID cleanup and asserts all descendants exit.
-                env: { BUN_FEATURE_FLAG_NO_ORPHANS: "0" },
+                env: {
+                    BUN_FEATURE_FLAG_NO_ORPHANS: "0",
+                    ...(scenario === "background-logs" ? { WLD_SUPERVISOR_BACKGROUND_CASE: "1" } : {}),
+                },
                 args: [
                     "-u",
                     "-c",
@@ -269,6 +329,8 @@ for (const scenario of [
             let supervisor = 0;
             const extraDescendants: number[] = [];
             let mountDirectory = "";
+            let backgroundDirectory = "";
+            let connectionDirectoryReadOnly = false;
             try {
                 const reader = driver.stdout.getReader();
                 const ready = await reader.read();
@@ -333,14 +395,50 @@ for (const scenario of [
                         extraDescendants.push(pid);
                     }
                 }
+                if (scenario === "background-logs") {
+                    backgroundDirectory = await fsReadFile(join(root, "background-log-directory"), "utf8");
+                    const logPath = await fsReadFile(join(root, "background-log-path"), "utf8");
+                    const until = Date.now() + 5_000;
+                    while (
+                        Date.now() < until &&
+                        !(await fsReadFile(logPath, "utf8").catch(() => "")).includes("background-output")
+                    )
+                        await new Promise((resolve) => setTimeout(resolve, 30));
+                    assertStringIncludes(await fsReadFile(logPath, "utf8"), "background-output");
+                }
                 // The launcher exits, but the detached SSH peer keeps its PTY open.
                 // Closing this service models loss of the launcher's forwarded endpoint.
                 if (["before-header", "partial-header"].includes(scenario)) await service.close();
+                if (scenario === "cleanup-before-shutdown") {
+                    assertEquals(service.status().ready, true);
+                    assertEquals(service.status().shutdown, false);
+                    assertEquals(cleanupReceipt, undefined);
+                    assert(mountDirectory.includes("wld-sftp-"));
+                    assertEquals(await directoryRemoved(mountDirectory), false);
+                    assertEquals(await directoryRemoved(socketDirectory), false);
+                }
+                if (scenario === "connection-directory-cleanup-failure") {
+                    assertEquals(service.status().ready, true);
+                    assertEquals(service.status().remoteCleanupConfirmed, false);
+                    assert(mountDirectory.includes("wld-sftp-"));
+                    assertEquals(await directoryRemoved(mountDirectory), false);
+                    // Only the owned connection directory becomes unwritable, never the personal mount.
+                    assert(/^\/tmp\/wld-remote-[a-f0-9]{32}$/.test(socketDirectory));
+                    assert(socketDirectory !== mountDirectory);
+                    await fsWriteFile(join(socketDirectory, "cleanup-sentinel"), "owned connection fixture");
+                    await fsChmod(socketDirectory, 0o500);
+                    connectionDirectoryReadOnly = true;
+                }
                 const writer = driver.stdin.getWriter();
                 await writer.write(
                     new TextEncoder().encode(
-                        (["before-header", "partial-header", "silent-control"].includes(scenario) ? "wait" : scenario) +
-                            "\n",
+                        (["cleanup-before-shutdown", "connection-directory-cleanup-failure"].includes(scenario)
+                            ? "normal-exit"
+                            : ["before-header", "partial-header", "silent-control"].includes(scenario)
+                              ? "wait"
+                              : scenario === "background-logs"
+                                ? "blocked"
+                                : scenario) + "\n",
                     ),
                 );
                 await writer.close();
@@ -352,7 +450,7 @@ for (const scenario of [
                     process.kill(supervisor, "SIGHUP");
                     process.kill(supervisor, "SIGTERM");
                 }
-                if (["blocked", "model-proof-stall"].includes(scenario)) service.requestShutdown();
+                if (["blocked", "model-proof-stall", "background-logs"].includes(scenario)) service.requestShutdown();
                 const deadline =
                     Date.now() +
                     (["silent-control", "before-header", "partial-header"].includes(scenario) ? 40_000 : 30_000);
@@ -360,12 +458,22 @@ for (const scenario of [
                     await new Promise((resolve) => setTimeout(resolve, 100));
                 }
                 assertEquals(await running(supervisor), false, `supervisor survived ${scenario}`);
-                await fsStat(socketDirectory).then(
-                    () => {
-                        throw new Error("private socket directory survived cleanup");
-                    },
-                    (error) => assertEquals(error.code, "ENOENT"),
-                );
+                if (scenario !== "connection-directory-cleanup-failure") {
+                    await fsStat(socketDirectory).then(
+                        () => {
+                            throw new Error("private socket directory survived cleanup");
+                        },
+                        (error) => assertEquals(error.code, "ENOENT"),
+                    );
+                }
+                if (backgroundDirectory) {
+                    await fsStat(backgroundDirectory).then(
+                        () => {
+                            throw new Error("background task log directory survived forced TUI cleanup");
+                        },
+                        (error) => assertEquals(error.code, "ENOENT"),
+                    );
+                }
                 if (scenario === "blocked") {
                     assert(Date.now() - started >= 5_000, "forced exit skipped the grace period");
                 }
@@ -375,7 +483,7 @@ for (const scenario of [
                 for (const pid of extraDescendants)
                     assertEquals(await running(pid), false, `detached/orphan survived ${scenario}`);
                 assertEquals(await running(unrelated.pid), true);
-                if (["kill-view", "normal-exit"].includes(scenario)) {
+                if (["kill-view", "normal-exit", "cleanup-before-shutdown"].includes(scenario)) {
                     assertEquals((await driver.status).success, true);
                     const output = await fsReadFile(join(root, "supervisor-output"), "utf8");
                     assert(!output.includes("Remote mount cleanup failed"), output);
@@ -388,6 +496,29 @@ for (const scenario of [
                         },
                         (error) => assertEquals(error.code, "ENOENT"),
                     );
+                }
+                if (scenario === "cleanup-before-shutdown") {
+                    assertEquals(cleanupReceipt, {
+                        ownedProcessesRunning: [false, false, false, false],
+                        mountDirectoryRemoved: true,
+                        connectionDirectoryRemoved: true,
+                        unrelatedRunning: true,
+                    });
+                }
+                if (scenario === "connection-directory-cleanup-failure") {
+                    const status = await driver.status;
+                    const output = await fsReadFile(join(root, "supervisor-output"), "utf8");
+                    assertStringIncludes(output, "Remote connection directory cleanup failed");
+                    assert(!/^(?:error: )?Remote owned process termination is unconfirmed\r?$/m.test(output), output);
+                    assert(!output.includes("Remote mount cleanup failed"), output);
+                    assert(!output.includes("SSHFS cleanup uncertain"), output);
+                    assertEquals(service.status().remoteCleanupConfirmed, false);
+                    assertEquals(await directoryRemoved(mountDirectory), true);
+                    assertEquals(
+                        await fsReadFile(join(socketDirectory, "cleanup-sentinel"), "utf8"),
+                        "owned connection fixture",
+                    );
+                    assertEquals(status.success, false);
                 }
                 reader.releaseLock();
             } finally {
@@ -422,6 +553,11 @@ for (const scenario of [
                 proxyAbort.abort();
                 await Promise.all([driver.status, unrelated.status, service.close(), proxy?.finished]);
                 await sftp.close();
+                if (connectionDirectoryReadOnly) {
+                    assertEquals(await running(supervisor), false, "supervisor must stop before restoring permissions");
+                    await fsChmod(socketDirectory, 0o700);
+                }
+                if (backgroundDirectory) await fsRm(backgroundDirectory, { recursive: true, force: true });
                 await fsRm(root, { recursive: true });
                 await fsRm(socketDirectory, { recursive: true, force: true });
                 if (scenario === "silent-control" && buildRoot) {

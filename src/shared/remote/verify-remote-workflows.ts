@@ -1,7 +1,9 @@
 /**
- * Live, opt-in sct qualification: bun run src/shared/remote/verify-remote-workflows.ts [compiled-client]
+ * Production CLI qualification: bun run src/shared/remote/verify-remote-workflows.ts --archives <directory> <VERSION>
+ * Code-level evidence only: bun run src/shared/remote/verify-remote-workflows.ts [compiled-client]
  * Deploys matching source with owned Bun 1.4.3 by default. WLD_LIVE_SOURCE=0 selects standalone artifacts:
- * first the production CLI save check, then the scripted workflow client. WLD_LIVE_PRODUCTION_BINARY reuses a CLI build.
+ * first the production CLI save smoke (not workflow qualification), then the scripted workflow client.
+ * WLD_LIVE_PRODUCTION_BINARY reuses a CLI build for that save smoke only.
  * WLD_LIVE_REMOTE_ROOT reuses this script's owned scratch; WLD_LIVE_JOURNEYS selects comma-separated journeys.
  * Only synthetic model responses are scripted. Session ownership and all workflow machinery are production code.
  */
@@ -136,6 +138,7 @@ async function main(): Promise<void> {
     const sourceDeployment = process.env.WLD_LIVE_SOURCE !== "0";
     const binary = process.argv[2] || join(evidenceRoot, "client-linux-x64");
     try {
+        await record("evidence-kind", "scripted-runtime-client-code-level-only");
         await record("evidence-root", evidenceRoot);
         await record("runtime", {
             localBun: process.versions.bun || "",
@@ -839,4 +842,12 @@ async function main(): Promise<void> {
     }
 }
 
-await main();
+if (process.argv[2] === "--archives") {
+    const [archives, version, ...extra] = process.argv.slice(3);
+    assert(archives && version && !extra.length, "Expected --archives <directory> <VERSION>");
+    const { qualifyRemoteCliWorkflows } = await import("./verify-remote-cli-workflows.ts");
+    await qualifyRemoteCliWorkflows(archives, version);
+} else {
+    assert(!process.argv[2]?.startsWith("--"), "Expected --archives <directory> <VERSION>, or a compiled client");
+    await main();
+}

@@ -17,6 +17,12 @@ affectedPaths:
     - "docs/plans/remote-session-save-proof.md"
     - "docs/plans/remote-ssh-development.md"
     - "docs/plans/remote-ssh-development/manual-qa.md"
+planDeviations:
+    - id: "call_03f5a4e1779b4678968ee3a72e3fa393|fc_0327365da0f9bbb3016ae238ac9bc48195933b1f16056af6ca"
+      supersededRequirement: "`verify-remote-workflows.ts` keeps its scripted runtime client for stage-exact cuts (validation, publication proven,\npublication uncertain, rollover then disconnect). Its `WLD_LIVE_SOURCE=0` path already accepts a production binary; it\nreruns with the release `wld` from the Linux archive. It changes only if it cannot accept that binary.\n\n- `verify-remote-workflows.ts` journeys `delivery`, `validation-cut`, `publication-proven`, and `publication-uncertain`\n  pass with the release `wld` as the production binary."
+      replacementRequirement: "Keep the existing scripted runtime-client journeys as separate code-level evidence, not release-CLI qualification. Qualify delivery, validation-cut, publication-proven, publication-uncertain, and rollover then disconnect through the unchanged release CLI in a PTY with the synthetic provider. Adapt the qualification drivers to use supported terminal commands and assert visible state plus durable Session, Git, and publication evidence instead of claiming raw runtime reports. Retain stage-specific fault cuts, reconnect and /resume checks, conservative handling of uncertain outcomes without automatic replay, laptop Session ownership, and per-case cleanup. Do not add a product command or protocol solely for qualification. All other Group R, Group S, Group A, release-artifact, real-profile safety, and proposal-retirement requirements remain unchanged."
+      reason: "The existing production-binary option runs only a save smoke check. Workflow commands and in-memory reports come from a separately compiled test entry that the release CLI does not expose. Terminal-driven journeys preserve release qualification without adding a product API."
+      approvedAt: "2026-10-28T18:08:17.540Z"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
 createdAt: "2026-10-25T21:51:42Z"
@@ -28,7 +34,7 @@ dependencies:
     - "12-confirm-a-partly-matching-remote-host"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Qualify Remote SSH and Retire the Proposal
@@ -46,7 +52,7 @@ Children 01–12 deliver remote behavior and the packaged runtime. RunWield cann
 - **Known defect.** Child 07's integration note is confirmed: after the supervisor sends SIGKILL to the TUI, the
   `runwield-background-*` log directory stays in `/tmp` (`background-task-logs.ts` removes it only on a graceful exit).
 
-Then the transient [Remote SSH PRD](../../prd/remote-ssh-prd.md) is folded into
+Then the transient [Remote SSH PRD](../../prd/runwield-core-prd.md#remote-connection) is folded into
 [RunWield Core](../../prd/runwield-core-prd.md) and removed. Core already has a
 [Remote connection](../../prd/runwield-core-prd.md#remote-connection) capability; most lasting requirements land there
 or in the capability that already owns the shared behavior.
@@ -356,3 +362,100 @@ qualified them, and this child only consumes their output.
   laptop's SSH to `sct` recovers.
 - **Personal mount roots.** The proposal's "other personal roots can be mounted separately" is implemented for the
   agents root and installed package roots (`sftp-mount.ts`); Core states exactly those, not arbitrary roots.
+
+## Execution Notes: Documents Ownership Map
+
+This append-only ledger records the Documents step. No ordinary named requirement or ordinary acceptance scenario was
+dropped. Core links below are the lasting owners; historical proposal labels in this Plan and its siblings remain
+unchanged except for mechanical URL migration.
+
+### Named requirements
+
+| Retired proposal requirement                                                                       | Core owner                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Open the requested remote location                                                                 | [Remote connection](../../prd/runwield-core-prd.md#remote-connection)                                                                                                                               |
+| Prepare RunWield automatically                                                                     | [Installation](../../prd/runwield-core-prd.md#installation-and-updates)                                                                                                                             |
+| Use one personal environment; Use customizations honestly; Run MCP servers on their owning machine | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                       |
+| Keep authenticated model execution local                                                           | [Models](../../prd/runwield-core-prd.md#models-and-providers)                                                                                                                                       |
+| Read and update the same local memories; Keep project knowledge correctly scoped                   | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                |
+| Preserve local history                                                                             | [Session continuity](../../prd/runwield-core-prd.md#session-continuity); exact-byte save semantics belong to [laptop-owned saves](../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves) |
+| Complete normal Core work remotely; Review remote work locally; Do not continue unattended         | [Remote connection](../../prd/runwield-core-prd.md#remote-connection); shared approval and delivery rules remain linked, not copied                                                                 |
+| Preserve work and report uncertainty                                                               | [Workflow recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery)                                                                                                      |
+
+### All 32 ordinary acceptance scenarios
+
+IDs follow the source order within each proposal scenario group. These are coverage identifiers, not new product terms
+or claims that every matrix combination passed.
+
+| ID  | Retained scenario                                                                                         | Core owner                                                                                                                                                                                                         |
+| --- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1  | Alias, canonical location, broad-access notice, remote tools rather than namesake laptop files            | [Remote connection](../../prd/runwield-core-prd.md#remote-connection)                                                                                                                                              |
+| C2  | Omitted path opens non-Git home; no message means no saved Session                                        | [Remote connection](../../prd/runwield-core-prd.md#remote-connection), linking first-message [Session continuity](../../prd/runwield-core-prd.md#session-continuity)                                               |
+| C3  | Path/access/prerequisite/architecture/executable/artifact failure; retry repairs private staging          | [Remote connection](../../prd/runwield-core-prd.md#remote-connection), linking [Installation](../../prd/runwield-core-prd.md#installation-and-updates) for staging                                                 |
+| C4  | Automatic setup without profile copying; verified laptop cache without GitHub or server cache             | [Installation](../../prd/runwield-core-prd.md#installation-and-updates)                                                                                                                                            |
+| P1  | Preset and remote project override retain precedence and profiles                                         | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                                      |
+| P2  | Personal file/settings edits persist on laptop; project edits stay remote                                 | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                                      |
+| P3  | Laptop-only authentication and OAuth renewal, remote edit, honest trusted-host access                     | [Models](../../prd/runwield-core-prd.md#models-and-providers)                                                                                                                                                      |
+| P4  | Incompatible provider/path integration reports its limit without substitution or wrong-machine effects    | [Models](../../prd/runwield-core-prd.md#models-and-providers)                                                                                                                                                      |
+| P5  | Actual personal/project MCP placement; root handoff; no delegated/isolated inheritance; stable home cwd   | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                                      |
+| P6  | Replacement/disable before startup; failed or empty inventory permits later discovery/reconnect           | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                                      |
+| P7  | Cooperative native cancellation; no queued dispatch; accepted non-cooperative effects can finish          | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                                      |
+| P8  | Loss/disposal cleanup; fresh transport without replay; other Sessions remain usable                       | [Customization](../../prd/runwield-core-prd.md#agent-and-skill-customization)                                                                                                                                      |
+| S1  | Same-name remote projects stay distinct; worktrees share project identity but keep execution cwd          | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                               |
+| S2  | Empty composer saves nothing; first message saves before model request                                    | [Session continuity](../../prd/runwield-core-prd.md#session-continuity)                                                                                                                                            |
+| S3  | Offline renderer without composer/SSH/writer lock, with reconnect footer                                  | [Session continuity](../../prd/runwield-core-prd.md#session-continuity)                                                                                                                                            |
+| S4  | Target-only resume; same saved context without clone or replay                                            | [Session continuity](../../prd/runwield-core-prd.md#session-continuity)                                                                                                                                            |
+| S5  | Local TUI/ACP/Workspace/load-plan omit remote Sessions                                                    | [Session continuity](../../prd/runwield-core-prd.md#session-continuity)                                                                                                                                            |
+| S6  | Save loss cannot claim success, overwrite newer history, or repeat an uncertain effect                    | [Laptop-owned saves](../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves)                                                                                                                             |
+| S7  | Execution/repair successor and lineage commit under native lock; resume successor and sealed predecessors | [Laptop-owned saves](../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves)                                                                                                                             |
+| M1  | Correct global/project recall; store/delete visible locally before disconnect                             | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                               |
+| M2  | Unrelated same-name remote Memory remains separate unless deliberately shared                             | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                               |
+| M3  | Local namesake Yes/No, saved answer, no namesake means no question                                        | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                               |
+| M4  | Remote sleep performs no backup, Agent switch, or Memory operation                                        | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                               |
+| M5  | Retried write adds one laptop memory before acknowledgement                                               | [Project context](../../prd/runwield-core-prd.md#project-context-and-initialization)                                                                                                                               |
+| W1  | Remote-only end-to-end delivery; remote effects and checks, laptop result records                         | [Remote connection](../../prd/runwield-core-prd.md#remote-connection), linking shared [delivery](../../prd/runwield-core-prd.md#execution-validation-and-recovery)                                                 |
+| W2  | Local browser, correct Session, close/reopen pending wait, stable URL, content revisions only on changes  | [Remote connection](../../prd/runwield-core-prd.md#remote-connection), linking shared [Plan Review](../../prd/runwield-core-prd.md#plan-review) and [Code Review](../../prd/runwield-core-prd.md#code-review-gate) |
+| W3  | Remote files/images/uploads/polling; in-memory Guided Review with remote tree/laptop model                | [Remote connection](../../prd/runwield-core-prd.md#remote-connection)                                                                                                                                              |
+| W4  | Non-Git behavior or dependency guidance; no invented repo or laptop validation                            | [Remote connection](../../prd/runwield-core-prd.md#remote-connection)                                                                                                                                              |
+| D1  | Normal exit stops Agent/subprocess/server and retains saved work                                          | [Remote connection](../../prd/runwield-core-prd.md#remote-connection)                                                                                                                                              |
+| D2  | Abrupt loss stops descendants/orphans without final message; unrelated work survives                      | [Remote connection](../../prd/runwield-core-prd.md#remote-connection)                                                                                                                                              |
+| D3  | Unsaved edit/publication result checked and reported proven or uncertain, not blindly repeated            | [Workflow recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery)                                                                                                                     |
+| D4  | Completed personal saves and remote edits survive without profile merge-back                              | [Workflow recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery)                                                                                                                     |
+
+### Other proposal headings
+
+- Title, date, and transient status retire with the proposal. Current scope and the exact matrix belong to Core
+  [Remote connection](../../prd/runwield-core-prd.md#remote-connection).
+- Background, Problem and Value, Audience and Scope, and Product Fit and Main Journey become Remote connection’s
+  audience, ownership links, command forms, connected-only journey, exclusions, and end-to-end scenario.
+- Capability Requirements and its five capability headings map to the owners above. Memory’s derived Work Record
+  index stays in Project context and links canonical retrieval to [Work Records](../../prd/runwield-core-prd.md#work-records).
+- Success Measures keeps the complete remote-only journey and acceptance on each advertised combination in Remote
+  connection. Delivery and Feasibility Limits keeps compatibility, prerequisites, and deferred scope in Remote
+  connection, Installation, and Models.
+- Risks and Mitigations keeps broad-access disclosure, correct-machine effects, confirmed local saves, and honest
+  disconnect uncertainty in their owning requirements. No duplicate risk capability is added.
+- Domain Language and Proposed Relationships moves to the current glossary relationships and Core ownership links.
+- Evidence and Open Checks and its Conversation, Workflow, and Review journey evidence headings remain evidence in
+  the manual QA and Work Record records, not separate product requirements. Lasting exclusions stay in Core scope.
+
+### Evidence-only proposal items dropped
+
+- The bounded personal-file proof assertion (source lines 194–195): retain direct bidirectional personal-file behavior
+  in Customization, not the historical proof narrative.
+- The optional native Pi proof (196–200): drop its restricted sentinel tool, two-request count, cancellation observation,
+  and two reconnects. These are bounded historical evidence, not ordinary acceptance scenarios.
+- Historical result and progress paragraphs in Scope and maturity and Current connection behavior: retain their
+  contracts in the owners above, not stale synthetic-only maturity labels.
+- Conversation journey evidence: drop old fixture details, setup-time samples, and pilot outcome narration from the
+  central PRD. Retain conversation, clipboard, offline-history, and resume requirements and scenarios.
+- Workflow journey evidence: drop scripted-client commands, fixture paths, request/run counts, and implementation
+  narration from the central PRD. Retain workflow, lineage, and uncertainty requirements and scenarios.
+- Review journey evidence: drop pilot chronology and run narration from the central PRD. Retain browser placement,
+  assets, Guided Review, stable URLs, revision-safe decisions, and pending-review behavior.
+- Delivery and Feasibility Limits: drop throwaway proof chronology, obsolete unqualified-platform assertions, child
+  progress pointers, and the proposal-retirement instruction. Retain all compatibility limits and deferred items.
+- Problem and Value and Success Measures: drop unmeasured demand, pilot-measurement administration, the historical
+  baseline, and absence of agreed time/adoption thresholds. Retain the full-journey success outcome; add no threshold.
+
+No ordinary named requirement or any of C1–C4, P1–P8, S1–S7, M1–M5, W1–W4, or D1–D4 was dropped.

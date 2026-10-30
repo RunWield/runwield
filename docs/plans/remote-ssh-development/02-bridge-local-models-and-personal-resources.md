@@ -43,7 +43,7 @@ persistence, so the split must happen at real ownership boundaries rather than t
 tool.
 
 This slice targets the model and customization part of the Remote SSH PRD's
-[Local personal environment](../../prd/remote-ssh-prd.md#local-personal-environment): **Use one personal environment**,
+[Local personal environment](../../prd/runwield-core-prd.md#agent-and-skill-customization): **Use one personal environment**,
 **Keep credentials local**, and **Use customizations honestly**. The lasting owners are Core's
 [Models and providers](../../prd/runwield-core-prd.md#models-and-providers) and
 [Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization). Preserve settings

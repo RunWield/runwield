@@ -132,15 +132,22 @@ export async function runRemoteView(): Promise<void> {
         const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.js");
         const { runRemoteGuideCommand } = await import("./guide-runner.ts");
         clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
-        ({ stopTUI } = await import("../../ui/tui/tui.ts"));
+        const tuiModule = await import("../../ui/tui/tui.ts");
+        stopTUI = tuiModule.stopTUI;
         for (const signal of signals) process.on(signal, end);
         process.chdir(config.cwd);
         const { RemoteSessionControl } = await import("./session-control-client.ts");
         const { createRemoteBrowserPort } = await import("./browser-bridge.ts");
         const { startInteractiveSession } = await import("../../ui/tui/chat-session.ts");
+        const { inspectProjectDirectory } = await import("../project-directory.ts");
+        const browser = createRemoteBrowserPort(config.connection);
+        // The supervisor pipes terminal input. Open the TUI before directory consent needs it.
+        if (inspectProjectDirectory(config.cwd).classified) tuiModule.initTUI(browser);
+        const { formatRemoteConnectionDetails } = await import("../../ui/tui/remote-connection-view.ts");
         await startInteractiveSession(null, {
             remoteSessionControl: new RemoteSessionControl(config.connection),
-            browser: createRemoteBrowserPort(config.connection),
+            startupNotice: formatRemoteConnectionDetails(config.view),
+            browser,
             onLifecycleReady: (handle) => (lifecycle = handle),
         });
         // entry dispatch exits after return. Startup completion is not TUI exit.

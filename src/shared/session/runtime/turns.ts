@@ -59,7 +59,7 @@ type RuntimeAgentSettingsDependency = Pick<
 type RuntimeManagedSyncDependency = Pick<RuntimeManagedSync, "synchronizeManagedSession">;
 type RuntimeWorkflowsDependency = Pick<
     RuntimeWorkflows,
-    "continueEpicAfterValidation" | "runSemanticRepairSegmentHandoff"
+    "continueEpicAfterValidation" | "runSemanticRepairSegmentHandoff" | "executeApprovedPlan"
 >;
 
 // Only a runtime that owns a Session can have queued background steering for it.
@@ -495,6 +495,7 @@ export class RuntimeTurns {
                     "preparedModelOverride" in imagePreflight ? imagePreflight.preparedModelOverride : undefined,
             };
         }
+        let planningSignal = operationOptions.signal;
         const result = await this.managedOperations.runManagedOperation(
             sessionId,
             {
@@ -505,6 +506,7 @@ export class RuntimeTurns {
                 activateAgent: operationOptions.promptTemplate ? false : undefined,
             },
             async ({ acceptedTurnId, hasPendingImages, capability }) => {
+                planningSignal = capability.signal;
                 const template = operationOptions.promptTemplate;
                 if (template) {
                     const profile = await resolvePromptTemplateSettings(hostedSession, {
@@ -610,6 +612,17 @@ export class RuntimeTurns {
             },
         );
         if (isManagedOperationFailure(result)) return { ...result, turns: result.turns ?? 0 };
+        const executionToStart = result._executionToStart;
+        delete result._executionToStart;
+        if (result.ok && executionToStart) {
+            planningSignal?.throwIfAborted();
+            // Planning must relinquish its writer before execution can seal and roll the segment.
+            const executionResult = await this.workflows.executeApprovedPlan(sessionId, executionToStart);
+            if (executionResult.error) {
+                result.ok = false;
+                result.error = executionResult.error;
+            }
+        }
         const validationResult = result._validationResult;
         if (
             result.ok &&
@@ -699,6 +712,7 @@ export class RuntimeTurns {
             try {
                 if (
                     session.isAgentTransitioning?.() ||
+                    !turnActive ||
                     this.resultAcquisitions.has(session.id) ||
                     !getRuntimeRootAgentSession(session)
                 ) {
@@ -927,6 +941,7 @@ export class RuntimeTurns {
             validationResult = turnResult?.validationResult || null;
             ok = true;
             result = { ok: true, turns };
+            if (turnResult?.executionToStart) result._executionToStart = turnResult.executionToStart;
             return result;
         } catch (error) {
             if (options.generatedTaskId && error instanceof Error && error.message === "background_result_cancelled") {
@@ -952,11 +967,13 @@ export class RuntimeTurns {
                     agentName: hostedSession.getRootAgentName() || undefined,
                 });
             }
+            const turnEndResult = result ? { ...result } : { turns };
+            if ("_executionToStart" in turnEndResult) delete turnEndResult._executionToStart;
             this.events.emitSessionEvent(hostedSession.id, {
                 type: RuntimeEventTypes.TURN_END,
                 turnId,
                 ok,
-                result: result || { turns },
+                result: turnEndResult,
             });
             hostedSession.endTurn(turnId);
             hostedSession.generatedTaskTurnId = null;

@@ -610,10 +610,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 }
             }
 
-            const initialReviewEvidence = await loadPlanActionEvidence(
-                location.registryRoot,
-                String(effectiveMeta.planId || ""),
-            );
+            const initialReviewEvidence = await loadPlanActionEvidence(reviewCwd, String(effectiveMeta.planId || ""));
             const canonicalReviewEvidence =
                 initialReviewEvidence.kind === "success" ? initialReviewEvidence.evidence : null;
             const currentReviewPlan = await fsReadFile(planPath, "utf8");
