@@ -72,7 +72,7 @@
     "scripts/run-tests-sandbox.test.ts",
     "scripts/run-with-snip.test.ts",
     "scripts/script-process.test.ts",
-    "scripts/source-files.test.js",
+    "scripts/source-files.test.ts",
     "scripts/task-compatibility.test.ts",
     "scripts/test-evidence.test.ts",
     "scripts/test-timings.test.ts",
