@@ -20,6 +20,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "02f76bc221ed0199468f549a098b0157adbb789a"
+workRecord:
+    status: "generated"
+    recordId: "f9135cce-db44-430d-865a-01bfd3844671"
+    path: "docs/work-records/2026-10-30-batch-plan-question-answers-with-visible-planner-progress.md"
+    lastAttemptAt: "2026-10-30T16:03:19.329Z"
 ---
 
 # Plan Review Batch Answer Submission
