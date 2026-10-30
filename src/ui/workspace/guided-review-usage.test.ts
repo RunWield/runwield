@@ -1,3 +1,6 @@
+import type { MeasurementAvailability } from "../../shared/workflow/execution-metrics.ts";
+import type { WorkflowMetricFixtureRecord } from "../../testing/workflow-metrics-fixture.ts";
+import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
 import process from "node:process";
 import { test } from "node:test";
 import { writeFile as fsWriteFile } from "node:fs/promises";
@@ -13,7 +16,13 @@ import {
     runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
 
-const absent = { inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, costUsd: null };
+const absent = {
+    inputTokens: null,
+    outputTokens: null,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+    costUsd: null,
+} satisfies GuidedReviewUsage;
 const guide = JSON.stringify({
     schemaVersion: "1.0",
     title: "Usage guide",
@@ -31,18 +40,24 @@ const reviewPayload = {
         "diff --git a/src/a.js b/src/a.js\n--- a/src/a.js\n+++ b/src/a.js\n@@ -1 +1,2 @@\n export const a = 1;\n+export const b = 2;\n",
 };
 
-/**
- * @typedef {import('../../cmd/guided-review/protocol.ts').GuidedReviewUsage} Usage
- * @typedef {Object} JobScenario
- * @property {Usage[]} frames
- * @property {boolean} [internal]
- * @property {boolean} [fails]
- * @property {Usage} [resultUsage]
- * @property {string} [command]
- * @property {() => Promise<void>} [duringCommand]
- */
-/** @param {string} cwd @param {JobScenario} scenario */
-async function runJob(cwd, scenario) {
+interface UsageCoverageFixture {
+    usage: MeasurementAvailability;
+}
+
+interface FinishedMetricFixture extends WorkflowMetricFixtureRecord {
+    event: "execution_finished";
+    coverage: UsageCoverageFixture;
+}
+
+interface JobScenario {
+    frames: GuidedReviewUsage[];
+    internal?: boolean;
+    fails?: boolean;
+    resultUsage?: GuidedReviewUsage;
+    command?: string;
+    duringCommand?: () => Promise<void>;
+}
+async function runJob(cwd: string, scenario: JobScenario) {
     const previous = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
     if (scenario.internal) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
     else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = scenario.command || "fixture-external-command";
@@ -300,7 +315,7 @@ test("external Guided Review has start evidence before model work and a settled 
         assertEquals(pendingActiveDays, 0);
         const rows = await readMetrics();
         const start = rows.find((row) => row.event === "execution_started");
-        const finish = rows.find((row) => row.event === "execution_finished");
+        const finish = rows.find((row): row is FinishedMetricFixture => row.event === "execution_finished");
         assertEquals(start?.dispatchKind, "auxiliary");
         assertEquals(start?.userInitiated, false);
         assertEquals(start?.sourceSurface, "workspace");

@@ -769,7 +769,7 @@
     "src/ui/workspace/command-metrics.test.ts",
     "src/ui/workspace/delivery-record-retry.integration.test.ts",
     "src/ui/workspace/delivery-report.test.tsx",
-    "src/ui/workspace/guided-review-usage.test.js",
+    "src/ui/workspace/guided-review-usage.test.ts",
     "src/ui/workspace/integrations/react-server.test.tsx",
     "src/ui/workspace/integrations/review-collapse-state.test.ts",
     "src/ui/workspace/owner-dashboard-loading.test.tsx",
