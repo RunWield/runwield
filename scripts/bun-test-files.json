@@ -68,7 +68,7 @@
     "scripts/run-prototype.test.ts",
     "scripts/run-router-golden-set-context.test.ts",
     "scripts/run-router-golden-set-settings.test.ts",
-    "scripts/run-router-golden-set.test.js",
+    "scripts/run-router-golden-set.test.ts",
     "scripts/run-tests-sandbox.test.ts",
     "scripts/run-with-snip.test.ts",
     "scripts/script-process.test.ts",
