@@ -232,6 +232,7 @@
     "src/shared/attached/validation-recovery.test.ts",
     "src/shared/attached/validation-settlement.test.ts",
     "src/shared/bash-command-policy.test.ts",
+    "src/shared/browser-port.test.ts",
     "src/shared/cli-args.test.ts",
     "src/shared/collaboration/base64url.test.ts",
     "src/shared/collaboration/capabilities.test.ts",
