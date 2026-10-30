@@ -743,11 +743,16 @@ visible “excluded” text, and a plus control to include them again. Controls 
 Plan annotations, file annotations, images, direct edits, and unsent answers are included by default. Validation-time
 Code Review includes annotations, attachments, and edit suggestions by default. Send accepts text, included queue items,
 or both. After acceptance, remove only sent items and restore inclusion for the next send. A busy
-Agent disables queue controls, Send, and Submit answer; a failed request keeps the draft. Sequence tabs share inclusion
+Agent disables queue controls, Send, and question submit buttons; a failed request keeps the draft. Sequence tabs share inclusion
 and counts across the whole group. Approval forwards all remaining items regardless of one-send exclusions.
 
-Embedded Plan Questions offer Submit answer for an entered answer. It sends only that answer, marks it “Answer sent”,
-and removes it from the unsent queue. Changing the answer makes it unsent again. Retain the chosen answer for approval.
+Embedded Plan Questions share one pending-answer count: **Submit Answer**, **Submit 2 Answers**, **Submit 3 Answers**,
+and so on. Any question submit button sends every answered, unsent question across the review, including all Sequence
+tabs and answers excluded from a normal chat send. Blank text and blank Other answers do not count; No does. Keep the
+composer message, annotations, attachments, and direct edits queued. Before waiting, open the right sidebar on Planner,
+even after a manual collapse or a visit to Annotations; on compact screens close Contents. Reuse the sidebar motion and
+working/error states. Mark accepted values “Answer sent” and remove only those values from the unsent queue. Edits and
+new answers entered during work stay queued; failures preserve the batch for retry. Retain chosen answers for approval.
 After a completed reply-only turn, Plan approval uses the existing compact confirmation-dialog treatment with Ask Agent
 to update the Plan, Approve as is, and Cancel. Approve as is continues to the open-questions confirmation.
 
