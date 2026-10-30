@@ -1,3 +1,4 @@
+import type { RuntimeUsage } from "./session-runtime-events.js";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createSessionRuntimeEvent, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.js";
@@ -8,7 +9,7 @@ const unavailable = {
     cacheReadTokens: null,
     cacheWriteTokens: null,
     costUsd: null,
-};
+} satisfies RuntimeUsage;
 
 test("Runtime usage preserves absent measurements", () => {
     for (const source of [undefined, null, {}, { cost: {} }]) {
