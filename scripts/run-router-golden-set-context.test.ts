@@ -1,3 +1,4 @@
+import type { FauxResponseFactory } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
@@ -22,15 +23,16 @@ const fixture = defineGitFixture(async (cwd) => {
 });
 
 function triageMessages() {
-    return [{
-        role: "toolResult",
-        toolName: "triage_report",
-        details: { routingIntent: "INQUIRY", complexity: "LOW", summary: "answer" },
-    }];
+    return [
+        {
+            role: "toolResult",
+            toolName: "triage_report",
+            details: { routingIntent: "INQUIRY", complexity: "LOW", summary: "answer" },
+        },
+    ];
 }
 
-/** @param {string} contextCommit */
-function row(contextCommit) {
+function row(contextCommit: string) {
     return { requestText: "what is in marker.txt?", humanJudgement: "INQUIRY", contextCommit };
 }
 
@@ -43,12 +45,9 @@ test("pinned rows discover each commit without changing the dirty source checkou
         await fsWriteFile(join(cwd, "untracked.txt"), "keep");
         const status = await git(cwd, ["status", "--porcelain"]);
         const worktrees = await git(cwd, ["worktree", "list", "--porcelain"]);
-        /** @type {string[]} */
-        const contents = [];
-        /** @type {string[]} */
-        const heads = [];
-        /** @type {string[]} */
-        const paths = [];
+        const contents: string[] = [];
+        const heads: string[] = [];
+        const paths: string[] = [];
         const rows = await runRouterGoldenSet([row(before), row(after), row(before), row("")], {
             cwd,
             runAgentSession: async (options) => {
@@ -64,7 +63,10 @@ test("pinned rows discover each commit without changing the dirty source checkou
                 return triageMessages();
             },
         });
-        assertEquals(rows.map((r) => r.routerDecision), ["INQUIRY", "INQUIRY", "INQUIRY", "INQUIRY"]);
+        assertEquals(
+            rows.map((r) => r.routerDecision),
+            ["INQUIRY", "INQUIRY", "INQUIRY", "INQUIRY"],
+        );
         assertEquals(contents, ["before", "after", "before", "local edits"]);
         assertEquals(heads, [before, after, before, after]);
         assertEquals(paths[0] === cwd, false);
@@ -75,7 +77,12 @@ test("pinned rows discover each commit without changing the dirty source checkou
         assertEquals(await fsReadFile(join(cwd, "untracked.txt"), "utf8"), "keep");
         assertEquals(await git(cwd, ["worktree", "list", "--porcelain"]), worktrees);
         for (const path of paths.slice(0, 3)) {
-            assertEquals(await fsStat(path).then(() => true).catch(() => false), false);
+            assertEquals(
+                await fsStat(path)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
         }
     } finally {
         await fsRm(cwd, { recursive: true });
@@ -85,8 +92,7 @@ test("pinned rows discover each commit without changing the dirty source checkou
 test("missing commits fail the row without falling back to current context", async () => {
     const cwd = await fixture.checkout();
     try {
-        /** @type {(string | undefined)[]} */
-        const requests = [];
+        const requests: (string | undefined)[] = [];
         const rows = await runRouterGoldenSet([row("f".repeat(40)), row("")], {
             cwd,
             runAgentSession: (options) => {
@@ -108,8 +114,7 @@ test("missing commits between pinned rows do not run Router against the previous
     try {
         const before = await git(cwd, ["rev-parse", "HEAD~1"]);
         const after = await git(cwd, ["rev-parse", "HEAD"]);
-        /** @type {string[]} */
-        const contents = [];
+        const contents: string[] = [];
         const rows = await runRouterGoldenSet([row(before), row("f".repeat(40)), row(after)], {
             cwd,
             runAgentSession: async (options) => {
@@ -119,7 +124,10 @@ test("missing commits between pinned rows do not run Router against the previous
             },
         });
         assertEquals(contents, ["before", "after"]);
-        assertEquals(rows.map((result) => result.routerDecision), ["INQUIRY", "", "INQUIRY"]);
+        assertEquals(
+            rows.map((result) => result.routerDecision),
+            ["INQUIRY", "", "INQUIRY"],
+        );
         assertStringIncludes(String(rows[1].routerSummary), "ERROR: Context Git failed:");
     } finally {
         await fsRm(cwd, { recursive: true });
@@ -185,7 +193,12 @@ test("an agent failure allows worktree reuse before run-end cleanup", async () =
         assertEquals(rows[0].routerSummary, "ERROR: model failed");
         assertEquals(rows[1].routerDecision, "INQUIRY");
         assertEquals(await git(cwd, ["worktree", "list", "--porcelain"]), worktrees);
-        assertEquals(await fsStat(discoveryCwd).then(() => true).catch(() => false), false);
+        assertEquals(
+            await fsStat(discoveryCwd)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -199,7 +212,7 @@ test("pinned worktrees are removed after a row timeout", async () => {
         const rows = await runRouterGoldenSet([row(commit)], {
             cwd,
             rowTimeoutMs: 10,
-            runAgentSession: () => new Promise(() => {}),
+            runAgentSession: () => new Promise<ReturnType<typeof triageMessages>>(() => {}),
         });
         assertEquals(rows[0].routerSummary, "ERROR: Router golden row timed out after 10ms.");
         assertEquals(await git(cwd, ["worktree", "list", "--porcelain"]), worktrees);
@@ -219,14 +232,17 @@ test("resume discards prior decisions when the golden context changes", () => {
     const oldCommit = "a".repeat(40);
     const newCommit = "b".repeat(40);
     for (const contextCommit of [newCommit, ""]) {
-        const rows = mergeGoldenRowsWithResultRows([
-            { ...row(contextCommit), decisionId: "d1", routerDecision: "INQUIRY" },
-        ], [{
-            ...row(oldCommit),
-            decisionId: "d1",
-            routerDecision: "INQUIRY",
-            routerSummary: "old context",
-        }]);
+        const rows = mergeGoldenRowsWithResultRows(
+            [{ ...row(contextCommit), decisionId: "d1", routerDecision: "INQUIRY" }],
+            [
+                {
+                    ...row(oldCommit),
+                    decisionId: "d1",
+                    routerDecision: "INQUIRY",
+                    routerSummary: "old context",
+                },
+            ],
+        );
         assertEquals(rows[0].contextCommit, contextCommit);
         assertEquals(rows[0].routerDecision, "");
         assertEquals(rows[0].routerSummary, "");
@@ -250,20 +266,23 @@ test("benchmark CLI binds real Router read tools to each pinned commit", async (
                         { ...row(after), decisionId: "after" },
                     ]),
                 );
-                /** @type {string[]} */
-                const reads = [];
-                /** @type {import('@earendil-works/pi-ai').FauxResponseFactory} */
-                const response = (context) => {
+                const reads: string[] = [];
+                const response: FauxResponseFactory = (context) => {
                     const last = context.messages.at(-1);
                     if (last?.role === "toolResult" && last.toolName === "read") {
                         reads.push(
-                            last.content.filter((part) => part.type === "text").map((part) => part.text).join("\n"),
+                            last.content
+                                .filter((part) => part.type === "text")
+                                .map((part) => part.text)
+                                .join("\n"),
                         );
-                        return fauxAssistantMessage(fauxToolCall("triage_report", {
-                            routingIntent: "INQUIRY",
-                            complexity: "LOW",
-                            summary: "Read committed context",
-                        }));
+                        return fauxAssistantMessage(
+                            fauxToolCall("triage_report", {
+                                routingIntent: "INQUIRY",
+                                complexity: "LOW",
+                                summary: "Read committed context",
+                            }),
+                        );
                     }
                     if (last?.role === "toolResult" && last.toolName === "triage_report") {
                         return fauxAssistantMessage(fauxText("Done."));
@@ -288,7 +307,10 @@ test("benchmark CLI binds real Router read tools to each pinned commit", async (
                     ["INQUIRY", "INQUIRY"],
                     results.map((result) => result.routerSummary).join("\n"),
                 );
-                assertEquals(results.map((result) => result.contextCommit), [before, after]);
+                assertEquals(
+                    results.map((result) => result.contextCommit),
+                    [before, after],
+                );
                 assertEquals(reads, ["before", "after"]);
             },
         );
@@ -299,8 +321,9 @@ test("benchmark CLI binds real Router read tools to each pinned commit", async (
 
 test("resume preserves prior decisions for the same commit", () => {
     const contextCommit = "a".repeat(40);
-    const rows = mergeGoldenRowsWithResultRows([
-        { ...row(contextCommit), decisionId: "d1" },
-    ], [{ ...row(contextCommit), decisionId: "d1", routerDecision: "INQUIRY" }]);
+    const rows = mergeGoldenRowsWithResultRows(
+        [{ ...row(contextCommit), decisionId: "d1" }],
+        [{ ...row(contextCommit), decisionId: "d1", routerDecision: "INQUIRY" }],
+    );
     assertEquals(rows[0].routerDecision, "INQUIRY");
 });

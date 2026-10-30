@@ -57,7 +57,7 @@
     "scripts/run-ci-power.test.ts",
     "scripts/run-ci.test.ts",
     "scripts/run-prototype.test.ts",
-    "scripts/run-router-golden-set-context.test.js",
+    "scripts/run-router-golden-set-context.test.ts",
     "scripts/run-router-golden-set-settings.test.ts",
     "scripts/run-router-golden-set.test.js",
     "scripts/run-tests-sandbox.test.ts",
