@@ -1,10 +1,12 @@
+import type { Usage } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
 import { buildProjectedSessionInfo, createReplayEvents } from "./session-transcript-projection.js";
 
+type AssistantUsageFixture = Partial<Pick<Usage, "input" | "output">>;
+
 const options = { sessionId: "usage-session", cwd: "/project" };
-/** @param {Record<string, number> | undefined} usage */
-function assistant(usage) {
+function assistant(usage: AssistantUsageFixture | undefined) {
     return { type: "message", message: { role: "assistant", content: [], ...(usage ? { usage } : {}) } };
 }
 
