@@ -9,6 +9,10 @@ For `validation`, read the requested kind and current action identity. If compac
 instead of a request, fetch `get_instructions` to read the decision. Each worker checks its fetched instruction
 contract is `runwield.attached.validation/1` before acting. Core owns rounds, findings, budgets, candidate freshness, and gate outcomes.
 
+For every reviewer, repair, and Recorder dispatch below, apply the skill's **Fresh Codex workers** rules using current
+`workflow.nextAction.dispatch`. This includes corrections and retries. Read these preferences from compact metadata;
+the coordinator does not need the independent reviewer's instructions to select its native spawn arguments.
+
 ## Independent review
 
 Dispatch a fresh Codex reviewer with the workflow ID, revision, action ID, request cwd, and artifact references.

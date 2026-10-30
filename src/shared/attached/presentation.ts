@@ -12,6 +12,7 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
         actionId: identity,
         round: workflow.review?.round ?? null,
         chatPending: "chat" in action && action.chat !== undefined,
+        ...(action.dispatch && { dispatch: action.dispatch }),
     };
     if (action.kind === "triage" || action.kind === "plan") {
         return {

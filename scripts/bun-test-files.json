@@ -206,6 +206,8 @@
     "src/shared/agent-browser-session.test.ts",
     "src/shared/attached/action-content.test.ts",
     "src/shared/attached/code-review-chat.test.ts",
+    "src/shared/attached/codex-dispatch.test.ts",
+    "src/shared/attached/codex-role-settings.test.ts",
     "src/shared/attached/compatibility.test.ts",
     "src/shared/attached/coordinator.test.ts",
     "src/shared/attached/cross-host.test.ts",

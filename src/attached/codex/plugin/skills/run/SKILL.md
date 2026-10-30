@@ -69,6 +69,26 @@ compatibility problem: report it and leave the workflow open.
 
 ## Fresh Codex workers
 
+Before every role dispatch, read `workflow.nextAction.dispatch`, available even in compact status without reviewer
+instructions. It reflects saved `connect.codex.roles` preferences for the current Codex caller. Apply these rules to
+Router, Planner, implementation, independent review, repair, and Recorder workers:
+
+- For `status: "ready"`, pass `model` as the native spawn `model` and `thinkingLevel` as `reasoning_effort`.
+  For each value equal to `"inherit"`, omit that spawn argument. Do not translate Core provider IDs or presets.
+  Missing dispatch metadata from older compatible Core means both fields inherit.
+- For `status: "invalid"`, show `diagnostics` and stop before spawning. Keep the current action resumable.
+- Use a fresh Router or initial Planner worker when either field is explicit. Both inherited permits the coordinating
+  conversation's existing Router/initial Planner flow. Feedback Planner and all workers below always use fresh contexts.
+- Use the host tool's actual model and effort controls; text in a prompt does not apply a preference. Disable context
+  inheritance (`fork_turns: "none"` when available), including for explicit overrides. If the host rejects a model or
+  effort, lacks either requested control, or cannot guarantee applying it, report the exact limitation and stop before
+  doing that role's work. Preserve the preference and action; do not silently ignore, downgrade, substitute, or activate
+  another workflow. Resume after the user changes the preference or host capability.
+
+Preferences are resolved on the next dispatch, including after resume. Do not restart a running worker after a file
+edit. Inheritance delegates to Codex's native resolution: a model override without an effort override can use that
+model's default effort. Claim only the native arguments actually accepted, not an unobserved model selection.
+
 Dispatch each implementation, review, repair, and Recorder action to a new Codex subagent with a fresh context. Do not
 reuse a previous worker or inherit this conversation's history; disable context inheritance when the host exposes that
 option. Give only its current action identity, required directory and canonical artifact references, plus the full

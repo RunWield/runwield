@@ -276,6 +276,39 @@ calls, fresh worker instructions, and direct independent-review inspection.
 - When an isolated worker is needed, the adapter uses a host-owned worker or discloses the limitation; it does not
   substitute a hidden RunWield model session or ask for separate model credentials.
 
+**Requirement: Persist independent Codex role preferences with native inheritance.**
+
+Users can save model and thinking-level preferences for Router, Planner, Engineer, Frontend Engineer, independent
+reviewer, review-feedback Engineer, and Recorder in personal or project settings. Each field resolves project,
+personal, then native inheritance. Explicit inheritance resets that field for the selected scope. Core's model
+presets remain separate. The current calling host owns application and capability validation; a preference never
+grants permissions, starts a Core model Session, or bypasses a workflow gate.
+
+Preferences apply at the next role dispatch, including after restart or cross-host resume, without restarting a
+running worker. Compact action metadata supplies preferences without exposing independent reviewer instructions to
+the coordinator. Explicit Router and initial Planner overrides use fresh host workers; required fresh review,
+implementation, repair, feedback-planning, and recording contexts remain independent. Workers return outcomes to the
+coordinator for lifecycle submission.
+
+**Scope and maturity:** Source settings resolution, action metadata, and Codex dispatch guidance implement this
+contract. Native model/effort availability and accepted spawn controls depend on the client. These changes do not
+extend the [Codex qualification evidence](#codex-acceptance) or claim an unobserved live model selection.
+
+**Acceptance scenarios: Codex role preferences.**
+
+- Given saved personal preferences, a new chat or process resumes the same workflow with those preferences on the
+  next dispatch. Each of the seven roles receives its own values.
+- Given a personal model and a project thinking level, the worker receives both. Given project `model: "inherit"`,
+  the model spawn argument is omitted while the separately resolved effort remains. Removing that project field
+  reveals the personal value. With no overrides, Codex's native defaults apply.
+- Given an explicit model without an effort override, Codex resolves the effort natively, which can mean the chosen
+  model's default rather than the parent's effort.
+- Given a Claude-origin workflow resumed in Codex, Codex preferences apply while action and Plan identity remain
+  unchanged. A Claude caller does not receive Codex preferences.
+- Given a malformed preference or an unavailable host model, effort, or spawn control, the user receives an actionable
+  diagnostic and the current action stays resumable. No silent substitution, second workflow, or false usage claim
+  occurs. Updating a setting affects the next dispatch.
+
 <a id="runwield-owned-workflow-truth"></a>
 <a id="one-verification-meaning"></a>
 <a id="shared-product-behavior"></a>

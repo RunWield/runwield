@@ -14,7 +14,8 @@ For `implementation`:
 1. Require contract `runwield.attached.implementation/1`. Before dispatch, send a user-visible message with Core's
    `disclosure`, `executionCwd`, and `worktreeBranch`, including its RunWield-owned `.gitignore` block. Do not hide this
    only in the worker prompt.
-2. Dispatch a fresh Codex implementation worker. Include `role`, `executionCwd`, `planPath`, and `planName`. If the
+2. Dispatch a fresh Codex implementation worker using the skill's **Fresh Codex workers** dispatch rules and current
+   `workflow.nextAction.dispatch`. Include `role`, `executionCwd`, `planPath`, and `planName`. If the
    result includes `instructions.text`, pass it verbatim. If restoring from compact status, tell the worker to fetch
    its complete instructions using `get_instructions` with the workflow and action IDs. It follows the Plan and uses
    only the handed-off directory for every edit and command. Do not use host worktree isolation.

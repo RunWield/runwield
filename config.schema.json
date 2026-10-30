@@ -298,6 +298,47 @@
             "type": "boolean",
             "deprecated": true,
             "description": "Deprecated legacy key. Use transport instead. true maps to websocket; false maps to sse."
+        },
+        "connect": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "External-host preferences. Separate from Core agents and modelPresets.",
+            "properties": {
+                "codex": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "roles": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "description": "Each field resolves project, then personal, then inherit. Explicit inherit stops lookup and omits the native spawn override.",
+                            "properties": {
+                                "router": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "planner": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "engineer": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "frontend-engineer": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "reviewer": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "reviewer-feedback-engineer": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "recorder": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "$defs": {
@@ -640,6 +681,26 @@
                 },
                 "customDirectories": {
                     "$ref": "#/$defs/stringArray"
+                }
+            }
+        },
+        "codexRolePreferences": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                    "default": "inherit",
+                    "description": "Codex-native model ID or inherit. Availability is validated by Codex; Core provider/model IDs and presets are not consulted."
+                },
+                "thinkingLevel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                    "default": "inherit",
+                    "description": "Codex-native reasoning effort or inherit. Passed as reasoning_effort; available values depend on the model and client. Model-only overrides can use the selected model default effort."
                 }
             }
         }

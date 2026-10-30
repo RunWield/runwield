@@ -59,6 +59,28 @@ async function writeProjectPlanner(projectRoot: string, body: string): Promise<v
     await fsWriteFile(join(projectRoot, ".wld", "agents", "planner.md"), `---\npromptOverride: true\n---\n\n${body}\n`);
 }
 
+test("Codex planning workers return structured outcomes and leave lifecycle submission with the coordinator", async () => {
+    await withProject(async (root) => {
+        for (const role of ["router", "planner"] as const) {
+            const text = await resolveAttachedRoleInstructions(root, role, "codex");
+            const worker = text.split("## Attached planning worker")[1];
+            assert(worker);
+            assertStringIncludes(worker, "Fetch your own current get_instructions and context");
+            assertStringIncludes(worker, "return context.projectSetup paths to the coordinator");
+            assertStringIncludes(worker, "structured triage_report outcome");
+            assertStringIncludes(worker, "return planName");
+            assertStringIncludes(worker, "Make no lifecycle calls");
+            assertStringIncludes(worker, "The coordinator submits your result");
+            assertEquals(
+                (await resolveAttachedRoleInstructions(root, role, "claude-code")).includes(
+                    "## Attached planning worker",
+                ),
+                false,
+            );
+        }
+    });
+});
+
 test("activate returns the Router instructions with the pending Triage action", async () => {
     await withProject(async (projectRoot) => {
         const result = await runOperation("activate", projectRoot, activateInput());

@@ -13,6 +13,7 @@ import {
     normalizeImplementationReport,
 } from "../workflow/implementation-report.ts";
 import type { CompatibilityAssessment } from "./compatibility.ts";
+import type { CodexRoleDispatch } from "./codex-role-settings.ts";
 import type { ActiveExecutionWorkflow } from "../session/hosted-session.js";
 import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.js";
 import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
@@ -222,8 +223,16 @@ export interface AttachedReviewRound {
 }
 
 /** The RunWield roles a host plays in Attached Mode. */
-export type AttachedHostRole =
-    "router" | "planner" | "engineer" | "frontend-engineer" | "reviewer" | "reviewer-feedback-engineer" | "recorder";
+export const ATTACHED_HOST_ROLES = [
+    "router",
+    "planner",
+    "engineer",
+    "frontend-engineer",
+    "reviewer",
+    "reviewer-feedback-engineer",
+    "recorder",
+] as const;
+export type AttachedHostRole = (typeof ATTACHED_HOST_ROLES)[number];
 
 export interface PendingHostAction {
     actionId: string;
@@ -234,7 +243,7 @@ export interface PendingHostAction {
     imagePaths?: string[];
 }
 
-export type AttachedNextAction =
+export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
     | ({ kind: "plan"; projectSetup: string[] } & PendingHostAction)
     | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
@@ -286,7 +295,8 @@ export type AttachedNextAction =
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
           workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
       }
-    | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string };
+    | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
+) & { dispatch?: CodexRoleDispatch };
 
 /** The Plan a workflow submitted. The workflow references the Plan; it does not own it. */
 export interface AttachedPlanReference {
@@ -299,6 +309,7 @@ export interface AttachedRoleInstructions {
     role: AttachedHostRole;
     contractVersion: string;
     text: string;
+    dispatch?: CodexRoleDispatch;
 }
 
 export type AttachedWorkflowClosure =
