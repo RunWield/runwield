@@ -783,7 +783,8 @@ close-tab or auto-close behavior after a final decision.
 **Requirement: Review layouts fit the screen and the owner's preferences.** Code Review remembers the owner's last Split
 or Unified view in this browser. Both layouts and Guided Review wrap long lines. Validation-time Code Review opens
 with chat when available; no-chat review starts with the right sidebar collapsed and opens it at the first annotation.
-A later manual collapse holds. Plan review selects chat when the sidebar opens.
+A later manual collapse holds until an explicit question submission reopens Plan review on Planner. Plan review selects
+chat when the sidebar opens.
 At 980px and narrower, Files in Code Review, and Contents and Annotations in Plan Review, start collapsed; each opens from the toolbar, fills the
 workbench below the header, and opening one closes the other. The compact Plan Review header keeps the title, approval,
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
@@ -829,10 +830,18 @@ section, with Yes/No, text, or multiple-choice controls. Multiple choice include
 the recommended answer but does not select it for the owner. Invalid blocks remain readable code with a parse-error
 note. Answers survive a reload of the same Plan revision; answers for removed question ids are dropped after revision.
 
-Answers queue automatically under their own type. Each answered card offers **Submit answer**, which sends only that
-answer as a conversation turn under “Question answers”, without the composer message or other queued items. The card
-shows **Answer sent**, and that value is not sent again with the next message. While the Agent works, Submit answer is
-disabled and new answers stay queued. Editing a sent answer queues its new value.
+Answers queue automatically under their own type. Every available question submit button shows the same pending count:
+**Submit Answer** for one, **Submit 2 Answers** for two, **Submit 3 Answers** for three, and so on. Blank text, blank Other,
+unanswered questions, and unchanged sent values do not count; No does. Clicking any button sends all answered, unsent
+questions in one conversation turn under “Question answers”, including answers excluded from normal chat. Sequence
+reviews collect answers across all tabs with each Plan's identity intact. Composer text and other queued items remain
+unsent and intact.
+
+Starting submission opens the right sidebar on Planner before waiting, including after manual collapse or viewing
+Annotations; on compact screens it closes Contents. Planner's working and error states remain visible. Accepted values
+show **Answer sent** and are omitted from later chat sends. While the Agent works, question submit buttons are disabled.
+Edits and new answers entered during that turn stay queued; failed submissions preserve all unsent answers for retry.
+Editing a sent answer queues its new value, while chosen answers remain available for approval.
 
 Before approval, open questions still trigger the existing confirmation with their count and recommended answers.
 Cancel keeps review open. Approval follows [Core's question resolution rules](runwield-core-prd.md#plan-review). A
@@ -905,8 +914,15 @@ every action stays available.
   excludes only those notes from the next send and keeps them on the Plan; answers still go to the Agent.
 - Given included queue items and no typed message, Send works. After a send, sent items leave the queue and excluded
   items remain, included for the next send.
-- Given an answered card, Submit answer sends only that answer, shows Answer sent, and omits it from the next chat
-  send. While the Agent works, Submit answer is disabled and a new answer stays queued.
+- Given one, two, or three pending answers, every available question submit button shows Submit Answer, Submit 2
+  Answers, or Submit 3 Answers. A No answer counts; blank text and blank Other do not.
+- Given answers in several blocks or Sequence tabs, clicking any question submit button sends them together once,
+  preserving each Plan's identity. Composer text and other queued context remain intact, even when answers were excluded
+  from normal chat. Accepted values show Answer sent and are omitted from the next chat send.
+- Given a collapsed right sidebar or Annotations selected, question submission opens Planner and shows working status
+  immediately. On a phone, it closes Contents. A second click while busy cannot start another turn; edits and new
+  answers made during work remain queued after completion. A failed request displays its error and preserves the batch
+  for retry.
 - Given chat is available, the Annotations pane has no send or attach-to-chat button. Without chat, Send Annotations
   remains available.
 - Given a reply-only turn after the latest revision, each applicable approval action offers Ask the Agent to update,
