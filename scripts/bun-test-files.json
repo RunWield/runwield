@@ -183,7 +183,7 @@
     "src/cmd/resume/index.test.ts",
     "src/cmd/review/index.test.ts",
     "src/cmd/router/index.test.ts",
-    "src/cmd/session/index.test.js",
+    "src/cmd/session/index.test.ts",
     "src/cmd/settings/index.test.ts",
     "src/cmd/share/index.test.ts",
     "src/cmd/sleep/index.test.ts",
