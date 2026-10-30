@@ -427,7 +427,7 @@
     "src/shared/session/session-runtime-events.test.ts",
     "src/shared/session/session-runtime-method-policy.test.ts",
     "src/shared/session/session-runtime-structure.test.ts",
-    "src/shared/session/session-runtime-usage.test.js",
+    "src/shared/session/session-runtime-usage.test.ts",
     "src/shared/session/session-runtime.test.js",
     "src/shared/session/session-sidebar.test.ts",
     "src/shared/session/session-state-imports.test.ts",
