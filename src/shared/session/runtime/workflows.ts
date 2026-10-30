@@ -736,7 +736,11 @@ ${outcome.feedback || ""}`,
             const diffText =
                 workflow.executionMode === "non_git_in_place" || workflow.nonGitInPlace
                     ? continuation.repair.diffText
-                    : await getWorktreeReviewDiff(executionCwd, workflow.worktreeBaseBranch || "");
+                    : await getWorktreeReviewDiff(
+                          executionCwd,
+                          workflow.worktreeBaseBranch || "",
+                          workflow.worktreeBaseRef,
+                      );
             await runActiveAgentTurn({
                 hostedSession: session,
                 agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
@@ -798,6 +802,7 @@ ${outcome.feedback || ""}`,
                 planName: continuation.plan.planName,
                 repairGeneration: continuation.repair.repairGeneration,
                 report,
+                session: session.getManagedMetadata(),
             });
             return {
                 kind: "semantic_repair_completed",

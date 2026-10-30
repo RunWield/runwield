@@ -1,10 +1,11 @@
 import { test } from "node:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
 import {
     ensurePlanIdentity,
     injectFrontMatter,
+    listPlans,
     listPlanResources,
     loadPlan,
     mergeFrontMatterText,
@@ -20,12 +21,29 @@ const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md"
 const planId = "4355a6d9-e0dc-4e52-b03f-7c22a1afa9bb";
 const planName = "epic/child";
 
-async function registeredPlan(status: "completed" | "planning" = "completed", anonymousAuthority = false) {
+async function registeredPlan(
+    status: "completed" | "planning" = "completed",
+    anonymousAuthority = false,
+    collisionOrder?: "before" | "after",
+) {
     const root = await fixture.checkout();
     const tree = `${root}-execution`;
     await savePlan(root, "epic", "# Epic\n", { classification: "PROJECT", targetBranch: "main", planId: "epic-id" });
-    await mkdir(join(root, "docs/plans/epic"), { recursive: true });
-    const primaryPath = join(root, "docs/plans/epic/child.md");
+    const children = join(root, "docs/plans/epic");
+    await mkdir(children, { recursive: true });
+    let registeredName = planName;
+    let otherName = "other";
+    if (collisionOrder) {
+        // Assign roles after observing real enumeration. In-place writes preserve the entries,
+        // so both orders are exercised without depending on a filesystem's name/creation sorting.
+        for (const child of ["first.md", "second.md"]) await writeFile(join(children, child), "# Placeholder\n");
+        const entries = await readdir(children, { withFileTypes: true });
+        const otherIndex = collisionOrder === "before" ? 0 : 1;
+        registeredName = `epic/${entries[1 - otherIndex].name.slice(0, -3)}`;
+        otherName = `epic/${entries[otherIndex].name.slice(0, -3)}`;
+        await writeFile(join(root, `docs/plans/${otherName}.md`), injectFrontMatter("# Other\n", { planId }));
+    }
+    const primaryPath = join(root, `docs/plans/${registeredName}.md`);
     const primary =
         '---\nstatus: "draft"\nparentPlan: "epic"\ntargetBranch: "main"\n---\n\n# Child draft\n\nLocal body stays here.\n';
     await writeFile(primaryPath, primary);
@@ -34,7 +52,7 @@ async function registeredPlan(status: "completed" | "planning" = "completed", an
     const baseCommit = await git(root, ["rev-parse", "HEAD"]);
     await git(root, ["worktree", "add", "-b", "worktree/child", tree]);
     await writeFile(
-        join(tree, "docs/plans/epic/child.md"),
+        join(tree, `docs/plans/${registeredName}.md`),
         injectFrontMatter("# Authoritative child\n\nImplemented body.\n", {
             ...(anonymousAuthority ? {} : { planId }),
             status: status === "completed" ? "implemented" : "draft",
@@ -44,7 +62,7 @@ async function registeredPlan(status: "completed" | "planning" = "completed", an
     );
     await addEntry(root, {
         id: "child-attempt",
-        planName,
+        planName: registeredName,
         planId,
         path: tree,
         branch: "worktree/child",
@@ -58,6 +76,9 @@ async function registeredPlan(status: "completed" | "planning" = "completed", an
     return {
         root,
         tree,
+        planName: registeredName,
+        otherName,
+        otherPath: join(root, `docs/plans/${otherName}.md`),
         primaryPath,
         primary,
         cleanup: async () => {
@@ -159,24 +180,84 @@ test("identity preparation refuses ambiguous registered authority without changi
     }
 });
 
-for (const backfillMissing of [false, true]) {
-    test(`registered identity cannot overwrite another catalog Plan's ID (backfill=${backfillMissing})`, async () => {
-        const f = await registeredPlan("completed", true);
+for (const collisionOrder of ["before", "after"] as const) {
+    for (const backfillMissing of [false, true]) {
+        test(`registered identity cannot overwrite another catalog Plan's ID (backfill=${backfillMissing}, collision=${collisionOrder})`, async () => {
+            const f = await registeredPlan("completed", true, collisionOrder);
+            try {
+                const otherPath = f.otherPath;
+                const authorityPath = join(f.tree, `docs/plans/${f.planName}.md`);
+                const otherBefore = await readFile(otherPath, "utf8");
+                const authorityBefore = await readFile(authorityPath, "utf8");
+                const registryBefore = await listEntries(f.root);
+                await assertRejects(
+                    () =>
+                        backfillMissing
+                            ? listPlanResources(f.root, { backfillMissing: true })
+                            : ensurePlanIdentity(f.root, f.planName),
+                    Error,
+                    "belongs to another Plan",
+                );
+                assertEquals(await readFile(f.primaryPath, "utf8"), f.primary);
+                assertEquals(await readFile(otherPath, "utf8"), otherBefore);
+                assertEquals(await readFile(authorityPath, "utf8"), authorityBefore);
+                assertEquals(await listEntries(f.root), registryBefore);
+            } finally {
+                await f.cleanup();
+            }
+        });
+    }
+
+    test(`target catalog overlay preserves a competing Plan ID (collision=${collisionOrder})`, async () => {
+        const f = await registeredPlan("completed", false, collisionOrder);
         try {
-            await savePlan(f.root, "other", "# Other\n", { planId });
-            await assertRejects(
-                () =>
-                    backfillMissing
-                        ? listPlanResources(f.root, { backfillMissing: true })
-                        : ensurePlanIdentity(f.root, planName),
-                Error,
-                "belongs to another Plan",
+            const otherPath = f.otherPath;
+            const otherBefore = await readFile(otherPath, "utf8");
+            const plans = await listPlans(f.root);
+            assertEquals(
+                plans
+                    .filter((plan) => plan.attrs.planId === planId)
+                    .map((plan) => plan.name)
+                    .sort(),
+                [f.planName, f.otherName].sort(),
             );
+            assertEquals(
+                plans.find((plan) => plan.name === f.planName)?.path,
+                join(f.tree, `docs/plans/${f.planName}.md`),
+            );
+            await assertRejects(() => ensurePlanIdentity(f.root, f.planName), Error, "Duplicate planId");
             assertEquals(await readFile(f.primaryPath, "utf8"), f.primary);
+            assertEquals(await readFile(otherPath, "utf8"), otherBefore);
         } finally {
             await f.cleanup();
         }
     });
+
+    for (const authority of ["missing", "archived"] as const) {
+        test(`${authority} authority hides only its same-name primary copy (collision=${collisionOrder})`, async () => {
+            const f = await registeredPlan("completed", true, collisionOrder);
+            try {
+                const authorityPath = join(f.tree, `docs/plans/${f.planName}.md`);
+                const otherPath = f.otherPath;
+                const otherBefore = await readFile(otherPath, "utf8");
+                const registryBefore = await listEntries(f.root);
+                if (authority === "missing") await rm(authorityPath);
+                else {
+                    const archive = join(f.tree, "docs/plans/archived/epic");
+                    await mkdir(archive, { recursive: true });
+                    await rename(authorityPath, join(archive, "child.md"));
+                }
+                const plans = await listPlans(f.root);
+                assertEquals(plans.map((plan) => plan.name).sort(), ["epic", f.otherName].sort());
+                assertEquals(plans.find((plan) => plan.name === f.otherName)?.attrs.planId, planId);
+                assertEquals(await readFile(f.primaryPath, "utf8"), f.primary);
+                assertEquals(await readFile(otherPath, "utf8"), otherBefore);
+                assertEquals(await listEntries(f.root), registryBefore);
+            } finally {
+                await f.cleanup();
+            }
+        });
+    }
 }
 
 test("registered identity cannot be reused when another registry Plan owns the same ID", async () => {

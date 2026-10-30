@@ -28,10 +28,11 @@ parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 11
 dependencies: []
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 sessionName: "Metrics Epic Review Fixes"
+validatedCommit: "7c4c4f2db949c04440332fdb166166ba12b013c0"
+status: "verified"
 ---
 
 # Repair integration findings
@@ -55,7 +56,7 @@ The findings fall into five problems:
 
 ### Product ownership
 
-The Core PRD capability [Usage measurement and export](../../prd/runwield-core-prd.md)
+The Core PRD capability [Usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export)
 owns every requirement here. This repair changes these named requirements:
 
 - **Changed — "Collection epochs reflect observed boundaries, not inferred disabled durations."** Today Core observes

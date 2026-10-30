@@ -1,11 +1,13 @@
 import type { McpIntegration } from "../../../mcp/integration.ts";
+import { calculateCost, type Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { RunWieldModel } from "../../../models/model-registry.ts";
+import { getExternalCliPriceModel, type RunWieldModel } from "../../../models/model-registry.ts";
 import type { HostedSession } from "../../hosted-session.js";
 import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
+    normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "../../session-runtime-events.js";
 import { describeRuntimeTool } from "../../tool-event-title.js";
@@ -71,6 +73,7 @@ export interface AgyCliRunOptions {
     parentToolCallId?: string;
     taskId?: string;
     sourceSurface?: string;
+    userInitiated?: boolean;
 }
 
 interface ClassifiedFailure {
@@ -207,9 +210,9 @@ export class AgyCliExecutionSession {
     private async runTurnInternal(options: AgyCliRunOptions): Promise<AgentMessage[]> {
         const bridgedTools = this.mcpIntegration
             ? [
-                ...this.bridgedTools.filter((tool) => !this.mcpToolNames.has(tool.name)),
-                ...this.mcpIntegration.getTools(),
-            ]
+                  ...this.bridgedTools.filter((tool) => !this.mcpToolNames.has(tool.name)),
+                  ...this.mcpIntegration.getTools(),
+              ]
             : this.bridgedTools;
 
         if (options.images && options.images.length > 0) {
@@ -243,12 +246,14 @@ export class AgyCliExecutionSession {
 
         const recorder = new ExecutionMetricsRecorder({
             projectRoot: this.cwd,
+            hostedSession: this.hostedSession ?? undefined,
             commandId: this.hostedSession?.activeCommandInvocationId || undefined,
             sessionId: this.sessionManager.getSessionId(),
             managedSessionId: this.hostedSession?.getManagedMetadata()?.runwieldSessionId,
-            segmentId: options.executionKind === "root"
-                ? this.hostedSession?.getManagedMetadata()?.currentSegmentId
-                : undefined,
+            segmentId:
+                options.executionKind === "root"
+                    ? this.hostedSession?.getManagedMetadata()?.currentSegmentId
+                    : undefined,
             agent: this.ownership.name,
             provider: this.model.provider,
             model: this.model.id,
@@ -262,15 +267,20 @@ export class AgyCliExecutionSession {
             parentToolCallId: options.parentToolCallId,
             taskId: options.taskId,
             sourceSurface: options.sourceSurface || "cli",
+            userInitiated: options.userInitiated,
         });
         await recorder.recordExecutionStart();
         await recorder.recordToolExposure(bridgedTools, "partial");
         const pendingObservations = new Set<Promise<void>>();
         const observe = (pending: Promise<void>) => {
             pendingObservations.add(pending);
-            void pending.then(() => pendingObservations.delete(pending), () => pendingObservations.delete(pending));
+            void pending.then(
+                () => pendingObservations.delete(pending),
+                () => pendingObservations.delete(pending),
+            );
         };
         observe(recorder.recordResponseLatency("turn_start"));
+        let usageEndedAt: string | null = null;
         let executionOutcome: import("../../../workflow/execution-metrics.ts").ExecutionOutcome = "succeeded";
         let failureKind: string | undefined;
 
@@ -350,9 +360,9 @@ export class AgyCliExecutionSession {
                 effort,
                 env: bridge
                     ? {
-                        [RUNWIELD_MCP_BRIDGE_URL_ENV]: bridge.url,
-                        [RUNWIELD_MCP_BRIDGE_TOKEN_ENV]: bridge.token,
-                    }
+                          [RUNWIELD_MCP_BRIDGE_URL_ENV]: bridge.url,
+                          [RUNWIELD_MCP_BRIDGE_TOKEN_ENV]: bridge.token,
+                      }
                     : undefined,
             });
             const processPort = new DenoAgyCliProcessPort();
@@ -415,16 +425,17 @@ export class AgyCliExecutionSession {
                 const call = {
                     role: "assistant",
                     timestamp: started.startedAt,
-                    content: [{
-                        type: "toolCall",
-                        id: toolCallId,
-                        name: step.name,
-                        arguments: parameters || {},
-                    }],
+                    content: [
+                        {
+                            type: "toolCall",
+                            id: toolCallId,
+                            name: step.name,
+                            arguments: parameters || {},
+                        },
+                    ],
                     api: this.model.api,
                     provider: this.model.provider,
                     model: this.model.id,
-                    usage: toPiUsage(zeroUsage()),
                     stopReason: "toolUse",
                 } as SessionAppendMessage;
                 this.sessionManager.appendMessage(call);
@@ -454,14 +465,15 @@ export class AgyCliExecutionSession {
                 onTool,
                 onUsage: (usage) => {
                     observedUsage = usage;
+                    usageEndedAt = new Date().toISOString();
                 },
                 onToolInfo: (observation) => {
                     observe(recorder.recordResponseLatency("first_response"));
                     if (
                         !observation.toolName?.startsWith("mcp__runwield__") &&
-                        !bridgedTools.some((tool) =>
-                            observation.toolName === tool.name ||
-                            observation.toolName === mcpAliasFor(tool.name)
+                        !bridgedTools.some(
+                            (tool) =>
+                                observation.toolName === tool.name || observation.toolName === mcpAliasFor(tool.name),
                         )
                     ) {
                         observe(recorder.recordNativeToolInfo(observation));
@@ -554,18 +566,41 @@ export class AgyCliExecutionSession {
             this.turnAbortController = null;
             const usage = parsed?.metadata?.usage ?? observedUsage;
             if (usage) {
+                const priceModel = getExternalCliPriceModel(this.model);
+                // Pricing alone treats unreported buckets as 0. Persisted measurements stay null.
+                const priceUsage: Usage = {
+                    input: usage.inputTokens ?? 0,
+                    output: usage.outputTokens ?? 0,
+                    cacheRead: usage.cacheReadTokens ?? 0,
+                    cacheWrite: usage.cacheWriteTokens ?? 0,
+                    totalTokens:
+                        (usage.inputTokens ?? 0) +
+                        (usage.outputTokens ?? 0) +
+                        (usage.cacheReadTokens ?? 0) +
+                        (usage.cacheWriteTokens ?? 0),
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                };
+                const costAmount = priceModel ? calculateCost(priceModel, priceUsage).total : null;
                 await recorder.recordModelUsage({
+                    startedAt: recorder.getObservedTurnStartedAt(),
+                    endedAt: usageEndedAt,
+                    reasoningTokens: usage.thinkingTokens,
                     inputTokens: usage.inputTokens,
                     outputTokens: usage.outputTokens,
                     cacheReadTokens: usage.cacheReadTokens,
                     cacheWriteTokens: usage.cacheWriteTokens,
-                    costUsd: null,
-                    costSource: "unavailable",
-                    measurementAvailability: usage.inputTokens !== null &&
-                            usage.outputTokens !== null
+                    costAmount,
+                    costSource: costAmount === null ? "unavailable" : "calculated",
+                    costAvailability: costAmount === null ? "unavailable" : "complete",
+                    measurementAvailability: [
+                        usage.inputTokens,
+                        usage.outputTokens,
+                        usage.cacheReadTokens,
+                        usage.cacheWriteTokens,
+                    ].some((value) => value !== null)
                         ? "partial"
                         : "unavailable",
-                    inputCacheBasis: "unknown",
+                    inputCacheBasis: "excludes_cache",
                     model: this.model.id,
                     provider: this.model.provider,
                 });
@@ -593,11 +628,7 @@ export class AgyCliExecutionSession {
     }
 
     private readMessages(): AgentMessage[] {
-        return readExternalCliConversation(this.sessionManager).map((message) => {
-            return message.role === "user"
-                ? makeUserMessage(message.text) as AgentMessage
-                : makeAssistantMessage(message.text, this.model, zeroUsage()) as AgentMessage;
-        });
+        return this.sessionManager.getBranch().flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
     }
 }
 
@@ -762,7 +793,9 @@ function permissionFailureMessage(parsed: AgyCliParseResult): string {
         ...parsed.metadata.permissionDetails.map((detail) => `Blocked: ${detail}`),
         parsed.metadata.errorText,
         "Review the action in Antigravity's /permissions, then retry this turn.",
-    ].filter(Boolean).join("\n");
+    ]
+        .filter(Boolean)
+        .join("\n");
 }
 
 function isResultStatusSuccess(status: string): boolean {
@@ -786,7 +819,9 @@ export function resolveAgyNativeTools(declaredTools?: string[]): string[] {
         nativeTools.push("write_to_file");
     }
     if (
-        declared.has("edit") || declared.has("edit_docs") || declared.has("multi_file_edit") ||
+        declared.has("edit") ||
+        declared.has("edit_docs") ||
+        declared.has("multi_file_edit") ||
         declared.has("replace_file_content")
     ) {
         nativeTools.push("replace_file_content");
@@ -806,11 +841,7 @@ function formatAgyCustomAgentDefinition(
     displayName: string,
     tools: string[] = ["run_command", "write_to_file", "replace_file_content", "view_file"],
 ): string {
-    const lines = [
-        "---",
-        `name: ${selector}`,
-        `description: Temporary RunWield ${displayName} execution agent`,
-    ];
+    const lines = ["---", `name: ${selector}`, `description: Temporary RunWield ${displayName} execution agent`];
     if (tools.length > 0) {
         lines.push("tools:");
         for (const tool of tools) {
@@ -822,7 +853,11 @@ function formatAgyCustomAgentDefinition(
 }
 
 function makeTemporaryAgentSelector(agentName: string): string {
-    const sanitized = agentName.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+    const sanitized =
+        agentName
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "agent";
     return `runwield-${sanitized}-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
 }
 
@@ -867,6 +902,7 @@ function makeUserMessage(text: string): SessionAppendMessage {
     };
 }
 
+// Pi requires usage on assistant messages; CLI transcripts omit it when no measurement was reported.
 function makeAssistantMessage(text: string, model: RunWieldModel, usage: AgyCliUsage): SessionAppendMessage {
     return {
         role: "assistant",
@@ -875,34 +911,36 @@ function makeAssistantMessage(text: string, model: RunWieldModel, usage: AgyCliU
         api: model.api,
         provider: model.provider,
         model: model.id,
-        usage: toPiUsage(usage),
+        ...(Object.values(usage).some((value) => value !== null) ? { usage: toPiUsage(usage) } : {}),
         stopReason: "stop",
-    };
-}
-
-function zeroUsage(): AgyCliUsage {
-    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: null };
-}
-
-function toPiUsage(usage: AgyCliUsage) {
-    return {
-        input: usage.inputTokens ?? 0,
-        output: usage.outputTokens ?? 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    };
+    } as SessionAppendMessage;
 }
 
 function toRuntimeUsage(usage: AgyCliUsage) {
+    return normalizeRuntimeUsage({ ...usage, costUsd: null });
+}
+
+function toPiUsage(usage: AgyCliUsage): Usage {
+    const normalized = toRuntimeUsage(usage);
+    const tokens = [
+        normalized.inputTokens,
+        normalized.outputTokens,
+        normalized.cacheReadTokens,
+        normalized.cacheWriteTokens,
+    ];
+    // Pi requires numeric Usage fields. Persist the honest partial shape instead:
+    // absent measurements and unreported cost components must not become measured zeros.
+    // A total is available only when all token categories are known.
     return {
-        inputTokens: usage.inputTokens ?? 0,
-        outputTokens: usage.outputTokens ?? 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        costUsd: 0,
-    };
+        ...(normalized.inputTokens !== null ? { input: normalized.inputTokens } : {}),
+        ...(normalized.outputTokens !== null ? { output: normalized.outputTokens } : {}),
+        ...(normalized.cacheReadTokens !== null ? { cacheRead: normalized.cacheReadTokens } : {}),
+        ...(normalized.cacheWriteTokens !== null ? { cacheWrite: normalized.cacheWriteTokens } : {}),
+        ...(tokens.every((value) => value !== null)
+            ? { totalTokens: tokens.reduce<number>((total, value) => total + (value ?? 0), 0) }
+            : {}),
+        ...(normalized.costUsd !== null ? { cost: { total: normalized.costUsd } } : {}),
+    } as Usage;
 }
 
 function appendExecutionBackendEntry(

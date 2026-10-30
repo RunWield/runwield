@@ -19,6 +19,7 @@ import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { renderOpenItems } from "./review-ledger.ts";
@@ -409,6 +410,7 @@ async function acceptedRepairOutcome(
             planName: workflow.planName,
             repairGeneration: workflow.validationRepairGeneration,
             report: payload.message,
+            session: hostedSession.getManagedMetadata(),
             owner: { pid: process.pid, hostname: getLockHostname() },
         });
     }
@@ -455,6 +457,18 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
         expectedControllerRevision: plan.controllerRevision,
     });
     hostedSession.setActiveExecutionWorkflow({ ...workflow, validationRepairGeneration: repairGeneration });
+    await recordWorkflowOutcome(cwd, {
+        category: "recovery",
+        event: "repair_round",
+        operationId: repairGeneration,
+        roundId: repairGeneration,
+        attemptId: workflow.worktreeId,
+        planName: workflow.planName,
+        round: checkpoint.repairKind === "semantic" ? reviewState?.semanticRound : plan.attrs.validationCiAttempts,
+        phase: checkpoint.repairKind === "semantic" ? "semantic" : "mechanical",
+        outcome: "ongoing",
+        session: hostedSession.getManagedMetadata(),
+    });
 }
 
 export function createValidationSessionPort(
@@ -469,6 +483,9 @@ export function createValidationSessionPort(
     const reviewerManagers = new WeakMap<ReviewInspection, SessionManager>();
     return {
         cwd: hostedSession.cwd,
+        get metricsSession() {
+            return hostedSession.getManagedMetadata();
+        },
         getActiveWorkflow: () => hostedSession.getActiveExecutionWorkflow?.() || null,
         setActiveWorkflow: (workflow) => hostedSession.setActiveExecutionWorkflow?.(workflow),
         releaseActiveAgent: () => releaseActiveAgent(hostedSession),

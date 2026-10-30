@@ -690,6 +690,7 @@ const GUIDE_DEV_VARIANTS = [
     { id: "ready", label: "Ready explainer + widget" },
     { id: "pending-usage", label: "Running + usage pending" },
     { id: "reported-usage", label: "Completed + reported usage" },
+    { id: "partial-usage", label: "Completed + partial usage" },
     { id: "no-provider", label: "No provider available" },
     { id: "failed", label: "Failed generation" },
     { id: "long-title", label: "Long title" },
@@ -783,7 +784,16 @@ function buildCodeReviewDevPayload(variant) {
             },
         };
     }
-    if (variant === "reported-usage") {
+    if (variant === "reported-usage" || variant === "partial-usage") {
+        const partial = variant === "partial-usage";
+        const tokens = {
+            inputTokens: 1240,
+            outputTokens: partial ? 0 : 250,
+            cacheReadTokens: partial ? null : 800,
+            cacheWriteTokens: partial ? null : 0,
+            costUsd: partial ? null : 0.125,
+        };
+        const cost = partial ? null : { usd: 0.125 };
         return {
             ...base,
             devGuideCapabilities: {
@@ -799,14 +809,8 @@ function buildCodeReviewDevPayload(variant) {
                 model: "wld",
                 elapsedMs: 9800,
                 usageState: "available",
-                tokens: {
-                    inputTokens: 1240,
-                    outputTokens: 250,
-                    cacheReadTokens: 800,
-                    cacheWriteTokens: 0,
-                    costUsd: 0.125,
-                },
-                cost: { usd: 0.125 },
+                tokens,
+                cost,
             },
             devGuideJobDone: {
                 id: "dev-guide-reported",
@@ -815,14 +819,8 @@ function buildCodeReviewDevPayload(variant) {
                 engine: "wld",
                 model: "wld",
                 usageState: "available",
-                tokens: {
-                    inputTokens: 1240,
-                    outputTokens: 250,
-                    cacheReadTokens: 800,
-                    cacheWriteTokens: 0,
-                    costUsd: 0.125,
-                },
-                cost: { usd: 0.125 },
+                tokens,
+                cost,
             },
         };
     }

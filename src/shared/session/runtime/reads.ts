@@ -519,7 +519,12 @@ export class RuntimeReads {
                 projection: buildProjectedSessionContextProjection(projected.entries),
                 contextUsage: null,
                 activeMessageTokens:
-                    info.inputTokens + info.outputTokens + info.cacheReadTokens + info.cacheWriteTokens,
+                    info.inputTokens === null ||
+                    info.outputTokens === null ||
+                    info.cacheReadTokens === null ||
+                    info.cacheWriteTokens === null
+                        ? undefined
+                        : info.inputTokens + info.outputTokens + info.cacheReadTokens + info.cacheWriteTokens,
                 contextWindow: null,
             });
         }

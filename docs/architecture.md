@@ -876,10 +876,13 @@ after the rebuild succeeds.
 
 ### Metrics and fail-open services
 
-Workflow metrics are opt-in JSONL under `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked execution
-worktrees write to the primary project's metrics file. Records hash the project root, redact prompts, output, secrets,
-and paths, and fail open so telemetry cannot stop a workflow. Session footer-context markers, event listeners, extension
-warnings, and selected cleanup paths are also fail-open. In contrast, missing Mnemoteca or Cymbal is a hard
+Workflow metrics are opt-in JSONL under `~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl`. The
+basename is sanitized and limited to 40 characters; the key is the full SHA-256 of the primary checkout's real path.
+Linked execution worktrees share that Project identity. Core adopts legacy journals under their guard, separating
+attributable rows and fencing copied rows from existing export grants when legacy paths collide. The Workspace Usage
+report reads these journals; clear removes selected histories. Optional export requires separate package approval and
+destination consent. Records exclude prompts, output, secrets, and paths, and fail open so metrics cannot stop a workflow.
+Session footer-context markers, event listeners, extension warnings, and selected cleanup paths are also fail-open. In contrast, missing Mnemoteca or Cymbal is a hard
 agent-construction failure, and invalid lifecycle/worktree gates are hard workflow failures.
 
 ## Persistence map
@@ -890,15 +893,15 @@ map for Core persistence.
 
 | Data                                      | Location                                                                                            | Authority and write behavior                         |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Session transcript                        | `~/.wld/sessions/<encoded-project-root>/`                                                           | Pi `SessionManager`; guarded load by cwd/id/path     |
+| Session transcript                        | `~/.wld/sessions/<encoded-session-root>/`                                                           | Pi `SessionManager`; guarded load by cwd/id/path     |
 | Session image and memory-backup artifacts | Beside the persisted session                                                                        | Session-scoped file helpers                          |
 | Global settings, models, auth             | `~/.wld/`                                                                                           | RunWield settings/model services                     |
 | Project settings and overrides            | `<project>/.wld/`                                                                                   | Project-scoped settings/catalog services             |
 | Plans                                     | `<project>/docs/plans/**/*.md`                                                                      | Plan store and Plan lifecycle                        |
 | Archived Plans                            | `<project>/docs/plans/archived/`                                                                    | Plan store archive/restore operations                |
 | Worktree registry                         | `<primary-project>/.wld/internal/worktrees.json`                                                    | Worktree registry under a local lock file            |
-| Execution worktrees                       | `~/.wld/worktrees/<encoded-project-root>/` by default                                               | Git worktree service                                 |
-| Workflow metrics                          | `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`                                      | Optional, sanitized, fail-open append                |
+| Execution worktrees                       | `~/.wld/worktrees/<encoded-worktree-root>/` by default                                              | Git worktree service                                 |
+| Workflow metrics                          | `~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl`                            | Optional, sanitized, fail-open append                |
 | Collaboration secrets                     | `~/.wld/collaboration-secrets.json` or `<primary-project>/.wld/internal/collaboration-secrets.json` | Atomic temp-file/rename with restrictive permissions |
 
 ## Adapters over Core

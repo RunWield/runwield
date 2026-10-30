@@ -138,9 +138,10 @@ test("a Plan review reference survives a writer process crash before settlement"
         store.recordLastPlanReview(proof, {
             planId: "crash-plan-id", planName: "crash-plan", planningAgentName: "planner",
         });
-        (await import("node:fs")).writeFileSync(${JSON.stringify(readyPath)}, JSON.stringify({
+        (await import("node:fs")).writeFileSync(${JSON.stringify(readyPath + ".tmp")}, JSON.stringify({
             sessionId: session.runwieldSessionId, projectId: project.projectId,
         }));
+        (await import("node:fs")).renameSync(${JSON.stringify(`${readyPath}.tmp`)}, ${JSON.stringify(readyPath)});
         setInterval(() => {}, 1000);
     `;
     const worker = spawnNativeProcess(process.execPath, {

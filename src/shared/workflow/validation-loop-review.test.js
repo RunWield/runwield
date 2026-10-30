@@ -894,11 +894,11 @@ test("round-two origin metrics are recorded separately from durable repair state
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line));
-    const metric = records.find((record) => record.event === "semantic_review_result");
-    assertEquals(metric.details.missedOriginalCount, 1);
-    assertEquals(metric.details.repairRegressionCount, 1);
-    assertEquals(metric.details.existingStillOpenCount, 1);
-    assertEquals(metric.details.fixConfirmedCount, 1);
+    const metric = records.find((record) => record.event === "validation_attempt" && record.phase === "semantic");
+    assertEquals(metric.missedOriginalCount, 1);
+    assertEquals(metric.repairRegressionCount, 1);
+    assertEquals(metric.existingStillOpenCount, 1);
+    assertEquals(metric.fixConfirmedCount, 1);
     const saved = (await loadPlan(projectRoot, "p"))?.attrs.validationCheckpoint?.reviewState?.reviewLedger;
     assertExists(saved);
     assertEquals(

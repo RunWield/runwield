@@ -225,7 +225,54 @@ test("Claude Code 2.1.284 captured Read stream pairs native tool progress with t
     assertEquals(result.metadata.isError, false);
     assertEquals(result.text, "Checking file.\nmint");
     assertEquals(sources.filter((source) => source === "message_fixture_1").length, 3);
-    assert(sources.includes("claude_turn_total"));
+    assert(sources.includes("claude_turn_total:1"));
+});
+
+interface ClaudeUsageSummary {
+    sourceId: string;
+    cost: number | null;
+    input: number | null;
+    basis: string;
+}
+
+test("Claude result identities and running cost deltas reset for each stream", async () => {
+    const text = [
+        {
+            type: "result",
+            result: "",
+            usage: { input_tokens: 3, output_tokens: 4 },
+            total_cost_usd: 0.25,
+            modelUsage: { sonnet: { inputTokens: 3, outputTokens: 4, costUSD: 0.25 } },
+        },
+        {
+            type: "result",
+            result: "",
+            usage: { input_tokens: 5, output_tokens: 6 },
+            total_cost_usd: 0.75,
+            modelUsage: { sonnet: { inputTokens: 8, outputTokens: 10, costUSD: 0.75 } },
+        },
+    ]
+        .map((row) => JSON.stringify(row))
+        .join("\n");
+    for (let stream = 0; stream < 2; stream++) {
+        const observations: ClaudeUsageSummary[] = [];
+        await parseClaudeCliStream(streamFromText(text), {
+            onDelta: () => {},
+            onUsage: (observation) =>
+                observations.push({
+                    sourceId: observation.sourceId,
+                    cost: observation.usage.costUsd,
+                    input: observation.usage.inputTokens,
+                    basis: observation.aggregationBasis,
+                }),
+        });
+        assertEquals(observations, [
+            { sourceId: "claude_turn_total:1", cost: 0.25, input: 3, basis: "turn" },
+            { sourceId: "claude_model_0:1", cost: 0.25, input: 3, basis: "alternative" },
+            { sourceId: "claude_turn_total:2", cost: 0.5, input: 5, basis: "turn" },
+            { sourceId: "claude_model_0:2", cost: 0.75, input: 8, basis: "alternative" },
+        ]);
+    }
 });
 
 test("Claude CLI parser preserves a structured error result", async () => {

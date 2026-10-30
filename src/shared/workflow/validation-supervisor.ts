@@ -1,3 +1,4 @@
+import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
@@ -228,6 +229,7 @@ type ValidationRepairCompletionOwner = {
 };
 
 type ValidationRepairCompletionArgs = {
+    session?: OutcomeSession | null;
     projectRoot: string;
     planName: string;
     repairGeneration: string;
@@ -298,6 +300,17 @@ export async function recordValidationRepairCompletion(args: ValidationRepairCom
                 plan.attrs,
                 { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
             );
+            await recordWorkflowOutcome(args.projectRoot, {
+                category: "recovery",
+                event: "repair_round_finished",
+                operationId: args.repairGeneration,
+                roundId: args.repairGeneration,
+                attemptId: plan.attrs.worktreeId || undefined,
+                planName: args.planName,
+                outcome: "succeeded",
+                session: args.session,
+                phase: checkpoint.repairKind === "semantic" ? "semantic" : "mechanical",
+            });
             return;
         } catch (error) {
             if (!(error instanceof StalePlanWriteError || error instanceof StaleControllerWriteError) || attempt === 2)
@@ -318,7 +331,11 @@ async function rebuildSemanticRepairHandoff(
     const phase = await resolvePhaseContext(engineArgs);
     if (phase.kind === "blocked") return phase.result;
     const context = phase.context;
-    const diffText = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+    const diffText = await getWorktreeReviewDiff(
+        context.executionCwd,
+        context.worktreeBaseBranch || "",
+        context.worktreeBaseRef,
+    );
     const activeWorkflow = {
         ...context.workflowBase,
         semanticRound: reviewState.semanticRound,

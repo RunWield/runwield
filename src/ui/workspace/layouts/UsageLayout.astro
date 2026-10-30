@@ -1,0 +1,21 @@
+---
+import WorkspaceLayout from "./WorkspaceLayout.astro";
+
+interface Props {
+    active: "report" | "settings";
+}
+
+const { active } = Astro.props;
+---
+<WorkspaceLayout title="Usage · RunWield Workspace" selectedTab="usage" url={Astro.url.href}>
+    <Fragment slot="header-tabs">
+        <strong class="workspace-main-session-name" data-workspace-surface-title>Usage</strong>
+        <nav class="rw-underline-tabs workspace-settings-tabs workspace-usage-tabs" aria-label="Usage views">
+            <a href="/usage" class:list={[active === "report" && "active"]} aria-current={active === "report" ? "page" : undefined}>Report</a>
+            <a href="/usage/settings" class:list={[active === "settings" && "active"]} aria-current={active === "settings" ? "page" : undefined}>Settings</a>
+        </nav>
+    </Fragment>
+    <div class="workspace-settings-content rw-usage-content">
+        <slot />
+    </div>
+</WorkspaceLayout>

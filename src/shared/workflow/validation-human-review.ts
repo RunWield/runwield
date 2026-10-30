@@ -111,7 +111,7 @@ export async function runHumanReviewPhase(
 
     let diffText = context.nonGitInPlace
         ? ""
-        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "", context.worktreeBaseRef);
     const planAttrs = getPlanAttrs(args.planContent);
     const planTitle = codeReviewPlanTitle(args.planContent, args.planName);
     const agentLabel = args.session.getAgentDisplayName(AGENTS.REVIEWER_FEEDBACK_ENGINEER, context.projectRoot);
@@ -173,6 +173,7 @@ export async function runHumanReviewPhase(
                 planAttrs,
                 diffText,
                 targetBranch: context.worktreeBaseBranch,
+                targetBaseRef: context.worktreeBaseRef,
                 executionCwd: context.executionCwd,
                 guidedReview,
                 reviewConversation,
@@ -246,7 +247,11 @@ export async function runHumanReviewPhase(
                     : feedbackText;
             if (humanReview.conversationTurn && !context.nonGitInPlace && !args.hostTurn) {
                 // Capture after all RunWield writes, immediately before the isolated turn.
-                const before = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                const before = await getWorktreeReviewDiff(
+                    context.executionCwd,
+                    context.worktreeBaseBranch || "",
+                    context.worktreeBaseRef,
+                );
                 const turn = await dispatchReviewConversationTurn(args, context, {
                     diffText: before,
                     findingsSection: conversationContext,
@@ -254,7 +259,11 @@ export async function runHumanReviewPhase(
                     images: humanReview.images,
                     reason: feedbackText,
                 });
-                const after = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                const after = await getWorktreeReviewDiff(
+                    context.executionCwd,
+                    context.worktreeBaseBranch || "",
+                    context.worktreeBaseRef,
+                );
                 const changed = before !== after;
                 if (turn.report.trim()) {
                     conversationHistory.push(
@@ -354,7 +363,11 @@ export async function runHumanReviewPhase(
                     });
                     diffText = context.nonGitInPlace
                         ? ""
-                        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                        : await getWorktreeReviewDiff(
+                              context.executionCwd,
+                              context.worktreeBaseBranch || "",
+                              context.worktreeBaseRef,
+                          );
                 }
                 return {
                     kind: "decided",
