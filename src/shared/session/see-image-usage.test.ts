@@ -1,3 +1,7 @@
+import type { ProviderStreams } from "@earendil-works/pi-ai";
+import type { RuntimeCommandFixture as VisionFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import type { MeasurementAvailability, ModelUsageObservation } from "../workflow/execution-metrics.ts";
+import type { RequestDispatchKind } from "./request-dispatch.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -18,19 +22,41 @@ import { HostedSession } from "./hosted-session.js";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
 
-/** @typedef {import('../../cmd/testing/runtime-command-fixture.ts').RuntimeCommandFixture} VisionFixture */
-/** @typedef {Object} VisionCoverage
- * @property {string} usage
- */
-/** @typedef {{ dispatchKind: string, userInitiated: boolean, measurementAvailability: string, coverage: VisionCoverage, unavailableReason: string | null, event: string, sessionId: string, executionId: string, requestId: string | null, turnId: string | null, model: string, usageKind: string, aggregationBasis: string, inputTokens: number, cacheReadTokens: number, costAmount: number, collectionEpoch: string }} VisionMetric */
+interface VisionCoverage {
+    usage: MeasurementAvailability;
+}
 
-/** @typedef {Object} VisionScenario
- * @property {"error" | "aborted"} [stopReason]
- * @property {boolean} [throws]
- * @property {() => Promise<void>} [duringVision]
- */
-/** @param {VisionFixture} fixture @param {VisionScenario} [scenario] */
-async function configureVision(fixture, scenario = {}) {
+type VisionUsageFields = Pick<
+    ModelUsageObservation,
+    | "measurementAvailability"
+    | "unavailableReason"
+    | "model"
+    | "usageKind"
+    | "aggregationBasis"
+    | "inputTokens"
+    | "cacheReadTokens"
+    | "costAmount"
+    | "turnId"
+>;
+
+interface VisionMetric extends VisionUsageFields {
+    dispatchKind: RequestDispatchKind;
+    userInitiated: boolean;
+    coverage: VisionCoverage;
+    event: string;
+    sessionId: string;
+    executionId: string;
+    requestId: string | null;
+    collectionEpoch: string;
+}
+
+interface VisionScenario {
+    stopReason?: "error" | "aborted";
+    throws?: boolean;
+    duringVision?: () => Promise<void>;
+}
+
+async function configureVision(fixture: VisionFixture, scenario: VisionScenario = {}) {
     const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
     settings.visionFallback = { model: "runtime-command-fixture/fixture-model" };
     settings.workflowMetrics = true;
@@ -38,8 +64,7 @@ async function configureVision(fixture, scenario = {}) {
     await fsWriteFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
     const runtime = await getModelRegistry().getRuntime();
     let primaryRequests = 0;
-    /** @type {import('@earendil-works/pi-ai').ProviderStreams['streamSimple']} */
-    const stream = () => {
+    const stream: ProviderStreams["streamSimple"] = () => {
         const result = createAssistantMessageEventStream();
         const reply =
             ++primaryRequests % 2 === 1
@@ -122,9 +147,7 @@ async function configureVision(fixture, scenario = {}) {
     };
 }
 
-/** @param {VisionFixture} fixture
- * @returns {Promise<VisionMetric[]>} */
-async function readMetrics(fixture) {
+async function readMetrics(fixture: VisionFixture): Promise<VisionMetric[]> {
     await drainWorkflowMetrics();
     const contents = await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8");
     return contents
