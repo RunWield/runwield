@@ -83,7 +83,10 @@ export async function prepareReviewedCandidateRevalidation(projectRoot: string, 
             if (!branch.success || branch.text !== `refs/heads/${entry.branch}`) {
                 throw new Error("The publication source checkout no longer has its recorded branch.");
             }
-            const current = candidateIdentity(await getWorktreeReviewDiff(entry.path, entry.baseBranch), planName);
+            const current = candidateIdentity(
+                await getWorktreeReviewDiff(entry.path, entry.baseBranch, entry.baseRef),
+                planName,
+            );
             if (current === identity) return false;
             await resetValidation(entry.path, planName, entry.id, entry.planId);
             return true;

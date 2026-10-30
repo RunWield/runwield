@@ -1,3 +1,5 @@
+import type { ArtifactMetadata } from "./build-metadata.ts";
+import type { PublishedAsset } from "./release-assets.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { test } from "node:test";
 import {
@@ -17,8 +19,9 @@ import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.ts";
 import { expectedReleaseAssetNames } from "./release.js";
 import { sha256File } from "./build-metadata.ts";
 
-/** @param {string} tag */
-async function fixture(tag = "v1.2.3") {
+type ArchiveTargetMap = Record<string, ArtifactMetadata["target"] | undefined>;
+
+async function fixture(tag: string = "v1.2.3") {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const input = join(root, "input");
     await fsMkdir(input);
@@ -26,12 +29,13 @@ async function fixture(tag = "v1.2.3") {
     for (const name of names.filter((name) => !name.endsWith(".sha256") && name !== "SHA256SUMS")) {
         if (/-(darwin-(arm64|x64)|linux-(arm64|x64))\.tar\.gz$/.test(name)) {
             const suffix = name.slice(`wld-${tag}-`.length, -".tar.gz".length);
-            const target = {
+            const archiveTargets: ArchiveTargetMap = {
                 "darwin-arm64": "aarch64-apple-darwin",
                 "darwin-x64": "x86_64-apple-darwin",
                 "linux-arm64": "aarch64-unknown-linux-gnu",
                 "linux-x64": "x86_64-unknown-linux-gnu",
-            }[suffix];
+            };
+            const target = archiveTargets[suffix];
             const stage = join(root, `stage-${suffix}`);
             await fsMkdir(stage);
             const binary = new TextEncoder().encode(name);
@@ -126,7 +130,7 @@ for (const corruptMetadata of [false, true]) {
         const f = await fixture();
         try {
             await prepareReleaseAssets(f.input, f.output, f.tag);
-            const assets = [];
+            const assets: PublishedAsset[] = [];
             for (const name of releaseAssetNames(f.tag)) {
                 const bytes = await fsReadFile(join(f.output, name));
                 const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
@@ -291,7 +295,7 @@ async function legacyFixture() {
             .map(async (name) => (await fsReadFile(join(f.input, name), "utf8")).trim()),
     );
     await fsWriteFile(join(f.input, "SHA256SUMS"), `${sums.join("\n")}\n`);
-    const assets = [];
+    const assets: PublishedAsset[] = [];
     for (const name of [...names, "SHA256SUMS"]) {
         assets.push({ name, digest: `sha256:${await sha256File(join(f.input, name))}` });
     }
@@ -312,7 +316,7 @@ for (const missing of [false, true]) {
             const previousSums = await fsReadFile(join(f.input, "SHA256SUMS"), "utf8");
             await fsWriteFile(join(f.input, "SHA256SUMS"), previousSums + sum);
             const names = await fsReaddir(f.input);
-            const assets = [];
+            const assets: PublishedAsset[] = [];
             for (const file of names) {
                 assets.push({ name: file, digest: `sha256:${await sha256File(join(f.input, file))}` });
             }
@@ -401,7 +405,7 @@ test("published Stable recovery verifies the independent docs digest", async () 
     try {
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const docs = `runwield-docs-${f.tag}.tar.gz`;
-        const assets = [];
+        const assets: PublishedAsset[] = [];
         for (const name of releaseAssetNames(f.tag)) {
             assets.push({
                 name,

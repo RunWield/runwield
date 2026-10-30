@@ -9,6 +9,7 @@ import {
     complete,
     coverage,
     type HostFixture,
+    type HostValidationMetric,
     hostFixture,
     type HostFixtureOptions,
     hostRequest,
@@ -64,19 +65,16 @@ const cases: Case[] = [
 ];
 async function observable(fixture: HostFixture) {
     const plan = await fixture.plan();
-    const metrics: Array<{ category: string; event: string; details?: Record<string, string | number | boolean> }> = (
-        await fixture.metrics()
-    )
+    const metrics: HostValidationMetric[] = (await fixture.metrics())
         .trim()
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line));
     const validationBoundary = metrics.findLastIndex(
         (metric) =>
-            metric.event === "plan_transition_committed" &&
-            ["plan_event:semantic_review_passed", "plan_event:validation_failed"].includes(
-                String(metric.details?.operation),
-            ),
+            metric.event === "workflow_transition_committed" &&
+            metric.outcome === "succeeded" &&
+            ["plan_event:semantic_review_passed", "plan_event:validation_failed"].includes(String(metric.operation)),
     );
     assert(validationBoundary >= 0, "Validation must record its final lifecycle boundary.");
     return {
@@ -88,7 +86,21 @@ async function observable(fixture: HostFixture) {
         metrics: metrics
             .slice(0, validationBoundary + 1)
             .filter((metric) => metric.category === "validation")
-            .map(({ event, details }) => ({ event, details })),
+            .map((metric) => ({
+                event: metric.event,
+                details: metric.details,
+                outcome: metric.outcome,
+                phase: metric.phase,
+                attempt: metric.attempt,
+                findingCount: metric.findingCount,
+                advisoryCount: metric.advisoryCount,
+                initialFindingCount: metric.initialFindingCount,
+                missedOriginalCount: metric.missedOriginalCount,
+                repairRegressionCount: metric.repairRegressionCount,
+                unclassifiedNewCount: metric.unclassifiedNewCount,
+                existingStillOpenCount: metric.existingStillOpenCount,
+                fixConfirmedCount: metric.fixConfirmedCount,
+            })),
     };
 }
 for (const scenario of cases) {

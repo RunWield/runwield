@@ -34,6 +34,12 @@ async function run(cwd: string, ...args: string[]): Promise<string> {
     return stdout.trim();
 }
 
+// Local config also applies to receive-pack, which clears command-level config from its environment.
+async function configureForegroundGitMaintenance(repo: string): Promise<void> {
+    await run(repo, "git", "config", "maintenance.autoDetach", "false");
+    await run(repo, "git", "config", "gc.autoDetach", "false");
+}
+
 async function write(path: string, content: string): Promise<void> {
     await fsMkdir(resolve(path, ".."), { recursive: true });
     await fsWriteFile(path, content);
@@ -69,7 +75,9 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
     const work = join(root, "work");
     try {
         await run(root, "git", "init", "--bare", remote);
+        await configureForegroundGitMaintenance(remote);
         await run(root, "git", "clone", remote, work);
+        await configureForegroundGitMaintenance(work);
         await run(work, "git", "config", "user.name", "Test");
         await run(work, "git", "config", "user.email", "test@example.com");
         await run(work, "git", "checkout", "-b", "main");
@@ -201,6 +209,7 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
         );
         const correction = join(root, "correction");
         await run(root, "git", "clone", "--branch", "docs/stable", remote, correction);
+        await configureForegroundGitMaintenance(work);
         await run(correction, "git", "config", "user.name", "Test");
         await run(correction, "git", "config", "user.email", "test@example.com");
         await write(
@@ -309,7 +318,9 @@ for (const history of ["legacy", "single-commit"]) {
         const work = join(root, "work");
         try {
             await run(root, "git", "init", "--bare", remote);
+            await configureForegroundGitMaintenance(remote);
             await run(root, "git", "clone", remote, work);
+            await configureForegroundGitMaintenance(work);
             await run(work, "git", "config", "user.name", "Test");
             await run(work, "git", "config", "user.email", "test@example.com");
             await run(work, "git", "checkout", "-b", "main");
@@ -464,7 +475,9 @@ test("docs source validation rejects stale and product-changing commits", async 
     const work = join(root, "work");
     try {
         await run(root, "git", "init", "--bare", remote);
+        await configureForegroundGitMaintenance(remote);
         await run(root, "git", "clone", remote, work);
+        await configureForegroundGitMaintenance(work);
         await run(work, "git", "config", "user.name", "Test");
         await run(work, "git", "config", "user.email", "test@example.com");
         await run(work, "git", "checkout", "-b", "main");

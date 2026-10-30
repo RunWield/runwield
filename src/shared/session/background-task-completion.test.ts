@@ -353,13 +353,14 @@ test("completion after generated turn acceptance prevents final model dispatch",
                 ownerInstanceId: crypto.randomUUID(),
             });
             let releasePreparation = () => {};
+            let settlementTimeout: ReturnType<typeof setTimeout> | undefined;
             try {
                 const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 const session = host.requireSession(created.sessionId);
                 releasePreparation = () => session.completeAgentSteeringPreparation("hold-generated-prompt");
                 const completions: Array<Promise<{ details: { outcome: string } }>> = [];
-                let armed = false;
+                let generatedTurnId = "";
                 let preparationHeld = false;
                 let enteredPreparationWait = () => {};
                 const preparationWaitEntered = new Promise<void>((resolve) => (enteredPreparationWait = resolve));
@@ -368,11 +369,22 @@ test("completion after generated turn acceptance prevents final model dispatch",
                     if (preparationHeld) enteredPreparationWait();
                     return waitForPreparation();
                 };
-                let endGeneratedTurn = () => {};
-                const generatedTurnEnded = new Promise<void>((resolve) => (endGeneratedTurn = resolve));
+                let settleGeneratedOperation = () => {};
+                const generatedOperationSettled = new Promise<void>((resolve) => (settleGeneratedOperation = resolve));
                 runtime.subscribeSessionEvents(created.sessionId, (event) => {
-                    if (event.type === RuntimeEventTypes.TURN_END && armed && preparationHeld) endGeneratedTurn();
-                    if (event.type !== RuntimeEventTypes.TURN_START || !armed || preparationHeld) return;
+                    if (event.type === RuntimeEventTypes.USER_MESSAGE && event.origin === "background_task_result") {
+                        generatedTurnId = event.turnId || "";
+                    }
+                    if (event.type === RuntimeEventTypes.BUSY_CHANGED && !event.busy && preparationHeld) {
+                        settleGeneratedOperation();
+                    }
+                    if (
+                        event.type !== RuntimeEventTypes.TURN_START ||
+                        !generatedTurnId ||
+                        event.turnId !== generatedTurnId ||
+                        preparationHeld
+                    )
+                        return;
                     preparationHeld = true;
                     session.beginAgentSteeringPreparation("hold-generated-prompt");
                 });
@@ -380,8 +392,7 @@ test("completion after generated turn acceptance prevents final model dispatch",
                     (await runtime.promptUserTurn(created.sessionId, { initialRequest: "Start work." })).ok,
                     true,
                 );
-                armed = true;
-                await fsWriteFile(`${projectRoot}/release-result`, "release\n");
+                await fsWriteFile(`${projectRoot}/release-result`, "");
                 for (let attempt = 0; attempt < 300 && !preparationHeld; attempt++) {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
@@ -404,22 +415,17 @@ test("completion after generated turn acceptance prevents final model dispatch",
                 completions.push(tool.execute("final", { message: "- Done." }));
                 assertEquals((await completions[0]).details.outcome, "task_completed");
                 session.completeAgentSteeringPreparation("hold-generated-prompt");
-                let settlementTimeout;
-                try {
-                    await Promise.race([
-                        generatedTurnEnded,
-                        new Promise((_, reject) => {
-                            settlementTimeout = setTimeout(
-                                () => reject(Error("Generated turn did not settle")),
-                                60_000,
-                            );
-                        }),
-                    ]);
-                } finally {
-                    clearTimeout(settlementTimeout);
-                }
+                // Completion can reject the accepted operation before a prompt turn starts.
+                // Wait for operation settlement, not a prompt-only TURN_END event.
+                await Promise.race([
+                    generatedOperationSettled,
+                    new Promise((_, reject) => {
+                        settlementTimeout = setTimeout(() => reject(Error("Generated turn did not settle")), 60_000);
+                    }),
+                ]);
                 assertEquals(calls, 2);
             } finally {
+                clearTimeout(settlementTimeout);
                 releasePreparation();
                 await runtime.closeAllSessionsWhenIdle();
             }

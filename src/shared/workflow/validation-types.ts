@@ -126,6 +126,7 @@ export type PhaseContext = {
     worktreeId?: string;
     worktreeBranch?: string;
     worktreeBaseBranch?: string;
+    worktreeBaseRef?: string;
     nonGitInPlace: boolean;
     workflowBase: ValidationWorkflowState;
 };

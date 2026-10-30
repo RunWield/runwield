@@ -92,6 +92,7 @@ test("Core Plan review decision metrics satisfy lifecycle evidence without inven
         editJson(delivered, RECORD, (record) => {
             assert(record.plan && !Array.isArray(record.plan) && typeof record.plan === "object");
             record.plan.planName = "dark-mode-toggle";
+            record.plan.planId = workflow.plan?.planId || "";
         });
         // Keep the other lifecycle observations; source review observations from real Core decisions.
         const rest = metricRows().filter(
@@ -149,3 +150,23 @@ test("uncommitted metrics cannot prove lifecycle transitions", () => {
     );
     equal(outcome(evidence), "fail");
 });
+
+for (const variant of ["complete", "wrong-plan", "missing-plan", "failed", "missing-operation", "wrong-operation"]) {
+    test(`v2 committed lifecycle evidence requires stable Plan identity and operation: ${variant}`, () => {
+        const evidence = completeEvidence();
+        const rows: JsonMap[] = OPERATIONS.map((operation) => ({
+            v: 2,
+            planId: "plan-id",
+            event: "workflow_transition_committed",
+            outcome: "succeeded",
+            operation,
+        }));
+        if (variant === "wrong-plan") rows[0].planId = "other-plan";
+        if (variant === "missing-plan") delete rows[0].planId;
+        if (variant === "wrong-operation") rows[0].operation = "plan_event:invented";
+        if (variant === "failed") rows[0].outcome = "failed";
+        if (variant === "missing-operation") delete rows[0].operation;
+        writeMetrics(evidence, rows);
+        equal(outcome(evidence), variant === "complete" ? "pass" : "fail");
+    });
+}

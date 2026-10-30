@@ -640,11 +640,16 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
             "plan_event:semantic_review_passed",
             "plan_event:validation_passed",
         ].every((operation) =>
-            events.some(
-                (row) =>
-                    row.planName === field(record("delivered"), "plan", "planName") &&
-                    (row.event === "plan_transition_committed" || row.event === "semantic_transition_committed") &&
-                    field(row, "details", "operation") === operation,
+            events.some((row) =>
+                row.v === 2
+                    ? row.event === "workflow_transition_committed" &&
+                      row.outcome === "succeeded" &&
+                      typeof row.planId === "string" &&
+                      row.planId === field(record("delivered"), "plan", "planId") &&
+                      row.operation === operation
+                    : row.planName === field(record("delivered"), "plan", "planName") &&
+                      (row.event === "plan_transition_committed" || row.event === "semantic_transition_committed") &&
+                      field(row, "details", "operation") === operation,
             ),
         ),
         ...phasePointers("delivered"),

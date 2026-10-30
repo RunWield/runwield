@@ -61,6 +61,33 @@ correct choice obvious:
 - document when to use and not use a pattern;
 - keep Workflow and Plan vocabulary aligned with `docs/domain-language.md`.
 
+## Usage reports
+
+`src/ui/design-system/usage.css` owns the compact Usage report layout, scrollable tables, and semantic trend styles.
+`src/ui/design-system/components/react/UsageTrend.tsx` renders a daily token trend without a charting dependency. Its
+input uses `null` for a gap and `0` for a covered zero: gaps split line segments and have no numeric point; known zero
+has a baseline point. The SVG has a readable description and each point has a date/value title.
+
+Always pair a trend with a readable table. The Workspace daily table shows tokens, estimated USD cost, and **Data
+Complete** as **Complete** or **Partial**, with gap reasons. On partial days show known cost as a subtotal, or a dash
+when no cost is known. Do not turn missing cost into zero. Summary figures keep exclusion and partial-day counts beside
+the values. Coverage notices distinguish pending measurements from settled spend, identify excluded Projects, and keep
+the host time zone and recorded-through marker visible.
+
+Usage settings keeps each destination's identity, endpoint, approval, and compact delivery summary visible above its
+**Approved Projects**, **Credentials**, **Delivery status**, and **Destination** tabs. Use `RunWieldTabs` from
+`src/ui/design-system/components/react/RunWieldPrimitives.tsx` with `variant="underline"` to reuse
+`.rw-underline-tabs`. Keep panels mounted with a controlled value so switching tabs preserves unsaved input. Each
+destination has its own tab state and a distinct accessible label. On phones, the tab rail scrolls within the card.
+
+Project checklists in `usage.css` have a bounded scroll area, a selected count, and search for lists longer than eight
+Projects. Search filters the visible rows, not the saved selection. Local recording rows also scroll within their
+section so a large Project registry does not push exporter controls far down the page.
+
+Use `--rw-*` semantic colors, existing rectangular controls, and two summary columns on phone. Wide tables scroll inside
+a focusable, named region rather than widening the page. Project rows may show deduplicated, verified Session and Plan
+links with readable labels; do not add raw event-ID lists.
+
 ## Source of truth
 
 ### Printed documents
@@ -463,6 +490,10 @@ keyboard focus, and a fixed compact 28px height at every viewport width. Menu na
 Projects and Devices are peer Workspace-level views in `SettingsLayout.astro`. Their shared underline tabs sit in the
 Workspace header; content has matching panel spacing on both sides with a 64rem maximum width. Cards and Project rows on
 Projects, Project Settings, and Devices use square corners. Project rows open that Project’s settings as a child page.
+
+Usage Report and Settings use the same header pattern and 64rem content width. `UsageLayout.astro` owns the two links,
+the `header-tabs` slot, and active `aria-current="page"`. `/usage` and `/usage/settings` remain separate routes for direct
+links and browser Back; do not duplicate their tab markup in each page.
 Its header replaces the tabs with a **Back to Projects** control and **Project settings** title. Keep the Project name
 and root status as compact context inside the content. Do not repeat Plan Board or New Session actions here. Devices
 lists Workspace-wide paired browsers and never inherits a Project-specific scope. Device rows place the shared `badge`
@@ -778,9 +809,11 @@ workflow-critical changes.
 
 ### Dialogs
 
-Dialog is a general modal primitive for browser surfaces that need focused confirmation, short forms, or blocking
-workflow decisions. Workspace does not currently provide a source pattern for dialogs, so new dialogs should preserve
-the Workspace visual language while using Radix-compatible React behavior for accessibility and interaction behavior.
+`RunWieldDialog` in `src/ui/design-system/components/react/RunWieldDialog.tsx` is the shared modal primitive for focused
+confirmation, short forms, or blocking workflow decisions. It uses installed Radix Dialog behavior and the semantic
+`.rw-dialog-*` styles in `components.css`. Supply a trigger, title, description, optional body, footer, controlled open
+state, and a busy flag. The title labels the dialog; focus is trapped and returns to the trigger on dismissal. Escape
+closes it unless a request is running. Busy state blocks outside dismissal and Escape; callers disable their actions.
 
 Dialog should be flexible rather than confirmation-only:
 

@@ -12,7 +12,7 @@ affectedPaths:
     - "scripts/verify-docs-source.ts"
     - "scripts/docs-branch-integration.test.ts"
     - "scripts/docs-workflow.test.ts"
-    - "scripts/release-assets.test.js"
+    - "scripts/release-assets.test.ts"
     - "scripts/release-policy.test.ts"
     - "docs/releasing.md"
     - "docs/prd/runwield.md"
@@ -160,7 +160,7 @@ compatibility risk grows, or the Verification Plan no longer proves the objectiv
 - `scripts/release-assets.js` — the Stable upload set includes the docs archive and its checksum. Published recovery of
   a Stable tag released before this change does not require them.
 - `scripts/verify-docs-source.ts` — accepts the single-commit form. Its product-path check is unchanged.
-- `scripts/docs-branch-integration.test.ts`, `scripts/docs-workflow.test.ts`, `scripts/release-assets.test.js`,
+- `scripts/docs-branch-integration.test.ts`, `scripts/docs-workflow.test.ts`, `scripts/release-assets.test.ts`,
   `scripts/release-policy.test.ts` — regression coverage, listed below.
 - `docs/releasing.md` — Candidate promotion steps 7–9, _Stable documentation publication_, and _Recovery_.
 - `docs/prd/runwield.md` — the Public documentation capability.
@@ -243,7 +243,7 @@ compatibility risk grows, or the Verification Plan no longer proves the objectiv
 
 ```bash
 bun scripts/run-tests.js scripts/docs-branch-integration.test.ts scripts/docs-workflow.test.ts \
-  scripts/release-assets.test.js scripts/release-policy.test.ts scripts/build-stable-docs.test.ts
+  scripts/release-assets.test.ts scripts/release-policy.test.ts scripts/build-stable-docs.test.ts
 ```
 
 **New behavioral tests (real Git fixtures and real workflow steps, with fake `gh` only):**
@@ -266,7 +266,7 @@ bun scripts/run-tests.js scripts/docs-branch-integration.test.ts scripts/docs-wo
     - A conflicting `main` exits non-zero, leaves `origin/main` unchanged, and keeps the branch.
     - A missing branch exits zero with no changes.
     - A test that skipped the ancestry check, or deleted the branch before pushing, would fail.
-- `release-assets.test.js`: the Stable upload set includes the docs archive and its checksum, and the Candidate set does
+- `release-assets.test.ts`: the Stable upload set includes the docs archive and its checksum, and the Candidate set does
   not. Published recovery of a Stable release without a docs asset passes.
 
 **Behavior that must stay protected:** existing `docs-workflow.test.ts` checks for latest-release selection, API-error

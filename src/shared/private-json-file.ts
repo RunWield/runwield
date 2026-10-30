@@ -13,7 +13,7 @@ export function ensurePrivateDir(path: string): void {
     }
 }
 
-function syncParent(path: string): void {
+export function syncParentDirectory(path: string): void {
     try {
         const directory = openSync(dirname(path), "r");
         try {
@@ -31,12 +31,16 @@ function syncParent(path: string): void {
 
 /** Replace a JSON document without exposing a partial write to readers. */
 export function writeJsonAtomically<Value>(path: string, value: Value): void {
-    const text = `${JSON.stringify(value, null, 2)}\n`;
+    writeTextAtomically(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Replace a private file with durable, complete text or bytes. */
+export function writeTextAtomically(path: string, text: string | Uint8Array): void {
     ensurePrivateDir(dirname(path));
     const temporaryPath = `${path}.tmp-${randomUUID()}`;
     const file = openSync(temporaryPath, "wx", 0o600);
     try {
-        const bytes = new TextEncoder().encode(text);
+        const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
         let written = 0;
         while (written < bytes.byteLength) {
             const count = writeSync(file, bytes.subarray(written));
@@ -52,5 +56,5 @@ export function writeJsonAtomically<Value>(path: string, value: Value): void {
     } catch (error) {
         if (!(error instanceof Error && recoverWindowsRename(error, temporaryPath, path))) throw error;
     }
-    syncParent(path);
+    syncParentDirectory(path);
 }

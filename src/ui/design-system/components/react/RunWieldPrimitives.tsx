@@ -45,6 +45,7 @@ export interface RunWieldTabsProps {
     onValueChange?: (value: string) => void;
     keepMounted?: boolean;
     label?: string;
+    variant?: "default" | "underline";
 }
 
 type ClassNamePart = string | undefined | false | null;
@@ -54,11 +55,8 @@ function classNames(parts: ClassNamePart[]) {
 }
 
 export function RunWieldButton({ variant = "secondary", className, children, ...props }: RunWieldButtonProps) {
-    const variantClass = variant === "primary"
-        ? "primary-action"
-        : variant === "danger"
-        ? "danger-action"
-        : "secondary-action";
+    const variantClass =
+        variant === "primary" ? "primary-action" : variant === "danger" ? "danger-action" : "secondary-action";
     return React.createElement(
         "button",
         { type: "button", ...props, className: classNames([variantClass, className]) },
@@ -96,11 +94,8 @@ export function RunWieldPanelToggle({ side, collapsed, label, controls, onClick 
  * an anchor, so browser affordances and accessibility semantics stay intact.
  */
 export function RunWieldLink({ variant = "secondary", className, children, ...props }: RunWieldLinkProps) {
-    const variantClass = variant === "primary"
-        ? "primary-action"
-        : variant === "danger"
-        ? "danger-action"
-        : "secondary-action";
+    const variantClass =
+        variant === "primary" ? "primary-action" : variant === "danger" ? "danger-action" : "secondary-action";
     return React.createElement("a", { ...props, className: classNames([variantClass, className]) }, children);
 }
 
@@ -117,21 +112,31 @@ export function RunWieldThinkingDots({ label = "Thinking", className, showLabel 
     );
 }
 
-export function RunWieldTabs(
-    { defaultValue, tabs, value, onValueChange, keepMounted = false, label = "Review sections" }: RunWieldTabsProps,
-) {
+export function RunWieldTabs({
+    defaultValue,
+    tabs,
+    value,
+    onValueChange,
+    keepMounted = false,
+    label = "Review sections",
+    variant = "default",
+}: RunWieldTabsProps) {
     return React.createElement(
         Tabs.Root,
         { defaultValue, value, onValueChange, className: "rw-react-tabs" },
         React.createElement(
             Tabs.List,
-            { className: "tabs", "aria-label": label },
+            { className: variant === "underline" ? "rw-underline-tabs" : "tabs", "aria-label": label },
             tabs.map((tab) =>
                 React.createElement(
                     Tabs.Trigger,
-                    { key: tab.value, value: tab.value, className: "rw-react-tabs-trigger" },
+                    {
+                        key: tab.value,
+                        value: tab.value,
+                        className: variant === "underline" ? undefined : "rw-react-tabs-trigger",
+                    },
                     tab.label,
-                )
+                ),
             ),
         ),
         tabs.map((tab) =>
@@ -145,7 +150,7 @@ export function RunWieldTabs(
                     className: "rw-react-tabs-content",
                 },
                 tab.children,
-            )
+            ),
         ),
     );
 }

@@ -2262,9 +2262,11 @@ async function validateAttachedReviewerCandidate(
         readOnly: true,
     });
     if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
+    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName, { migrate: false });
     await assertHostReviewerCandidate({
         cwd: source.documentRoot,
         baseBranch: source.plan.attrs.worktreeBaseBranch || "",
+        baseRef: entry?.baseRef,
         checkpoint: source.plan.attrs.validationCheckpoint,
         triageMeta: source.plan.attrs,
         resume,

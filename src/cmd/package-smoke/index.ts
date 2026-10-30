@@ -13,6 +13,7 @@ import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publicat
 import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
 import { checkPackagedImageResize } from "./image-resize.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
+import { checkPackagedMetricsExport } from "./metrics-export.ts";
 
 /** @param {string} name */
 function requiredEnv(name: string): string {
@@ -60,7 +61,10 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
         undefined,
         undefined as never,
     );
-    const output = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n");
+    const output = result.content
+        .filter((item) => item.type === "text")
+        .map((item) => item.text)
+        .join("\n");
     if (!output.includes("runwield/bash-smoke") || output.includes("Command exited with code")) {
         throw new Error(`Packaged Bash could not create a Git branch:\n${output}`);
     }
@@ -175,6 +179,11 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     const [subcommand] = argv;
+    if (subcommand === "metrics-export") {
+        await checkPackagedMetricsExport();
+        console.log("[RunWield] Packaged metrics export passed.");
+        return;
+    }
     if (subcommand === "image-resize") {
         await checkPackagedImageResize();
         console.log("[RunWield] Packaged image resize passed.");
@@ -190,5 +199,5 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         console.log("[RunWield] Packaged publication flow passed.");
         return;
     }
-    throw new Error("Usage: wld package-smoke <core-flows|publication|image-resize>");
+    throw new Error("Usage: wld package-smoke <core-flows|publication|image-resize|metrics-export>");
 }

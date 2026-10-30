@@ -11,13 +11,19 @@ import {
     runRouterGoldenSetWithSelection,
 } from "./run-router-golden-set.js";
 
+type GoldenRows = Awaited<ReturnType<typeof runRouterGoldenSet>>;
+type BenchmarkToolContext = Parameters<ReturnType<typeof createBenchmarkBashNudgeTool>["execute"]>[4];
+
 test("normalizeGoldenRow fills stable defaults and router metrics", () => {
     assertEquals(
-        normalizeGoldenRow({
-            requestText: "fix it",
-            routerDecision: "QUICK_FIX",
-            humanJudgement: "FEATURE",
-        }, 0),
+        normalizeGoldenRow(
+            {
+                requestText: "fix it",
+                routerDecision: "QUICK_FIX",
+                humanJudgement: "FEATURE",
+            },
+            0,
+        ),
         {
             decisionId: "golden-0001",
             timestamp: "",
@@ -38,16 +44,14 @@ test("normalizeGoldenRow fills stable defaults and router metrics", () => {
 });
 
 test("runRouterForGoldenRequest returns latest triage_report outcome", async () => {
-    /** @type {string[] | undefined} */
-    let capturedToolNames;
-    /** @type {string[] | undefined} */
-    let capturedCustomToolNames;
+    let capturedToolNames: string[] | undefined;
+    let capturedCustomToolNames: string[] | undefined;
     const triage = await runRouterForGoldenRequest("where is router?", {
         runAgentSession: (opts) => {
             capturedToolNames = opts.toolNames;
             capturedCustomToolNames = opts.customTools?.map((tool) => tool.name);
-            return Promise.resolve(
-                /** @type {any} */ ([{
+            return Promise.resolve([
+                {
                     role: "toolResult",
                     toolName: "triage_report",
                     details: {
@@ -55,8 +59,8 @@ test("runRouterForGoldenRequest returns latest triage_report outcome", async () 
                         complexity: "LOW",
                         summary: "answer",
                     },
-                }]),
-            );
+                },
+            ]);
         },
     });
 
@@ -73,7 +77,7 @@ test("benchmark bash tool nudges without executing commands", async () => {
         { command: "git status" },
         new AbortController().signal,
         () => {},
-        /** @type {any} */ ({}),
+        {} as BenchmarkToolContext,
     );
 
     const content = result.content[0];
@@ -90,8 +94,8 @@ test("benchmark bash tool nudges without executing commands", async () => {
 test("runRouterForGoldenRequest accepts injected triage outcome", async () => {
     const triage = await runRouterForGoldenRequest("where is router?", {
         runAgentSession: () =>
-            Promise.resolve(
-                /** @type {any} */ ([{
+            Promise.resolve([
+                {
                     role: "toolResult",
                     toolName: "triage_report",
                     details: {
@@ -99,32 +103,35 @@ test("runRouterForGoldenRequest accepts injected triage outcome", async () => {
                         complexity: "LOW",
                         summary: "answer",
                     },
-                }]),
-            ),
+                },
+            ]),
     });
 
     assertEquals(triage.routingIntent, "INQUIRY");
 });
 
 test("runRouterGoldenSet updates labelled rows and honors limit", async () => {
-    const rows = await runRouterGoldenSet([
-        { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
-        { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX" },
-    ], {
-        limit: 1,
-        runAgentSession: () =>
-            Promise.resolve(
-                /** @type {any} */ ([{
-                    role: "toolResult",
-                    toolName: "triage_report",
-                    details: {
-                        routingIntent: "INQUIRY",
-                        complexity: "LOW",
-                        summary: "greeting",
+    const rows = await runRouterGoldenSet(
+        [
+            { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
+            { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX" },
+        ],
+        {
+            limit: 1,
+            runAgentSession: () =>
+                Promise.resolve([
+                    {
+                        role: "toolResult",
+                        toolName: "triage_report",
+                        details: {
+                            routingIntent: "INQUIRY",
+                            complexity: "LOW",
+                            summary: "greeting",
+                        },
                     },
-                }]),
-            ),
-    });
+                ]),
+        },
+    );
 
     assertEquals(rows[0].routerDecision, "INQUIRY");
     assertEquals(rows[0].routerSummary, "greeting");
@@ -134,24 +141,27 @@ test("runRouterGoldenSet updates labelled rows and honors limit", async () => {
 });
 
 test("runRouterGoldenSetWithSelection returns selected indexes for limited reports", async () => {
-    const result = await runRouterGoldenSetWithSelection([
-        { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
-        { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX", routerDecision: "QUICK_FIX" },
-    ], {
-        limit: 1,
-        runAgentSession: () =>
-            Promise.resolve(
-                /** @type {any} */ ([{
-                    role: "toolResult",
-                    toolName: "triage_report",
-                    details: {
-                        routingIntent: "INQUIRY",
-                        complexity: "LOW",
-                        summary: "greeting",
+    const result = await runRouterGoldenSetWithSelection(
+        [
+            { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
+            { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX", routerDecision: "QUICK_FIX" },
+        ],
+        {
+            limit: 1,
+            runAgentSession: () =>
+                Promise.resolve([
+                    {
+                        role: "toolResult",
+                        toolName: "triage_report",
+                        details: {
+                            routingIntent: "INQUIRY",
+                            complexity: "LOW",
+                            summary: "greeting",
+                        },
                     },
-                }]),
-            ),
-    });
+                ]),
+        },
+    );
 
     assertEquals(result.selectedIndexes, [0]);
     assertEquals(buildRouterGoldenReport(result.selectedIndexes.map((index) => result.rows[index])), {
@@ -170,25 +180,27 @@ test("runRouterGoldenSetWithSelection returns selected indexes for limited repor
 });
 
 test("runRouterGoldenSet clears stale decisions only when rerunning rows", async () => {
-    /** @type {Array<Array<Record<string, unknown>>>} */
-    const checkpoints = [];
-    const rows = await runRouterGoldenSet([
+    const checkpoints: GoldenRows[] = [];
+    const rows = await runRouterGoldenSet(
+        [
+            {
+                decisionId: "d1",
+                requestText: "hi",
+                humanJudgement: "INQUIRY",
+                routerDecision: "QUICK_FIX",
+                routerSummary: "old summary",
+                routerAffectedPaths: "old.js",
+            },
+        ],
         {
-            decisionId: "d1",
-            requestText: "hi",
-            humanJudgement: "INQUIRY",
-            routerDecision: "QUICK_FIX",
-            routerSummary: "old summary",
-            routerAffectedPaths: "old.js",
+            resume: false,
+            runAgentSession: () => new Promise<GoldenRows>(() => {}),
+            rowTimeoutMs: 1,
+            onRowComplete: (checkpointRows) => {
+                checkpoints.push(checkpointRows.map((row) => ({ ...row })));
+            },
         },
-    ], {
-        resume: false,
-        runAgentSession: () => new Promise(() => {}),
-        rowTimeoutMs: 1,
-        onRowComplete: (checkpointRows) => {
-            checkpoints.push(checkpointRows.map((row) => ({ ...row })));
-        },
-    });
+    );
 
     assertEquals(rows[0].routerDecision, "");
     assertEquals(rows[0].routerSummary, "ERROR: Router golden row timed out after 1ms.");
@@ -197,40 +209,42 @@ test("runRouterGoldenSet clears stale decisions only when rerunning rows", async
 });
 
 test("runRouterGoldenSet resume skips completed rows and runs unfinished rows", async () => {
-    /** @type {string[]} */
-    const requests = [];
-    const result = await runRouterGoldenSetWithSelection([
+    const requests: string[] = [];
+    const result = await runRouterGoldenSetWithSelection(
+        [
+            {
+                decisionId: "d1",
+                requestText: "hi",
+                humanJudgement: "INQUIRY",
+                routerDecision: "INQUIRY",
+                routerSummary: "done",
+            },
+            {
+                decisionId: "d2",
+                requestText: "fix it",
+                humanJudgement: "QUICK_FIX",
+                routerDecision: "",
+                routerSummary: "ERROR: timed out",
+            },
+        ],
         {
-            decisionId: "d1",
-            requestText: "hi",
-            humanJudgement: "INQUIRY",
-            routerDecision: "INQUIRY",
-            routerSummary: "done",
-        },
-        {
-            decisionId: "d2",
-            requestText: "fix it",
-            humanJudgement: "QUICK_FIX",
-            routerDecision: "",
-            routerSummary: "ERROR: timed out",
-        },
-    ], {
-        resume: true,
-        runAgentSession: (opts) => {
-            requests.push(opts.userRequest);
-            return Promise.resolve(
-                /** @type {any} */ ([{
-                    role: "toolResult",
-                    toolName: "triage_report",
-                    details: {
-                        routingIntent: "QUICK_FIX",
-                        complexity: "LOW",
-                        summary: "fixed route",
+            resume: true,
+            runAgentSession: (opts) => {
+                requests.push(opts.userRequest);
+                return Promise.resolve([
+                    {
+                        role: "toolResult",
+                        toolName: "triage_report",
+                        details: {
+                            routingIntent: "QUICK_FIX",
+                            complexity: "LOW",
+                            summary: "fixed route",
+                        },
                     },
-                }]),
-            );
+                ]);
+            },
         },
-    });
+    );
 
     assertEquals(result.selectedIndexes, [1]);
     assertEquals(requests, ["fix it"]);
@@ -241,18 +255,21 @@ test("runRouterGoldenSet resume skips completed rows and runs unfinished rows", 
 });
 
 test("mergeGoldenRowsWithResultRows keeps labels from the golden rows and completed router results", () => {
-    const rows = mergeGoldenRowsWithResultRows([
-        { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
-        { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX" },
-    ], [
-        {
-            decisionId: "d1",
-            requestText: "old",
-            humanJudgement: "PROJECT",
-            routerDecision: "INQUIRY",
-            routerSummary: "done",
-        },
-    ]);
+    const rows = mergeGoldenRowsWithResultRows(
+        [
+            { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
+            { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX" },
+        ],
+        [
+            {
+                decisionId: "d1",
+                requestText: "old",
+                humanJudgement: "PROJECT",
+                routerDecision: "INQUIRY",
+                routerSummary: "done",
+            },
+        ],
+    );
 
     assertEquals(rows, [
         {
@@ -275,9 +292,7 @@ test("mergeGoldenRowsWithResultRows keeps labels from the golden rows and comple
 });
 
 test("runRouterGoldenSet records row errors and continues", async () => {
-    const rows = await runRouterGoldenSet([
-        { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
-    ], {
+    const rows = await runRouterGoldenSet([{ decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" }], {
         runAgentSession: () => {
             throw new Error("model failed");
         },
@@ -289,11 +304,9 @@ test("runRouterGoldenSet records row errors and continues", async () => {
 });
 
 test("runRouterGoldenSet times out slow rows", async () => {
-    const rows = await runRouterGoldenSet([
-        { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
-    ], {
+    const rows = await runRouterGoldenSet([{ decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" }], {
         rowTimeoutMs: 1,
-        runAgentSession: () => new Promise(() => {}),
+        runAgentSession: () => new Promise<GoldenRows>(() => {}),
     });
 
     assertEquals(rows[0].routerDecision, "");

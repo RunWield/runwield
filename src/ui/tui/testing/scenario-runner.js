@@ -1384,6 +1384,7 @@ async function runComposedTuiScenario(scenario, options) {
                 if (event.type === "tool_start") {
                     const name = /** @type {{ toolName?: string }} */ (event).toolName || "";
                     events.push(`runtime:tool:start:${name}`);
+                    if (event.toolCallId.startsWith("validation-ci-")) events.push("runtime:validation-ci:started");
                 }
                 if (event.type === "tool_end") {
                     const name = /** @type {{ toolName?: string }} */ (event).toolName || "";

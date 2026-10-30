@@ -69,6 +69,7 @@ interface RunCodeReviewOptions {
     planAttrs?: Record<string, ReviewData>;
     executionCwd: string;
     targetBranch?: string;
+    targetBaseRef?: string;
     guidedReview?: GuidedReviewPolicy;
     reviewConversation?: ReviewConversation;
     agentLabel?: string;
@@ -111,8 +112,8 @@ export function normalizeCodeReviewDecision(decision: ReviewData): CodeReviewDec
     const reviewAction = ["post_comments", "approve_pr", "approve_commit"].includes(String(decision.reviewAction))
         ? decision.reviewAction
         : undefined;
-    const noDecision = !reviewAction && !approved && !feedback.trim() && annotations.length === 0 &&
-        images.length === 0;
+    const noDecision =
+        !reviewAction && !approved && !feedback.trim() && annotations.length === 0 && images.length === 0;
 
     return {
         approved,
@@ -130,10 +131,7 @@ export function normalizeCodeReviewDecision(decision: ReviewData): CodeReviewDec
  * Read code-review images before the temporary upload files are removed.
  * Invalid files stay fail-soft so text and inline feedback are still delivered.
  */
-async function loadCodeReviewImages(
-    attachments: ReviewImageAttachment[],
-    cwd: string,
-): Promise<LoadedReviewImage[]> {
+async function loadCodeReviewImages(attachments: ReviewImageAttachment[], cwd: string): Promise<LoadedReviewImage[]> {
     const images: LoadedReviewImage[] = [];
     for (const attachment of attachments) {
         try {
@@ -166,12 +164,14 @@ function bytesToBase64(bytes: Uint8Array): string {
 export function formatCodeReviewAnnotations(annotations: CodeReviewAnnotation[]): string {
     if (annotations.length === 0) return "";
 
-    return annotations.map((annotation, index) => {
-        const file = annotation.file || annotation.path || annotation.filePath || "unknown file";
-        const line = typeof annotation.line === "number" ? `:${annotation.line}` : "";
-        const text = annotation.text || annotation.comment || "";
-        return `${index + 1}. ${file}${line}${text ? `\n${text}` : ""}`;
-    }).join("\n\n");
+    return annotations
+        .map((annotation, index) => {
+            const file = annotation.file || annotation.path || annotation.filePath || "unknown file";
+            const line = typeof annotation.line === "number" ? `:${annotation.line}` : "";
+            const text = annotation.text || annotation.comment || "";
+            return `${index + 1}. ${file}${line}${text ? `\n${text}` : ""}`;
+        })
+        .join("\n\n");
 }
 
 /**
@@ -187,6 +187,7 @@ export async function runCodeReview({
     planAttrs,
     executionCwd,
     targetBranch,
+    targetBaseRef,
     guidedReview,
     reviewConversation,
     agentLabel,
@@ -200,6 +201,7 @@ export async function runCodeReview({
         gitRef: gitRef || `RunWield workflow diff: ${planName}`,
         agentCwd: executionCwd,
         targetBranch,
+        targetBaseRef,
         planName,
         planTitle: typeof planTitle === "string" && planTitle.trim() ? planTitle.trim() : planName.trim(),
         planContent,
@@ -222,12 +224,10 @@ export async function runCodeReview({
             cancelListener = () => resolveCanceled({ canceled: true });
             signal?.addEventListener("abort", cancelListener, { once: true });
         });
-        const rawDecision: ReviewData = await (
-            signal ? Promise.race([server.waitForDecision(), canceled]) : server.waitForDecision()
-        );
-        const decision = normalizeCodeReviewDecision(
-            rawDecision,
-        );
+        const rawDecision: ReviewData = await (signal
+            ? Promise.race([server.waitForDecision(), canceled])
+            : server.waitForDecision());
+        const decision = normalizeCodeReviewDecision(rawDecision);
         keepSurfaceOpen = decision.conversationTurn === true || Boolean(standaloneReview && decision.reviewAction);
         if (!decision.images?.length) return decision;
         const attachments = decision.images.filter((image): image is ReviewImageAttachment => "path" in image);

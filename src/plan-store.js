@@ -42,6 +42,7 @@ import { normalizeTicketReferences } from "./shared/ticket-references.js";
 import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
+import { probeGitRepository } from "./shared/git.ts";
 import { renameRestoredPlanEntry } from "./shared/worktree-registry.js";
 import { resolvePrimaryCheckoutRoot } from "./shared/primary-checkout.ts";
 import { writePlanDocumentAndController } from "./shared/workflow/state-transition.ts";
@@ -2895,6 +2896,19 @@ export async function listPlans(cwd) {
 }
 
 /**
+ * Replace the same-name projection first, leaving conflicting IDs visible to identity checks.
+ * An ID-only match remains a fallback for a renamed Plan's stale projection.
+ * @param {Pick<PlanResourceEntry, "name" | "attrs">[]} plans
+ * @param {string} name
+ * @param {string | undefined} planId
+ * @returns {number}
+ */
+function findCatalogPlanIndex(plans, name, planId) {
+    const named = plans.findIndex((plan) => plan.name === name);
+    return named >= 0 ? named : planId ? plans.findIndex((plan) => plan.attrs.planId === planId) : -1;
+}
+
+/**
  * List saved plans, reading target-branch children only for `onlyEpic` when it
  * is given. Catalog evidence uses existing Git snapshots; remote refresh belongs
  * to the selected Epic's workflow. A scoped lookup also avoids reading every
@@ -2921,6 +2935,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 typeof projectPlan.attrs.targetBranch === "string" ? projectPlan.attrs.targetBranch.trim() : "";
             if (!targetBranch || !isProjectPlan(projectPlan.attrs)) continue;
             if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
+            const repository = await probeGitRepository(cwd);
+            if (repository.state === "not_git") continue;
+            if (!repository.ok) throw new Error(repository.message);
             let targetChildren;
             try {
                 targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name, {
@@ -2937,11 +2954,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 throw error;
             }
             for (const child of targetChildren) {
-                const index = results.findIndex(
-                    (item) =>
-                        item.name === child.name ||
-                        Boolean(child.attrs.planId && item.attrs.planId === child.attrs.planId),
-                );
+                const index = findCatalogPlanIndex(results, child.name, child.attrs.planId);
                 if (
                     index >= 0 &&
                     results[index].name === child.name &&
@@ -2965,11 +2978,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (!execution) {
                 // A missing or archived authority cannot expose a stale primary copy.
                 // Direct Plan loading owns the recovery error, not the project catalog.
-                const index = results.findIndex(
-                    (item) =>
-                        item.name === attempt.planName ||
-                        Boolean(attempt.planId && item.attrs.planId === attempt.planId),
-                );
+                const index = findCatalogPlanIndex(results, attempt.planName, attempt.planId);
                 if (index >= 0) results.splice(index, 1);
                 const issueIndex = parseIssues.findIndex((issue) => issue.name === attempt.planName);
                 if (issueIndex >= 0) parseIssues.splice(issueIndex, 1);
@@ -2980,10 +2989,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                     `The execution directory contains a different Plan at ${execution.path}. Your files have not been changed.`,
                 );
             }
-            const index = results.findIndex(
-                (item) =>
-                    item.name === attempt.planName || Boolean(attempt.planId && item.attrs.planId === attempt.planId),
-            );
+            const index = findCatalogPlanIndex(results, attempt.planName, attempt.planId);
             const item = { name: attempt.planName, path: execution.path, attrs: execution.attrs };
             if (index < 0) results.push(item);
             else results[index] = item;

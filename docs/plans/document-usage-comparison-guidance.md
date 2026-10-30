@@ -10,9 +10,15 @@ collaborationRecommendation: "pair"
 createdAt: "2026-10-24T05:05:17+00:00"
 origin: "internal"
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "ready_for_work"
 userVerifiedAt: null
 deliveryBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
+validatedCommit: "ed7d8d03b3e8a92e47496f6a20fed6e25de7927b"
+workRecord:
+    status: "generated"
+    recordId: "6097d9ae-e70e-4217-ab2d-67fdfdffac47"
+    path: "docs/work-records/2026-10-24-usage-report-comparison-guidance-for-paired-devices.md"
+    lastAttemptAt: "2026-10-24T18:29:04.941Z"
+status: "verified"
 ---
 
 # Document Usage report comparison guidance for paired devices
