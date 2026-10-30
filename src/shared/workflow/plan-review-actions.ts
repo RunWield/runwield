@@ -48,6 +48,7 @@ export interface SharedPlanReviewActionOptions {
     planPath: string;
     planWithFrontMatter: string;
     planRevision: string;
+    expectedControllerRevision?: number;
     originalAttrs: PlanFrontMatter;
     trustedClassification?: PlanFrontMatter["classification"];
     trustedWorkKind?: PlanFrontMatter["workKind"];
@@ -170,6 +171,7 @@ export async function applySharedPlanReviewDecision({
     planPath,
     planWithFrontMatter,
     planRevision,
+    expectedControllerRevision,
     originalAttrs,
     trustedClassification,
     trustedWorkKind,
@@ -283,8 +285,10 @@ export async function applySharedPlanReviewDecision({
             decide: async ({ beforePlan }) => {
                 if (!beforePlan) throw new Error(`Plan not found: ${planName}`);
                 if (
-                    beforePlan.revision !== planRevision &&
-                    !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody)
+                    (expectedControllerRevision !== undefined &&
+                        beforePlan.controllerRevision !== expectedControllerRevision) ||
+                    (beforePlan.revision !== planRevision &&
+                        !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody))
                 ) {
                     throw new Error(
                         "Plan changed after review opened; reload the review before applying this decision.",

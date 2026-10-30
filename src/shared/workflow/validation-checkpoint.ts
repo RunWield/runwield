@@ -23,6 +23,20 @@ export type ValidationReviewState = {
     lastRepairReport?: string;
 };
 
+export type PendingCiDecision = { ciAttempts: number; failureReason: string };
+export type HostReviewerContinuation = { semanticRound: number; correctionCount: number; correction?: string };
+type PendingHostDecision = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "decision" }>;
+type PendingHostRepair = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>;
+type HostDecisionChoices = Record<string, import("./validation-ports.ts").ValidationInteractionResponse>;
+
+export type HostRecorderState = {
+    recordId: string;
+    request: Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "recorder" }>;
+    invalidSubmissions: number;
+    sections?: import("../work-records/generation.js").GeneratedWorkRecordSections;
+    failure?: string;
+};
+
 export type ValidationCheckpoint = {
     version: 1;
     attemptId: string;
@@ -38,6 +52,16 @@ export type ValidationCheckpoint = {
     repairCompletedOperationId?: string;
     lastSettledOperationId?: string;
     reviewState?: ValidationReviewState;
+    pendingHostDecision?: PendingHostDecision;
+    hostDecisionChoices?: HostDecisionChoices;
+    hostDecisionSequence?: number;
+    pendingRepair?: PendingHostRepair;
+    pendingCiDecision?: PendingCiDecision;
+    hostReview?: HostReviewerContinuation;
+    operationalAttempts?: number;
+    publicationRepairs?: number;
+    hostRecorder?: HostRecorderState;
+    candidateIdentity?: string;
     updatedAt: string;
 };
 
@@ -121,6 +145,16 @@ export function makeValidationCheckpoint(args: {
     repairCompletedOperationId?: string;
     lastSettledOperationId?: string;
     reviewState?: ValidationReviewState;
+    pendingHostDecision?: PendingHostDecision;
+    hostDecisionChoices?: HostDecisionChoices;
+    hostDecisionSequence?: number;
+    pendingRepair?: PendingHostRepair;
+    pendingCiDecision?: PendingCiDecision;
+    hostReview?: HostReviewerContinuation;
+    operationalAttempts?: number;
+    publicationRepairs?: number;
+    hostRecorder?: HostRecorderState;
+    candidateIdentity?: string;
 }): ValidationCheckpoint {
     return {
         version: VALIDATION_CHECKPOINT_VERSION,
@@ -139,6 +173,16 @@ export function makeValidationCheckpoint(args: {
             : {}),
         ...(args.lastSettledOperationId !== undefined ? { lastSettledOperationId: args.lastSettledOperationId } : {}),
         ...(args.reviewState !== undefined ? { reviewState: args.reviewState } : {}),
+        ...(args.pendingHostDecision ? { pendingHostDecision: args.pendingHostDecision } : {}),
+        ...(args.hostDecisionChoices ? { hostDecisionChoices: args.hostDecisionChoices } : {}),
+        ...(args.hostDecisionSequence !== undefined ? { hostDecisionSequence: args.hostDecisionSequence } : {}),
+        ...(args.pendingRepair ? { pendingRepair: args.pendingRepair } : {}),
+        ...(args.pendingCiDecision ? { pendingCiDecision: args.pendingCiDecision } : {}),
+        ...(args.hostReview ? { hostReview: args.hostReview } : {}),
+        ...(args.operationalAttempts !== undefined ? { operationalAttempts: args.operationalAttempts } : {}),
+        ...(args.publicationRepairs !== undefined ? { publicationRepairs: args.publicationRepairs } : {}),
+        ...(args.hostRecorder ? { hostRecorder: args.hostRecorder } : {}),
+        ...(args.candidateIdentity !== undefined ? { candidateIdentity: args.candidateIdentity } : {}),
         updatedAt: new Date().toISOString(),
     };
 }

@@ -614,7 +614,7 @@ ${outcome.feedback || ""}`,
             planContent = plan.markdown;
             triageMeta = plan.attrs;
             const { SYSTEM_SEMANTIC_REVIEW_PORT } = await import("../../workflow/validation.ts");
-            const { runWorkflowValidationToStableBoundary } = await import("../../workflow/validation-supervisor.ts");
+            const { runWorkflowValidationToStableBoundary } = await import("../../workflow/validation.ts");
             const { createGitPort } = await import("../../git-port.ts");
             const { systemLocalCIPort } = await import("../../workflow/validation-local-ci.ts");
             const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../../work-records/mnemoteca-port.ts");
@@ -730,13 +730,17 @@ ${outcome.feedback || ""}`,
             const { buildValidationRepairPrompt } = await import("../../workflow/validation-repair-prompt.ts");
             const { getWorktreeReviewDiff } = await import("../../workflow/git-snapshot.ts");
             const { createReviewDiffTool, buildDiffInspectionSection } =
-                await import("../../workflow/review-diff-tool.js");
+                await import("../../workflow/review-diff-tool.ts");
             const { acknowledgeTaskCompletion, claimPendingTaskCompletion } =
                 await import("../task-completion-session.ts");
             const diffText =
                 workflow.executionMode === "non_git_in_place" || workflow.nonGitInPlace
                     ? continuation.repair.diffText
-                    : await getWorktreeReviewDiff(executionCwd, workflow.worktreeBaseBranch || "");
+                    : await getWorktreeReviewDiff(
+                          executionCwd,
+                          workflow.worktreeBaseBranch || "",
+                          workflow.worktreeBaseRef,
+                      );
             await runActiveAgentTurn({
                 hostedSession: session,
                 agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
@@ -798,6 +802,7 @@ ${outcome.feedback || ""}`,
                 planName: continuation.plan.planName,
                 repairGeneration: continuation.repair.repairGeneration,
                 report,
+                session: session.getManagedMetadata(),
             });
             return {
                 kind: "semantic_repair_completed",

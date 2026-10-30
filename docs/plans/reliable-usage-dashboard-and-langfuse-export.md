@@ -13,16 +13,22 @@ affectedPaths:
     - "src/cmd/install/"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/runwield-workspace-prd.md"
-devServerCommand: "deno task workspace:dev"
+devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-09-20T01:12:35-04:00"
 origin: "internal"
-userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 epicBaseCommit: "da55b44d463c4a6797c87792ce3856aa57b0ab29"
-status: "implemented"
 epicIntegrationReport: "docs/plans/reliable-usage-dashboard-and-langfuse-export/integration-report.md"
+status: "user_verified"
+userVerifiedAt: "2026-10-30T02:47:05.309Z"
+userVerificationNote: "the last 2 reviewer issues are small"
+workRecord:
+    status: "generated"
+    recordId: "64b330de-7010-49a0-a1e6-28abda2f37d1"
+    path: "docs/work-records/2026-10-30-personal-usage-reporting-and-optional-langfuse-export.md"
+    lastAttemptAt: "2026-10-30T02:47:46.609Z"
 ---
 
 # Reliable Usage, Workspace Dashboard, and Langfuse Export
@@ -419,8 +425,9 @@ These are architectural boundaries, not an allowlist, implementation checklist o
 - TUI and owner Workspace lifecycle — shared background export without a new service or Session lock lifetime.
 - `src/ui/workspace/` and shared design-system areas when needed — authorized report routes, Usage page, settings,
   deletion control, gap and delivery status.
-- Owning PRDs, `docs/settings.md`, customization/provider references, design system and applicable glossary — behavior
-  synchronization in the delivering changes. Do not rewrite unrelated dirty files as part of this Epic.
+- Owning PRDs, `docs/user-documentation/settings.md`, customization/provider references, design system and applicable
+  glossary — behavior synchronization in the delivering changes. Do not rewrite unrelated dirty files as part of this
+  Epic.
 
 ## Reuse Opportunities
 
@@ -432,15 +439,15 @@ These are architectural boundaries, not an allowlist, implementation checklist o
   loading or implicit permission to export.
 - Owner routes, safe Project serializers, `WorkspaceLayout.astro`, loaders and `RunWieldPrimitives.tsx`: existing
   browser access control and visual patterns.
-- [Complete Tool-Call Metrics](archived/complete-tool-call-metrics.md) and
-  [extension-consent work](protect-new-package-extension-consent.md): reconcile overlaps during later planning against
-  current source. Tool advertisement/schema-token optimization is not added merely because the sibling draft names it.
+- The former **Complete Tool-Call Metrics** draft and
+  [extension-consent work](reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind.md): reconcile overlaps during later planning against
+  current source. Tool advertisement/schema-token optimization is not added merely because the former draft named it.
 
 ## Verification Plan
 
-Use `deno task test` or `deno run -A scripts/run-tests.js <deno test args>`, never direct `deno test`. Repository checks
-include `deno task seams:check`, `deno task ci`, `deno task workspace:check`, `deno task workspace:build`, and
-`deno task doc-links:check`. Later executable Plans select focused test paths.
+Use `bun run test` or `bun scripts/run-tests.js <test paths or runner options>`, never direct `bun test`. Repository
+checks include `bun run seams:check`, `bun run ci`, `bun run workspace:check`, `bun run workspace:build`, and
+`bun run doc-links:check`. Later executable Plans select focused test paths.
 
 Use real temporary files, Git repositories and Session bundles for owned persistence, joins, locks and deletion. Fake
 actual subprocess/network/clock boundaries only. A callback that substitutes Plan writes, journal writes or lifecycle

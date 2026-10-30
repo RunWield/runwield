@@ -3,6 +3,7 @@
  * Targeted Work Record auto-generation after terminal Plan outcomes.
  */
 
+import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { isPlannedChangeClassification } from "../../constants.js";
 import {
     findPlansByParent,
@@ -44,6 +45,7 @@ export interface AutoGenerateWorkRecordArgs {
     planName: string;
     mnemotecaPort: WorkRecordMnemotecaPort;
     signal?: AbortSignal;
+    runRecorderStep?: import("./generation.js").GenerationOptions["runRecorderStep"];
 }
 
 interface TargetedWorkRecordSource {
@@ -170,7 +172,7 @@ export function retryWorkRecordForPlan(args: AutoGenerateWorkRecordArgs): Promis
 }
 
 async function generateTargetedWorkRecord(
-    { cwd, planName, mnemotecaPort, signal, pendingPublication }: AutoGenerateWorkRecordArgs,
+    { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep }: AutoGenerateWorkRecordArgs,
     automatic: boolean,
 ): Promise<WorkRecordAutoGenerationResult> {
     if (automatic && !shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd)) {
@@ -213,6 +215,7 @@ async function generateTargetedWorkRecord(
         const outcome = await generateWorkRecordForSource(sourceRoot, evaluated, {
             mnemotecaPort,
             signal,
+            runRecorderStep,
         });
         const status = outcome.status === "generated" || outcome.status === "linked" ? outcome.status : "failed";
         return withMessage({
@@ -227,6 +230,7 @@ async function generateTargetedWorkRecord(
             message: "",
         });
     } catch (caught) {
+        if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
         const error = caught instanceof Error ? caught : String(caught);
         return withMessage({ status: "failed", planName, error: conciseError(error), message: "" });
     }

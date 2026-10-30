@@ -1,18 +1,14 @@
-import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 /**
  * @module shared/workflow/validation-semantic
  * The Semantic Review phase: reviewer rounds with ledger convergence, repair
  * dispatch, and the round-limit decision when the automatic rounds are spent.
  */
 
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
+import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
-import {
-    buildDiffInspectionSection,
-    createReviewDiffTool,
-    requiredReviewDiffFiles,
-    ReviewDiffParseError,
-} from "./review-diff-tool.js";
+import { buildDiffInspectionSection, requiredReviewDiffFiles, ReviewDiffParseError } from "./review-diff.ts";
 import { ReviewInspection } from "./review-inspection.ts";
 import { loadEpicReviewContext, recordIntegrationNotes } from "./epic-review-context.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
@@ -24,9 +20,14 @@ import {
     renderResolvedItems,
     unaccountedOpenItems,
 } from "./review-ledger.ts";
-import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
+import { candidateIdentity, hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import { buildValidationUserMessage, validationReviewerPauseMessage } from "./validation-user-messages.ts";
-import type { OpaqueToolDefinition, ValidationReviewOutcome, ValidationWorkflowState } from "./validation-ports.ts";
+import type {
+    IsolatedAgentSessionOutcome,
+    ValidationReviewData,
+    ValidationReviewOutcome,
+    ValidationWorkflowState,
+} from "./validation-ports.ts";
 import type {
     PhaseContext,
     ReviewFeedbackRepairPacket,
@@ -39,10 +40,9 @@ import {
     readHumanReviewMetadata,
     readSemanticRoundState,
     recordLifecycleEvent,
-    recordMetric,
     resolvePhaseContext,
 } from "./validation-context.ts";
-import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
+import { SEMANTIC_REVIEW_CYCLES, semanticReviewMode } from "./validation-types.ts";
 import { clampCycle, emitHalted, emitProgress, emitStatus, repairBlockedReason } from "./validation-emit.ts";
 import { requestInteraction } from "./validation-interactions.ts";
 import { ValidationInteractionTypes } from "./validation-ports.ts";
@@ -58,6 +58,38 @@ import {
     recordOperationalRecoveryMetric,
     waitForValidationRetryWithSessionCancellation,
 } from "./validation-recovery.ts";
+
+import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { normalizeReviewOutcome, reviewCompletionMetricDetails } from "./review-outcome.ts";
+import {
+    hostReviewerIdentity,
+    hostSemanticRepairPrompt,
+    requestHostRepair,
+    saveHostCheckpoint,
+} from "./validation-host-state.ts";
+
+/** Every pass, including human takeover and repair skips, binds the current candidate. */
+async function semanticPassedCheckpoint(args: ValidationLoopArgs, context: PhaseContext) {
+    const prior = args.validationCheckpoint || args.triageMeta.validationCheckpoint;
+    return makeValidationCheckpoint({
+        ...prior,
+        attemptId: context.worktreeId || "in-place",
+        generation: prior?.generation || crypto.randomUUID(),
+        status: "reviewed",
+        phase: "delivery",
+        state: "ready",
+        candidateIdentity: context.nonGitInPlace
+            ? undefined
+            : candidateIdentity(
+                  await getWorktreeReviewDiff(
+                      context.executionCwd,
+                      context.worktreeBaseBranch || "",
+                      context.worktreeBaseRef,
+                  ),
+                  args.planName,
+              ),
+    });
+}
 
 export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
     const phase = await resolvePhaseContext(args);
@@ -78,6 +110,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             context.projectRoot,
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            undefined,
+            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
         );
         return {
             kind: "paused",
@@ -98,6 +132,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             context.projectRoot,
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            undefined,
+            { validationCheckpoint: await semanticPassedCheckpoint(args, context) },
         );
         return {
             kind: "paused",
@@ -111,7 +147,11 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     const state = readSemanticRoundState(args, context);
     const round = state.semanticRound;
     const ledger = state.reviewLedger;
-    const diffText = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+    const diffText = await getWorktreeReviewDiff(
+        context.executionCwd,
+        context.worktreeBaseBranch || "",
+        context.worktreeBaseRef,
+    );
     if (requiresImplementationDiff(args.triageMeta) && !hasImplementationDiff(diffText, args.planName)) {
         const planOnly = Boolean(diffText.trim());
         const reason = planOnly
@@ -142,6 +182,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             context.projectRoot,
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            undefined,
+            { validationCheckpoint: await semanticPassedCheckpoint(args, context) },
         );
         return {
             kind: "paused",
@@ -174,7 +216,12 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 "semantic_review_passed",
                 args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
                 undefined,
-                { humanReviewMode: "always", humanReviewDecision: null, humanReviewedAt: null },
+                {
+                    humanReviewMode: "always",
+                    humanReviewDecision: null,
+                    humanReviewedAt: null,
+                    validationCheckpoint: await semanticPassedCheckpoint(args, context),
+                },
             );
             return {
                 kind: "paused",
@@ -200,6 +247,25 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 };
             }
             const feedback = typeof response.value === "string" ? response.value.trim() : "";
+            if (args.hostTurn) {
+                return await requestHostRepair(
+                    args,
+                    context,
+                    [
+                        "Continue the interrupted validation repair in this checkout. Inspect the current files before editing.",
+                        args.planContent,
+                        renderOpenItems(ledger),
+                        state.lastRepairReport,
+                        "User follow-up:",
+                        feedback,
+                        "After completing the repair, call task_completed. RunWield will rerun CI.",
+                    ]
+                        .filter(Boolean)
+                        .join("\n\n"),
+                    "engineer_follow_up",
+                    feedback,
+                );
+            }
             await recordLifecycleEvent(
                 args,
                 context.projectRoot,
@@ -250,7 +316,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     // right here — another focused round on the repaired diff, no detour.
     for (;;) {
         const nextRound = round + 1;
-        const reviewMode = nextRound <= 2 ? "discovery" : "verify";
+        const reviewMode = semanticReviewMode(nextRound);
         // The reviewer runs in its own session, so without this the whole round is
         // silent: the user sees the Engineer finish, then nothing, and the verdict
         // lands only in the Plan's failure reason. Say a round is starting, and say
@@ -272,6 +338,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 checks: { semanticReview: "running" },
             },
         );
+        const reviewOperationId = crypto.randomUUID();
         const review = await runReviewerRound(
             args,
             context,
@@ -279,6 +346,27 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             reviewMode,
             diffText,
         );
+        await recordWorkflowOutcome(context.projectRoot, {
+            category: "validation",
+            event: "validation_attempt",
+            operationId: reviewOperationId,
+            attemptId: context.worktreeId,
+            planName: args.planName,
+            attempt: nextRound,
+            phase: "semantic",
+            outcome:
+                review.kind === "paused"
+                    ? "ongoing"
+                    : review.kind === "failed"
+                      ? "failed"
+                      : review.outcome.approved
+                        ? "succeeded"
+                        : "failed",
+            findingCount: review.kind === "complete" ? review.outcome.findings.length : undefined,
+            advisoryCount: review.kind === "complete" ? review.outcome.advisories.length : undefined,
+            ...(review.kind === "complete" ? reviewFindingMetrics(review.outcome.findings, nextRound) : {}),
+            session: args.session.metricsSession,
+        });
         if (review.kind === "paused") return review.result;
         if (review.kind === "failed") {
             await recordLifecycleEvent(
@@ -305,21 +393,6 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "````json\n" + JSON.stringify(review.outcome, null, 2) + "\n````",
         );
         if (review.outcome.approved) {
-            await recordMetric(args, context.projectRoot, {
-                category: "validation",
-                event: "semantic_review_result",
-                planName: args.planName,
-                details: {
-                    semanticRound: nextRound,
-                    reviewMode,
-                    approved: true,
-                    hasDiff: true,
-                    approvedByRoundTwo: nextRound <= 2,
-                    resolvedThisRound: review.resolvedCount,
-                    advisoryCount: review.outcome.advisories.length,
-                    ...reviewFindingMetrics(review.outcome.findings, nextRound),
-                },
-            });
             emitProgress(args, buildValidationUserMessage({ kind: "semantic_approved", round: nextRound }), "success", {
                 stage: "semantic_review",
                 cycle: clampCycle(nextRound, SEMANTIC_REVIEW_CYCLES),
@@ -333,12 +406,23 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 reviewLedger: review.ledger,
             };
             const checkpoint = makeValidationCheckpoint({
+                ...priorCheckpoint,
+                hostReview: undefined,
+                operationalAttempts: 0,
                 attemptId: context.worktreeId || "in-place",
                 generation: priorCheckpoint?.generation || crypto.randomUUID(),
                 status: "reviewed",
                 phase: "delivery",
                 state: "ready",
                 reviewState,
+                candidateIdentity: candidateIdentity(
+                    await getWorktreeReviewDiff(
+                        context.executionCwd,
+                        context.worktreeBaseBranch || "",
+                        context.worktreeBaseRef,
+                    ),
+                    args.planName,
+                ),
             });
             await recordLifecycleEvent(
                 args,
@@ -361,23 +445,6 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
         }
 
         const openCount = openItems(review.ledger).length;
-        await recordMetric(args, context.projectRoot, {
-            category: "validation",
-            event: "semantic_review_result",
-            planName: args.planName,
-            details: {
-                semanticRound: nextRound,
-                reviewMode,
-                approved: false,
-                hasReviewerOutput: Boolean(review.outcome.feedback),
-                openFindingCount: openCount,
-                resolvedThisRound: review.resolvedCount,
-                appendedThisRound: review.appendedCount,
-                advisoryCount: review.outcome.advisories.length,
-                ...reviewFindingMetrics(review.outcome.findings, nextRound),
-            },
-        });
-
         const repairBaselineTree = await captureWorktreeTree(context.executionCwd);
         const findingsSection = openCount > 0 ? renderOpenItems(review.ledger) : review.outcome.feedback;
         const priorCheckpoint = args.validationCheckpoint || args.triageMeta.validationCheckpoint;
@@ -388,6 +455,9 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             repairBaselineTree,
         };
         const repairCheckpoint = makeValidationCheckpoint({
+            ...priorCheckpoint,
+            hostReview: undefined,
+            operationalAttempts: 0,
             attemptId: context.worktreeId || "in-place",
             generation: priorCheckpoint?.generation || crypto.randomUUID(),
             status: "implemented",
@@ -411,6 +481,18 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             reviewLedger: review.ledger,
             repairBaselineTree,
             validationRepairGeneration: repairGeneration,
+        });
+        await recordWorkflowOutcome(context.projectRoot, {
+            category: "recovery",
+            event: "repair_round",
+            operationId: repairGeneration,
+            roundId: repairGeneration,
+            attemptId: context.worktreeId,
+            planName: args.planName,
+            round: nextRound,
+            phase: "semantic",
+            outcome: "ongoing",
+            session: args.session.metricsSession,
         });
         if (!args.supportsSemanticRepairHandoff) {
             const repair = await dispatchReviewFeedbackRepair(args, context, {
@@ -446,6 +528,15 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "ai-repair",
             "Started",
         );
+        if (args.hostTurn) {
+            args.validationCheckpoint = repairCheckpoint;
+            return await requestHostRepair(
+                args,
+                context,
+                hostSemanticRepairPrompt(context, diffText, findingsSection),
+                "semantic",
+            );
+        }
         emitProgress(args, buildValidationUserMessage({ kind: "review_repair", repairKind: "semantic" }), "warning", {
             stage: "engineer_repair",
             outcome: "running",
@@ -501,20 +592,16 @@ export async function runReviewerRound(
     | { kind: "paused"; result: ValidationPhaseResult }
     | { kind: "failed"; reason: string }
 > {
-    // One in-memory session manager per round, shared across every nudge attempt:
-    // the reviewer's accumulated context is what makes a nudge "continue this
-    // review" instead of "start over". The request ID matches that lifetime, so a
-    // controller retry or a changed corrective prompt accumulates one model budget.
-    const reviewerSessionManager = args.session.createInMemorySessionManager(context.executionCwd);
-    const controllerRequestId = `request:${crypto.randomUUID()}`;
-    let nudgeReason: string | undefined;
+    const savedHostReview = args.validationCheckpoint?.hostReview;
+    let nudgeReason: string | undefined =
+        savedHostReview?.semanticRound === state.semanticRound ? savedHostReview.correction : undefined;
     let inspectedDiff = false;
     let latestOutcome: ValidationReviewOutcome | null = null;
     // A child of an Epic with its own branch is reviewed for its own correctness, with the Epic as context.
     const epicContext = await loadEpicReviewContext(context.projectRoot, args.planName, args.triageMeta).catch(
         () => null,
     );
-    let operationalAttempt = 1;
+    let operationalAttempt = args.hostTurn ? (args.validationCheckpoint?.operationalAttempts || 0) + 1 : 1;
     const repairDiffText = state.repairBaselineTree
         ? await getWorkflowDiff(context.executionCwd, state.repairBaselineTree)
         : "";
@@ -526,7 +613,7 @@ export async function runReviewerRound(
         if (error instanceof ReviewDiffParseError) return { kind: "failed", reason: error.message };
         throw error;
     }
-    const inspection = new ReviewInspection(
+    let inspection = new ReviewInspection(
         requiredFiles.map((file) => ({
             scope: requiredScope,
             path: file.path,
@@ -546,7 +633,12 @@ export async function runReviewerRound(
         });
     }
 
-    for (let attempt = 1; !latestOutcome; attempt++) {
+    const controllerRequestId = `request:${crypto.randomUUID()}`;
+    const initialAttempt =
+        args.hostTurn && savedHostReview?.semanticRound === state.semanticRound
+            ? savedHostReview.correctionCount + 1
+            : 1;
+    for (let attempt = initialAttempt; !latestOutcome; attempt++) {
         if (attempt > 1) {
             emitStatus(
                 args,
@@ -568,20 +660,109 @@ export async function runReviewerRound(
             args.planContent,
             inspection,
             epicContext?.section || "",
+            args.hostTurn ? `docs/plans/${args.planName}.md` : undefined,
         );
+        const correction = nudgeReason;
         nudgeReason = undefined;
         try {
-            const sessionOutcome = await args.session.runIsolatedAgentSession({
-                kind: "reviewer",
+            const request = {
+                kind: "reviewer" as const,
                 agentName: AGENTS.REVIEWER,
                 userRequest: config.prompt,
                 cwd: context.executionCwd,
                 reviewerMode: reviewMode,
-                customTools: config.customTools,
-                sessionManager: reviewerSessionManager,
                 controllerRequestId,
-            });
+                review: config.review,
+                ledger: state.reviewLedger,
+            };
+            let sessionOutcome: Extract<IsolatedAgentSessionOutcome, { kind: "reviewer" }>;
+            if (args.hostTurn) {
+                const checkpoint = args.validationCheckpoint!;
+                const identity = await hostReviewerIdentity(
+                    checkpoint,
+                    state.semanticRound,
+                    reviewMode,
+                    attempt - 1,
+                    diffText,
+                    repairDiffText,
+                );
+                const resume = args.hostTurn.resume;
+                if (resume?.kind === "reviewer" && !args.hostTurn.consumed) {
+                    if (!sameHostIdentity(identity, resume.identity)) throw new ValidationHostRejected();
+                    try {
+                        inspection = ReviewInspection.fromRecorded(
+                            requiredFiles.map((file) => ({
+                                scope: requiredScope,
+                                path: file.path,
+                                byteLength: file.byteLength,
+                            })),
+                            requiredScope,
+                            resume.coverage,
+                        );
+                    } catch (error) {
+                        throw new ValidationHostRejected(
+                            `Review is incomplete. ${error instanceof Error ? error.message : String(error)}`,
+                        );
+                    }
+                    const normalized = resume.outcome
+                        ? normalizeReviewOutcome(resume.outcome, state.reviewLedger)
+                        : null;
+                    const coverageFeedback = resume.coverage.length ? inspection.feedback() : "";
+                    if (normalized && !resume.failure && !inspection.feedback()) {
+                        const metricDetails = reviewCompletionMetricDetails(normalized);
+                        if (metricDetails) {
+                            await recordWorkflowOutcome(context.projectRoot, {
+                                category: "validation",
+                                event: "review_complete",
+                                operationId: controllerRequestId,
+                                outcome: metricDetails.outcome,
+                                findingCount: "findingCount" in metricDetails ? metricDetails.findingCount : undefined,
+                                advisoryCount:
+                                    "advisoryCount" in metricDetails ? metricDetails.advisoryCount : undefined,
+                                attemptId: context.worktreeId,
+                                planName: args.planName,
+                                session: args.session.metricsSession,
+                            });
+                        }
+                    }
+                    nudgeReason =
+                        coverageFeedback || (normalized && !normalized.accepted ? normalized.message : undefined);
+                    sessionOutcome = resume.failure
+                        ? { kind: "reviewer", outcome: "operational_failure", failure: resume.failure }
+                        : {
+                              kind: "reviewer" as const,
+                              outcome: "completed" as const,
+                              reviewOutcome: normalized?.accepted && !coverageFeedback ? normalized.details : null,
+                              usedDiffTool:
+                                  resume.coverage.some((span) => span.end > span.start) || requiredFiles.length === 0,
+                              trustedOpaqueMcpReview: false,
+                          };
+                    args.hostTurn.consumed = true;
+                } else {
+                    await saveHostCheckpoint(args, {
+                        hostReview: {
+                            ...checkpoint.hostReview,
+                            semanticRound: state.semanticRound,
+                            correctionCount: attempt - 1,
+                            correction,
+                        },
+                    });
+                    throw new ValidationHostWait({
+                        kind: "reviewer",
+                        identity,
+                        prompt: config.prompt,
+                        cwd: context.executionCwd,
+                        reviewMode,
+                        requiredScope,
+                        fullDiff: diffText,
+                        repairDiff: repairDiffText,
+                    });
+                }
+            } else sessionOutcome = await args.session.runIsolatedAgentSession(request);
             if (sessionOutcome.outcome === "operational_failure") {
+                if (args.hostTurn && sessionOutcome.failure.recoveryClass === "transient") {
+                    await saveHostCheckpoint(args, { operationalAttempts: operationalAttempt });
+                }
                 const decision = decideValidationRecovery({
                     failure: sessionOutcome.failure,
                     attempt: sessionOutcome.failure.recoveryClass === "transient" ? operationalAttempt : attempt,
@@ -591,6 +772,19 @@ export async function runReviewerRound(
                 });
                 await recordOperationalRecoveryMetric(args, context.projectRoot, decision.result);
                 emitStatus(args, decision.result.message, decision.action === "halt" ? "error" : "warning");
+                if (decision.action === "retry" && args.hostTurn) {
+                    await saveHostCheckpoint(args, { operationalAttempts: operationalAttempt });
+                    return {
+                        kind: "paused",
+                        result: {
+                            kind: "paused",
+                            planName: args.planName,
+                            projectRoot: context.projectRoot,
+                            reason: decision.result.message,
+                            recovery: decision.result,
+                        },
+                    };
+                }
                 if (decision.action === "retry") {
                     const wait = await waitForValidationRetryWithSessionCancellation(
                         args,
@@ -608,6 +802,16 @@ export async function runReviewerRound(
                     continue;
                 }
                 preserveReviewerRoundState();
+                if (args.hostTurn && sessionOutcome.failure.recoveryClass === "correctable") {
+                    await saveHostCheckpoint(args, {
+                        hostReview: {
+                            ...args.validationCheckpoint?.hostReview,
+                            semanticRound: state.semanticRound,
+                            correctionCount: attempt,
+                            correction: decision.result.message,
+                        },
+                    });
+                }
                 return {
                     kind: "paused",
                     result: {
@@ -636,7 +840,9 @@ export async function runReviewerRound(
                     kind: "missing_review_complete",
                     operation: "semantic_review",
                     message: "Semantic Reviewer finished without an accepted review_complete.",
-                    required: `No review_complete was accepted. Follow any tool rejection instructions and retry without restarting the review. ${correction}`,
+                    required: `${
+                        nudgeReason || ""
+                    } No review_complete was accepted. Follow any tool rejection instructions and retry without restarting the review. ${correction}`,
                 });
                 const decision = decideValidationRecovery({
                     failure,
@@ -651,6 +857,16 @@ export async function runReviewerRound(
                     continue;
                 }
                 preserveReviewerRoundState();
+                if (args.hostTurn) {
+                    await saveHostCheckpoint(args, {
+                        hostReview: {
+                            ...args.validationCheckpoint?.hostReview,
+                            semanticRound: state.semanticRound,
+                            correctionCount: attempt,
+                            correction: decision.result.message,
+                        },
+                    });
+                }
                 return {
                     kind: "paused",
                     result: {
@@ -683,6 +899,16 @@ export async function runReviewerRound(
                     continue;
                 }
                 preserveReviewerRoundState();
+                if (args.hostTurn) {
+                    await saveHostCheckpoint(args, {
+                        hostReview: {
+                            ...args.validationCheckpoint?.hostReview,
+                            semanticRound: state.semanticRound,
+                            correctionCount: attempt,
+                            correction: decision.result.message,
+                        },
+                    });
+                }
                 return {
                     kind: "paused",
                     result: {
@@ -720,6 +946,16 @@ export async function runReviewerRound(
                     continue;
                 }
                 preserveReviewerRoundState();
+                if (args.hostTurn) {
+                    await saveHostCheckpoint(args, {
+                        hostReview: {
+                            ...args.validationCheckpoint?.hostReview,
+                            semanticRound: state.semanticRound,
+                            correctionCount: attempt,
+                            correction: decision.result.message,
+                        },
+                    });
+                }
                 return {
                     kind: "paused",
                     result: {
@@ -734,6 +970,9 @@ export async function runReviewerRound(
                 latestOutcome = outcome;
             }
         } catch (error) {
+            if (args.hostTurn || error instanceof ValidationHostWait || error instanceof ValidationHostRejected) {
+                throw error;
+            }
             await logValidationFailure(error instanceof Error ? error : new Error(String(error)), "semantic_review");
             const failure = classifyValidationOperationalError({
                 source: "provider",
@@ -839,6 +1078,11 @@ function emitReviewerLedgerReport(
     );
 }
 
+export type SemanticReviewAttempt = {
+    prompt: string;
+    review: ValidationReviewData;
+};
+
 export function buildSemanticReviewAttempt(
     attempt: number,
     nudgeReason: string | undefined,
@@ -849,26 +1093,23 @@ export function buildSemanticReviewAttempt(
     planContent = "",
     inspection?: ReviewInspection,
     epicContextSection = "",
-): {
-    prompt: string;
-    customTools: OpaqueToolDefinition[];
-} {
+    planPath?: string,
+): SemanticReviewAttempt {
     const hasRepairScope = state.repairBaselineTree.trim() !== "";
-    const toolDiffs = hasRepairScope ? { full: diffText, repair: repairDiffText } : { full: diffText };
-    // `createReviewDiffTool` returns a Pi ToolDefinition; the engine brands it opaque
-    // here so the adapter can un-brand it once at the port boundary.
-    const customTools = [
-        createReviewDiffTool(toolDiffs, {
-            inspection,
-            ledger: state.reviewLedger,
-        }) as unknown as OpaqueToolDefinition,
-    ];
+    const requiredScope = reviewMode === "verify" ? "repair" : "full";
+    const review: ValidationReviewData = {
+        fullDiff: diffText,
+        repairDiff: repairDiffText,
+        hasRepairScope,
+        requiredScope,
+        inspection: inspection || new ReviewInspection([]),
+    };
     if (attempt > 1) {
         return {
             prompt:
                 nudgeReason ||
                 "You have not called review_complete yet. Finish this review now by calling review_complete with your decision. Do not restart the review — use what you have already inspected.",
-            customTools,
+            review,
         };
     }
 
@@ -906,7 +1147,11 @@ export function buildSemanticReviewAttempt(
             "",
             "These are claims to verify, not proof. Check each one against the code yourself.",
             "",
-            state.lastRepairReport,
+            ...(planPath
+                ? [
+                      "Read repair_report with MCP get_artifact using your workflow and action IDs. Continue bounded pages until truncated is false.",
+                  ]
+                : [state.lastRepairReport]),
             "",
         );
     }
@@ -919,11 +1164,13 @@ export function buildSemanticReviewAttempt(
         ...(epicContextSection ? [epicContextSection, ""] : []),
         "### Approved Plan",
         "",
-        projectEngineerPlanBody(planContent),
+        ...(planPath
+            ? [`Read the complete approved Plan at ${planPath}. Use the file read tools; the Plan is not inlined here.`]
+            : [projectEngineerPlanBody(planContent)]),
     );
     return {
         prompt: sections.join("\n"),
-        customTools,
+        review,
     };
 }
 
@@ -954,10 +1201,12 @@ export async function dispatchReviewConversationTurn(
             ].join("\n"),
             images: packet.images,
             cwd: context.executionCwd,
-            customTools: [
-                createReviewDiffTool({ full: packet.diffText }) as OpaqueToolDefinition &
-                    ReturnType<typeof createReviewDiffTool>,
-            ],
+            review: {
+                fullDiff: packet.diffText,
+                repairDiff: "",
+                requiredScope: "full",
+                inspection: new ReviewInspection([]),
+            },
         });
         if (outcome.outcome === "operational_failure") {
             return { completed: false, report: "", reason: outcome.failure.message };
@@ -989,6 +1238,24 @@ export async function dispatchReviewFeedbackRepair(
         "Started",
     );
     emitStatus(args, buildValidationUserMessage({ kind: "review_repair", repairKind: packet.repairKind }), "warning");
+    if (args.hostTurn) {
+        await requestHostRepair(
+            args,
+            context,
+            buildValidationRepairPrompt({
+                executionCwd: context.executionCwd,
+                repairCwd: context.executionCwd,
+                worktreeId: context.worktreeId,
+                worktreeBranch: context.worktreeBranch,
+                worktreeBaseBranch: context.worktreeBaseBranch,
+                authorityNote: "A human reviewed this change. Their feedback is authoritative.",
+                repairsNeeded: [packet.findingsSection, buildDiffInspectionSection(packet.diffText)].join("\n\n"),
+                completionInstruction: "Return a disposition for every feedback item to the coordinating conversation.",
+            }),
+            packet.repairKind,
+            packet.findingsSection,
+        );
+    }
     try {
         const workflowState: ValidationWorkflowState = { ...context.workflowBase, ...packet.activeWorkflow };
         args.session.setActiveWorkflow(workflowState);
@@ -1017,7 +1284,12 @@ export async function dispatchReviewFeedbackRepair(
             }),
             images: packet.images,
             cwd: context.executionCwd,
-            customTools: [createReviewDiffTool({ full: packet.diffText }) as unknown as OpaqueToolDefinition],
+            review: {
+                fullDiff: packet.diffText,
+                repairDiff: "",
+                requiredScope: "full",
+                inspection: new ReviewInspection([]),
+            },
         });
         if (sessionOutcome.outcome === "operational_failure") {
             return { completed: false, report: "", reason: sessionOutcome.failure.message };

@@ -42,6 +42,7 @@ import { normalizeTicketReferences } from "./shared/ticket-references.js";
 import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
+import { probeGitRepository } from "./shared/git.ts";
 import { renameRestoredPlanEntry } from "./shared/worktree-registry.js";
 import { resolvePrimaryCheckoutRoot } from "./shared/primary-checkout.ts";
 import { writePlanDocumentAndController } from "./shared/workflow/state-transition.ts";
@@ -226,6 +227,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {string} [deliveryBranch] - Recorded landing branch, independent of setting changes
  * @property {string} [targetBranch] - User-selected target branch, independent of the current execution attempt
  * @property {string|null} [validatedCommit] - Validated implementation commit; durable after runtime cleanup
+ * @property {"mechanical"|"semantic"|"delivery"} [validationPhase] - Current Workflow Validation phase while status stays "implemented"
  * @property {PlanFrontMatter["status"]|null} [heldFromStatus] - Status captured before the Plan moved to on_hold
  * @property {string|null} [heldAt] - ISO timestamp when the Plan was put on hold
  * @property {string|null} [holdReason] - Optional human reason for the hold
@@ -274,7 +276,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {import('./shared/ticket-references.js').TicketReference[]} [tickets] - Direct child Ticket References; omitted preserves existing child references, [] clears.
  * @property {string} content - Planner-format markdown body for the child planned change.
  * @property {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"} [workKind] - Optional child Work Kind.
- * @property {number} [order] - Optional stable execution order used in front matter and the file name.
+ * @property {number} [order] - Optional execution order stored in front matter, independent of the file name.
  * @property {number} [sequence] - Deprecated alias for order.
  */
 
@@ -2186,18 +2188,6 @@ function slugifyPlanTitle(title) {
 }
 
 /**
- * @param {number | undefined} sequence
- * @returns {string}
- */
-function formatChildSequencePrefix(sequence) {
-    if (sequence === undefined) return "";
-    if (!Number.isInteger(sequence) || sequence < 0) {
-        throw new Error(`Child plan sequence must be a non-negative integer: ${sequence}`);
-    }
-    return `${String(sequence).padStart(2, "0")}-`;
-}
-
-/**
  * @param {unknown} child
  * @returns {ChildFeaturePlanDescriptor}
  */
@@ -2227,14 +2217,48 @@ function validateChildFeaturePlanDescriptor(child) {
 }
 
 /**
- * @param {ChildFeaturePlanDescriptor} child
- * @returns {string}
+ * Resolve child names before writes so materialization and finalization lock the same files.
+ * Exact descriptive names take precedence; unique legacy numbered names keep their identity.
+ *
+ * @param {string} cwd
+ * @param {string} epicPlanName
+ * @param {ChildFeaturePlanDescriptor[]} children
+ * @returns {Promise<string[]>}
  */
-function buildChildPlanNameSegment(child) {
-    const slug = slugifyPlanTitle(child.title);
-    if (!slug) throw new Error(`Child plan title must produce a valid plan name: ${child.title}`);
-    return `${formatChildSequencePrefix(child.order)}${slug}`;
+export async function resolveChildPlanNames(cwd, epicPlanName, children) {
+    const { name: parent, segments } = canonicalizeStoredPlanName(epicPlanName);
+    if (segments.length !== 1) {
+        throw new Error(`Parent Epic plan name must be a top-level plan: ${epicPlanName}`);
+    }
+    if (!Array.isArray(children)) throw new Error("Child plans must be an array");
+    const existing = await listPlans(cwd);
+    const names = new Set(existing.map((plan) => plan.name));
+    const seen = new Set();
+    return children.map((rawChild) => {
+        const child = validateChildFeaturePlanDescriptor(rawChild);
+        const slug = slugifyPlanTitle(child.title);
+        if (!slug) throw new Error(`Child plan title must produce a valid plan name: ${child.title}`);
+        let name = `${parent}/${slug}`;
+        if (!names.has(name)) {
+            const matches = existing.filter((plan) => {
+                const parts = plan.name.split("/");
+                return parts.length === 2 && parts[0] === parent && parts[1].replace(/^\d{2,}-/, "") === slug;
+            });
+            if (matches.length > 1) throw new Error(`Ambiguous legacy child plan name: ${name}`);
+            if (matches.length === 1) name = matches[0].name;
+        }
+        if (seen.has(name)) throw new Error(`Duplicate child plan name: ${name}`);
+        seen.add(name);
+        return name;
+    });
 }
+
+/**
+ * @typedef {Object} ChildPlanWritePrecondition
+ * @property {"created" | "updated"} action
+ * @property {string} [expectedRevision]
+ * @property {string} [planId]
+ */
 
 /**
  * Save draft child FEATURE plans below `docs/plans/<epicPlanName>/`.
@@ -2258,18 +2282,15 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
 
     /** @type {Array<{ child: ChildFeaturePlanDescriptor, name: string, filePath: string }>} */
     const validatedChildren = [];
-    const seen = new Set();
+    const childNames = await resolveChildPlanNames(cwd, parentPlanName, children);
 
-    for (const rawChild of children) {
+    for (const [index, rawChild] of children.entries()) {
         const child = validateChildFeaturePlanDescriptor(rawChild);
-        const childSegment = buildChildPlanNameSegment(child);
-        const childPlanName = `${parentPlanName}/${childSegment}`;
+        const childPlanName = childNames[index];
         const { name, filePath, segments } = getStoredPlanLocation(cwd, childPlanName);
         if (segments.length !== 2 || segments[0] !== parentPlanName) {
             throw new Error(`Invalid child plan name: ${childPlanName}`);
         }
-        if (seen.has(name)) throw new Error(`Duplicate child plan name: ${name}`);
-        seen.add(name);
         const policy = resolvePlanExecutionPolicy({
             classification: ROUTING_INTENT_PLANNED_CHANGE,
             executionAgent: child.executionAgent,
@@ -2280,7 +2301,7 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
         validatedChildren.push({ child, name, filePath });
     }
 
-    /** @type {Map<string, { action: "created" | "updated", expectedRevision?: string }>} */
+    /** @type {Map<string, ChildPlanWritePrecondition>} */
     const writePreconditions = new Map();
     for (const { name, filePath } of validatedChildren) {
         let action = /** @type {"created" | "updated"} */ ("created");
@@ -2288,6 +2309,10 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
         let childExpectedRevision = options.expectedRevisions?.[name] || options.expectedRevision;
         const existingChild = await loadPlanFileStrict(filePath);
         if (existingChild.kind === "loaded") {
+            assertSharedPlanWriteAllowed(existingChild.attrs, options);
+            if (existingChild.attrs.status !== "draft") {
+                throw new Error(`Cannot regenerate non-draft child plan: ${name}`);
+            }
             action = "updated";
             childExpectedRevision = childExpectedRevision || existingChild.revision;
             if (childExpectedRevision !== existingChild.revision) {
@@ -2302,7 +2327,11 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
                 planIssueMessage(existingChild) || `Plan is not writable: ${filePath}`,
             );
         }
-        writePreconditions.set(name, { action, expectedRevision: childExpectedRevision });
+        writePreconditions.set(name, {
+            action,
+            expectedRevision: childExpectedRevision,
+            planId: existingChild.kind === "loaded" ? existingChild.attrs.planId : undefined,
+        });
     }
 
     /** @type {SavedChildFeaturePlan[]} */
@@ -2323,6 +2352,7 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
             order: child.order,
             affectedPaths,
         };
+        if (precondition.planId) metadata.planId = precondition.planId;
         const workKind = normalizeWorkKind(child.workKind);
         if (workKind) metadata.workKind = workKind;
         const policyResult = resolvePlanExecutionPolicy({
@@ -2866,6 +2896,19 @@ export async function listPlans(cwd) {
 }
 
 /**
+ * Replace the same-name projection first, leaving conflicting IDs visible to identity checks.
+ * An ID-only match remains a fallback for a renamed Plan's stale projection.
+ * @param {Pick<PlanResourceEntry, "name" | "attrs">[]} plans
+ * @param {string} name
+ * @param {string | undefined} planId
+ * @returns {number}
+ */
+function findCatalogPlanIndex(plans, name, planId) {
+    const named = plans.findIndex((plan) => plan.name === name);
+    return named >= 0 ? named : planId ? plans.findIndex((plan) => plan.attrs.planId === planId) : -1;
+}
+
+/**
  * List saved plans, reading target-branch children only for `onlyEpic` when it
  * is given. Catalog evidence uses existing Git snapshots; remote refresh belongs
  * to the selected Epic's workflow. A scoped lookup also avoids reading every
@@ -2892,6 +2935,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 typeof projectPlan.attrs.targetBranch === "string" ? projectPlan.attrs.targetBranch.trim() : "";
             if (!targetBranch || !isProjectPlan(projectPlan.attrs)) continue;
             if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
+            const repository = await probeGitRepository(cwd);
+            if (repository.state === "not_git") continue;
+            if (!repository.ok) throw new Error(repository.message);
             let targetChildren;
             try {
                 targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name, {
@@ -2908,11 +2954,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 throw error;
             }
             for (const child of targetChildren) {
-                const index = results.findIndex(
-                    (item) =>
-                        item.name === child.name ||
-                        Boolean(child.attrs.planId && item.attrs.planId === child.attrs.planId),
-                );
+                const index = findCatalogPlanIndex(results, child.name, child.attrs.planId);
                 if (
                     index >= 0 &&
                     results[index].name === child.name &&
@@ -2936,11 +2978,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (!execution) {
                 // A missing or archived authority cannot expose a stale primary copy.
                 // Direct Plan loading owns the recovery error, not the project catalog.
-                const index = results.findIndex(
-                    (item) =>
-                        item.name === attempt.planName ||
-                        Boolean(attempt.planId && item.attrs.planId === attempt.planId),
-                );
+                const index = findCatalogPlanIndex(results, attempt.planName, attempt.planId);
                 if (index >= 0) results.splice(index, 1);
                 const issueIndex = parseIssues.findIndex((issue) => issue.name === attempt.planName);
                 if (issueIndex >= 0) parseIssues.splice(issueIndex, 1);
@@ -2951,10 +2989,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                     `The execution directory contains a different Plan at ${execution.path}. Your files have not been changed.`,
                 );
             }
-            const index = results.findIndex(
-                (item) =>
-                    item.name === attempt.planName || Boolean(attempt.planId && item.attrs.planId === attempt.planId),
-            );
+            const index = findCatalogPlanIndex(results, attempt.planName, attempt.planId);
             const item = { name: attempt.planName, path: execution.path, attrs: execution.attrs };
             if (index < 0) results.push(item);
             else results[index] = item;
@@ -3620,7 +3655,7 @@ export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {
 /**
  * Compare Epic child plans by explicit order first, then canonical name.
  *
- * @template {{ name: string, attrs: PlanFrontMatter }} T
+ * @template {{ name: string, attrs: Pick<PlanFrontMatter, "order"> }} T
  * @param {T} a
  * @param {T} b
  * @returns {number}
@@ -3638,7 +3673,7 @@ export function compareChildPlansByOrder(a, b) {
  * @param {string} name
  * @returns {boolean}
  */
-function isHiddenPlanName(name) {
+export function isHiddenPlanName(name) {
     return HIDDEN_PLAN_DIRS.has(name.split("/")[0] || "");
 }
 

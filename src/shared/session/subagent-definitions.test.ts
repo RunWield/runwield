@@ -309,3 +309,11 @@ test("an unregistered delegated role fails the load and names the valid roles", 
     assertStringIncludes(error.message, "Unknown delegated role: researcher");
     assertStringIncludes(error.message, "verification-adversary");
 });
+
+test("Slicer dependencies use descriptive names and retain exact legacy references", async () => {
+    const { systemPrompt } = await loadSubAgentDefinition(SUBAGENTS.SLICER);
+    const prompt = systemPrompt.replaceAll(/\s+/g, " ");
+    assertStringIncludes(prompt, "descriptive slugs without ordinal prefixes");
+    assertStringIncludes(prompt, "Reordering changes `order`, not names or dependency references");
+    assertEquals(prompt.includes("including the two-digit `order` prefix"), false);
+});

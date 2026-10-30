@@ -1,14 +1,22 @@
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/metrics
  * Local-only workflow metrics recording helpers.
  */
 
-import { dirname, isAbsolute, join } from "node:path";
-import { openNativeFileLock } from "../native-file-lock.ts";
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
+import {
+    adoptLegacyWorkflowMetricJournal,
+    appendWorkflowMetric,
+    hasWorkflowMetricsEnablementOverride,
+    isWorkflowMetricsEnabled,
+    resolveCollectionEpoch,
+} from "./metrics-journal.ts";
+export { isWorkflowMetricsEnabled } from "./metrics-journal.ts";
 
 /**
  * @typedef {"routing"|"planning"|"execution"|"validation"|"recovery"|"model_selection"|"tool_usage"|"command"|"model_usage"|"context"} WorkflowMetricCategory
@@ -75,27 +83,67 @@ const cwdHashCache = new Map();
 const activeToolCalls = new Map();
 
 /**
- * @param {unknown} setting
- * @returns {boolean}
+ * @typedef {Object} MeasurementProject
+ * @property {string} root
+ * @property {string} key
+ * @property {string} journalPath
  */
-export function isWorkflowMetricsEnabled(setting) {
-    if (setting === true) return true;
-    if (setting === false || setting == null) return false;
-    if (typeof setting === "object" && !Array.isArray(setting)) {
-        return /** @type {{ enabled?: unknown }} */ (setting).enabled === true;
+
+/** A report can retain the canonical identity while withholding unavailable history. */
+export class MeasurementProjectUnavailableError extends Error {
+    /** @param {MeasurementProject} project */
+    constructor(project) {
+        super("measurement_project_unavailable");
+        this.project = project;
     }
-    return false;
 }
 
 /**
- * @param {string} cwd
- * @returns {string}
+ * One identity for the primary checkout, including symlink and worktree aliases.
+ * @param {string} root
+ * @returns {MeasurementProject}
  */
+export function resolveMeasurementProject(root) {
+    if (!root) throw new Error("resolveMeasurementProject: root is required");
+    const spellings = new Set([resolvePrimaryCheckoutRoot(root)]);
+    let canonical = resolve(root);
+    try {
+        canonical = realpathSync(canonical);
+    } catch {
+        // Missing Projects still have a stable absolute identity.
+    }
+    canonical = resolvePrimaryCheckoutRoot(canonical);
+    spellings.add(canonical);
+    try {
+        canonical = realpathSync(canonical);
+    } catch {
+        canonical = resolve(canonical);
+    }
+    spellings.add(canonical);
+    const key = createHash("sha256").update(canonical).digest("hex");
+    const label =
+        basename(canonical)
+            .replace(/[^a-zA-Z0-9_-]/g, "_")
+            .slice(0, 40) || "project";
+    const directory = join(getHomeDir() || "~", RUNWIELD_DIR_NAME, METRICS_DIR_NAME);
+    const project = { root: canonical, key, journalPath: join(directory, `${label}-${key}`, "metrics.jsonl") };
+    try {
+        for (const spelling of spellings) {
+            adoptLegacyWorkflowMetricJournal(
+                project.journalPath,
+                join(directory, encodeCwdForSessionDir(spelling), "metrics.jsonl"),
+                [...spellings].map((value) => createHash("sha256").update(value).digest("hex")),
+            );
+        }
+    } catch {
+        throw new MeasurementProjectUnavailableError(project);
+    }
+    return project;
+}
+
+/** @param {string} cwd @returns {string} */
 export function getWorkflowMetricsFilePath(cwd) {
-    if (!cwd) throw new Error("getWorkflowMetricsFilePath: cwd is required");
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const homeDir = getHomeDir() || "~";
-    return join(homeDir, RUNWIELD_DIR_NAME, METRICS_DIR_NAME, encodeCwdForSessionDir(projectRoot), "metrics.jsonl");
+    return resolveMeasurementProject(cwd).journalPath;
 }
 
 /**
@@ -108,7 +156,9 @@ export async function hashMetricCwd(value) {
     if (cached) return cached;
     const bytes = new TextEncoder().encode(value);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    const hash = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const hash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
     cwdHashCache.set(value, hash);
     return hash;
 }
@@ -160,9 +210,10 @@ function sanitizeMetricValue(key, value) {
         return value.length > MAX_STRING_LENGTH ? `${value.slice(0, MAX_STRING_LENGTH)}…` : value;
     }
     if (Array.isArray(value)) {
-        return value.slice(0, MAX_ARRAY_LENGTH).map((item) => sanitizeMetricValue(key, item)).filter((item) =>
-            item !== undefined
-        );
+        return value
+            .slice(0, MAX_ARRAY_LENGTH)
+            .map((item) => sanitizeMetricValue(key, item))
+            .filter((item) => item !== undefined);
     }
     if (isPlainObject(value)) {
         /** @type {{[key: string]: SafeMetricDetails}} */
@@ -199,6 +250,22 @@ function isString(value) {
  */
 function allowEnum(value, allowed) {
     return isString(value) && allowed.has(value) ? value : undefined;
+}
+
+/**
+ * @param {string} value
+ * @returns {string | null}
+ */
+export function normalizeObservedTime(value) {
+    const parts =
+        /^(\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d{1,3}))?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
+            value,
+        );
+    if (!parts) return null;
+    const local = `${parts[1]}.${(parts[2] ?? "").padEnd(3, "0")}Z`;
+    if (!Number.isFinite(Date.parse(local)) || new Date(local).toISOString() !== local) return null;
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
 /**
@@ -267,7 +334,44 @@ function sanitizeDedicatedFrontendMetricDetails(event, details) {
 // Each event owns its fields. Nothing from an unrecognized event is persisted.
 /** @type {Record<string, string[]>} */
 const V2_EVENTS = {
-    execution_started: ["sourceSurface"],
+    mechanical_validation_finished: ["outcome"],
+    operation_completed_observed: ["outcome"],
+    quick_fix_completed_observed: ["outcome"],
+    operational_recovery: ["outcome"],
+    validation_attempt: [
+        "attempt",
+        "outcome",
+        "phase",
+        "findingCount",
+        "advisoryCount",
+        "initialFindingCount",
+        "missedOriginalCount",
+        "repairRegressionCount",
+        "unclassifiedNewCount",
+        "existingStillOpenCount",
+        "fixConfirmedCount",
+    ],
+    repair_round: ["round", "outcome", "phase"],
+    repair_round_finished: ["outcome", "phase"],
+    publication_confirmed: ["outcome", "planKind"],
+    workflow_abandoned: ["outcome"],
+    workflow_transition_committed: ["outcome", "operation"],
+    implementation_finished: ["outcome"],
+    plan_execution_result: ["outcome"],
+    implementation_checkpoint_failed: ["outcome"],
+    execution_context_resolution: ["outcome"],
+    feature_project_outcome: ["outcome", "phase"],
+    review_complete: ["outcome", "findingCount", "advisoryCount"],
+    guided_review_generation_result: ["outcome", "elapsedMs", "sectionCount", "failureKind"],
+    ai_review_generation_result: [
+        "outcome",
+        "elapsedMs",
+        "annotationCount",
+        "counts",
+        "costAvailability",
+        "failureKind",
+    ],
+    execution_started: ["sourceSurface", "userInitiated"],
     execution_finished: ["outcome", "reason", "elapsedMs", "callCount", "coverage"],
     retry_started: ["retrySource", "attempt", "maxAttempts", "delayMs"],
     retry_finished: ["retrySource", "attempt", "outcome", "reason"],
@@ -320,6 +424,9 @@ const V2_EVENTS = {
     native_tool_observed: ["callId", "stepIndex", "toolName", "status"],
     model_usage: [
         "sourceId",
+        "startedAt",
+        "endedAt",
+        "reasoningTokens",
         "usageKind",
         "provider",
         "model",
@@ -330,6 +437,7 @@ const V2_EVENTS = {
         "costAmount",
         "costCurrency",
         "costSource",
+        "costAvailability",
         "measurementAvailability",
         "unavailableReason",
         "aggregationBasis",
@@ -379,6 +487,24 @@ const V2_EVENTS = {
 };
 /** @type {Record<string, string>} */
 const V2_EVENT_CATEGORIES = {
+    mechanical_validation_finished: "validation",
+    operation_completed_observed: "execution",
+    quick_fix_completed_observed: "execution",
+    operational_recovery: "recovery",
+    validation_attempt: "validation",
+    repair_round: "recovery",
+    repair_round_finished: "recovery",
+    publication_confirmed: "recovery",
+    workflow_abandoned: "recovery",
+    workflow_transition_committed: "recovery",
+    implementation_finished: "execution",
+    plan_execution_result: "execution",
+    implementation_checkpoint_failed: "execution",
+    execution_context_resolution: "validation",
+    feature_project_outcome: "execution",
+    review_complete: "validation",
+    guided_review_generation_result: "validation",
+    ai_review_generation_result: "validation",
     execution_started: "execution",
     execution_finished: "execution",
     retry_started: "execution",
@@ -400,7 +526,20 @@ const V2_EVENT_CATEGORIES = {
 };
 /** @type {Record<string, Set<string>>} */
 const V2_ENUMS = {
-    outcome: new Set(["succeeded", "failed", "canceled", "rejected", "interrupted", "success", "error", "incomplete"]),
+    planKind: new Set(["PLANNED_CHANGE", "PROJECT", "QUICK_FIX", "OPERATION"]),
+    outcome: new Set([
+        "succeeded",
+        "failed",
+        "canceled",
+        "rejected",
+        "interrupted",
+        "success",
+        "error",
+        "incomplete",
+        "ongoing",
+        "approved",
+        "feedback",
+    ]),
     reason: new Set([
         "completed",
         "returned_error",
@@ -426,6 +565,7 @@ const V2_ENUMS = {
         "unavailable",
         "not_found",
     ]),
+    failureKind: new Set(["invalid_json", "empty_output", "schema_invalid", "aborted", "provider_failed"]),
     errorReason: new Set(["failed", "canceled", "rejected", "unknown", "unavailable", "unknown_command"]),
     executionKind: new Set(["root", "isolated", "delegated"]),
     mode: new Set(["foreground", "background"]),
@@ -540,6 +680,7 @@ const V2_ENUMS = {
     usageKind: new Set(["turn", "request", "compaction", "summary", "standalone"]),
     costCurrency: new Set(["USD"]),
     costSource: new Set(["calculated", "reported", "unavailable"]),
+    costAvailability: new Set(["complete", "partial", "unavailable"]),
     measurementAvailability: new Set(["complete", "partial", "unavailable"]),
     aggregationBasis: new Set(["turn", "request", "alternative"]),
     inputCacheBasis: new Set(["includes_cache", "excludes_cache", "unknown"]),
@@ -564,8 +705,59 @@ const V2_ENUMS = {
     basis: new Set(["backend_turn", "model_request"]),
     availability: new Set(["complete", "partial", "unavailable"]),
     kind: new Set(["builtin", "template", "skill"]),
-    phase: new Set(["start", "finish", "opened", "dispatched", "rejected"]),
+    phase: new Set([
+        "start",
+        "finish",
+        "opened",
+        "dispatched",
+        "rejected",
+        "mechanical",
+        "semantic",
+        "delivery",
+        "planning",
+    ]),
     sourceSurface: new Set(["tui", "workspace", "acp", "cli", "headless"]),
+    operation: new Set([
+        "plan_event:review_feedback",
+        "plan_event:review_approved",
+        "plan_event:readiness_passed",
+        "plan_event:epic_readiness_passed",
+        "plan_event:decomposition_finalized",
+        "plan_event:execution_started",
+        "plan_event:execution_failed",
+        "plan_event:implementation_finished",
+        "plan_event:mechanical_validation_failed",
+        "plan_event:mechanical_validation_passed",
+        "plan_event:semantic_review_feedback",
+        "plan_event:semantic_review_passed",
+        "plan_event:validation_failed",
+        "plan_event:validation_passed",
+        "plan_event:recovery_continue",
+        "plan_event:recovery_reset",
+        "plan_event:review_reopened",
+        "plan_event:epic_done_enough",
+        "plan_event:epic_children_delivered",
+        "plan_event:epic_integration_passed",
+        "plan_event:epic_integration_failed",
+        "plan_event:epic_integration_stale",
+        "plan_event:epic_publication_confirmed",
+        "plan_event:manual_status_change",
+        "plan_event:manual_closed_without_verification",
+        "plan_event:manual_user_verified",
+        "plan_event:plan_held",
+        "plan_event:hold_resumed",
+        "plan_event:hold_reset_to_draft",
+        "plan_review_feedback",
+        "plan_review_approved",
+        "sequence_review_feedback",
+        "sequence_review_approved",
+        "review_reopened",
+        "collaboration_update",
+        "collaboration_clear",
+        "plan_review_write",
+        "implementation_checkpoint",
+        "epic_decomposition_finalize",
+    ]),
 };
 for (const manager of ["npm", "pnpm", "yarn", "bun"]) {
     for (const task of ["test", "check", "lint", "fmt", "ci", "build"]) {
@@ -573,6 +765,10 @@ for (const manager of ["npm", "pnpm", "yarn", "bun"]) {
     }
 }
 const V2_LINKS = new Set([
+    "planId",
+    "transitionId",
+    "roundId",
+    "operationId",
     "sessionId",
     "managedSessionId",
     "segmentId",
@@ -591,6 +787,18 @@ const V2_LINKS = new Set([
     "sourceId",
 ]);
 const V2_NUMBERS = new Set([
+    "reasoningTokens",
+    "sectionCount",
+    "annotationCount",
+    "round",
+    "initialFindingCount",
+    "missedOriginalCount",
+    "repairRegressionCount",
+    "unclassifiedNewCount",
+    "existingStillOpenCount",
+    "fixConfirmedCount",
+    "findingCount",
+    "advisoryCount",
     "elapsedMs",
     "callCount",
     "toolCount",
@@ -637,13 +845,16 @@ let metricsWriteQueue = Promise.resolve();
 function waitForMetrics(pending, timeoutMs) {
     return new Promise((resolve) => {
         const timer = setTimeout(resolve, timeoutMs);
-        void pending.then(() => {
-            clearTimeout(timer);
-            resolve();
-        }, () => {
-            clearTimeout(timer);
-            resolve();
-        });
+        void pending.then(
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+        );
     });
 }
 
@@ -666,8 +877,14 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
     /** @type {Record<string, unknown>} */
     const record = {
         v: 2,
-        ts: new Date().toISOString(),
-        eventId: crypto.randomUUID(),
+        ts:
+            typeof metric.ts === "string" && Number.isFinite(Date.parse(metric.ts))
+                ? new Date(metric.ts).toISOString()
+                : new Date().toISOString(),
+        eventId:
+            typeof metric.eventId === "string" && V2_IDENTIFIER.test(metric.eventId)
+                ? metric.eventId
+                : crypto.randomUUID(),
         recorderId: metric.recorderId,
         seq,
         event,
@@ -687,7 +904,10 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
     ];
     for (const key of fields) {
         const value = metric[key];
-        if (V2_LINKS.has(key)) {
+        if (key === "startedAt" || key === "endedAt") {
+            // Observed UTC ISO instants only. Invalid or missing edges are unavailable, not write time.
+            record[key] = typeof value === "string" ? normalizeObservedTime(value) : null;
+        } else if (V2_LINKS.has(key)) {
             if (typeof value === "string" && V2_IDENTIFIER.test(value)) record[key] = value;
             else if (value === null) record[key] = null;
         } else if (Object.hasOwn(V2_ENUMS, key)) {
@@ -705,19 +925,25 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
         } else if (key === "costAmount") {
             if (value === null) record[key] = null;
             else if (typeof value === "number" && Number.isFinite(value) && value >= 0) record[key] = value;
-        } else if (key === "isError" || key === "truncated") {
+        } else if (key === "isError" || key === "truncated" || key === "userInitiated") {
             if (typeof value === "boolean" || value === null) record[key] = value;
+        } else if (key === "counts" && isPlainObject(value)) {
+            record.counts = Object.fromEntries(
+                ["standards", "spec", "tests"]
+                    .filter((axis) => allowNonNegativeInteger(value[axis]) !== undefined)
+                    .map((axis) => [axis, value[axis]]),
+            );
         } else if (key === "coverage" && isPlainObject(value)) {
             record.coverage = Object.fromEntries(
-                ["tools", "usage", "context"].filter((part) =>
-                    typeof value[part] === "string" && V2_ENUMS.availability.has(value[part])
-                ).map((part) => [part, value[part]]),
+                ["tools", "usage", "context"]
+                    .filter((part) => typeof value[part] === "string" && V2_ENUMS.availability.has(value[part]))
+                    .map((part) => [part, value[part]]),
             );
         } else if (key === "staticCategoryCounts" && isPlainObject(value)) {
             record.staticCategoryCounts = Object.fromEntries(
-                ["systemTokens", "toolsTokens", "messagesTokens"].filter((part) =>
-                    allowNonNegativeInteger(value[part]) !== undefined
-                ).map((part) => [part, value[part]]),
+                ["systemTokens", "toolsTokens", "messagesTokens"]
+                    .filter((part) => allowNonNegativeInteger(value[part]) !== undefined)
+                    .map((part) => [part, value[part]]),
             );
         } else if (key === "unavailableReason") {
             if (value === null || value === "not_reported" || value === "source_unavailable") record[key] = value;
@@ -734,32 +960,51 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
 }
 
 /**
+ * @typedef {import("./metrics-journal.ts").JournalResult & Pick<WorkflowMetricRecord, "details">} WorkflowMetricResult
+ *
  * @param {Record<string, unknown>} metric
  * @param {string} cwd
- * @returns {Promise<WorkflowMetricRecord | Record<string, unknown> | null>}
+ * @returns {Promise<WorkflowMetricResult>}
  */
 export async function recordWorkflowMetric(metric, cwd) {
     try {
         if (!cwd) throw new Error("recordWorkflowMetric: cwd is required");
-        const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+        const project = resolveMeasurementProject(cwd);
+        const projectRoot = project.root;
         // Git and Plan storage can load without booting the agent package.
         // Actual metric writes still read the real settings and honor opt-out.
-        const { getMergedCustomSetting } = await import("../settings.js");
+        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.js");
         const resolvedSetting = getMergedCustomSetting("workflowMetrics", projectRoot);
-        if (!isWorkflowMetricsEnabled(resolvedSetting)) return null;
-
-        const filePath = getWorkflowMetricsFilePath(projectRoot);
-        const cwdHash = await hashMetricCwd(projectRoot);
+        const filePath = project.journalPath;
+        const epochState = resolveCollectionEpoch(
+            filePath,
+            isWorkflowMetricsEnabled(resolvedSetting),
+            hasWorkflowMetricsEnablementOverride(getCustomSetting("workflowMetrics", "project", projectRoot)),
+        );
+        const invocation = {
+            enabled:
+                typeof metric.collectionEnabledAtCall === "boolean"
+                    ? metric.collectionEnabledAtCall
+                    : isWorkflowMetricsEnabled(resolvedSetting),
+            epoch: typeof metric.collectionEpoch === "string" ? metric.collectionEpoch : epochState.collectionEpoch.id,
+            historyEpoch: typeof metric.historyEpoch === "string" ? metric.historyEpoch : epochState.historyEpoch,
+            deadline:
+                typeof metric.persistenceDeadline === "number"
+                    ? Math.min(Date.now() + 1000, metric.persistenceDeadline)
+                    : Date.now() + 1000,
+        };
+        const cwdHash = project.key;
 
         let record;
         if (metric.v === 2) {
             record = sanitizeV2MetricRecord(metric, cwdHash);
-            if (!record) return null;
+            if (!record) return { persisted: false, reason: "invalid_record" };
         } else {
             const eventName = typeof metric.event === "string" ? metric.event : "";
-            const categoryName = typeof metric.category === "string"
-                ? /** @type {WorkflowMetricCategory} */ (metric.category)
-                : "execution";
+            const categoryName =
+                typeof metric.category === "string"
+                    ? /** @type {WorkflowMetricCategory} */ (metric.category)
+                    : "execution";
             const dedicatedFrontendEvent = DEDICATED_FRONTEND_EVENTS.has(eventName);
             const dedicatedDetails = dedicatedFrontendEvent
                 ? sanitizeDedicatedFrontendMetricDetails(eventName, metric.details)
@@ -775,41 +1020,23 @@ export async function recordWorkflowMetric(metric, cwd) {
                 ...(!dedicatedFrontendEvent && metric.planName ? { planName: String(metric.planName) } : {}),
                 ...(!dedicatedFrontendEvent && metric.agentName ? { agentName: String(metric.agentName) } : {}),
                 ...(dedicatedFrontendEvent
-                    ? dedicatedDetails !== undefined ? { details: dedicatedDetails } : {}
+                    ? dedicatedDetails !== undefined
+                        ? { details: dedicatedDetails }
+                        : {}
                     : metric.details !== undefined
-                    ? { details: sanitizeMetricDetails(metric.details) }
-                    : {}),
+                      ? { details: sanitizeMetricDetails(metric.details) }
+                      : {}),
             };
         }
 
-        const serialized = `${JSON.stringify(record)}\n`;
-        metricsWriteQueue = metricsWriteQueue.then(async () => {
-            try {
-                await fsMkdir(dirname(filePath), { recursive: true });
-                // The queue orders this producer only. Keep a persistent sidecar so
-                // every process appends under the same OS-backed lock identity.
-                const lock = openNativeFileLock(`${filePath}.lock`);
-                try {
-                    const deadline = performance.now() + 1000;
-                    while (!lock.tryLockSync(true)) {
-                        // Metrics remain optional even when another writer stalls.
-                        if (performance.now() >= deadline) return;
-                        await new Promise((resolve) => setTimeout(resolve, 10));
-                    }
-                    await fsWriteFile(filePath, serialized, { flag: "a" });
-                } finally {
-                    lock.close();
-                }
-            } catch {
-                // Fail-open: metric writes must never disrupt execution.
-            }
-        }).catch(() => {});
-
-        // v2 observations do not wait for a blocked disk write. Settlement uses the bounded drain.
-        if (metric.v !== 2) await waitForMetrics(metricsWriteQueue, 100);
-        return record;
+        const pending = metricsWriteQueue.then(() => appendWorkflowMetric(filePath, projectRoot, record, invocation));
+        metricsWriteQueue = pending.then(
+            () => {},
+            () => {},
+        );
+        return await pending;
     } catch {
-        return null;
+        return { persisted: false, reason: "storage_failure" };
     }
 }
 
@@ -883,17 +1110,20 @@ export function classifyToolSubUsage(toolName, args = undefined) {
  * @param {unknown} args
  * @param {string} cwd
  * @param {string} [agentName]
- * @returns {Promise<WorkflowMetricRecord | Record<string, unknown> | null>}
+ * @returns {Promise<import("./metrics-journal.ts").JournalResult>}
  */
 export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName) {
     const subUsage = classifyToolSubUsage(toolName, args);
     activeToolCalls.set(toolCallId, { subUsage, startedAt: Date.now() });
-    return recordWorkflowMetric({
-        category: "tool_usage",
-        event: "tool_call_started",
-        agentName,
-        details: { toolName, subUsage },
-    }, cwd);
+    return recordWorkflowMetric(
+        {
+            category: "tool_usage",
+            event: "tool_call_started",
+            agentName,
+            details: { toolName, subUsage },
+        },
+        cwd,
+    );
 }
 
 /**
@@ -902,21 +1132,54 @@ export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName
  * @param {boolean} isError
  * @param {string} cwd
  * @param {string} [agentName]
- * @returns {Promise<WorkflowMetricRecord | Record<string, unknown> | null>}
+ * @returns {Promise<import("./metrics-journal.ts").JournalResult>}
  */
 export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agentName) {
     const started = activeToolCalls.get(toolCallId);
     activeToolCalls.delete(toolCallId);
     const now = Date.now();
-    return recordWorkflowMetric({
-        category: "tool_usage",
-        event: "tool_call_finished",
-        agentName,
-        details: {
-            toolName,
-            subUsage: started?.subUsage || classifyToolSubUsage(toolName),
-            isError,
-            durationMs: started ? now - started.startedAt : undefined,
+    return recordWorkflowMetric(
+        {
+            category: "tool_usage",
+            event: "tool_call_finished",
+            agentName,
+            details: {
+                toolName,
+                subUsage: started?.subUsage || classifyToolSubUsage(toolName),
+                isError,
+                durationMs: started ? now - started.startedAt : undefined,
+            },
         },
-    }, cwd);
+        cwd,
+    );
+}
+
+/**
+ * @typedef {Object} LegacyWorkflowMetricInput
+ * @property {number} v
+ * @property {string} ts
+ * @property {string} event
+ *
+ * @typedef {Object} LegacyWorkflowMetricReport
+ * @property {string} timestamp
+ * @property {string} event
+ * @property {"legacy/partial"} availability
+ */
+
+/** Read only understood v1 fields. Generic details and mutable Plan names are never report joins.
+ * @param {LegacyWorkflowMetricInput} record
+ * @returns {LegacyWorkflowMetricReport | null}
+ */
+export function readLegacyWorkflowMetric(record) {
+    if (
+        record.v !== 1 ||
+        !Number.isFinite(Date.parse(record.ts)) ||
+        ["collection_epoch", "history_epoch", "measurement_gap"].includes(record.event)
+    )
+        return null;
+    return {
+        timestamp: record.ts,
+        event: /^[a-z][a-z0-9_]{0,80}$/.test(record.event) ? record.event : "legacy",
+        availability: "legacy/partial",
+    };
 }

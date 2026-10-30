@@ -16,13 +16,11 @@ async function runHelpChild(argv: string[]): Promise<CapturedProcessOutput> {
     const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-help-command-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
-    await Promise.all([
-        fsMkdir(homeDir, { recursive: true }),
-        fsMkdir(projectRoot, { recursive: true }),
-    ]);
+    await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
     const moduleUrl = import.meta.resolve("./index.ts");
     const configPath = fromFileUrl(new URL("../../../deno.json", import.meta.url));
-    const source = `import { runHelpCommand } from ${JSON.stringify(moduleUrl)};\n` +
+    const source =
+        `import { runHelpCommand } from ${JSON.stringify(moduleUrl)};\n` +
         `await runHelpCommand(${JSON.stringify(argv)});\n`;
     try {
         return await captureForegroundProcess(process.execPath, {
@@ -40,20 +38,25 @@ async function runHelpChild(argv: string[]): Promise<CapturedProcessOutput> {
 
 function decodeCommandStderr(output: Uint8Array): string {
     const denoLockNotice = "Blocking waiting for file lock on node_modules directory";
-    return decoder.decode(output).split("\n").filter((line) => {
-        const plainLine = line.replaceAll("\u001b[0m", "").replaceAll("\u001b[32m", "").replaceAll("\u001b[36m", "");
-        return plainLine !== denoLockNotice && !plainLine.startsWith("Download https://registry.npmjs.org/");
-    }).join("\n");
+    return decoder
+        .decode(output)
+        .split("\n")
+        .filter((line) => {
+            const plainLine = line
+                .replaceAll("\u001b[0m", "")
+                .replaceAll("\u001b[32m", "")
+                .replaceAll("\u001b[36m", "");
+            return plainLine !== denoLockNotice && !plainLine.startsWith("Download https://registry.npmjs.org/");
+        })
+        .join("\n");
 }
 
 test("help stderr normalization handles colored and plain Deno lock notices without hiding command errors", () => {
     const encoder = new TextEncoder();
-    for (
-        const notice of [
-            "Blocking waiting for file lock on node_modules directory",
-            "\u001b[0m\u001b[36mBlocking\u001b[0m waiting for file lock on node_modules directory",
-        ]
-    ) {
+    for (const notice of [
+        "Blocking waiting for file lock on node_modules directory",
+        "\u001b[0m\u001b[36mBlocking\u001b[0m waiting for file lock on node_modules directory",
+    ]) {
         assertEquals(decodeCommandStderr(encoder.encode(`${notice}\n`)), "");
         assertEquals(decodeCommandStderr(encoder.encode(`${notice}\nActual help failure\n`)), "Actual help failure\n");
     }
@@ -80,6 +83,19 @@ test("help formatters read the real command registry", async () => {
 
     const commandLogs = await captureLogs(() => runHelpCommand(["model"]));
     assertStringIncludes(commandLogs.join("\n"), "Usage (model):");
+});
+
+test("attached help lists supported operations without a submit alias", async () => {
+    const logs = await captureLogs(() => {
+        printCommandHelp("attached");
+    });
+    const help = logs.join("\n");
+
+    for (const operation of ["activate", "triage_report", "status", "plan_written"]) {
+        assertStringIncludes(help, `attached ${operation} < input.json`);
+    }
+    assertStringIncludes(help, "attached mcp");
+    assertEquals(help.includes("attached submit"), false);
 });
 
 test("help command renders through the passed-in TUI surface", async () => {

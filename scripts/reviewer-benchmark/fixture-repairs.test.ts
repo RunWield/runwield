@@ -148,3 +148,171 @@ for (const repair of [
         }
     });
 }
+
+for (const variant of ["defective", "clean"]) {
+    test(`repair ${variant} coverage detects completion delivery suppressed by the completion flag`, async () => {
+        await withFixtureCopy("RV-D08", async (root) => {
+            const path = join(root, `variants/${variant}.patch`);
+            const patch = await readFile(path, "utf8");
+            const guard =
+                "if (state.notifications.includes(taskId) || state.consumers.some((entry) => entry.taskId === taskId)) return;";
+            assert.ok(patch.includes(guard));
+            await writeFile(
+                path,
+                patch.replace(guard, "if (state.tasks.find((task) => task.id === taskId)?.completed) return;"),
+            );
+            await assert.rejects(
+                admitFixtures([await loadFixture(root)]),
+                /public suite.*expected (?:pass|assertion)[\s\S]*Recorded general completion must still be delivered/,
+            );
+        });
+    });
+
+    test(`repair ${variant} coverage detects recorded repair delivery suppressed by the completion flag`, async () => {
+        await withFixtureCopy("RV-D08", async (root) => {
+            const path = join(root, `variants/${variant}.patch`);
+            const patch = await readFile(path, "utf8");
+            const guard =
+                "if (state.notifications.includes(taskId) || state.consumers.some((entry) => entry.taskId === taskId)) return;";
+            assert.ok(patch.includes(guard));
+            await writeFile(
+                path,
+                patch.replace(
+                    guard,
+                    'if (state.notifications.includes(taskId) || state.consumers.some((entry) => entry.taskId === taskId) || state.tasks.some((task) => task.id === taskId && task.kind === "repair" && task.completed)) return;',
+                ),
+            );
+            await assert.rejects(
+                admitFixtures([await loadFixture(root)]),
+                /public suite.*expected (?:pass|assertion)[\s\S]*Recorded repair completion must still be delivered/,
+            );
+        });
+    });
+
+    test(`publication ${variant} coverage detects returning a stale rejected attempt`, async () => {
+        await withFixtureCopy("RV-D10", async (root) => {
+            const path = join(root, `variants/${variant}.patch`);
+            const patch = await readFile(path, "utf8");
+            const fetch = "const target = fetchTarget(workspace, saved.remote, saved.targetRef);";
+            assert.ok(patch.includes(fetch));
+            // Still attempt the real retry, but return and persist its previous rejection.
+            await writeFile(
+                path,
+                patch
+                    .replace(
+                        "+    return send(workspace, path, {",
+                        "+    const retried = await send(workspace, path, {",
+                    )
+                    .replace(
+                        '+        status: "pending",\n+    });\n+}',
+                        '+        status: "pending",\n+    });\n+    if (retried.status === "pending") { await saveAttempt(path, saved); return saved; } return retried;\n+}',
+                    )
+                    .replace(/@@ -50,3 \+50,(\d+) @@/, (_, size: string) => `@@ -50,3 +50,${Number(size) + 1} @@`),
+            );
+            await assert.rejects(
+                admitFixtures([await loadFixture(root)]),
+                /public suite.*expected pass[\s\S]*Retry must record the current rejection/,
+            );
+        });
+    });
+}
+
+test("board clean coverage detects authorization from a conflicting display hint", async () => {
+    await withFixtureCopy("RV-D06", async (root) => {
+        const path = join(root, "variants/clean.patch");
+        const patch = await readFile(path, "utf8");
+        assert.ok(patch.includes("const role = capability.role;"));
+        await writeFile(path, patch.replace("const role = capability.role;", "const role = link.displayRole;"));
+        await assert.rejects(
+            admitFixtures([await loadFixture(root)]),
+            /B public suite.*expected pass[\s\S]*Verified capability must decide rename authority/,
+        );
+    });
+});
+
+test("command clean coverage detects a public result published before group settlement", async () => {
+    await withFixtureCopy("RV-D07", async (root) => {
+        const path = join(root, "variants/clean.patch");
+        const patch = await readFile(path, "utf8");
+        const gate = "if (this.settlement) this.settlement.then(() => resolve(result), reject);";
+        assert.ok(patch.includes(gate));
+        await writeFile(
+            path,
+            patch.replace(gate, "if (false && this.settlement) this.settlement.then(() => resolve(result), reject);"),
+        );
+        await assert.rejects(
+            admitFixtures([await loadFixture(root)]),
+            /B public suite.*expected pass[\s\S]*Public result must wait for group settlement/,
+        );
+    });
+});
+
+for (const scenario of ["recorded", "live", "recovery", "owner"]) {
+    test(`repair public coverage detects incorrect ${scenario} consumption`, async () => {
+        const fixture = await loadFixture(join(corpusPath, "RV-D08"));
+        const project = await materializeFixture(fixture, scenario === "recorded" ? "A" : "B");
+        try {
+            if (scenario !== "recorded") {
+                const path = join(project.cwd, "src/service.ts");
+                const source = await readFile(path, "utf8");
+                const correct =
+                    scenario === "recovery"
+                        ? 'if (task?.completed) await this.validation.consume({ taskId: task.id }, "validation");'
+                        : 'if (task.kind === "repair") await this.validation.consume({ taskId }, "validation");';
+                const mutated =
+                    scenario === "recovery"
+                        ? 'if (task?.completed) { await this.validation.consume({ taskId: task.id }, "validation"); await this.validation.consume({ taskId: task.id }, "validation"); }'
+                        : scenario === "owner"
+                          ? 'if (task.kind === "repair") await this.validation.consume({ taskId }, "listener");'
+                          : 'if (task.kind === "repair") { await this.validation.consume({ taskId }, "validation"); if (taskId === "repair-1") await this.validation.consume({ taskId }, "validation"); }';
+                assert.ok(source.includes(correct));
+                await writeFile(path, source.replace(correct, mutated));
+            }
+            const result = await captureForegroundProcess("bun", {
+                cwd: project.cwd,
+                args: ["run", "test"],
+                timeoutMs: 10000,
+            });
+            const output = new TextDecoder().decode(result.stdout) + new TextDecoder().decode(result.stderr);
+            assert.equal(result.code, 1, output);
+            const message = scenario === "live" ? "Live" : scenario === "recovery" ? "Recovered" : "Recorded";
+            assert.ok(
+                output.includes(`AssertionError: ${message} repair must have one validation-owned consumption`),
+                output,
+            );
+        } finally {
+            await project.cleanup();
+        }
+    });
+}
+
+for (const [taskId, label] of [
+    ["recorded-repair", "Recorded"],
+    ["repair-1", "Live"],
+    ["repair-2", "Recovered"],
+]) {
+    test(`repair public coverage detects duplicate ${label.toLowerCase()} transitions`, async () => {
+        const fixture = await loadFixture(join(corpusPath, "RV-D08"));
+        const project = await materializeFixture(fixture, "B");
+        try {
+            const path = join(project.cwd, "src/validation.ts");
+            const source = await readFile(path, "utf8");
+            const transition = 'state.transitions.push("repairing->checking");';
+            assert.ok(source.includes(transition));
+            await writeFile(
+                path,
+                source.replace(transition, `${transition}\n        if (event.taskId === "${taskId}") ${transition}`),
+            );
+            const result = await captureForegroundProcess("bun", {
+                cwd: project.cwd,
+                args: ["run", "test"],
+                timeoutMs: 10000,
+            });
+            const output = new TextDecoder().decode(result.stdout) + new TextDecoder().decode(result.stderr);
+            assert.equal(result.code, 1, output);
+            assert.ok(output.includes(`AssertionError: ${label} repair must add one transition`), output);
+        } finally {
+            await project.cleanup();
+        }
+    });
+}

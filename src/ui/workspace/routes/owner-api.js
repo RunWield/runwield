@@ -1,3 +1,5 @@
+import { loadOwnerUsage } from "../server/owner-usage.ts";
+import { loadUsageSettings, mutateUsageSettings, UsageSettingsError } from "../server/owner-usage-settings.ts";
 import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 /** @module ui/workspace/routes/owner-api */
@@ -101,10 +103,12 @@ function sanitizeOwnerDashboardFrame(value) {
     const safe = {};
     for (const [key, child] of Object.entries(value)) {
         if (/(path|root|cwd|file)$/i.test(key)) continue;
-        safe[key] = (key === "href" || key === "repairHref") && typeof child === "string" &&
-                (child.startsWith("/projects/") || child === "/")
-            ? child
-            : sanitizeOwnerDashboardFrame(child);
+        safe[key] =
+            (key === "href" || key === "repairHref") &&
+            typeof child === "string" &&
+            (child.startsWith("/projects/") || child === "/")
+                ? child
+                : sanitizeOwnerDashboardFrame(child);
     }
     return safe;
 }
@@ -112,11 +116,14 @@ function sanitizeOwnerDashboardFrame(value) {
 /** @param {unknown} error */
 export function ownerErrorJson(error, status = 400) {
     if (error instanceof DirectoryConfirmationRequired) {
-        return ownerJson({
-            code: error.code,
-            error: error.message,
-            confirmation: error.confirmation,
-        }, 409);
+        return ownerJson(
+            {
+                code: error.code,
+                error: error.message,
+                confirmation: error.confirmation,
+            },
+            409,
+        );
     }
     return ownerJson({ error: sanitizeOwnerError(error) }, status);
 }
@@ -174,13 +181,12 @@ export function pairingClaimApi(ctx) {
         if (!proof) throw new Error("Pairing browser proof is missing.");
         const claimed = ctx.state.store.claimPairingRequest(proof);
         const headers = new Headers();
-        for (
-            const header of deviceCookieHeaders({
-                credential: claimed.credential,
-                csrf: claimed.csrf,
-                publicOrigin: ctx.state.publicOrigin,
-            })
-        ) headers.append("set-cookie", header);
+        for (const header of deviceCookieHeaders({
+            credential: claimed.credential,
+            csrf: claimed.csrf,
+            publicOrigin: ctx.state.publicOrigin,
+        }))
+            headers.append("set-cookie", header);
         headers.append("set-cookie", clearBootstrapProofCookieHeader({ publicOrigin: ctx.state.publicOrigin }));
         return ownerJson({ paired: true, device: claimed.device }, 201, headers);
     } catch (error) {
@@ -200,6 +206,52 @@ export async function ownerSidebarApi(ctx) {
         return ownerJson({ projects });
     } catch (error) {
         return ownerErrorJson(error);
+    }
+}
+
+/**
+ * @typedef {Object} OwnerUsageContext
+ * @property {{ store: Parameters<typeof loadOwnerUsage>[0] }} state
+ * @property {URL} url
+ */
+/** @param {OwnerUsageContext} ctx */
+export async function ownerUsageApi(ctx) {
+    try {
+        return ownerJson(await loadOwnerUsage(ctx.state.store, ctx.url.searchParams));
+    } catch (error) {
+        return ownerErrorJson(error, 400);
+    }
+}
+
+/**
+ * @typedef {Object} OwnerUsageSettingsContext
+ * @property {{ store: Parameters<typeof loadUsageSettings>[0] }} state
+ * @property {Request} req
+ * @property {{ action?: string }} params
+ * @property {URL} url
+ */
+/** @param {OwnerUsageSettingsContext} ctx */
+export async function ownerUsageSettingsApi(ctx) {
+    try {
+        return ownerJson(await loadUsageSettings(ctx.state.store));
+    } catch (error) {
+        return ownerErrorJson(error);
+    }
+}
+
+/** @param {OwnerUsageSettingsContext} ctx */
+export async function ownerUsageSettingsMutationApi(ctx) {
+    let body;
+    try {
+        body = await readJson(ctx.req);
+    } catch {
+        return ownerJson({ error: "Invalid request body." }, 400);
+    }
+    try {
+        const action = ctx.url.pathname === "/api/owner/usage/clear" ? "clear" : ctx.params.action || "";
+        return ownerJson(await mutateUsageSettings(ctx.state.store, action, body));
+    } catch (error) {
+        return ownerErrorJson(error, error instanceof UsageSettingsError ? error.status : 400);
     }
 }
 
@@ -291,9 +343,12 @@ export async function registerProjectApi(ctx) {
             displayName: body.displayName,
             directoryConfirmation: body.directoryConfirmation,
         });
-        return ownerJson({
-            project: serializeOwnerProject(project, ctx.state.store.getProjectHealth(project.projectId)),
-        }, 201);
+        return ownerJson(
+            {
+                project: serializeOwnerProject(project, ctx.state.store.getProjectHealth(project.projectId)),
+            },
+            201,
+        );
     } catch (error) {
         return ownerErrorJson(error);
     }
@@ -334,11 +389,12 @@ export async function ownerProjectBoardApi(ctx) {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const board = await loadBoard(root);
         const requestedView = ctx.params.view || "active";
-        const view = requestedView === "closed"
-            ? "closed"
-            : requestedView === "onHold" || requestedView === "on-hold"
-            ? "onHold"
-            : "active";
+        const view =
+            requestedView === "closed"
+                ? "closed"
+                : requestedView === "onHold" || requestedView === "on-hold"
+                  ? "onHold"
+                  : "active";
         const screen = board.screens?.[view] || { columns: [] };
         return ownerJson({
             projectId: ctx.params.projectId,
@@ -382,7 +438,7 @@ export async function associatedPlanSession(store, projectId, planId) {
     let selected = "";
     let selectedAt = "";
     let selectedCurrent = false;
-    for (let page = 0;; page++) {
+    for (let page = 0; ; page++) {
         const batch = await store.listProjectSessions(projectId, {
             catalog: false,
             archiveState: "all",
@@ -390,13 +446,15 @@ export async function associatedPlanSession(store, projectId, planId) {
             pageSize: 100,
         });
         for (const session of batch.sessions) {
-            const associations = store.listSessionPlanAssociations(session.runwieldSessionId, projectId)
+            const associations = store
+                .listSessionPlanAssociations(session.runwieldSessionId, projectId)
                 .filter((entry) => entry.committedGeneration !== null);
             const association = associations.findLast((entry) => entry.planId === planId);
             if (!association) continue;
             const current = associations.at(-1)?.planId === planId;
             if (
-                !selected || (current && !selectedCurrent) ||
+                !selected ||
+                (current && !selectedCurrent) ||
                 (current === selectedCurrent && association.recordedAt > selectedAt)
             ) {
                 selected = session.runwieldSessionId;
@@ -412,8 +470,9 @@ export async function associatedPlanSession(store, projectId, planId) {
 export async function ownerProjectPlanProgressApi(ctx) {
     try {
         const url = new URL(ctx.req.url);
-        const runwieldSessionId = url.searchParams.get("session") ||
-            await associatedPlanSession(ctx.state.store, ctx.params.projectId, ctx.params.planId);
+        const runwieldSessionId =
+            url.searchParams.get("session") ||
+            (await associatedPlanSession(ctx.state.store, ctx.params.projectId, ctx.params.planId));
         const progress = await loadOwnerPlanProgress(ctx.state.store, {
             projectId: ctx.params.projectId,
             planId: ctx.params.planId,
@@ -430,19 +489,21 @@ export async function ownerProjectPlanProgressApi(ctx) {
             const planReview = request.planReview && typeof request.planReview === "object" ? request.planReview : null;
             const codeReview = request.codeReview && typeof request.codeReview === "object" ? request.codeReview : null;
             const associations = /** @type {Array<{ planId?: string, committedGeneration?: number | null }>} */ (
-                ctx.state.store.listSessionPlanAssociations?.(
-                    operation.runwieldSessionId,
-                    ctx.params.projectId,
-                ) || []
+                ctx.state.store.listSessionPlanAssociations?.(operation.runwieldSessionId, ctx.params.projectId) || []
             );
             const info = operation.runtimeSessionId
                 ? ctx.state.sessionContinuation.runtime.getSessionSnapshot(operation.runtimeSessionId)
                 : operation.sessionInfo;
             // A Session may have worked on several Plans. Only the current operation
             // or live workflow can own its prompt; historical associations are not ownership.
-            const currentPlanId = planReview?.planId || codeReview?.planId || operation.planId ||
-                info?.activeExecutionWorkflow?.triageMeta?.planId || info?.workflowContext?.planId ||
-                info?.planAssociations?.at(-1)?.planId || associations.at(-1)?.planId;
+            const currentPlanId =
+                planReview?.planId ||
+                codeReview?.planId ||
+                operation.planId ||
+                info?.activeExecutionWorkflow?.triageMeta?.planId ||
+                info?.workflowContext?.planId ||
+                info?.planAssociations?.at(-1)?.planId ||
+                associations.at(-1)?.planId;
             if (currentPlanId !== ctx.params.planId) continue;
             effectiveSessionId = operation.runwieldSessionId || effectiveSessionId;
             live = { operationId, interactionId: operation.liveInteraction.interactionId, request };
@@ -456,27 +517,29 @@ export async function ownerProjectPlanProgressApi(ctx) {
             (effectiveSessionId
                 ? inspected?.activation?.state === "idle"
                 : ["approved", "ready_for_work", "on_hold"].includes(progress.plan.status)) &&
-                progress.overall?.state !== "completed" && !progress.degraded &&
-                [
-                    "approved",
-                    "ready_for_work",
-                    "on_hold",
-                    "in_progress",
-                    "failed",
-                    "ready_for_decomposition",
-                    "implemented",
-                    "validated_ci",
-                    "reviewed",
-                    "validated",
-                ].includes(progress.plan.status),
+            progress.overall?.state !== "completed" &&
+            !progress.degraded &&
+            [
+                "approved",
+                "ready_for_work",
+                "on_hold",
+                "in_progress",
+                "failed",
+                "ready_for_decomposition",
+                "implemented",
+                "validated_ci",
+                "reviewed",
+                "validated",
+            ].includes(progress.plan.status),
         );
         const canRecover = continuable && progress.overall?.state === "needs_attention";
-        const evidence = progress.plan.status === "on_hold"
-            ? await loadPlanActionEvidence(
-                requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId),
-                ctx.params.planId,
-            )
-            : null;
+        const evidence =
+            progress.plan.status === "on_hold"
+                ? await loadPlanActionEvidence(
+                      requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId),
+                      ctx.params.planId,
+                  )
+                : null;
         return ownerJson({
             ...progress,
             sessionHref,
@@ -485,19 +548,16 @@ export async function ownerProjectPlanProgressApi(ctx) {
                     ? `${sessionHref}#interaction-${encodeURIComponent(live.interactionId)}`
                     : "",
             reviewHref: live?.request?.reviewUrl || "",
-            reviewKind: live?.request?.type === "plan_review"
-                ? "plan"
-                : live?.request?.type === "code_review"
-                ? "code"
-                : "",
+            reviewKind:
+                live?.request?.type === "plan_review" ? "plan" : live?.request?.type === "code_review" ? "code" : "",
             continueUrl: "",
             planWorkflowUrl: effectiveSessionId
-                ? `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/sessions/${
-                    encodeURIComponent(effectiveSessionId)
-                }/plan-workflow`
-                : `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/plans/${
-                    encodeURIComponent(ctx.params.planId)
-                }/workflow`,
+                ? `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/sessions/${encodeURIComponent(
+                      effectiveSessionId,
+                  )}/plan-workflow`
+                : `/api/owner/projects/${encodeURIComponent(ctx.params.projectId)}/plans/${encodeURIComponent(
+                      ctx.params.planId,
+                  )}/workflow`,
             expectedRevision: evidence?.kind === "success" ? evidence.evidence.revision : null,
             recoveryUrl: "",
             canRecover,

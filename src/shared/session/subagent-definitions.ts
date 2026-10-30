@@ -68,6 +68,7 @@ export interface DelegatedRoleDefinition {
 }
 
 export interface LoadSubAgentDefinitionOptions {
+    projectRoot?: string;
     reviewerMode?: ReviewerSubAgentMode;
     delegatedRole?: DelegatedRoleId;
 }
@@ -297,6 +298,7 @@ async function readBundledPromptFrontMatter(relativePath: string) {
 export async function loadBarePromptDefinition(
     definition: SubAgentDefinition,
     relativePath: string,
+    projectRoot?: string,
 ): Promise<AgentDefinition> {
     if (!definition.allowedTools && !definition.toolFree) {
         throw new Error(
@@ -315,7 +317,11 @@ export async function loadBarePromptDefinition(
     const displayName =
         typeof attrs.name === "string" && attrs.name.trim() ? attrs.name.trim() : definition.displayNameFallback;
     const description = typeof attrs.description === "string" ? attrs.description.trim() : "";
-    const sharedPracticePrompt = await composeSharedPracticePrompt(attrs.sharedPractice, definition.agentName);
+    const sharedPracticePrompt = await composeSharedPracticePrompt(
+        attrs.sharedPractice,
+        definition.agentName,
+        projectRoot,
+    );
 
     return {
         name: definition.agentName,
@@ -370,7 +376,7 @@ export async function loadSubAgentDefinition(
         return await loadFullAgentDefinition(definition, relativePath);
     }
 
-    const agentDef = await loadBarePromptDefinition(definition, relativePath);
+    const agentDef = await loadBarePromptDefinition(definition, relativePath, options.projectRoot);
     if (id !== SUBAGENTS.DELEGATED && id !== SUBAGENTS.DELEGATED_READ) return agentDef;
 
     const role = getDelegatedRole(options.delegatedRole);

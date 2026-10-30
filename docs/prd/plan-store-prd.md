@@ -370,10 +370,8 @@ into the store only in the same release as Work Record delivery copies, so defau
 Records in the repository. Plan delivery copies, Work Record retention, and milestone history can follow without
 changing the store.
 
-This work changes Plan storage and settles the Plan folder layout, so it is planned before the
-[Plan Packages and Independent Validation](../plans/plan-packages-and-independent-validation.md) Epic, whose first child
-defines Plan storage. That Epic then builds packages inside the Plan folder defined here. Hand this PRD to Architect for
-an Epic.
+This work changes Plan storage and settles the Plan folder layout. Hand this PRD to Architect to plan an Epic against
+the current implementation.
 
 ## Attached Research and Other Evidence
 

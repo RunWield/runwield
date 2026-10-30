@@ -53,8 +53,8 @@ export class AcpSessionMap {
     }
 
     createRecord(session: AcpRuntimeSession, options: CreateAcpSessionRecordOptions = {}): AcpSessionRecord {
-        const acpSessionId = options.acpSessionId ||
-            `${ACP_SESSION_PREFIX}${options.persistedSessionId || session.sessionId}`;
+        const acpSessionId =
+            options.acpSessionId || `${ACP_SESSION_PREFIX}${options.persistedSessionId || session.sessionId}`;
         if (this.records.has(acpSessionId)) throw new Error(`ACP session already exists: ${acpSessionId}`);
         const record: AcpSessionRecord = {
             acpSessionId,
@@ -109,7 +109,7 @@ export class AcpSessionMap {
      * emits the cost of a single assistant message, so the adapter keeps the sum.
      * The total belongs to the ACP Session, so it survives Runtime replacement.
      */
-    addUsageCost(acpSessionId: string, costUsd: number | undefined): number {
+    addUsageCost(acpSessionId: string, costUsd: number | null | undefined): number {
         const record = this.getRecord(acpSessionId);
         if (!record) return 0;
         if (typeof costUsd === "number" && Number.isFinite(costUsd)) record.usageCostUsd += costUsd;

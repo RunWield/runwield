@@ -672,7 +672,7 @@ jobs:
                   HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
               run: |
                   test -n "$HOMEBREW_TAP_TOKEN"
-                  GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/gandazgul/homebrew-tap --jq '.permissions.push' | grep -Fx true
+                  GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/RunWield/homebrew-tap --jq '.permissions.push' | grep -Fx true
 
             - name: Download checked release bytes
               uses: actions/download-artifact@v5
@@ -822,7 +822,7 @@ jobs:
             - name: Checkout Homebrew tap repository
               uses: actions/checkout@v5
               with:
-                  repository: gandazgul/homebrew-tap
+                  repository: RunWield/homebrew-tap
                   token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
                   path: homebrew-tap-publish
                   fetch-depth: 0

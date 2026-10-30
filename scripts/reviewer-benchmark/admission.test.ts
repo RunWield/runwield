@@ -156,7 +156,7 @@ test("D03 public validation refuses a clean twin that silently truncates a repea
     });
 });
 
-test("D06 proof requires signed maintainer authority despite a reviewer display hint", async () => {
+test("D06 public coverage requires signed maintainer authority despite a reviewer display hint", async () => {
     await withFixtureCopy("RV-D06", async (packageDir) => {
         const path = join(packageDir, "variants/clean.patch");
         const patch = await readFile(path, "utf8");
@@ -168,7 +168,7 @@ test("D06 proof requires signed maintainer authority despite a reviewer display 
         await writeFile(path, changed);
         await assert.rejects(
             admitFixtures([await loadFixture(packageDir)]),
-            /RV-D06 role-promotion.*expected pass[\s\S]*Verified maintainer keeps authority with a reviewer display hint/,
+            /RV-D06 B public suite.*expected pass[\s\S]*Verified capability must decide rename authority/,
         );
     });
 });

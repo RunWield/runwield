@@ -55,6 +55,10 @@ PROJECT Plans are non-executable containers. `type: epic` (or absent) uses Archi
 `type: sequence` uses a brief Planner-authored overview and complete child Plans reviewed together. Both store children
 under `docs/plans/<container-name>/`, linked with `parentPlan`, ordered with `order`, and connected by sibling
 `dependencies` (stable Plan IDs or legacy names).
+New child filenames use descriptive slugs without ordinal prefixes. Change Front Matter `order` to reorder children;
+keep paths, Plan IDs, and dependency references stable. Existing numbered filenames remain valid. Child menus and
+child-filtered completions use numeric order; top-level menus keep status/type priority. Missing or duplicate child
+orders allow manual browsing but block automatic next-child execution.
 
 Planner submits a Sequence through `plan_written({ planName, plans: [{ planName }, ...] })`. The optional `plans` list
 must match the complete child set in order; omitting it reloads that set for a later review. One tab per document

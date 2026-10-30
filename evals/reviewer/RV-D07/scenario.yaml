@@ -2,7 +2,7 @@ schemaVersion: 1
 scenarioId: RV-D07
 track: discovery
 group: correctness-beyond-plan
-fixtureRevision: 1
+fixtureRevision: 2
 planPath: docs/plans/cancel-validation-commands.md
 baselineRef: main
 candidateRef: change

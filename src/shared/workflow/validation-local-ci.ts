@@ -37,21 +37,15 @@ const VALIDATION_STREAM_OUTPUT_LIMIT_BYTES = PROCESS_STREAM_OUTPUT_LIMIT_BYTES;
 
 export type ValidationCommandSettingsPolicy = "ordinary-project" | "exact-project";
 
-/**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
- * @param {string} projectRoot
- * @param {ValidationCommandSettingsPolicy} settingsPolicy
- *
- * @returns {Promise<string>}
- */
-async function getOrAskForValidationCommand(
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+/** Resolve the command, seeding a missing exact checkout setting from the project preference. */
+export async function resolveValidationCommand(
     projectRoot: string,
-    settingsPolicy: ValidationCommandSettingsPolicy,
-) {
-    const existingCommand = settingsPolicy === "exact-project"
-        ? getExactProjectCustomSetting("verification_command", projectRoot)
-        : getCustomSetting("verification_command", "project", projectRoot);
+    settingsPolicy: ValidationCommandSettingsPolicy = "ordinary-project",
+): Promise<string> {
+    const existingCommand =
+        settingsPolicy === "exact-project"
+            ? getExactProjectCustomSetting("verification_command", projectRoot)
+            : getCustomSetting("verification_command", "project", projectRoot);
     if (typeof existingCommand === "string" && existingCommand.trim()) {
         return existingCommand;
     }
@@ -68,7 +62,31 @@ async function getOrAskForValidationCommand(
             return projectCommand;
         }
     }
+    return "";
+}
 
+/** Save a user answer as a project preference and, when required, in the execution checkout. */
+export async function saveValidationCommand(
+    projectRoot: string,
+    command: string,
+    settingsPolicy: ValidationCommandSettingsPolicy = "ordinary-project",
+): Promise<void> {
+    const newCommand = command.trim();
+    const settingsWrite = await captureValidationSettingsWrite(projectRoot);
+    // Save it in both places so repair/resume retains it and the repair Agent can
+    // inspect or correct the exact command that failed in its own checkout.
+    await setCustomSetting("verification_command", newCommand, "project", projectRoot);
+    if (settingsPolicy === "exact-project") {
+        setExactProjectCustomSetting("verification_command", newCommand, projectRoot);
+    }
+    await recordValidationSettingsWrite(settingsWrite, newCommand);
+}
+
+async function askForValidationCommand(
+    hostedSession: import("../session/hosted-session.js").HostedSession,
+    projectRoot: string,
+    settingsPolicy: ValidationCommandSettingsPolicy,
+): Promise<string> {
     emitSystemStatus(hostedSession, buildValidationUserMessage({ kind: "validation_command_missing" }));
     const response = await requestHostedSessionInteraction(
         hostedSession,
@@ -87,15 +105,7 @@ async function getOrAskForValidationCommand(
     }
 
     const newCommand = userInput.trim();
-    const settingsWrite = await captureValidationSettingsWrite(projectRoot);
-    // The answer is a project preference, not just a temporary worktree setting.
-    // Save it in both places so repair/resume retains it and the repair Agent can
-    // inspect or correct the exact command that failed in its own checkout.
-    await setCustomSetting("verification_command", newCommand, "project", projectRoot);
-    if (settingsPolicy === "exact-project") {
-        setExactProjectCustomSetting("verification_command", newCommand, projectRoot);
-    }
-    await recordValidationSettingsWrite(settingsWrite, newCommand);
+    await saveValidationCommand(projectRoot, newCommand, settingsPolicy);
 
     emitSystemStatus(
         hostedSession,
@@ -109,26 +119,82 @@ export type LocalCIResult =
     | { kind: "completed"; exitCode: number; output: string; timedOut?: boolean }
     | { kind: "canceled"; output: string }
     | {
-        kind: "operational_failure";
-        failure: import("./validation-operational-errors.ts").ValidationOperationalFailure;
-        output: string;
-    };
+          kind: "operational_failure";
+          failure: import("./validation-operational-errors.ts").ValidationOperationalFailure;
+          output: string;
+      };
 
-export interface LocalCIPort {
-    run(args: {
-        hostedSession: import("../session/hosted-session.js").HostedSession;
-        cwd: string;
-        settingsPolicy?: ValidationCommandSettingsPolicy;
-    }): Promise<LocalCIResult>;
+export type ValidationCommandResult = LocalCIResult | { kind: "command_missing" };
+
+export interface ValidationCommandOptions {
+    cwd: string;
+    settingsPolicy?: ValidationCommandSettingsPolicy;
+    signal?: AbortSignal;
+    /** Observe the selected command before it starts; this does not replace execution. */
+    onCommandStart?: (command: string) => void;
 }
 
-export async function runLocalCI(
-    { hostedSession, cwd, settingsPolicy = "ordinary-project" }: {
-        hostedSession: import("../session/hosted-session.js").HostedSession;
-        cwd: string;
-        settingsPolicy?: ValidationCommandSettingsPolicy;
-    },
-): Promise<LocalCIResult> {
+export interface LocalCIOptions {
+    hostedSession: import("../session/hosted-session.js").HostedSession;
+    cwd: string;
+    settingsPolicy?: ValidationCommandSettingsPolicy;
+}
+
+export interface LocalCIPort {
+    run(args: LocalCIOptions): Promise<LocalCIResult>;
+}
+
+/** Run configured validation without a Session, prompt, or runtime events. */
+export async function runValidationCommand({
+    cwd,
+    settingsPolicy = "ordinary-project",
+    signal,
+    onCommandStart,
+}: ValidationCommandOptions): Promise<ValidationCommandResult> {
+    if (!cwd) throw new Error("runValidationCommand: cwd is required");
+    const command = await resolveValidationCommand(cwd, settingsPolicy);
+    if (signal?.aborted) return { kind: "canceled", output: "Validation canceled." };
+    if (!command) return { kind: "command_missing" };
+
+    onCommandStart?.(command);
+    try {
+        // The foreground-process module owns the wrapper shell's process group,
+        // so cancellation terminates the whole CI tree and settles its pipes.
+        const shell = spawnForegroundShell({ command, cwd, signal });
+        const [outcome, stdout, stderr] = await Promise.all([
+            shell.done,
+            captureProcessStreamTail(shell.stdout, VALIDATION_STREAM_OUTPUT_LIMIT_BYTES),
+            captureProcessStreamTail(shell.stderr, VALIDATION_STREAM_OUTPUT_LIMIT_BYTES),
+        ]);
+        const canceled = outcome.terminatedBy !== null;
+        const output = canceled
+            ? `${formatCapturedProcessOutput(stdout, stderr)}\nValidation canceled.\n`
+            : formatCapturedProcessOutput(stdout, stderr);
+        if (canceled) return { kind: "canceled", output };
+        return { kind: "completed", exitCode: outcome.exitCode ?? 1, output };
+    } catch (error) {
+        const canceled = signal?.aborted;
+        const reason = error instanceof Error ? error.message : String(error);
+        const output = canceled ? "Validation canceled." : `Failed to spawn validation process: ${reason}`;
+        if (canceled) return { kind: "canceled", output };
+        return {
+            kind: "operational_failure",
+            output,
+            failure: classifyValidationOperationalError({
+                source: "local_process",
+                kind: "process_start_failed",
+                operation: "local_ci",
+                message: output,
+            }),
+        };
+    }
+}
+
+export async function runLocalCI({
+    hostedSession,
+    cwd,
+    settingsPolicy = "ordinary-project",
+}: LocalCIOptions): Promise<LocalCIResult> {
     if (!cwd) throw new Error("runLocalCI: cwd is required");
     if (!hostedSession) throw new Error("runLocalCI: hostedSession is required");
     const toolCallId = `validation-ci-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -136,10 +202,30 @@ export async function runLocalCI(
     const abortController = new AbortController();
     hostedSession.addActiveInteraction(interactionId, { abortController });
     try {
-        const cmdArgs = await getOrAskForValidationCommand(hostedSession, cwd, settingsPolicy);
-        if (abortController.signal.aborted) return { kind: "canceled", output: "Validation canceled." };
-
-        if (!cmdArgs) {
+        let runtimeTool: ReturnType<typeof describeRuntimeTool> | undefined;
+        let startTime = 0;
+        const commandOptions: ValidationCommandOptions = {
+            cwd,
+            settingsPolicy,
+            signal: abortController.signal,
+            onCommandStart(command) {
+                runtimeTool = describeRuntimeTool("bash", { command });
+                emitHostedSessionRuntimeEvent(hostedSession, {
+                    type: RuntimeEventTypes.TOOL_START,
+                    toolCallId,
+                    ...runtimeTool,
+                    args: { command },
+                });
+                startTime = Date.now();
+            },
+        };
+        let result = await runValidationCommand(commandOptions);
+        if (result.kind === "command_missing") {
+            const command = await askForValidationCommand(hostedSession, cwd, settingsPolicy);
+            if (abortController.signal.aborted) return { kind: "canceled", output: "Validation canceled." };
+            if (command) result = await runValidationCommand(commandOptions);
+        }
+        if (result.kind === "command_missing") {
             const output =
                 "RunWield could not auto-detect a build or test command for this repository. Set a validation command and retry.";
             return {
@@ -153,74 +239,24 @@ export async function runLocalCI(
                 }),
             };
         }
-
-        const runtimeTool = describeRuntimeTool("bash", { command: cmdArgs });
-
-        emitHostedSessionRuntimeEvent(hostedSession, {
-            type: RuntimeEventTypes.TOOL_START,
-            toolCallId,
-            ...runtimeTool,
-            args: { command: cmdArgs },
-        });
-        const startTime = Date.now();
-
-        try {
-            // The foreground-process module owns the wrapper shell's process group,
-            // so canceling this interaction terminates the whole CI tree — not only
-            // `sh -c` — and settles the inherited output pipes.
-            const shell = spawnForegroundShell({ command: cmdArgs, cwd, signal: abortController.signal });
-            const [outcome, stdout, stderr] = await Promise.all([
-                shell.done,
-                captureProcessStreamTail(shell.stdout, VALIDATION_STREAM_OUTPUT_LIMIT_BYTES),
-                captureProcessStreamTail(shell.stderr, VALIDATION_STREAM_OUTPUT_LIMIT_BYTES),
-            ]);
-            const canceled = outcome.terminatedBy !== null;
-            const output = canceled
-                ? `${formatCapturedProcessOutput(stdout, stderr)}\nValidation canceled.\n`
-                : formatCapturedProcessOutput(stdout, stderr);
-            const durationMs = Date.now() - startTime;
-            const isError = canceled || (outcome.exitCode ?? 1) !== 0;
-
+        if (runtimeTool) {
+            const output =
+                result.kind === "operational_failure" ||
+                (result.kind === "canceled" && result.output === "Validation canceled.")
+                    ? `${result.output}\n`
+                    : result.output.trim()
+                      ? result.output
+                      : "(no output)\n";
             emitHostedSessionRuntimeEvent(hostedSession, {
                 type: RuntimeEventTypes.TOOL_END,
                 toolCallId,
                 ...runtimeTool,
-                ...normalizeRuntimeToolResult(output.trim() ? output : "(no output)\n"),
-                isError,
-                durationMs,
+                ...normalizeRuntimeToolResult(output),
+                isError: result.kind !== "completed" || result.exitCode !== 0,
+                durationMs: Date.now() - startTime,
             });
-
-            if (canceled) return { kind: "canceled", output };
-            return {
-                kind: "completed",
-                exitCode: outcome.exitCode ?? 1,
-                output,
-            };
-        } catch (error) {
-            const canceled = abortController.signal.aborted;
-            const reason = error instanceof Error ? error.message : String(error);
-            const output = canceled ? "Validation canceled." : `Failed to spawn validation process: ${reason}`;
-            const durationMs = Date.now() - startTime;
-            emitHostedSessionRuntimeEvent(hostedSession, {
-                type: RuntimeEventTypes.TOOL_END,
-                toolCallId,
-                ...runtimeTool,
-                ...normalizeRuntimeToolResult(`${output}\n`),
-                isError: true,
-                durationMs,
-            });
-            if (canceled) return { kind: "canceled", output };
-            return {
-                kind: "operational_failure",
-                output,
-                failure: classifyValidationOperationalError({
-                    source: "local_process",
-                    kind: "process_start_failed",
-                    operation: "local_ci",
-                    message: output,
-                }),
-            };
         }
+        return result;
     } finally {
         // Covers command setup as well as the process tree and output streams.
         // Reached only after the process tree and both streams have settled, so

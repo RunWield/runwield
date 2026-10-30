@@ -2,7 +2,7 @@ schemaVersion: 1
 scenarioId: RV-D06
 track: discovery
 group: plan-named-edge-case
-fixtureRevision: 1
+fixtureRevision: 2
 planPath: docs/plans/rename-through-board-links.md
 baselineRef: main
 candidateRef: change

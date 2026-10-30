@@ -48,8 +48,11 @@ test("every production entry uses one validation owner", async () => {
         assertEquals(source.includes("runValidationLoop"), false, `${relativePath} bypasses the supervisor`);
     }
     const supervisor = await fsReadFile(new URL("./validation-supervisor.ts", import.meta.url), "utf8");
-    assert(supervisor.includes("export async function continueWorkflowValidation"));
-    assert(supervisor.includes("export async function runWorkflowValidationToStableBoundary"));
+    const composition = await fsReadFile(new URL("./validation.ts", import.meta.url), "utf8");
+    assert(composition.includes("export async function continueWorkflowValidation"));
+    assert(composition.includes("export async function runWorkflowValidationToStableBoundary"));
+    assert(composition.includes("await runValidationAttempt"));
+    assert(supervisor.includes("export async function runValidationAttempt"));
     assert(supervisor.includes("await runValidationLoop"));
     assert(supervisor.includes("continuationPhase: claim.checkpoint.nextPhase"));
     assert(supervisor.includes("prior.lastSettledOperationId === args.taskCompletionId"));
@@ -140,14 +143,16 @@ test("semantic feedback commits open Review Issues with the lifecycle transition
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        title: "Keep the saved candidate",
-                        requirement: "Non-success outcomes preserve work.",
-                        evidence: "The cleanup path removed it.",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            title: "Keep the saved candidate",
+                            requirement: "Non-success outcomes preserve work.",
+                            evidence: "The cleanup path removed it.",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },
@@ -197,15 +202,17 @@ test("semantic repair completion is an idempotent mechanical receipt", async () 
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        status: "new",
-                        title: "Missing guard",
-                        requirement: "Step 1",
-                        evidence: "a.ts",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            status: "new",
+                            title: "Missing guard",
+                            requirement: "Step 1",
+                            evidence: "a.ts",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },

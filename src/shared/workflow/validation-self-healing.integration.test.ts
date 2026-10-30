@@ -21,7 +21,7 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { addEntry, findById } from "../worktree-registry.js";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 
@@ -106,18 +106,24 @@ async function makeReportedMismatchFixture() {
 
     const primary = await loadPlan(projectRoot, "demo");
     assertExists(primary);
-    await savePlan(projectRoot, "demo", primary.body, {
-        ...primary.attrs,
-        status: "implemented",
-        implementedAt: "2026-08-13T00:00:00.000Z",
-        executionMode: "worktree",
-        executionBaselineTree: baselineTree,
-        worktreeId: "wt-demo",
-        worktreePath: executionCwd,
-        worktreeBranch: branch,
-        worktreeBaseBranch: "main",
-        worktreeStatus: "completed",
-    }, { expectedRevision: primary.revision });
+    await savePlan(
+        projectRoot,
+        "demo",
+        primary.body,
+        {
+            ...primary.attrs,
+            status: "implemented",
+            implementedAt: "2026-08-13T00:00:00.000Z",
+            executionMode: "worktree",
+            executionBaselineTree: baselineTree,
+            worktreeId: "wt-demo",
+            worktreePath: executionCwd,
+            worktreeBranch: branch,
+            worktreeBaseBranch: "main",
+            worktreeStatus: "completed",
+        },
+        { expectedRevision: primary.revision },
+    );
     await addEntry(projectRoot, {
         id: "wt-demo",
         planName: "demo",
@@ -138,8 +144,12 @@ async function makeReportedMismatchFixture() {
 }
 
 async function removeFixture(fixturePaths: { projectRoot: string; worktreeParent: string }) {
-    await git(fixturePaths.projectRoot, ["worktree", "remove", "--force", join(fixturePaths.worktreeParent, "demo")])
-        .catch(() => {});
+    await git(fixturePaths.projectRoot, [
+        "worktree",
+        "remove",
+        "--force",
+        join(fixturePaths.worktreeParent, "demo"),
+    ]).catch(() => {});
     await fsRm(fixturePaths.worktreeParent, { recursive: true }).catch(() => {});
     await fsRm(fixturePaths.projectRoot, { recursive: true }).catch(() => {});
 }
@@ -346,10 +356,7 @@ test("a missing worktree is restored from its branch", async () => {
         assertEquals(resolution.kind, "ok");
         if (resolution.kind === "ok") {
             assertEquals(resolution.context.executionMode, "worktree");
-            assertEquals(
-                await fsRealpath(resolution.context.executionCwd),
-                await fsRealpath(testFixture.executionCwd),
-            );
+            assertEquals(await fsRealpath(resolution.context.executionCwd), await fsRealpath(testFixture.executionCwd));
             assertEquals(
                 resolution.selfHealNotices?.some((notice) => notice.kind === "worktree_restored"),
                 true,

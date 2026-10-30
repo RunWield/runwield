@@ -210,6 +210,24 @@ export function buildEffectProver(
             };
         }
 
+        if (effect.effect === "execution_preparation_checkpoint_settled") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const commit = typeof proof.preparationCommit === "string" ? proof.preparationCommit : undefined;
+            if (!entry || !commit || proof.worktreeBranch !== entry.branch) {
+                return {
+                    settled: false,
+                    reason: "the preparation checkpoint has no matching registered branch evidence",
+                };
+            }
+            const settled = await isGitAncestor(projectRoot, commit, entry.branch);
+            return {
+                settled,
+                reason: settled
+                    ? `preparation checkpoint ${commit} is retained on registered branch ${entry.branch}`
+                    : `preparation checkpoint ${commit} is not retained on registered branch ${entry.branch}`,
+            };
+        }
+
         if (COMPLETION_MARKER_EFFECTS.has(effect.effect)) {
             const planName = typeof record.planName === "string" ? record.planName : undefined;
             if (!planName) return { settled: false, reason: "the record names no Plan to confirm" };

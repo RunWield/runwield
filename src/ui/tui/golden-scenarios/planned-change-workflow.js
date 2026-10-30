@@ -526,7 +526,7 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "type", text: "Use the documentation clarification and submit it for Plan Review" },
         { type: "enter" },
         { type: "waitForEvent", event: "runtime:tool:start:task_completed", timeoutMs: 60000 },
-        { type: "waitForScreen", text: "Running the tests in", timeoutMs: 60000 },
+        { type: "waitForEventCount", event: "runtime:validation-ci:started", count: 1, timeoutMs: 60000 },
         { type: "escape" },
         { type: "waitForIdle", timeoutMs: 60000 },
         { type: "captureProjectState", planNames: ["plan"], key: "tutorialPausedState" },

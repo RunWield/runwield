@@ -200,6 +200,7 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                             planAttrs: meta.planAttrs,
                             executionCwd: meta.executionCwd,
                             targetBranch: typeof meta.targetBranch === "string" ? meta.targetBranch : undefined,
+                            targetBaseRef: typeof meta.targetBaseRef === "string" ? meta.targetBaseRef : undefined,
                             guidedReview: meta.guidedReview,
                             reviewConversation: meta.reviewConversation,
                             agentLabel: typeof meta.agentLabel === "string" ? meta.agentLabel : undefined,

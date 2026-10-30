@@ -514,3 +514,12 @@ test("Planner and Architect use pending work as evidence without dirty-file warn
             assertStringIncludes(systemPrompt, text);
     }
 });
+
+test("Planner keeps descriptive names stable when child order changes", async () => {
+    const { systemPrompt } = await loadAgentDef("planner");
+    const prompt = systemPrompt.replaceAll(/\s+/g, " ");
+    assertStringIncludes(prompt, "descriptive Plan filenames without ordinal prefixes");
+    assertStringIncludes(prompt, "`order`, not filenames");
+    assertStringIncludes(prompt, "Keep existing numbered filenames and references stable");
+    assertEquals(prompt.includes("re-number the other plans"), false);
+});

@@ -47,12 +47,22 @@ materialized project, then remove them in `finally`. Run `bun run test` inside a
 
 ## Fixture revisions after owner adjudication
 
-The recorded October baseline evaluated revision 1. RV-D04, RV-D12, RV-D13, and RV-M01 are now revision 2; RV-D05
-remains revision 1. RV-D01–D03, RV-D06–D11, and RV-D14–D16 are new revision-1 packages. The
+The recorded October baseline evaluated revision 1. RV-D04, RV-D06, RV-D07, RV-D10, RV-D12, RV-D13, and RV-M01
+are now revision 2. RV-D08 is revision 3. RV-D01–D03, RV-D05, RV-D09, RV-D11, and RV-D14–D16 remain revision 1. The
 [full discovery report](../../docs/evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md)
-evaluates all 33 current cases and is pending owner adjudication.
+records 33 cases before the RV-D06–D08 and RV-D10 repairs; it does not measure their revision-2 fixtures.
 
 - RV-D04 isolates in-flight reads from later refreshes in both variants. The planted identity collision remains in A.
+- RV-D06 B tests conflicting verified and display roles. A still authorizes mutations from the display role.
+- RV-D07 B publishes its readonly result only after process-group settlement; cancellation shares that result or
+  settlement failure. A still kills only the parent. Boundary-controlled tests retain real subprocesses and make
+  result-order assertions independent of kill latency.
+- RV-D08 delivers recorded completions based on notifications or consumption evidence, not the completion flag, in
+  both variants. Tests cover ordinary and repair tasks, retries, reopen, and recovery. A still consumes live repairs
+  from both the listener and validation owner. Revision 3 requires exactly one validation-owned consumption and one
+  transition for recorded, live, and recovered repairs. A therefore fails its declared public assertion; B passes.
+- RV-D10 tests distinct initial and retry rejection diagnostics in both variants using real Git hooks. A still reuses
+  a stale prepared commit and drops new target history.
 - RV-D12 has two independent oracle defects: `RV-D12-A` for replaceable owned machinery and
   `RV-D12-TEST-DURABILITY` for the success test that does not prove persistence. Both remain planted in A.
 - RV-D13 selects archived records by directory, not timestamp. Both variants have filtered-list tests. A still ignores
@@ -164,8 +174,8 @@ bun scripts/run-tests.js scripts/reviewer-benchmark
 ## Manual proof check
 
 Use fresh temporary directories outside the RunWield checkout. Copy `source/`, initialize Git with neutral baseline
-history, and apply the selected patch with `git apply --check` followed by `git apply`. Run the public suite and compare its result with the declared variant outcome. RV-D13 A intentionally fails its
-filtered-list assertion; other public suites pass. Before any
+history, and apply the selected patch with `git apply --check` followed by `git apply`. Run the public suite and compare its result with the declared variant outcome. RV-D08 A intentionally fails its
+single-consumer assertion, and RV-D13 A fails its filtered-list assertion; other public suites pass. Before any
 hidden copy, inspect the candidate tree and history: neither may contain scenario labels, oracles, hidden scripts, or
 fixing patches.
 

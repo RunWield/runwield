@@ -48,7 +48,7 @@ export type RuntimeSlicerOptions = Partial<
 >;
 export type RuntimeValidationOptions = Partial<
     Omit<
-        import("../../workflow/validation-supervisor.ts").ContinueWorkflowValidationArgs,
+        import("../../workflow/validation.ts").ContinueWorkflowValidationArgs,
         | "triageMeta"
         | "hostedSession"
         | "sessionManager"

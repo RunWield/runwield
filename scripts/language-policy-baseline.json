@@ -45,7 +45,6 @@
     "src/shared/workflow/metrics.js",
     "src/shared/workflow/plan-lifecycle.js",
     "src/shared/workflow/plan-review-recovery.js",
-    "src/shared/workflow/review-diff-tool.js",
     "src/shared/workflow/validation-test-helpers.js",
     "src/shared/workflow/workflow-results.js",
     "src/shared/workflow/workflow.js",

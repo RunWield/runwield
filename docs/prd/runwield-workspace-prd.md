@@ -123,6 +123,7 @@ Each capability owns its browser requirements and links to Core for shared behav
 - [Local Plan management](#local-plan-management)
 - [Shared Plan collaboration](#shared-plan-collaboration)
 - [Attention dashboard](#attention-dashboard)
+- [Personal usage and outcomes](#personal-usage-and-outcomes)
 - [Project access and navigation](#project-access-and-navigation)
 - [Installable app and alerts](#installable-app-and-alerts)
 - [Browser Sessions](#browser-sessions)
@@ -183,7 +184,10 @@ draft. Body edits keep Markdown usable from the CLI and keep lifecycle fields as
 Manual board moves record the owner's choices without claiming automated review or verification. Users can reflect
 externally started or completed work, close without verification, or hold work. Failure and hold offer recovery or
 resume. Plan, Epic, and filtered-view links survive renaming; local links need a running Workspace, and sharing access
-stays explicit. Lifecycle rules follow [Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle).
+stays explicit. Lifecycle rules follow [Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle). Plan naming and child
+ordering follow [Core Plan authoring](runwield-core-prd.md#plan-authoring-and-external-adoption): child navigation uses
+Front Matter `order`, not filenames. Status columns remain separate and preserve child order within each column.
+Top-level board and sidebar priorities and dashboard activity-date sorting remain unchanged.
 
 **Requirement: A clean board layout.** The local board shows its W. logo and heading; the board embedded in a Project
 shows only the board. View tabs and search share the header row, with search after the tabs. Columns use separators,
@@ -196,6 +200,8 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 - When the owner moves or manually closes work, the board records that choice without claiming verification; failure
   and hold offer recovery or resume.
 - When a Plan or Epic is renamed, its existing links resolve and child progress stays visible.
+- Given children with mixed legacy numbered and descriptive names, changing only their `order` fields changes child
+  navigation order without changing their links or status columns.
 
 ### Shared Plan collaboration
 
@@ -289,6 +295,113 @@ Dashboard refreshes automatically while visible.
 - Given more than five items, the five newest appear; reversing the sort and expanding survive refresh.
 - Given a Project with thousands of archived Sessions, the Dashboard and sidebar open promptly and reflect newly
   completed work on refresh.
+
+### Personal usage and outcomes
+
+**Scope and maturity:** Current personal owner Workspace reporting and usage settings. Core owns the
+[measurement, consent, and delivery rules](runwield-core-prd.md#usage-measurement-and-export).
+
+**Requirement: Keep usage separate from attention and Sessions.** `/usage` is an owner-only sidebar destination. It does
+not replace the [Attention dashboard](#attention-dashboard) or Session navigation. The report shows active days,
+reported tokens, estimated USD cost, published changes, validation attempts, repair rounds, ongoing delivery, and
+abandoned delivery, with Project, model, and backend breakdowns.
+
+**Requirement: Report only authorized Project histories.** Each request resolves registered, enabled, available
+Projects, then uses one Core query over their roots. Disabled, removed, unavailable, and unregistered Projects cannot
+contribute totals or be queried by a crafted ID. Excluded registrations are named. Worktree aliases share one history
+and one set of totals, with both registration labels visible. Filtering either alias reads the same history.
+
+**Requirement: Make data completeness visible beside measurements.** Period presets cover 7, 30, and 90 local days; a
+custom range has an inclusive start and exclusive end. The server supplies the host time zone and recorded-through
+marker. Summary figures show exclusion counts and partial-day counts. A gap breaks the daily token trend; a covered zero
+draws a baseline point. The readable daily table shows tokens, estimated USD cost, and **Data Complete** as **Complete**
+or **Partial**, with gap reasons. Partial costs show a known subtotal or a dash, not a fabricated zero. Reported cost
+stays separate from estimated cost, and neither claims to be a billing total. Pending measurements do not become final
+spend; ongoing delivery is labeled as of the latest observation.
+
+**Requirement: Link measurements only to verified destinations.** Project rows link to existing authorized Session and
+Plan surfaces using Workspace registration IDs and durable Session/Plan IDs. Repeated event links share one readable
+destination. Missing or deleted targets leave totals readable without fabricated links. The page does not show a raw
+event list or raw event download.
+
+**Requirement: Keep Report and Settings as peer views.** `/usage` and `/usage/settings` share header underline tabs,
+active-page state, and the compact 64rem content layout. The Report has a recording and export status strip from the same
+server source as Settings. Direct links and browser Back preserve the selected route.
+
+**Requirement: Show effective recording state and change only the global choice.** Settings lists each registered,
+enabled Project's effective recording state and whether it comes from global settings, Project settings, or the off
+default. The global toggle preserves other global setting fields and never writes Project settings. Project overrides
+remain effective. Turning recording off does not hide history.
+
+**Requirement: Manage destination consent without granting executable-code trust.** Settings shows missing, unapproved,
+and approved exporters. Only host `wld install` can install or approve code. Approved exporters enable destination
+creation. Each destination has its own Approved Projects, Credentials, Delivery status, and Destination tabs; tab changes
+keep unsaved input. Long Project lists are searchable and scroll within their section. New Projects are not exported
+until selected. Removing or disabling a Project changes Workspace access, not its Export grant. Allowlist edits preserve
+grant roots unavailable in Workspace and show only their count. Browser requests use registered Project IDs and opaque
+exporter identities; responses expose no root paths or package sources. HTTP requires explicit local-development consent
+and a loopback address. Remote-backed personal resources make configuration unavailable on this host.
+
+**Requirement: Keep credentials write-only.** Exporters declare their credential fields. Authenticated same-origin
+requests save credentials through Core, outside settings files. Inputs are never prefilled, secret inputs are masked,
+and successful saves clear them. Responses expose only configured state. Credentials do not enter browser storage, URLs,
+rendered markup, diagnostics, or error text. Exporters with no declared fields have no credential form.
+
+**Requirement: Show delivery facts as Core reports them.** Each destination shows pending, accepted, confirmed, delivery
+unconfirmed, and rejected counts, sanitized codes, and the last attempt time. Refresh reads a new snapshot. Delivery
+unconfirmed means remote presence is uncertain; it is not a workflow failure and cannot be resent. Credential correction
+can resume items Core rejected for correction. Workspace does not calculate delivery eligibility or counts.
+
+**Requirement: Confirm irreversible history and consent changes.** Shared accessible dialogs explain clear, revoke,
+and endpoint or external-project changes before the write. Clear removes selected Project measurements and pending
+payloads, not Sessions, Plans, worktrees, settings, or remote data. Revoke stops new sends. A new destination boundary
+does not send old pending items. All dialogs state that a sent request cannot be recalled where applicable. Results show
+per-Project clear failures and in-flight delivery. The Report remains readable after a clear, including a concurrent
+clear from another process. While a clear is pending, the affected Project has no old rows and shows **Clear did not
+finish** with **Retry clear**. Retry uses the existing confirmed clear action and works with recording off; viewing a
+report never changes history.
+
+**Acceptance scenarios:**
+
+- Given an unpaired device, opening `/usage` leads to pairing and its API refuses the request.
+- Given two enabled Projects with known usage, a period or Project filter returns Core's exact totals and daily buckets;
+  the displayed zone and dates agree on desktop and phone.
+- Given primary and worktree registrations, the report names both and counts their shared history once.
+- Given disabled, removed, or unavailable Projects, their totals stay excluded; a crafted filter cannot read them.
+- Given a covered zero day and a gap day, the trend and daily table distinguish them. The gap row says Partial and its
+  cost is a known subtotal or a dash. Missing cost observations carry exclusion counts.
+- Given active operations, their count appears as pending measurement without settled spend. Missing history has a
+  readable empty state; loading is announced and request errors offer Retry.
+- Given valid Session and Plan attribution, the Project row opens the authorized surfaces. Deleted or foreign targets
+  have no link, and the measurements remain readable.
+- Given a phone or keyboard-only user, filters and table disclosures are operable, wide tables scroll within the page,
+  and home and Session navigation remain available.
+- Given Report or a direct Settings URL, the active header tab matches the route. The Report strip and Settings show
+  the same recording and export facts.
+- Given an unapproved or absent exporter, Settings offers host instructions, not an install, approval, or destination
+  creation control. An unknown or unapproved exporter key cannot create a grant.
+- Given an approved exporter, creating a destination grants only explicitly selected Projects. A later Project stays
+  unselected. Disabling an approved Project hides its root but does not remove consent; an allowlist edit keeps that root.
+- Given several destinations and many Projects, each card keeps its active tab and draft input. Searching a checklist
+  keeps approvals outside the visible results.
+- Given a saved credential, only configured state returns to the browser. A malformed request that contains a secret
+  returns a fixed error, and the secret is absent from responses, logs, settings, browser storage, and markup.
+- Given successful, confirmed, ambiguous, or rejected deliveries, displayed counts and codes equal Core's snapshot.
+  There is no retry-all or resend control.
+- Given an endpoint or external-project change, confirmation starts a new Core grant boundary and old pending rows do
+  not send. Non-loopback HTTP is refused; loopback HTTP needs explicit consent and a visible badge.
+- Given clear or revoke while delivery is in flight, confirmation explains the limit and the result reports it.
+  Clearing leaves Sessions, Plans, settings, and worktrees unchanged; the Report loads immediately afterward.
+- Given a pending clear, the Report returns a readable response, hides that Project's old measurements, and shows a
+  Project-specific notice. Concurrent clears do not expose internal error codes or hide stable Project totals.
+- Given a stranded clear with recording off and no export running, **Retry clear** asks for confirmation and finishes
+  the existing clear. The Report refreshes without manual file changes; recording stays off.
+- Given global recording enabled and a Project override off, the global choice changes while that Project stays off.
+  Project settings are unchanged, and new work in a Project without an override records through Core.
+- Given an unpaired request, an invalid POST origin or CSRF token, or an unknown or disabled Project ID, the operation
+  is refused without a write. Remote-backed personal resources return a readable configuration-unavailable state.
+
+<a id="63-project-experience"></a>
 
 ### Project access and navigation
 

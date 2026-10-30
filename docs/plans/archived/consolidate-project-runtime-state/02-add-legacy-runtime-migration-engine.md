@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/publication-attempt.ts"
     - "src/shared/project-runtime-layout.test.ts"
-    - "src/shared/worktree-registry.test.js"
+    - "src/shared/worktree-registry.test.ts"
     - "src/shared/workflow/publication-machine.e2e.test.ts"
     - "src/shared/testing/project-runtime-migration-process-driver.ts"
 executionAgent: "engineer"
@@ -115,7 +115,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `../../../../src/shared/project-runtime-layout.test.ts` — cover inactive primary and linked-checkout adoption,
   second-entry stability, conflicts, tracked paths and secrets, symlinks, lock evidence, marker versions, and every
   restart state.
-- `../../../../src/shared/worktree-registry.test.js` — prove exact-path inspection and locking do not migrate
+- `../../../../src/shared/worktree-registry.test.ts` — prove exact-path inspection and locking do not migrate
   identities, tolerate no malformed top-level shape, and preserve all current project-root callers.
 - `../../../../src/shared/workflow/publication-machine.e2e.test.ts` — seed publication records through the real
   publication machine and prove every phase except `cleanup_complete`, plus every saved repair root, blocks layout
@@ -201,7 +201,7 @@ this child must pass current CI.
 ## Verification Plan
 
 - Automated:
-  `deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/worktree-registry.test.js src/shared/workflow/publication-attempt.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-registry-restore.test.ts`.
+  `deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/worktree-registry.test.ts src/shared/workflow/publication-attempt.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-registry-restore.test.ts`.
 - Automated: `deno task seams:check`.
 - Automated: `deno task ci` must pass before child 03 starts.
 - Adoption proof: a real primary repository plus linked worktree starts with legacy controller, registry, transition,

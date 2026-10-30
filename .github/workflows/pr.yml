@@ -63,7 +63,7 @@ jobs:
               run: |
                   git checkout -B main "$GITHUB_SHA"
                   mkdir -p "$RUNNER_TEMP/runwield-ci-bin"
-                  for binary in mnemoteca cymbal ketch; do
+                  for binary in cymbal ketch; do
                     cat > "$RUNNER_TEMP/runwield-ci-bin/$binary" <<'EOF'
                   #!/usr/bin/env bash
                   if [[ "$1" == "--help" ]]; then exit 0; fi
@@ -77,6 +77,28 @@ jobs:
                   mkdir -p "$HOME/.config/snip/filters"
                   cp src/snip-filters/*.yaml "$HOME/.config/snip/filters/"
                   echo "$RUNNER_TEMP/runwield-ci-bin" >> "$GITHUB_PATH"
+
+            - name: Restore Mnemoteca runtime
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ${{ runner.temp }}/runwield-ci-bin/mnemoteca
+                      ~/.local/share/mnemoteca/lib
+                      ~/.local/share/mnemoteca/models
+                  key: mnemoteca-${{ runner.os }}-${{ runner.arch }}-v0.3.3
+
+            - name: Install Mnemoteca for Work Record integration tests
+              run: |
+                  if [[ ! -x "$RUNNER_TEMP/runwield-ci-bin/mnemoteca" ]]; then
+                    archive="$RUNNER_TEMP/mnemoteca_0.3.3_linux_amd64.tar.gz"
+                    curl --fail --location --retry 3 \
+                      https://github.com/RunWield/mnemoteca/releases/download/v0.3.3/mnemoteca_0.3.3_linux_amd64.tar.gz \
+                      --output "$archive"
+                    printf '%s  %s\n' a008bbd4530b633f596ce44fb34ee26cce23d23085528db8bcdb84e76513717d "$archive" | sha256sum --check
+                    tar -xzf "$archive" -C "$RUNNER_TEMP/runwield-ci-bin" mnemoteca
+                  fi
+                  mnemoteca --version
+                  mnemoteca setup
 
             - name: Configure local core dumps
               # Piped dump handlers ignore the crash fixtures' ulimit -c 0.

@@ -24,7 +24,14 @@ import { classifyValidationOperationalError } from "./validation-operational-err
 import { decideValidationRecovery, readValidationRetryPolicy } from "./validation-recovery.ts";
 import type { ValidationLoopArgs, ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 import { MAX_PHASES_PER_CALL, PHASE_STATUS, VALIDATION_STATUS_ORDER } from "./validation-types.ts";
-import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
+import {
+    preparePublicationRevalidation,
+    prepareReviewedCandidateRevalidation,
+    PUBLICATION_REVALIDATION_MESSAGE,
+    CANDIDATE_REVALIDATION_MESSAGE,
+} from "./publication-revalidation.ts";
+
+import { validateHostReviewerResume } from "./validation-host-state.ts";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
 type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
@@ -36,7 +43,13 @@ type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
  * {@link runValidationLoop}, which drives phases until the Plan stops moving.
  */
 export async function runValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
+    await validateHostReviewerResume(args);
+    // Let an answer reach the existing diff-bound check before resetting its wait.
+    const answeringDecision = args.hostTurn?.resume?.kind === "decision" && !args.hostTurn.consumed;
+    const candidateChanged =
+        !answeringDecision && (await prepareReviewedCandidateRevalidation(getProjectRoot(args), args.planName));
     const recoveryPath = await preparePublicationRevalidation(getProjectRoot(args), args.planName);
+    const revalidating = candidateChanged || Boolean(recoveryPath);
     const canonicalPlan = await loadCanonicalValidationPlan(args);
     if (canonicalPlan.kind === "blocked") return canonicalPlan.result;
     const canonicalArgs: ValidationLoopArgs = {
@@ -44,9 +57,9 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
         triageMeta: canonicalPlan.attrs as ValidationLoopArgs["triageMeta"],
         planContent: canonicalPlan.markdown,
         validationCheckpoint: canonicalPlan.attrs.validationCheckpoint || undefined,
-        ...(recoveryPath ? { continuationPhase: undefined } : {}),
+        ...(revalidating ? { continuationPhase: undefined } : {}),
     };
-    if (recoveryPath) {
+    if (revalidating) {
         const workflow = args.session.getActiveWorkflow();
         if (workflow) {
             args.session.setActiveWorkflow({
@@ -60,7 +73,7 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
                 humanReviewCycle: undefined,
             });
         }
-        emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
+        emitStatus(args, candidateChanged ? CANDIDATE_REVALIDATION_MESSAGE : PUBLICATION_REVALIDATION_MESSAGE);
     }
     const nextPhase = resolveNextPhase(canonicalArgs, canonicalPlan.status);
     switch (nextPhase) {
@@ -89,9 +102,10 @@ function resolveNextPhase(
     args: ValidationLoopArgs,
     status: "implemented" | "validated_ci" | "reviewed" | "validated",
 ): ValidationPhaseName {
-    const fromStatus: ValidationPhaseName = status === "validated"
-        ? "delivery"
-        : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
+    const fromStatus: ValidationPhaseName =
+        status === "validated"
+            ? "delivery"
+            : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
     const claimed = args.continuationPhase;
     if (!claimed) return fromStatus;
     const claimedIndex = VALIDATION_STATUS_ORDER.indexOf(PHASE_STATUS[claimed]);
@@ -167,15 +181,13 @@ function canonicalOperationalResult(
     };
 }
 
-export async function loadCanonicalValidationPlan(
-    args: ValidationLoopArgs,
-): Promise<
+export async function loadCanonicalValidationPlan(args: ValidationLoopArgs): Promise<
     | {
-        kind: "ok";
-        status: "implemented" | "validated_ci" | "reviewed" | "validated";
-        attrs: PlanFrontMatter;
-        markdown: string;
-    }
+          kind: "ok";
+          status: "implemented" | "validated_ci" | "reviewed" | "validated";
+          attrs: PlanFrontMatter;
+          markdown: string;
+      }
     | { kind: "blocked"; result: ValidationPhaseResult }
 > {
     const projectRoot = getProjectRoot(args);
