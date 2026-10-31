@@ -35,6 +35,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 status: "reviewed"
+validatedCommit: "1e62015e5aac773a149db480dcac1f875187d550"
 ---
 
 # Qualify Remote SSH and Retire the Proposal

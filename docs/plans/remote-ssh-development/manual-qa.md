@@ -1645,3 +1645,16 @@ entries; the injection-seam baseline stayed **0**; relative links passed in **59
 `git diff --check` passed. Logs: `/tmp/wld-child13-final-notice-focused.log`,
 `/tmp/wld-child13-consent-notice-types.log`, and `/tmp/wld-child13-final-{doc-links,seams,format}.log`.
 Full managed validation remains pending. No release was published, no commit was made, and no User Verification was recorded.
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal" -->
+
+## Qualify Remote SSH and Retire the Proposal
+
+Manual verification steps for remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal
+
+- [ ] On the real-provider run, confirm the complete remote delivery and review journey, publication, disconnect, reconnect, and saved continuation. Check that the same-name laptop sentinel is unchanged.
+- [ ] During the paired network-loss check, confirm the connection detects the loss within about 15 seconds, the unrelated remote `sleep` process survives, and cleanup leaves no connection-owned processes or mounts.
+- [ ] Confirm real-provider mode leaves sentinel `models.json`, `auth.json`, and `settings.json` files in the disposable HOME unchanged.
+- [ ] Review `manual-qa.md` and Core documentation. Confirm each live result names its release build ID, the support matrix matches tested evidence, and the retired proposal has no remaining links outside archived plans.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal" -->
