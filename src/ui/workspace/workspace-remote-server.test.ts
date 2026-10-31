@@ -23,7 +23,7 @@ import { isRemoteDevelopmentModeEnabled } from "./server/remote-mode.ts";
 
 import { createWorkspaceApp } from "./server.js";
 
-import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.js";
+import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 interface RemoteStatusResponse {

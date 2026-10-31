@@ -38,7 +38,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 
-import { git } from "./workspace-test-helpers.js";
+import { git } from "./workspace-test-helpers.ts";
 
 type WorkspacePlanCard = ReturnType<typeof serializePlanSummary>;
 type WorkspaceRequestHandler = ReturnType<ReturnType<typeof createWorkspaceApp>["handler"]>;
