@@ -2561,6 +2561,8 @@ Open product questions:
   adopts it once.
 - Given an interrupted migration, passive inspection reports pending without joining partly moved stores or resuming
   the journal. The owning action resumes guarded migration.
+- Given adoption completed by another writer during entry, Core rechecks authority under the migration lock before
+  refusing a conflict; valid current locks remain intact, and genuine authority conflicts still block entry.
 - Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific

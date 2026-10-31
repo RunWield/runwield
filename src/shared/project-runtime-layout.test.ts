@@ -50,6 +50,42 @@ import {
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime layout fixture\n" });
 const REPO_ROOT = dirname(dirname(dirname(fromFileUrl(import.meta.url))));
 
+test("runtime entry refreshes authority after another writer completes adoption", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const root = await fixture.checkout({ prefix: "runwield-runtime-concurrent-adoption-" });
+        const binDir = await fsMkdtemp(join(tmpdir(), "runwield-runtime-adoption-bin-"));
+        const ready = join(binDir, "ready");
+        const release = join(binDir, "release");
+        const originalPath = process.env["PATH"] || "";
+        let child: NativeProcess | undefined;
+        try {
+            await writeGitWrapper(binDir, originalPath, { pauseListReady: ready, pauseListRelease: release });
+            process.env["PATH"] = `${binDir}${delimiter}${originalPath}`;
+            child = spawnDriver("migrate", root);
+            const deadline = performance.now() + 10_000;
+            while (!(await fsLstat(ready).catch(() => null))) {
+                if (performance.now() > deadline) throw new Error("Migration did not reach the Git barrier.");
+                await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
+            }
+            const adopted = await migrateLegacyProjectRuntimeState(root);
+            assertEquals(adopted.kind, "ready");
+            const layout = resolveProjectRuntimeLayout(root);
+            const planLock = join(layout.selected.planLocksDir, "concurrent.lock");
+            await writeText(planLock, "current writer lock");
+            await fsWriteFile(release, "release");
+            const result: ProjectRuntimeMigrationResult = JSON.parse(await readChildStdout(child));
+            assertEquals(result.kind, "ready");
+            assertEquals(await fsReadFile(planLock, "utf8"), "current writer lock");
+        } finally {
+            await fsWriteFile(release, "release");
+            if (child) await child.status;
+            process.env["PATH"] = originalPath;
+            await fsRm(root, { recursive: true, force: true });
+            await fsRm(binDir, { recursive: true, force: true });
+        }
+    });
+});
+
 test("project runtime layout resolves normal primary and selected internal roots", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
@@ -2106,6 +2142,8 @@ async function settleGitEvidence(): Promise<void> {
 interface GitWrapperOptions {
     log?: string;
     failedListMarker?: string;
+    pauseListReady?: string;
+    pauseListRelease?: string;
 }
 
 async function writeGitWrapper(binDir: string, originalPath: string, options: GitWrapperOptions): Promise<void> {
@@ -2117,6 +2155,14 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 const args = process.argv.slice(2);
 const options = ${JSON.stringify(options)};
+if (options.pauseListReady && args[0] === "worktree" && args[1] === "list" && !existsSync(options.pauseListReady)) {
+    writeFileSync(options.pauseListReady, "ready");
+    const deadline = Date.now() + 15_000;
+    while (!existsSync(options.pauseListRelease)) {
+        if (Date.now() > deadline) throw new Error("Git barrier was not released.");
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+}
 if (options.log) appendFileSync(options.log, args.slice(0, 2).join(" ") + "\\n");
 if (options.failedListMarker && args[0] === "worktree" && args[1] === "list" && !existsSync(options.failedListMarker)) {
     writeFileSync(options.failedListMarker, "failed");

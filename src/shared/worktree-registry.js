@@ -376,10 +376,9 @@ function assertNoDuplicateNonterminalAttempt(entries, candidate) {
 }
 
 /**
- * @param {string} _projectRoot
  * @param {WorktreeRegistryEntry[]} entries
  */
-async function writeRegistry(_projectRoot, entries) {
+async function writeRegistry(entries) {
     const layout = registryMutation.getStore();
     if (!layout) throw new Error("Registry writes require mutation admission and the registry lock.");
     const path = layout.primary.worktreeRegistryPath;
@@ -689,7 +688,7 @@ export async function prepareWorktreeRegistry(projectRoot) {
             : [];
         const migrated = await migrateLegacyRegistryEntries(projectRoot, entries, resources);
         if (!hasUnresolvedLegacyNonterminalEntries(entries) && (migrated || inspection.version < 2)) {
-            await writeRegistry(projectRoot, entries);
+            await writeRegistry(entries);
         }
         return entries;
     });
@@ -710,7 +709,7 @@ export async function addEntry(projectRoot, entry) {
         }
         assertNoDuplicateNonterminalAttempt(entries, entry);
         entries.push(entry);
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entry;
     });
 }
@@ -751,7 +750,7 @@ export async function updateEntry(projectRoot, id, updates) {
             entries.filter((entry) => entry.id !== id),
             entries[index],
         );
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entries[index];
     });
 }
@@ -782,7 +781,7 @@ export async function refreshPlanningWorktreeBase(projectRoot, id, expectedBaseC
         }
         if (entry.baseCommit !== expectedBaseCommit) throw new Error(`Planning worktree baseline changed: ${id}`);
         Object.assign(entry, base, { updatedAt: new Date().toISOString() });
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entry;
     });
 }
@@ -815,7 +814,7 @@ export async function renamePlanningWorktreePlan(projectRoot, id, expectedName, 
         }
         entry.planName = nextName;
         entry.updatedAt = new Date().toISOString();
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entry;
     });
 }
@@ -858,7 +857,7 @@ export async function renameRestoredPlanEntry(projectRoot, id, expectedName, nex
         }
         entry.planName = nextName;
         entry.updatedAt = new Date().toISOString();
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entry;
     });
 }
@@ -895,7 +894,7 @@ export async function updatePublication(projectRoot, id, expectedRevision, publi
             publication,
             updatedAt: publication.updatedAt,
         };
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entries[index];
     });
 }
@@ -919,7 +918,7 @@ export async function retirePublicationForRevalidation(projectRoot, id, expected
         delete entry.publication;
         entry.status = "active";
         entry.updatedAt = new Date().toISOString();
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
     });
 }
 
@@ -1040,7 +1039,7 @@ export async function restoreEntryFromPlanEvidence(projectRoot, evidence) {
             return { restored: false, reason: error instanceof Error ? error.message : String(error) };
         }
         entries.push(entry);
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return { restored: true, entry };
     });
 }
@@ -1082,7 +1081,7 @@ export async function reconcileEntryGitLocation(projectRoot, id, location) {
             entries.filter((entry) => entry.id !== id),
             entries[index],
         );
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entries[index];
     });
 }
@@ -1110,7 +1109,7 @@ export async function reconcileEntryIdentity(projectRoot, id, identity) {
             ...(identity.planId && !entry.planId ? { planId: identity.planId } : {}),
             updatedAt: new Date().toISOString(),
         };
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return entries[index];
     });
 }
@@ -1159,7 +1158,7 @@ export async function adoptCanonicalPlanId(projectRoot, id, identity) {
             planId: identity.planId,
             updatedAt: new Date().toISOString(),
         };
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
         return { rebound: true, ...(from ? { from } : {}) };
     });
 }
@@ -1179,7 +1178,7 @@ export async function removeEntry(projectRoot, id) {
             status: NONTERMINAL_STATUSES.has(entry.status) ? "abandoned" : entry.status,
             updatedAt: new Date().toISOString(),
         };
-        await writeRegistry(projectRoot, entries);
+        await writeRegistry(entries);
     });
 }
 
@@ -1194,7 +1193,7 @@ export async function pruneEntry(projectRoot, id) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const next = entries.filter((entry) => entry.id !== id);
-        await writeRegistry(projectRoot, next);
+        await writeRegistry(next);
     });
 }
 
