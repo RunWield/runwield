@@ -493,7 +493,7 @@ async function prepareEpicBranchSummary(cwd, planName) {
 
 /**
  * @param {{ name: string, attrs: import('../../plan-store.js').PlanFrontMatter }} child
- * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.js').TicketReference[] }}
+ * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.ts').TicketReference[] }}
  */
 function summarizeChild(child) {
     return {

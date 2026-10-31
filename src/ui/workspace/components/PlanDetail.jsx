@@ -2,7 +2,7 @@ import {
     PLAN_FRONT_MATTER_KEY_ORDER as FRONT_MATTER_KEY_ORDER,
     PLAN_FRONT_MATTER_KEYS as FM,
 } from "../../../plan-front-matter.ts";
-import { safeHttpTicketReferenceUrl } from "../../../shared/ticket-references.js";
+import { safeHttpTicketReferenceUrl } from "../../../shared/ticket-references.ts";
 import { PlanBodyEditor } from "../islands/PlanBodyEditor.jsx";
 import { PlanLifecycleActions } from "../islands/PlanLifecycleActions.jsx";
 import { BoardColumn } from "./BoardColumn.tsx";

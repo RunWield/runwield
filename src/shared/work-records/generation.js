@@ -22,7 +22,7 @@ import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts"
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { dedupeTicketReferencesByUrl } from "../ticket-references.js";
+import { dedupeTicketReferencesByUrl } from "../ticket-references.ts";
 import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
