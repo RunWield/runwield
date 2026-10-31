@@ -38,7 +38,7 @@ import {
     ROUTING_INTENT_PLANNED_CHANGE,
 } from "./constants.js";
 import { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-front-matter.ts";
-import { normalizeTicketReferences } from "./shared/ticket-references.js";
+import { normalizeTicketReferences } from "./shared/ticket-references.ts";
 import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
@@ -197,7 +197,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {string} [type] - PROJECT capability: epic (default) or sequence. Invalid values remain visible for correction.
  * @property {"LOW"|"MEDIUM"|"HIGH"} complexity
  * @property {string[]} affectedPaths - Files that will be created/modified
- * @property {import('./shared/ticket-references.js').TicketReference[]} [tickets] - Optional provider-neutral Ticket References identified by the user.
+ * @property {import('./shared/ticket-references.ts').TicketReference[]} [tickets] - Optional provider-neutral Ticket References identified by the user.
  * @property {string[]} [supersedes] - Optional ordered Work Record IDs that this Plan is confirmed to replace.
  * @property {PlanDeviation[]} [planDeviations] - Ordered user-confirmed replacements to effective Plan requirements.
  * @property {unknown} [executionAgent] - Canonical FEATURE execution owner, preserved raw when invalid for diagnostics
@@ -273,7 +273,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {string|null} [worktreeBaseCommit] - Recorded base commit for worktree recovery.
  * @property {string} [targetBranch] - User-selected target branch for this child.
  * @property {string[]} dependencies - Sibling child plan names or identifiers required first.
- * @property {import('./shared/ticket-references.js').TicketReference[]} [tickets] - Direct child Ticket References; omitted preserves existing child references, [] clears.
+ * @property {import('./shared/ticket-references.ts').TicketReference[]} [tickets] - Direct child Ticket References; omitted preserves existing child references, [] clears.
  * @property {string} content - Planner-format markdown body for the child planned change.
  * @property {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"} [workKind] - Optional child Work Kind.
  * @property {number} [order] - Optional execution order stored in front matter, independent of the file name.

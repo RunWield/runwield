@@ -9,7 +9,7 @@ affectedPaths:
     - "src/agent-definitions/"
     - "src/plan-front-matter.js"
     - "src/plan-store.js"
-    - "src/shared/ticket-references.js"
+    - "src/shared/ticket-references.ts"
     - "src/shared/workflow/"
     - "src/shared/worktree-registry.js"
     - "src/shared/isolated-publication.ts"
@@ -323,7 +323,7 @@ conform to the same application state model rather than create parallel lifecycl
   grounding and direct Ticket Reference preservation without changing Router URL semantics.
 - `src/plan-front-matter.js` and `src/plan-store.js` — represent explicit Plan-owned delivery/review policy and durable
   terminal Forge delivery evidence while keeping attempt state out of Markdown.
-- `src/shared/ticket-references.js` — retain provider-neutral URL relations and safe display behavior; no issue schema
+- `src/shared/ticket-references.ts` — retain provider-neutral URL relations and safe display behavior; no issue schema
   or synchronized state enters this module.
 - `src/shared/workflow/validation-engine.ts`, `validation-publication.ts`, and related workflow modules — branch at
   local readiness, coordinate candidate generations, feedback repair, merge proof, and finalization without changing
@@ -360,7 +360,7 @@ conform to the same application state model rather than create parallel lifecycl
   proven.
 - `src/shared/work-records/auto-generation.ts` and generation/reconciliation modules — reuse Recorder, backlinks,
   supersession, indexing, and idempotent source-Plan identity after merge proof.
-- `src/shared/ticket-references.js`, Plan serialization, Slicer, Workspace Ticket display, and Work Record ticket
+- `src/shared/ticket-references.ts`, Plan serialization, Slicer, Workspace Ticket display, and Work Record ticket
   aggregation — reuse the complete existing URL-preservation path.
 - `defineGitFixture`, process-loss publication tests, `makeValidationProjectRoot`, Golden TUI scenarios, and Workspace
   integration tests — exercise real application machinery and external-process seams without adding RunWield-owned

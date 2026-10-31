@@ -5,7 +5,7 @@
 
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { TicketReference } from "../ticket-references.js";
+import type { TicketReference } from "../ticket-references.ts";
 
 import { AGENTS } from "../../constants.js";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";

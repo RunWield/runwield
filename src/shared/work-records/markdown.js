@@ -5,7 +5,7 @@
 
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { normalizeWorkKind } from "../../constants.js";
-import { normalizeTicketReferences } from "../ticket-references.js";
+import { normalizeTicketReferences } from "../ticket-references.ts";
 import {
     isWorkRecordCompletionMode,
     isWorkRecordOrigin,
@@ -224,7 +224,7 @@ function appendYamlObjectListItem(lines, value, indent) {
 
 /**
  * @param {string[]} lines
- * @param {import('../ticket-references.js').TicketReference[] | undefined} tickets
+ * @param {import('../ticket-references.ts').TicketReference[] | undefined} tickets
  */
 function appendTickets(lines, tickets) {
     const normalized = normalizeTicketReferences(tickets);
