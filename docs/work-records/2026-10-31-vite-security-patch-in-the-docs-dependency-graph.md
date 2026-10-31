@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "81f2f344-e11a-4fd6-9f3f-e64c676b1ac8"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -13,7 +13,6 @@ provenance:
     sourcePlans:
         - "70735c5a-511a-4dd9-a01c-a248a4f0d002"
 ---
-
 # Vite security patch in the docs dependency graph
 
 ## Summary
