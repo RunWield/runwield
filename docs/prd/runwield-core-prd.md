@@ -1327,6 +1327,9 @@ owns repair reasoning, not review gates.
 
 **Acceptance scenarios: Saved Attached Code Review.**
 
+- **Revision-safe conversation:** Given an open Code Review that receives a newer saved diff, the page sends the
+  displayed revision with the next conversation turn or decision. The same token URL stays usable; stale tabs remain
+  rejected.
 - **Diff-bound approval:** Given a saved human review and a changed candidate, Core rejects the old approval and does
   not publish. A fresh process restores the pending review without inventing a decision.
 - **Changed candidate re-verification:** Given a reviewed candidate that changes before approval, the next validation

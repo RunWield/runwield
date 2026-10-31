@@ -282,8 +282,14 @@ test("actual Core browser approval links its durable receipt and fails closed wh
                     method: "POST",
                     body: JSON.stringify({ reviewRevision: invalid === "revision" ? -1 : 0 }),
                 });
-                assert(rejected.status >= 400);
-                assertEquals(field(await rejected.json(), "operationId"), undefined);
+                assertEquals(rejected.status, invalid === "token" ? 401 : 409);
+                if (invalid === "token") {
+                    assertEquals(await rejected.text(), "Review token required.");
+                } else {
+                    const refusal = await rejected.json();
+                    assertEquals(refusal.error, "stale_code_review");
+                    assertEquals(field(refusal, "operationId"), undefined);
+                }
                 const unchanged = await loadAttachedWorkflowRecord(location, fixture.workflowId);
                 assert(unchanged.status === "found");
                 assertEquals(unchanged.record.acceptedOperations, before.record.acceptedOperations);

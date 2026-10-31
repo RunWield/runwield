@@ -110,7 +110,7 @@ test("real broker cancellation twice preserves review for a fresh Session and HT
         const token = parsed.searchParams.get("token") || "";
         const live = await fetch(new URL(`/api/review/conversation?token=${token}`, parsed.origin));
         assertEquals(live.status, 200, "the reopened link must serve the real review surface");
-        await live.text();
+        const { reviewRevision } = await live.json();
         assertEquals(runtime.getSessionSnapshot(session.id)?.workflowContext?.liveReviewUrl, url);
         assertStringIncludes(ui.toolOutputs.join("\n"), `Review Code: \x1b]8;;${url}`);
         if (round < 2) {
@@ -120,7 +120,7 @@ test("real broker cancellation twice preserves review for a fresh Session and HT
             const approved = await fetch(new URL(`/api/review/decision?token=${token}`, parsed.origin), {
                 method: "POST",
                 headers: { "content-type": "application/json", "x-runwield-review-token": token },
-                body: JSON.stringify({ approved: true }),
+                body: JSON.stringify({ approved: true, reviewRevision }),
             });
             assertEquals(approved.ok, true);
             await approved.text();

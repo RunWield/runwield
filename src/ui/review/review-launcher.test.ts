@@ -298,6 +298,7 @@ reviewLauncherTest(
                 method: "POST",
                 headers: { "content-type": "application/json", "x-runwield-review-token": token },
                 body: JSON.stringify({
+                    reviewRevision: 0,
                     approved: false,
                     conversationTurn: true,
                     feedback: "Rename the helper.",
@@ -451,7 +452,7 @@ reviewLauncherTest("TUI Code Review interaction keeps planTitle through the real
                                     "content-type": "application/json",
                                     "x-runwield-review-token": token,
                                 },
-                                body: JSON.stringify({ feedback: "Not yet." }),
+                                body: JSON.stringify({ feedback: "Not yet.", reviewRevision: 0 }),
                             },
                         );
                         assertEquals(response.status, 200);
@@ -585,7 +586,7 @@ reviewLauncherTest("Plan, Code and artifact reviews share an origin and decide i
         const response = await fetch(new URL(`/api/review/decision${page.search}`, page), {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ feedback: page.pathname }),
+            body: JSON.stringify({ feedback: page.pathname, ...(surface === code && { reviewRevision: 0 }) }),
         });
         assertEquals(response.status, 200);
         await response.text();

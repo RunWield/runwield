@@ -894,6 +894,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         (snapshot, advanced) => {
             if (submitted === "feedback") return;
             updateReviewRevision(snapshot.reviewRevision);
+            setReviewRevision(snapshot.reviewRevision);
             setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
             setAgentWorking(snapshot.pending);
             if (advanced) {

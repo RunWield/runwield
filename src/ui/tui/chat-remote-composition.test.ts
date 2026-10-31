@@ -101,17 +101,22 @@ interface BrowserExecutable {
 async function installBrowserExecutable(root: string): Promise<BrowserExecutable> {
     const log = join(root, "opened-browser-urls");
     const previousPath = process.env.PATH;
+    const previousSandbox = process.env.WLD_TEST_SANDBOX_HOME;
     for (const command of ["open", "xdg-open"]) {
         const executable = join(root, command);
         await writeFile(executable, `#!/bin/sh\nprintf '%s\\n' "$1" >> '${log}'\n`);
         await chmod(executable, 0o700);
     }
     process.env.PATH = `${root}${delimiter}${previousPath ?? ""}`;
+    // PATH now contains disposable launchers, not the real desktop.
+    delete process.env.WLD_TEST_SANDBOX_HOME;
     return {
         async opened() {
             return (await readFile(log, "utf8").catch(() => "")).split("\n").filter(Boolean);
         },
         restore() {
+            if (previousSandbox === undefined) delete process.env.WLD_TEST_SANDBOX_HOME;
+            else process.env.WLD_TEST_SANDBOX_HOME = previousSandbox;
             if (previousPath === undefined) delete process.env.PATH;
             else process.env.PATH = previousPath;
         },
@@ -167,7 +172,7 @@ test(
                 try {
                     const message = composition.uiAPI.appendAgentMessageStart("Guide");
                     message.appendText(
-                        "[LaptopLocal](http://127.0.0.1:43128/private) and [PublicDocs](https://example.com/docs?q=remote)",
+                        "[LaptopLocal](http://127.0.0.1:43128/private) and [PublicDocs](https://1.1.1.1/docs?q=remote)",
                     );
                     await composition.waitForIdle();
                     await terminal.flush();
@@ -178,7 +183,7 @@ test(
                     while ((await executable.opened()).length === 0 && performance.now() < deadline) {
                         await new Promise((resolve) => setTimeout(resolve, 10));
                     }
-                    assertEquals(await executable.opened(), ["https://example.com/docs?q=remote"]);
+                    assertEquals(await executable.opened(), ["https://1.1.1.1/docs?q=remote"]);
                 } finally {
                     await composition.dispose();
                 }

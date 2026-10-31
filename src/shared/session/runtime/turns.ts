@@ -35,6 +35,7 @@ import type { RuntimeImages } from "./images.ts";
 import type { RuntimeAgentSettings } from "./agent-settings.ts";
 import type { RuntimeManagedSync } from "./managed-sync.ts";
 import type { RuntimeWorkflows } from "./workflows.ts";
+import { registerBackgroundSteeringOwner } from "./background-steering.ts";
 
 type RuntimeEventsDependency = Pick<RuntimeEvents, "beginBusyOperation" | "emitSessionEvent" | "endBusyOperation">;
 type RuntimeLifecycleDependency = Pick<
@@ -63,14 +64,7 @@ type RuntimeWorkflowsDependency = Pick<
     "continueEpicAfterValidation" | "runSemanticRepairSegmentHandoff" | "executeApprovedPlan"
 >;
 
-// Only a runtime that owns a Session can have queued background steering for it.
-const backgroundSteeringOwners = new WeakMap<import("../hosted-session.js").HostedSession, RuntimeTurns>();
-
-export async function clearBackgroundSteeringForCompletion(
-    session: import("../hosted-session.js").HostedSession,
-): Promise<void> {
-    await backgroundSteeringOwners.get(session)?.clearBackgroundSteering(session);
-}
+export { clearBackgroundSteeringForCompletion } from "./background-steering.ts";
 
 export class RuntimeTurns {
     private events!: RuntimeEventsDependency;
@@ -139,7 +133,7 @@ export class RuntimeTurns {
     registerBackgroundDelivery(sessionId: string): void {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return;
-        backgroundSteeringOwners.set(session, this);
+        registerBackgroundSteeringOwner(session, this);
         session.backgroundTasks.setCompletionHandler((status) => {
             this.events.emitSessionEvent(sessionId, {
                 type: RuntimeEventTypes.BACKGROUND_TASK_SETTLED,

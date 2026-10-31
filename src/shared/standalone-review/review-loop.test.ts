@@ -29,10 +29,11 @@ async function status(url: URL): Promise<ConversationStatus> {
     return await response.json();
 }
 async function decide(url: URL, endpoint: string, body: Record<string, string | boolean | number>) {
+    const { reviewRevision } = await status(url);
     const response = await fetch(new URL(`/api/review/${endpoint}${url.search}`, url), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ reviewRevision, ...body }),
     });
     assertEquals(response.status, 200, await response.text());
 }
