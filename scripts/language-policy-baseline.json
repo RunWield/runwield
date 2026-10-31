@@ -28,7 +28,6 @@
     "src/shared/session/session-runtime-interactions.js",
     "src/shared/session/session-transcript-projection.js",
     "src/shared/session/session.js",
-    "src/shared/session/tool-event-title.js",
     "src/shared/session/types.js",
     "src/shared/session/workflow-context-session.js",
     "src/shared/session/workflow-messages.js",

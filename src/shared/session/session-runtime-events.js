@@ -81,7 +81,7 @@ export const RuntimeEventTypes = Object.freeze({
  */
 
 /**
- * @typedef {import('./tool-event-title.js').RuntimeToolKind} RuntimeToolKind
+ * @typedef {import('./tool-event-title.ts').RuntimeToolKind} RuntimeToolKind
  */
 
 /**

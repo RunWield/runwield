@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { describeRuntimeTool } from "./tool-event-title.js";
+import { describeRuntimeTool } from "./tool-event-title.ts";
 
 test("Runtime provides one stable tool descriptor for live, replay, TUI, ACP, and future consumers", () => {
     assertEquals(describeRuntimeTool("bash", { command: "git status" }), {
