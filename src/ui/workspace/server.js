@@ -1278,6 +1278,7 @@ function registerStaticRoutes(app) {
     app.get("/components.css", async () => await handleStaticRoute("/components.css"));
     app.get("/workspace.css", async () => await handleStaticRoute("/workspace.css"));
     app.get("/workspace-shell.js", async () => await handleStaticRoute("/workspace-shell.js"));
+    app.get("/design-system/panel-icon.ts", async () => await handleStaticRoute("/design-system/panel-icon.ts"));
     app.get(
         "/design-system/sidebar-motion.js",
         async () => await handleStaticRoute("/design-system/sidebar-motion.js"),
@@ -1289,6 +1290,9 @@ function registerStaticRoutes(app) {
 
 /** @param {string} pathname */
 async function handleStaticRoute(pathname) {
+    if (pathname === "/design-system/panel-icon.ts") {
+        return await textFileResponse(join(DESIGN_SYSTEM_DIR, "panel-icon.ts"), "text/javascript; charset=utf-8");
+    }
     if (pathname === "/design-system/sidebar-motion.js") {
         return await textFileResponse(join(DESIGN_SYSTEM_DIR, "sidebar-motion.js"), "text/javascript; charset=utf-8");
     }
@@ -1387,6 +1391,7 @@ function isPublicWorkspaceAsset(pathname) {
         pathname === "/workspace.css" ||
         pathname === "/workspace-shell.js" ||
         pathname === "/design-system/sidebar-motion.js" ||
+        pathname === "/design-system/panel-icon.ts" ||
         pathname === "/theme.css" ||
         pathname === "/brand/logo.svg" ||
         pathname.startsWith("/_astro/")

@@ -55,6 +55,7 @@ export const PASSIVE_PATHS = [
     "src/ui/design-system/tokens.css",
     "src/ui/design-system/components.css",
     "src/ui/design-system/sidebar-motion.js",
+    "src/ui/design-system/panel-icon.ts",
     "brand/logo.svg",
     "src/agent-definitions",
     "src/model-presets",

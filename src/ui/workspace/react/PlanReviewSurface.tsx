@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
 import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
@@ -1434,7 +1435,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     title="Collapse contents sidebar"
                                     aria-label="Collapse contents sidebar"
                                 >
-                                    <PanelCollapseIcon side="left" />
+                                    <RunWieldPanelIcon side="left" />
                                 </RunWieldIconButton>
                             )}
                             <main className="rw-plannotator-main-pane">
@@ -1447,7 +1448,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                 title="Contents"
                                                 onClick={() => openSidebarTab("toc")}
                                             >
-                                                <ToggleIcon name="contents" />
+                                                <RunWieldPanelIcon side="left" />
                                                 <span>Contents</span>
                                             </RunWieldIconButton>
                                         )}
@@ -1539,7 +1540,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     })
                                                 }
                                             >
-                                                <ToggleIcon name="annotations" />
+                                                <RunWieldPanelIcon side="right" />
                                                 <span>Annotations</span>
                                             </RunWieldIconButton>
                                         )}
@@ -1717,7 +1718,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             title="Collapse annotations sidebar"
                                             aria-label="Collapse annotations sidebar"
                                         >
-                                            <PanelCollapseIcon side="right" />
+                                            <RunWieldPanelIcon side="right" />
                                         </RunWieldIconButton>
                                     </div>
                                     {!conversationEnabled || rightSidebarView === "annotations" ? (
@@ -2333,17 +2334,6 @@ function ClockIcon() {
     return (
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2M12 22a10 10 0 110-20 10 10 0 010 20z" />
-        </svg>
-    );
-}
-
-function PanelCollapseIcon({ side }) {
-    const path = side === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
-    return (
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
-            <path d="M5 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M19 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d={path} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
 }

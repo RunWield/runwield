@@ -1,6 +1,9 @@
 .workspace-shell-with-sidebar {
     --rw-workspace-header-height: var(--rw-shell-header-height);
-    --rw-workspace-sidebar-effective-width: min(var(--rw-workspace-sidebar-width, 280px), max(220px, calc(100vw - 420px)));
+    --rw-workspace-sidebar-effective-width: min(
+        var(--rw-workspace-sidebar-width, 280px),
+        max(220px, calc(100vw - 420px))
+    );
     display: grid;
     grid-template-columns: var(--rw-workspace-sidebar-effective-width) minmax(0, 1fr);
     position: relative;
@@ -44,10 +47,16 @@
     color: var(--rw-text-muted);
     height: 100dvh;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-width: none;
     overflow-anchor: none;
     padding: 0 12px var(--rw-space-panel);
     box-shadow: inset 3px 0 var(--rw-brand);
+}
+
+.workspace-sidebar::-webkit-scrollbar {
+    display: none;
 }
 
 .workspace-main-shell {
@@ -349,6 +358,7 @@
 .workspace-sidebar-plan,
 .workspace-sidebar-session {
     border: 1px solid transparent;
+    min-width: 0;
     font-size: 0.86rem;
     padding: 0 8px;
 }
