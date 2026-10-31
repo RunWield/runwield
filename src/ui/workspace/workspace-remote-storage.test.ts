@@ -14,7 +14,7 @@ import { openRemoteDatabase } from "./server/remote-db.ts";
 import { createRemoteWorkspaceAdapter } from "./server/remote-adapter.js";
 import { REMOTE_SCHEMA_V1_SQL } from "./server/remote-schema.ts";
 
-import { jsonRequest, readJsonResponse } from "./workspace-test-helpers.js";
+import { jsonRequest, readJsonResponse } from "./workspace-test-helpers.ts";
 
 test("remote Workspace mode isolates local Plan Board and local APIs", async () => {
     const app = createWorkspaceApp({ mode: "remote" }).handler();

@@ -98,6 +98,5 @@
     "src/ui/workspace/server/plan-adapter.js",
     "src/ui/workspace/server/remote-adapter.js",
     "src/ui/workspace/server/remote-dev-api.js",
-    "src/ui/workspace/server/session-continuation.js",
-    "src/ui/workspace/workspace-test-helpers.js"
+    "src/ui/workspace/server/session-continuation.js"
 ]

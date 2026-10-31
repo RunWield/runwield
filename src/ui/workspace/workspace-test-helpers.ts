@@ -1,24 +1,27 @@
+import type { APIContext } from "astro";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-/**
- * @param {Record<string, string | undefined>} values
- */
-export function createTestEnv(values) {
+export interface TestEnvironmentValues {
+    [key: string]: string | undefined;
+}
+
+type StringValues = Record<string, string>;
+
+export function createTestEnv(values: TestEnvironmentValues) {
     return {
-        get(key) {
+        get(key: string) {
             return values[key];
         },
-        set(key, value) {
+        set(key: string, value: string) {
             values[key] = value;
         },
-        delete(key) {
+        delete(key: string) {
             delete values[key];
         },
-        has(key) {
+        has(key: string) {
             return values[key] !== undefined;
         },
         toObject() {
-            /** @type {Record<string, string>} */
-            const result = {};
+            const result: StringValues = {};
             for (const [key, value] of Object.entries(values)) {
                 if (value !== undefined) result[key] = value;
             }
@@ -27,19 +30,11 @@ export function createTestEnv(values) {
     };
 }
 
-/**
- * @param {Request} request
- * @returns {import("astro").APIContext}
- */
-export function createTestApiContext(request) {
-    return /** @type {import("astro").APIContext} */ ({ request });
+export function createTestApiContext(request: Request): APIContext {
+    return { request } as APIContext;
 }
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- */
-export async function git(cwd, args) {
+export async function git(cwd: string, args: string[]) {
     const output = await captureForegroundProcess("git", { cwd, args });
     if (!output.success) {
         const decoder = new TextDecoder();
@@ -48,15 +43,12 @@ export async function git(cwd, args) {
     return new TextDecoder().decode(output.stdout);
 }
 
-/** @param {Response} response */
-export async function readJsonResponse(response) {
+export async function readJsonResponse(response: Response) {
     return await response.json();
 }
 
-/** @param {string} url @param {unknown} body @param {string} [bearer] */
-export function jsonRequest(url, body, bearer) {
-    /** @type {Record<string, string>} */
-    const headers = { "content-type": "application/json" };
+export function jsonRequest<Body>(url: string, body: Body, bearer?: string) {
+    const headers: StringValues = { "content-type": "application/json" };
     if (bearer) headers.authorization = `Bearer ${bearer}`;
     return new Request(url, { method: "POST", headers, body: JSON.stringify(body) });
 }

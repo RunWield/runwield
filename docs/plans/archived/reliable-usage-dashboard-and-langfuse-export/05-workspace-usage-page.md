@@ -128,7 +128,7 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 - `WorkspaceLayout.astro`, existing loaders, notices, and `react/RunWieldPrimitives.tsx` — established visual patterns.
 - `docs/design-system.md` and `src/ui/design-system/tokens.css`, `theme-bridge.ts` — semantic tokens instead of
   hard-coded colors.
-- Existing integration test helpers in `src/ui/workspace/` (`workspace-test-helpers.js`, the `*.integration.test.ts`
+- Existing integration test helpers in `src/ui/workspace/` (`workspace-test-helpers.ts`, the `*.integration.test.ts`
   set).
 
 ## Implementation Steps
