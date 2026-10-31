@@ -10,7 +10,7 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { packageHomebrew, parsePackageHomebrewArgs } from "./package-homebrew.ts";
 import type { ExistingRunWieldPackage, HomebrewInputs, MnemotecaInput } from "./package-homebrew.ts";
@@ -611,9 +611,9 @@ test("package:homebrew requires at least one tag and accepts either or both", as
         const options = parsePackageHomebrewArgs([...selection, "--output", "tap"]);
         assertEquals(Boolean(options.wldTag || options.mnemotecaTag), true);
     }
-    await assertRejects(async () => parsePackageHomebrewArgs(["--output", "tap"]), Error, "at least one tag");
+    assertThrows(() => parsePackageHomebrewArgs(["--output", "tap"]), Error, "at least one tag");
     await assertRejects(
-        async () =>
+        () =>
             packageHomebrew({
                 wldTag: "",
                 mnemotecaTag: "",
@@ -624,8 +624,8 @@ test("package:homebrew requires at least one tag and accepts either or both", as
         Error,
         "at least one tag",
     );
-    await assertRejects(
-        async () =>
+    assertThrows(
+        () =>
             parsePackageHomebrewArgs([
                 "--wld-tag",
                 "v1.2.3",
@@ -672,9 +672,9 @@ const invalidBases: InvalidBaseCase[] = [
     { name: "untrusted repository", formula: (text) => text.replaceAll("RunWield/mnemoteca", "attacker/mnemoteca") },
     { name: "mutable release URL", formula: (text) => text.replaceAll("download/v0.3.4", "latest/download") },
     { name: "wrong version asset", formula: (text) => text.replaceAll("mnemoteca_0.3.4", "mnemoteca_0.3.3") },
-    { name: "missing architecture", formula: (text) => text.replace(/  else[\s\S]*?  end/, "  end") },
+    { name: "missing architecture", formula: (text) => text.replace(/ {2}else[\s\S]*? {2}end/, "  end") },
     { name: "duplicate architecture", formula: (text) => text.replaceAll("darwin_amd64", "darwin_arm64") },
-    { name: "missing checksum", formula: (text) => text.replace(/    sha256 "[^"]+"\n/, "") },
+    { name: "missing checksum", formula: (text) => text.replace(/ {4}sha256 "[^"]+"\n/, "") },
     { name: "malformed checksum", formula: (text) => text.replace("a".repeat(64), "not-a-checksum") },
     { name: "empty formula", formula: () => "" },
     {

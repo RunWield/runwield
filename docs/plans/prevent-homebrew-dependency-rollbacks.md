@@ -28,7 +28,7 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 routingIntent: "PLANNED_CHANGE"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Prevent Homebrew Dependency Rollbacks

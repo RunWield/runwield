@@ -19,7 +19,7 @@ interface JsonFields {
 const MANIFEST = "runwield-homebrew-package.json";
 
 function dependencyFields(manifest: JsonFields) {
-    const { wldTag, testOnly, generatedAt, ...preserved } = manifest;
+    const { wldTag: _wldTag, testOnly: _testOnly, generatedAt: _generatedAt, ...preserved } = manifest;
     return preserved;
 }
 
