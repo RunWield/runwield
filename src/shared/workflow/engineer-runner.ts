@@ -28,20 +28,17 @@ export async function runEngineerWithPlan(
     const workflow = hostedSession.getActiveExecutionWorkflow?.();
     const runtimeAgent = resolvePlanExecutionRuntimeAgent(executionAgent);
     const collaborationStyle = workflow?.collaborationStyle || CollaborationStyles.AUTONOMOUS;
-    const customTools = collaborationStyle === CollaborationStyles.PAIR
-        ? [createPairCheckpointTool({ hostedSession })]
-        : undefined;
+    const customTools =
+        collaborationStyle === CollaborationStyles.PAIR ? [createPairCheckpointTool({ hostedSession })] : undefined;
     let messages;
     try {
         messages = await runActiveAgentTurn({
             hostedSession,
             agentName: runtimeAgent,
-            userRequest: `${
-                buildEngineerRequest(planName, planBody, reviewFeedback, {
-                    collaborationStyle,
-                    routerMessage,
-                })
-            }\n\nExecution owner: ${runtimeAgent}.`,
+            userRequest: `${buildEngineerRequest(planName, planBody, reviewFeedback, {
+                collaborationStyle,
+                routerMessage,
+            })}\n\nExecution owner: ${runtimeAgent}.`,
             images: reviewImages,
             sessionManager,
             cwd: executionCwd,
@@ -52,7 +49,7 @@ export async function runEngineerWithPlan(
         });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const hostedRootSession = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
+        const hostedRootSession = /** @type {any} */ hostedSession?.getRootAgentSession?.();
         const rootMessages = hostedRootSession?.agent?.state?.messages || [];
         emitSystemStatus(
             hostedSession,
@@ -72,7 +69,7 @@ export async function runEngineerWithPlan(
     const rootOwnerSession = hostedSession.getRootAgentSession() || null;
     const acceptedCompletion = !pauseReason
         ? claimPendingTaskCompletion(hostedSession, activeOwnerSession) ||
-            claimPendingTaskCompletion(hostedSession, rootOwnerSession)
+          claimPendingTaskCompletion(hostedSession, rootOwnerSession)
         : null;
     const completed = Boolean(acceptedCompletion);
     const completionReport = acceptedCompletion?.report || undefined;
@@ -101,9 +98,10 @@ export async function runEngineerWithPlan(
  * @param {string} [projectRoot]
  */
 export function buildEngineerPausedMessage(reason, projectRoot, executionAgent = AGENTS.ENGINEER) {
-    const base = `${
-        getAgentDisplayName(executionAgent, projectRoot)
-    } stopped before reporting the task complete, so the work is unfinished and the Plan stays In Progress. Say "continue" to resume with the execution owner.`;
+    const base = `${getAgentDisplayName(
+        executionAgent,
+        projectRoot,
+    )} stopped before reporting the task complete, so the work is unfinished and the Plan stays In Progress. Say "continue" to resume with the execution owner.`;
     // The Antigravity backend already emitted its sanitized failure as a status event.
     return reason && !(reason instanceof AgyCliBackendError)
         ? `${base}\nReason: ${reason instanceof Error ? reason.message : reason}`
@@ -127,16 +125,18 @@ export async function runEngineerWithSegmentHandoff({ continuation, sessionManag
     // one persisted before the split says `engineer`. Resolving is idempotent and
     // keeps a resumed pre-split segment under Plan Engineer.
     const runtimeAgent = resolvePlanExecutionRuntimeAgent(continuation.executionOwner);
-    const collaborationStyle = continuation.collaboration?.style || workflow?.collaborationStyle ||
-        CollaborationStyles.AUTONOMOUS;
-    const customTools = collaborationStyle === CollaborationStyles.PAIR
-        ? [createPairCheckpointTool({ hostedSession })]
-        : undefined;
-    const userRequest = `${
-        buildEngineerRequest(continuation.plan.planName, continuation.plan.markdown, continuation.approval?.feedback, {
+    const collaborationStyle =
+        continuation.collaboration?.style || workflow?.collaborationStyle || CollaborationStyles.AUTONOMOUS;
+    const customTools =
+        collaborationStyle === CollaborationStyles.PAIR ? [createPairCheckpointTool({ hostedSession })] : undefined;
+    const userRequest = `${buildEngineerRequest(
+        continuation.plan.planName,
+        continuation.plan.markdown,
+        continuation.approval?.feedback,
+        {
             collaborationStyle,
-        })
-    }\n\nExecution owner: ${runtimeAgent}.`;
+        },
+    )}\n\nExecution owner: ${runtimeAgent}.`;
     let messages;
     try {
         messages = await runActiveAgentTurn({
@@ -153,15 +153,11 @@ export async function runEngineerWithSegmentHandoff({ continuation, sessionManag
         });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const hostedRootSession = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
+        const hostedRootSession = /** @type {any} */ hostedSession?.getRootAgentSession?.();
         const rootMessages = hostedRootSession?.agent?.state?.messages || [];
         emitSystemStatus(
             hostedSession,
-            buildEngineerPausedMessage(
-                error,
-                workflow?.projectRoot || hostedSession?.cwd,
-                runtimeAgent,
-            ),
+            buildEngineerPausedMessage(error, workflow?.projectRoot || hostedSession?.cwd, runtimeAgent),
             { level: "error", header: "RunWield" },
         );
         return { completed: false, messages: rootMessages, error: errorMessage };
@@ -176,7 +172,7 @@ export async function runEngineerWithSegmentHandoff({ continuation, sessionManag
     const rootOwnerSession = hostedSession.getRootAgentSession() || null;
     const acceptedCompletion = !pauseReason
         ? claimPendingTaskCompletion(hostedSession, activeOwnerSession) ||
-            claimPendingTaskCompletion(hostedSession, rootOwnerSession)
+          claimPendingTaskCompletion(hostedSession, rootOwnerSession)
         : null;
     const completed = Boolean(acceptedCompletion);
     const completionReport = acceptedCompletion?.report || undefined;
@@ -186,11 +182,7 @@ export async function runEngineerWithSegmentHandoff({ continuation, sessionManag
             hostedSession,
             pauseReason
                 ? buildPairPausedMessage(pauseReason, workflow?.projectRoot || hostedSession?.cwd, runtimeAgent)
-                : buildEngineerPausedMessage(
-                    undefined,
-                    workflow?.projectRoot || hostedSession?.cwd,
-                    runtimeAgent,
-                ),
+                : buildEngineerPausedMessage(undefined, workflow?.projectRoot || hostedSession?.cwd, runtimeAgent),
             { header: "RunWield" },
         );
     }

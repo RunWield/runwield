@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import {
     type LoadedReviewImage,
     loadReviewFeedbackImages,
@@ -163,6 +164,7 @@ export async function submitPlanForReview({
     signal,
     browser,
 }: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
+    await preparePlanWorkflow(cwd, planName);
     const { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } = await preparePlanReviewPayload(
         planPath,
         triageMeta,

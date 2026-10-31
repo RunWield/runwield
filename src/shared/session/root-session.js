@@ -10,6 +10,7 @@ import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 export { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { getHomeDir } from "../../constants.js";
+import { parseRemoteSessionTranscript } from "../remote/session-protocol.ts";
 
 /**
  * Resolve the root RunWield sessions base directory.
@@ -86,12 +87,14 @@ function ensureDir(dir) {
  *
  * @param {RootSessionStartMode} mode
  * @param {string} cwd
+ * @param {string} [directory] Laptop-owned remote Project directory.
  * @returns {Promise<import('@earendil-works/pi-coding-agent').SessionManager>}
  */
-export async function createRootSessionManager(mode, cwd) {
+export async function createRootSessionManager(mode, cwd, directory) {
+    requireLocalSessionWriter();
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-    const canonicalCwd = canonicalizeCwd(cwd);
-    const sessionDir = getRunWieldSessionDir(canonicalCwd);
+    const canonicalCwd = directory ? cwd : canonicalizeCwd(cwd);
+    const sessionDir = directory || getRunWieldSessionDir(canonicalCwd);
     ensureDir(sessionDir);
 
     const manager =
@@ -99,6 +102,47 @@ export async function createRootSessionManager(mode, cwd) {
             ? SessionManager.continueRecent(canonicalCwd, sessionDir)
             : SessionManager.create(canonicalCwd, sessionDir);
     return installSessionPersistence(manager);
+}
+
+/** @type {WeakMap<import('@earendil-works/pi-coding-agent').SessionManager, import('../remote/session-save-bridge.ts').RemoteSessionSaveBridge>} */
+const remoteSessionBridges = new WeakMap();
+
+/** @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} manager */
+export function getRemoteSessionSaveBridge(manager) {
+    return manager ? remoteSessionBridges.get(manager) : undefined;
+}
+
+/**
+ * Hydrate only from the laptop owner. No Session file or remote transcript directory is created.
+ * The caller owns the remote project identity and must discard this manager after any bridge fault.
+ * @param {string} cwd
+ * @param {import('../remote/session-protocol.ts').RemoteSessionConnection} connection
+ * @returns {Promise<import('@earendil-works/pi-coding-agent').SessionManager>}
+ */
+export async function createRemoteRootSessionManager(cwd, connection) {
+    const { RemoteSessionSaveBridge } = await import("../remote/session-save-bridge.ts");
+    const bridge = new RemoteSessionSaveBridge(connection);
+    try {
+        const { CURRENT_SESSION_VERSION, SessionManager } = await import("@earendil-works/pi-coding-agent");
+        if (CURRENT_SESSION_VERSION !== 3) bridge.fail(new Error("Incompatible Pi remote Session format"));
+        const snapshot = bridge.request("hydrate");
+        const entries = parseRemoteSessionTranscript(snapshot.contents);
+        const manager = SessionManager.inMemory(cwd, undefined, entries);
+        if (
+            manager.getSessionFile() !== undefined ||
+            manager.isPersisted() ||
+            JSON.stringify([manager.getHeader(), ...manager.getEntries()]) !== JSON.stringify(entries) ||
+            typeof Reflect.get(manager, "_persist") !== "function" ||
+            typeof Reflect.get(manager, "_rewriteFile") !== "function"
+        )
+            bridge.fail(new Error("Incompatible Pi remote Session persistence contract"));
+        const guarded = installSessionPersistence(manager, bridge);
+        remoteSessionBridges.set(guarded, bridge);
+        return guarded;
+    } catch (error) {
+        bridge.close();
+        throw error;
+    }
 }
 
 /** @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager */
@@ -111,10 +155,18 @@ function getSessionManagerFileContents(sessionManager) {
 
 /**
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
+ * @param {import('../remote/session-save-bridge.ts').RemoteSessionSaveBridge} [bridge]
  * @returns {import('@earendil-works/pi-coding-agent').SessionManager}
  */
-function installSessionPersistence(sessionManager) {
+function installSessionPersistence(sessionManager, bridge) {
     function rewriteFile() {
+        if (bridge) {
+            bridge.assertHealthy();
+            const contents = getSessionManagerFileContents(sessionManager);
+            if (contents === null) return bridge.fail(new Error("Remote Session contents unavailable"));
+            bridge.request("rewrite", contents);
+            return;
+        }
         const transcriptPath = sessionManager.getSessionFile?.();
         const contents = getSessionManagerFileContents(sessionManager);
         if (!transcriptPath || contents === null) return;
@@ -123,6 +175,11 @@ function installSessionPersistence(sessionManager) {
 
     /** @param {import('@earendil-works/pi-coding-agent').SessionEntry} entry */
     function persist(entry) {
+        if (bridge) {
+            bridge.assertHealthy();
+            bridge.request("append", `${JSON.stringify(entry)}\n`);
+            return;
+        }
         const transcriptPath = sessionManager.getSessionFile?.();
         if (!transcriptPath) return;
         try {
@@ -137,11 +194,52 @@ function installSessionPersistence(sessionManager) {
         Reflect.set(sessionManager, "flushed", true);
     }
 
+    const sessionId = sessionManager.getSessionId();
+    const uncaptured = new Set([
+        "newSession",
+        "setSessionFile",
+        "_setSessionFile",
+        "_loadEntries",
+        "createBranchedSession",
+        "constructor",
+        "forkFrom",
+    ]);
     return new Proxy(sessionManager, {
         get(target, property, receiver) {
-            if (property === "_rewriteFile") return rewriteFile;
-            if (property === "_persist") return persist;
-            return Reflect.get(target, property, receiver);
+            // Pi disposal needs immutable identity, not access to the failed tree.
+            if (bridge && property === "getSessionId") return () => sessionId;
+            bridge?.assertHealthy();
+            if (bridge && uncaptured.has(String(property))) {
+                return () =>
+                    bridge.fail(new Error(`Remote Session lifecycle path is not captured: ${String(property)}`));
+            }
+            const value =
+                property === "_rewriteFile"
+                    ? rewriteFile
+                    : property === "_persist"
+                      ? persist
+                      : Reflect.get(target, property, receiver);
+            if (!bridge || typeof value !== "function") return value;
+            // Retained method references must also fail after a swallowed persistence error.
+            /** @param {unknown[]} args */
+            const guarded = (...args) => {
+                bridge.assertHealthy();
+                try {
+                    return Reflect.apply(value, receiver, args);
+                } catch (error) {
+                    return bridge.fail(error instanceof Error ? error : new Error(String(error)));
+                }
+            };
+            return guarded;
+        },
+        set(target, property, value, receiver) {
+            bridge?.assertHealthy();
+            return Reflect.set(target, property, value, receiver);
+        },
+        getPrototypeOf(target) {
+            bridge?.assertHealthy();
+            // Do not expose SessionManager's static file/fork constructors through the remote manager.
+            return bridge ? null : Reflect.getPrototypeOf(target);
         },
     });
 }
@@ -166,15 +264,16 @@ async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath
     if (!stat.isFile()) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
 }
 
-/** @param {string} cwd @param {any} sessionManager */
-export async function resolveCreatedRootSessionPath(cwd, sessionManager) {
+/** @param {string} cwd @param {import("./hosted-session.js").MinimalSessionManagerLike} sessionManager @param {string} [directory] */
+export async function resolveCreatedRootSessionPath(cwd, sessionManager, directory) {
+    requireLocalSessionWriter();
     const piSessionId = sessionManager.getSessionId?.();
     if (!piSessionId) throw new Error("The Session could not be persisted");
-    const sessions = await listPersistedRootSessions(cwd);
+    const sessions = directory ? [] : await listPersistedRootSessions(cwd);
     const match = sessions.find((session) => session.id === piSessionId);
     if (match?.path) return match.path;
     const transcriptPath = sessionManager.getSessionFile?.();
-    const sessionDir = getRunWieldSessionDir(cwd);
+    const sessionDir = directory || getRunWieldSessionDir(cwd);
     if (
         !transcriptPath ||
         typeof transcriptPath !== "string" ||

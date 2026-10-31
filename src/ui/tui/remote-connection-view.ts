@@ -30,6 +30,17 @@ export function parseRemoteConnectionViewConfig(line: string): RemoteConnectionV
     return parsed;
 }
 
+/** Present connection facts as terminal-safe text in either connection or chat views. */
+export function formatRemoteConnectionDetails(config: RemoteConnectionViewConfig): string {
+    return [
+        `Host: ${safeLine(config.host)}`,
+        `Directory: ${safeLine(config.cwd)}`,
+        `Status: ${safeLine(config.status)}`,
+        `Trust: ${safeLine(config.trust)}`,
+        `Readiness: ${safeLine(config.readiness)}`,
+    ].join("\n");
+}
+
 /** Display connection facts only. No chat, project, model or settings are initialized. */
 export function showRemoteConnectionView(tui: TUI, config: RemoteConnectionViewConfig): Promise<void> {
     tui.addChild(
@@ -37,11 +48,7 @@ export function showRemoteConnectionView(tui: TUI, config: RemoteConnectionViewC
             [
                 "Remote connection",
                 "",
-                `Host: ${safeLine(config.host)}`,
-                `Directory: ${safeLine(config.cwd)}`,
-                `Status: ${safeLine(config.status)}`,
-                `Trust: ${safeLine(config.trust)}`,
-                `Readiness: ${safeLine(config.readiness)}`,
+                formatRemoteConnectionDetails(config),
                 "",
                 "Press q, Ctrl-C, or Ctrl-D to exit.",
             ].join("\n"),

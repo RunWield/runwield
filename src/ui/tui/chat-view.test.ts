@@ -1,3 +1,4 @@
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
 import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
@@ -43,6 +44,7 @@ test("TUI artifact shortcut opens the shared-reader picker without changing the 
         const terminal = new VirtualTerminal({ columns: 150, rows: 30 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -74,6 +76,7 @@ for (const kind of ["select", "text"] as const) {
             const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
             const tui = new TuiAltScreen(terminal);
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
@@ -124,6 +127,7 @@ test("chat view reconstructs delayed mouse-wheel input without changing a draft 
         const tui = new RunWieldTui(terminal);
         const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -229,6 +233,7 @@ test("chat view shows messages appended after the first frame", async () => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -263,6 +268,7 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
             const terminal = new VirtualTerminal({ columns: 150, rows: 12 });
             const tui = new RunWieldTui(terminal);
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
@@ -413,6 +419,7 @@ test("chat view refreshes an active tool without reformatting retained message b
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -468,6 +475,7 @@ test("chat view keeps sidebar tabs on the first row above a queued steering mess
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -505,6 +513,7 @@ test("chat view tracks quick fix validation in the workflow sidebar", async () =
         const terminal = new VirtualTerminal({ columns: 150, rows: 28 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -538,6 +547,7 @@ test("chat view keeps block backgrounds out of the sidebar when the scrollbar is
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -574,6 +584,7 @@ test("chat view keeps scrollback position during live thinking updates", async (
         const terminal = new VirtualTerminal({ columns: 80, rows: 10 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -618,6 +629,7 @@ test("chat view keeps settled tool lines cached across a keystroke", async () =>
         const terminal = new VirtualTerminal({ columns: 100, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -659,6 +671,7 @@ for (const recovery of ["ctrl+l", "focus"] as const) {
             const tui = new RunWieldTui(terminal);
             const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
@@ -729,6 +742,7 @@ test("idle concurrent chat views never read the clipboard across focus, replacem
                 const tui = new RunWieldTui(terminal);
                 const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
                 const view = await createChatView({
+                    browser: NO_OPEN_BROWSER_PORT,
                     documentLinks: null,
                     tui,
                     suppressStartupHeader: true,
@@ -774,6 +788,7 @@ test("an image read completing after view disposal adds no preview and requests 
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,

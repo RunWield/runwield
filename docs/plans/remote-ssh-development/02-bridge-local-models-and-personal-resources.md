@@ -43,7 +43,7 @@ persistence, so the split must happen at real ownership boundaries rather than t
 tool.
 
 This slice targets the model and customization part of the Remote SSH PRD's
-[Local personal environment](../../prd/remote-ssh-prd.md#local-personal-environment): **Use one personal environment**,
+[Local personal environment](../../prd/runwield-core-prd.md#agent-and-skill-customization): **Use one personal environment**,
 **Keep credentials local**, and **Use customizations honestly**. The lasting owners are Core's
 [Models and providers](../../prd/runwield-core-prd.md#models-and-providers) and
 [Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization). Preserve settings
@@ -274,9 +274,9 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   before child 04 activation.
 - **Commands:** Run
   `deno run -A scripts/run-tests.js src/shared/remote/ src/shared/models/ src/shared/settings.test.ts
-  src/shared/session/skill-catalog.test.ts src/shared/session/named-invocation.test.ts
-  src/shared/session/agents-shared-practice.test.ts src/shared/session/session-prompt.test.js
-  src/shared/session/__tests__/agent-model-override.test.ts src/cmd/resume/index.test.ts src/tools/see-image.test.js`
+src/shared/session/skill-catalog.test.ts src/shared/session/named-invocation.test.ts
+src/shared/session/agents-shared-practice.test.ts src/shared/session/session-prompt.test.js
+src/shared/session/__tests__/agent-model-override.test.ts src/cmd/resume/index.test.ts src/tools/see-image.test.js`
   as one shell command, plus focused provider retry/replay/temperature tests in `src/shared/session/`. Use
   `deno task seams:check` and `deno task doc-links:check`. All automated fixtures use the repository's isolated test
   runner; tests changing HOME/cwd use `withProcessGlobalTestLock`. Do not add seams for owned settings or storage.

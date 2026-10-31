@@ -227,13 +227,14 @@ interface ExecutionPreparationLocationOptions {
 
 /** Reconcile the source authority before the registry can select an incomplete worktree. */
 export async function reconcileExecutionPreparationLocation(
-    projectRoot: string,
+    cwd: string,
     planName: string,
     options: ExecutionPreparationLocationOptions = {},
 ) {
+    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     await prepareWorktreeRegistry(projectRoot);
     const records = await listTransitionRecoveryRecords(projectRoot);
-    const source = await loadPlan(projectRoot, planName).catch(() => null);
+    const source = await loadPlan(cwd, planName).catch(() => null);
     const entries = await listWorktreeRegistryEntries(projectRoot);
     // Only an interrupted first preparation can use the approved source when its
     // selected worktree has no document yet. A worker's later deletion cannot.
@@ -275,14 +276,14 @@ export async function reconcileExecutionPreparationLocation(
         if (selected && !(await loadPlan(selected.path, planName))) {
             return {
                 registryRoot: projectRoot,
-                documentRoot: projectRoot,
+                documentRoot: cwd,
                 plan: source,
                 resumeInterruptedPreparation: true,
             };
         }
     }
     await preparePlanWorkflow(projectRoot, planName);
-    return await resolveWorkflowPlanLocation(projectRoot, planName, options);
+    return await resolveWorkflowPlanLocation(cwd, planName, options);
 }
 
 interface ExecutionStartOptions {
@@ -312,12 +313,13 @@ export async function startActiveExecutionWorkflow({
     collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
     ports,
 }: ExecutionStartOptions): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
+    hostedSession?.getManagedOperationCapability?.()?.assertLive();
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    let sourceLocation = await reconcileExecutionPreparationLocation(projectRoot, planName, { readOnly: true });
+    let sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName, { readOnly: true });
     if (!sourceLocation.resumeInterruptedPreparation) {
-        await prepareSessionPlanningWorktree(projectRoot, planName);
-        sourceLocation = await reconcileExecutionPreparationLocation(projectRoot, planName);
+        await prepareSessionPlanningWorktree(cwd, planName);
+        sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName);
     }
     if (sourceLocation.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${planName} before executing it.`);
@@ -665,6 +667,7 @@ export async function startActiveExecutionWorkflow({
                     attemptId,
                     ...targetPreparation,
                 };
+                hostedSession?.getManagedOperationCapability?.()?.assertLive();
                 await addRunWieldOwnedGitignoreBlock(projectRoot, hostedSession);
                 const worktreeArtifacts = await createWorktreeGitArtifacts(worktreeOptions);
                 await addRunWieldOwnedGitignoreBlock(worktreeArtifacts.path, hostedSession);

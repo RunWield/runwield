@@ -118,8 +118,17 @@ bun scripts/release-assets.ts development bin/wld bin/wld-linux-x64 bin/wld-linu
 ```
 
 Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never
-compiles on demand or substitutes a released binary. Remote host prerequisites are in the
-[Core PRD](prd/runwield-core-prd.md#remote-connection).
+compiles on demand or substitutes a released binary. Released launchers instead obtain their exact VERSION-tagged
+archive. Both launcher types download pinned `cymbal` and `ketch` and MIT notices on first use, cache them under laptop
+`~/.cache/runwield/remote/`, and supply them privately on the server. The server needs no internet connection or system
+helper installation. A warm laptop cache supports offline reconnect and an empty server cache.
+
+Servers need glibc Linux x86-64 or ARM64, `python3`, `sshfs`, `fuse3`, usable `/dev/fuse`, and OpenSSH with terminal
+allocation, TCP forwarding, and Unix-socket forwarding. OS, CPU, and mount prerequisites are checked before cache
+access or transfer; missing packages get distribution-specific guidance. Remote macOS is not supported.
+Runtime entries stay under server `~/.cache/runwield/runtime/`; helper binaries and notices stay under
+`~/.cache/runwield/helpers/`. Only the remote process tree's `PATH` changes; profiles and `/usr/local/bin` do not.
+See the [Core PRD](prd/runwield-core-prd.md#remote-connection) and the [SSH release gate](releasing.md#remote-ssh-package-gate).
 
 ## Codebase guide
 

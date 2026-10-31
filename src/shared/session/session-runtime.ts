@@ -5,6 +5,8 @@ export {
     listSkills,
 } from "./session.js";
 export { resolveSessionContinuation } from "./session-continuation.ts";
+export type { DeferredPlanExecution } from "./runtime/workflow-options.ts";
+export { generateInMemoryGuide } from "./runtime/guided-review.ts";
 export type { DequeueQueuedMessageResult, SteerSessionResult } from "./runtime/types.ts";
 import { AGENTS } from "../../constants.js";
 import { SessionHost } from "./session-host.ts";
@@ -403,13 +405,14 @@ export class SessionRuntime {
 export function createSessionRuntime(options: CreateSessionRuntimeOptions = {}): SessionRuntime {
     let sessionStore = options.sessionStore ?? null;
     let ownsSessionStore = false;
-    if (!Object.hasOwn(options, "sessionStore")) {
+    if (!options.remoteSessionControl && !Object.hasOwn(options, "sessionStore")) {
         sessionStore = openFileSessionStore();
         ownsSessionStore = true;
     }
     return new SessionRuntime({
         sessionHost: new SessionHost(),
         sessionStore,
+        remoteSessionControl: options.remoteSessionControl,
         ownsSessionStore,
         ownerProcessKind: options.ownerProcessKind ?? "test",
         ownerInstanceId: options.ownerInstanceId ?? crypto.randomUUID(),

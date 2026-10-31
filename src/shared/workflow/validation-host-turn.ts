@@ -9,7 +9,11 @@ import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-regi
 /** Session-free composition. Validation policy remains in the shared attempt owner and engine. */
 import { runValidationAttempt, type ValidationAttemptClaim } from "./validation-supervisor.ts";
 import type { ValidationProgressRecord, ValidationSessionPort, ValidationWorkflowState } from "./validation-ports.ts";
-import type { HostTurnValidationResult, ValidationHostResume } from "./validation-host-contract.ts";
+import {
+    ValidationHostShutdown,
+    type HostTurnValidationResult,
+    type ValidationHostResume,
+} from "./validation-host-contract.ts";
 import { createGitPort } from "../git-port.ts";
 import { getAgentDisplayName } from "./validation-prompts.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -26,7 +30,7 @@ export type {
     ValidationHostResume,
 } from "./validation-host-contract.ts";
 
-function createHostTurnPort(cwd: string): ValidationSessionPort {
+function createHostTurnPort(cwd: string, signal?: AbortSignal): ValidationSessionPort {
     let workflow: ValidationWorkflowState | null = null;
     let progress: ValidationProgressRecord | undefined;
     const unexpected = () => {
@@ -34,6 +38,9 @@ function createHostTurnPort(cwd: string): ValidationSessionPort {
     };
     return {
         cwd,
+        assertLive() {
+            if (signal?.aborted) throw new ValidationHostShutdown();
+        },
         getActiveWorkflow: () => workflow,
         setActiveWorkflow: (value) => {
             workflow = value;
@@ -68,7 +75,7 @@ export function createHostTurnValidationArgs(
         planName: args.planName,
         planContent: claim.planContent,
         triageMeta: claim.triageMeta,
-        session: createHostTurnPort(args.projectRoot),
+        session: createHostTurnPort(args.projectRoot, args.signal),
         git: createGitPort(),
         localCI: {
             run() {
@@ -120,7 +127,7 @@ export async function continueHostTurnValidation(
             planName: args.planName,
             planContent: sealed.delivered.markdown,
             triageMeta: sealed.delivered.attrs,
-            session: createHostTurnPort(args.projectRoot),
+            session: createHostTurnPort(args.projectRoot, args.signal),
             git: createGitPort(),
             localCI: {
                 run() {

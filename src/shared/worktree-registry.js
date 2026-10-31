@@ -376,10 +376,10 @@ function assertNoDuplicateNonterminalAttempt(entries, candidate) {
 }
 
 /**
- * @param {string} projectRoot
+ * @param {string} _projectRoot
  * @param {WorktreeRegistryEntry[]} entries
  */
-async function writeRegistry(projectRoot, entries) {
+async function writeRegistry(_projectRoot, entries) {
     const layout = registryMutation.getStore();
     if (!layout) throw new Error("Registry writes require mutation admission and the registry lock.");
     const path = layout.primary.worktreeRegistryPath;

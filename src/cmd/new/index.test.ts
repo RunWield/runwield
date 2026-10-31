@@ -42,7 +42,7 @@ async function countTranscripts(projectRoot: string): Promise<number> {
             if (entry.isFile() && entry.name.endsWith(".jsonl")) count++;
         }
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
         throw error;
     }
     return count;
@@ -58,10 +58,10 @@ test("runNewCommand creates and names an in-memory Router session until its firs
         let cleared = false;
         try {
             await runNewCommand(["build", "coverage"], {
-                uiAPI: { clearMessages: () => cleared = true },
+                uiAPI: { clearMessages: () => (cleared = true) },
                 sessionId: current.sessionId,
                 sessionRuntime: runtime,
-                replaceRuntimeSession: (sessionId) => replacementId = sessionId,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
             });
 
             const replacement = runtime.getSessionSnapshot(replacementId);
@@ -96,7 +96,7 @@ test("runNewCommand uses the fixture cwd when there is no current session", asyn
             await runNewCommand([], {
                 uiAPI: {},
                 sessionRuntime: runtime,
-                replaceRuntimeSession: (sessionId) => replacementId = sessionId,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
             });
 
             const replacement = runtime.getSessionSnapshot(replacementId);
@@ -119,10 +119,6 @@ test("runNewCommand reports unavailable interactive state", async () => {
         const errors = await captureErrors(() => runNewCommand([]));
         assertEquals(errors, ["The /new command is only available inside an interactive session."]);
 
-        await assertRejects(
-            () => runNewCommand([], { uiAPI: {} }),
-            Error,
-            "/new requires the SessionRuntime surface.",
-        );
+        await assertRejects(() => runNewCommand([], { uiAPI: {} }), Error, "/new requires the SessionRuntime surface.");
     });
 });

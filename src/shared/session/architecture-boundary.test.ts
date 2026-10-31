@@ -7,6 +7,13 @@ import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
 const REPO_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "../../..");
 const SKIPPED_SOURCE_DIRECTORIES = new Set([".astro", "dist", "node_modules"]);
+// These are test subprocesses and the owned-scratch qualification harness, not Runtime consumers.
+const SESSION_SAVE_TEST_SOURCES = new Set([
+    "src/shared/remote/session-save-test-client.ts",
+    "src/shared/remote/session-save-test-fixture.ts",
+    "src/shared/remote/verify-remote-session-save.ts",
+    "src/shared/session/remote-session-process-fixture.ts",
+]);
 
 async function productionSourceFiles(path: string): Promise<string[]> {
     const files = [];
@@ -19,6 +26,7 @@ async function productionSourceFiles(path: string): Promise<string[]> {
         }
         if (!entry.isFile() || !/\.[jt]sx?$/.test(entry.name)) continue;
         if (/\.test\.[jt]sx?$/.test(entry.name) || /_test\.[jt]sx?$/.test(entry.name)) continue;
+        if (SESSION_SAVE_TEST_SOURCES.has(relative(REPO_ROOT, entryPath))) continue;
         files.push(entryPath);
     }
     return files;
@@ -226,9 +234,12 @@ test("Session writer mutators stay behind approved state-machine seams", async (
                 allowPath: (path) =>
                     path.startsWith("src/shared/owner-coordination/") ||
                     path === "src/shared/session/file-session-store.ts" ||
+                    path === "src/shared/session/file-session-store-local.ts" ||
                     path === "src/shared/session/file-session-control.ts" ||
                     path === "src/shared/session/file-session-store-types.ts" ||
                     path === "src/shared/session/segment-rollover.ts" ||
+                    // ADR-018: connection-scoped laptop control admits native remote writers.
+                    path === "src/shared/remote/laptop-session-control.ts" ||
                     path === "src/shared/session/runtime/lifecycle-loading.ts" ||
                     path === "src/shared/session/runtime/lifecycle.ts" ||
                     path === "src/shared/session/runtime/managed-operations.ts" ||
@@ -247,7 +258,10 @@ test("the file Session contract is host-neutral and the store remains decomposed
 
     const facade = await fsReadFile(join(REPO_ROOT, "src/shared/session/file-session-store.ts"), "utf8");
     assertEquals(facade.split("\n").length <= 650, true);
-    assertEquals(facade.includes("createFileSessionControl"), true);
+    const local = await fsReadFile(join(REPO_ROOT, "src/shared/session/file-session-store-local.ts"), "utf8");
+    assertEquals(local.split("\n").length <= 650, true);
+    assertEquals(facade.includes("openLocalFileSessionStore"), true);
+    assertEquals(local.includes("createFileSessionControl"), true);
 });
 
 test("non-owning Session generation synchronization remains read-only", async () => {

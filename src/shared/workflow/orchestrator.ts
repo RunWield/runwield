@@ -59,6 +59,8 @@ import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { waitForWorkflowToolEvent, WorkflowStepCompleted } from "./workflow-tool-events.ts";
+import type { DeferredPlanExecution } from "../session/session-runtime.ts";
+import { loadPlanActionEvidence } from "./plan-actions.ts";
 
 export { runLocalCI, runMechanicalValidation } from "./validation.ts";
 
@@ -274,7 +276,9 @@ export async function dispatchPostTriage({
     sessionManager,
     localCI,
     signal,
-}: DispatchPostTriageArgs): Promise<Awaited<ReturnType<typeof runWorkflowValidationToStableBoundary>> | undefined> {
+}: DispatchPostTriageArgs): Promise<
+    Awaited<ReturnType<typeof runWorkflowValidationToStableBoundary>> | DeferredPlanExecution | undefined
+> {
     if (!hostedSession || typeof hostedSession.getRootAgentName !== "function") {
         throw new Error("dispatchPostTriage: hostedSession is required");
     }
@@ -572,6 +576,21 @@ export async function dispatchPostTriage({
         const decisionMeta = decision.payload.triageMeta as TriageOutcomeInput | undefined;
         const decisionTriageMeta = normalizeTriageOutcome(decisionMeta) || normalizedTriage;
         checkCanceled();
+        if (hostedSession.getManagedMetadata?.()) {
+            const approvedPlan = await loadPlan(projectRoot, planName);
+            const evidence = await loadPlanActionEvidence(projectRoot, approvedPlan?.attrs.planId || "");
+            checkCanceled();
+            if (evidence.kind !== "success") throw new Error(evidence.message);
+            return {
+                kind: "approved_execution",
+                executionToStart: {
+                    planName,
+                    triageMeta: { ...decisionTriageMeta, ...approvedPlan?.attrs },
+                    routerMessage: userRequest,
+                    approvalEvidence: evidence.evidence,
+                },
+            };
+        }
         let executionResult: Awaited<ReturnType<typeof executePlan>>;
         try {
             executionResult = await executePlan({

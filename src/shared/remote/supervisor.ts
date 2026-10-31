@@ -1,6 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import process from "node:process";
 import type { Socket } from "node:net";
 import { getCwd } from "../../constants.js";
@@ -14,17 +12,21 @@ import { realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
 
 import type { RemoteConnectionViewConfig } from "../../ui/tui/remote-connection-view.ts";
 import { terminateOwnedLinuxGroup } from "../foreground-process.ts";
+import { setChildSubreaper, terminateOwnedLinuxDescendants } from "../linux-process-group.ts";
 import { type MountHeader, mountLaptopHome, type RemoteMount, validateMountHeader } from "./sftp-mount.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "./model-proof-config.ts";
+import { verifiedRemoteHelperPath } from "./helpers.ts";
 
 export interface RemoteSupervisorHeader {
     credential: string;
     port: number;
+    reviewPort: number;
     buildId: string;
     protocol: number;
     view: RemoteConnectionViewConfig;
     mount: MountHeader;
     remoteHome: string;
+    memoryCollection: string;
     modelProof?: RemoteModelProof;
 }
 
@@ -48,7 +50,7 @@ async function readHeader(connection: Socket): Promise<RemoteSupervisorHeader> {
     const bytes: number[] = [];
     const buffer = new Uint8Array(1);
     while (bytes.length < 16 * 1024) {
-        if (await readStreamInto(connection, buffer) === null) throw new Error("Missing remote supervisor header");
+        if ((await readStreamInto(connection, buffer)) === null) throw new Error("Missing remote supervisor header");
         if (buffer[0] === 10) {
             let header: RemoteSupervisorHeader;
             try {
@@ -57,24 +59,36 @@ async function readHeader(connection: Socket): Promise<RemoteSupervisorHeader> {
                 throw new Error("Invalid remote supervisor header");
             }
             if (
-                !header || !/^[a-f0-9]{64}$/.test(header.credential) ||
+                !header ||
+                !/^[a-f0-9]{64}$/.test(header.credential) ||
                 !/^[a-f0-9]{64}$/.test(header.buildId) ||
                 !Number.isInteger(header.protocol) ||
-                !Number.isInteger(header.port) || header.port < 1 || header.port > 65535 ||
+                !Number.isInteger(header.port) ||
+                header.port < 1 ||
+                header.port > 65535 ||
+                !Number.isInteger(header.reviewPort) ||
+                header.reviewPort < 1 ||
+                header.reviewPort > 65535 ||
                 !header.view ||
-                !["host", "cwd", "status", "trust", "readiness"].every((key) =>
-                    typeof header.view[key as keyof RemoteConnectionViewConfig] === "string"
+                !["host", "cwd", "status", "trust", "readiness"].every(
+                    (key) => typeof header.view[key as keyof RemoteConnectionViewConfig] === "string",
                 )
-            ) throw new Error("Invalid remote supervisor header");
+            )
+                throw new Error("Invalid remote supervisor header");
             validateMountHeader(header.mount);
             if (header.modelProof !== undefined) {
                 // The private header remains untrusted until identity and control handshake succeed.
                 header.modelProof = parseRemoteModelProof(JSON.stringify(header.modelProof));
             }
             if (
-                typeof header.remoteHome !== "string" || !header.remoteHome.startsWith("/") ||
+                typeof header.memoryCollection !== "string" ||
+                !header.memoryCollection ||
+                header.memoryCollection.includes("\0") ||
+                typeof header.remoteHome !== "string" ||
+                !header.remoteHome.startsWith("/") ||
                 header.remoteHome.includes("\0")
-            ) throw new Error("Invalid remote home");
+            )
+                throw new Error("Invalid remote home");
             return header;
         }
         bytes.push(buffer[0]);
@@ -105,7 +119,7 @@ async function control(
 
 async function stopChild(child: NativeProcess, label: string): Promise<void> {
     try {
-        if (!await terminateOwnedLinuxGroup(child)) {
+        if (!(await terminateOwnedLinuxGroup(child))) {
             console.error(`Remote ${label} termination is unconfirmed; no stale group was signalled.`);
         }
     } catch (error) {
@@ -131,7 +145,7 @@ async function runOwnedModelProof(
         resolveAbort = () => resolve(undefined);
     });
     let stopping: Promise<void> | undefined;
-    const stop = () => stopping ??= stopChild(child, "model proof");
+    const stop = () => (stopping ??= stopChild(child, "model proof"));
     const onAbort = () => {
         resolveAbort();
         void stop();
@@ -140,18 +154,20 @@ async function runOwnedModelProof(
     const writer = child.stdin.getWriter();
     try {
         if (signal.aborted) onAbort();
-        await writer.write(encoder.encode(
-            JSON.stringify({
-                proof: header.modelProof,
-                connection: { port: header.port, credential: header.credential },
-                cwd: header.view.cwd,
-                mount: {
-                    globalRoot: mount.globalRoot,
-                    agentsRoot: mount.agentsRoot,
-                    packageRoots: mount.packageRoots,
-                },
-            }) + "\n",
-        ));
+        await writer.write(
+            encoder.encode(
+                JSON.stringify({
+                    proof: header.modelProof,
+                    connection: { port: header.port, credential: header.credential },
+                    cwd: header.view.cwd,
+                    mount: {
+                        globalRoot: mount.globalRoot,
+                        agentsRoot: mount.agentsRoot,
+                        packageRoots: mount.packageRoots,
+                    },
+                }) + "\n",
+            ),
+        );
         // Keep stdin open as a parent-lifetime signal. A crashed supervisor
         // closes the pipe, and the proof process aborts its model request.
         const status = await Promise.race([child.status, aborted]);
@@ -174,7 +190,8 @@ async function runOwnedModelProof(
  */
 export async function runRemoteSupervisor(): Promise<void> {
     if (
-        !isStandaloneExecutable() || process.argv.slice(2).length !== 2 ||
+        !isStandaloneExecutable() ||
+        process.argv.slice(2).length !== 3 ||
         process.argv.slice(2)[0] !== "--remote-supervisor"
     ) {
         throw new Error("Remote supervisor requires its own compiled executable");
@@ -183,17 +200,25 @@ export async function runRemoteSupervisor(): Promise<void> {
     if (!/^[1-9]\d*$/.test(process.argv.slice(2)[1]) || setupPort > 65535) {
         throw new Error("Invalid remote supervisor control port");
     }
+    const socketDirectory = process.argv.slice(2)[2];
+    if (!/^\/tmp\/wld-remote-[a-f0-9]{32}$/.test(socketDirectory)) throw new Error("Invalid remote socket directory");
     if (process.platform !== "linux") throw new Error("Remote supervisor requires Linux");
-    const originalMode = await stty("-g");
-    await stty("-echo");
-    const socketDirectory = await mkdtemp(join(tmpdir(), "wld-remote-"));
+    process.env.PATH = await verifiedRemoteHelperPath(
+        { os: "Linux", arch: process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch },
+        process.env.PATH ?? "",
+    );
+    setChildSubreaper();
+    await mkdir(socketDirectory, { mode: 0o700 });
+    let originalMode: string | undefined;
     const socketPath = `${socketDirectory}/control.sock`;
     let listener: SocketListener;
     try {
+        originalMode = await stty("-g");
+        await stty("-echo");
         listener = await listenSocket({ path: socketPath });
     } catch (error) {
-        await fsRm(socketDirectory, { recursive: true });
-        await stty(originalMode).catch(() => undefined);
+        await fsRm(socketDirectory, { recursive: true }).catch(() => undefined);
+        if (originalMode !== undefined) await stty(originalMode).catch(() => undefined);
         throw error;
     }
     let child: NativeProcess | undefined;
@@ -204,26 +229,78 @@ export async function runRemoteSupervisor(): Promise<void> {
     let childStopped = false;
     let stopActive: (() => void) | undefined;
     let childExited = false;
+    let confirmCleanup: (() => Promise<boolean>) | undefined;
+    let cleanupHealthTimer: ReturnType<typeof setInterval> | undefined;
+    const cleanupHealthAbort = new AbortController();
     let connection: Socket | undefined;
     const setupHealthAbort = new AbortController();
     // Owned by this connection, including the bootstrap proof before the view exists.
     const proofAbort = new AbortController();
     let setupHealthTimer: ReturnType<typeof setInterval> | undefined;
     let interrupted = false;
+    let failed = false;
     const onEarlyClosure = () => {
         interrupted = true;
         proofAbort.abort();
         try {
             connection?.destroy();
-        } catch { /* Read already settled. */ }
+        } catch {
+            /* Read already settled. */
+        }
         try {
             listener.close();
-        } catch { /* Already closed. */ }
+        } catch {
+            /* Already closed. */
+        }
         stopActive?.();
     };
     for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
         process.on(signal, onEarlyClosure);
     }
+    const cleanup = async (): Promise<void> => {
+        proofAbort.abort();
+        setupHealthAbort.abort();
+        if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
+        if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
+        if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
+        const workStopped = await terminateOwnedLinuxDescendants(false);
+        try {
+            listener.close();
+        } catch {
+            /* Already closed after admission. */
+        }
+        let connectionRemoved = true;
+        await fsRm(socketDirectory, { recursive: true, force: true }).catch((error) => {
+            connectionRemoved = false;
+            console.error("Remote connection directory cleanup failed:", error);
+        });
+        let mountClosed = false;
+        if (personalMount) {
+            await personalMount.close().then(
+                () => {
+                    mountClosed = true;
+                },
+                (error) => console.error("Remote mount cleanup failed:", error),
+            );
+        }
+        const helpersStopped = await terminateOwnedLinuxDescendants(true);
+        const terminationConfirmed = workStopped && helpersStopped;
+        if (!terminationConfirmed) console.error("Remote owned process termination is unconfirmed");
+        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
+            process.off(signal, onEarlyClosure);
+        }
+        await stty(originalMode).catch(() => undefined);
+        if (cleanupHealthTimer !== undefined) clearInterval(cleanupHealthTimer);
+        cleanupHealthAbort.abort();
+        if (terminationConfirmed && connectionRemoved && mountClosed && !failed) {
+            await confirmCleanup?.().catch(() => undefined);
+        }
+        if (!failed) {
+            if (!terminationConfirmed) throw new Error("Remote owned process termination is unconfirmed");
+            if (!connectionRemoved) throw new Error("Remote connection directory cleanup is unconfirmed");
+            if (personalMount && !mountClosed) throw new Error("Remote mount cleanup is unconfirmed");
+        }
+    };
     try {
         // The marker contains only a locator in a mode-0700 temporary folder.
         // A banner cannot cause the terminal to echo a credential: the header
@@ -289,11 +366,15 @@ export async function runRemoteSupervisor(): Promise<void> {
             if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
             try {
                 connection?.destroy();
-            } catch { /* Already closed. */ }
+            } catch {
+                /* Already closed. */
+            }
             try {
                 listener.close();
-            } catch { /* Already closed. */ }
-            await fsRm(socketDirectory, { recursive: true });
+            } catch {
+                /* Already closed. */
+            }
+            await fsRm(socketPath, { force: true });
         }
         if (interrupted) return;
         const { BUILD_ID, REMOTE_PROTOCOL_VERSION } = await import("../build-identity.js");
@@ -301,11 +382,12 @@ export async function runRemoteSupervisor(): Promise<void> {
             throw new Error("Remote supervisor build identity mismatch");
         }
         if (
-            await control(
+            (await control(
                 header,
                 "handshake",
                 JSON.stringify({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION }),
-            ) || interrupted
+            )) ||
+            interrupted
         ) {
             return;
         }
@@ -313,9 +395,8 @@ export async function runRemoteSupervisor(): Promise<void> {
         const accountHome = await fsRealpath((await import("../../constants.js")).getHomeDir());
         if (accountHome !== header.remoteHome) throw new Error("Remote account home changed before mount");
         personalMount = await mountLaptopHome(header.remoteHome, header.mount);
-        // personalMount.globalRoot and personalMount.agentsRoot are private to this
-        // connection. The connection-only view does not read personal resources;
-        // do not replace HOME or send mount paths to that view.
+        // Verified roots travel only through the private child header. HOME stays
+        // the remote account home; personal resources use explicit mounted roots.
         void personalMount.lost.then(() => {
             mountLost = true;
             proofAbort.abort();
@@ -376,6 +457,8 @@ export async function runRemoteSupervisor(): Promise<void> {
         child = spawnNativeProcess(process.execPath, {
             args: ["--remote-view"],
             cwd: header.view.cwd,
+            // The supervisor also removes transient logs when SIGKILL skips view cleanup.
+            env: { TMPDIR: socketDirectory },
             stdin: "piped",
             stdout: "inherit",
             stderr: "inherit",
@@ -386,7 +469,25 @@ export async function runRemoteSupervisor(): Promise<void> {
             childExited = true;
         });
         writer = view.stdin.getWriter();
-        await writer.write(encoder.encode(JSON.stringify(header.view) + "\n"));
+        await writer.write(
+            encoder.encode(
+                JSON.stringify({
+                    view: header.view,
+                    review: {
+                        socketPath: `${socketDirectory}/review.sock`,
+                        origin: `http://127.0.0.1:${header.reviewPort}`,
+                    },
+                    memoryCollection: header.memoryCollection,
+                    connection: { port: header.port, credential: header.credential },
+                    cwd: header.view.cwd,
+                    resources: {
+                        globalRoot: personalMount.globalRoot,
+                        agentsRoot: personalMount.agentsRoot,
+                        packageRoots: personalMount.packageRoots,
+                    },
+                }) + "\n",
+            ),
+        );
         let stopped = false;
         const healthAbort = new AbortController();
         let wake: (() => void) | undefined;
@@ -408,11 +509,14 @@ export async function runRemoteSupervisor(): Promise<void> {
         // Admit terminal input only after the pump is running. The launcher
         // waits for readiness before showing the view or forwarding input.
         if (
-            await control(header, "readiness", undefined, proofAbort.signal).catch((error) => {
+            (await control(header, "readiness", undefined, proofAbort.signal).catch((error) => {
                 if (proofAbort.signal.aborted) return true;
                 throw error;
-            }) || interrupted || mountLost
-        ) stop();
+            })) ||
+            interrupted ||
+            mountLost
+        )
+            stop();
         const monitor = (async () => {
             let misses = 0;
             let nextCheck = Date.now() + PERIOD_MS;
@@ -445,8 +549,10 @@ export async function runRemoteSupervisor(): Promise<void> {
                 }
             }
         })();
+        let normalViewExit = false;
         try {
-            await Promise.race([view.status, ending]);
+            const result = await Promise.race([view.status, ending]);
+            normalViewExit = result?.success === true && !stopped;
         } finally {
             stop();
             await monitor;
@@ -463,25 +569,19 @@ export async function runRemoteSupervisor(): Promise<void> {
             process.off("SIGINT", onSignal);
             process.off("SIGTERM", onSignal);
             process.off("SIGHUP", onSignal);
-            await control(header, "shutdown").catch(() => undefined);
+            if (normalViewExit) {
+                confirmCleanup = () => control(header, "shutdown");
+                // Descendant grace and mount cleanup can exceed the laptop health deadline.
+                cleanupHealthTimer = setInterval(() => {
+                    void control(header, "health", undefined, cleanupHealthAbort.signal).catch(() => undefined);
+                }, PERIOD_MS);
+            }
         }
         if (mountLost) throw new Error("Laptop personal mount lost; remote work stopped");
+    } catch (error) {
+        failed = true;
+        throw error;
     } finally {
-        proofAbort.abort();
-        setupHealthAbort.abort();
-        if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
-        if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
-        if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
-        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-            process.off(signal, onEarlyClosure);
-        }
-        try {
-            listener.close();
-        } catch { /* Already closed after admission. */ }
-        await fsRm(socketDirectory, { recursive: true }).catch(() => undefined);
-        if (personalMount) {
-            await personalMount.close().catch((error) => console.error("Remote mount cleanup failed:", error));
-        }
-        await stty(originalMode).catch(() => undefined);
+        await cleanup();
     }
 }

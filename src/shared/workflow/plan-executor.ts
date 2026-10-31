@@ -534,6 +534,7 @@ export async function executeSingleEngineerPlan({
     prepareSegmentHandoff = false,
     resumePreviousRequest = false,
 }: ExecuteSingleEngineerPlanOptions): Promise<PlanExecutionResult> {
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     const approvalSnapshot = approvalEvidence
         ? {
               planId: approvalEvidence.planId,
@@ -759,6 +760,7 @@ export async function executePreparedPlanSegmentHandoff({
     hostedSession: HostedSession;
 }): Promise<PlanExecutionResult> {
     const workflow = continuation.activeWorkflow as ActiveExecutionWorkflow;
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     hostedSession.setActiveExecutionWorkflow(workflow);
     emitLaunchingExecutionAgent(
         hostedSession,

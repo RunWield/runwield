@@ -1,5 +1,11 @@
 /** Action-owned runtime preparation. Passive lookups must not call this module. */
-import { findPlansByParent, isProjectPlan, loadPlan, parsePlanFrontMatter } from "../../plan-store.js";
+import {
+    ensurePlanIdentity,
+    findPlansByParent,
+    isProjectPlan,
+    loadPlan,
+    parsePlanFrontMatter,
+} from "../../plan-store.js";
 import { findActiveByPlanName, prepareWorktreeRegistry } from "../worktree-registry.js";
 import {
     assertControllerDocumentAvailable,
@@ -12,13 +18,14 @@ import { verifyRecordedPublication } from "./validation-merge-verification.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import { findTargetBranchPlan } from "./planning-worktree.ts";
 import { executionWorktreePathExists } from "./execution-worktree-rescue.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { needsSessionPlanningWorktree, resolveWorkflowPlanLocation } from "./plan-location.ts";
 
 /** Prepare legacy controller state from the document, never from its read projection. */
-async function prepareDocument(cwd: string, planName: string) {
+async function prepareDocument(cwd: string, planName: string, prepareIdentity = false) {
     const plan = await loadPlan(cwd, planName);
     if (!plan) return;
-    const attrs = parsePlanFrontMatter(plan.markdown).attrs;
+    if (prepareIdentity && !plan.attrs.planId && plan.hasFrontMatter) await ensurePlanIdentity(cwd, planName);
+    const attrs = parsePlanFrontMatter((await loadPlan(cwd, planName))?.markdown || plan.markdown).attrs;
     await prepareControllerView(cwd, { planId: attrs.planId, planName }, attrs);
 }
 
@@ -39,9 +46,17 @@ export async function preparePlanController(projectRoot: string, planName: strin
 /** Prepare controller authority, then select the actionable document. */
 export async function preparePlanWorkflow(projectRoot: string, planName: string) {
     await preparePlanController(projectRoot, planName);
-    const location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
-    if (location.plan && !location.publishedSnapshot && !location.missingExecutionCheckout) {
-        await prepareDocument(location.documentRoot, planName);
+    let location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+    if (
+        location.plan &&
+        !location.publishedSnapshot &&
+        !location.missingExecutionCheckout &&
+        !location.planningNotStarted
+    ) {
+        await prepareDocument(location.documentRoot, planName, !needsSessionPlanningWorktree(location.plan.attrs));
+        // Identity preparation can rewrite the document. Publication proof must
+        // update that identity, not the obsolete name-only controller record.
+        location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     }
     if (location.plan) {
         await preparePlanPublication(projectRoot, planName, location.plan);

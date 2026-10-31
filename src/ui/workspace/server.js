@@ -40,7 +40,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runWldJobCommand,
+    getGuideRunner,
 } from "./routes/api/review-agent-handlers.js";
 import {
     resolveWorkspaceFile,
@@ -112,7 +112,9 @@ import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/
 import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
-import { WORKSPACE_PWA_PATHS, workspacePwaResponse } from "./server/workspace-pwa.ts";
+import { workspacePwaResponse } from "./server/workspace-pwa.ts";
+import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
+import { reviewHost } from "./server/review-host.ts";
 import { createWorkspaceSearchService } from "./server/workspace-search.ts";
 
 /**
@@ -584,7 +586,7 @@ export function createReviewWorkspaceApp(options) {
     const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
     const reviewAgentState =
         reviewType === "code"
-            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runWldJobCommand })
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: getGuideRunner() })
             : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
@@ -724,6 +726,7 @@ export function createReviewWorkspaceApp(options) {
                         {
                             cwd,
                             reviewToken: token,
+                            reviewType,
                             reviewPayload,
                             onDecision: options.onDecision,
                             keepConversationTurns: Boolean(reviewConversation?.refresh),
@@ -1381,23 +1384,6 @@ async function textFileResponse(path, contentType) {
     }
 }
 
-/** @param {string} pathname */
-function isPublicWorkspaceAsset(pathname) {
-    return (
-        WORKSPACE_PWA_PATHS.includes(pathname) ||
-        pathname === "/styles.css" ||
-        pathname === "/tokens.css" ||
-        pathname === "/components.css" ||
-        pathname === "/workspace.css" ||
-        pathname === "/workspace-shell.js" ||
-        pathname === "/design-system/sidebar-motion.js" ||
-        pathname === "/design-system/panel-icon.ts" ||
-        pathname === "/theme.css" ||
-        pathname === "/brand/logo.svg" ||
-        pathname.startsWith("/_astro/")
-    );
-}
-
 function jsonNotFound() {
     return Response.json(
         { error: "not_found", message: "Not found.", status: 404 },
@@ -1563,38 +1549,26 @@ export function startSessionQuestionWorkspaceServer(options) {
 /** @param {ReviewWorkspaceServerOptions} options */
 export function startReviewWorkspaceServer(options) {
     const cwd = options.cwd ?? getCwd();
-    const host = options.host ?? "127.0.0.1";
+    if (options.reviewType === "code") options.reviewPayload.reviewRevision = 0;
     let decision = registerReviewDecisionPromise(options.token);
     const appOptions = { ...options, cwd };
     const app = createReviewWorkspaceApp(appOptions);
-    let server;
+    let registration;
     try {
-        server = serveHttp(
-            {
-                hostname: host,
-                port: options.port ?? 0,
-                automaticCompression: true,
-                onListen(address) {
-                    options.onOutput?.({
-                        stream: "stdout",
-                        text: `Listening on http://${address.hostname}:${address.port}/\n`,
-                    });
-                },
-                onError(error) {
-                    const text = error instanceof Error ? error.stack || error.message : String(error);
-                    options.onOutput?.({ stream: "stderr", text: `${text}\n` });
-                    return new Response("Internal Server Error", { status: 500 });
-                },
+        registration = reviewHost.register(options.token, app.handler(), {
+            onError(error) {
+                const text = error instanceof Error ? error.stack || error.message : String(error);
+                options.onOutput?.({ stream: "stderr", text: `${text}\n` });
+                return new Response("Internal Server Error", { status: 500 });
             },
-            app.handler(),
-        );
+        });
     } catch (error) {
         const text = error instanceof Error ? error.stack || error.message : String(error);
         options.onOutput?.({ stream: "stderr", text: `${text}\n` });
         throw error;
     }
-    const port = server.addr.port;
-    const url = `http://${host}:${port}`;
+    const url = registration.origin;
+    options.onOutput?.({ stream: "stdout", text: `Listening on ${url}/\n` });
     /** @type {Promise<void> | null} */
     let stopPromise = null;
 
@@ -1606,7 +1580,7 @@ export function startReviewWorkspaceServer(options) {
                 : { approved: false, feedback: "", annotations: [], exit: true, canceled: true };
         resolveReviewDecision(options.token, canceledDecision);
         stopPromise ??= Promise.resolve(app.cleanup())
-            .then(() => server.shutdown())
+            .then(() => registration.release())
             .catch((error) => {
                 const text = error instanceof Error ? error.stack || error.message : String(error);
                 options.onOutput?.({ stream: "stderr", text: `${text}\n` });
@@ -1629,7 +1603,8 @@ export function startReviewWorkspaceServer(options) {
             const priorRevision = options.reviewPayload.reviewRevision;
             for (const key of Object.keys(options.reviewPayload)) delete options.reviewPayload[key];
             Object.assign(options.reviewPayload, reviewPayload);
-            if (reviewPayload.reviewRevisionUrl) options.reviewPayload.reviewRevision = (priorRevision ?? 0) + 1;
+            if (options.reviewType === "code" || reviewPayload.reviewRevisionUrl)
+                options.reviewPayload.reviewRevision = (priorRevision ?? 0) + 1;
             if (options.reviewConversation && reviewConversation) {
                 options.reviewConversation.agentLabel = reviewConversation.agentLabel;
                 options.reviewConversation.revision += 1;

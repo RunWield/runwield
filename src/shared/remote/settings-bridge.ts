@@ -50,9 +50,13 @@ function acceptReceipt(receipt: UpdateReceipt, id: string, mountedBefore: string
 /** Activated only after the authenticated control handshake and verified mount. */
 export function configureRemoteSettingsConnection(connection: RemoteSettingsConnection): void {
     if (
-        remoteConnection || !Number.isInteger(connection.port) || connection.port < 1 || connection.port > 65535 ||
+        remoteConnection ||
+        !Number.isInteger(connection.port) ||
+        connection.port < 1 ||
+        connection.port > 65535 ||
         !/^[a-f0-9]{64}$/.test(connection.credential)
-    ) throw new Error("Invalid remote settings connection");
+    )
+        throw new Error("Invalid remote settings connection");
     remoteConnection = { ...connection };
     receiptSnapshot = undefined;
 }
@@ -73,8 +77,9 @@ async function send(connection: RemoteSettingsConnection, path: string, body?: s
 export async function updateRemoteGlobalSetting(update: SettingsUpdate): Promise<void> {
     const connection = remoteConnection;
     if (!connection) throw new Error("Remote global settings writes require the laptop settings service");
-    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+    ).join("");
     const body = JSON.stringify({ id, update });
     const mountedBefore = mountedSettings();
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -93,8 +98,22 @@ export async function updateRemoteGlobalSetting(update: SettingsUpdate): Promise
                     acceptReceipt(receipt, id, mountedBefore);
                     return;
                 }
-            } catch { /* Keep the original failure; a later caller can read the mounted snapshot. */ }
+            } catch {
+                /* Keep the original failure; a later caller can read the mounted snapshot. */
+            }
             throw error;
         }
     }
+}
+
+/** The server user's home is never a source of personal MCP definitions. */
+export async function readRemotePersonalMcpConfig(): Promise<import("../mcp/config.ts").ResolveMcpConfigResult> {
+    if (!remoteConnection) throw new Error("Personal MCP requires the laptop settings service");
+    const response = await send(remoteConnection, "/mcp/config");
+    if (!response.ok) throw new Error(`Laptop MCP configuration failed (${response.status})`);
+    const result: import("../mcp/config.ts").ResolveMcpConfigResult = await response.json();
+    if (!Array.isArray(result.servers) || !Array.isArray(result.warnings)) {
+        throw new Error("Invalid laptop MCP configuration");
+    }
+    return result;
 }

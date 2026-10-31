@@ -3,7 +3,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } fr
 /** Local immutable check receipts. Reporting failures never change delivery authority. */
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { join, relative } from "node:path";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import type { DeliveryReportArtifact } from "./delivery-report.ts";
 
 export type DeliveryEvidenceKind = "ci" | "ai" | "ai-skip" | "human" | "ci-repair" | "ai-repair" | "human-revision";
@@ -34,6 +34,7 @@ export async function recordDeliveryEvidence(
     detail = "",
 ): Promise<void> {
     try {
+        await enterProjectRuntime(root);
         const dir = directory(root, plan, attempt);
         await fsMkdir(dir, { recursive: true });
         const entry: DeliveryEvidenceEntry = {
@@ -62,13 +63,23 @@ export async function readDeliveryEvidence(
             try {
                 const entry: DeliveryEvidenceEntry = JSON.parse(await fsReadFile(join(dir, file.name), "utf8"));
                 if (
-                    entry.version === 1 && typeof entry.kind === "string" && typeof entry.detail === "string" &&
-                    typeof entry.outcome === "string" && typeof entry.recordedAt === "string"
-                ) entries.push(entry);
-            } catch { /* An incomplete receipt cannot count as evidence. */ }
+                    entry.version === 1 &&
+                    typeof entry.kind === "string" &&
+                    typeof entry.detail === "string" &&
+                    typeof entry.outcome === "string" &&
+                    typeof entry.recordedAt === "string"
+                )
+                    entries.push(entry);
+            } catch {
+                /* An incomplete receipt cannot count as evidence. */
+            }
         }
         entries.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
-        const groups = [["ci", "Test results"], ["ai", "Reviewer findings"], ["human", "Review decisions"]] as const;
+        const groups = [
+            ["ci", "Test results"],
+            ["ai", "Reviewer findings"],
+            ["human", "Review decisions"],
+        ] as const;
         for (const [kind, title] of groups) {
             const checks = entries.filter((entry) => entry.kind === kind);
             if (!checks.length) continue;
@@ -80,15 +91,21 @@ export async function readDeliveryEvidence(
                 "",
                 "Recorded checks only; older or unavailable history is not reconstructed.",
                 "",
-                ...checks.flatMap((
-                    entry,
-                    i,
-                ) => [`## ${i + 1}. ${entry.outcome}`, "", `Recorded: ${entry.recordedAt}`, "", entry.detail, ""]),
+                ...checks.flatMap((entry, i) => [
+                    `## ${i + 1}. ${entry.outcome}`,
+                    "",
+                    `Recorded: ${entry.recordedAt}`,
+                    "",
+                    entry.detail,
+                    "",
+                ]),
             ].join("\n");
             await fsWriteFile(join(root, path), markdown);
             artifacts.push({ title, kind: "report", path });
         }
-    } catch { /* Readable receipts still survive a missing report export. */ }
+    } catch {
+        /* Readable receipts still survive a missing report export. */
+    }
     return { entries, artifacts };
 }
 
@@ -98,8 +115,10 @@ export async function savePublicationEvidence(
     publication: PublicationAttempt,
 ): Promise<DeliveryReportArtifact | null> {
     if (!publication.verifiedAt || !publication.publishedCommit) return null;
-    const path = relative(root, join(directory(root, publication.planName, publication.attemptId), "publication.md"))
-        .replaceAll("\\", "/");
+    const path = relative(
+        root,
+        join(directory(root, publication.planName, publication.attemptId), "publication.md"),
+    ).replaceAll("\\", "/");
     try {
         await fsMkdir(directory(root, publication.planName, publication.attemptId), { recursive: true });
         await fsWriteFile(
@@ -138,8 +157,9 @@ export async function saveDeliveredPlanEvidence(
     publication: PublicationAttempt,
     markdown: string,
 ): Promise<DeliveryReportArtifact | null> {
-    const dir = directory(root, publication.planName, publication.attemptId);
     try {
+        await enterProjectRuntime(root);
+        const dir = directory(root, publication.planName, publication.attemptId);
         await fsMkdir(dir, { recursive: true });
         const path = join(dir, "plan.md");
         await fsWriteFile(path, markdown);
@@ -154,8 +174,9 @@ export async function saveDeliveredWorkRecordEvidence(
     publication: PublicationAttempt,
     markdown: string,
 ): Promise<DeliveryReportArtifact | null> {
-    const dir = directory(root, publication.planName, publication.attemptId);
     try {
+        await enterProjectRuntime(root);
+        const dir = directory(root, publication.planName, publication.attemptId);
         await fsMkdir(dir, { recursive: true });
         const path = join(dir, "work-record.md");
         await fsWriteFile(path, markdown);

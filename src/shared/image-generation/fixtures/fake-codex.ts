@@ -23,7 +23,7 @@ async function main() {
         while ((newline = buffer.indexOf("\n")) >= 0) {
             const request = JSON.parse(buffer.slice(0, newline)) as Request;
             buffer = buffer.slice(newline + 1);
-            if (log) await fsWriteFile(log, `${JSON.stringify(request)}\n`, { flag: "a" });
+            if (log) await fsWriteFile(log, `${JSON.stringify({ ...request, pid: process.pid })}\n`, { flag: "a" });
             const respond = <T>(result: T) => console.log(JSON.stringify({ id: request.id, result }));
             switch (request.method) {
                 case "initialize":

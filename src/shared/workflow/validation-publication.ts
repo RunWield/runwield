@@ -207,6 +207,7 @@ async function prepareEpicChildManualQaArtifact(
                 manualQa,
             });
         } catch (caught) {
+            args.session.assertLive();
             const error = caught instanceof Error ? caught : new Error(String(caught));
             outcome = {
                 kind: "manual_qa" as const,
@@ -261,6 +262,7 @@ export async function runPublicationPhase(
     context: PhaseContext,
     humanReviewMetadata: HumanReviewMetadata,
 ): Promise<PublicationOutcome> {
+    args.session.assertLive();
     await preparePlanWorkflow(context.projectRoot, args.planName);
     args.session.releaseActiveAgent();
     const outcome = await withPlanLock(
@@ -268,6 +270,7 @@ export async function runPublicationPhase(
         args.planName,
         async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
     );
+    args.session.assertLive();
     if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
         emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
         return {
@@ -391,6 +394,7 @@ async function runLockedPublicationPhase(
     let publicationOperationalAttempt = 1;
 
     for (;;) {
+        args.session.assertLive();
         const attempt = pendingFinalizeFailure
             ? { kind: "failed" as const, failure: pendingFinalizeFailure }
             : await attemptPublication();
@@ -555,6 +559,7 @@ async function runLockedPublicationPhase(
         try {
             return { kind: "published", outcome: await publishOnce() };
         } catch (caught) {
+            args.session.assertLive();
             if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
             const error = caught instanceof Error ? caught : new Error(String(caught));
             const failure = normalizePublicationFailure(error);
@@ -577,6 +582,7 @@ async function runLockedPublicationPhase(
                 };
             }
             if (publicationAttempt) {
+                args.session.assertLive();
                 publicationAttempt = await failStoredPublication(context.projectRoot, publicationAttempt, {
                     kind: getMergeFailureKind(failure) || "publication_failed",
                     message: failure.reason,
@@ -589,6 +595,7 @@ async function runLockedPublicationPhase(
 
     async function publishOnce(): Promise<PublicationOutcome> {
         const atStage = async <T>(stage: PublicationStage, action: () => Promise<T>): Promise<T> => {
+            args.session.assertLive();
             try {
                 return await action();
             } catch (caught) {
@@ -603,6 +610,7 @@ async function runLockedPublicationPhase(
                 async () => await reconcileStoredPublication(context.projectRoot, publicationAttempt!),
             );
             if (publicationAttempt.phase === "cleanup_complete") {
+                args.session.assertLive();
                 const cleanup = await cleanupStoredPublication(
                     context.projectRoot,
                     publicationAttempt,
@@ -650,6 +658,7 @@ async function runLockedPublicationPhase(
                         mergeTargetRef: targetHeadAtSeal,
                     }),
             );
+            args.session.assertLive();
             publicationAttempt = await startPublicationAttempt({
                 projectRoot: context.projectRoot,
                 attemptId: worktreeId,
@@ -712,6 +721,7 @@ async function runLockedPublicationPhase(
                         publicationPlanPaths: staging.planPaths.length > 0 ? staging.planPaths : [planPath],
                     }),
             );
+            args.session.assertLive();
             publicationAttempt = await advanceStoredPublication(
                 context.projectRoot,
                 publicationAttempt,
@@ -754,6 +764,7 @@ async function runLockedPublicationPhase(
                         onIntegrated: async (evidence) => {
                             if (!publicationAttempt)
                                 throw new Error("Publication attempt disappeared before integration.");
+                            args.session.assertLive();
                             publicationAttempt = await advanceStoredPublication(
                                 context.projectRoot,
                                 publicationAttempt,
@@ -764,6 +775,7 @@ async function runLockedPublicationPhase(
                         onPublished: async (evidence) => {
                             if (!publicationAttempt)
                                 throw new Error("Publication attempt disappeared before publication.");
+                            args.session.assertLive();
                             publicationAttempt = await advanceStoredPublication(
                                 context.projectRoot,
                                 publicationAttempt,
@@ -775,6 +787,7 @@ async function runLockedPublicationPhase(
                             if (!publicationAttempt) {
                                 throw new Error("Publication attempt disappeared before verification.");
                             }
+                            args.session.assertLive();
                             publicationAttempt = await advanceStoredPublication(
                                 context.projectRoot,
                                 publicationAttempt,
@@ -783,6 +796,7 @@ async function runLockedPublicationPhase(
                             );
                         },
                         onProgress: (phase) => {
+                            args.session.assertLive();
                             const message = buildValidationUserMessage({
                                 kind: "publication_progress",
                                 phase,
@@ -794,15 +808,18 @@ async function runLockedPublicationPhase(
                                     stage: "merge",
                                     checks: { merge: "running" },
                                 });
+                                args.session.assertLive();
                                 return;
                             }
                             emitStatus(args, message);
+                            args.session.assertLive();
                         },
                     }),
             );
         }
         emitStatus(args, buildValidationUserMessage({ kind: "publication_progress", phase: "cleanup", targetBranch }));
         await args.session.handoffVerifiedPublication(context.projectRoot);
+        args.session.assertLive();
         const cleanup = await cleanupStoredPublication(
             context.projectRoot,
             publicationAttempt,

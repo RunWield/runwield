@@ -2560,7 +2560,10 @@ export async function savePlan(cwd, planName, content, fmOverrides = {}, options
                 if (existing.kind === "loaded" && options.expectedRevision === undefined) {
                     throw new StalePlanWriteError("required", existing.revision);
                 }
-                const withFm = injectFrontMatter(content, fmOverrides);
+                const withFm = injectFrontMatter(content, {
+                    ...(existing.kind === "loaded" && existing.attrs.planId ? { planId: existing.attrs.planId } : {}),
+                    ...fmOverrides,
+                });
                 const documentAttrs = parsePlanFrontMatter(withFm).attrs;
                 if (existing.kind === "loaded" && existing.revision !== options.expectedRevision) {
                     throw new StalePlanWriteError(options.expectedRevision || "required", existing.revision);
@@ -3239,6 +3242,9 @@ async function fileExists(path) {
  * @returns {Promise<{ name: string, path: string, attrs: PlanFrontMatter, body: string, markdown: string }>}
  */
 async function resolveActivePlanNameOrId(cwd, planNameOrId) {
+    if (isHiddenPlanName(canonicalizeStoredPlanName(planNameOrId).name)) {
+        throw new Error(`Use an active Plan name, not ${ARCHIVED_DIR_NAME}/...: ${planNameOrId}`);
+    }
     const { preparePlanWorkflow } = await import("./shared/workflow/plan-preparation.ts");
     await preparePlanWorkflow(cwd, planNameOrId);
     // Archive and restore move documents; resolving a name must not start a planning attempt.

@@ -39,8 +39,7 @@ export function getTutorialExplanation(event: SessionRuntimeEvent): TutorialExpl
         return {
             id: "verified-recap",
             header: "Tutorial complete",
-            text:
-                "Your real change passed RunWield verification and delivery. The normal workflow—not the tutorial—produced this result.",
+            text: "Your real change passed RunWield verification and delivery. The normal workflow—not the tutorial—produced this result.",
             recap: true,
         };
     }
@@ -48,28 +47,26 @@ export function getTutorialExplanation(event: SessionRuntimeEvent): TutorialExpl
         return {
             id: "implementation",
             header: "Tutorial · Implementation",
-            text:
-                "The approved Plan is now running in its isolated worktree. Press Escape to request cancellation; RunWield will preserve completed work and report the settled state.",
+            text: "The approved Plan is now running in its isolated worktree. Press Escape to request cancellation; RunWield will preserve completed work and report the settled state.",
         };
     }
     if (event.type === RuntimeEventTypes.INTERACTION_REQUESTED && event.interactionType === "plan_review") {
         return {
             id: "plan-review",
             header: "Tutorial · Review the Plan",
-            text:
-                "This is the real Plan Review. Add feedback to request a revision, choose Approve for Later to save it, or choose Approve & Run to start implementation.",
+            text: "This is the real Plan Review. Add feedback to request a revision, choose Approve for Later to save it, or choose Approve & Run to start implementation.",
             checkpoint: true,
         };
     }
     if (
-        event.type === RuntimeEventTypes.AGENT_CHANGED && event.rootHandoff === true &&
+        event.type === RuntimeEventTypes.AGENT_CHANGED &&
+        event.rootHandoff === true &&
         [AGENTS.PLAN_ENGINEER, AGENTS.FRONTEND_ENGINEER].includes(event.agentName)
     ) {
         return {
             id: "implementation",
             header: "Tutorial · Implementation",
-            text:
-                "The approved Plan is now running in its isolated worktree. Press Escape to request cancellation; RunWield will preserve completed work and report the settled state.",
+            text: "The approved Plan is now running in its isolated worktree. Press Escape to request cancellation; RunWield will preserve completed work and report the settled state.",
         };
     }
     if (event.type === RuntimeEventTypes.INTERACTION_REQUESTED && event.interactionType === "code_review") {
@@ -86,8 +83,7 @@ export function getTutorialExplanation(event: SessionRuntimeEvent): TutorialExpl
         return {
             id: "project-checks",
             header: "Tutorial · Project checks",
-            text:
-                "RunWield is running this project's real checks. A failure must be repaired or reported; it is not hidden.",
+            text: "RunWield is running this project's real checks. A failure must be repaired or reported; it is not hidden.",
         };
     }
     if (progress.stage === "semantic_review" || progress.stage === "engineer_repair") {
@@ -99,8 +95,8 @@ export function getTutorialExplanation(event: SessionRuntimeEvent): TutorialExpl
             text: repairsProjectChecks
                 ? "Project checks found an issue. The normal repair cycle is active, and the verified recap remains blocked."
                 : repairing
-                ? "AI review found an issue. The normal repair cycle is active, and the verified recap remains blocked."
-                : "An independent AI review now checks the implementation against the approved Plan.",
+                  ? "AI review found an issue. The normal repair cycle is active, and the verified recap remains blocked."
+                  : "An independent AI review now checks the implementation against the approved Plan.",
         };
     }
     if (progress.stage === "merge") {
@@ -114,8 +110,7 @@ export function getTutorialExplanation(event: SessionRuntimeEvent): TutorialExpl
         return {
             id: "validation-failed",
             header: "Tutorial · Validation stopped",
-            text:
-                "The workflow did not reach RunWield Verified. Your work remains recoverable; no successful recap will be shown.",
+            text: "The workflow did not reach RunWield Verified. Your work remains recoverable; no successful recap will be shown.",
         };
     }
     if (progress.stage === "terminal" && progress.outcome === "verified") {
@@ -187,9 +182,11 @@ async function buildRecap(
 }
 
 /** Restore the completed outcome after history replay without replaying workflow events. */
-export async function restoreVerifiedTutorialRecap(
-    { runtime, sessionId, uiAPI }: Omit<PresentTutorialEventOptions, "event">,
-): Promise<void> {
+export async function restoreVerifiedTutorialRecap({
+    runtime,
+    sessionId,
+    uiAPI,
+}: Omit<PresentTutorialEventOptions, "event">): Promise<void> {
     const snapshot = runtime.getSessionSnapshot(sessionId);
     const context = snapshot?.tutorialContext;
     if (!snapshot || !context?.guidanceEnabled || !context.recapShown || !context.planId) return;
@@ -204,20 +201,22 @@ export async function restoreVerifiedTutorialRecap(
     );
 }
 
-export async function presentTutorialEvent(
-    { runtime, sessionId, uiAPI, event }: PresentTutorialEventOptions,
-): Promise<void> {
+export async function presentTutorialEvent({
+    runtime,
+    sessionId,
+    uiAPI,
+    event,
+}: PresentTutorialEventOptions): Promise<void> {
     let snapshot = runtime.getSessionSnapshot(sessionId);
     let context = snapshot?.tutorialContext;
     if (!snapshot || !context?.guidanceEnabled) return;
 
     const activeAssociatedPlanId = associatedPlanId(snapshot);
-    const followsExecution = [AGENTS.PLAN_ENGINEER, AGENTS.FRONTEND_ENGINEER].includes(
-        snapshot.activeAgent || "",
-    ) && (event.type === RuntimeEventTypes.SESSION_REPLACED || event.type === RuntimeEventTypes.AGENT_CHANGED);
-    const planId = followsExecution && activeAssociatedPlanId
-        ? activeAssociatedPlanId
-        : context.planId || activeAssociatedPlanId;
+    const followsExecution =
+        [AGENTS.PLAN_ENGINEER, AGENTS.FRONTEND_ENGINEER].includes(snapshot.activeAgent || "") &&
+        (event.type === RuntimeEventTypes.SESSION_REPLACED || event.type === RuntimeEventTypes.AGENT_CHANGED);
+    const planId =
+        followsExecution && activeAssociatedPlanId ? activeAssociatedPlanId : context.planId || activeAssociatedPlanId;
     if ((!context.planId || followsExecution) && planId !== context.planId) {
         const associated = await runtime.updateTutorialContext(sessionId, { planId });
         if (!associated.ok) return;
@@ -227,12 +226,13 @@ export async function presentTutorialEvent(
 
     if (!snapshot || !context) return;
     let explanation = getTutorialExplanation(event);
+    if (explanation?.id === "implementation" && !followsExecution && event.type === RuntimeEventTypes.SESSION_REPLACED)
+        return;
     if (
-        explanation?.id === "implementation" && !followsExecution && event.type === RuntimeEventTypes.SESSION_REPLACED
-    ) return;
-    if (
-        explanation?.id === "ai-review" && context.shownExplanationIds.includes("ai-review") &&
-        event.type === RuntimeEventTypes.SYSTEM_STATUS && Number(event.validationProgress?.repairAttempt || 0) > 0
+        explanation?.id === "ai-review" &&
+        context.shownExplanationIds.includes("ai-review") &&
+        event.type === RuntimeEventTypes.SYSTEM_STATUS &&
+        Number(event.validationProgress?.repairAttempt || 0) > 0
     ) {
         explanation = {
             id: "ai-repair",
@@ -247,8 +247,7 @@ export async function presentTutorialEvent(
     ) {
         explanation = {
             ...explanation,
-            text:
-                "This project has no implemented verification command. RunWield is running Init's placeholder command, not real test coverage.",
+            text: "This project has no implemented verification command. RunWield is running Init's placeholder command, not real test coverage.",
         };
     }
     const activePlanId = associatedPlanId(snapshot);
@@ -256,8 +255,8 @@ export async function presentTutorialEvent(
     if (explanation.recap && (!planId || context.recapShown)) return;
 
     if (explanation.recap) {
-        const waitsForPublication = event.type === RuntimeEventTypes.SYSTEM_STATUS &&
-            event.validationProgress?.stage === "terminal";
+        const waitsForPublication =
+            event.type === RuntimeEventTypes.SYSTEM_STATUS && event.validationProgress?.stage === "terminal";
         const attempts = waitsForPublication ? 101 : 1;
         let verifiedPlan: VerifiedTutorialPlan | null = null;
         const projectRoot = runtime.getSessionProjectRoot(sessionId) || snapshot.cwd;
@@ -279,8 +278,8 @@ export async function presentTutorialEvent(
         return;
     }
 
-    const implementationStarted = explanation.id === "project-checks" &&
-        !context.shownExplanationIds.includes("implementation");
+    const implementationStarted =
+        explanation.id === "project-checks" && !context.shownExplanationIds.includes("implementation");
     const shownExplanationIds = [
         ...context.shownExplanationIds,
         ...(implementationStarted ? ["implementation"] : []),

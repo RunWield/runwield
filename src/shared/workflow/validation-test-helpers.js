@@ -189,7 +189,7 @@ export const NO_ISOLATED_AGENT_PORT = Object.freeze({
  */
 export async function makeValidationProjectRoot(planName = "p", attrs = {}) {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-root-"));
-    const { savePlan } = await import("../../plan-store.js");
+    const { savePlan, ensurePlanIdentity } = await import("../../plan-store.js");
     await savePlan(root, planName, `# ${planName}\n\nvalidation fixture\n`, {
         classification: "FEATURE",
         status: "in_progress",
@@ -197,6 +197,7 @@ export async function makeValidationProjectRoot(planName = "p", attrs = {}) {
         affectedPaths: [],
         ...attrs,
     });
+    await ensurePlanIdentity(root, planName);
     return root;
 }
 
