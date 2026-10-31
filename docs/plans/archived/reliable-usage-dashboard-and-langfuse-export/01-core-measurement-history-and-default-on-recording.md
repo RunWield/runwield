@@ -71,7 +71,7 @@ the metrics.
 
 Owning PRD: this change extends the existing **Local workflow metrics** capability
 (`docs/prd/runwield-core-prd.md#usage-measurement-and-export`) with durability, boundary, and gap-honesty requirements.
-[Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) stays
+[Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) stays
 authoritative for delivery conclusions; measurement reports outcomes and never creates a third one.
 
 ## Objective

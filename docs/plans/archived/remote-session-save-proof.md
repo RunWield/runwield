@@ -36,7 +36,7 @@ archivedFromPath: "docs/plans/remote-session-save-proof.md"
 ## Context
 
 The owner approved a throwaway proof before choosing how remote Pi saves laptop-owned Session history. The
-[production child](remote-ssh-development/03-guard-remote-session-writer-access.md) remains paused. Its research records
+[production child](../remote-ssh-development/03-guard-remote-session-writer-access.md) remains paused. Its research records
 Warp's explicit remote file requests and the Pi persistence findings; neither establishes this proposed save path.
 
 Pi 0.87.1 supports an in-memory Session manager. RunWield already intercepts its synchronous `_persist` and
@@ -49,10 +49,10 @@ A local Deno 2.9.7/macOS ARM64 check proved only that an asynchronous Worker can
 ordering, interrupted-save recovery, and the effect of synchronous network waits on terminal responsiveness.
 
 This proof informs **Preserve local history** and **Preserve work and report uncertainty** in the proposal's
-[Local memories and saved Sessions](../prd/remote-ssh-prd.md#local-memories-and-saved-sessions) and
-[Disconnect and recovery](../prd/remote-ssh-prd.md#disconnect-and-recovery) capabilities. Lasting owners are Core's
-[Session continuity](../prd/runwield-core-prd.md#session-continuity) and
-[execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery). No product
+[Local memories and saved Sessions](../../prd/remote-ssh-prd.md#local-memories-and-saved-sessions) and
+[Disconnect and recovery](../../prd/remote-ssh-prd.md#disconnect-and-recovery) capabilities. Lasting owners are Core's
+[Session continuity](../../prd/runwield-core-prd.md#session-continuity) and
+[execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery). No product
 requirement, glossary definition, or architectural decision is changed or marked delivered by this proof. Ordinary local
 Sessions, the personal-resource mount, and existing remote setup remain unchanged.
 

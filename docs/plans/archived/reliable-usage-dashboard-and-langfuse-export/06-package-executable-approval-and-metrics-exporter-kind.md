@@ -72,14 +72,14 @@ it in a bounded worker, so it must never load through `DefaultResourceLoader` or
 
 ### Owning requirements
 
-- [Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization) — **add** a requirement
+- [Agent and skill customization](../../../prd/runwield-core-prd.md#agent-and-skill-customization) — **add** a requirement
   for the metrics-exporter kind and its approval scenarios (Epic decision).
-- [Theme selection](../../prd/runwield-core-prd.md#theme-selection) — **preserve** "Preview safely and retain the
+- [Theme selection](../../../prd/runwield-core-prd.md#theme-selection) — **preserve** "Preview safely and retain the
   confirmed theme", including not enabling accompanying executable extensions. **Add** the scenarios for interrupted,
   refused, and accepted first installs.
-- [Work protection](../../prd/runwield-core-prd.md#work-protection) — **preserve** "Preserve user work and require
+- [Work protection](../../../prd/runwield-core-prd.md#work-protection) — **preserve** "Preserve user work and require
   deliberate destructive actions". Approving executable code is a deliberate trust-granting action.
-- [Usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export) — link to the approval
+- [Usage measurement and export](../../../prd/runwield-core-prd.md#usage-measurement-and-export) — link to the approval
   requirement. Do not copy it. Export delivery stays target behavior and belongs to child 07.
 
 ### Decisions from planning

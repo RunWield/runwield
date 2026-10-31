@@ -78,7 +78,7 @@ The owner confirmed three decisions on 2026-10-08: include the runtime-event/rep
 Review records one aggregated turn-level observation per job; compaction usage appears in replayed session info as a
 distinct labeled component.
 
-Owning PRD: [Local workflow metrics](../../prd/runwield-core-prd.md#usage-measurement-and-export) already requires
+Owning PRD: [Local workflow metrics](../../../prd/runwield-core-prd.md#usage-measurement-and-export) already requires
 "missing measurements remain unavailable, not zero." This child makes that true on the remaining surfaces and adds the
 supported-backend and auxiliary-call coverage requirements with acceptance scenarios.
 

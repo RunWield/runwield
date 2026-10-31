@@ -51,7 +51,7 @@ delivery was confirmed is gone, and no observation precedes the prune.
 The parent Epic requires measurements that report existing outcomes and never create a third conclusion alongside
 confirmed publication and deliberate abandonment.
 
-Owning PRD: [Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery)
+Owning PRD: [Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery)
 stays authoritative for what concludes delivery. Following child 01's precedent, outcome-meaning requirements extend the
 existing **Local workflow metrics** capability (`docs/prd/runwield-core-prd.md#usage-measurement-and-export`) and
 reference execution/validation/recovery rather than restating it.

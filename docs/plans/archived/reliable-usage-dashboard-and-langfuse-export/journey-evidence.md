@@ -46,7 +46,7 @@ references. Keep credentials in the Workspace credential control, not in this fi
 4. Use the real owner Workspace with its scheduler and a running TUI Session. Do not use the fixture-backed dev server.
 5. Capture aggregate local and remote evidence before clearing history. Clear does not remove remote observations.
 
-Sources: [exporter setup](../../../packages/langfuse-exporter/README.md#install-and-authorize),
+Sources: [exporter setup](../../../../packages/langfuse-exporter/README.md#install-and-authorize),
 [Langfuse key location](https://langfuse.com/faq/all/where-are-langfuse-api-keys).
 
 ### Observations

@@ -57,9 +57,9 @@ src/shared/extensions/metrics-exporter.ts   # lists exporters and approval; neve
 - Both host processes have a shutdown path: `disposables` in `ui/tui/chat-session.ts::startInteractiveSession`, and the
   `AbortController` in `cmd/workspace/serve.ts::runWorkspaceServeCommand`.
 
-Owning PRD: [Core usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export) gains the
+Owning PRD: [Core usage measurement and export](../../../prd/runwield-core-prd.md#usage-measurement-and-export) gains the
 export consent, lifecycle, and delivery-state requirements. In
-[metrics exporter approval](../../prd/runwield-core-prd.md#metrics-exporter-approval), the line "Export delivery remains
+[metrics exporter approval](../../../prd/runwield-core-prd.md#metrics-exporter-approval), the line "Export delivery remains
 target behavior" changes to point at the new requirements. Behavior that must survive: opt-in local recording, journal
 locking and epochs, reporting, clear, and exporter approval.
 
