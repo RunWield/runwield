@@ -98,16 +98,19 @@ test("reopened saved Epic chat hands feedback to Architect and shows its model-a
                         const conversation = request._meta?.reviewConversation;
                         assert(conversation && typeof conversation === "object" && "id" in conversation);
                         conversations.push(conversation as PlanReviewConversation);
-                        const response = await requestLocalReviewInteraction({
-                            ...request,
-                            _meta: {
-                                ...request._meta,
-                                onSurfaceReady: (surface: { url: string }) => {
-                                    url = surface.url;
-                                    surfaces[readyCount++].resolve(url);
+                        const response = await requestLocalReviewInteraction(
+                            {
+                                ...request,
+                                _meta: {
+                                    ...request._meta,
+                                    onSurfaceReady: (surface: { url: string }) => {
+                                        url = surface.url;
+                                        surfaces[readyCount++].resolve(url);
+                                    },
                                 },
                             },
-                        }, signal);
+                            signal,
+                        );
                         return response;
                     },
                 });

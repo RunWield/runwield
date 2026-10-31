@@ -141,6 +141,14 @@ test("original compound task names preserve argument boundaries and prerequisite
             },
         },
         {
+            task: "workspace:check",
+            args: ["--minimumSeverity", "error"],
+            last: {
+                path: "scripts/check-workspace.ts",
+                args: ["--minimumSeverity", "error"],
+            },
+        },
+        {
             task: "docs:build",
             args: ["--outDir", "a directory"],
             last: { path: "docs-site/node_modules/astro/bin/astro.mjs", args: ["build", "--outDir", "a directory"] },
@@ -173,6 +181,7 @@ test("original compound task names preserve argument boundaries and prerequisite
     ];
     try {
         await writeFile(join(root, "package.json"), JSON.stringify(await packageConfig()));
+        await mkdir(join(root, "src/ui/workspace"), { recursive: true });
         for (const path of paths) {
             await mkdir(dirname(join(root, path)), { recursive: true });
             await writeFile(

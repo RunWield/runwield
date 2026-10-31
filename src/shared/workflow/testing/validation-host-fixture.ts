@@ -211,15 +211,11 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
                 .split("\n")
                 .filter(Boolean)
                 .map((line) => {
-                    const metric: { event: string; details?: { operation?: string } } = JSON.parse(line);
+                    const metric: HostValidationMetric = JSON.parse(line);
                     return metric;
                 })
-                .filter(
-                    (metric) =>
-                        metric.event === "plan_transition_committed" ||
-                        metric.event === "semantic_transition_committed",
-                )
-                .map((metric) => metric.details?.operation || "")
+                .filter((metric) => metric.event === "workflow_transition_committed" && metric.outcome === "succeeded")
+                .map((metric) => metric.operation || "")
                 .filter((operation) => operation.startsWith("plan_event:"));
         },
         async close() {
@@ -248,4 +244,23 @@ export function coverage(request: Extract<ValidationHostRequest, { kind: "review
 }
 export function complete(request: Extract<ValidationHostRequest, { kind: "repair" }>): ValidationHostResume {
     return { kind: "task_completed", identity: request.identity, report: "Fixed the finding." };
+}
+
+export interface HostValidationMetric {
+    v?: number;
+    category: string;
+    event: string;
+    operation?: string;
+    outcome?: string;
+    phase?: string;
+    attempt?: number;
+    findingCount?: number;
+    advisoryCount?: number;
+    initialFindingCount?: number;
+    missedOriginalCount?: number;
+    repairRegressionCount?: number;
+    unclassifiedNewCount?: number;
+    existingStillOpenCount?: number;
+    fixConfirmedCount?: number;
+    details?: Record<string, string | number | boolean>;
 }

@@ -97,6 +97,7 @@ export async function validateHostReviewerResume(args: ValidationLoopArgs): Prom
     await assertHostReviewerCandidate({
         cwd: workflow.executionCwd,
         baseBranch: workflow.worktreeBaseBranch,
+        baseRef: workflow.worktreeBaseRef,
         checkpoint,
         triageMeta: args.triageMeta,
         resume,
@@ -106,6 +107,7 @@ export async function validateHostReviewerResume(args: ValidationLoopArgs): Prom
 export interface HostReviewerCandidateArgs {
     cwd: string;
     baseBranch: string;
+    baseRef?: string;
     checkpoint: ValidationCheckpoint;
     triageMeta: TriageMeta;
     resume: Extract<ValidationHostResume, { kind: "reviewer" }>;
@@ -117,7 +119,7 @@ export async function assertHostReviewerCandidate(args: HostReviewerCandidateArg
     const { requiredReviewDiffFiles } = await import("./review-diff.ts");
     const { ReviewInspection } = await import("./review-inspection.ts");
     const { sameHostIdentity } = await import("./validation-host-contract.ts");
-    const fullDiff = await getWorktreeReviewDiff(args.cwd, args.baseBranch);
+    const fullDiff = await getWorktreeReviewDiff(args.cwd, args.baseBranch, args.baseRef);
     const checkpoint = args.checkpoint;
     const resume = args.resume;
     const durableReview = readValidationReviewState(checkpoint);

@@ -1,3 +1,4 @@
+import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
 import {
     realpath as fsRealpath,
     readdir as fsReaddir,
@@ -63,6 +64,12 @@ test("fresh network-denied host turns validate real work without a Session or hi
         const layout = resolveProjectRuntimeLayout(fixture.root);
         const originalControllers = await files(layout.primary.controllerPlansDir);
         const metricsPath = await canonicalPath(getWorkflowMetricsFilePath(fixture.root));
+        const metricsFiles = new Set([
+            metricsPath,
+            metricsPath + ".lock",
+            await canonicalPath(join(getHomeDir(), ".wld/workflow-metrics/recording.guard")),
+            ...["state.json", ".journal.guard", ".journal.lock"].map((name) => join(dirname(metricsPath), name)),
+        ]);
         const deliveryEvidenceRoot = await canonicalPath(layout.primary.deliveryEvidenceRoot);
         const settingsPath = await canonicalPath(join(fixture.root, ".wld/settings.json"));
         const canonicalCwd = await fsRealpath(fixture.cwd);
@@ -88,8 +95,7 @@ test("fresh network-denied host turns validate real work without a Session or hi
                         path.startsWith(canonicalCwd + "/") ||
                         path.startsWith(deliveryEvidenceRoot + "/") ||
                         originalControllers.has(path) ||
-                        path === metricsPath ||
-                        path === metricsPath + ".lock" ||
+                        metricsFiles.has(path) ||
                         path === settingsPath ||
                         path === searchRefreshMarker
                     ),
@@ -308,7 +314,11 @@ test("fresh network-denied host turns validate real work without a Session or hi
         assertEquals(await businessState(), final);
         assertEquals(await fixture.checkpointBytes(), finalCheckpoint);
         assertEquals(await fixture.ciCount(), 3);
-        assert((await fixture.metrics()).includes("semantic_review_result"));
+        const metrics: HostValidationMetric[] = (await fixture.metrics())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+        assert(metrics.some((metric) => metric.event === "validation_attempt" && metric.phase === "semantic"));
         assertEquals(
             [...new Set(forbiddenWrites)],
             [],

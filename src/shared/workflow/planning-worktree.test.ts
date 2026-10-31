@@ -20,6 +20,7 @@ import { loadControllerView, writeControllerState } from "./controller-registry.
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
@@ -109,6 +110,8 @@ test("planning worktree starts from the target branch and is not execution", asy
 
     assertEquals(result.reused, false);
     assertEquals(result.entry.status, "planning");
+    assertEquals(result.entry.baseRef, "refs/heads/epic-target");
+    assertEquals(result.entry.baseCommit, await git(repo, ["rev-parse", "epic-target"]));
     assertStringIncludes(await fsReadFile(join(result.entry.path, "src-target-only.js"), "utf8"), "targetOnly");
     assertStringIncludes(result.plan.markdown, "TARGET PLAN BODY");
     assertEquals(result.plan.markdown.includes("PRIMARY STALE MARKER"), false);
@@ -207,6 +210,8 @@ test("planning refresh preserves edits and imports publication before hook depen
     });
     assertEquals(refreshed.entry.id, first.entry.id);
     assertEquals(refreshed.entry.status, "planning");
+    assertEquals(refreshed.entry.baseRef, "refs/heads/epic-target");
+    assertEquals(refreshed.entry.baseCommit, await git(repo, ["rev-parse", "epic-target"]));
     assertStringIncludes(refreshed.plan.markdown, "SAVED PLANNER EDIT");
     assertStringIncludes(await fsReadFile(join(refreshed.entry.path, "new-publication.js"), "utf8"), "published");
     assertEquals(await git(refreshed.entry.path, ["status", "--porcelain"]), "");
@@ -539,7 +544,8 @@ test("planning refresh replants saved edits after the target branch is rewritten
 
     assertEquals(second.entry.id, first.entry.id);
     assertEquals(second.entry.baseCommit, published);
-    assertEquals(second.entry.baseRef, published);
+    assertEquals(second.entry.baseRef, "refs/remotes/origin/epic-target");
+    assertEquals(await git(repo, ["rev-parse", second.entry.baseRef]), published);
     assertEquals(second.entry.baseTree, await git(repo, ["rev-parse", `${published}^{tree}`]));
     assertEquals(second.plan.attrs.status, "approved");
     assertStringIncludes(second.plan.markdown, "SAVED PLANNER EDIT");
@@ -1163,6 +1169,27 @@ test("published-only read snapshots cannot be used as archive document paths", a
     assertEquals(await listEntries(repo), []);
 });
 
+for (const remote of ["delivery", "."]) {
+    test(`session planning prepares the publication target for review (${remote})`, async () => {
+        const repo = await fixture.checkout();
+        const origin = join(repo, ".git", "origin.git");
+        await git(repo, ["clone", "--bare", ".", origin]);
+        await git(repo, ["remote", "add", "origin", origin]);
+        if (remote === "delivery") {
+            const delivery = join(repo, ".git", "delivery.git");
+            await git(repo, ["clone", "--bare", ".", delivery]);
+            await git(repo, ["remote", "add", "delivery", delivery]);
+        }
+        await git(repo, ["config", "branch.epic-target.remote", remote]);
+        const prepared = await prepareSessionPlanningWorktree(repo, "epic/01-child");
+        const [entry] = await listEntries(repo);
+        const expected = remote === "." ? "refs/heads/epic-target" : "refs/remotes/delivery/epic-target";
+        assertEquals(entry.baseRef, expected);
+        assertEquals(prepared.documentRoot, entry.path);
+        await fsWriteFile(join(entry.path, "proposal.txt"), "new work\n");
+        assertStringIncludes(await getWorktreeReviewDiff(entry.path, entry.baseBranch, entry.baseRef), "proposal.txt");
+    });
+}
 test("target checkout lists and loads an untracked child from the same document", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);

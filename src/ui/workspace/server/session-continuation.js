@@ -1,3 +1,9 @@
+/**
+ * @typedef {Object} CodeReviewRefreshContext
+ * @property {string} cwd
+ * @property {string} targetBranch
+ * @property {string} [targetBaseRef]
+ */
 import fs, { stat as fsStat } from "node:fs/promises";
 /**
  * @typedef {Object} LiveCodeReviewOptions
@@ -366,7 +372,7 @@ export class WorkspaceSessionContinuationService {
         this.createRequests = new Map();
         /** @type {Map<string, PendingCreateRequest>} */
         this.pendingCreateRequests = new Map();
-        /** @type {Map<string, { cwd: string, targetBranch: string }>} */
+        /** @type {Map<string, CodeReviewRefreshContext>} */
         this.codeReviewRefreshContexts = new Map();
         /** @type {Map<string, { sessionId: string, unsubscribe: () => void }>} */
         this.retainedSessions = new Map();
@@ -1285,6 +1291,7 @@ export class WorkspaceSessionContinuationService {
                 this.codeReviewRefreshContexts.set(`${operationId}:${interactionId}`, {
                     cwd: executionCwd,
                     targetBranch,
+                    ...(typeof meta.targetBaseRef === "string" ? { targetBaseRef: meta.targetBaseRef } : {}),
                 });
             }
         }
@@ -2295,7 +2302,7 @@ export class WorkspaceSessionContinuationService {
         let rawPatch = String(codeReview.rawPatch);
         if (refresh) {
             try {
-                rawPatch = await getWorktreeReviewDiff(refresh.cwd, refresh.targetBranch);
+                rawPatch = await getWorktreeReviewDiff(refresh.cwd, refresh.targetBranch, refresh.targetBaseRef);
             } catch (error) {
                 if (error instanceof WorktreeReviewComparisonError) throw error;
                 // Keep the last complete interaction patch while the checkout is temporarily unreadable.

@@ -21,6 +21,7 @@ import { prepareExecutionPlanFile } from "./execution-plan-file.js";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { resolveTargetBranchName } from "../worktree.js";
 import { getWorkflowDiff } from "./git-snapshot.ts";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { isInValidation } from "./plan-lifecycle.js";
 import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
@@ -100,6 +101,7 @@ interface ResolutionMetricOptions {
     reason: string;
     recovered?: boolean;
     planFileRestored?: boolean;
+    worktreeId?: string;
 }
 
 export interface ResolveValidationExecutionContextOptions {
@@ -194,7 +196,19 @@ async function recordResolutionMetric({
     reason,
     recovered = false,
     planFileRestored = false,
+    worktreeId,
 }: ResolutionMetricOptions): Promise<void> {
+    if (planFileRestored) {
+        await recordWorkflowOutcome(cwd, {
+            category: "validation",
+            event: "execution_context_resolution",
+            operationId: crypto.randomUUID(),
+            planName,
+            attemptId: worktreeId,
+            outcome: "succeeded",
+        });
+        return;
+    }
     await recordWorkflowMetric(
         {
             category: "validation",
@@ -662,6 +676,7 @@ async function resolveValidationExecutionContextInScope({
             reason: selected.source,
             recovered: selected.source === "durable_recovery",
             planFileRestored: Boolean(restoredPlanFile),
+            worktreeId,
         });
     }
 

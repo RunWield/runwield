@@ -80,7 +80,7 @@ behavior.
 - [Work protection](#work-protection)
 - [Session continuity](#session-continuity)
 - [Capability-organized product requirements](#capability-organized-product-requirements)
-- [Local workflow metrics](#local-workflow-metrics)
+- [Usage measurement and export](#usage-measurement-and-export)
 
 ### TUI conversation
 
@@ -692,6 +692,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
 - Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
 - Given a new Plan, identity assignment does not reuse the registered ID of a Plan whose execution document is missing.
+- Given a same-name catalog copy and another Plan sharing its registered ID, authority replacement or removal selects
+  the same-name copy regardless of filesystem order. With available authority, identity preparation and explicit
+  backfill reject the collision without changing either document. Missing or archived authority hides only its own
+  copy. Renamed Plans retain identity-based discovery when no same-name copy exists.
   **Requirement: Continue Attached delivery through the shared completion authority.**
 
 After accepted semantic review, Attached validation continues automatically into configured Code Review, recording, and
@@ -1188,9 +1192,11 @@ repair that weakens a test to resolve a finding is a repair-introduced regressio
 
 **Requirement: Review one proposed branch patch.** For Git execution, review sees the branch's proposed change relative
 to its recorded target branch: committed, staged, unstaged, and untracked work, with target-only changes excluded. The
-same patch supplies AI review, repair context, and Code Review, including after reload. A missing target, missing
-execution commit, or unrelated history is a recoverable comparison failure. Review patches use one fixed format,
-independent of user Git settings for prefixes, colors, external diff programs, and relative paths.
+same patch supplies AI review, repair context, and Code Review, including after reload. Before-file text uses the same
+comparison base. Review follows the publication target's selected remote, not a stale local branch; local-only delivery
+uses the local target. A recorded remote target cannot silently become a local comparison if its remote is unavailable.
+A missing target, missing execution commit, or unrelated history is a recoverable comparison failure.
+Review patches use one fixed format, independent of user Git settings for prefixes, colors, external diff programs, and relative paths.
 
 **Requirement: Read the change before deciding.** The Reviewer receives the approved Plan. Rounds one and two read the
 complete diff of every changed file; round two also verifies earlier findings. Round three onward reads the complete
@@ -1241,7 +1247,10 @@ post-validation context, once. Review quality is judged by useful convergence an
 - Given a test that would pass with a plausible wrong implementation, review reports a blocking finding that names it;
   weak but honest assertions stay advisory.
 - Given target work imported after execution started, the patch shows only the branch's own changes.
-- Given a missing target branch or unrelated histories, review stops with a recoverable comparison failure.
+- Given a retained worktree and a local target behind the selected remote target, all review surfaces exclude work already
+  delivered to that remote and retain every committed and uncommitted proposal. Before-file text matches that patch.
+- Given a missing required remote target, a missing target branch, or unrelated histories, review stops with a recoverable
+  comparison failure instead of substituting a stale local branch.
 - After the automatic rounds, when the user chooses Code Review and Engineer completes a requested patch change,
   checks run and the same Code Review conversation reopens; automatic AI review does not resume.
 - Given a Git-backed Code Review question, a plain-text answer with no patch change reopens review without repair
@@ -1458,8 +1467,20 @@ theme activates only its theme content. See the [theme reference](../user-docume
 
 **Acceptance scenarios:**
 
-- When the user previews a theme and cancels, the saved theme stays; confirming persists it.
-- When a saved theme becomes invalid, the built-in theme is used.
+- When the user previews a theme and cancels, the saved theme stays unchanged; confirming persists the choice for later
+  Sessions.
+- When a saved theme becomes invalid, the built-in fallback remains usable without activating unrelated executable
+  extensions.
+- Given a newly installed package with compatible extensions, when the consent prompt opens, the saved registration
+  already has `extensions: []`. Refusal, EOF, a prompt error, or an interrupted install keeps executable code disabled
+  while themes and prompts remain available.
+- Given acceptance of that prompt, the saved filter enables exactly the compatible candidates before success is
+  reported, and a later Session loads them. A failed settings save reports failure instead of enabled code.
+- Given an existing registration, reinstalling through an equivalent relative or absolute path preserves its enabled,
+  disabled, and filtered choices, unrelated packages, and other settings without another code-extension prompt.
+
+<a id="61-current"></a>
+<a id="62-future--open"></a>
 
 ### Project context and initialization
 
@@ -1791,6 +1812,44 @@ definitions are Markdown files with YAML front matter, layered in this order:
 
 Scalar front matter follows precedence. Prompt bodies append unless `promptOverride: true` is set. User-facing labels
 use the effective `name`; the filename is the internal ID for selection, routing, and persistence.
+
+#### Metrics exporter approval
+
+**Requirement: Resolve metrics exporter entries only after saved host approval.**
+
+Current Core package discovery recognizes the top-level `wld.metricsExporter` declaration with contract `1`, a non-empty
+ID, and a relative entry that stays inside the real installed package path. The entry cannot also be a Pi extension
+resource. Core lists only user-scope installed exporters and their approval state; it resolves approved entries without
+importing code. Session startup never loads an exporter entry through the Pi extension path.
+
+The declaration can include up to eight credential fields. Each has a unique key matching
+`^[A-Za-z][A-Za-z0-9_]{0,63}$`, a non-empty label of at most 64 characters, and a boolean `secret` value. Malformed fields
+invalidate the declaration. Core exposes the field shape for Workspace forms without executing exporter code. Field
+changes do not change approval identity.
+
+`wld install` asks a separate default-no exporter approval question for any new or existing unapproved exporter. Only
+`y` or `yes` saves approval. Core confirms the saved record before reporting approval. Host-global approval binds the
+exporter ID, configured user source, real installed path, and package version; Project settings cannot grant it or
+replace the approved package. `wld remove` deletes that source's approvals. Approval is not a sandbox and does not
+control npm lifecycle scripts. Core delivery requires a separate [Export grant](#usage-measurement-and-export).
+
+**Acceptance scenarios:**
+
+- Given a valid installed exporter, before approval Core lists it as unapproved and resolves no executable entry.
+  Refusal, empty input, EOF, a prompt error, or interruption before the approval write keeps it unapproved.
+- Given exporter approval, Core re-reads the saved global record and resolves the matching entry. Approving code
+  extensions does not approve an exporter; approving an exporter does not enable code extensions.
+- Given a Project package with the same identity or a Project approval record, the user's exporter resolution and
+  approval remain unchanged. An exporter-only package in an auto-discovered `extensions/` directory contributes no
+  Session extension and has an invalid exporter declaration.
+- Given a change to ID, source, real installed path, or version, Core reports the exporter unapproved without a settings
+  write. Reinstalling asks again. Local file edits without a version change keep approval.
+- Given removal, the source's approvals are deleted, other approvals remain, and a later reinstall asks again.
+- Given valid credential fields, discovery exposes them. Malformed, duplicate, or oversized fields invalidate the
+  declaration. Changing only valid credential fields preserves saved code approval.
+
+Package update trust policy and reconciliation of historical code-extension consent remain deferred. Existing
+unrestricted or filtered code-extension registrations are preserved, not relabeled as historical consent.
 
 **Requirement: Customize tools while keeping workflow capabilities.** A definition names tools individually with
 `tools`, by group with `toolSets` (`read`, `write`, `docs`, `shell`, `web`), or both; the highest layer that sets
@@ -2299,15 +2358,32 @@ hold delivery evidence. Scenarios guide verification; test coverage is establish
   verification and PRD updates in the implementation scope.
 - Given an unimplemented proposal, the revised PRD labels it target.
 
-### Local workflow metrics
+### Usage measurement and export
 
-**Scope and maturity:** Current local recording is opt-in and stays on the device. Linked execution, usage, and command
-records are target v2 scope. Reporting, dashboards, and export are deferred.
+<a id="usage-measurement-and-export"></a>
+
+**Scope and maturity:** Current local recording is opt-in and stays on the device. The v2 observation layer includes
+linked execution, usage, command, and workflow-outcome records. The journal writer implements bounded cross-process
+locking, sync, epoch control, and repair. Core reporting, history deletion, exporter approval, and export coordination
+are current. A first-party [Langfuse exporter package](../../packages/langfuse-exporter/README.md) implements the
+Langfuse Cloud v4 protocol. The personal Workspace usage report and
+[usage settings](runwield-workspace-prd.md#personal-usage-and-outcomes) are current.
+
+Installed exporter discovery and [saved host approval](#metrics-exporter-approval) are separate from destination
+consent. Workspace usage settings manage Export grants and write-only credentials through Core functions. Executable
+code approval remains host-only through `wld install`; there is no command-line destination setup flow.
 
 **Requirement: Record structured workflow observations locally, with opt-in and no sensitive content.** With
 `workflowMetrics` enabled, RunWield records ordered tool usage, token usage, cost, context snapshots, compaction,
 retries, response latency, and slash commands to a local JSONL file under `~/.wld/workflow-metrics/`, one per primary
-Project. Linked worktrees share their Project's file. Recording is off by default.
+Project. The directory is `<sanitized-basename>-<full-sha256-of-real-primary-root>`, with a basename of at most 40
+characters. Linked worktrees and symlink aliases share their Project's file; distinct roots do not. Recording is off by
+default. Core adopts an unshared legacy journal without changing its bytes or grant offsets. A collided legacy journal
+is left in place; each new history receives only attributable rows and an explicit gap, with existing grant starts moved
+to the new end so copied rows do not export. If another process is adopting the legacy journal, export defers discovery
+until a later cycle without changing consent or delivery positions. Owner reports keep canonical Project identities
+and show unavailable history during that wait; settings remain readable without authorizing a grant. Other discovery
+data errors remain errors.
 
 Records hold metadata only: prompts, diffs, tool results, file contents, and credentials stay out. Bash commands are
 reduced to coarse command labels; memory calls record their action and scope. Usage records keep exact token, cache,
@@ -2333,6 +2409,398 @@ review evidence is marked unavailable, not approved.
   prior AI review round count without feedback or annotation content.
 - Given human takeover at the AI round limit and a second Code Review request for changes, the event identifies
   human takeover and Code Review round two. Closing or skipping review records no decision event.
+
+**Requirement: Usage observations describe only content-free Core activity observed while enabled.** A Usage observation
+belongs to one primary Project history and collection epoch. Session and Plan links identify observed relationships;
+they are not substitutes for Session Transcript or Plan Association evidence. A Usage observation is neither a
+transcript nor a billing charge. Missing measurements remain unavailable, not zero.
+
+**Requirement: Supported backends preserve their measurement detail and upstream limits.** Pi retains native per-request
+measurements linked to assistant turns. Claude CLI retains each result's turn usage once with a distinct source identity;
+turn cost is the change in the process running total. Request measurements and per-model detail remain alternatives
+where they overlap. Core retains these alternatives locally but excludes redundant alternative rows from
+all metrics exports. New Claude CLI and agy CLI usage rows identify input as excluding cache tokens; old rows keep their
+recorded basis. agy CLI retains turn-cumulative tokens and records USD cost as calculated when its model ID exactly
+matches the built-in Google price catalog. A missing catalog entry stays unavailable; a preview or alias model is not
+price evidence. Upstream-reported cost stays distinct from calculated cost. Pi and agy reasoning counts are recorded as
+a subset of output, not added to it. Missing reasoning or cache-write counts stay unavailable.
+
+Usage rows record start and end times only when observed for that row. CLI aggregate timing measures the subprocess
+turn, not model-server latency. Pi assistant timing is captured during its turn, not at settlement. Claude alternative
+request rows and other unobserved rows retain null timing. Old rows are not rewritten.
+
+Runtime events, saved entries, replay totals, the terminal footer, and Guided Review distinguish supplied zero from
+absent measurements. Replay reports compaction usage separately from assistant-message totals and marks partial category
+coverage. Historical zero-filled CLI entries cannot be reconstructed as measured or unavailable.
+
+**Requirement: Langfuse export preserves Core evidence without content or duplicate totals.** The first-party package
+uses Langfuse Cloud v4 OTLP HTTP ingestion, not legacy ingestion. Each attempt sends one immutable observation. Model
+requests become generations; CLI turn aggregates become one explicitly labeled generation. Workflow and tool facts use
+fixed-name spans. Related facts have deterministic trace and parent IDs. No parent is resent to add a child. No prompts,
+input/output content, events, exceptions, local paths, arbitrary text, or automatic resource attributes are sent.
+
+Native usage buckets are non-overlapping. Cache-inclusive input is reduced only when both cache counts are known.
+Unknown cache basis keeps counts in metadata only. Reasoning is split from output. Partial rows send only known buckets,
+never zero for missing counts, and carry `usage_complete=false` with missing-bucket flags. Langfuse sums those sent
+buckets: its partial-row token total is a known subtotal, not a complete measurement. Cost carries Core's reported or
+calculated source. Partial or unavailable cost sends neither cost details nor a native model name. A known partial
+subtotal stays in metadata with `cost_complete=false`, not in the vendor's native cost total. Cost coverage is separate
+from token coverage: complete catalog cost can accompany partial tokens. Older rows keep their prior coverage rule.
+Reported zero stays zero. A native model name is sent only with supplied complete cost. Langfuse can add its own
+calculated cost to vendor totals without an estimate label; that is destination behavior, not additional RunWield cost
+evidence.
+
+Measured generation timestamps come from the row's observed edges. An unmeasured generation has zero duration at its
+observation time and `timing_measured=false`; this does not establish measured zero latency. The package performs no
+retries and installs no instrumentation. It distinguishes accepted, proven non-acceptance, and uncertain delivery under
+Core's delivery policy. Bounded public-API readback compares observation identity, native usage and cost, and
+availability; asynchronous absence is not rejection. A documented empty native map with a zero total, or empty native
+model name, can represent absence when the original availability metadata still matches. This does not invent a
+measurement. Native costs permit only floating-point roundoff; missing values and supplied zero remain distinct.
+Identical unmerged readback versions can confirm one immutable fact only when every returned field agrees; conflicting
+versions cannot. Vendor-added buckets, costs, or complete totals that contradict missing measurements remain mismatch
+evidence. Protocol fixtures do not replace owner-authorized checks of native metrics in a disposable project.
+
+**Requirement: Auxiliary calls use the same opt-in measurement history without duplicate accounting.** Each
+RunWield-started auxiliary model call captures consent and collection and history epochs before invocation. External
+Guided Review and manual compaction persist an `execution_started` before model work and settle with
+`execution_finished`. Vision captures its active execution at call start or starts and settles an auxiliary execution
+when none exists, locally or remotely. Auxiliary starts have `dispatchKind: "auxiliary"` and `userInitiated: false`;
+they add no Active day. A start without a finish appears as incomplete.
+
+Each `see_image` fallback records one request-basis observation. Error or aborted responses retain supplied usage with
+partial or unavailable coverage; a thrown error without a response records unavailable usage with a content-free reason.
+Guided Review uses existing runtime observations for `wld guided-review`, without a second job total. External guide
+commands record one turn-basis aggregate per settled job, with unavailable categories when the command provides no usage.
+Every guide job keeps its generation outcome with the start-time epochs. The explicit remote model proof turn is not a
+Usage source; its vision fallback calls are.
+
+**Requirement: Cross-process recording has bounded lock acquisition and truthful persistence.** All writers to the
+primary Project journal take an OS file lock before the same `proper-lockfile` lock, including linked worktrees and
+separate Core processes. The OS lock does not expire while a writer is paused. Current epoch checkpoints avoid scans of
+retained history. If a checkpoint is missing or behind, each lock acquisition reads at most 256 KiB of new journal bytes
+and commits recovery progress. A recording call reports non-persistence while recovery is pending and starts automatic
+recovery without waiting for more observations. Recovery releases the guard between chunks. Export authorization and
+history clear wait for a complete checkpoint before taking their action. Later recording resumes after recovery;
+retained rows stay unchanged and skipped observations are not replayed. Each recording invocation bounds lock
+acquisition to approximately one second. A persistence success requires synchronous append and file sync; it does not
+promise complete coverage. Timeout, compromised lock, storage failure, disabled collection, and
+stale collection boundaries return non-persistence without blocking delivery or claiming saved data. Captured
+observation identity and epoch stay fixed during an acquisition retry. No failed observation is queued for replay.
+Model usage becomes reconciled only after confirmed persistence; a failed append stays explicitly retryable. Once an
+execution loses a usage row, its settlement coverage is partial or unavailable, never a complete zero.
+
+**Requirement: Collection epochs reflect observed boundaries, not inferred disabled durations.** The normal Workspace
+recording control commits a fresh host-level generation and the global setting under the recording guard. Disable and
+re-enable therefore preserve a boundary even without intervening appends. Projects with project-scope recording overrides
+keep their epoch across global changes only when they explicitly set enablement (a boolean or their own boolean
+`enabled` field). An empty Project setting inherits global enablement and generation boundaries. Direct settings-file
+edits remain lazily observed. Journal appends hold the journal guard and a shared recording guard from the effective
+settings read through the write, within the existing
+one-second acquisition budget. Invocation consent and epochs are captured before work starts; work started while off or
+in a stale collection epoch cannot settle into a later interval.
+
+A previously enabled history may retain a disabled `collection_epoch` control transition without recording a disabled
+Usage measurement. Unobserved intervals do not prove disabled durations. Re-enablement never replays missed activity or
+reconstructs it from Session Transcripts. History epochs identify local Project histories independently of Session and
+Plan lifecycles. The initial-history alias accepts concurrent first writers only within that first history; any clear
+invalidates older captures, including `initial` captures from another process.
+
+**Requirement: Workflow outcomes count observed operations, not inferred delivery.** Each validation attempt and repair
+round has its own operation identity. Attempt numbers and round numbers are labels, not deduplication keys. A confirmed
+publication observation uses a deterministic identity from the delivery attempt. Repeated cleanup does not count that
+publication twice. Committed transitions keep their transition identity, allowlisted operation, and known stable Plan identity; review findings remain observed findings, not
+claims of prevented defects. Tool fan-out is not model-request fan-out.
+
+**Requirement: Publication recording precedes removal of attempt evidence and cannot gate delivery.** Both cleanup paths
+await a bounded, non-fatal recording attempt before pruning. Confirmed publication is observed even when cleanup keeps
+user files or a branch. A retained controller marker distinguishes complete, incomplete, and unverified observation
+coverage. Recording reuses classification from the retained delivery and its captured history epoch; redundant
+metadata reads do not consume the append budget. Before recording, Core retains incomplete coverage with a content-free
+reason. Only confirmed persistence makes it complete. Failed, timed-out, interrupted, and legacy unverified observations
+are not queued for replay by later cleanup or restart. A recording failure does not block or reverse publication. A
+process interruption cannot invent an observation. Git evidence and Plan Front Matter remain delivery authority under
+[Execution, validation, and recovery](#execution-validation-and-recovery). Confirmed publication and deliberate user
+abandonment remain the only delivery conclusions. An interrupted Agent turn is ongoing work, not abandonment. An open
+Session without an observed delivery workflow is not an undelivered failure.
+
+**Requirement: Plan attribution uses committed, time-scoped associations.** A Session observation links to a Plan only
+when its committed Plan Association covers the observation time and transcript segment. A new association ends the
+previous scope in that segment; a sealed segment ends its scope. General discussion has no Plan link. A Session that
+touches multiple Plans does not assign each observation to every Plan. Model usage uses the known workflow Plan scope
+and observed model time, not delayed reconciliation time. A later association cannot claim an earlier model call.
+A delivery attempt's committed registry
+association identifies its Plan independently of Session ownership. Missing attribution stays absent. Outcome records
+retain operation, transition, or confirmed delivery identity and exclude free-form errors.
+
+**Requirement: Repair preserves history and makes measurement gaps explicit.** Existing v1 rows stay unchanged; absent
+v2 links or coverage are not inferred from adjacent rows. Locked repair truncates only an incomplete final line and
+appends explicit `measurement_gap` evidence with reason `incomplete_append`. Interior corruption remains in the journal
+and is surfaced with corrupt line numbers; it is not silently deleted or converted into measured zero.
+
+**Requirement: Report collected usage with one Core query.** The caller provides authorized Project roots, a half-open
+local-date period, and the host reporting time zone. Core reads only journals, including safe legacy fields. It returns
+settled token subtotals, reported and estimated USD cost separately, latency, daily buckets, Project/backend/model
+breakdowns, and stable local Session/segment/Plan identifiers. The recorded-through marker names the latest durable
+included record, not the current clock. Worktree aliases count once. Queries do not read Plan contents or Session
+Transcripts, construct writable Session managers, or contact models. A disposable cache reads new journal suffixes;
+rebuilding it changes no source records.
+
+**Requirement: Active days require human input evidence.** An Active day has an execution start marked by the Runtime as
+user-initiated, or an explicit user command start. Automatic Plan dispatch, validation repair, generated background
+results, isolated calls, and open windows do not count. Older execution starts without input provenance do not prove an
+Active day. Usage belongs to the observation's completion day, whether or not that day is active. Completion time uses
+`completedAt`, then `endedAt`, then the observation timestamp, not delayed storage or cleanup time. Incomplete operations
+appear separately and receive no invented spend or latency totals.
+
+**Requirement: Preserve delivery meaning in reports.** Published changes count distinct confirmed delivery attempts with
+executable Plan identity. Epic containers and observations without known executable classification are excluded; the
+report discloses those exclusions. Validation attempts and repair rounds remain separate counts. Ongoing workflows are
+labeled as of their latest observation; only an explicit committed abandonment observation counts as abandoned. An
+interrupted Agent turn is not abandonment. Delivery conclusions remain owned by
+[Execution, validation, and recovery](#execution-validation-and-recovery).
+
+**Requirement: Usage gaps differ from covered zero.** Disabled, legacy, unavailable, incomplete, and not-yet-collected
+intervals are Usage gaps. They break a trend rather than draw zero. A complete enabled day bounded by recorded evidence
+can show known zero. Absence alone proves neither enablement nor a disabled duration. Partial numeric fields retain
+known subtotals with adjacent exclusion counts; missing cost is not zero. Alternative CLI representations do not add
+usage twice. Local calendar boundaries remain correct across daylight saving transitions.
+
+**Requirement: Keep and clear measurement history without changing development artifacts.** Records have no age-based
+expiry and remain readable when collection is off or a Session is removed. Clear removes only selected Projects'
+measurement rows, including legacy rows. It preserves Sessions, Plans, worktrees, configuration, and collection state.
+Clear shares the writer lock, commits a fresh History epoch, and resets journal offsets and deduplication state. A
+durable clear intent prevents crash recovery from exposing old rows. Delayed observations captured in an older epoch are
+rejected across processes. Restart, cache rebuild, and legacy readers cannot restore deleted history. New activity
+records normally after clear. Export reads pending payloads only from the journal. Clear preserves content-free delivery
+fences and reports an already authorized delivery that cannot be recalled. Reporting marks a pending clear explicitly
+in Project coverage while hiding old rows, so Workspace can offer a readable retry rather than treat it as settled data.
+
+**Acceptance scenarios:**
+
+- Given roots that differ only by a slash versus a hyphen, their reports, clear actions, and grants remain separate.
+  Legacy adoption retains an unshared journal's bytes and grant offset. A collided legacy journal gives each Project
+  only its attributable report rows, exports none of the copied rows, and leaves the legacy file unchanged. This also
+  holds when the grant predates a legacy clear. A new grant after a later clear retains its own approval position.
+- Given a held legacy adoption guard, export completes the cycle without sending. Owner reports show unavailable
+  history, and settings remain readable without writing a grant. After release, reports show the retained rows and
+  competing hosts adopt the journal and export only eligible observations once, with unchanged journal bytes, state,
+  and grant positions.
+- Given known token, cost, and latency observations, a query returns their exact settled values and backend/model
+  breakdowns. An incomplete execution is listed separately and contributes no spend or latency total.
+- Given model completion before midnight and cleanup afterward, usage belongs to the earlier completion day and period.
+- Given a failed model-usage append followed by a saved execution finish, the report discloses usage exclusions, not a
+  complete zero. A later successful retry cannot erase the degraded coverage.
+- Given two Claude results in one stream, both turn measurements count once and cost equals the final running total;
+  overlapping per-model alternatives add no totals.
+- Given a disabled day, a legacy-only day, and a complete enabled day with no usage, only the covered day draws zero.
+  Missing token categories or USD cost disclose exclusions beside their subtotals.
+- Given the repeated hour at a daylight saving transition, each completed observation belongs to one local day. An
+  observation at midnight belongs only to the next half-open day. Phone and desktop receive the same zone and marker.
+- Given human input, an explicit command, and an automatic repair, only human input and the command make Active days.
+- Given an observed delivery attempt that is interrupted, the report labels it ongoing as of its last observation, not
+  abandoned. Explicit abandonment and confirmed publication are separate conclusions.
+- Given selected Project history and a paused second writer, clear changes only that history. On resume the old writer
+  is rejected. Restart shows no old or legacy rows; new observations persist and report. Other Projects and development
+  artifacts remain unchanged.
+- Given repeated queries and a growing retained journal, refresh parses only appended bytes. Cache rebuild leaves
+  transcripts, models, Plans, and the journal unchanged.
+
+- Given one Plan with a failed validation, a repair round, and confirmed publication, the journal records separate
+  validation and repair identities and one confirmed-delivery attempt, including after restart.
+- Given either full cleanup or an attempt already at `cleanup_complete`, when cleanup repeats, its stable publication
+  identity produces no second journal row. Keeping user files does not remove the confirmed-publication observation.
+- Given disabled collection or an unwritable journal, publication still completes and prunes. Where controller evidence
+  can be retained, coverage is incomplete with a content-free reason. A process death before recording leaves
+  incomplete coverage and no invented outcome; restart does not backfill the missed measurement. A death after recording
+  and before prune keeps the durable observation without resending it.
+- Given either cleanup path and slow or failed auxiliary coverage storage, delivery and cleanup do not wait beyond the
+  existing recording budget. Coverage stays incomplete unless its persistence was confirmed. Already retained delivery
+  classification reaches append without another Git metadata read.
+- Given disjoint committed Plan Association time scopes in one Session, observations link only to the matching Plan at
+  that time. Unassigned discussion and uncommitted associations do not create Plan links.
+- Given a model call before a Plan association and delayed usage reconciliation after it, the earlier call stays
+  unlinked. A call in committed implementation links to its observed workflow Plan, even if reconciliation follows
+  a later Plan association.
+- Given an interrupted repair turn or a non-Plan Session, measurements do not label the workflow abandoned or count an
+  open Session as an undelivered failure. A parallel tool batch creates no model-request fan-out claim.
+- Given `workflowMetrics` disabled or unset with no prior enabled history, when turns, tool calls, or slash commands
+  run, RunWield creates no metrics journal. With prior history, it may retain an observed disabled control transition,
+  but writes no Usage measurements while disabled.
+- Given `workflowMetrics` enabled in project or global settings, when an agent turn executes, RunWield records ordered
+  events with monotonic sequences, tool exposures, tool durations, model usage, and latency.
+- Given a bash command with flags, arguments, or pipelines, when recorded, RunWield stores only coarse safe command
+  labels and excludes all raw paths and arguments.
+- Given an execution with more than 40 tools, RunWield records individual tool exposure events without array truncation.
+- Given background delegated work, RunWield preserves parent tool call identity, parent execution identity, and task
+  identity across all recorded observation records.
+- Given an execution that calls no tools, RunWield records its effective tool inventory and a zero call count.
+- Given a returned tool error, rejection, cancellation, or incomplete call, RunWield records the observed outcome or
+  missing end without turning it into a success. A failed turn keeps usage that its provider already reported.
+- Given absent usage, cost, truncation, or context occupancy measurements, RunWield marks each unavailable or partial;
+  it does not replace missing values with zero or add overlapping turn and request costs.
+- Given Pi request usage, Claude request/turn/per-model fixtures, or agy turn-cumulative usage, when recorded, RunWield
+  retains the available detail without adding Claude alternative observations to a reported turn total. Absent cache
+  categories stay unavailable and supplied zeros stay measured. New agy rows record calculated USD cost only from an
+  exact catalog model. An unmatched model keeps unavailable cost; reasoning remains part of output.
+- Given a new CLI usage row, input and cache counts remain non-overlapping. Existing rows with unknown basis are not
+  rewritten. Given agy thinking tokens or Pi reasoning tokens, recorded reasoning is part of the unchanged output total.
+- Given an exact agy catalog match, cost is calculated from recorded counts and labeled calculated. Given only a preview
+  catalog entry, cost stays unavailable. Missing token buckets are not written as measured zero.
+- Given a Pi assistant message that completes before settlement, its observed start and end stay inside its turn.
+  Settlement time does not replace them. Unobserved rows keep null timing.
+- Given a complete priced request, reported-zero request, unavailable-cost request, partial agy turn, and complete CLI
+  aggregate, Langfuse receives one content-free observation per attempt with the corresponding native fields and flags.
+  Partial buckets stay absent; the aggregate creates no child generations or second parent total.
+- Given a Guided Review cost subtotal with partial cost coverage, Langfuse receives the subtotal in metadata with
+  `cost_complete=false`, without native cost details or a native model name. A partial-token agy turn with complete
+  catalog cost still sends native cost. Local cost coverage follows the separate cost fact.
+- Given uncertain ingestion or delayed readback, the exporter does not retry. Matching native readback confirms
+  presence, including equivalent empty native representations and fully identical unmerged versions. This does not
+  authorize a retry or claim exactly-once ingestion. Vendor-invented buckets, costs, complete values, or conflicting
+  versions that contradict Core evidence do not confirm it.
+- Given assistant entries without usage and a compaction entry with usage, when a Session is replayed, assistant totals
+  show unavailable while the compaction component shows its own measured values.
+- Given a completed local or remote vision fallback, when usage is present, RunWield records it once. Error or aborted
+  responses retain known usage with incomplete coverage; a thrown error records unavailable usage. Each call captures
+  its measurement start first; without an active execution its auxiliary start adds no Active day.
+- Given a clear during an external guide command, its delayed usage and generation outcome cannot enter the new history.
+- Given a default `wld` guide job, when it settles, its existing runtime measurements and one generation outcome remain
+  without a duplicate job total. An external guide job records one aggregate and one outcome. Null categories yield
+  partial or unavailable coverage, not zero. Version-1 frames are not accepted as new measurements.
+- Given a template or Skill command that starts Agent work, its one invocation ID links to the execution. A command
+  picker writes an `opened` observation, then a `dispatched` observation only when a choice starts work. Its final
+  result is succeeded, failed, canceled, or rejected under the same invocation ID. Closing a picker without a choice
+  records cancellation, not a completed model change.
+- Given manual `/compact` outside an Agent turn, RunWield awaits an auxiliary measurement start before model work and
+  records compaction and context under its Session and command. Its auxiliary execution adds no Active day.
+- Given separate Core processes and a linked worktree writing the same Project history, when observations overlap, the
+  shared lock serializes journal mutation; contention ends within approximately one second with a truthful
+  non-persistence result if the lock is not acquired.
+- Given a synchronous append or sync failure, or a compromised lock, when recording settles, it does not claim
+  persistence, stop delivery, or enqueue the observation for replay.
+- Given prior enabled history, when Core observes disabled collection, it records only the disabled control transition.
+  When Core later observes enablement, it starts an observed collection epoch without backfilling missed measurements.
+- Given recording disabled then enabled through the normal control without intervening appends, an older capture is
+  rejected at the committed collection boundary and a new capture persists. An empty Project setting inherits that
+  boundary; an explicit Project enablement override keeps its own epoch.
+- Given a settings-write failure after recording generation commit, the unchanged enabled setting permits fresh work,
+  but captures from before the attempted control change are rejected.
+- Given direct settings-file edits without Core observations, the interval has no recorded measurements and no inferred
+  disabled duration. An observation from a stale observed epoch is not relabeled into the new epoch.
+- Given a journal with v1 rows and a torn final append, when repair runs under the lock, the v1 rows remain unchanged,
+  only the incomplete tail is removed, and an explicit `measurement_gap` records the lost bytes.
+- Given corrupt interior lines, when repair runs, those lines remain and gap evidence surfaces their line numbers;
+  successful persistence of a later observation does not claim complete historical coverage.
+- Given a large history with a missing checkpoint, one recording call starts bounded automatic recovery. Recovery
+  continues without new observations, and later work records without reconstructing skipped activity.
+- Given recovery in progress, export authorization and clear wait for stable history. A clear does not restore removed
+  rows when background recovery continues.
+
+#### Export consent
+
+**Requirement: Export only under explicit destination consent.** An Export grant binds an approved installed exporter
+identity, endpoint, external project, and explicit allowlist of primary Projects. Project settings cannot grant export.
+Each Project starts at its journal byte position when added. An execution that started before that position is never
+exported, even if it finishes later. An execution-scoped row is eligible only with retained start evidence at or after
+the grant boundary in the same history; missing start evidence fails closed. Rows without an `executionId`, such as
+workflow outcomes, start at their own position. A new history after clear
+starts at zero. Endpoint or external-project changes and re-enablement create new consent and start positions. HTTPS is
+required except explicit permission for loopback HTTP. Credentials rotation preserves consent and fences.
+
+**Acceptance scenarios:**
+
+- Given no installed approved exporter, no grant, or an empty allowlist, a cycle sends nothing.
+- Given an execution or manual compaction started before consent and finished afterward, none of its observations are
+  sent. An execution-scoped usage row without retained start evidence is not sent. A new execution in a granted Project
+  is sent; an unlisted Project is not sent. An outcome without an execution ID is eligible at its own post-grant position.
+  Adding a Project starts only its future history.
+- Given a new endpoint, external project, or re-enablement, old pending history is not swept into the new grant.
+- Given a non-loopback HTTP endpoint, Core refuses consent. Loopback HTTP also requires explicit permission.
+- Given a changed installed identity, the old grant authorizes nothing, even if the new package has been approved.
+
+<a id="export-delivery-lifecycle"></a>
+
+**Requirement: Core owns delivery authorization and lifecycle.** The TUI and owner Workspace host run export at startup
+and every 60 seconds, independent of cwd, open Sessions, Workspace registration, or browser access. Remote personal
+resource hosts do not start it. Core takes a non-blocking destination OS lock, then the configuration lock and journal
+guard. Grant and exporter-approval edits share the configuration lock. Under the guard Core checks current consent,
+installed approval, and history, and syncs the send intent. Core builds the observation and spawns the worker before
+locking, then hands the authorized request to that worker with synchronous `postMessage` under the configuration and
+journal guards. It awaits network results only after release. Failed authorization terminates the worker without a
+request. Clear or revoke committed before dispatch prevents that request. Pending payloads exist only in journals; a
+cursor retains scan positions and eligible execution starts, rebuilding older cursors without start evidence. A
+content-free ledger retains durable intents and outcomes across host restarts. Recovery visits all destinations,
+including revoked grants. In-flight status requires both an unsettled intent and a held destination send lock; a dead
+process does not remain in flight.
+
+**Acceptance scenarios:**
+
+- Given an unregistered granted Project B while cwd is Project A, a cycle sends B's eligible rows.
+- Given two simultaneous hosts, each observation reaches the destination once. Every request has a durable prior intent.
+- Given clear or revoke committed before the lock-scoped dispatch, the prepared worker receives no request. An
+  authorized request is handed to the worker before the locks release; its network result is awaited afterward.
+- Given a dead send holder, clear reports no live delivery. The next cycle marks unsettled sending intents unconfirmed
+  with `process_lost` and ends abandoned confirmations, including revoked destinations, without replay.
+
+<a id="export-delivery-states"></a>
+
+**Requirement: Export states preserve acceptance uncertainty.** Accepted means transport reports acceptance; Confirmed
+means bounded read-back proves remote presence. Unconfirmed means acceptance is unknown and automatic resend is
+forbidden. Retryable non-acceptance returns to Pending with capped backoff, at most one hour. Permanent non-acceptance
+stays Rejected. Needs-correction rejection resumes only after credentials change. Later rows do not wait for backoff or
+Unconfirmed rows. Optional confirmation checks Accepted and Unconfirmed items at most three times over successive
+cycles. Not-found-yet or mismatch never changes an item to Pending or Rejected. Status shows
+current-grant/current-history counts, approval, credential configuration, sanitized codes, and last attempt time,
+without observation content. Local reporting remains independent of these remote delivery states.
+
+**Acceptance scenarios:**
+
+- Given a lost response after remote acceptance, later cycles and restart never send the observation again.
+- Given a 503, later rows proceed while that item waits. A permanent rejection stays Rejected; a correction rejection
+  becomes Pending only when the credentials revision changes.
+- Given read-back presence, Accepted or Unconfirmed becomes Confirmed. Three unsuccessful checks leave it unchanged.
+
+<a id="export-failure-isolation"></a>
+
+**Requirement: Exporter failures cannot stop local work.** Core gives trusted approved exporter code one immutable
+contract-1 observation, transport credentials, destination context, and a deadline. References are host-keyed hashes,
+not raw local IDs. Only model usage, finished executions, finished tool calls, validation attempts, finished repair
+rounds, confirmed publication, and abandoned-workflow observations are exported. Legacy rows, context, command, tool
+exposure, latency samples, paths, names, prompts, and free text are excluded. Each call runs in a Worker, stopped at 30
+seconds. Throws, malformed results, hangs, and worker exits become Unconfirmed. Shutdown terminates calls and waits at
+most about two seconds without holding a Session writer lock. This is failure isolation, not a security sandbox.
+
+**Acceptance scenarios:**
+
+- Given an exporter throw, hang, or `process.exit`, the host continues and records new local observations.
+- Given captured payloads, every reference is opaque and no path, Plan name, prompt, or raw local ID appears.
+
+<a id="export-clear-and-revoke"></a>
+
+**Requirement: Clear and revoke stop future authorization without recalling prior sends.** Clear serializes with export
+authorization under the journal guard. It removes pending payloads and changes the history epoch, but keeps ledger
+fences. A previously authorized delivery can settle afterward without restoring measurements. Revoke removes consent;
+both operations report whether a delivery was already in flight. Re-enabling starts at new Project positions.
+
+**Acceptance scenarios:**
+
+- Given clear before authorization, no cleared row is sent. Given an already authorized request during clear, the result
+  reports in-flight delivery and its later settlement restores no local rows.
+- Given revoke during a request, the result reports in-flight delivery, and no later row is authorized.
+
+<a id="export-credentials"></a>
+
+**Requirement: Keep export secrets out of settings and measurement state.** Credentials live only in Core's
+`~/.wld/metrics-export/credentials.json`, with owner-only file mode `0600` inside a `0700` directory. A separate `0600`
+`host.json` retains the host reference key and owner identity across restarts. Settings, status, logs, errors, and
+ledgers contain no credential value. Status reports only whether credentials are configured.
+
+**Acceptance scenario:** Given configured credentials and a delivery, authentication receives the credentials, while
+settings, status, ledger, and observation contain none. Credentials and host identity files have owner-only modes.
+
+<a id="4-current-local-workspace-surface"></a>
+<a id="5-current-collaborative-planning-surface"></a>
 
 ## Browser and shared-review requirements
 

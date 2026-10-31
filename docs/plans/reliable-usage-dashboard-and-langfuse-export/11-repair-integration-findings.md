@@ -28,10 +28,11 @@ parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 11
 dependencies: []
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 sessionName: "Metrics Epic Review Fixes"
+validatedCommit: "7c4c4f2db949c04440332fdb166166ba12b013c0"
+status: "verified"
 ---
 
 # Repair integration findings
@@ -55,7 +56,7 @@ The findings fall into five problems:
 
 ### Product ownership
 
-The Core PRD capability [Usage measurement and export](../../prd/runwield-core-prd.md)
+The Core PRD capability [Usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export)
 owns every requirement here. This repair changes these named requirements:
 
 - **Changed — "Collection epochs reflect observed boundaries, not inferred disabled durations."** Today Core observes
@@ -557,13 +558,13 @@ Each test below must fail on `dc60183` and pass after the fix. A stub or pass-th
 | R2-2    | `owner-usage-settings.integration.test.ts`, `metrics-journal.test.js`                                                          | Recording on, capture an invocation, `mutateUsageSettings` off then on, append: `collection_boundary`. A new capture after the control persists.                                                                                                                              |
 | R2-3    | `execution-metrics.test.ts`                                                                                                    | Recording off, create a recorder, turn recording on, `recordModelUsage`: `persisted: false`, reason `disabled`.                                                                                                                                                               |
 | R2-4    | `metrics-journal.test.js`                                                                                                      | Writer A captures `initial`; writer B persists a row; clear; A appends: `history_boundary`. Two `initial` captures before any history both persist.                                                                                                                           |
-| R2-5    | `guided-review-usage.test.js`                                                                                                  | Record a row; a guide command stub clears history before resolving; no `model_usage` row from that job is in the new history; a start row precedes job usage.                                                                                                                 |
+| R2-5    | `guided-review-usage.test.ts`                                                                                                  | Record a row; a guide command stub clears history before resolving; no `model_usage` row from that job is in the new history; a start row precedes job usage.                                                                                                                 |
 | R2-6    | `metrics-export-delivery.test.ts`                                                                                              | A clear or revoke committed before the locked dispatch step produces no `postMessage`. A test exporter records receipt before the cycle releases its locks.                                                                                                                   |
 | R2-7    | `metrics-export-consent.test.ts`                                                                                               | After a grant, a `model_usage` row whose execution has no start row is not sent. A compaction started before the grant exports nothing. An outcome row after the grant is sent.                                                                                               |
 | R2-8    | `claude-cli-backend.test.ts`, `execution-metrics.test.ts`                                                                      | Two results in one stream record two turn rows; the report sums both `usage` values; cost equals the final running total.                                                                                                                                                     |
 | R2-9    | `usage-reporting.test.ts`, `agy-cli-backend.test.ts`                                                                           | An agy row with `endedAt` 23:59 and recording after midnight belongs to the earlier day and period.                                                                                                                                                                           |
 | R2-10   | `execution-metrics.test.ts`                                                                                                    | A failing `model_usage` append followed by a successful settlement writes `coverage.usage` `partial` or `unavailable`; the report shows exclusions, not a complete zero.                                                                                                      |
-| R2-11   | `src/tools/see-image-usage.test.ts`, `src/shared/session/see-image-usage.test.js`, `src/shared/remote/see-image-usage.test.ts` | An `error` response with usage, an `aborted` response, and a thrown error each leave a start row and an incomplete or unavailable observation. With no active execution, the start row has `dispatchKind: "auxiliary"`, and the report adds no Active day.                    |
+| R2-11   | `src/tools/see-image-usage.test.ts`, `src/shared/session/see-image-usage.test.ts`, `src/shared/remote/see-image-usage.test.ts` | An `error` response with usage, an `aborted` response, and a thrown error each leave a start row and an incomplete or unavailable observation. With no active execution, the start row has `dispatchKind: "auxiliary"`, and the report adds no Active day.                    |
 | R2-12   | `metrics-export-process.test.ts`                                                                                               | Grant, hold, child cycle, kill child, revoke, release: clear reports `deliveryInFlight: false`; the next cycle marks the entry `unconfirmed` with `process_lost`.                                                                                                             |
 
 > [!NOTE]

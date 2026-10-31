@@ -90,7 +90,7 @@ test("MCP stdin EOF stops owned CI without a failure and fresh validation reruns
         assertEquals(status.code, 0, await stderr);
         throws(() => process.kill(pid, 0), { code: "ESRCH" });
         assertEquals((await fixture.evidence()).filter((entry) => entry.kind === "ci").length, 0);
-        assertEquals((await fixture.metrics()).includes('"ci_attempt"'), false);
+        assertEquals((await fixture.metrics()).includes('"validation_attempt"'), false);
         await saveValidationCommand(fixture.cwd, "exit 0", "exact-project");
         await saveValidationCommand(fixture.root, "exit 0", "exact-project");
         const current = await fixture.status();
