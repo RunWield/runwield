@@ -244,6 +244,9 @@ Ubuntu source shards are removed rather than repeated in release qualification.
 `release-gate` owns broad platform coverage after the Candidate or Stable tag is created. Its internal
 `release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
 diagnostics at the selected workflow revision. Windows checks are paused.
+Linux and macOS source checks install the latest Stable Mnemoteca with `scripts/install-ci-mnemoteca.sh`.
+The script verifies the platform archive against the release checksum file and runs `mnemoteca setup` before tests.
+These checks use real Work Record indexing, not a placeholder command.
 Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
 No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly
 forward-ported to `main` under the release policy above.

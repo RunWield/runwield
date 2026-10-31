@@ -49,7 +49,7 @@ jobs:
               run: |
                   mkdir -p "$RUNNER_TEMP/runwield-ci-bin"
                   GOBIN="$RUNNER_TEMP/runwield-ci-bin" go install github.com/edouard-claude/snip/cmd/snip@v0.24.1
-                  for binary in mnemoteca cymbal ketch; do
+                  for binary in cymbal ketch; do
                     cat > "$RUNNER_TEMP/runwield-ci-bin/$binary" <<'EOF'
                   #!/usr/bin/env bash
                   if [[ "$1" == "--help" ]]; then exit 0; fi
@@ -58,6 +58,10 @@ jobs:
                     chmod +x "$RUNNER_TEMP/runwield-ci-bin/$binary"
                   done
                   echo "$RUNNER_TEMP/runwield-ci-bin" >> "$GITHUB_PATH"
+            - name: Install latest Mnemoteca for Work Record integration tests
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: bash scripts/install-ci-mnemoteca.sh
             - name: Install frozen dependencies
               run: bun run install:locked
             - name: Check source and test types
