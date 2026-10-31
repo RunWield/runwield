@@ -18,6 +18,12 @@ routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "b69f2eb590802d8ad9e7b9e8840e37b34ca8a902"
+workRecord:
+    status: "generated"
+    recordId: "81f2f344-e11a-4fd6-9f3f-e64c676b1ac8"
+    path: "docs/work-records/2026-10-31-vite-security-patch-in-the-docs-dependency-graph.md"
+    lastAttemptAt: "2026-10-31T02:12:46.505Z"
 ---
 
 # Complete the Vite Security Patch for Issue 436
