@@ -791,7 +791,7 @@
     "src/ui/workspace/plan-review-decision-route.test.ts",
     "src/ui/workspace/plan-workflow-gates.integration.test.ts",
     "src/ui/workspace/plan-workflow-resume.integration.test.ts",
-    "src/ui/workspace/plan-workflow-review.integration.test.js",
+    "src/ui/workspace/plan-workflow-review.integration.test.ts",
     "src/ui/workspace/plan-workflow-saved-actions.integration.test.ts",
     "src/ui/workspace/project-page-requests.test.ts",
     "src/ui/workspace/project-request-headers.test.ts",

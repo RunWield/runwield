@@ -1,3 +1,5 @@
+import type { FileSessionGeneration } from "../../shared/session/file-session-store-types.ts";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
@@ -15,21 +17,37 @@ import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 
+type SessionRuntime = ReturnType<typeof createSessionRuntime>;
+type InteractiveSessionOptions = Parameters<SessionRuntime["createInteractiveSession"]>[0];
+interface PlannerSessionOptions extends InteractiveSessionOptions {
+    agentName: string;
+}
+interface PlanReviewReference {
+    expectedStatus: string | null;
+    expectedRevision: string | null;
+}
+interface PlanReviewRequest extends Pick<RuntimeInteractionRequest, "prompt"> {
+    planReview: PlanReviewReference;
+}
+type LiveInteraction = NonNullable<ReturnType<WorkspaceSessionContinuationService["getOperation"]>["liveInteraction"]>;
+interface PlanReviewInteraction extends Omit<LiveInteraction, "request"> {
+    request: PlanReviewRequest;
+}
+type OwnerStore = Parameters<typeof loadOwnerPlanProgress>[0];
+
 /**
  * Wait for background review/execution work to publish its settled status.
- * @param {WorkspaceSessionContinuationService} service
- * @param {string} operationId
  */
-async function waitForOperationSettlement(service, operationId) {
-    const settled = Promise.withResolvers();
+async function waitForOperationSettlement(service: WorkspaceSessionContinuationService, operationId: string) {
+    const settled = Promise.withResolvers<void>();
     const unsubscribe = service.subscribeOperationChanges(operationId, (status) => {
         if (status !== "running" && status !== "accepted") settled.resolve();
     });
-    let timeout;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
         await Promise.race([
             settled.promise,
-            new Promise((_, reject) => {
+            new Promise<never>((_, reject) => {
                 timeout = setTimeout(() => reject(new Error(`Operation ${operationId} did not settle`)), 60_000);
             }),
         ]);
@@ -64,7 +82,10 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     });
                     await git(root, ["add", "."]);
                     await git(root, ["commit", "-m", "Saved plan"]);
-                    const { sessionId } = await runtime.createInteractiveSession({ cwd: root, agentName: "planner" });
+                    const { sessionId } = await runtime.createInteractiveSession({
+                        cwd: root,
+                        agentName: "planner",
+                    } as PlannerSessionOptions);
                     const managed = runtime.getSessionSnapshot(sessionId)?.managed;
                     assertExists(managed);
                     await runtime.closeAllSessionsWhenIdle();
@@ -74,7 +95,9 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                         return fauxAssistantMessage(fauxText("I am implementing the approved saved Plan."));
                     });
                     for (const approvalAction of ["later", "run"]) {
-                        const generation = store.inspectSessionActivation(managed.runwieldSessionId).generation;
+                        const generation: FileSessionGeneration | null = store.inspectSessionActivation(
+                            managed.runwieldSessionId,
+                        ).generation;
                         assertExists(generation);
                         const requestId = crypto.randomUUID();
                         const open = async () => {
@@ -85,7 +108,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                                         action: "resume",
                                         requestId,
                                         planId: "saved-plan-id",
-                                        expectedGeneration: generation.generation,
+                                        expectedGeneration: generation!.generation,
                                     }),
                                 }),
                                 params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },
@@ -102,25 +125,26 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                             `/plans/saved-plan-id?session=${managed.runwieldSessionId}`,
                         );
                         assertEquals((await open()).reviewUrl, started.reviewUrl);
-                        const interaction = service.getOperation(started.operationId).liveInteraction;
+                        const interaction = service.getOperation(started.operationId).liveInteraction as
+                            PlanReviewInteraction | undefined;
                         assertExists(interaction);
                         const plan = await loadPlan(root, "saved-plan");
                         assertEquals(plan?.attrs.status, "ready_for_work");
                         assertEquals(interaction.request.planReview.expectedStatus, "ready_for_work");
                         assertExists(interaction.request.planReview.expectedRevision);
                         // A live review must not wait for board/catalog work elsewhere in the process.
-                        const locked = Promise.withResolvers();
-                        const release = Promise.withResolvers();
+                        const locked = Promise.withResolvers<void>();
+                        const release = Promise.withResolvers<void>();
                         const holdCatalog = withPlanCatalogLock(root, async () => {
                             locked.resolve();
                             await release.promise;
                         });
                         await locked.promise;
-                        let timeout;
+                        let timeout: ReturnType<typeof setTimeout> | undefined;
                         try {
                             const detail = await Promise.race([
                                 loadWorkspaceDetail(root, "saved-plan-id", { reviewOnly: true }),
-                                new Promise((_, reject) => {
+                                new Promise<never>((_, reject) => {
                                     timeout = setTimeout(
                                         () => reject(new Error("Review waited for the board catalog")),
                                         2000,
@@ -169,12 +193,12 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                             const segments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
                             assertEquals(segments.at(-1)?.kind, "execution");
                             assertStringIncludes(
-                                await fsReadFile(segments.at(-1).transcriptPath, "utf8"),
+                                await fsReadFile(segments.at(-1)!.transcriptPath, "utf8"),
                                 "implementing the approved saved Plan",
                             );
                         }
                     }
-                    const progress = await loadOwnerPlanProgress(store, {
+                    const progress = await loadOwnerPlanProgress(store as OwnerStore, {
                         projectId: project.projectId,
                         planId: "saved-plan-id",
                         runwieldSessionId: managed.runwieldSessionId,
@@ -187,11 +211,13 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                             planName: "saved-plan",
                             event: "execution_failed",
                             currentStatus: "in_progress",
-                            details: { triageMeta: location.plan.attrs },
+                            details: { triageMeta: location.plan!.attrs },
                         });
                     }
                     const before = store.listSessionTranscriptSegments(managed.runwieldSessionId).at(-1);
-                    const generation = store.inspectSessionActivation(managed.runwieldSessionId).generation;
+                    const generation: FileSessionGeneration | null = store.inspectSessionActivation(
+                        managed.runwieldSessionId,
+                    ).generation;
                     setModelResponseFactories([
                         () =>
                             fauxAssistantMessage(
@@ -213,7 +239,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                                     action: "resume",
                                     planId: "saved-plan-id",
                                     requestId: resumeRequestId,
-                                    expectedGeneration: generation.generation,
+                                    expectedGeneration: generation!.generation,
                                 }),
                             }),
                             params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },
@@ -236,11 +262,14 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                         "text",
                         JSON.stringify(resumedOperation),
                     );
-                    assertStringIncludes(resumedOperation.liveInteraction.request.prompt.toLowerCase(), "command");
+                    assertStringIncludes(
+                        (resumedOperation.liveInteraction!.request.prompt as string).toLowerCase(),
+                        "command",
+                    );
                     const hosted = service.operations.get(result.operationId);
                     const workflow = service.runtime.getSessionSnapshot(
-                        hosted.runtimeSessionId,
-                    ).activeExecutionWorkflow;
+                        hosted!.runtimeSessionId!,
+                    )!.activeExecutionWorkflow;
                     assertExists(workflow?.executionCwd);
                     assertEquals(await fsReadFile(`${workflow.executionCwd}/continued.txt`, "utf8"), "continued");
                     assertEquals(
@@ -249,12 +278,12 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                             .catch(() => false),
                         false,
                     );
-                    assertEquals((await loadPlan(workflow.executionCwd, "saved-plan")).attrs.status, "implemented");
+                    assertEquals((await loadPlan(workflow.executionCwd, "saved-plan"))!.attrs.status, "implemented");
                     await service.cancelOperation({ operationId: result.operationId });
                     for (let i = 0; i < 500 && service.getOperation(result.operationId).status === "running"; i++) {
                         const stopped = service.getOperation(result.operationId);
                         if (stopped.liveInteraction?.request.type === "select") {
-                            assertStringIncludes(stopped.liveInteraction.request.prompt, "stopped");
+                            assertStringIncludes(stopped.liveInteraction.request.prompt as string, "stopped");
                             await service.answerInteraction({
                                 projectId: project.projectId,
                                 operationId: result.operationId,
@@ -269,8 +298,8 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     assertEquals(service.getOperation(result.operationId).status, "completed");
                     assertEquals(turns, 2);
                     const after = store.listSessionTranscriptSegments(managed.runwieldSessionId).at(-1);
-                    assertEquals(after.segmentId, before.segmentId);
-                    assertEquals(after.transcriptCwd, before.transcriptCwd);
+                    assertEquals(after!.segmentId, before!.segmentId);
+                    assertEquals(after!.transcriptCwd, before!.transcriptCwd);
                     const retried = await resume();
                     assertEquals(retried.status, 202);
                     assertEquals((await retried.json()).operationId, result.operationId);
@@ -282,8 +311,8 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                                 action: "review_plan",
                                 planId: "saved-plan-id",
                                 requestId: crypto.randomUUID(),
-                                expectedGeneration: store.inspectSessionActivation(managed.runwieldSessionId).generation
-                                    .generation,
+                                expectedGeneration: store.inspectSessionActivation(managed.runwieldSessionId)
+                                    .generation!.generation,
                             }),
                         }),
                         params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },
