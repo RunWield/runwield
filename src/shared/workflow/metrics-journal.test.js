@@ -702,6 +702,8 @@ test("another process cannot settle an initial history capture after a populated
             script,
             `
 const {appendWorkflowMetric, resolveCollectionEpoch} = await import(${JSON.stringify(new URL("./metrics-journal.ts", import.meta.url).href)});
+// Finish cold module loading before the stale-write attempt starts its deadline.
+await import(${JSON.stringify(new URL("../settings.js", import.meta.url).href)});
 const state = resolveCollectionEpoch(${JSON.stringify(path)}, true);
 console.log(state.historyEpoch);
 await (await import("node:events")).once(process.stdin, "data");
