@@ -1,15 +1,16 @@
+import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
-import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 async function makeProject(): Promise<{ root: string; revision: string }> {
-    const root = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-"));
+    const fixture = defineCommittedGitFixture({ "README.md": "# Plan actions\n" });
+    const root = await fixture.checkout();
     await savePlan(root, "demo", "# Demo\n\nBody\n", {
         planId: "plan-demo",
         status: "draft",
@@ -144,7 +145,8 @@ test("requires recovery when the registered execution Plan is missing", async ()
 
 test("registry owns mutable worktree facts while Plan validation state owns lifecycle", async () => {
     const { root, revision } = await makeProject();
-    const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-validation-repair-"));
+    const executionRoot = join(root, "execution");
+    await git(root, ["worktree", "add", "-b", "rw/demo-1", executionRoot]);
     await savePlan(root, "demo", "# Demo\n\nPrimary copy\n", {
         planId: "plan-demo",
         status: "ready_for_work",
@@ -206,7 +208,8 @@ test("registry owns mutable worktree facts while Plan validation state owns life
 
 test("live execution Plan owns action evidence when the primary copy is stale", async () => {
     const { root } = await makeProject();
-    const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-execution-"));
+    const executionRoot = join(root, "execution");
+    await git(root, ["worktree", "add", "-b", "rw/demo-1", executionRoot]);
     await savePlan(executionRoot, "demo", "# Demo\n\nImplemented\n", {
         planId: "plan-demo",
         status: "implemented",

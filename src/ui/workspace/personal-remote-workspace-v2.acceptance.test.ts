@@ -11,10 +11,10 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
@@ -791,6 +791,7 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
         classification: "FEATURE",
         status: "ready_for_work",
     });
+    assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
     await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
     const store = {
         listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
@@ -811,7 +812,8 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
             section.key === "needs-you"
         ).items;
         assertEquals(needsYou.length, 0);
-        assertEquals(payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"), true);
+        await assertRejects(() => loadPlan(projectRoot, "ready"), Error, "JSON Parse error");
+        assertEquals(payload.projects[0].diagnostics.some((item) => item.source === "plans-reader"), true);
     } finally {
         await fsRm(dir, { recursive: true });
     }
