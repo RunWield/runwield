@@ -1,6 +1,5 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import {
-    mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     rm as fsRm,

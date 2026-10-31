@@ -506,6 +506,9 @@ export async function migrateLegacyProjectRuntimeState(
     const beforeLock = await preflight(layout, primaryCheckoutRoot, marker.marker);
     if (
         isBlocked(beforeLock) &&
+        // Adoption can commit after the marker read and release its lock before
+        // preflight sees new authorities. Refresh that evidence under the lock.
+        beforeLock.reason !== "authority_conflict" &&
         !migrationWasInFlight &&
         !(await lstatOrNull(layout.primary.layoutMigrationLockPath)) &&
         !(

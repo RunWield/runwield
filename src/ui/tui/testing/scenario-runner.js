@@ -54,7 +54,7 @@ import {
     WORKTREE_REGISTRY_FILE,
 } from "../../../constants.js";
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
-import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime, ProjectRuntimeReadPendingError } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
 import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.js";
 
@@ -2565,7 +2565,17 @@ async function runComposedTuiScenario(scenario, options) {
                         const localPlan = await loadPlan(getCwd(), planName).catch(() => null);
                         const registry = await (
                             await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        )
+                            .inspectWorktreeRegistry(getCwd())
+                            .catch((error) => {
+                                if (error instanceof ProjectRuntimeReadPendingError) return null;
+                                throw error;
+                            });
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
@@ -2623,7 +2633,17 @@ async function runComposedTuiScenario(scenario, options) {
                         }
                         const registry = await (
                             await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        )
+                            .inspectWorktreeRegistry(getCwd())
+                            .catch((error) => {
+                                if (error instanceof ProjectRuntimeReadPendingError) return null;
+                                throw error;
+                            });
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
@@ -2684,7 +2704,17 @@ async function runComposedTuiScenario(scenario, options) {
                         }
                         const registry = await (
                             await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        )
+                            .inspectWorktreeRegistry(getCwd())
+                            .catch((error) => {
+                                if (error instanceof ProjectRuntimeReadPendingError) return null;
+                                throw error;
+                            });
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         latestStatus = entry ? String(entry.status || "") : "absent";
                         await terminal.flush();
