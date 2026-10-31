@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { devPlanCatalog, devPlanCatalogVariant, devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
 import type { BoardColumnData } from "./components/BoardColumn.tsx";
 import type { PlanCardData } from "./components/PlanCard.tsx";
 import type { PlanSearchEntry } from "./plan-search.ts";
@@ -23,7 +26,7 @@ import {
     serializePlanSummary,
     workspaceMetadata as _workspaceMetadata,
 } from "./server/plan-adapter.js";
-import { buildPlanBoardSearchIndex } from "./components/Board.tsx";
+import { PlanBoard, buildPlanBoardSearchIndex } from "./components/Board.tsx";
 
 import { renderMarkdown } from "./components/MarkdownView.tsx";
 
@@ -534,4 +537,58 @@ test("Epic detail order ignores filename prefixes and status and follows metadat
     } finally {
         await fsRm(cwd, { recursive: true });
     }
+});
+
+test("Board keeps healthy cards beside named escaped document diagnostics", () => {
+    const catalog = devPlanCatalog("mixed");
+    const markup = renderToStaticMarkup(
+        createElement(PlanBoard, {
+            board: { screens: buildWorkspaceBoard(catalog.plans), diagnostics: catalog.diagnostics },
+            view: "active",
+            url: "http://workspace.local/projects/dev-project/plans",
+            staticRender: true,
+        }),
+    );
+    assertStringIncludes(markup, 'aria-label="Plan document warnings"');
+    assertStringIncludes(markup, "healthy-navigation-fixture");
+    assertStringIncludes(markup, "/projects/dev-project/plans/healthy-navigation-fixture");
+    assertStringIncludes(markup, "broken-without-id");
+    assertStringIncludes(markup, "bad indentation of a mapping entry (5:16)");
+    assertStringIncludes(markup, "&lt;img src=x onerror=alert(1)&gt;");
+    assertEquals(markup.includes("<img src=x"), false);
+    assertEquals(markup.includes("Plan Board failed to load"), false);
+});
+
+test("Board refresh variants remove corrected or deleted diagnostics and preserve all-malformed warnings", () => {
+    for (const variant of ["corrected", "deleted", "all-malformed"] as const) {
+        const catalog = devPlanCatalog(variant);
+        const markup = renderToStaticMarkup(
+            createElement(PlanBoard, {
+                board: { screens: buildWorkspaceBoard(catalog.plans), diagnostics: catalog.diagnostics },
+                view: "active",
+                url: "http://workspace.local/projects/dev-project/plans",
+                staticRender: true,
+            }),
+        );
+        assertEquals(markup.includes('aria-label="Plan document warnings"'), variant === "all-malformed");
+        assertEquals(markup.includes("healthy-navigation-fixture"), variant !== "all-malformed");
+        assertEquals(markup.includes("corrected-fixture"), variant === "corrected");
+    }
+});
+
+test("development catalog selection is request-local and shared by sidebar and Board fixtures", () => {
+    assertEquals(devPlanCatalogVariant(null), null);
+    assertEquals(devPlanCatalogVariant("rw-dev-plan-catalog=invalid"), null);
+    for (const variant of ["mixed", "corrected", "deleted", "all-malformed", "project-failure"] as const) {
+        assertEquals(devPlanCatalogVariant(`other=cookie; rw-dev-plan-catalog=${variant}`), variant);
+        const catalog = devPlanCatalog(variant);
+        const sidebar = devOwnerSidebar(variant).projects[0];
+        assertEquals(sidebar.planDiagnostics, catalog.diagnostics);
+        assertEquals(
+            sidebar.plans.map((plan) => plan.planId),
+            catalog.plans.map((plan) => plan.planId),
+        );
+        assertEquals(sidebar.plansError, variant === "project-failure");
+    }
+    assertEquals(devOwnerSidebar().projects[0].planDiagnostics, undefined);
 });

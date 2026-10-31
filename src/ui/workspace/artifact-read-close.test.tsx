@@ -252,6 +252,7 @@ test("IDless Plan home shows pending workflow notice in the main document pane",
             assertStringIncludes(container.querySelector("main .rw-artifact-notices")?.textContent, message);
             assertStringIncludes(container.querySelector("main")?.textContent, "Readable without an identity.");
             assertEquals(container.querySelectorAll("main .rw-artifact-notices p").length, 1);
+            return Promise.resolve();
         },
         200,
         true,

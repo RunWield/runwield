@@ -400,6 +400,7 @@ export async function ownerProjectBoardApi(ctx) {
             projectId: ctx.params.projectId,
             view,
             board: sanitizeOwnerPlanValue(ownerReadOnlyPlanValue(screen)),
+            diagnostics: board.diagnostics,
             readOnly: true,
         });
     } catch (error) {

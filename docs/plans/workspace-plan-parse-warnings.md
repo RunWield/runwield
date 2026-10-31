@@ -25,10 +25,16 @@ devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-10-31"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
+status: "reviewed"
+validatedCommit: "f7d51acf434ac5dad516439418c82b52bdf25ce3"
+workRecord:
+    status: "generated"
+    recordId: "b8079944-3169-4e06-b724-fd53a271e9d4"
+    path: "docs/work-records/2026-10-31-workspace-plan-parse-warnings.md"
+    lastAttemptAt: "2026-10-31T19:58:42.202Z"
 ---
 
 # Keep the Workspace Sidebar Usable When a Plan Cannot Be Parsed

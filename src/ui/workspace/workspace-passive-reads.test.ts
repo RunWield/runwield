@@ -13,6 +13,7 @@ import {
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
+import { loadOwnerSidebar } from "./server/owner-dashboard.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 
 function document(id: string, body = "Primary compass", extra = "") {
@@ -361,3 +362,152 @@ test("production Workspace reads target-only Plans from local Git objects withou
         await rm(root, { recursive: true, force: true });
     }
 });
+
+for (const pending of [false, true]) {
+    test(`owner sidebar and Board retain named parse warnings with ${pending ? "pending" : "ready"} healthy Plans`, async () => {
+        const root = await fixture.checkout();
+        let owner: Awaited<ReturnType<typeof workspace>> | undefined;
+        try {
+            if (!pending) await enterProjectRuntime(root);
+            if (pending) {
+                await put(
+                    join(getRunWieldRuntimeDir(root), "controller/plans/name%3Aordinary.json"),
+                    JSON.stringify({ version: 1, revision: 1, planName: "ordinary", state: {} }),
+                );
+            }
+            const broken = join(root, "docs/plans/broken.md");
+            await put(broken, "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken\n");
+            await put(
+                join(root, "docs/plans/other-broken.md"),
+                `---\nsummary: [<img src=x onerror=alert(1)>, ${root}\n---\n# Broken\n`,
+            );
+            owner = await workspace(root);
+            const before = await snapshot(root);
+            const base = `/api/owner/projects/${owner.project.projectId}/plans`;
+            for (let repeat = 0; repeat < 2; repeat++) {
+                const sidebar = await (await owner.get("/api/owner/sidebar")).json();
+                const project = sidebar.projects[0];
+                const withSessions = await loadOwnerSidebar(owner.store, {
+                    listSessions() {
+                        return Promise.resolve({
+                            sessions: [
+                                {
+                                    runwieldSessionId: "warning-session",
+                                    displayName: "Preserved Session",
+                                    state: "idle",
+                                },
+                            ],
+                        });
+                    },
+                });
+                strictEqual(withSessions[0].sessions[0]?.runwieldSessionId, "warning-session");
+                deepStrictEqual(withSessions[0].planDiagnostics, project.planDiagnostics);
+                strictEqual(project.plans.length, pending ? 0 : 1);
+                strictEqual(project.planDiagnostics.length, 2);
+                deepStrictEqual(project.planDiagnostics.map((issue: { name: string }) => issue.name).sort(), [
+                    "broken",
+                    "other-broken",
+                ]);
+                ok(project.planDiagnostics.some((issue: { message: string }) => issue.message.includes("(1:16)")));
+                strictEqual(
+                    project.diagnostics.some((issue: { message: string }) => issue.message.includes("indentation")),
+                    false,
+                );
+                strictEqual(JSON.stringify(project.planDiagnostics).includes(root), false);
+                strictEqual(JSON.stringify(project.planDiagnostics).includes('"path"'), false);
+                const board = await (await owner.get(base)).json();
+                ok(JSON.stringify(board.board).includes("ordinary-id"));
+                deepStrictEqual(board.diagnostics, project.planDiagnostics);
+                deepStrictEqual(await snapshot(root), before);
+            }
+            await put(join(root, "docs/plans/ordinary.md"), "---\naffectedPaths: - src/a.ts\n---\n# Broken\n");
+            const allMalformed = await (await owner.get("/api/owner/sidebar")).json();
+            strictEqual(allMalformed.projects[0].plans.length, 0);
+            strictEqual(allMalformed.projects[0].planDiagnostics.length, 3);
+            await put(join(root, "docs/plans/ordinary.md"), document("ordinary-id"));
+            await put(broken, document("fixed-id", "Fixed Plan"));
+            let sidebar = await (await owner.get("/api/owner/sidebar")).json();
+            deepStrictEqual(
+                sidebar.projects[0].planDiagnostics.map((issue: { name: string }) => issue.name),
+                ["other-broken"],
+            );
+            await rm(join(root, "docs/plans/other-broken.md"));
+            sidebar = await (await owner.get("/api/owner/sidebar")).json();
+            deepStrictEqual(sidebar.projects[0].planDiagnostics, []);
+        } finally {
+            await owner?.close();
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const source of ["target", "registered"]) {
+    test(`owner sidebar and Board isolate a malformed ${source} authority without stale primary content`, async () => {
+        const root = await fixture.checkout();
+        const worktree = `${root}-warning-authority`;
+        let owner: Awaited<ReturnType<typeof workspace>> | undefined;
+        try {
+            await enterProjectRuntime(root);
+            const broken = "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken\n";
+            if (source === "target") {
+                await git(root, ["switch", "-c", "target"]);
+                await put(join(root, "docs/plans/broken-target.md"), broken);
+                await put(
+                    join(root, "docs/plans/healthy-child.md"),
+                    document("child-id", "Healthy child", "parentPlan: epic\n"),
+                );
+                await git(root, ["add", "."]);
+                await git(root, ["commit", "-m", "target warning"]);
+                await git(root, ["update-ref", "refs/remotes/origin/target", "HEAD"]);
+                await git(root, ["switch", "main"]);
+                await put(
+                    join(root, "docs/plans/epic.md"),
+                    "---\nplanId: epic-id\nclassification: PROJECT\ntargetBranch: target\n---\n# Epic\n",
+                );
+            } else {
+                await git(root, ["worktree", "add", "-b", "warning-authority", worktree]);
+                await put(join(worktree, "docs/plans/ordinary.md"), broken);
+                await addEntry(root, {
+                    id: "warning-attempt",
+                    planId: "ordinary-id",
+                    planName: "ordinary",
+                    path: worktree,
+                    branch: "warning-authority",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: "a".repeat(40),
+                    status: "active",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                });
+                await put(join(root, "docs/plans/healthy.md"), document("healthy-id", "Healthy neighbor"));
+            }
+            owner = await workspace(root);
+            const before = await snapshot(root);
+            const sidebar = await (await owner.get("/api/owner/sidebar")).json();
+            const project = sidebar.projects[0];
+            strictEqual(project.planDiagnostics.length, 1);
+            strictEqual(project.planDiagnostics[0].name, source === "target" ? "broken-target" : "ordinary");
+            if (source === "registered") {
+                strictEqual(project.planDiagnostics[0].planId, "ordinary-id");
+                strictEqual(
+                    project.plans.some((plan: { planId: string }) => plan.planId === "ordinary-id"),
+                    false,
+                );
+            }
+            ok(
+                project.plans.some(
+                    (plan: { planId: string }) => plan.planId === (source === "target" ? "child-id" : "healthy-id"),
+                ),
+            );
+            const board = await (await owner.get(`/api/owner/projects/${owner.project.projectId}/plans`)).json();
+            deepStrictEqual(board.diagnostics, project.planDiagnostics);
+            strictEqual(JSON.stringify(board.diagnostics).includes(root), false);
+            deepStrictEqual(await snapshot(root), before);
+        } finally {
+            await owner?.close();
+            await rm(worktree, { recursive: true, force: true });
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+}

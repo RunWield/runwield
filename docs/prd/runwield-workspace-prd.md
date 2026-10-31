@@ -194,7 +194,10 @@ Top-level board and sidebar priorities and dashboard activity-date sorting remai
 visible when workflow details are pending, including ID-less drafts through name-based navigation. The existing notice
 surfaces show read availability separately from lifecycle status; pending adds no board column and grants no lifecycle
 action or body-edit authority. Explicit saves, selected Plan loads, and workflow actions prepare and recheck required
-authority. Refresh checks availability again after preparation. Browsing does not start or schedule that work.
+authority. Refresh checks availability again after preparation. Browsing does not start or schedule that work. A malformed
+active Plan does not remove healthy Board content. The Board names each unreadable document and shows its parse
+explanation as text. An incomplete display catalog never authorizes detail edits or workflow actions; selected reads
+and actions retain strict validation.
 
 **Requirement: A clean board layout.** The local board shows its W. logo and heading; the board embedded in a Project
 shows only the board. View tabs and search share the header row, with search after the tabs. Columns use separators,
@@ -202,6 +205,8 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 
 **Acceptance scenarios:**
 
+- Given healthy and malformed active Plans, the Board keeps healthy cards and names each malformed document with its
+  parse explanation. Correcting or deleting a document clears its warning on refresh without repairing files during a read.
 - Given a Plan opened from the board, when the owner edits its body and saves, the Markdown stays usable from the CLI
   and lifecycle fields are unchanged.
 - When the owner moves or manually closes work, the board records that choice without claiming verification; failure
@@ -489,7 +494,10 @@ Dashboard. Pending and failed reads keep New Session and existing navigation ava
 failed. **Show more** loads the next five recent Sessions that are not already nested under a visible Plan; a failed
 request can be retried without duplicate rows. A Project's Plan Board item stays active across its Plan Board, Closed,
 and On Hold views. In browser tabs and installed apps, the navigation sidebar has no visible scrollbars. Long titles
-stay within its width, and vertical scrolling and keyboard navigation keep all items reachable.
+stay within its width, and vertical scrolling and keyboard navigation keep all items reachable. An individual Plan
+parse error keeps healthy Plans and Sessions available. The affected document has a compact named row linking to the
+Project Plan Board, without a guessed lifecycle status or identity. Its independent warning button shows the explanation
+on hover, focus, or touch; Escape dismisses it. Project-wide failures remain separate from document warnings.
 
 **Requirement: Consistent headers and menus.** The hamburger menu left of the Workspace logo holds browser notification
 permission with its current state and a link to the public documentation. The Workspace brand, main title, and Session
@@ -518,6 +526,11 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   it was.
 - From a Session or its review, the logo returns to the last Session with the sidebar intact.
 - With many saved Sessions, the sidebar shows its recent names promptly and Show more stays available.
+- Given a malformed active Plan, healthy Plan and Session links still work. Its warning button shows the parser reason
+  and location without following the Board link. Long names and multiline text stay within the sidebar and viewport;
+  HTML-like text remains text. Even when every Plan is malformed, named warnings replace an empty-Project claim.
+- Given a corrected or deleted document, a normal sidebar refresh updates or removes its warning without duplicate rows
+  or detached tooltips. A Project-wide load failure instead shows the Project diagnostic and keeps Session navigation.
 - In a browser tab or installed app, a long nested Session title does not cause horizontal sidebar overflow. A list
   taller than the window scrolls with wheel, touch, and keyboard input without visible sidebar scrollbars.
 - In the installed mobile app, Dashboard and Session headers expose the navigation opener on initial render; opening

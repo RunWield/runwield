@@ -218,6 +218,7 @@
     "src/plan-catalog-isolation.test.ts",
     "src/plan-identity-registry.integration.test.ts",
     "src/plan-store-archive-preparation.test.ts",
+    "src/plan-store-display-catalog.test.ts",
     "src/plan-store-locks.test.ts",
     "src/plan-store-passive-reads.test.ts",
     "src/plan-store-yaml.test.ts",

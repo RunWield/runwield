@@ -10,6 +10,7 @@ import {
     isChildFeaturePlan,
     isProjectPlan,
     listPlanResources,
+    readPlanResourceCatalog,
     loadPlanBodyById,
     resolveSiblingChildPlanDependencyStates,
     savePlanBodyById,
@@ -582,6 +583,24 @@ export async function loadPlanSummaries(cwd) {
 }
 
 /**
+ * Browser-safe, display-only catalog. Detail and action callers keep the strict reader.
+ * @param {string} cwd
+ */
+export async function loadPlanSummaryCatalog(cwd) {
+    const { resources, diagnostics } = await readPlanResourceCatalog(cwd);
+    const plans = enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
+    return {
+        plans,
+        diagnostics: diagnostics.map((diagnostic) => ({
+            name: diagnostic.name,
+            kind: diagnostic.kind,
+            message: sanitizeWorkspaceMessage(diagnostic.message, [cwd, diagnostic.path]),
+            ...(diagnostic.planId ? { planId: diagnostic.planId } : {}),
+        })),
+    };
+}
+
+/**
  * @param {string} cwd
  * @param {string} planId
  */
@@ -1010,8 +1029,8 @@ export function buildBoardGroups(plans) {
  * @param {string} cwd
  */
 export async function loadBoard(cwd) {
-    const plans = await loadPlanSummaries(cwd);
-    return { plans, groups: buildBoardGroups(plans), screens: buildWorkspaceBoard(plans) };
+    const { plans, diagnostics } = await loadPlanSummaryCatalog(cwd);
+    return { plans, groups: buildBoardGroups(plans), screens: buildWorkspaceBoard(plans), diagnostics };
 }
 
 /**

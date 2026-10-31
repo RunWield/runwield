@@ -6,10 +6,11 @@ import {
     DEV_OWNER_WORKFLOW_PLAN,
     devOwnerPlanProgress,
     devOwnerProjects,
+    devPlanCatalogVariant,
 } from "./dev-owner-fixtures.ts";
 import { currentWorkspaceCwd } from "./cwd.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
-import { loadCanonicalBoard, loadCanonicalWorkspaceDetail } from "./astro-canonical-data.js";
+import { loadCanonicalBoard, loadCanonicalWorkspaceDetail, loadDevPlanCatalogBoard } from "./astro-canonical-data.js";
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
@@ -53,10 +54,12 @@ export async function loadOwnerProjects() {
     return await listOwnerProjects(store);
 }
 
-/** @param {string} projectId */
-export async function loadOwnerProjectBoard(projectId) {
+/** @param {string} projectId @param {string | null} [cookie] */
+export async function loadOwnerProjectBoard(projectId, cookie = null) {
     const store = getAstroOwnerWorkspaceStore();
     if (!store && isAstroDevelopmentMode()) {
+        const variant = devPlanCatalogVariant(cookie);
+        if (variant && projectId === DEV_OWNER_PROJECT.projectId) return await loadDevPlanCatalogBoard(variant);
         return await loadCanonicalBoard(currentWorkspaceCwd());
     }
     if (!store) throw new Error("Owner Workspace store is not available.");
@@ -79,7 +82,9 @@ export async function loadOwnerProjectPlanDetail(projectId, planId, options = {}
 export async function loadOwnerProjectPlanProgress(projectId, planId, runwieldSessionId = null) {
     const store = getAstroOwnerWorkspaceStore();
     if (
-        !store && isAstroDevelopmentMode() && projectId === DEV_OWNER_PROJECT.projectId &&
+        !store &&
+        isAstroDevelopmentMode() &&
+        projectId === DEV_OWNER_PROJECT.projectId &&
         planId === DEV_OWNER_WORKFLOW_PLAN.planId
     ) {
         return devOwnerPlanProgress();
@@ -95,9 +100,10 @@ export async function loadOwnerProjectArtifact(projectId, artifactType, sourceId
     if (!store) throw new Error("Owner Workspace store is not available.");
     const root = requireOwnerProjectRoot(store, projectId);
     const module = isAstroDevelopmentMode()
-        ? await Function("specifier", "return import(specifier)")(
-            new URL("./project-artifacts.ts", import.meta.url).href,
-        )
+        ? await Function(
+              "specifier",
+              "return import(specifier)",
+          )(new URL("./project-artifacts.ts", import.meta.url).href)
         : await bundledProjectArtifacts;
     return await module.readProjectArtifact(root, artifactType, sourceId);
 }
@@ -106,7 +112,10 @@ export async function loadOwnerProjectArtifact(projectId, artifactType, sourceId
 export async function loadOwnerSessionArtifact(projectId, runwieldSessionId, artifactId) {
     const store = getAstroOwnerWorkspaceStore();
     if (
-        !store && isAstroDevelopmentMode() && projectId === "dev-project" && runwieldSessionId === "fix-plan-evidence"
+        !store &&
+        isAstroDevelopmentMode() &&
+        projectId === "dev-project" &&
+        runwieldSessionId === "fix-plan-evidence"
     ) {
         return devDeliveryArtifact(artifactId);
     }
@@ -114,11 +123,10 @@ export async function loadOwnerSessionArtifact(projectId, runwieldSessionId, art
     const root = requireOwnerProjectRoot(store, projectId);
     const session = store.getSessionById(runwieldSessionId);
     if (!session || !sessionBelongsToOwnerProject(store, session, projectId)) throw new Error("Session not found.");
-    const artifact = store.listSessionArtifacts(runwieldSessionId)
-        .find(
-            /** @param {import('../../../shared/session/file-session-store-types.ts').SessionArtifactReference} candidate */
-            (candidate) => candidate.artifactId === artifactId,
-        );
+    const artifact = store.listSessionArtifacts(runwieldSessionId).find(
+        /** @param {import('../../../shared/session/file-session-store-types.ts').SessionArtifactReference} candidate */
+        (candidate) => candidate.artifactId === artifactId,
+    );
     if (!artifact) throw new Error("Session artifact not found.");
     return await readSessionArtifact(root, artifact);
 }

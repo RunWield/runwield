@@ -8,6 +8,7 @@ import {
     devOwnerSessionPage,
     devOwnerSetSessionArchive,
     devOwnerSidebar,
+    devPlanCatalogVariant,
     devOwnerTimeline,
 } from "../../../server/dev-owner-fixtures.ts";
 
@@ -77,7 +78,8 @@ export const GET = async ({ request, params }: { request: Request; params: { seg
             return json({ error: error instanceof Error ? error.message : "Usage could not be loaded." }, 400);
         }
     }
-    if (segments.join("/") === "sidebar") return json(devOwnerSidebar());
+    if (segments.join("/") === "sidebar")
+        return json(devOwnerSidebar(devPlanCatalogVariant(request.headers.get("cookie"))));
     if (segments.join("/") === "search") {
         const query = url.searchParams.get("q") || "";
         const contentType = url.searchParams.get("type") || "";
