@@ -22,6 +22,7 @@ import {
 } from "./record-store.ts";
 import { compactStatus } from "./presentation.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
+import { setCustomSetting } from "../settings.js";
 
 test("inspection identifies reviewed work without starting validation or changing durable state", async () => {
     const fixture = await attachedValidationFixture({ attrs: { status: "reviewed" } });
@@ -82,6 +83,12 @@ for (const [origin, caller] of [
 ] as const) {
     test(`${caller} continues ${origin}'s workflow with current instructions and preserved origin`, async () => {
         await withProject(async (root) => {
+            await setCustomSetting(
+                "connect",
+                { codex: { roles: { planner: { model: "native-planner", thinkingLevel: "max" } } } },
+                "project",
+                root,
+            );
             const evidence = {
                 ...EVIDENCE,
                 host: origin,
@@ -119,6 +126,14 @@ for (const [origin, caller] of [
             equal(status.workflow.nextAction.actionId, planned.workflow.nextAction.actionId);
             equal(status.workflow.revision, planned.workflow.revision);
             equal(compactStatus(status, null).workflow?.originHost, origin);
+            const dispatch = status.workflow.nextAction.dispatch;
+            equal(dispatch?.host, caller === "codex" ? "codex" : undefined);
+            if (caller === "codex") {
+                assert(dispatch?.status === "ready");
+                equal(dispatch.model, "native-planner");
+                equal(dispatch.thinkingLevel, "max");
+            }
+            equal(JSON.stringify(compactStatus(status, null).workflow?.nextAction.dispatch), JSON.stringify(dispatch));
 
             const fetched = await runOperation("get_instructions", root, {
                 workflowId: triage.workflowId,
@@ -126,11 +141,14 @@ for (const [origin, caller] of [
                 evidence: callerEvidence,
             });
             assert(fetched.ok && "instructions" in fetched);
+            equal(JSON.stringify(fetched.instructions.dispatch), JSON.stringify(dispatch));
             assert(fetched.instructions.text.includes(`RunWield in ${ATTACHED_HOSTS[caller].displayName}`));
             equal(fetched.instructions.text.includes(`RunWield in ${ATTACHED_HOSTS[origin].displayName}`), false);
 
             const replay = await runOperation("triage_report", root, { ...triageInput, evidence: callerEvidence });
             assert(replay.ok && replay.instructions);
+            equal(JSON.stringify(replay.workflow.nextAction.dispatch), JSON.stringify(dispatch));
+            equal(JSON.stringify(replay.instructions.dispatch), JSON.stringify(dispatch));
             assert(replay.instructions.text.includes(`RunWield in ${ATTACHED_HOSTS[caller].displayName}`));
             equal(replay.workflow.originHost, origin);
             equal(replay.workflow.revision, status.workflow.revision);

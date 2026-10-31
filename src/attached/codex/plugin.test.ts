@@ -32,6 +32,38 @@ function includesContracts(text: string, contracts: string[]): void {
     for (const contract of contracts) assert(text.includes(contract), `Missing workflow contract: ${contract}`);
 }
 
+test("Codex applies saved per-field spawn preferences and keeps rejected controls resumable", async () => {
+    const workers = await readGuidance("SKILL.md", "Fresh Codex workers");
+    includesContracts(workers, [
+        "`workflow.nextAction.dispatch`",
+        "`model` as the native spawn `model`",
+        "`thinkingLevel` as `reasoning_effort`",
+        'equal to `"inherit"`, omit that spawn argument',
+        "Missing dispatch metadata from older compatible Core means both fields inherit",
+        'For `status: "invalid"`, show `diagnostics` and stop before spawning',
+        "fresh Router or initial Planner worker when either field is explicit",
+        "Feedback Planner and all workers below always use fresh contexts",
+        '(`fork_turns: "none"` when available)',
+        "text in a prompt does not apply a preference",
+        "lacks either requested control",
+        "report the exact limitation and stop before doing that role's work",
+        "do not silently ignore, downgrade, substitute, or activate another workflow",
+        "Do not restart a running worker after a file edit",
+        "Claim only the native arguments actually accepted",
+    ]);
+    const planning = await readGuidance("references/planning.md");
+    includesContracts(planning, [
+        "**Fresh Codex workers**",
+        "It fetches its own `get_instructions`",
+        "Workers make no lifecycle calls",
+        "this conversation submits the result",
+        "current dispatch preferences",
+    ]);
+    for (const path of ["references/implementation.md", "references/validation.md"]) {
+        includesContracts(await readGuidance(path), ["**Fresh Codex workers**", "`workflow.nextAction.dispatch`"]);
+    }
+});
+
 test("Codex resumes by inspecting and disclosing saved work before advancing it", async () => {
     const text = await readGuidance("SKILL.md", "Start or resume");
     const resume = text.split("**Continue existing work**")[1].split("**Ambiguous intent**")[0];

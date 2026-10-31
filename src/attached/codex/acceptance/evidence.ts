@@ -28,6 +28,9 @@ export interface HostObservation {
     workerOperation?: string;
     workerStatus?: string;
     freshContext?: boolean;
+    /** Explicit native spawn arguments, observed only when correlated with child activity. */
+    model?: string;
+    reasoningEffort?: string;
     requiredScope?: string;
     diffFileCount?: number;
     diffScope?: string;

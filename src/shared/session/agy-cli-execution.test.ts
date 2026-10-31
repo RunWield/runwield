@@ -1041,10 +1041,13 @@ test("Agy failures preserve workflow authority and terminate every owned process
         const afterDescendantPid = Number((await fsReadFile(afterPidPath, "utf8")).trim());
         assertEquals(await waitForProcessDeath(afterDescendantPid), true);
         const afterEntries = getRootSessionBranchEntries(afterManager) as BranchEntryRecord[];
-        assertEquals(afterEntries.filter((entry) => entry.customType === "runwield.workflow_tool_event").length, 1);
-        const afterText = JSON.stringify(afterEntries);
-        assertStringIncludes(afterText, completionMessage);
-        assertEquals(afterText.includes(`duplicate ${completionMessage}`), false);
+        const afterWorkflowEvents = afterEntries.filter((entry) => entry.customType === "runwield.workflow_tool_event");
+        assertEquals(afterWorkflowEvents.length, 1);
+        assertEquals(afterWorkflowEvents[0]?.data?.payload, {
+            outcome: "task_completed",
+            agentName: AGENTS.ENGINEER,
+            message: completionMessage,
+        });
         const afterStatus = afterEntries.find((entry) => entry.customType === "runwield.backend_status")?.data;
         assertEquals(afterStatus, undefined);
         await afterRoot.session.dispose();

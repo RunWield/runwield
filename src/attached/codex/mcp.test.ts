@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { ok as assert, strictEqual as equal } from "node:assert/strict";
+import { ok as assert, strictEqual as equal, deepStrictEqual } from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client";
@@ -14,12 +14,72 @@ import {
 } from "../../shared/attached/attached-test-fixture.ts";
 import type { AttachedCarrierResult } from "../../shared/attached/coordinator.ts";
 import type { AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
+import { setCustomSetting } from "../../shared/settings.js";
 
 function processEnvironment(): Record<string, string> {
     return Object.fromEntries(
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
 }
+
+test("Codex MCP carries saved dispatch preferences across fresh servers and refreshed compact status", async () => {
+    await withProject(async (root) => {
+        await setCustomSetting(
+            "connect",
+            { codex: { roles: { router: { model: "native-router", thinkingLevel: "high" } } } },
+            "project",
+            root,
+        );
+        let workflowId = "";
+        let actionId = "";
+        for (const fresh of [false, true]) {
+            const transport = new StdioClientTransport({
+                command: process.execPath,
+                args: runtimeSourceArgs(["run", CLI_PATH, "attached", "mcp", "codex"]),
+                cwd: root,
+                env: processEnvironment(),
+                stderr: "pipe",
+            });
+            const client = new Client({ name: "codex-mcp-client", version: "0.164.0-alpha.11.1" });
+            try {
+                await client.connect(transport);
+                const called = await client.callTool({
+                    name: fresh ? "status" : "activate",
+                    arguments: fresh ? { workflowId, inspectOnly: true } : activateInput(),
+                });
+                const result: AttachedCarrierResult = JSON.parse(JSON.stringify(called.structuredContent));
+                assert(result.ok && result.workflow && result.workflow.nextAction.kind === "triage");
+                workflowId = result.workflow.workflowId;
+                if (fresh) equal(result.workflow.nextAction.actionId, actionId);
+                actionId = result.workflow.nextAction.actionId;
+                const expected = {
+                    host: "codex",
+                    role: "router",
+                    status: "ready",
+                    model: fresh ? "inherit" : "native-router",
+                    thinkingLevel: "high",
+                };
+                deepStrictEqual(result.workflow.nextAction.dispatch, expected);
+                const fetched = await client.callTool({
+                    name: "get_instructions",
+                    arguments: { workflowId, actionId },
+                });
+                const content: AttachedCarrierResult = JSON.parse(JSON.stringify(fetched.structuredContent));
+                assert(content.ok && "instructions" in content && content.instructions);
+                deepStrictEqual(content.instructions.dispatch, expected);
+                await setCustomSetting(
+                    "connect",
+                    { codex: { roles: { router: { model: "inherit", thinkingLevel: "high" } } } },
+                    "project",
+                    root,
+                );
+            } finally {
+                await client.close().catch(() => undefined);
+                await transport.close().catch(() => undefined);
+            }
+        }
+    });
+});
 
 test("MCP inspection names a pending review without hosting it or changing the record", async () => {
     await withProject(async (root) => {

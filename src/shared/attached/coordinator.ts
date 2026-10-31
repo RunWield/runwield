@@ -13,6 +13,7 @@
  */
 
 import { getHomeDir } from "../../constants.js";
+import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
@@ -67,6 +68,7 @@ import {
     ATTACHED_PLANNER_CONTRACT_VERSION,
     ATTACHED_TRIAGE_CONTRACT_VERSION,
     type AttachedExecution,
+    type AttachedHostRole,
     type AttachedJsonValue,
     type AttachedNextAction,
     type AttachedOperationName,
@@ -1719,6 +1721,21 @@ async function runParsedOperation(
     return parsed.ok ? await readStatus(parsed.envelope, options) : await rejected(name, parsed.rejection);
 }
 
+function roleForAction(action: AttachedNextAction): AttachedHostRole | undefined {
+    if ("role" in action) return action.role;
+    if (action.kind !== "validation" && action.kind !== "recorder") return undefined;
+    switch (action.request.kind) {
+        case "reviewer":
+            return "reviewer";
+        case "recorder":
+            return "recorder";
+        case "repair":
+            return "reviewer-feedback-engineer";
+        case "decision":
+            return undefined;
+    }
+}
+
 /**
  * Attach the current role instructions when the workflow waits on the host. They are
  * resolved for this response only and never saved, so a replayed result carries the
@@ -1731,13 +1748,9 @@ async function withRoleInstructions(
 ): Promise<AttachedOperationResult> {
     result = await presentAttachedHost(projectRoot, result, hostId);
     const action = result.workflow?.nextAction;
+    const role = action && roleForAction(action);
+    if (!role) return result;
     if ((action?.kind === "validation" || action?.kind === "recorder") && action.request.kind !== "decision") {
-        const role =
-            action.request.kind === "reviewer"
-                ? "reviewer"
-                : action.request.kind === "recorder"
-                  ? "recorder"
-                  : "reviewer-feedback-engineer";
         const cwd = action.request.cwd;
         const roleInstructions = await resolveAttachedRoleInstructions(cwd, role, hostId);
         const text =
@@ -1748,6 +1761,7 @@ async function withRoleInstructions(
             ...result,
             instructions: {
                 role,
+                ...(action.dispatch && { dispatch: action.dispatch }),
                 contractVersion: "runwield.attached.validation/1",
                 text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
             },
@@ -1755,7 +1769,15 @@ async function withRoleInstructions(
     }
     if (action?.kind !== "triage" && action?.kind !== "plan" && action?.kind !== "implementation") return result;
     const text = await resolveAttachedRoleInstructions(projectRoot, action.role, hostId);
-    return { ...result, instructions: { role: action.role, contractVersion: action.contractVersion, text } };
+    return {
+        ...result,
+        instructions: {
+            role: action.role,
+            contractVersion: action.contractVersion,
+            text,
+            ...(action.dispatch && { dispatch: action.dispatch }),
+        },
+    };
 }
 
 /** Project the current caller without rewriting activation evidence or accepted outcomes. */
@@ -1779,6 +1801,13 @@ async function presentAttachedHost(
     }
     const host = attachedHost(currentHost ?? originHost ?? "");
     let nextAction = result.workflow.nextAction;
+    // Dispatch preferences are current caller presentation, never persisted activation evidence.
+    const { dispatch: _previousDispatch, ...currentAction } = nextAction;
+    nextAction = currentAction;
+    if (host?.id === "codex") {
+        const role = roleForAction(nextAction);
+        if (role) nextAction = { ...nextAction, dispatch: resolveCodexRoleSettings(projectRoot, role) };
+    }
     if (host && nextAction.kind === "plan_saved") {
         nextAction = {
             ...nextAction,

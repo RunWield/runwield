@@ -58,6 +58,8 @@ interface PendingState extends PendingRequest {
 interface SpawnObservation {
     threadId: string;
     freshContext: boolean;
+    model?: string;
+    reasoningEffort?: string;
 }
 /** External subprocess only: never reads a transcript or imports Core lifecycle writers. */
 export class CodexHost {
@@ -184,7 +186,12 @@ export class CodexHost {
                 const args = typeof nativeItem.arguments === "string" ? map(JSON.parse(nativeItem.arguments)) : null;
                 const callId = text(nativeItem.call_id);
                 if (callId)
-                    this.spawns.set(callId, { threadId: eventThread, freshContext: args?.fork_turns === "none" });
+                    this.spawns.set(callId, {
+                        threadId: eventThread,
+                        freshContext: args?.fork_turns === "none",
+                        ...(typeof args?.model === "string" && { model: args.model }),
+                        ...(typeof args?.reasoning_effort === "string" && { reasoningEffort: args.reasoning_effort }),
+                    });
             } catch {
                 this.fail(new Error("Unreadable native spawn arguments"));
             }
@@ -202,6 +209,8 @@ export class CodexHost {
                     toolId: callId!,
                     workerIds: [child],
                     freshContext: spawn.freshContext,
+                    ...(spawn.model !== undefined && { model: spawn.model }),
+                    ...(spawn.reasoningEffort !== undefined && { reasoningEffort: spawn.reasoningEffort }),
                 });
                 // Ephemeral child events already share this native stream. Resuming would require a saved rollout.
             }

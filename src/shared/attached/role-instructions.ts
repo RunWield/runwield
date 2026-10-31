@@ -43,6 +43,14 @@ const WORKER_ADDENDUM = [
     "- Return a concise Markdown bullet-point implementation report to the coordinating conversation, with outcomes and verification results. The coordinator submits task_completed.message. If blocked, return the blocker; do not claim completion.",
 ].join("\n");
 
+const PLANNING_WORKER_ADDENDUM = [
+    "## Attached planning worker — overrides lifecycle instructions above when dispatched as a subagent",
+    "- Fetch your own current get_instructions and context using the handed-off workflowId and actionId. Follow the issued role contract and canonical request, triage outcome, feedback, image paths and note.",
+    "- Work only in the handed-off project directory. Before writing a Plan, return context.projectSetup paths to the coordinator for disclosure to the user. If user input is needed, return the question to the coordinator and wait.",
+    "- Router: return the structured triage_report outcome (routingIntent, complexity, summary, workKind and sessionName when applicable). Planner: write or revise the canonical Plan, then return planName and any executionAgent or collaborationRecommendation fields for plan_written. Browser edits are already saved; do not apply them twice.",
+    "- Make no lifecycle calls, commits, merges, pushes or publication actions. The coordinator submits your result and handles the next action. If blocked, return the blocker instead of claiming completion.",
+].join("\n");
+
 const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
     recorder: [
         "## Attached Recorder — overrides Core lifecycle instructions above",
@@ -128,6 +136,7 @@ export async function resolveAttachedRoleInstructions(
                 ? []
                 : [ENVELOPE_ADDENDUM]),
             ROLE_ADDENDUM[role],
+            ...(hostId === "codex" && (role === "router" || role === "planner") ? [PLANNING_WORKER_ADDENDUM] : []),
         ].join("\n\n"),
         hostId,
     );

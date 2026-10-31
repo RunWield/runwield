@@ -73,7 +73,7 @@ test("raw spawn IDs join native child activity and direct events without resumin
         `
 let buffer="";process.stdin.on("data",bytes=>{buffer+=bytes;let n;while((n=buffer.indexOf("\\n"))>=0){const q=JSON.parse(buffer.slice(0,n));buffer=buffer.slice(n+1);const send=x=>console.log(JSON.stringify(x));
 if(q.method==="trigger"){
-send({method:"rawResponseItem/completed",params:{threadId:"parent",item:{type:"function_call",name:"spawn_agent",call_id:"spawn",arguments:JSON.stringify({fork_turns:"none",message:"DO-NOT-PERSIST"})}}});
+send({method:"rawResponseItem/completed",params:{threadId:"parent",item:{type:"function_call",name:"spawn_agent",call_id:"spawn",arguments:JSON.stringify({fork_turns:"none",model:"native-model",reasoning_effort:"high",message:"DO-NOT-PERSIST"})}}});
 send({method:"item/started",params:{threadId:"parent",item:{type:"subAgentActivity",id:"spawn",agentThreadId:"child"}}});
 }
 if(q.id)send({id:q.id,result:{}});
@@ -84,6 +84,8 @@ if(q.method==="trigger")send({method:"item/completed",params:{threadId:"child",i
             await host.request("trigger", {});
             await host.waitForCore((state) => state.actionId === "action", 5000);
             equal(host.observations.find((row) => row.kind === "worker")?.freshContext, true);
+            equal(host.observations.find((row) => row.kind === "worker")?.model, "native-model");
+            equal(host.observations.find((row) => row.kind === "worker")?.reasoningEffort, "high");
             equal(host.observations.find((row) => row.kind === "tool")?.threadId, "child");
             equal((await readFile(join(root, "host-evidence.jsonl"), "utf8")).includes("DO-NOT-PERSIST"), false);
         },

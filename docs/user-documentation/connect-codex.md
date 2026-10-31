@@ -116,6 +116,50 @@ The landing follows your project's [Plan delivery settings](settings.md#plan-del
 may remain your responsibility. Let Core own worktrees, commits, and publication for this workflow. Codex suggests manual
 checks in the conversation rather than saving a Manual QA checklist.
 
+## Choose a model and thinking level per role
+
+Save preferences in personal `~/.wld/settings.json` or project `.wld/settings.json`. Both accept JSONC. These settings
+apply only to activated Codex Connect work; Core's `agents` and `modelPresets`, Claude, and ordinary Codex chats keep
+their own settings.
+
+```jsonc
+{
+    "connect": {
+        "codex": {
+            "roles": {
+                "planner": { "model": "inherit", "thinkingLevel": "high" },
+                "reviewer": { "model": "inherit", "thinkingLevel": "inherit" },
+            },
+        },
+    },
+}
+```
+
+Supported roles are `router`, `planner`, `engineer`, `frontend-engineer`, `reviewer`, `reviewer-feedback-engineer`, and
+`recorder`. Use a Codex-native model ID and a reasoning effort supported by your model and client. RunWield does not
+maintain a model catalog or restrict efforts to Core's list.
+
+Each field resolves independently: project value, personal value, then `inherit`. A project thinking-level choice
+preserves a personal model choice. An explicit `"inherit"` stops that field's lookup and omits the native spawn
+argument; removing the project field restores the personal preference. Set both fields to `inherit` to reset a role
+to Codex's native resolution for this project.
+
+Inheritance does not copy the current chat's settings into the file. In particular, an explicit model without an
+effort override can use that model's default effort. See Codex's
+[subagent resolution](https://learn.chatgpt.com/docs/agent-configuration/subagents) and
+[configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+Saved preferences survive new chats and processes. Changes apply on the next role dispatch, including resume; running
+workers continue unchanged. Router and the initial Planner use fresh workers when either field is explicit. Review,
+repair, Recorder, implementation, and feedback Planner workers keep their fresh-context requirements. Cross-host
+resume uses the calling host's preferences, regardless of where the workflow began.
+
+Malformed fields report the settings file and field to fix. If Codex rejects a model/effort or cannot apply a requested
+spawn control, the plugin reports the limitation and keeps the current action resumable. Change the preference or
+host capability, then resume. It never silently substitutes a model. This configuration and dispatch contract does
+not add a tested host version or establish live model selection for every client; the qualification limits above
+still apply. Use the updated Core and plugin together; older compatible Core without dispatch metadata inherits.
+
 ## Resume or switch hosts
 
 Use the same skill to resume:
