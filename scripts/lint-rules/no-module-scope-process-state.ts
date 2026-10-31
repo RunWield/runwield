@@ -14,6 +14,19 @@
  * `src/constants.js`, which is the one module allowed to touch them directly.
  */
 
+import type { TSESTree } from "@typescript-eslint/utils";
+
+interface ProcessStateReport {
+    node: TSESTree.CallExpression;
+    message: string;
+    hint: string;
+}
+
+interface ProcessStateRuleContext {
+    filename: string;
+    report(diagnostic: ProcessStateReport): void;
+}
+
 /** Calls that must not appear at module scope. */
 const BANNED = new Map([
     ["Deno.cwd", "Deno.cwd()"],
@@ -25,11 +38,8 @@ const BANNED = new Map([
 
 /**
  * Flatten a member expression back to dotted source text (`Deno.env.get`).
- *
- * @param {any} node
- * @returns {string}
  */
-function calleeName(node) {
+function calleeName(node: TSESTree.Node | null | undefined): string {
     if (!node) return "";
     if (node.type === "Identifier") return node.name;
     if (node.type === "MemberExpression" && !node.computed) {
@@ -44,8 +54,7 @@ export default {
     name: "runwield",
     rules: {
         "no-module-scope-process-state": {
-            /** @param {any} context */
-            create(context) {
+            create(context: ProcessStateRuleContext) {
                 // constants.js owns the accessors every other module calls.
                 if (context.filename.replace(/\\/g, "/").endsWith("/src/constants.js")) return {};
 
@@ -64,8 +73,7 @@ export default {
                     "FunctionExpression:exit": exit,
                     ArrowFunctionExpression: enter,
                     "ArrowFunctionExpression:exit": exit,
-                    /** @param {any} node */
-                    CallExpression(node) {
+                    CallExpression(node: TSESTree.CallExpression) {
                         if (functionDepth > 0) return;
                         const name = calleeName(node.callee);
                         const label = BANNED.get(name);
@@ -73,7 +81,8 @@ export default {
                         context.report({
                             node,
                             message: `${label} must not be called at module scope.`,
-                            hint: "Module scope runs once per test realm, at an arbitrary moment, so this snapshots " +
+                            hint:
+                                "Module scope runs once per test realm, at an arbitrary moment, so this snapshots " +
                                 "another test file's cwd/env for the life of the realm. Call it inside a function " +
                                 "(use getHomeDir()/getCwd() from src/constants.js).",
                         });
