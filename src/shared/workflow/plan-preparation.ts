@@ -46,7 +46,7 @@ export async function preparePlanController(projectRoot: string, planName: strin
 /** Prepare controller authority, then select the actionable document. */
 export async function preparePlanWorkflow(projectRoot: string, planName: string) {
     await preparePlanController(projectRoot, planName);
-    const location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+    let location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     if (
         location.plan &&
         !location.publishedSnapshot &&
@@ -54,6 +54,9 @@ export async function preparePlanWorkflow(projectRoot: string, planName: string)
         !location.planningNotStarted
     ) {
         await prepareDocument(location.documentRoot, planName, !needsSessionPlanningWorktree(location.plan.attrs));
+        // Identity preparation can rewrite the document. Publication proof must
+        // update that identity, not the obsolete name-only controller record.
+        location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     }
     if (location.plan) {
         await preparePlanPublication(projectRoot, planName, location.plan);
