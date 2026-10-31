@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { resolve } from "node:path";
@@ -179,6 +180,7 @@ export async function applySharedPlanReviewDecision({
     reviewEvidence,
     decision,
 }: SharedPlanReviewActionOptions): Promise<SharedPlanReviewActionResult> {
+    await preparePlanWorkflow(cwd, planName);
     const location = await resolveWorkflowPlanLocation(cwd, planName);
     if (location.plan && resolve(location.plan.path) === resolve(planPath)) {
         cwd = location.documentRoot;

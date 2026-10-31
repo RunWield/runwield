@@ -497,7 +497,7 @@ exec ${quote(realGit)} "$@"
             assert(Date.now() < deadline, "The post-cleanup Git read did not reach the gate.");
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        assertEquals(await findById(fixture.root, fixture.id, { migrate: false }), null);
+        assertEquals(await findById(fixture.root, fixture.id), null);
         const published = await loadPlan(fixture.root, "p");
         assert(published?.attrs.publicationReceipt?.publishedCommit);
         const location = locateAttachedWorkflows(fixture.root);

@@ -708,9 +708,9 @@ async function runSemanticTransition<T>({
                             // Plan Front Matter — including the Plan snapshotted in
                             // `beforePlan` moments ago, whose Front Matter revision
                             // later preconditions compare against.
-                            const entry = await findWorktreeRegistryEntryById(projectRoot, resource.id, {
-                                migrate: false,
-                            }).catch(() => null);
+                            const entry = await findWorktreeRegistryEntryById(projectRoot, resource.id).catch(
+                                () => null,
+                            );
                             return {
                                 id: resource.id,
                                 entry: entry

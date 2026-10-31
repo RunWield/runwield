@@ -19,5 +19,5 @@ export function sanitizeSessionName<Value>(value: Value): string {
 
 export function formatSessionTerminalTitle<Value>(name: Value): string {
     const sanitized = sanitizeSessionName(name);
-    return sanitized ? `W. - ${sanitized}` : "W.";
+    return sanitized ? `W. ${sanitized}` : "W.";
 }

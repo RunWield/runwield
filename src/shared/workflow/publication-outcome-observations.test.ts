@@ -60,7 +60,7 @@ for (const early of [false, true]) {
                 }
                 const cleanup = await cleanupStoredPublication(metrics.projectRoot, attempt);
                 assert(cleanup.complete);
-                assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
+                assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
                 const rows = await metrics.readMetrics();
                 const publications = rows.filter((row) => row.event === "publication_confirmed");
                 assertEquals(publications.length, 1);
@@ -101,7 +101,7 @@ for (const early of [false, true]) {
                     }
                     const cleanup = await cleanupStoredPublication(metrics.projectRoot, attempt);
                     assert(cleanup.complete);
-                    assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
+                    assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
                     const record = await readControllerRecord(metrics.projectRoot, {
                         planId: "plan-demo",
                         planName: "demo",
@@ -148,7 +148,7 @@ for (const boundary of ["before", "after"]) {
                     cwd: getCwd(),
                 });
                 assert(!output.success, new TextDecoder().decode(output.stderr));
-                assert(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }));
+                assert(await findById(metrics.projectRoot, attempt.attemptId));
                 const publications = (await metrics.readMetrics()).filter(
                     (row) => row.event === "publication_confirmed",
                 );
@@ -176,7 +176,7 @@ for (const boundary of ["before", "after"]) {
                     (await metrics.readMetrics()).filter((row) => row.event === "publication_confirmed").length,
                     boundary === "after" ? 1 : 0,
                 );
-                assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
+                assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
             } finally {
                 await fixture.dispose();
             }
@@ -368,7 +368,7 @@ for (const early of [false, true]) {
                     (await metrics.readMetrics()).filter((row) => row.event === "publication_confirmed").length,
                     0,
                 );
-                assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
+                assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
             } finally {
                 await fixture.dispose();
             }
@@ -412,7 +412,7 @@ for (const early of [false, true]) {
                     const before = await fsReadFile(getWorkflowMetricsFilePath(metrics.projectRoot), "utf8");
                     assert((await runCleanupProcess(metrics.projectRoot, result.attempt)).success);
                     assertEquals(await fsReadFile(getWorkflowMetricsFilePath(metrics.projectRoot), "utf8"), before);
-                    assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
+                    assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
                 } finally {
                     await fixture.dispose();
                 }
@@ -449,7 +449,7 @@ test("legacy unverified coverage is incomplete after restart without backfilling
             });
             assertEquals(record?.state.publicationObservation?.coverage, "incomplete");
             assertEquals(record?.state.publicationObservation?.reason, "recording_unconfirmed");
-            assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
+            assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
         } finally {
             await fixture.dispose();
         }

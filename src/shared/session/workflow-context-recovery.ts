@@ -35,9 +35,7 @@ export async function reconcileRemoteWorkflow(
                 apply: false,
             });
             const plan = await loadPlanActionEvidence(cwd, context.planId!);
-            const attempts = (await listEntries(cwd, { migrate: false })).filter(
-                (entry) => entry.planId === context.planId,
-            );
+            const attempts = (await listEntries(cwd)).filter((entry) => entry.planId === context.planId);
             const publication =
                 attempts.length === 1 && attempts[0].publication
                     ? await reconcileStoredPublication(cwd, attempts[0].publication, { apply: false })

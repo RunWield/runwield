@@ -1,10 +1,13 @@
 import { serveHttp } from "../../../shared/http-server.ts";
 // @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
-import { readdirSync as fsReaddirSync } from "node:fs";
+import { constants as fsConstants, readdirSync as fsReaddirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import {
+    cp as fsCp,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
+    open as fsOpen,
     readFile as fsReadFile,
     realpath as fsRealpath,
     rename as fsRename,
@@ -13,14 +16,15 @@ import {
     symlink as fsSymlink,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import type { FileHandle } from "node:fs/promises";
+import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
-import { addEntry, withWorktreeRegistryLockAtPath } from "../../../shared/worktree-registry.js";
-import { getRunWieldRuntimeDir } from "../../../constants.js";
+import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
+import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.js";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import {
@@ -529,10 +533,15 @@ test("Workspace search and Plan opens reject a linked Plan directory after index
     }
 });
 
+const executionAuthorityFixture = defineCommittedGitFixture();
+
 test("Workspace search and Plan opens accept registered execution-worktree authority", async () => {
     const fixture = await searchFixture("execution-authority");
     const executionRoot = join(fixture.dir, "execution");
+    const repository = await executionAuthorityFixture.checkout();
     try {
+        await fsCp(repository, fixture.root, { recursive: true });
+        await git(fixture.root, ["worktree", "add", "-b", "worktree/authority", executionRoot]);
         await savePlan(fixture.root, "authority", "# Primary authority\n\nOld primary body.\n", {
             planId: "execution-authority-id",
             title: "Primary authority",
@@ -554,7 +563,7 @@ test("Workspace search and Plan opens accept registered execution-worktree autho
             planId: "execution-authority-id",
             baseBranch: "main",
             baseRef: "refs/heads/main",
-            baseCommit: "abc123",
+            baseCommit: await git(fixture.root, ["rev-parse", "HEAD"]),
             branch: "worktree/authority",
             path: executionRoot,
             status: "active",
@@ -576,49 +585,97 @@ test("Workspace search and Plan opens accept registered execution-worktree autho
         } catch (error) {
             message = error instanceof Error ? error.message : String(error);
         }
-        assertStringIncludes(message, "leaves the Project");
+        // Registered authority validation excludes the unsafe document before hydration.
+        // The stale primary copy must not become a replacement detail result.
+        assertEquals(message, "Plan not found for planId: execution-authority-id");
     } finally {
         await fixture.close();
+        await fsRm(repository, { recursive: true, force: true });
     }
 });
 
-test("Workspace refresh requested during a scan includes files added after that scan began", async () => {
-    const fixture = await searchFixture("refresh-during-scan");
-    const secondPath = join(fixture.dir, "blocked-project");
+test(
+    "Workspace refresh requested during a scan includes files added after that scan began",
+    { skip: platform() === "win32" }, // Windows does not provide POSIX filesystem pipes.
+    async () => {
+        const fixture = await searchFixture("refresh-during-scan");
+        const secondRoot = join(fixture.dir, "second-project");
+        const pipePath = join(secondRoot, "docs", "design-system.md");
+        const gate = Promise.withResolvers<void>();
+        let writer: FileHandle | undefined;
+        let firstScan: Promise<void> | undefined;
+        let requestedRefresh: Promise<void> | undefined;
+        let releaseRead: Promise<void> | undefined;
+        try {
+            await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+            await fsMkdir(join(secondRoot, "docs"), { recursive: true });
+            execFileSync("mkfifo", [pipePath]);
+            fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Second Project" });
+
+            firstScan = fixture.search.refresh();
+            // A nonblocking writer can connect only once the real reader has opened
+            // the pipe in the second Project. The first Project is already indexed.
+            assertEquals(
+                await waitFor(async () => {
+                    try {
+                        writer = await fsOpen(pipePath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK);
+                        return true;
+                    } catch (error) {
+                        if (error instanceof Error && "code" in error && error.code === "ENXIO") return false;
+                        throw error;
+                    }
+                }, 5000),
+                true,
+            );
+            if (!writer) throw new Error("The second Project reader did not open its pipe");
+            const connectedWriter = writer;
+            releaseRead = (async () => {
+                await gate.promise;
+                // The queued scan must read a regular file, not wait on another pipe.
+                await fsRm(pipePath);
+                await fsWriteFile(pipePath, "# Second Project design\n");
+                await connectedWriter.writeFile("# Second Project design\n");
+                await connectedWriter.close();
+                writer = undefined;
+            })();
+
+            await fsWriteFile(join(fixture.root, "docs", "prd", "new.md"), "# Concurrent refresh needle\n");
+            requestedRefresh = fixture.search.refresh();
+            gate.resolve();
+            await Promise.all([firstScan, requestedRefresh, releaseRead]);
+            assertEquals((await fixture.search.search({ query: "Concurrent refresh needle" })).total, 1);
+        } finally {
+            gate.resolve();
+            await releaseRead;
+            await writer?.close();
+            await Promise.all([firstScan, requestedRefresh]);
+            await fixture.close();
+        }
+    },
+);
+
+test("Workspace refresh reads through registry writer locks and sees new files on the next refresh", async () => {
+    const fixture = await searchFixture("refresh-with-writer");
+    const secondPath = join(fixture.dir, "locked-project");
     await fsMkdir(secondPath);
     const secondRoot = await fsRealpath(secondPath);
-    const second = fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Blocked Project" });
+    fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Locked Project" });
     await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
-    const locked = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    // Hold a real migration lock in the second Project so the scan has already read the first.
-    const holding = withWorktreeRegistryLockAtPath(
-        join(getRunWieldRuntimeDir(secondRoot), "worktrees.lock"),
-        async () => {
-            locked.resolve();
-            await release.promise;
-        },
-    );
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-        await locked.promise;
-        const scanning = fixture.search.refresh();
-        assertEquals(
-            await waitFor(async () => {
-                const progress = await fixture.search.search({ query: "" });
-                return progress.states.some(
-                    (state) => state.projectId === second.projectId && state.state === "indexing",
-                );
-            }),
-            true,
-        );
-        await fsWriteFile(join(fixture.root, "docs", "prd", "new.md"), "# Fresh refresh needle\n");
-        const refreshed = fixture.search.refresh();
-        release.resolve();
-        await Promise.all([scanning, refreshed, holding]);
-        assertEquals((await fixture.search.search({ query: "Fresh refresh needle" })).total, 1);
+        await withWorktreeRegistryLock(secondRoot, async () => {
+            await Promise.race([
+                fixture.search.refresh(),
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error("Passive Search waited for a registry writer")), 2500);
+                }),
+            ]);
+            await fsWriteFile(join(fixture.root, "docs", "prd", "new.md"), "# Fresh refresh needle\n");
+            await fixture.search.refresh();
+            assertEquals((await fixture.search.search({ query: "Fresh refresh needle" })).total, 1);
+        });
     } finally {
-        release.resolve();
-        await holding;
+        if (timeout !== undefined) clearTimeout(timeout);
         await fixture.close();
     }
 });

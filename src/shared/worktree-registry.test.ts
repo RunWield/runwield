@@ -28,6 +28,7 @@ import {
     getWorktreeRegistryPath,
     inspectWorktreeRegistryAtPath,
     listEntries,
+    prepareWorktreeRegistry,
     pruneStaleEntries,
     refreshPlanningWorktreeBase,
     removeEntry,
@@ -215,11 +216,11 @@ test("linked checkout registry operations share the primary internal store, lock
             assertEquals(getWorktreeRegistryLockPath(linked), getWorktreeRegistryLockPath(root));
             assertEquals(getWorktreeRegistryPath(root), join(primaryRoot, ".wld", "internal", "worktrees.json"));
             assertEquals(getWorktreeRegistryLockPath(root), join(primaryRoot, ".wld", "internal", "worktrees.lock"));
-            assertEquals((await findById(linked, "shared", { migrate: false }))?.planId, "plan-shared");
+            assertEquals((await findById(linked, "shared"))?.planId, "plan-shared");
 
             const updated = await updateEntry(linked, "shared", { status: "completed" });
             assertEquals(updated?.status, "completed");
-            assertEquals((await findById(root, "shared", { migrate: false }))?.status, "completed");
+            assertEquals((await findById(root, "shared"))?.status, "completed");
             await fsLstat(join(primaryRoot, ".wld", "internal", "worktrees.json"));
             await assertRejects(() => fsLstat(join(root, ".wld", "worktrees.json")), Error, "ENOENT");
             await assertRejects(() => fsLstat(join(linked, ".wld", "internal", "worktrees.json")), Error, "ENOENT");
@@ -250,7 +251,7 @@ test("linked checkout registry operations share the primary internal store, lock
             releaseFirst();
             await Promise.all([first, second]);
             assertEquals(events, ["first-start", "first-end", "second-done"]);
-            assertEquals((await findById(root, "shared", { migrate: false }))?.status, "validated");
+            assertEquals((await findById(root, "shared"))?.status, "validated");
 
             const currentRegistryPath = getWorktreeRegistryPath(root);
             await fsWriteFile(
@@ -260,7 +261,7 @@ test("linked checkout registry operations share the primary internal store, lock
                     entries: [entry({ id: "legacy", planName: "missing-plan", planId: undefined })],
                 }),
             );
-            await listEntries(linked);
+            await prepareWorktreeRegistry(linked);
             const issuesPath = join(primaryRoot, ".wld", "internal", "worktree-registry-migration-issues.json");
             const issues = JSON.parse(await fsReadFile(issuesPath, "utf8"));
             assertEquals(issues.issues[0].id, "legacy");
@@ -376,7 +377,7 @@ test("a damaged attempt for one Plan does not disable every other Plan", async (
             }),
         );
 
-        const listed = await listEntries(projectRoot, { migrate: false });
+        const listed = await listEntries(projectRoot);
         assertEquals(listed.length, 3, "listing damaged data is how the user sees the damage");
 
         const healthy = await findByPlanId(projectRoot, "plan-healthy");
@@ -511,7 +512,10 @@ test("worktree registry migration resolves unambiguous legacy plan names", async
         const beforePlan = await fsReadFile(primaryPath, "utf8");
         assertEquals(await listPlans(projectRoot), []);
 
-        const entries = await listEntries(projectRoot);
+        const beforeRegistry = await fsReadFile(path, "utf8");
+        await listEntries(projectRoot);
+        assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
+        const entries = await prepareWorktreeRegistry(projectRoot);
         assertEquals(entries[0].planId, "plan-1");
         const stored = JSON.parse(await fsReadFile(path, "utf8"));
         assertEquals(stored.version, 2);
@@ -544,7 +548,10 @@ test("worktree registry migration classifies duplicate live legacy attempts for 
             }),
         );
 
-        const entries = await listEntries(projectRoot);
+        const beforeRegistry = await fsReadFile(path, "utf8");
+        await listEntries(projectRoot);
+        assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
+        const entries = await prepareWorktreeRegistry(projectRoot);
         assertEquals(
             entries.map((item) => item.id),
             ["legacy-1", "legacy-2"],
@@ -592,7 +599,10 @@ test("registry migration keeps distinct execution documents ambiguous", async ()
                 ],
             }),
         );
-        const entries = await listEntries(projectRoot);
+        const beforeRegistry = await fsReadFile(path, "utf8");
+        await listEntries(projectRoot);
+        assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
+        const entries = await prepareWorktreeRegistry(projectRoot);
         assertEquals(
             entries.map((attempt) => attempt.planId),
             [undefined, undefined],
@@ -614,7 +624,7 @@ test("registry migration keeps distinct execution documents ambiguous", async ()
                 (await fsReadFile(document, "utf8")).replace("---\n", "---\nworktreeId: first\n"),
             );
         }
-        const conflictingPointers = await listEntries(projectRoot);
+        const conflictingPointers = await prepareWorktreeRegistry(projectRoot);
         assertEquals(
             conflictingPointers.map((attempt) => attempt.planId),
             [undefined, undefined],
@@ -635,7 +645,10 @@ test("worktree registry migration preserves unresolved legacy schema and records
             JSON.stringify({ version: 1, entries: [entry({ planName: "missing-plan", planId: undefined })] }),
         );
 
-        const entries = await listEntries(projectRoot);
+        const beforeRegistry = await fsReadFile(path, "utf8");
+        await listEntries(projectRoot);
+        assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
+        const entries = await prepareWorktreeRegistry(projectRoot);
         assertEquals(entries[0].planId, undefined);
         const stored = JSON.parse(await fsReadFile(path, "utf8"));
         assertEquals(stored.version, 1);

@@ -174,7 +174,7 @@ export async function runJourneyRecovery(
             recordedAttempt: entry,
             ports: SYSTEM_RECOVERY_FLOW_PORTS,
         });
-        assertEquals((await findById(root, entry.id, { migrate: false }))?.status, "abandoned");
+        assertEquals((await findById(root, entry.id))?.status, "abandoned");
         await runtime.closeSessionWhenIdle(created.sessionId);
     }
 }

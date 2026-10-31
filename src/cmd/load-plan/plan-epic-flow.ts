@@ -18,7 +18,7 @@ import {
     formatWorkRecordAutoGenerationResult,
 } from "../../shared/work-records/auto-generation.js";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
-import { findTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
+import { prepareTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { isGitRepository } from "../../shared/git.ts";
 import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
 import { reconcileEpicDelivery } from "../../shared/workflow/epic-integration.ts";
@@ -128,7 +128,7 @@ export async function handleEpicPlan({
     const targetBranch = typeof plan.attrs.targetBranch === "string" ? plan.attrs.targetBranch.trim() : "";
     const familyChildren =
         targetBranch && (await isGitRepository(projectRoot))
-            ? await findTargetBranchPlansByParent(projectRoot, targetBranch, plan.planName)
+            ? await prepareTargetBranchPlansByParent(projectRoot, targetBranch, plan.planName)
             : await findPlansByParent(projectRoot, plan.planName);
     const children = familyChildren
         .filter((child) => isPlannedChangeClassification(child.attrs.classification))

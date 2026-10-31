@@ -2,16 +2,14 @@
 classification: "PLANNED_CHANGE"
 workKind: "BUG_FIX"
 complexity: "MEDIUM"
-affectedPaths:
-  []
+affectedPaths: []
 executionAgent: "engineer"
 createdAt: "2026-10-31T15:38:43.797Z"
 status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 14
-dependencies:
-  []
+dependencies: []
 targetBranch: "epic/remote-ssh-development"
 planId: "70c667eb-4bd3-4be6-b3a5-1179481899e7"
 ---

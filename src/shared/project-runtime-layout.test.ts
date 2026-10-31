@@ -1613,7 +1613,7 @@ test("registry operation does not reenter recovery while holding its current loc
         await withWorktreeRegistryLock(project.primaryRoot, async () => {
             // An old writer flushes after the current operation has entered and locked.
             await writeText(legacy, '{"version":2,"entries":[]}');
-            await enterProjectRuntime(project.primaryRoot);
+            await inspectWorktreeRegistry(project.primaryRoot);
             assertEquals(await fsReadFile(legacy, "utf8"), '{"version":2,"entries":[]}');
         });
         await enterProjectRuntime(project.primaryRoot);

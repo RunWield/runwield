@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname } from "node:path";
-import { listPlanResources, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { addEntry, findById, getWorktreeRegistryPath } from "../worktree-registry.js";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
@@ -212,7 +212,7 @@ test("resolveValidationExecutionContext recovers missing worktree metadata from 
             status: "implemented",
             failureReason: "CI validation failed.",
         });
-        const [plan] = await listPlanResources(projectRoot, { backfillMissing: true });
+        const plan = await ensurePlanIdentity(projectRoot, "p");
         if (!plan?.planId) throw new Error("Expected Plan ID");
         await addEntry(projectRoot, {
             id: "wt-1",
@@ -373,7 +373,7 @@ test("resolveValidationExecutionContext recovers committed worktree baseline wit
             worktreeBaseBranch: "main",
             worktreeStatus: "completed",
         });
-        const [plan] = await listPlanResources(projectRoot, { backfillMissing: true });
+        const plan = await ensurePlanIdentity(projectRoot, "p");
         if (!plan?.planId) throw new Error("Expected Plan ID");
         await addEntry(projectRoot, {
             id: "wt-1",

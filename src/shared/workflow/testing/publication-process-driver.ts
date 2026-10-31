@@ -53,7 +53,7 @@ await withPlanLock(config.projectRoot, config.planName, async () => {
     let attempt = await loadPublicationAttempt(config.projectRoot, config.attemptId);
 
     if (!attempt) {
-        const entry = await findById(config.projectRoot, config.attemptId, { migrate: false });
+        const entry = await findById(config.projectRoot, config.attemptId);
         if (!entry) return;
         const candidate = await checkpointExecutionWorktree({
             worktreePath: config.executionCwd,
@@ -141,9 +141,10 @@ await withPlanLock(config.projectRoot, config.planName, async () => {
             });
         } catch (caught) {
             const failure = caught instanceof Error ? caught : new Error(String(caught));
-            const kind = "mergeFailureKind" in failure && typeof failure.mergeFailureKind === "string"
-                ? failure.mergeFailureKind
-                : "publication_failed";
+            const kind =
+                "mergeFailureKind" in failure && typeof failure.mergeFailureKind === "string"
+                    ? failure.mergeFailureKind
+                    : "publication_failed";
             await failStoredPublication(config.projectRoot, attempt, { kind, message: failure.message });
             throw failure;
         }

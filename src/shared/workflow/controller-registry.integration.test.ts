@@ -33,7 +33,12 @@ import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../w
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { PLAN_RUNTIME_FIELDS } from "./controller-state.ts";
-import { controllerRecordPath, readControllerRecord, StaleControllerWriteError } from "./controller-registry.ts";
+import {
+    controllerRecordPath,
+    prepareControllerView,
+    readControllerRecord,
+    StaleControllerWriteError,
+} from "./controller-registry.ts";
 import { extractYaml } from "../front-matter.ts";
 import { runValidationOutcomeTransition } from "./state-transition.ts";
 
@@ -85,11 +90,18 @@ for (const registryState of ["healthy", "unreadable", "ambiguous"]) {
                 duplicate.entries.push({ ...duplicate.entries[0], id: "competing-attempt" });
                 await fsWriteFile(registryPath, JSON.stringify(duplicate));
             }
-            await loadPlan(root, "legacy");
-            assertEquals(await readControllerRecord(root, { planName: "legacy", planId: "legacy-plan" }), null);
+            if (registryState === "unreadable") await assertRejects(() => loadPlan(root, "legacy"), Error, "JSON");
+            else await loadPlan(root, "legacy");
             await fsWriteFile(registryPath, originalRegistry);
+            assertEquals(await readControllerRecord(root, { planName: "legacy", planId: "legacy-plan" }), null);
             const alias = join(temporary, "alias");
             await fsSymlink(tree, alias);
+            assertEquals((await loadPlan(alias, "legacy"))?.readAvailability?.kind, "pending");
+            await prepareControllerView(
+                tree,
+                { planId: "legacy-plan", planName: "legacy" },
+                { validationCiAttempts: 2 },
+            );
             const loaded = await loadPlan(alias, "legacy");
             assertEquals(loaded?.attrs.validationCiAttempts, 2);
             assertEquals(loaded?.attrs.worktreeId, "legacy-attempt");
@@ -203,13 +215,19 @@ test("execution Plan and controller survive stale primary metadata, a fresh read
         assertEquals(fresh.checkpoint.repairGeneration, "repair-demo");
         assertEquals(fresh.validationCiAttempts, 2);
         // A document save carrying an old in-memory view cannot reset the controller.
-        await savePlan(tree, "demo", reopened.body, {
-            ...reopened.attrs,
-            validationCiAttempts: 0,
-            validationCheckpoint: null,
-        }, {
-            expectedRevision: reopened.revision,
-        });
+        await savePlan(
+            tree,
+            "demo",
+            reopened.body,
+            {
+                ...reopened.attrs,
+                validationCiAttempts: 0,
+                validationCheckpoint: null,
+            },
+            {
+                expectedRevision: reopened.revision,
+            },
+        );
         assertEquals((await loadPlan(tree, "demo"))?.attrs.validationCheckpoint?.repairGeneration, "repair-demo");
         assertEquals((await loadPlanActionEvidence(root, "controller-demo")).kind, "success");
         const controllerPath = controllerRecordPath(root, { planName: "demo", planId: "controller-demo" });
@@ -322,6 +340,9 @@ test("recovered registry authority retires legacy hints so cleanup cannot resurr
             createdAt: "2026-08-25T00:00:00Z",
             updatedAt: "2026-08-25T00:00:00Z",
         });
+        assertEquals((await loadPlan(root, "legacy"))?.readAvailability?.kind, "pending");
+        assertExists((await readControllerRecord(root, identity))?.recovery);
+        await prepareControllerView(root, identity, {});
         assertEquals((await loadPlan(root, "legacy"))?.attrs.worktreeId, "recovered-attempt");
         assertEquals((await readControllerRecord(root, identity))?.recovery, undefined);
         await pruneEntry(root, "recovered-attempt");
@@ -349,10 +370,16 @@ test("checkpoint-only updates leave Plan bytes unchanged and reject a second sta
             phase: "mechanical",
             state: "running",
         });
-        await updatePlanFrontMatter(root, "demo", { validationCheckpoint: checkpoint }, {}, {
-            expectedRevision: before.revision,
-            expectedControllerRevision: before.controllerRevision,
-        });
+        await updatePlanFrontMatter(
+            root,
+            "demo",
+            { validationCheckpoint: checkpoint },
+            {},
+            {
+                expectedRevision: before.revision,
+                expectedControllerRevision: before.controllerRevision,
+            },
+        );
         assertEquals(await fsReadFile(before.path, "utf8"), before.markdown);
         await assertRejects(
             () =>

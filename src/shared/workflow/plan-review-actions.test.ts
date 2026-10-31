@@ -4,6 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import {
+    ensurePlanIdentity,
     getPlanRevisionForText,
     getStoredPlanPath,
     injectFrontMatter,
@@ -41,6 +42,7 @@ async function makePlanFile(attrs: Partial<PlanFrontMatter> = {}): Promise<PlanR
         affectedPaths: [],
         ...attrs,
     });
+    await ensurePlanIdentity(dir, "plan");
     const planPath = getStoredPlanPath(dir, "plan");
     const markdown = await fsReadFile(planPath, "utf8");
     return {

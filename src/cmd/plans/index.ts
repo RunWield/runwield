@@ -46,6 +46,7 @@ function formatEpicCompletionState(epic: PlanEntry): string {
 }
 
 function printPlanDetails(plan: PlanEntry, indent: string): void {
+    if (plan.readAvailability?.kind === "pending") console.log(`${indent}${plan.readAvailability.message}`);
     console.log(
         `${indent}Status: ${plan.attrs.status} | Classification: ${plan.attrs.classification} | Complexity: ${plan.attrs.complexity}`,
     );
@@ -75,12 +76,10 @@ function printChildPlan(child: PlanEntry): void {
 export async function runPlansCommand(argv: string[]): Promise<void> {
     const [subcommand] = argv;
     if (subcommand === "ui") {
-        await enterUnlessHelp(argv.slice(1));
         await runPlansUiCommand(argv.slice(1), { browser: SYSTEM_BROWSER_PORT });
         return;
     }
     if (subcommand === "archive") {
-        await enterUnlessHelp(argv.slice(1));
         await runPlansArchiveCommand(argv.slice(1));
         return;
     }
@@ -89,7 +88,6 @@ export async function runPlansCommand(argv: string[]): Promise<void> {
         return;
     }
     if (subcommand === "read") {
-        await enterUnlessHelp(argv.slice(1));
         await runPlansReadCommand(argv.slice(1));
         return;
     }
@@ -129,7 +127,6 @@ export async function runPlansCommand(argv: string[]): Promise<void> {
         return;
     }
 
-    await enterProjectRuntime(getCwd());
     const plans = await listPlans(getCwd());
     if (plans.length === 0) {
         console.log("[RunWield] No saved plans found.");

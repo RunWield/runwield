@@ -94,6 +94,15 @@ an independent temporary repository when needed, including after the publication
 fetch into the primary checkout. Missing or unreachable upstream history cannot fall back to a stale local branch as
 proof. Exact target-head checks remain required for the pre-publication push lease, not post-publication cleanup.
 
+Passive Plan and progress reads do not run those remote checks, fetch, or clone. They display applicable saved controller
+and publication evidence, including a valid receipt after attempt cleanup, without claiming fresh remote verification.
+Absent or invalidated proof leaves publication unconfirmed; neither a missing attempt nor a stale tracking ref proves
+delivery. The receipt is subject to the same identity and reopening/new-execution invalidation rules above.
+
+Fresh proof belongs to deliberate preparation, publication, and recovery actions. Those actions recheck authority and
+obtain the required local or remote target evidence before recording newly confirmed success or authorizing cleanup.
+This read/action boundary changes passive display, not the publication success or cleanup contract.
+
 An interrupted cleanup can leave a directory whose `.git` file points to a removed registration in this repository, or
 whose `.git` file Git already removed. After proving publication, recovery moves that unregistered directory intact to
 `<execution-path>.saved/files`, reports the saved location, and completes the remaining cleanup. It does not infer clean

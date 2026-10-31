@@ -72,10 +72,6 @@ interface AttachedWorktreeRecord {
     branch: string;
 }
 
-interface ResolveRecoveryWorktreeOptions {
-    migrateRegistry?: boolean;
-}
-
 async function canonicalPath(path: string): Promise<string | null> {
     try {
         return await fsRealpath(path);
@@ -88,13 +84,27 @@ async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorkt
     const command = captureForegroundProcess("git", { args: ["worktree", "list", "--porcelain"], cwd: projectRoot });
     const output = await command;
     if (output.code !== 0) return [];
-    return new TextDecoder().decode(output.stdout).trim().split("\n\n").filter(Boolean).map((block) => {
-        const lines = block.split("\n");
-        return {
-            path: lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length).trim() || "",
-            branch: lines.find((line) => line.startsWith("branch "))?.slice("branch ".length).trim() || "",
-        };
-    }).filter((record) => Boolean(record.path && record.branch));
+    return new TextDecoder()
+        .decode(output.stdout)
+        .trim()
+        .split("\n\n")
+        .filter(Boolean)
+        .map((block) => {
+            const lines = block.split("\n");
+            return {
+                path:
+                    lines
+                        .find((line) => line.startsWith("worktree "))
+                        ?.slice("worktree ".length)
+                        .trim() || "",
+                branch:
+                    lines
+                        .find((line) => line.startsWith("branch "))
+                        ?.slice("branch ".length)
+                        .trim() || "",
+            };
+        })
+        .filter((record) => Boolean(record.path && record.branch));
 }
 
 async function discoverAttachedPlanWorktree(
@@ -119,17 +129,18 @@ async function discoverAttachedPlanWorktree(
         if (!executionPlan || executionPlan.attrs.executionMode !== "worktree") continue;
         const attrs = executionPlan.attrs;
         if (
-            !attrs.planId || !attrs.worktreeId || !attrs.worktreePath || !attrs.worktreeBranch ||
+            !attrs.planId ||
+            !attrs.worktreeId ||
+            !attrs.worktreePath ||
+            !attrs.worktreeBranch ||
             !attrs.worktreeBaseBranch
-        ) continue;
+        )
+            continue;
         if (plan.attrs.planId && plan.attrs.planId !== attrs.planId) continue;
-        if (await canonicalPath(attrs.worktreePath) !== recordPath) continue;
+        if ((await canonicalPath(attrs.worktreePath)) !== recordPath) continue;
         if (record.branch !== `refs/heads/${attrs.worktreeBranch}`) continue;
-        if (
-            !["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(
-                attrs.status,
-            )
-        ) continue;
+        if (!["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(attrs.status))
+            continue;
         matches.push({
             id: attrs.worktreeId,
             path: record.path,
@@ -169,21 +180,16 @@ export interface ReopenPlanForReviewOptions {
 /**
  * @param {string} projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
- * @param {{ migrateRegistry?: boolean }} [options]
  * @returns {Promise<RecoveryWorktreeContext | null>}
  */
 export async function resolveRecoveryWorktree(
     projectRoot: string,
     plan: RecoveryPlanRef,
-    options: ResolveRecoveryWorktreeOptions = {},
 ): Promise<RecoveryWorktreeContext | null> {
-    const registryReadOptions = options.migrateRegistry === false ? { migrate: false } : undefined;
     let entry = null;
-    if (plan.attrs.worktreeId) entry = await findWorktreeById(projectRoot, plan.attrs.worktreeId, registryReadOptions);
-    if (!entry) entry = await findWorktreeByPlanName(projectRoot, plan.planName, registryReadOptions);
-    if (
-        !entry && !plan.attrs.worktreePath && !plan.attrs.worktreeBranch && !plan.attrs.worktreeId
-    ) {
+    if (plan.attrs.worktreeId) entry = await findWorktreeById(projectRoot, plan.attrs.worktreeId);
+    if (!entry) entry = await findWorktreeByPlanName(projectRoot, plan.planName);
+    if (!entry && !plan.attrs.worktreePath && !plan.attrs.worktreeBranch && !plan.attrs.worktreeId) {
         const discovered = await discoverAttachedPlanWorktree(projectRoot, plan);
         if (discovered) return discovered;
     }
@@ -283,9 +289,8 @@ export async function reopenPlanForReview({
     worktreeContext,
     session,
 }: ReopenPlanForReviewOptions): Promise<void> {
-    const priorWorktree = worktreeContext === undefined
-        ? await resolveRecoveryWorktree(projectRoot, plan)
-        : worktreeContext;
+    const priorWorktree =
+        worktreeContext === undefined ? await resolveRecoveryWorktree(projectRoot, plan) : worktreeContext;
     if (!priorWorktree?.id) {
         assertRecoveryWorktreeIsManaged(plan.planName, priorWorktree);
         session.clearActiveExecutionWorkflow();
@@ -490,8 +495,12 @@ export async function appendRecoveryReport(
                     projectRoot: projectRoot,
                     path: worktreeContext.path,
                     branch: worktreeContext.branch,
-                    baseTree: plan.attrs.executionBaselineTree || worktreeContext.executionBaselineTree ||
-                        worktreeContext.baseTree || worktreeContext.baseCommit || undefined,
+                    baseTree:
+                        plan.attrs.executionBaselineTree ||
+                        worktreeContext.executionBaselineTree ||
+                        worktreeContext.baseTree ||
+                        worktreeContext.baseCommit ||
+                        undefined,
                 });
                 gitStatus = status.exists ? status.statusText.trim() : "missing worktree path";
                 diff = status.diff?.trim() || "";
@@ -515,13 +524,13 @@ export async function appendRecoveryReport(
             lastRunStopped: Boolean(plan.attrs.failureReason),
             ...(hasWorktreeContext(worktreeContext)
                 ? {
-                    worktree: {
-                        status: worktreeContext?.status,
-                        path: worktreeContext?.path,
-                        branch: worktreeContext?.branch,
-                        target: worktreeContext?.baseBranch,
-                    },
-                }
+                      worktree: {
+                          status: worktreeContext?.status,
+                          path: worktreeContext?.path,
+                          branch: worktreeContext?.branch,
+                          target: worktreeContext?.baseBranch,
+                      },
+                  }
                 : {}),
             ...(gitStatus !== undefined ? { gitStatus } : {}),
             ...(diff !== undefined ? { diff } : {}),
@@ -557,11 +566,7 @@ export async function confirmBaselineReset(planName: string, uiAPI: UiAPI): Prom
  * @returns {Promise<boolean>}
  */
 export async function confirmMetadataOnlyRecoveryCleanup(_planName: string, uiAPI: UiAPI): Promise<boolean> {
-    uiAPI.appendSystemMessage(
-        buildPlanRecoveryUserMessage({ kind: "git_blocked" }),
-        true,
-        "RunWield",
-    );
+    uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "git_blocked" }), true, "RunWield");
     const answer = await uiAPI.promptSelect("Clear stale Git recovery metadata and mark the plan ready for work?", [
         { value: "clear", label: "Clear metadata only" },
         { value: "cancel", label: "Cancel" },

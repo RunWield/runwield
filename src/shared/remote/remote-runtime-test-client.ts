@@ -264,7 +264,7 @@ try {
                 }
             } else if (command.kind === "local-recovery") {
                 // The local delivery recovery API reads these same project and Git receipts, without a Session bridge.
-                const entries = await listEntries(input.cwd, { migrate: false });
+                const entries = await listEntries(input.cwd);
                 const attempt = entries.find((entry) => entry.planId === "remote-delivery-plan")?.publication;
                 const recovered = attempt
                     ? await reconcileStoredPublication(input.cwd, attempt, { apply: false })

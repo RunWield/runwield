@@ -108,7 +108,7 @@ test("remote publication invoked from a linked checkout stages below the primary
         );
 
         assertEquals(await runDriver(configPath, "verification_receipt"), 86);
-        const attempt = await findById(projectRoot, "attempt-1", { migrate: false });
+        const attempt = await findById(projectRoot, "attempt-1");
         const publicationRoot = attempt?.publication?.publicationRoot;
         assert(publicationRoot);
         assertEquals(publicationRoot, publicationRootForAttempt(linkedRoot, "attempt-1"));
@@ -122,7 +122,7 @@ test("remote publication invoked from a linked checkout stages below the primary
         await git(projectRoot, ["fetch", "origin", "main"]);
         await git(projectRoot, ["merge-base", "--is-ancestor", targetHead, remoteHead]);
         assertEquals(await git(projectRoot, ["show", `${remoteHead}:implementation.txt`]), "linked publication");
-        assertEquals(await findById(projectRoot, "attempt-1", { migrate: false }), null);
+        assertEquals(await findById(projectRoot, "attempt-1"), null);
         assertEquals(
             await fsStat(publicationRoot)
                 .then(() => true)
@@ -179,7 +179,7 @@ test("publication cleanup saves a directory left after Git removed its worktree 
         await fsMkdir(join(worktree.path, ".astro", "collections"), { recursive: true });
         await fsWriteFile(join(worktree.path, ".astro", "collections", "note.txt"), "keep this\n");
         assertEquals(await runDriver(configPath), 0);
-        assertEquals(await findById(projectRoot, "attempt-1", { migrate: false }), null);
+        assertEquals(await findById(projectRoot, "attempt-1"), null);
         assertEquals(
             await fsStat(worktree.path)
                 .then(() => true)

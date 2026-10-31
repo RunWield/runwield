@@ -9,6 +9,7 @@ affectedPaths:
 targetBranch: epic/connect-codex
 createdAt: "2026-10-29"
 status: draft
+planId: "d8c448fa-d4aa-4deb-937a-1a206d1416b3"
 ---
 
 # RunWield Connect for Codex

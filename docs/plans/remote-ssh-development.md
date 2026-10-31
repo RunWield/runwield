@@ -15,16 +15,22 @@ affectedPaths:
     - "src/ui/review/"
     - "src/ui/workspace/server.js"
     - "scripts/compile.js"
-    - "scripts/release-assets.ts"
+    - "scripts/release-assets.js"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
 createdAt: "2026-09-20"
-status: "ready_for_work"
 origin: "internal"
-userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
+status: "user_verified"
+userVerifiedAt: "2026-10-31T15:46:47.916Z"
+userVerificationNote: "the only defect is docs"
+workRecord:
+    status: "generated"
+    recordId: "4fcf6a50-cd7e-444d-b619-1335087591f2"
+    path: "docs/work-records/2026-10-31-remote-ssh-development-with-laptop-owned-personal-data.md"
+    lastAttemptAt: "2026-10-31T15:47:02.730Z"
 ---
 
 # Remote SSH Development

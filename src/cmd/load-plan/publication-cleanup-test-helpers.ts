@@ -97,7 +97,7 @@ async function checkCleanupRestart(
                 cwd: getCwd(),
             });
             assertEquals(crashed.code, 86, new TextDecoder().decode(crashed.stderr));
-            const before = await findById(root, "attempt-1", { migrate: false });
+            const before = await findById(root, "attempt-1");
             assert(before?.publication);
             assertEquals(
                 before.publication.phase,
@@ -220,7 +220,7 @@ async function checkCleanupRestart(
             ]);
             assertStringIncludes(messages.join("\n"), "Plan loaded: demo");
             if (!requestCleanup) {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), before);
+                assertEquals(await findById(root, "attempt-1"), before);
                 assertEquals(await git(root, ["branch", "--list", "worktree/demo"]), sourceBranch);
                 assertEquals(await git(root, ["worktree", "list", "--porcelain"]), worktreeList);
                 assertEquals(
@@ -254,7 +254,7 @@ async function checkCleanupRestart(
                     );
                 }
             } else if (targetChange === "saved_copy_exists") {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), before);
+                assertEquals(await findById(root, "attempt-1"), before);
                 assertEquals(await fsReadFile(join(tree, "personal-note.txt"), "utf8"), "Untracked work to keep\n");
                 assertEquals(
                     await fsReadFile(join(`${tree}.saved`, "files", "previous.txt"), "utf8"),
@@ -262,7 +262,7 @@ async function checkCleanupRestart(
                 );
                 assertStringIncludes(messages.join("\n"), "Both copies were kept");
             } else if (targetChange === "rewritten" || targetChange === "remote_removed") {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), before);
+                assertEquals(await findById(root, "attempt-1"), before);
                 assertStringIncludes(messages.join("\n"), "Cleanup stopped for demo");
                 assertStringIncludes(
                     messages.join("\n"),
@@ -272,7 +272,7 @@ async function checkCleanupRestart(
                 );
                 assertEquals(messages.join("\n").includes("Fix this Git issue"), false);
             } else {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), null);
+                assertEquals(await findById(root, "attempt-1"), null);
                 assertStringIncludes(messages.join("\n"), "Cleanup is done for demo");
                 if (lostRegistration) {
                     const saved = join(`${tree}.saved`, "files");

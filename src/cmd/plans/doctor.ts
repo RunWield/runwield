@@ -1,3 +1,5 @@
+import { inspectControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
+import { hasApplicablePublicationReceipt } from "../../shared/workflow/publication-receipt.ts";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { opendir as fsOpendir } from "node:fs/promises";
@@ -18,6 +20,7 @@ import {
     getPlansDir,
     inspectPlanFileStrict,
     isProjectPlan,
+    parsePlanFrontMatter,
 } from "../../plan-store.js";
 import {
     enterProjectRuntime,
@@ -40,13 +43,16 @@ import { isLockHolderGone, isLockHolderUnattributable } from "../../shared/proce
 import { doctorCheckMessage, doctorCleanMessage, doctorNeedsHelpMessage } from "./doctor-messages.ts";
 import {
     inspectWorktreeRegistryAtPath,
-    listEntries,
+    prepareWorktreeRegistry,
     pruneEntry,
     reconcileEntryIdentity,
 } from "../../shared/worktree-registry.js";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
-import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
-import { readControllerRecordAtPath } from "../../shared/workflow/controller-registry.ts";
+import {
+    inspectTargetBranchPlansByParent,
+    prepareTargetBranchPlansByParent,
+} from "../../shared/workflow/planning-worktree.ts";
+import { prepareControllerView, readControllerRecordAtPath } from "../../shared/workflow/controller-registry.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 
 /** A registry attempt as stored, before doctor proves anything about it. */
@@ -530,6 +536,7 @@ interface ArchivedPlanInspection {
     name: string;
     path: string;
     attrs: LoadedPlanInspection["attrs"];
+    recordedWorktreeStatus?: string;
 }
 
 async function collectArchivedPlanParseIssues(
@@ -562,7 +569,12 @@ async function collectArchivedPlanParseIssues(
                         archived: true,
                     });
                     collectPendingControllerIssues(`archived/${planName}`, parsed.pendingControllerRepairs, issues);
-                    plans.push({ name: planName, path: entryPath, attrs: parsed.attrs });
+                    plans.push({
+                        name: planName,
+                        path: entryPath,
+                        attrs: parsed.attrs,
+                        recordedWorktreeStatus: parsePlanFrontMatter(parsed.markdown).attrs.worktreeStatus || undefined,
+                    });
                 } catch (error) {
                     issues.push({
                         kind: "malformed_archived_plan",
@@ -653,8 +665,8 @@ async function collectWorktreeJournalIssues(
     repair: boolean,
 ): Promise<Array<{ issue?: DoctorIssue; repaired?: boolean }>> {
     const results: Array<{ issue?: DoctorIssue; repaired?: boolean }> = [];
-    for (const entry of entries) {
-        if (entry.path === projectRoot) continue;
+    for (const entry of await inspectControllerDocumentWorktrees(projectRoot, entries)) {
+        if (entry.documentUnavailable || entry.path === projectRoot) continue;
         const journalDir = getTransitionJournalDir(entry.path);
         if (
             !(await fsStat(journalDir)
@@ -825,7 +837,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     if (repair && inspection.integrityIssues.length === 0 && !inspection.readError) {
         // Persist the v1→v2 migration only once the file is known to be consistent;
         // migrating around a conflict is how a readable registry becomes unreadable.
-        await listEntries(projectRoot, { migrate: true }).catch(() => []);
+        await prepareWorktreeRegistry(projectRoot).catch(() => []);
     }
     const canonicalRoot = await fsRealpath(projectRoot).catch(() => projectRoot);
     const registryPaths = new Set(
@@ -886,12 +898,14 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         if (!targetBranch || !isProjectPlan(parent.attrs)) continue;
         let children: Awaited<ReturnType<typeof inspectTargetBranchPlansByParent>>;
         try {
-            children = await inspectTargetBranchPlansByParent(projectRoot, targetBranch, parent.name);
+            children = repair
+                ? await prepareTargetBranchPlansByParent(projectRoot, targetBranch, parent.name)
+                : await inspectTargetBranchPlansByParent(projectRoot, targetBranch, parent.name);
         } catch {
             issues.push({
                 kind: "target_branch_inspection_error",
                 planName: parent.name,
-                message: `Could not inspect authoritative target branch ${targetBranch} for child Plans of ${parent.name}. Child state is unknown; the local branch is not a safe substitute.`,
+                message: `Could not inspect authoritative target branch ${targetBranch} for child Plans of ${parent.name}. Local target evidence is unavailable; child state is unknown. Load this Plan to prepare its workflow.`,
                 commands: [
                     `git ls-remote --heads origin refs/heads/${targetBranch.replace(/^origin\//, "")}`,
                     `${CLI_BIN} plans doctor --check`,
@@ -910,7 +924,6 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
     if (repair) {
         for (const plan of identityDocuments) {
-            if (plan.attrs.planId) continue;
             const exists = await fsStat(plan.path)
                 .then((stat) => stat.isFile())
                 .catch(() => false);
@@ -925,6 +938,9 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                     throw error;
                 });
             if (hasLock) continue;
+            const raw = parsePlanFrontMatter(await fsReadFile(plan.path, "utf8")).attrs;
+            await prepareControllerView(documentRoot, { planId: raw.planId, planName: plan.name }, raw);
+            if (plan.attrs.planId) continue;
             const inspected = await inspectPlanFileStrict(plan.path);
             if (inspected.kind !== "loaded" || inspected.pendingControllerRepairs.length > 0) continue;
             const resource = await ensurePlanIdentity(documentRoot, plan.name);
@@ -983,18 +999,23 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             continue;
         {
             const markdown = await fsReadFile(plan.path, "utf8").catch(() => undefined);
-            const publication = await verifyRecordedPublication(
-                projectRoot,
-                plan.attrs,
-                markdown === undefined ? undefined : { planName: plan.name, markdown },
-            ).catch(() => ({ published: false, unavailable: true }));
+            const publication = repair
+                ? await verifyRecordedPublication(
+                      projectRoot,
+                      plan.attrs,
+                      markdown === undefined ? undefined : { planName: plan.name, markdown },
+                  ).catch(() => ({ published: false, unavailable: true }))
+                : {
+                      published: hasApplicablePublicationReceipt(plan.attrs),
+                      unavailable: !hasApplicablePublicationReceipt(plan.attrs),
+                  };
             if (publication.unavailable) {
                 issues.push({
                     kind: "publication_inspection_error",
                     planName: plan.name,
                     message: `${plan.name} records publication${
                         targetBranch ? ` to ${targetBranch}` : ""
-                    }, but RunWield could not inspect that authority. Publication is unknown; local ancestry is not proof.`,
+                    }, but fresh publication proof is unavailable in this passive check. Load this Plan to confirm delivery; local ancestry is not proof.`,
                     commands: [
                         "git remote -v",
                         ...(targetBranch ? [`git branch -vv --list ${targetBranch.replace(/^origin\//, "")}`] : []),
@@ -1173,7 +1194,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
 
     for (const archived of archivedPlans) {
-        const status = typeof archived.attrs.worktreeStatus === "string" ? archived.attrs.worktreeStatus : "";
+        const status = archived.recordedWorktreeStatus || archived.attrs.worktreeStatus || "";
         if (status && !["none", "merged", "abandoned"].includes(status)) {
             issues.push({
                 kind: "archived_plan_with_recoverable_attempt",
@@ -1190,6 +1211,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
 async function isCommittedArchive(projectRoot: string, planName: string, path: string): Promise<boolean> {
     const result = await captureForegroundProcess("git", {
         cwd: projectRoot,
+        env: { GIT_NO_LAZY_FETCH: "1" },
         args: ["show", `HEAD:docs/plans/${planName}.md`],
     });
     return result.success && new TextDecoder().decode(result.stdout) === (await fsReadFile(path, "utf8"));

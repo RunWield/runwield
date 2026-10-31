@@ -211,8 +211,8 @@ function planMetadata(plan) {
         [FM.verifiedAt]: source[FM.verifiedAt] ?? plan.verifiedAt,
         [FM.userVerifiedAt]: source[FM.userVerifiedAt] ?? plan.userVerifiedAt,
         [FM.userVerificationNote]: source[FM.userVerificationNote] ?? plan.userVerificationNote,
-        [FM.closedWithoutVerificationReason]: source[FM.closedWithoutVerificationReason] ??
-            plan.closedWithoutVerificationReason,
+        [FM.closedWithoutVerificationReason]:
+            source[FM.closedWithoutVerificationReason] ?? plan.closedWithoutVerificationReason,
         [FM.closedWithoutVerificationAt]: source[FM.closedWithoutVerificationAt] ?? plan.closedWithoutVerificationAt,
         [FM.workRecord]: source[FM.workRecord] ?? plan.workRecord,
         [FM.executionMode]: source[FM.executionMode] ?? plan.executionMode,
@@ -221,13 +221,15 @@ function planMetadata(plan) {
         [FM.epicDoneEnoughSummary]: source[FM.epicDoneEnoughSummary] ?? plan.epicDoneEnoughSummary,
         [FM.epicDoneEnoughAt]: source[FM.epicDoneEnoughAt] ?? plan.epicDoneEnoughAt,
         [RESOURCE_METADATA_KEYS.dependencyState]: plan.dependencyStates?.length
-            ? plan.dependencyStates.map(/** @param {any} entry */ (entry) =>
-                `${entry.dependency}: ${entry.state}${entry.status ? ` (${entry.status})` : ""}`
-            )
+            ? plan.dependencyStates.map(
+                  /** @param {any} entry */ (entry) =>
+                      `${entry.dependency}: ${entry.state}${entry.status ? ` (${entry.status})` : ""}`,
+              )
             : undefined,
-        [RESOURCE_METADATA_KEYS.repairParent]: plan.hierarchyRole === "orphan-child"
-            ? plan.orphanReason || `parentPlan ${plan.parentPlan} does not resolve to a loaded Epic.`
-            : undefined,
+        [RESOURCE_METADATA_KEYS.repairParent]:
+            plan.hierarchyRole === "orphan-child"
+                ? plan.orphanReason || `parentPlan ${plan.parentPlan} does not resolve to a loaded Epic.`
+                : undefined,
     };
 }
 
@@ -306,18 +308,18 @@ function TicketReferenceGroup({ title, tickets }) {
                     const href = safeHttpTicketReferenceUrl(label);
                     return (
                         <li key={`${label}-${index}`}>
-                            {href
-                                ? (
-                                    <a
-                                        className="metadata-reference-link"
-                                        href={href}
-                                        target="_blank"
-                                        rel="noreferrer noopener"
-                                    >
-                                        {label}
-                                    </a>
-                                )
-                                : <span className="metadata-reference-text">{label}</span>}
+                            {href ? (
+                                <a
+                                    className="metadata-reference-link"
+                                    href={href}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                >
+                                    {label}
+                                </a>
+                            ) : (
+                                <span className="metadata-reference-text">{label}</span>
+                            )}
                         </li>
                     );
                 })}
@@ -361,7 +363,9 @@ function DetailMetadata({ plan }) {
         <div className="metadata-section">
             <TicketReferenceGroup title="Ticket references" tickets={directTickets} />
             <TicketReferenceGroup title="Epic ticket references" tickets={inheritedEpicTickets} />
-            {groups.map((group) => <MetadataGroup key={group.title} title={group.title} entries={group.entries} />)}
+            {groups.map((group) => (
+                <MetadataGroup key={group.title} title={group.title} entries={group.entries} />
+            ))}
             <MetadataGroup title="Additional metadata" entries={additionalEntries} />
         </div>
     );
@@ -391,39 +395,33 @@ function EpicSummary({ epic }) {
                 {missing ? <span>{missing} with missing dependencies</span> : null}
             </div>
             <div className="badge-row health-summary">
-                {epic.doneEnough
-                    ? (
-                        <span className="badge success">
-                            Epic marked done enough{epic.epicDoneEnoughAt ? ` at ${epic.epicDoneEnoughAt}` : ""}
-                        </span>
-                    )
-                    : null}
-                {epic.status === "on_hold"
-                    ? (
-                        <span className="badge muted">
-                            Epic on hold{epic.heldFromStatus ? ` from ${epic.heldFromStatus}` : ""}
-                            {epic.heldAt ? ` at ${epic.heldAt}` : ""}
-                        </span>
-                    )
-                    : null}
+                {epic.doneEnough ? (
+                    <span className="badge success">
+                        Epic marked done enough{epic.epicDoneEnoughAt ? ` at ${epic.epicDoneEnoughAt}` : ""}
+                    </span>
+                ) : null}
+                {epic.status === "on_hold" ? (
+                    <span className="badge muted">
+                        Epic on hold{epic.heldFromStatus ? ` from ${epic.heldFromStatus}` : ""}
+                        {epic.heldAt ? ` at ${epic.heldAt}` : ""}
+                    </span>
+                ) : null}
                 {failed ? <span className="badge danger">{failed} failed child Plans</span> : null}
                 {held ? <span className="badge muted">{held} child Plans on hold</span> : null}
                 {blocked ? <span className="badge warning">{blocked} child Plans blocked</span> : null}
-                {missing
-                    ? <span className="badge warning">{missing} child Plans with missing dependencies</span>
-                    : null}
+                {missing ? (
+                    <span className="badge warning">{missing} child Plans with missing dependencies</span>
+                ) : null}
             </div>
-            {epic.doneEnough && epic.epicDoneEnoughSummary
-                ? <p className="notice success">Done enough: {epic.epicDoneEnoughSummary}</p>
-                : null}
-            {epic.status === "on_hold"
-                ? (
-                    <p className="notice muted">
-                        Held Epic only blocks child work in UI context; child statuses are shown unchanged.{" "}
-                        {holdMetadata(epic)}
-                    </p>
-                )
-                : null}
+            {epic.doneEnough && epic.epicDoneEnoughSummary ? (
+                <p className="notice success">Done enough: {epic.epicDoneEnoughSummary}</p>
+            ) : null}
+            {epic.status === "on_hold" ? (
+                <p className="notice muted">
+                    Held Epic only blocks child work in UI context; child statuses are shown unchanged.{" "}
+                    {holdMetadata(epic)}
+                </p>
+            ) : null}
         </>
     );
 }
@@ -446,70 +444,78 @@ function EpicDetailSections({ epic, url }) {
         <>
             <section className="child-plan-section">
                 <h3>Child health</h3>
-                {failed || held || blocked || missing
-                    ? (
-                        <ul className="health-list">
-                            {(health.failed || []).map(/** @param {any} child */ (child) => (
+                {failed || held || blocked || missing ? (
+                    <ul className="health-list">
+                        {(health.failed || []).map(
+                            /** @param {any} child */ (child) => (
                                 <li key={`failed-${child.planId}`}>
-                                    <strong>Failed:</strong> {child.planName} {child.failureReason ||
-                                        "needs recovery attention"}
+                                    <strong>Failed:</strong> {child.planName}{" "}
+                                    {child.failureReason || "needs recovery attention"}
                                 </li>
-                            ))}
-                            {(health.held || []).map(/** @param {any} child */ (child) => (
+                            ),
+                        )}
+                        {(health.held || []).map(
+                            /** @param {any} child */ (child) => (
                                 <li key={`held-${child.planId}`}>
                                     <strong>Held:</strong> {child.planName} {holdMetadata(child)}
                                 </li>
-                            ))}
-                            {(health.blocked || []).map(/** @param {any} child */ (child) => (
+                            ),
+                        )}
+                        {(health.blocked || []).map(
+                            /** @param {any} child */ (child) => (
                                 <li key={`blocked-${child.planId}`}>
                                     <strong>Blocked:</strong> {child.planName} has{" "}
                                     {child.unverifiedDependencyCount || 0} unverified and{" "}
                                     {child.missingDependencyCount || 0} missing dependencies.
-                                    {child.dependencyStates?.length
-                                        ? (
-                                            <ul>
-                                                {child.dependencyStates.map(/** @param {any} entry */ (entry) => (
+                                    {child.dependencyStates?.length ? (
+                                        <ul>
+                                            {child.dependencyStates.map(
+                                                /** @param {any} entry */ (entry) => (
                                                     <li key={`${child.planId}-${entry.dependency}`}>
                                                         {dependencyLabel(entry)}
                                                     </li>
-                                                ))}
-                                            </ul>
-                                        )
-                                        : null}
+                                                ),
+                                            )}
+                                        </ul>
+                                    ) : null}
                                 </li>
-                            ))}
-                        </ul>
-                    )
-                    : <p className="empty">No failed, held, or dependency-blocked children.</p>}
+                            ),
+                        )}
+                    </ul>
+                ) : (
+                    <p className="empty">No failed, held, or dependency-blocked children.</p>
+                )}
             </section>
             <section className="child-plan-section">
                 <h3>Child dependencies</h3>
-                {childrenWithDependencies.length
-                    ? (
-                        <ul className="health-list dependency-health-list">
-                            {childrenWithDependencies.map(/** @param {any} child */ (child) => (
+                {childrenWithDependencies.length ? (
+                    <ul className="health-list dependency-health-list">
+                        {childrenWithDependencies.map(
+                            /** @param {any} child */ (child) => (
                                 <li key={`dependencies-${child.planId}`}>
                                     <strong>{child.planName}:</strong>{" "}
-                                    {child.dependencyStates.map(dependencyLabel).join(
-                                        ", ",
-                                    )}
+                                    {child.dependencyStates.map(dependencyLabel).join(", ")}
                                 </li>
-                            ))}
-                        </ul>
-                    )
-                    : <p className="empty">No child planned change Plan dependencies declared.</p>}
+                            ),
+                        )}
+                    </ul>
+                ) : (
+                    <p className="empty">No child planned change Plan dependencies declared.</p>
+                )}
             </section>
             <section className="child-plan-section">
                 <h3>Child Plans</h3>
-                {visibleColumns.length
-                    ? (
-                        <div className="status-board child-status-board">
-                            {visibleColumns.map(/** @param {any} column */ (column) => (
+                {visibleColumns.length ? (
+                    <div className="status-board child-status-board">
+                        {visibleColumns.map(
+                            /** @param {any} column */ (column) => (
                                 <BoardColumn key={column.status} column={column} url={url} />
-                            ))}
-                        </div>
-                    )
-                    : <p className="empty">No child Plans are attached to this Epic.</p>}
+                            ),
+                        )}
+                    </div>
+                ) : (
+                    <p className="empty">No child Plans are attached to this Epic.</p>
+                )}
             </section>
         </>
     );
@@ -546,14 +552,17 @@ function PlanWorkflowSummary({ plan, progress, projectId = "", runwieldSessionId
         status: progress?.plan?.status || plan.status,
         validationPhase: progress?.plan?.validationPhase || plan.attrs?.validationPhase,
         progressFacts: progress?.progressFacts,
-        degradedMessage: typeof progress?.degraded?.message === "string" ? progress.degraded.message : "",
+        degradedMessage:
+            progress?.degraded?.message ||
+            (plan.readAvailability?.kind === "pending" ? plan.readAvailability.message : ""),
         sessionState: typeof progress?.session?.state === "string" ? progress.session.state : "",
         hasWorkingSession: Boolean(progress?.session?.runwieldSessionId || runwieldSessionId),
     });
     const sessionId = progress?.session?.runwieldSessionId || runwieldSessionId;
-    const sessionHref = projectId && sessionId
-        ? `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`
-        : "";
+    const sessionHref =
+        projectId && sessionId
+            ? `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`
+            : "";
     return <WorkflowSidebar presentation={presentation} payload={{ sessionHref }} title="Plan workflow" />;
 }
 
@@ -573,36 +582,36 @@ function StaticLifecycleActions({ plan }) {
                         Move to {option.label}
                     </button>
                 ))}
-                {actions.canPutOnHold
-                    ? (
-                        <button type="button" className="secondary-action lifecycle-action hold-action">
-                            Put on hold
-                        </button>
-                    )
-                    : null}
-                {actions.canUserVerify
-                    ? (
-                        <button type="button" className="primary-action lifecycle-action">
-                            Mark as User Verified
-                        </button>
-                    )
-                    : null}
-                {actions.canCloseWithoutVerification
-                    ? (
-                        <button type="button" className="danger-action lifecycle-action">
-                            Close without verification
-                        </button>
-                    )
-                    : null}
+                {actions.canPutOnHold ? (
+                    <button type="button" className="secondary-action lifecycle-action hold-action">
+                        Put on hold
+                    </button>
+                ) : null}
+                {actions.canUserVerify ? (
+                    <button type="button" className="primary-action lifecycle-action">
+                        Mark as User Verified
+                    </button>
+                ) : null}
+                {actions.canCloseWithoutVerification ? (
+                    <button type="button" className="danger-action lifecycle-action">
+                        Close without verification
+                    </button>
+                ) : null}
             </div>
         </section>
     );
 }
 
 /** @param {{ plan: any, url: URL | string, editIntent?: boolean, staticRender?: boolean, progress?: any, projectId?: string, runwieldSessionId?: string }} props */
-export function PlanDetail(
-    { plan, url, editIntent = false, staticRender = false, progress = null, projectId = "", runwieldSessionId = "" },
-) {
+export function PlanDetail({
+    plan,
+    url,
+    editIntent = false,
+    staticRender = false,
+    progress = null,
+    projectId = "",
+    runwieldSessionId = "",
+}) {
     const isEpic = isEpicDetail(plan);
     const canEditBody = plan.capabilities?.bodyEditing !== false && !isEpic;
     const closeHref = boardHrefForPlanStatus(plan.status, url);
@@ -614,7 +623,9 @@ export function PlanDetail(
         >
             <header className="detail-header rw-plan-detail-toolbar">
                 <div className="detail-title-row">
-                    <a className="detail-back-link" href={closeHref}>{"< Back"}</a>
+                    <a className="detail-back-link" href={closeHref}>
+                        {"< Back"}
+                    </a>
                     <img className="rw-plan-detail-logo" src="/brand/logo.svg" alt="" aria-hidden="true" />
                     <div className="detail-title-group">
                         <div className="rw-plan-detail-title-copy">
@@ -624,7 +635,9 @@ export function PlanDetail(
                         <span className={`status status-${plan.status}`}>{plan.status}</span>
                     </div>
                     <div className="rw-plan-detail-toolbar-actions">
-                        <a className="detail-close-link" href={closeHref} aria-label="Close plan detail">X</a>
+                        <a className="detail-close-link" href={closeHref} aria-label="Close plan detail">
+                            X
+                        </a>
                     </div>
                 </div>
             </header>
@@ -632,25 +645,23 @@ export function PlanDetail(
                 <p>{plan.summary || "No summary provided."}</p>
                 {isEpic ? <EpicSummary epic={plan} /> : null}
                 {!isEpic && plan.status === "on_hold" ? <p className="notice muted">{holdMetadata(plan)}</p> : null}
-                {plan.hierarchyRole === "orphan-child" || plan.blockedByDependencies
-                    ? (
-                        <div className="detail-actions" aria-label="Plan warnings">
-                            {plan.hierarchyRole === "orphan-child"
-                                ? <span className="badge warning">Missing parent Epic</span>
-                                : null}
-                            {plan.blockedByDependencies
-                                ? <span className="badge warning">Dependency blocked</span>
-                                : null}
-                        </div>
-                    )
-                    : null}
+                {plan.hierarchyRole === "orphan-child" || plan.blockedByDependencies ? (
+                    <div className="detail-actions" aria-label="Plan warnings">
+                        {plan.hierarchyRole === "orphan-child" ? (
+                            <span className="badge warning">Missing parent Epic</span>
+                        ) : null}
+                        {plan.blockedByDependencies ? <span className="badge warning">Dependency blocked</span> : null}
+                    </div>
+                ) : null}
             </div>
             <section className="detail-grid rw-plan-detail-layout">
                 <main className="rw-plan-detail-document-pane">
                     <div className="rw-plan-detail-document">
-                        {staticRender
-                            ? <StaticPlanBody plan={plan} />
-                            : <PlanBodyEditor plan={plan} initialEdit={canEditBody && editIntent} />}
+                        {staticRender ? (
+                            <StaticPlanBody plan={plan} />
+                        ) : (
+                            <PlanBodyEditor plan={plan} initialEdit={canEditBody && editIntent} />
+                        )}
                         {isEpic ? <EpicDetailSections epic={plan} url={url} /> : null}
                     </div>
                 </main>
@@ -662,9 +673,11 @@ export function PlanDetail(
                         runwieldSessionId={runwieldSessionId}
                     />
                     <div className="detail-sidebar-actions" aria-label="Plan detail actions">
-                        {staticRender
-                            ? <StaticLifecycleActions plan={plan} />
-                            : <PlanLifecycleActions plan={plan} compact epic={isEpic} />}
+                        {plan.readAvailability?.kind === "pending" ? null : staticRender ? (
+                            <StaticLifecycleActions plan={plan} />
+                        ) : (
+                            <PlanLifecycleActions plan={plan} compact epic={isEpic} />
+                        )}
                     </div>
                     <p className="kicker">Plan controls</p>
                     <h2>Metadata</h2>

@@ -4,7 +4,7 @@ import { lstat as fsLstat } from "node:fs/promises";
 import { loadPlan, parsePlanFrontMatter } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
-import { loadTargetPlan } from "./planning-worktree.ts";
+import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
 interface GitResult {
     code: number;
@@ -48,7 +48,7 @@ const RESCUED_EXECUTION_STATUSES = new Set([
 ]);
 
 async function runGitResult(cwd: string, args: string[]): Promise<GitResult> {
-    const output = await captureForegroundProcess("git", { cwd, args });
+    const output = await captureForegroundProcess("git", { cwd, args, env: { GIT_NO_LAZY_FETCH: "1" } });
     const decoder = new TextDecoder();
     return {
         code: output.code,
@@ -81,7 +81,11 @@ async function commitContainsExecutionPlan(
 ): Promise<boolean> {
     const planPath = `docs/plans/${attempt.planName}.md`;
     const shown = await runGitResult(projectRoot, ["show", `${commit}:${planPath}`]);
-    if (shown.code !== 0) return false;
+    if (shown.code !== 0) {
+        const listed = await runGitResult(projectRoot, ["ls-tree", commit, "--", planPath]);
+        if (listed.code !== 0 || listed.stdout) throw new TargetBranchSnapshotUnavailableError(commit);
+        return false;
+    }
     try {
         const parsed = parsePlanFrontMatter(shown.stdout);
         if (!attempt.planId || parsed.attrs.planId !== attempt.planId) return false;

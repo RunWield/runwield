@@ -85,7 +85,7 @@ export async function restoreExecutionWorkflow(
     }
     let recoveredWorkflow: ActiveExecutionWorkflow | null = null;
     try {
-        const candidates = (await listEntries(session.cwd, { migrate: false })).filter(
+        const candidates = (await listEntries(session.cwd)).filter(
             (entry) => entry.planId === association.planId && entry.status === "active",
         );
         if (candidates.length !== 1) return;

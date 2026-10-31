@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
@@ -262,6 +263,7 @@ export async function runPublicationPhase(
     humanReviewMetadata: HumanReviewMetadata,
 ): Promise<PublicationOutcome> {
     args.session.assertLive();
+    await preparePlanWorkflow(context.projectRoot, args.planName);
     args.session.releaseActiveAgent();
     const outcome = await withPlanLock(
         context.projectRoot,
@@ -352,9 +354,7 @@ async function runLockedPublicationPhase(
     }
     const worktreeId = context.worktreeId;
     const storedAttempt = worktreeId
-        ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId, { migrate: false }).catch(
-              () => null,
-          )
+        ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId).catch(() => null)
         : null;
     let publicationAttempt: PublicationAttempt | null =
         storedAttempt?.publication || (await loadPublicationAttempt(context.projectRoot, worktreeId));
