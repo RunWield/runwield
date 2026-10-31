@@ -28,7 +28,7 @@ test("sanitizeSessionName truncates to a tab-friendly length", () => {
 });
 
 test("formatTerminalTitle prefixes sanitized names and falls back to W.", () => {
-    assertEquals(formatTerminalTitle(" terminal titles "), "W. - terminal titles");
+    assertEquals(formatTerminalTitle(" terminal titles "), "W. terminal titles");
     assertEquals(formatTerminalTitle("\n\t"), "W.");
 });
 
@@ -37,8 +37,8 @@ test("setTerminalTitleForName updates the active terminal", () => {
     const tui = new TuiMainScreen(terminal);
     initTUIWithPair({ terminal, tui });
     try {
-        assertEquals(setTerminalTitleForName("  plan\nboard  "), "W. - plan board");
-        assertEquals(terminal.title, "W. - plan board");
+        assertEquals(setTerminalTitleForName("  plan\nboard  "), "W. plan board");
+        assertEquals(terminal.title, "W. plan board");
     } finally {
         stopTUI();
     }
@@ -46,5 +46,5 @@ test("setTerminalTitleForName updates the active terminal", () => {
 
 test("setTerminalTitleForName ignores an unavailable terminal", () => {
     stopTUI();
-    assertEquals(setTerminalTitleForName("safe"), "W. - safe");
+    assertEquals(setTerminalTitleForName("safe"), "W. safe");
 });
