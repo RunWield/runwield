@@ -3,7 +3,12 @@ import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
 import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.js";
-import { prepareWorktreeRegistry, readPlanActionWorktreeEvidence } from "../worktree-registry.js";
+import {
+    prepareWorktreeRegistry,
+    readPlanActionWorktreeEvidence,
+    WorktreeRegistryAmbiguityError,
+} from "../worktree-registry.js";
+import { RegisteredPlanDocumentUnavailableError } from "./controller-registry.ts";
 import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.js";
 import type { PlanEvent, PlanStatus } from "./plan-lifecycle.js";
 import { PlanningNotStartedError } from "./plan-location.ts";
@@ -303,10 +308,39 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
     if (invalid) return { kind: "invalid_action", message: invalid };
     try {
         await prepareWorktreeRegistry(projectRoot);
+        const registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        if (registry.kind !== "ok") {
+            return {
+                kind: "recovery_required",
+                message: sanitizeMessage(registry.message),
+                entryIds: registry.entryIds,
+            };
+        }
+        if (
+            request.expectedWorktree.kind === "attempt" &&
+            (!registry.live || !sameAttempt(request.expectedWorktree, registry.live))
+        ) {
+            return {
+                kind: "recovery_required",
+                message:
+                    "The worktree attempt changed after this action loaded. Review recovery before mutating the Plan.",
+                entryIds: [request.expectedWorktree.id, ...(registry.live ? [registry.live.id] : [])],
+            };
+        }
         const selected = await findPlanEvidenceById(projectRoot, request.planId);
         if (!selected) return { kind: "invalid_action", message: "Plan not found." };
         await preparePlanWorkflow(projectRoot, selected.planName);
     } catch (error) {
+        if (
+            error instanceof WorktreeRegistryAmbiguityError ||
+            error instanceof RegisteredPlanDocumentUnavailableError
+        ) {
+            return {
+                kind: "recovery_required",
+                message: sanitizeMessage(error.message),
+                entryIds: error instanceof WorktreeRegistryAmbiguityError ? error.entryIds : [],
+            };
+        }
         return {
             kind: "invalid_action",
             message: sanitizeMessage(error instanceof Error ? error.message : String(error)),

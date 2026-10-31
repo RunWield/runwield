@@ -1,4 +1,14 @@
-import { mkdtempSync, readdirSync, rmSync, mkdirSync, symlinkSync, readFileSync, writeFileSync } from "node:fs";
+import {
+    cpSync,
+    renameSync,
+    mkdtempSync,
+    readdirSync,
+    rmSync,
+    mkdirSync,
+    symlinkSync,
+    readFileSync,
+    writeFileSync,
+} from "node:fs";
 
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -16,12 +26,24 @@ const moduleUrl = (path: string) => new URL(path, import.meta.url).href;
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const fixture = defineCommittedGitFixture();
 
+async function attachHomeWorktree(project: string, home: string, branch: string) {
+    const savedHome = `${home}-saved`;
+    renameSync(home, savedHome);
+    try {
+        await git(project, ["worktree", "add", "-b", branch, home]);
+    } finally {
+        cpSync(savedHome, home, { recursive: true });
+        rmSync(savedHome, { recursive: true });
+    }
+}
+
 for (const command of ["load-plan", "plans"]) {
     for (const allow of [false, true]) {
         test(`${command} ${allow ? "override does not authorize" : "refuses"} a registered home document before retired-status repair`, async () => {
             await withRuntimeCommandFixture("selected-plan-directory-", async ({ homeDir: home }) => {
                 const project = await fixture.checkout();
                 try {
+                    await attachHomeWorktree(project, home, "selected");
                     mkdirSync(join(home, "docs/plans"), { recursive: true });
                     const path = join(home, "docs/plans/selected.md");
                     const text = "---\nplanId: selected-id\nstatus: ready_for_review\n---\n# Selected\n";
@@ -168,7 +190,9 @@ console.log("CANCELED");
 });
 
 test("ACP Load Plan at a registered home root keeps protocol behavior without a terminal gate", async () => {
-    await withRuntimeCommandFixture("acp-selected-directory-", async ({ homeDir, projectRoot }) => {
+    await withRuntimeCommandFixture("acp-selected-directory-", async ({ homeDir }) => {
+        const projectRoot = await fixture.checkout();
+        await attachHomeWorktree(projectRoot, homeDir, "acp");
         const runtime = createSessionRuntime();
         const messages: string[] = [];
         try {

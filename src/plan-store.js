@@ -1384,11 +1384,11 @@ async function withControllerMetadata(filePath, attrs) {
             { planId: attrs.planId, planName: location.planName },
             attrs,
         );
-        if (!attrs.planId || view.pendingRepairs.length) return pendingControllerMetadata(attrs, view.pendingRepairs);
         /** @type {PlanReadAvailability} */
-        const readAvailability = { kind: "ready" };
+        const readAvailability =
+            attrs.planId && !view.pendingRepairs.length ? { kind: "ready" } : pendingPlanReadAvailability();
         return {
-            attrs: effectivePlanLifecycleAttrs(attrs, view.state),
+            attrs: effectivePlanLifecycleAttrs(attrs, view.state, view.publicationConfirmed),
             controllerRevision: view.revision,
             readAvailability,
             pendingControllerRepairs: view.pendingRepairs,
@@ -1411,7 +1411,10 @@ async function prepareControllerMetadata(filePath, attrs) {
         { planId: attrs.planId, planName: location.planName },
         attrs,
     );
-    return { attrs: effectivePlanLifecycleAttrs(attrs, view.state), controllerRevision: view.revision };
+    return {
+        attrs: effectivePlanLifecycleAttrs(attrs, view.state, view.publicationConfirmed),
+        controllerRevision: view.revision,
+    };
 }
 
 /** @param {string} filePath */
@@ -1433,12 +1436,13 @@ async function prepareStoredPlan(cwd, planName) {
  * receipt invalidation belong to the lifecycle owner, not readers.
  * @param {PlanFrontMatter} attrs
  * @param {import('./shared/workflow/controller-state.ts').WorkflowControllerState & import('./shared/workflow/controller-state.ts').WorkflowWorktreeContext} state
+ * @param {boolean} [publicationConfirmed]
  * @returns {PlanFrontMatter}
  */
-function effectivePlanLifecycleAttrs(attrs, state) {
+function effectivePlanLifecycleAttrs(attrs, state, publicationConfirmed = false) {
     const combined = { ...stripRuntimeFields(attrs), ...state };
     if (
-        hasApplicablePublicationReceipt(combined) &&
+        (publicationConfirmed || hasApplicablePublicationReceipt(combined)) &&
         !["on_hold", "user_verified", "closed_without_verification"].includes(combined.status)
     ) {
         combined.status = "verified";

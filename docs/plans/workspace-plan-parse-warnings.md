@@ -28,7 +28,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Keep the Workspace Sidebar Usable When a Plan Cannot Be Parsed

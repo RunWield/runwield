@@ -16,6 +16,7 @@ import { createPlanWrittenTool } from "../plan-written.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.js";
 import { join } from "node:path";
+import { git } from "../../shared/git-test-fixture.ts";
 import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
 
 /**
@@ -447,6 +448,18 @@ test("plan_written reopens review when recovery confirmation is accepted", async
 test("plan_written opens the active workflow Plan instead of the stale primary copy", async () => {
     const { tool, cwd, interactionRequests } = await makeHarness({ classification: "PLANNED_CHANGE" });
     const executionDir = join(cwd, "active-worktree");
+    await git(cwd, ["init", "-b", "main"]);
+    await git(cwd, [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "baseline",
+    ]);
+    await git(cwd, ["worktree", "add", "-b", "worktree/runtime-boundary", executionDir]);
     await fsMkdir(join(executionDir, "docs", "plans"), { recursive: true });
     await fsWriteFile(
         getStoredPlanPath(cwd, "runtime-boundary"),

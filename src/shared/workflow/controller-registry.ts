@@ -506,6 +506,14 @@ export async function inspectControllerView(
             ...worktree,
         },
         revision: record?.revision || 0,
+        publicationConfirmed: Boolean(
+            attempt?.publication &&
+            isPublicationCleanupPending(attempt.publication) &&
+            attempt.publication.publishedCommit &&
+            record?.state.publicationReceipt?.publishedCommit === attempt.publication.publishedCommit &&
+            record.state.publicationReceipt.validatedCommit === attempt.publication.validatedCommit &&
+            record.state.publicationReceipt.targetBranch === attempt.publication.targetBranch,
+        ),
         pendingRepairs,
     };
 }

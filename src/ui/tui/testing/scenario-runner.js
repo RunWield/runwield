@@ -1,4 +1,5 @@
 import { captureForegroundProcess } from "../../../shared/captured-process.ts";
+import { ProjectRuntimeReadPendingError } from "../../../shared/project-runtime-layout.ts";
 import { tmpdir } from "node:os";
 import {
     chmod as fsChmod,
@@ -2565,7 +2566,17 @@ async function runComposedTuiScenario(scenario, options) {
                         const localPlan = await loadPlan(getCwd(), planName).catch(() => null);
                         const registry = await (
                             await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        )
+                            .inspectWorktreeRegistry(getCwd())
+                            .catch((error) => {
+                                if (error instanceof ProjectRuntimeReadPendingError) return null;
+                                throw error;
+                            });
+                        if (!registry) {
+                            latestStatus = "workflow details pending";
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)

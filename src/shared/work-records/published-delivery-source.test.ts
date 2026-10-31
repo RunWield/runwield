@@ -12,7 +12,7 @@ import {
 } from "../workflow/delivery-evidence.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { savePlan } from "../../plan-store.js";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { buildDeliveryReport } from "../workflow/delivery-report.ts";
 
 const parent =
@@ -130,6 +130,7 @@ test("delivery receipts use the primary runtime from an execution worktree", asy
 test("confirmed child delivery keeps the prepared reviewed Epic Work Record in its report", async () => {
     const root = await fixture.checkout();
     try {
+        await enterProjectRuntime(root);
         await fsWriteFile(`${root}/docs/plans/epic.md`, parent.replace("status: verified", "status: reviewed"));
         await git(root, ["add", "docs/plans/epic.md"]);
         await git(root, ["commit", "-m", "prepare parent record before publication"]);

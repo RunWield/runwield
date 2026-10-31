@@ -388,8 +388,8 @@ for (const pending of [false, true]) {
                 const sidebar = await (await owner.get("/api/owner/sidebar")).json();
                 const project = sidebar.projects[0];
                 const withSessions = await loadOwnerSidebar(owner.store, {
-                    async listSessions() {
-                        return {
+                    listSessions() {
+                        return Promise.resolve({
                             sessions: [
                                 {
                                     runwieldSessionId: "warning-session",
@@ -397,7 +397,7 @@ for (const pending of [false, true]) {
                                     state: "idle",
                                 },
                             ],
-                        };
+                        });
                     },
                 });
                 strictEqual(withSessions[0].sessions[0]?.runwieldSessionId, "warning-session");
