@@ -26,7 +26,7 @@ import {
     settleWorktreeAttempt,
 } from "../worktree.js";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
-import { executePlan, startActiveExecutionWorkflow } from "./workflow.js";
+import { executePlan, startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { getTransitionJournalDir } from "./state-transition.ts";

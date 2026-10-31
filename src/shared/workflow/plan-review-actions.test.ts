@@ -17,7 +17,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision, reviewSourceStillMatches } from "./plan-review-actions.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { listEntries, updateEntry } from "../worktree-registry.js";

@@ -448,7 +448,7 @@ ${outcome.feedback || ""}`,
             const managed = session.getManagedMetadata?.();
             if (!managed) {
                 return await this.runWorkflowOperation(session, "executePlan", options, async () => {
-                    const { executePlan } = await import("../../workflow/workflow.js");
+                    const { executePlan } = await import("../../workflow/workflow.ts");
                     return await executePlan({ ...options, hostedSession: session });
                 });
             }
@@ -456,7 +456,7 @@ ${outcome.feedback || ""}`,
             if (pendingResult) return pendingResult;
             const prepared = await this.runWorkflowOperation(session, "prepareExecutePlan", options, async () => {
                 session.getManagedOperationCapability?.()?.assertLive();
-                const { executePlan } = await import("../../workflow/workflow.js");
+                const { executePlan } = await import("../../workflow/workflow.ts");
                 const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
                 const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
                 const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
@@ -539,7 +539,7 @@ ${outcome.feedback || ""}`,
                         true,
                     );
                 }
-                const { executePreparedPlanSegmentHandoff } = await import("../../workflow/workflow.js");
+                const { executePreparedPlanSegmentHandoff } = await import("../../workflow/workflow.ts");
                 return await executePreparedPlanSegmentHandoff({
                     continuation: resolved.continuation,
                     hostedSession: activeSession,
@@ -554,7 +554,7 @@ ${outcome.feedback || ""}`,
         if (!session) throw new Error("SessionRuntime.runPlanningAgent: session not found");
         return await this.runWorkflowOperation(session, "runPlanningAgent", options, async () => {
             session.planReviewConversations.canceled = false;
-            const { runPlanningAgent } = await import("../../workflow/workflow.js");
+            const { runPlanningAgent } = await import("../../workflow/workflow.ts");
             const manager = session.getRootSessionManager();
             try {
                 const result = await runPlanningAgent({

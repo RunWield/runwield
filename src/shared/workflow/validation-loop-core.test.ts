@@ -37,7 +37,7 @@ import {
     setCurrentValidationProgress,
 } from "./validation-progress.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import {
     attachRecorder,
     makeRecordedSession,

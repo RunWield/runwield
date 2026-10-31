@@ -19,7 +19,7 @@ const PLAN_RECOVERY_FILES = [
 ];
 
 const HIGH_LEVEL_FILES = [
-    "src/shared/workflow/workflow.js",
+    "src/shared/workflow/workflow.ts",
     "src/shared/workflow/execution-start.ts",
     "src/shared/workflow/implementation-checkpoint.ts",
     "src/shared/workflow/plan-executor.ts",

@@ -8,6 +8,7 @@ export { resolveSessionContinuation } from "./session-continuation.ts";
 export type { DeferredPlanExecution } from "./runtime/workflow-options.ts";
 export { generateInMemoryGuide } from "./runtime/guided-review.ts";
 export type { DequeueQueuedMessageResult, SteerSessionResult } from "./runtime/types.ts";
+export type { RuntimeTriageInput } from "./runtime/workflow-options.ts";
 import { AGENTS } from "../../constants.js";
 import { SessionHost } from "./session-host.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
