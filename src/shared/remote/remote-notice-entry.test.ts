@@ -1,3 +1,4 @@
+import stripAnsi from "strip-ansi";
 import process from "node:process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,7 +70,7 @@ test(
                 })(),
                 10_000,
             );
-            assertStringIncludes(screen.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""), "laptop-account files");
+            assertStringIncludes(stripAnsi(screen), "laptop-account files");
             for (const choice of ["Only showing models", "Start tutorial", "Would you like to run /init"]) {
                 const choiceIndex = screen.indexOf(choice);
                 if (choiceIndex >= 0 && screen.indexOf("OpenSSH SFTP exposes") >= choiceIndex) {
@@ -77,9 +78,7 @@ test(
                 }
             }
         } catch (error) {
-            throw new Error(
-                `${error}\nRecent terminal: ${screen.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").slice(-4000)}`,
-            );
+            throw new Error(`${error}\nRecent terminal: ${stripAnsi(screen).slice(-4000)}`);
         } finally {
             if (!exited) child.kill("SIGTERM");
             await within(status);

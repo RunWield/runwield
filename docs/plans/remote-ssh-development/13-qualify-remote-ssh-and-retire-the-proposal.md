@@ -34,7 +34,7 @@ dependencies:
     - "12-confirm-a-partly-matching-remote-host"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Qualify Remote SSH and Retire the Proposal

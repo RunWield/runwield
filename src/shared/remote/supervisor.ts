@@ -257,6 +257,50 @@ export async function runRemoteSupervisor(): Promise<void> {
     for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
         process.on(signal, onEarlyClosure);
     }
+    const cleanup = async (): Promise<void> => {
+        proofAbort.abort();
+        setupHealthAbort.abort();
+        if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
+        if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
+        if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
+        const workStopped = await terminateOwnedLinuxDescendants(false);
+        try {
+            listener.close();
+        } catch {
+            /* Already closed after admission. */
+        }
+        let connectionRemoved = true;
+        await fsRm(socketDirectory, { recursive: true, force: true }).catch((error) => {
+            connectionRemoved = false;
+            console.error("Remote connection directory cleanup failed:", error);
+        });
+        let mountClosed = false;
+        if (personalMount) {
+            await personalMount.close().then(
+                () => {
+                    mountClosed = true;
+                },
+                (error) => console.error("Remote mount cleanup failed:", error),
+            );
+        }
+        const helpersStopped = await terminateOwnedLinuxDescendants(true);
+        const terminationConfirmed = workStopped && helpersStopped;
+        if (!terminationConfirmed) console.error("Remote owned process termination is unconfirmed");
+        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
+            process.off(signal, onEarlyClosure);
+        }
+        await stty(originalMode).catch(() => undefined);
+        if (cleanupHealthTimer !== undefined) clearInterval(cleanupHealthTimer);
+        cleanupHealthAbort.abort();
+        if (terminationConfirmed && connectionRemoved && mountClosed && !failed) {
+            await confirmCleanup?.().catch(() => undefined);
+        }
+        if (!failed) {
+            if (!terminationConfirmed) throw new Error("Remote owned process termination is unconfirmed");
+            if (!connectionRemoved) throw new Error("Remote connection directory cleanup is unconfirmed");
+            if (personalMount && !mountClosed) throw new Error("Remote mount cleanup is unconfirmed");
+        }
+    };
     try {
         // The marker contains only a locator in a mode-0700 temporary folder.
         // A banner cannot cause the terminal to echo a credential: the header
@@ -538,47 +582,6 @@ export async function runRemoteSupervisor(): Promise<void> {
         failed = true;
         throw error;
     } finally {
-        proofAbort.abort();
-        setupHealthAbort.abort();
-        if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
-        if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
-        if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
-        const workStopped = await terminateOwnedLinuxDescendants(false);
-        try {
-            listener.close();
-        } catch {
-            /* Already closed after admission. */
-        }
-        let connectionRemoved = true;
-        await fsRm(socketDirectory, { recursive: true, force: true }).catch((error) => {
-            connectionRemoved = false;
-            console.error("Remote connection directory cleanup failed:", error);
-        });
-        let mountClosed = false;
-        if (personalMount) {
-            await personalMount.close().then(
-                () => {
-                    mountClosed = true;
-                },
-                (error) => console.error("Remote mount cleanup failed:", error),
-            );
-        }
-        const helpersStopped = await terminateOwnedLinuxDescendants(true);
-        const terminationConfirmed = workStopped && helpersStopped;
-        if (!terminationConfirmed) console.error("Remote owned process termination is unconfirmed");
-        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-            process.off(signal, onEarlyClosure);
-        }
-        await stty(originalMode).catch(() => undefined);
-        if (cleanupHealthTimer !== undefined) clearInterval(cleanupHealthTimer);
-        cleanupHealthAbort.abort();
-        if (terminationConfirmed && connectionRemoved && mountClosed && !failed) {
-            await confirmCleanup?.().catch(() => undefined);
-        }
-        if (!failed) {
-            if (!terminationConfirmed) throw new Error("Remote owned process termination is unconfirmed");
-            if (!connectionRemoved) throw new Error("Remote connection directory cleanup is unconfirmed");
-            if (personalMount && !mountClosed) throw new Error("Remote mount cleanup is unconfirmed");
-        }
+        await cleanup();
     }
 }

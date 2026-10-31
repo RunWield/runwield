@@ -18,13 +18,8 @@ import {
 } from "./support.ts";
 import { isManagedOperationFailure } from "./types.ts";
 import type { PromptSessionOptions, PromptTurnContext, PromptSessionResult, UserPromptResult } from "./types.ts";
+import type { TaskTranscriptEntry } from "./types.ts";
 import { SlashCommandMetricsTracker } from "../../workflow/command-metrics.ts";
-
-interface TaskTranscriptEntry {
-    type?: string;
-    message?: { role?: string; content?: string | Array<{ type: string; text?: string }> };
-}
-
 import type { RuntimeServices } from "./base.ts";
 import type { RuntimeEvents } from "./events.ts";
 import type { RuntimeLifecycle } from "./lifecycle.ts";
@@ -699,10 +694,12 @@ export class RuntimeTurns {
         this.steeringResults.delete(session.id);
         const currentOperation = this.managedOperations.currentCapability(session.id);
         const activeInteractions = session.getActiveInteractions?.() || new Map();
-        const onlyPlanReviewInteraction =
+        const onlyReviewInteraction =
             activeInteractions.size > 0 &&
             [...activeInteractions.values()].every(
-                (record) => record.request?.type === RuntimeInteractionTypes.PLAN_REVIEW,
+                (record) =>
+                    record.request?.type === RuntimeInteractionTypes.PLAN_REVIEW ||
+                    record.request?.type === RuntimeInteractionTypes.CODE_REVIEW,
             );
         if (currentOperation) {
             let aborted = false;
@@ -711,10 +708,12 @@ export class RuntimeTurns {
             const turnActive = session.isTurnActive();
             try {
                 if (
-                    session.isAgentTransitioning?.() ||
-                    !turnActive ||
-                    this.resultAcquisitions.has(session.id) ||
-                    !getRuntimeRootAgentSession(session)
+                    !onlyReviewInteraction &&
+                    (session.isAgentTransitioning?.() ||
+                        this.resultAcquisitions.has(session.id) ||
+                        (activeInteractions.size === 0 &&
+                            !session.getActiveExecutionWorkflow?.() &&
+                            (!turnActive || !getRuntimeRootAgentSession(session))))
                 ) {
                     currentOperation.cancel?.();
                     operationCanceled = Boolean(currentOperation.cancel);
@@ -728,7 +727,7 @@ export class RuntimeTurns {
                 this.queues.clearQueuedMessagesInternal(session, "session_cancel");
                 const transitionId = session.getAgentTransitionId?.();
                 if (transitionId) session.completeAgentTransition(transitionId);
-                if (!onlyPlanReviewInteraction) {
+                if (!onlyReviewInteraction) {
                     agentCanceled = abortActiveSessionFn(session);
                     if (agentCanceled || turnActive) session.suppressNextAgentStoppedAttention();
                 }
@@ -770,7 +769,7 @@ export class RuntimeTurns {
             this.queues.clearQueuedMessagesInternal(session, "session_cancel");
             const transitionId = session.getAgentTransitionId?.();
             if (transitionId) session.completeAgentTransition(transitionId);
-            if (!onlyPlanReviewInteraction) {
+            if (!onlyReviewInteraction) {
                 agentCanceled = abortActiveSessionFn(session);
                 if (agentCanceled || turnActive) session.suppressNextAgentStoppedAttention();
             }

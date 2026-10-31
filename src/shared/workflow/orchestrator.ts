@@ -56,7 +56,7 @@ import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { waitForWorkflowToolEvent, WorkflowStepCompleted } from "./workflow-tool-events.ts";
-import type { DeferredPlanExecution } from "../session/runtime/workflow-options.ts";
+import type { DeferredPlanExecution } from "../session/session-runtime.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 
 export { runLocalCI, runMechanicalValidation } from "./validation.ts";

@@ -298,3 +298,33 @@ test("plan_written reviews a Plan that exists only in an unregistered linked che
         }
     });
 });
+
+test("submitting plain Plan text assigns identity before review", async () => {
+    await withRuntimeCommandFixture("plain-plan-review-", async ({ projectRoot }) => {
+        await fsMkdir(join(projectRoot, "docs/plans"), { recursive: true });
+        await fsWriteFile(join(projectRoot, "docs/plans/plain.md"), "# Plain Plan\n\nImplement the change.\n");
+        const session = new HostedSession({ id: "plain-plan-review", cwd: projectRoot });
+        let reviewed = false;
+        session.setInteractionAdapter({
+            requestInteraction: async (request) => {
+                assertEquals(request.type, "plan_review");
+                const plan = await loadPlan(projectRoot, "plain");
+                assertEquals(Boolean(plan?.attrs.planId), true);
+                reviewed = true;
+                return { outcome: "canceled" };
+            },
+        });
+        try {
+            await createPlanWrittenTool({ hostedSession: session }).execute(
+                "submit-plain",
+                { planName: "plain" },
+                undefined,
+                undefined,
+                EXTENSION_CONTEXT,
+            );
+            assertEquals(reviewed, true);
+        } finally {
+            session.dispose();
+        }
+    });
+});

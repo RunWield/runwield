@@ -518,7 +518,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             const appendPlanAssociationFailure = (text: string) =>
                 planAssociationFailure ? `${text}\n\n${planAssociationFailure}` : text;
             try {
-                const identified = await ensurePlanIdentity(reviewCwd, planName);
+                const identified = await ensurePlanIdentity(reviewCwd, planName, { onboardExternal: true });
                 const identifiedAttrs: TriageMeta = { ...identified.attrs };
                 if (identifiedAttrs.workKind === undefined || identifiedAttrs.workKind === null) {
                     delete identifiedAttrs.workKind;

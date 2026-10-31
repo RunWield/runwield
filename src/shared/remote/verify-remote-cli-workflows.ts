@@ -59,7 +59,7 @@ function ssh(shell: string): string {
         maxBuffer: 4 * 1024 * 1024,
     }).trim();
 }
-async function wait<T>(check: () => Promise<T>, label: string, timeout = 240_000): Promise<NonNullable<T>> {
+async function wait<T>(check: () => T | Promise<T>, label: string, timeout = 240_000): Promise<NonNullable<T>> {
     const end = Date.now() + timeout;
     while (Date.now() < end) {
         const result = await check();
@@ -325,7 +325,7 @@ print(json.dumps(dict(pids=sorted(owned),sockets=sockets,mounts=mounts)))`;
                 requestedAt = Date.now();
                 await send("/exit\n");
             }
-            await wait(async () => child.exitCode !== null || child.signalCode !== null, "driver shutdown", 45_000);
+            await wait(() => child.exitCode !== null || child.signalCode !== null, "driver shutdown", 45_000);
             const receipt: LauncherExit = JSON.parse(await readFile(join(start.root, "launcher-exit.json"), "utf8"));
             equal(receipt.pid, (await qualification()).launcherPid);
             equal(receipt.terminationRequested, false, "Exit must not depend on helper termination");
@@ -350,7 +350,7 @@ async function cleaned(driver: Driver, owned: OwnedRemote, sleeper: number): Pro
     const q = await driver.qualification();
     const pids = [q.launcherPid, ...q.sshPids, ...q.sftpPids].filter((pid) => pid > 0);
     await wait(
-        async () => {
+        () => {
             const processes = execFileSync("/bin/ps", ["-axo", "pid="], { encoding: "utf8" })
                 .trim()
                 .split(/\s+/)
@@ -362,7 +362,7 @@ async function cleaned(driver: Driver, owned: OwnedRemote, sleeper: number): Pro
     );
     const paths = [...owned.sockets, ...owned.mounts, ...owned.pids.map((pid) => `/proc/${pid}`)];
     await wait(
-        async () => {
+        () => {
             const remaining: string[] = JSON.parse(
                 ssh(
                     `python3 -c ${quote(
@@ -391,11 +391,11 @@ export async function qualifyRemoteCliWorkflows(archivesInput: string, version: 
     for (const journey of selected) {
         const caseRoot = join(evidence, journey);
         await mkdir(caseRoot);
-        async function record(event: string, details: Record<string, string | number | boolean | string[]> = {}) {
+        const record = async (event: string, details: Record<string, string | number | boolean | string[]> = {}) => {
             const line = JSON.stringify({ at: new Date().toISOString(), journey, event, buildId, ...details });
             await appendFile(join(caseRoot, "evidence.jsonl"), line + "\n");
             console.log(line);
-        }
+        };
         let driver: Driver | undefined;
         let owned: OwnedRemote | undefined;
         let sleeper = 0;
@@ -460,7 +460,7 @@ export async function qualifyRemoteCliWorkflows(archivesInput: string, version: 
             const id = session.manifest.runwieldSessionId;
             if (journey === "validation-cut") {
                 await wait(
-                    async () => ssh(`test -e ${quote(scratch + "/ci-started")} && echo ready || true`) === "ready",
+                    () => ssh(`test -e ${quote(scratch + "/ci-started")} && echo ready || true`) === "ready",
                     "verification gate",
                 );
                 const atCut = await wait(async () => {
@@ -487,7 +487,7 @@ export async function qualifyRemoteCliWorkflows(archivesInput: string, version: 
                     await writeFile(join(caseRoot, "delivery-result-session.json"), JSON.stringify(delivered, null, 2));
                 } else {
                     await wait(
-                        async () =>
+                        () =>
                             ssh(`test -e ${quote(scratch + "/publication-effect")} && echo ready || true`) === "ready",
                         "post-receive publication effect",
                         400_000,
