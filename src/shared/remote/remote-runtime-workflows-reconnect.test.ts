@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { ok as assert } from "node:assert/strict";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
+import { kill } from "node:process";
 import { assertEquals } from "../../testing/assertions.ts";
 import { git } from "../workflow/validation-test-helpers.js";
 import { assertRemoteStorageAbsent, within, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
@@ -150,11 +151,11 @@ test("transport loss during active validation resumes with uncertainty, without 
         const upstream = await prepareDelivery(f);
         const started = join(f.remoteHome, "ci-started");
         const release = join(f.remoteHome, "ci-release");
-        const finished = join(f.remoteHome, "ci-finished");
+        const pidFile = join(f.remoteHome, "ci-pid");
         await writeFile(
             join(f.remoteProject, ".wld/settings.json"),
             JSON.stringify({
-                verification_command: `printf 'ci\\n' >> '${join(f.remoteHome, "ci.log")}'; touch '${started}'; while [ ! -e '${release}' ]; do sleep 0.01; done; touch '${finished}'`,
+                verification_command: `printf 'ci\\n' >> '${join(f.remoteHome, "ci.log")}'; printf '%s' \"$$\" > '${pidFile}'; touch '${started}'; while [ ! -e '${release}' ]; do sleep 0.01; done`,
                 codereview: "none",
             }),
         );
@@ -177,6 +178,18 @@ test("transport loss during active validation resumes with uncertainty, without 
                 })(),
             );
         }
+        async function stopCI() {
+            const pid = await readFile(pidFile, "utf8").catch(() => "");
+            if (pid) {
+                const commandPid = Number(pid);
+                assert(Number.isSafeInteger(commandPid) && commandPid > 1, "CI must record its own process group");
+                try {
+                    kill(-commandPid, "SIGKILL");
+                } catch (error) {
+                    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+                }
+            }
+        }
         try {
             await waitForFile(started);
             const before = await readFile(f.store.getCurrentSessionSegment(id)!.transcriptPath, "utf8");
@@ -185,10 +198,11 @@ test("transport loss during active validation resumes with uncertainty, without 
             await f.dropConnection(); // Close the real listener and release its laptop writer, not an orderly remote client close.
             await client.terminate();
         } finally {
-            // Child08 owns process-tree termination. This fixture releases the external CI subprocess itself.
+            // Linux Bun kills CI with its parent; macOS can leave it running. Stop the fixture's
+            // blocked command in either case. A killed command cannot acknowledge ci-finished.
+            await stopCI();
             await writeFile(release, "release");
         }
-        await waitForFile(finished);
         const refs = await git(upstream, ["show-ref"]);
         const models = f.modelRequests.length;
         const evidenceBefore = await readOnlyEvidenceSnapshot(f.remoteProject, f.remoteHome);
