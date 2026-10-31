@@ -142,6 +142,9 @@ Project-relative Markdown files to a read-only local reader, with their visible 
 current file with its title, type, and path, supports several tabs, and serves only the current Session's Project.
 Other terminals show the plain paths.
 
+**Requirement: Identify the Session in the terminal title.** Named Sessions use `W. <session title>` with no hyphen.
+Unnamed Sessions use `W.`. Session names are sanitized before display.
+
 **Requirement: Keep the terminal responsive.**
 
 - Returning focus to the terminal or pressing Ctrl+L repaints the screen and keeps the draft, scroll position, active
@@ -167,6 +170,7 @@ Other terminals show the plain paths.
 - Given Router has emitted a Triage Report, when the user sends messages before the specialist is ready, the specialist
   receives each message once, in order.
 - Given a fully typed Plan name that is a prefix of a longer Plan name, one Enter opens the typed Plan.
+- Given a Session named `Fix routing`, the terminal title is `W. Fix routing`; an unnamed Session shows `W.`.
 - Given more than 200 saved events, terminal resume shows the final response.
 - Given a pending question, when the user answers it on either surface, **Answer agent** disappears at once; a new
   question restores it. A running shell command shows progress without **Answer agent**.
