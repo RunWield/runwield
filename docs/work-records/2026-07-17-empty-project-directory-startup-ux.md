@@ -11,12 +11,8 @@ provenance:
         - "4c9c9710-739b-402d-8495-e53be5d1dd5f"
 ---
 
-# Empty Project Directory Startup UX
+# Empty-project startup guidance
 
 ## Summary
 
-Added first-class detection and startup handling for empty project directories. Interactive sessions now provide
-non-blocking greenfield guidance while suppressing the normal boot banner and init offer; initial requests still route
-normally with session-scoped greenfield context. Running init in an empty directory is a no-op that does not update init
-state. Detection, prompt propagation, rebuild preservation, startup behavior, and init behavior were verified with
-automated tests.
+RunWield detects empty project directories and gives nonblocking greenfield guidance instead of the normal boot banner and initialization offer. Initial requests route normally with Session-scoped greenfield context that survives rebuilds. Initialization in an empty directory is a no-op and does not update initialization state.

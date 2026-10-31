@@ -1,3 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
+import type { GoldenScenarioResult } from "../testing/scenario-runner.js";
 import { plannedChangeReviewRepairValidationScenario } from "./planned-change-workflow.js";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 
@@ -15,8 +17,8 @@ export const validationTreeHumanReviewNoneScenario = withValidationBranches(
             },
         ],
         scriptedInteractions: [],
-        actions: plannedChangeReviewRepairValidationScenario.actions.filter((action: { type?: string }) =>
-            action.type !== "assertWorkflowDurability"
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
         ),
         assertions: [],
     },
@@ -34,11 +36,9 @@ export const validationTreeHumanReviewAskSkipScenario = withValidationBranches(
                 text: humanReviewSettings("ask"),
             },
         ],
-        scriptedInteractions: [
-            { type: "select", promptIncludes: "code review before merge", value: "skip" },
-        ],
-        actions: plannedChangeReviewRepairValidationScenario.actions.filter((action: { type?: string }) =>
-            action.type !== "assertWorkflowDurability"
+        scriptedInteractions: [{ type: "select", promptIncludes: "code review before merge", value: "skip" }],
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
         ),
         assertions: [],
     },
@@ -56,12 +56,10 @@ export const validationTreeHumanReviewAskOpenApproveScenario = withValidationBra
                 text: humanReviewSettings("ask"),
             },
         ],
-        scriptedInteractions: [
-            { type: "select", promptIncludes: "code review before merge", value: "open" },
-        ],
+        scriptedInteractions: [{ type: "select", promptIncludes: "code review before merge", value: "open" }],
         humanReviewDecisions: [{ approved: true, feedback: "Human approves the Golden implementation." }],
-        actions: plannedChangeReviewRepairValidationScenario.actions.filter((action: { type?: string }) =>
-            action.type !== "assertWorkflowDurability"
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
         ),
         assertions: [],
     },
@@ -81,8 +79,8 @@ export const validationTreeHumanReviewAlwaysApproveScenario = withValidationBran
         ],
         humanReviewDecisions: [{ approved: true, feedback: "Human always-review approves the Golden implementation." }],
         scriptedInteractions: [],
-        actions: plannedChangeReviewRepairValidationScenario.actions.filter((action: { type?: string }) =>
-            action.type !== "assertWorkflowDurability"
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
         ),
         assertions: [],
     },
@@ -110,25 +108,25 @@ export const validationTreeHumanReviewNoAnswerRetryScenario = withValidationBran
             { type: "select", promptIncludes: "Pick Retry to open it again", value: "retry" },
         ],
         interactiveSelectPrompts: [
-            ...plannedChangeReviewRepairValidationScenario.interactiveSelectPrompts || [],
+            ...(plannedChangeReviewRepairValidationScenario.interactiveSelectPrompts || []),
             "Pick Retry to open it again",
         ],
         actions: [
             ...plannedChangeReviewRepairValidationScenario.actions.slice(0, 3),
             // Exercise actual terminal cancellation while the real HTTP review is live.
-            { type: "waitForScreen", text: "Waiting for code review decision", timeoutMs: 240000 },
+            { type: "waitForScreen", text: "Review Code:", timeoutMs: 240000 },
             { type: "escape" },
             { type: "waitForScreen", text: "Pick Retry to open it again", timeoutMs: 60000 },
             { type: "type", text: "Retry" },
             { type: "enter" },
-            { type: "waitForScreen", text: "Waiting for code review decision", timeoutMs: 60000 },
+            { type: "waitForScreen", text: "Review Code:", timeoutMs: 60000 },
             { type: "escape" },
             { type: "waitForScreen", text: "Pick Retry to open it again", timeoutMs: 240000 },
             { type: "type", text: "Retry" },
             { type: "enter" },
-            ...plannedChangeReviewRepairValidationScenario.actions.slice(3).filter((action: { type?: string }) =>
-                action.type !== "assertWorkflowDurability"
-            ),
+            ...plannedChangeReviewRepairValidationScenario.actions
+                .slice(3)
+                .filter((action: { type?: string }) => action.type !== "assertWorkflowDurability"),
         ],
         assertions: [],
     },
@@ -148,11 +146,9 @@ export const validationTreeHumanReviewNoAnswerStopScenario = withValidationBranc
         ],
         humanReviewDecisions: [{ canceled: true }],
         script: plannedChangeReviewRepairValidationScenario.script.map((turn: { id?: string }) =>
-            turn.id === "engineer-post-repair-turn-before-re-review" ? { ...turn, optional: true } : turn
+            turn.id === "engineer-post-repair-turn-before-re-review" ? { ...turn, optional: true } : turn,
         ),
-        scriptedInteractions: [
-            { type: "select", promptIncludes: "Pick Retry to open it again", value: "stop" },
-        ],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Pick Retry to open it again", value: "stop" }],
         actions: [
             ...plannedChangeReviewRepairValidationScenario.actions.slice(0, 3),
             { type: "waitForScreen", text: "Pick Retry to open it again", timeoutMs: 240000 },
@@ -198,43 +194,88 @@ export const validationTreeHumanReviewFeedbackRepairApproveScenario = withValida
             { approved: false, feedback: "Code review requests one more durable note." },
             { approved: true, feedback: "Human approves after feedback repair." },
         ],
-        script: plannedChangeReviewRepairValidationScenario.script.filter((turn: { id?: string }) =>
-            turn.id !== "engineer-post-repair-turn-before-re-review" && turn.id !== "engineer-closes-after-delivery"
-        ).concat([
-            {
-                id: "engineer-repairs-human-review-feedback",
-                agent: "engineer",
-                phase: "engineer",
-                ordinal: 5,
-                requiredTools: ["write"],
-                thinking: "Repair after Code Review feedback.",
-                toolCalls: [{
-                    name: "write",
-                    arguments: { path: "golden-planned-change.txt", content: "golden-human-review-repaired" },
-                }],
-            },
-            {
-                id: "engineer-completes-human-review-feedback-repair",
-                agent: "engineer",
-                phase: "engineer",
-                ordinal: 6,
-                requiredTools: ["task_completed"],
-                thinking: "Report Code Review feedback repair complete.",
-                toolCalls: [{
-                    name: "task_completed",
-                    arguments: { message: "- Repaired Code Review feedback." },
-                }],
-            },
-        ]),
+        script: plannedChangeReviewRepairValidationScenario.script
+            .filter(
+                (turn: { id?: string }) =>
+                    turn.id !== "engineer-post-repair-turn-before-re-review" &&
+                    turn.id !== "engineer-closes-after-delivery",
+            )
+            .concat([
+                {
+                    id: "engineer-repairs-human-review-feedback",
+                    agent: "engineer",
+                    phase: "engineer",
+                    ordinal: 5,
+                    requiredTools: ["write"],
+                    thinking: "Repair after Code Review feedback.",
+                    toolCalls: [
+                        {
+                            name: "write",
+                            arguments: { path: "golden-planned-change.txt", content: "golden-human-review-repaired" },
+                        },
+                    ],
+                },
+                {
+                    id: "engineer-completes-human-review-feedback-repair",
+                    agent: "engineer",
+                    phase: "engineer",
+                    ordinal: 6,
+                    requiredTools: ["task_completed"],
+                    thinking: "Report Code Review feedback repair complete.",
+                    toolCalls: [
+                        {
+                            name: "task_completed",
+                            arguments: { message: "- Repaired Code Review feedback." },
+                        },
+                    ],
+                },
+            ]),
         scriptedInteractions: [],
-        actions: plannedChangeReviewRepairValidationScenario.actions.filter((action: { type?: string }) =>
-            action.type !== "assertWorkflowDurability"
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
         ),
         assertions: [],
     },
     "validation-tree-human-review-feedback-repair-approve",
     ["plan"],
     ["human-review:feedback-repair-approve"],
+);
+
+export const validationTreeHumanReviewReplyApproveScenario = withValidationBranches(
+    {
+        ...plannedChangeReviewRepairValidationScenario,
+        committedProjectFiles: [{ path: ".wld/settings.json", text: humanReviewSettings("always") }],
+        humanReviewDecisions: [
+            { conversationTurn: true, feedback: "Why did you add durable evidence?" },
+            { approved: true, feedback: "The explanation is clear. Approved." },
+        ],
+        script: [
+            ...plannedChangeReviewRepairValidationScenario.script,
+            {
+                id: "engineer-answers-Code-Review-question",
+                agent: "engineer",
+                phase: "engineer",
+                ordinal: 5,
+                text: "Durable evidence lets a later review confirm the change without relying on this conversation.",
+            },
+        ],
+        scriptedInteractions: [],
+        actions: plannedChangeReviewRepairValidationScenario.actions.filter(
+            (action: { type?: string }) => action.type !== "assertWorkflowDurability",
+        ),
+        assertions: [
+            (result: GoldenScenarioResult) => {
+                assertEquals(result.actor.remaining, []);
+                assertEquals(result.events.filter((event) => event === "human-review:captured").length, 2);
+                // Initial validation and the existing AI-requested repair only: the chat adds no CI run.
+                assertEquals(result.events.filter((event) => event === "runtime:validation-ci:passed").length, 2);
+                assertEquals(result.events.filter((event) => event === "runtime:tool:start:task_completed").length, 2);
+                assertEquals(result.actor.consumed.includes("engineer-answers-Code-Review-question"), true);
+            },
+        ],
+    },
+    "validation-tree-human-review-reply-approve",
+    ["plan"],
 );
 
 export const validationWorkflowHumanReviewScenarios = [
@@ -244,6 +285,7 @@ export const validationWorkflowHumanReviewScenarios = [
     validationTreeHumanReviewAskOpenApproveScenario,
     validationTreeHumanReviewAlwaysApproveScenario,
     validationTreeHumanReviewFeedbackRepairApproveScenario,
+    validationTreeHumanReviewReplyApproveScenario,
     validationTreeHumanReviewNoAnswerRetryScenario,
     validationTreeHumanReviewNoAnswerStopScenario,
 ];

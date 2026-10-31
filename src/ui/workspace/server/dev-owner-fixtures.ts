@@ -150,15 +150,18 @@ export function devOwnerSessionPage(page = 0, pageSize = 30, archived = false) {
 
 export function devOwnerSidebar() {
     return {
-        projects: [{
-            ...DEV_OWNER_PROJECT,
-            sessions: devOwnerSessionPage(0, 5).sessions,
-            hasMoreSessions: devOwnerSessionPage(0, 5).hasNext,
-        }, {
-            ...DEV_OWNER_SECOND_PROJECT,
-            sessions: [],
-            hasMoreSessions: false,
-        }],
+        projects: [
+            {
+                ...DEV_OWNER_PROJECT,
+                sessions: devOwnerSessionPage(0, 5).sessions,
+                hasMoreSessions: devOwnerSessionPage(0, 5).hasNext,
+            },
+            {
+                ...DEV_OWNER_SECOND_PROJECT,
+                sessions: [],
+                hasMoreSessions: false,
+            },
+        ],
     };
 }
 
@@ -169,8 +172,7 @@ type WorkflowShowcaseDetails = {
     summary?: string;
     title?: string;
     checklistMarkdown?: string;
-    deviationsFromPlan?: string;
-    deferredWork?: string;
+    outOfScope?: string;
     futurePlanningNotes?: string;
     advisories?: Array<{ title: string; detail: string }>;
 };
@@ -198,55 +200,49 @@ const WORKFLOW_SHOWCASE_CASES: WorkflowShowcaseCase[] = [
     {
         toolName: "user_interview",
         agentName: "Ideator",
-        output:
-            "### Decisions\n\n- Prefer `infrastructure/terraform` for clarity.\n- Keep existing state and environments.\n- Update CI references in the same change.\n\n**Open questions:** None.",
+        output: "### Decisions\n\n- Prefer `infrastructure/terraform` for clarity.\n- Keep existing state and environments.\n- Update CI references in the same change.\n\n**Open questions:** None.",
     },
     {
         toolName: "artifact_written",
         agentName: "Ideator",
-        output:
-            "**Terraform folder naming**\n\nSaved the agreed naming rules and migration requirements in `docs/prd/terraform-layout.md`.\n\nExisting deployments must continue to use the same state backend.",
+        output: "**Terraform folder naming**\n\nSaved the agreed naming rules and migration requirements in `docs/prd/terraform-layout.md`.\n\nExisting deployments must continue to use the same state backend.",
     },
     {
         toolName: "slicer_finalize_decomposition",
         agentName: "Architect",
-        output:
-            "### Delivery sequence\n\n1. Rename the directory and update local scripts.\n2. Update CI paths and contributor documentation.\n3. Verify every environment before publication.\n\nNo parallel work is required for this change.",
+        output: "### Delivery sequence\n\n1. Rename the directory and update local scripts.\n2. Update CI paths and contributor documentation.\n3. Verify every environment before publication.\n\nNo parallel work is required for this change.",
     },
     {
         toolName: "slicer_finalize",
         agentName: "Architect",
-        output:
-            "**Sequence ready.**\n\nThe implementation and verification steps are ordered. Each step preserves the existing Terraform state and deployment behavior.",
+        output: "**Sequence ready.**\n\nThe implementation and verification steps are ordered. Each step preserves the existing Terraform state and deployment behavior.",
     },
     {
         toolName: "plan_written",
         agentName: "Planner",
-        output:
-            "### Standardize the Terraform folder\n\n- Rename the directory.\n- Update relative paths in scripts and CI.\n- Refresh setup documentation.\n\n**Acceptance:** `terraform validate` passes and no references to the old path remain.",
+        output: "### Standardize the Terraform folder\n\n- Rename the directory.\n- Update relative paths in scripts and CI.\n- Refresh setup documentation.\n\n**Acceptance:** `terraform validate` passes and no references to the old path remain.",
     },
     {
         toolName: "pair_checkpoint",
         agentName: "Engineer",
-        output:
-            "**Pair checkpoint 1.**\n\nThe folder rename and script updates are ready.\n\nNext increment: Update CI references and documentation.\n\nReply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
+        output: "**Pair checkpoint 1.**\n\nThe folder rename and script updates are ready.\n\nNext increment: Update CI references and documentation.\n\nReply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
     },
     {
         toolName: "task_completed",
         agentName: "Engineer",
-        output:
-            "**Task completed.**\n\n- Renamed the Terraform directory.\n- Updated scripts, CI, and documentation.\n- Confirmed the state backend is unchanged.\n\nValidation: `terraform fmt -check` and `terraform validate` passed.",
+        output: "**Task completed.**\n\n- Renamed the Terraform directory.\n- Updated scripts, CI, and documentation.\n- Confirmed the state backend is unchanged.\n\nValidation: `terraform fmt -check` and `terraform validate` passed.",
     },
     {
         toolName: "review_complete",
         agentName: "Reviewer",
-        output:
-            "**Review passed.**\n\nNo blocking findings. The directory move preserves module references, environment configuration, and the existing state backend.",
+        output: "**Review passed.**\n\nNo blocking findings. The directory move preserves module references, environment configuration, and the existing state backend.",
         details: {
-            advisories: [{
-                title: "Contributor documentation",
-                detail: "The setup guide now uses the new folder consistently.",
-            }],
+            advisories: [
+                {
+                    title: "Contributor documentation",
+                    detail: "The setup guide now uses the new folder consistently.",
+                },
+            ],
         },
     },
     {
@@ -273,9 +269,8 @@ const WORKFLOW_SHOWCASE_CASES: WorkflowShowcaseCase[] = [
         output: "Delivery evidence recorded.",
         details: {
             title: "Terraform folder naming",
-            summary: "Standardized the directory and verified scripts, CI, documentation, and both environments.",
-            deviationsFromPlan: "None.",
-            deferredWork: "None.",
+            summary: "Infrastructure scripts and environments use the same Terraform directory name.",
+            outOfScope: "This work does not include infrastructure resource changes.",
             futurePlanningNotes: "Use the same naming convention for future infrastructure tooling.",
         },
     },
@@ -307,7 +302,7 @@ function devOwnerWorkflowEvents() {
     });
 }
 
-function devOwnerShowcaseEvents(session: typeof DEV_OWNER_SESSIONS[number]) {
+function devOwnerShowcaseEvents(session: (typeof DEV_OWNER_SESSIONS)[number]) {
     if (session.runwieldSessionId === "fix-plan-evidence") {
         return [
             {
@@ -489,8 +484,7 @@ function devOwnerShowcaseEvents(session: typeof DEV_OWNER_SESSIONS[number]) {
             type: "assistant_text_delta",
             messageId: "showcase-assistant-after-live",
             agentName: "Engineer",
-            delta:
-                "The live blocks above stay visible. Completed technical activity below can compact into an Activity block.",
+            delta: "The live blocks above stay visible. Completed technical activity below can compact into an Activity block.",
             timestamp: "2026-08-29T15:00:21.000Z",
         },
         {
@@ -609,8 +603,7 @@ function devOwnerShowcaseEvents(session: typeof DEV_OWNER_SESSIONS[number]) {
         {
             type: "user_message",
             messageId: "showcase-user-workflow",
-            text:
-                "Use infrastructure/terraform. Show the triage, Plan, review, completion report, and QA checklist together.",
+            text: "Use infrastructure/terraform. Show the triage, Plan, review, completion report, and QA checklist together.",
             timestamp: "2026-08-29T15:00:55.000Z",
         },
         ...devOwnerWorkflowEvents(),
@@ -618,8 +611,7 @@ function devOwnerShowcaseEvents(session: typeof DEV_OWNER_SESSIONS[number]) {
             type: "tool_end",
             toolCallId: "showcase-workflow-failed",
             toolName: "review_complete",
-            output:
-                "**Review needs another pass.**\n\nThe production CI job still refers to `infra/terraform`. Update that path and rerun validation before publishing.",
+            output: "**Review needs another pass.**\n\nThe production CI job still refers to `infra/terraform`. Update that path and rerun validation before publishing.",
             isError: true,
             timestamp: "2026-08-29T15:02:00.000Z",
         },
@@ -640,8 +632,7 @@ function devOwnerShowcaseEvents(session: typeof DEV_OWNER_SESSIONS[number]) {
             type: "assistant_text_delta",
             messageId: "showcase-assistant-footer",
             agentName: "Engineer",
-            delta:
-                "This fixture includes every special workflow block, collapsed Activity, individual tool states, thinking, user messages, review prompts, and system notices. The reports above are visual examples, not live operations.",
+            delta: "This fixture includes every special workflow block, collapsed Activity, individual tool states, thinking, user messages, review prompts, and system notices. The reports above are visual examples, not live operations.",
             timestamp: "2026-08-29T15:02:06.000Z",
         },
         {
@@ -739,16 +730,15 @@ export function devOwnerPlanProgress(): OwnerPlanProgress {
                 { ordinal: 0, kind: "planning", label: "Planning", sealed: true, current: false },
                 { ordinal: 1, kind: "execution", label: "Execution and validation", sealed: false, current: true },
             ],
-            progressUrl:
-                `/projects/dev-project/plans/${DEV_OWNER_WORKFLOW_PLAN.planId}/progress?session=choose-terraform-folder-name`,
+            progressUrl: `/projects/dev-project/plans/${DEV_OWNER_WORKFLOW_PLAN.planId}/progress?session=choose-terraform-folder-name`,
         },
         degraded: null,
     };
 }
 
 export function devOwnerTimeline(runwieldSessionId: string) {
-    const session = DEV_OWNER_SESSIONS.find((item) => item.runwieldSessionId === runwieldSessionId) ||
-        DEV_OWNER_SESSIONS[0];
+    const session =
+        DEV_OWNER_SESSIONS.find((item) => item.runwieldSessionId === runwieldSessionId) || DEV_OWNER_SESSIONS[0];
     // The browser merges committed history by eventId, just like the real Session API.
     const events = devOwnerShowcaseEvents(session).map((event, index) => ({
         ...event,
@@ -760,10 +750,10 @@ export function devOwnerTimeline(runwieldSessionId: string) {
             events.flatMap((event) =>
                 event.type === "assistant_text_delta" && "messageId" in event && !("workflowMessage" in event)
                     ? [event.messageId]
-                    : []
+                    : [],
             ),
         ).size,
-        toolCalls: new Set(events.flatMap((event) => "toolCallId" in event ? [event.toolCallId] : [])).size,
+        toolCalls: new Set(events.flatMap((event) => ("toolCallId" in event ? [event.toolCallId] : []))).size,
         compactionCount: 1,
     };
     return {
@@ -773,44 +763,46 @@ export function devOwnerTimeline(runwieldSessionId: string) {
         generation: session.generation,
         complete: true,
         events,
-        snapshot: session.runwieldSessionId === "agy-cli-gemini-flash"
-            ? {
-                sessionStats: { userMessages: 3, assistantMessages: 5, toolCalls: 4, compactionCount: 0 },
-                name: session.displayName,
-                activeAgent: "engineer",
-                activeModel: { provider: "agy-cli", model: "gemini-3.8-flash" },
-                provider: "agy-cli",
-                model: "gemini-3.8-flash",
-                thinkingLevel: "high",
-                executionBackend: {
-                    backend: "agy-cli",
-                    provider: "agy-cli",
-                    model: "gemini-3.8-flash",
-                    thinkingLevel: "high",
-                    effort: "high",
-                    backendModel: "gemini-3.8-flash-high",
-                },
-            }
-            : {
-                sessionStats,
-                ...(session.runwieldSessionId === "choose-terraform-folder-name"
-                    ? { activeExecutionWorkflow: DEV_OWNER_WORKFLOW_PLAN }
-                    : {}),
-                contextUsage: { tokens: 24000, contextWindow: 200000, percent: 12 },
-                systemContextTokens: 8000,
-                name: session.displayName,
-                activeAgent: "engineer",
-                activeModel: { provider: "fixture", model: "dev-model" },
-                thinkingLevel: "medium",
-            },
+        snapshot:
+            session.runwieldSessionId === "agy-cli-gemini-flash"
+                ? {
+                      sessionStats: { userMessages: 3, assistantMessages: 5, toolCalls: 4, compactionCount: 0 },
+                      name: session.displayName,
+                      activeAgent: "engineer",
+                      activeModel: { provider: "agy-cli", model: "gemini-3.8-flash" },
+                      provider: "agy-cli",
+                      model: "gemini-3.8-flash",
+                      thinkingLevel: "high",
+                      executionBackend: {
+                          backend: "agy-cli",
+                          provider: "agy-cli",
+                          model: "gemini-3.8-flash",
+                          thinkingLevel: "high",
+                          effort: "high",
+                          backendModel: "gemini-3.8-flash-high",
+                      },
+                  }
+                : {
+                      sessionStats,
+                      ...(session.runwieldSessionId === "choose-terraform-folder-name"
+                          ? { activeExecutionWorkflow: DEV_OWNER_WORKFLOW_PLAN }
+                          : {}),
+                      contextUsage: { tokens: 24000, contextWindow: 200000, percent: 12 },
+                      systemContextTokens: 8000,
+                      name: session.displayName,
+                      activeAgent: "engineer",
+                      activeModel: { provider: "fixture", model: "dev-model" },
+                      thinkingLevel: "medium",
+                  },
     };
 }
 
 export function devOwnerSessionOptions(projectId = DEV_OWNER_PROJECT.projectId) {
     return {
-        defaults: projectId === DEV_OWNER_SECOND_PROJECT.projectId
-            ? { agentName: "planner", provider: "fixture", model: "dev-model", thinkingLevel: "high" }
-            : { agentName: "router", provider: "fixture", model: "dev-model", thinkingLevel: "medium" },
+        defaults:
+            projectId === DEV_OWNER_SECOND_PROJECT.projectId
+                ? { agentName: "planner", provider: "fixture", model: "dev-model", thinkingLevel: "high" }
+                : { agentName: "router", provider: "fixture", model: "dev-model", thinkingLevel: "medium" },
         agents: [
             {
                 name: "router",

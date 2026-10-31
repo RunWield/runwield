@@ -109,10 +109,7 @@ test("PlanBoard SSR renders status column board cards", async () => {
         assertStringIncludes(html, 'data-plan-board="true"');
         assertStringIncludes(html, 'data-draggable-plan-card="true"');
         assertStringIncludes(html, 'draggable="true"');
-        assertStringIncludes(
-            html,
-            'data-allowed-target-statuses="feedback approved ready_for_work"',
-        );
+        assertStringIncludes(html, 'data-allowed-target-statuses="approved ready_for_work"');
         assertStringIncludes(html, 'data-action-target-status="draft"');
         assertStringIncludes(html, "Drag this Plan Card to an allowed status column");
         assertEquals(html.includes("Move to Feedback"), false);
@@ -170,10 +167,7 @@ test("Workspace API and detail route return readable editable Plan body metadata
                     complexity: "HIGH",
                     summary: "Detail summary",
                     affectedPaths: ["src/ui/workspace/components/PlanDetail.jsx"],
-                    tickets: [
-                        { url: "https://example.com/tickets/DETAIL-123" },
-                        { url: "javascript:alert(1)" },
-                    ],
+                    tickets: [{ url: "https://example.com/tickets/DETAIL-123" }, { url: "javascript:alert(1)" }],
                     dependencies: ["sibling-plan"],
                     implementedAt: "2026-06-30T10:00:00.000Z",
                     executionBaselineTree: "tree-detail",

@@ -1,11 +1,6 @@
 import { makeTempDirectory } from "../../testing/temp-file.ts";
 import { testWithFsPermissions } from "../../testing/file-test.ts";
-import {
-    mkdir as fsMkdir,
-    readFile as fsReadFile,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
@@ -63,6 +58,26 @@ test("validation lifecycle phase transitions are ordered", () => {
         () => buildPlanEventUpdates("semantic_review_passed", "verified"),
         Error,
         'semantic_review_passed cannot apply to status "verified"',
+    );
+});
+
+test("Plan review feedback returns approved work to draft", () => {
+    assertEquals(buildPlanEventUpdates("review_feedback", "approved").status, "draft");
+});
+
+test("reopening ready work returns it to draft", () => {
+    assertEquals(buildPlanEventUpdates("review_reopened", "ready_for_work").status, "draft");
+});
+
+test("feedback is not a manual board target", () => {
+    assertThrows(
+        () =>
+            buildPlanEventUpdates("manual_status_change", "approved", {
+                // @ts-expect-error Retired status supplied by an old client.
+                manualTargetStatus: "feedback",
+            }),
+        Error,
+        'unknown manual target status "feedback"',
     );
 });
 
@@ -176,17 +191,10 @@ test("buildPlanEventUpdates keeps implemented status when validation fails", () 
 });
 
 test("buildPlanEventUpdates tracks implementation worktree statuses", () => {
+    assertEquals(buildPlanEventUpdates("implementation_finished", "in_progress").worktreeStatus, "completed");
+    assertEquals(buildPlanEventUpdates("execution_failed", "in_progress").worktreeStatus, "execution_failed");
     assertEquals(
-        buildPlanEventUpdates("implementation_finished", "in_progress").worktreeStatus,
-        "completed",
-    );
-    assertEquals(
-        buildPlanEventUpdates("execution_failed", "in_progress").worktreeStatus,
-        "execution_failed",
-    );
-    assertEquals(
-        buildPlanEventUpdates("validation_passed", "reviewed", { cleanupMergedWorktrees: false })
-            .worktreeStatus,
+        buildPlanEventUpdates("validation_passed", "reviewed", { cleanupMergedWorktrees: false }).worktreeStatus,
         null,
     );
     const passed = buildPlanEventUpdates("validation_passed", "reviewed");
@@ -517,11 +525,7 @@ test("hold blocks terminal statuses and resume requires held-from status", () =>
         Error,
         'plan_held cannot apply to status "closed_without_verification"',
     );
-    assertThrows(
-        () => buildPlanEventUpdates("hold_resumed", "on_hold"),
-        Error,
-        "hold_resumed requires heldFromStatus",
-    );
+    assertThrows(() => buildPlanEventUpdates("hold_resumed", "on_hold"), Error, "hold_resumed requires heldFromStatus");
     assertThrows(
         () => buildPlanEventUpdates("hold_resumed", "on_hold", { heldFromStatus: "verified" }),
         Error,
@@ -530,15 +534,9 @@ test("hold blocks terminal statuses and resume requires held-from status", () =>
 });
 
 test("manual board helper exports expose lifecycle-owned rules", () => {
-    assertEquals(getAllowedManualPlanStatuses("approved"), [
-        "draft",
-        "feedback",
-        "approved",
-        "ready_for_work",
-    ]);
+    assertEquals(getAllowedManualPlanStatuses("approved"), ["draft", "approved", "ready_for_work"]);
     assertEquals(getAllowedManualPlanStatuses("approved", { classification: "PROJECT" }), [
         "draft",
-        "feedback",
         "approved",
         "ready_for_work",
         "ready_for_decomposition",
@@ -653,10 +651,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
         assertEquals(parent?.attrs.status, "verified");
         assertEquals(parent?.attrs.validatedAt, "2026-01-02T03:04:05.000Z");
         assertEquals(parent?.attrs.epicCompletionMode, "done_enough");
-        assertEquals(
-            parent?.attrs.epicDoneEnoughSummary,
-            "All 2 child plans are completed after epic/02-last.",
-        );
+        assertEquals(parent?.attrs.epicDoneEnoughSummary, "All 2 child plans are completed after epic/02-last.");
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -1068,7 +1063,7 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
             details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
         });
         await updatePlanFrontMatterForTest(projectRoot, "child-b", {
-            status: "feedback",
+            status: "draft",
             classification: "FEATURE",
             parentPlan: "epic",
         });
@@ -1313,15 +1308,17 @@ test("passing CI retains durable semantic review state across a fresh Plan load"
         reviewState: {
             semanticRound: 2,
             reviewLedger: {
-                items: [{
-                    id: "R1-1",
-                    openedInRound: 1,
-                    resolvedInRound: null,
-                    title: "Filter type",
-                    requirement: "Reject non-string queries",
-                    evidence: "The prior run accepted a number",
-                    status: "fix_claimed",
-                }],
+                items: [
+                    {
+                        id: "R1-1",
+                        openedInRound: 1,
+                        resolvedInRound: null,
+                        title: "Filter type",
+                        requirement: "Reject non-string queries",
+                        evidence: "The prior run accepted a number",
+                        status: "fix_claimed",
+                    },
+                ],
                 sequence: 1,
             },
             repairBaselineTree: "baseline-tree",

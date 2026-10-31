@@ -1,5 +1,10 @@
 import { assertEquals } from "../src/testing/assertions.ts";
-import { readFile as fsReadFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile as fsReadFile, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
+import { captureScriptProcess } from "./script-process.ts";
+import { defineGitFixture } from "../src/shared/git-test-fixture.ts";
 import { test } from "node:test";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import {
@@ -42,15 +47,17 @@ test("a pair whose files both match the baseline reports no drift", () => {
 test("an Agent Definition edited without its skill names the skill that must catch up", () => {
     const drift = findSkillSyncDrift([derived("aaa", "bbb")], [derived("changed", "bbb")]);
 
-    assertEquals(drift, [{
-        source: "src/agent-definitions/ideator.md",
-        skill: "skills/ideator/SKILL.md",
-        sourceChanged: true,
-        skillChanged: false,
-        supportFilesAdded: [],
-        supportFilesRemoved: [],
-        supportFilesChanged: [],
-    }]);
+    assertEquals(drift, [
+        {
+            source: "src/agent-definitions/ideator.md",
+            skill: "skills/ideator/SKILL.md",
+            sourceChanged: true,
+            skillChanged: false,
+            supportFilesAdded: [],
+            supportFilesRemoved: [],
+            supportFilesChanged: [],
+        },
+    ]);
     assertEquals(
         formatDrift(drift).includes("src/agent-definitions/ideator.md changed but skills/ideator/SKILL.md did not"),
         true,
@@ -102,10 +109,7 @@ test("a support file on disk that nobody registered is reported", () => {
     );
 
     assertEquals(drift[0].supportFilesAdded, ["skills/review/scratch.md"]);
-    assertEquals(
-        formatDrift(drift).includes("skills/review/scratch.md ships with skills/review/SKILL.md"),
-        true,
-    );
+    assertEquals(formatDrift(drift).includes("skills/review/scratch.md ships with skills/review/SKILL.md"), true);
 });
 
 test("a support file the baseline records but the skill no longer ships is reported", () => {
@@ -168,23 +172,24 @@ test("a skill nobody meant to publish is reported, and an internal one is not", 
         { path: ".agents/skills/ours-only/SKILL.md", internal: true },
     ];
 
-    assertEquals(findUnpublishedSkills(discovered, ["skills/ideator/SKILL.md"]), [
-        ".agents/skills/borrowed/SKILL.md",
-    ]);
+    assertEquals(findUnpublishedSkills(discovered, ["skills/ideator/SKILL.md"]), [".agents/skills/borrowed/SKILL.md"]);
 });
 
-test("installing from this repository offers exactly the skills the baseline publishes", async () => {
+test("installing from RunWield/skills offers exactly the skills the Core baseline publishes", async () => {
     const baseline: SkillSyncBaseline = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
-    const discovered = await discoverSkillsInContainers(REPO_ROOT);
+    const discovered = await discoverSkillsInContainers(`${REPO_ROOT}/skills`);
 
     assertEquals(
-        discovered.filter((skill) => !skill.internal).map((skill) => skill.path).sort(),
-        baseline.skills.map((entry) => entry.skill).sort(),
+        discovered
+            .filter((skill) => !skill.internal)
+            .map((skill) => skill.path)
+            .sort(),
+        baseline.skills.map((entry) => entry.skill.slice("skills/".length)).sort(),
     );
 });
 
 test("ignored local skill containers stay out of an install", async () => {
-    const discovered = await discoverSkillsInContainers(REPO_ROOT);
+    const discovered = await discoverSkillsInContainers(`${REPO_ROOT}/skills`);
     const localSkills = discovered.filter((skill) => skill.path.startsWith(".agents/skills/"));
 
     assertEquals(localSkills, []);
@@ -199,4 +204,86 @@ test("every file the committed skills ship carries none of it", async () => {
             assertEquals(findProjectSpecificLeaks(path, content), []);
         }
     }
+});
+
+const skillsRepositoryFixture = defineGitFixture(async () => {});
+
+/** Exercise the actual CLI against disposable files, including its sibling skills checkout. */
+async function withSkillSyncFixture(action: (root: string) => Promise<void>): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), "skill-sync-"));
+    try {
+        await mkdir(join(root, "scripts"));
+        await cp(join(REPO_ROOT, "scripts/check-skill-sync.ts"), join(root, "scripts/check-skill-sync.ts"));
+        await cp(join(REPO_ROOT, "scripts/skill-sync-baseline.json"), join(root, "scripts/skill-sync-baseline.json"));
+        await rename(await skillsRepositoryFixture.checkout(), join(root, "skills"));
+        await cp(join(REPO_ROOT, "skills"), join(root, "skills"), {
+            recursive: true,
+            filter: (source) => !source.split(/[\\/]/).includes(".git"),
+        });
+        await mkdir(join(root, "src/agent-definitions"), { recursive: true });
+        for (const agent of ["guide", "ideator"]) {
+            await cp(
+                join(REPO_ROOT, `src/agent-definitions/${agent}.md`),
+                join(root, `src/agent-definitions/${agent}.md`),
+            );
+        }
+        await action(root);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+}
+
+async function runSkillSync(root: string, update = false) {
+    const result = await captureScriptProcess(process.execPath, {
+        args: [join(root, "scripts/check-skill-sync.ts"), ...(update ? ["--update"] : [])],
+        cwd: root,
+    });
+    return { code: result.code, output: new TextDecoder().decode(result.stderr) };
+}
+
+test("the sync CLI fails on source drift and accepts a reviewed baseline without fetching or publishing", async () => {
+    await withSkillSyncFixture(async (root) => {
+        assertEquals((await runSkillSync(root)).code, 0);
+        const path = join(root, "src/agent-definitions/guide.md");
+        await writeFile(path, `${await fsReadFile(path, "utf8")}\nA newly reviewed instruction.\n`);
+        const result = await runSkillSync(root);
+        assertEquals(result.code, 1);
+        assertEquals(result.output.includes("Carry the change into the skill"), true);
+        assertEquals((await runSkillSync(root, true)).code, 0);
+        assertEquals((await runSkillSync(root)).code, 0);
+    });
+});
+
+test("update refuses leaked wording and leaves the baseline intact", async () => {
+    await withSkillSyncFixture(async (root) => {
+        const baselinePath = join(root, "scripts/skill-sync-baseline.json");
+        const before = await fsReadFile(baselinePath, "utf8");
+        await writeFile(join(root, "skills/review/extra.md"), "Call task_completed now.\n");
+        const result = await runSkillSync(root, true);
+        assertEquals(result.code, 1);
+        assertEquals(result.output.includes("task_completed"), true);
+        assertEquals(await fsReadFile(baselinePath, "utf8"), before);
+    });
+});
+
+test("root skills and changed installation metadata cannot bypass the published inventory", async () => {
+    await withSkillSyncFixture(async (root) => {
+        await mkdir(join(root, "skills/accidental"));
+        await writeFile(join(root, "skills/accidental/SKILL.md"), "---\nname: accidental\ndescription: test\n---\n");
+        const result = await runSkillSync(root, true);
+        assertEquals(result.code, 1);
+        assertEquals(result.output.includes("accidental/SKILL.md"), true);
+        await rm(join(root, "skills/accidental"), { recursive: true });
+        await writeFile(join(root, "skills/.claude-plugin/plugin.json"), JSON.stringify({ skills: ["./missing"] }));
+        assertEquals((await runSkillSync(root, true)).code, 1);
+    });
+});
+
+test("an uninitialized skills checkout explains how to restore it", async () => {
+    await withSkillSyncFixture(async (root) => {
+        await rm(join(root, "skills"), { recursive: true });
+        const result = await runSkillSync(root);
+        assertEquals(result.code, 1);
+        assertEquals(result.output.includes("git submodule update --init skills"), true);
+    });
 });

@@ -11,21 +11,16 @@ provenance:
         - "008736c6-9dde-4d0c-a6b2-ea86adc65398"
 ---
 
-# Allow WLD-Compatible Extension Prompts
+# Pi package slash prompt templates
 
 ## Summary
 
-Enabled installed Pi packages to contribute passive slash prompt templates without requiring the executable-extension
-compatibility marker. Package prompts are loaded through the existing resource loader, retain source metadata, and are
-filtered against built-in slash command names. Skills remain ignored, executable extensions remain compatibility-gated,
-and install output, warnings, tests, and settings documentation were updated.
+Installed Pi packages can contribute passive slash prompt templates without the executable-extension compatibility marker. Templates use the existing resource loader and retain source metadata. Executable extensions remain compatibility-gated.
 
-## Deferred Work
+## Out of Scope
 
-Trusted package prompts cannot override built-in commands. A manifest-level explicit override policy may be considered
-later.
+This work does not include overrides of built-in slash commands.
 
 ## Future Planning Notes
 
-If prompt overrides are introduced, define trust, precedence, collision warnings, and manifest opt-in semantics before
-implementation.
+Any prompt override policy must define trust, precedence, collision warnings, and explicit manifest opt-in.

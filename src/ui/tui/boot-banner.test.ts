@@ -11,7 +11,7 @@ import { getSettingsManager } from "../../shared/settings.js";
 import { createUiApi } from "./api.js";
 import { SpinnerBlock } from "./blocks.js";
 import { renderBootBanner } from "./boot-banner.ts";
-import { normalizeScreenText, VirtualTerminal } from "./testing/virtual-terminal.js";
+import { normalizeScreenText, VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 interface BannerHarness {
     messageList: Container;

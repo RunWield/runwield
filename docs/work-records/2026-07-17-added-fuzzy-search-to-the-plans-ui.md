@@ -11,16 +11,8 @@ provenance:
         - "15e9ec2e-3341-460b-90cf-16a1f161c97f"
 ---
 
-# Added fuzzy search to the Plans UI
+# Fuzzy search in the Plans UI
 
 ## Summary
 
-Added client-side Fuse.js search across plan titles, names, and summaries on Active, Closed, and On Hold boards. Search
-state is stored in the q URL parameter and preserved across board tabs and plan details. Filtering updates visible
-cards, column counts, and empty states while retaining existing SSR and drag-and-drop behavior. Automated checks and
-browser verification passed.
-
-## Future Planning Notes
-
-If plan volume grows substantially, reassess whether client-side search should be replaced with server-side indexing or
-a search API.
+Workspace provides client-side Fuse.js search across Plan titles, names, and summaries on Active, Closed, and On Hold boards. Search state persists in the URL across board tabs and Plan details. Filtering updates cards, column counts, and empty states while preserving server rendering and drag-and-drop behavior.

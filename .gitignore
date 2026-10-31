@@ -3,6 +3,7 @@
 bin/
 dist/
 .deno_compile*
+.*.bun-build
 node_modules/
 docs-site/src/content/docs/
 docs-site/public/docs-assets/
@@ -26,6 +27,7 @@ skills-lock.json
 .impeccable/
 
 debug.log
+.env
 .runwield-workspace-search-refresh/
 
 # Local throwaway prototypes. Executable prototype files must stay under

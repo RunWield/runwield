@@ -4,7 +4,7 @@ import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-t
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 
 class CompatibleVirtualTerminal extends VirtualTerminal {

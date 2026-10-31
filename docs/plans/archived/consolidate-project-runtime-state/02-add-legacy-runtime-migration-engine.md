@@ -201,7 +201,7 @@ this child must pass current CI.
 ## Verification Plan
 
 - Automated:
-  `deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/worktree-registry.test.js src/shared/workflow/publication-attempt.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-registry-restore.test.js`.
+  `deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/worktree-registry.test.js src/shared/workflow/publication-attempt.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-registry-restore.test.ts`.
 - Automated: `deno task seams:check`.
 - Automated: `deno task ci` must pass before child 03 starts.
 - Adoption proof: a real primary repository plus linked worktree starts with legacy controller, registry, transition,

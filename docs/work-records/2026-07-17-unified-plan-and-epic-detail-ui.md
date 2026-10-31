@@ -11,10 +11,8 @@ provenance:
         - "af8eb5b4-80ee-4cb6-8a04-22bd152c1f0a"
 ---
 
-# Unified Plan and Epic Detail UI
+# Shared Plan and Epic detail layout
 
 ## Summary
 
-Unified Workspace Plan and Epic detail pages around the shared PlanDetail layout. Epic details retain child progress,
-health, dependency, and status-board sections while preserving read-only body behavior and Epic-aware lifecycle actions.
-Updated regression coverage and verified the result through the Workspace test suite and full CI.
+Workspace Plan and Epic details share a common layout. Epic details retain child progress, health, dependencies, status boards, read-only body presentation, and Epic-aware lifecycle actions.

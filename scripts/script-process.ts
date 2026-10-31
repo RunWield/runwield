@@ -66,7 +66,9 @@ export function captureScriptProcess(
         child.stdout?.on("data", (value: Buffer) => stdout.push(value));
         child.stderr?.on("data", (value: Buffer) => stderr.push(value));
         child.on("error", (error) => {
-            failure = error;
+            // An owned abort is a failed process outcome, not a spawn failure.
+            // Settle on close so callers retain output written before cancellation.
+            if (!options.signal?.aborted || error.name !== "AbortError") failure = error;
         });
         child.on("close", (code, signal) => {
             clearTimeout(killTimer);
@@ -75,7 +77,7 @@ export function captureScriptProcess(
             else {
                 resolve({
                     code: exitCode(code, signal),
-                    success: code === 0,
+                    success: code === 0 && !options.signal?.aborted,
                     stdout: Buffer.concat(stdout),
                     stderr: Buffer.concat(stderr),
                 });

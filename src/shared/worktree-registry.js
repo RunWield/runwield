@@ -779,6 +779,39 @@ export async function refreshPlanningWorktreeBase(projectRoot, id, expectedBaseC
 }
 
 /**
+ * Follow a published rename after refreshing an unstarted planning checkout.
+ * @param {string} projectRoot
+ * @param {string} id
+ * @param {string} expectedName
+ * @param {string} nextName
+ */
+export async function renamePlanningWorktreePlan(projectRoot, id, expectedName, nextName) {
+    return await withWorktreeRegistryLock(projectRoot, async () => {
+        const entries = await readRegistry(projectRoot);
+        const entry = entries.find((candidate) => candidate.id === id);
+        if (!entry || entry.planName !== expectedName || entry.status !== "planning" || entry.publication) {
+            throw new Error(
+                "The planning attempt changed while following the published Plan rename. Retry loading it.",
+            );
+        }
+        if (
+            entries.some(
+                (candidate) =>
+                    candidate.id !== id &&
+                    candidate.planName === nextName &&
+                    NONTERMINAL_STATUSES.has(candidate.status),
+            )
+        ) {
+            throw new Error(`Another attempt already owns ${nextName}.`);
+        }
+        entry.planName = nextName;
+        entry.updatedAt = new Date().toISOString();
+        await writeRegistry(projectRoot, entries);
+        return entry;
+    });
+}
+
+/**
  * Rename a restored document without changing its stable Plan or attempt identity.
  * Ordinary registry updates cannot rename an attempt. Only the archive transaction,
  * holding the document/catalog locks, may move this address. Publication receipts

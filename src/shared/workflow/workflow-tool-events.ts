@@ -37,6 +37,7 @@ export interface PlanWrittenEventPayload {
         | "approved_execute"
         | "approved_decompose"
         | "saved"
+        | "conversation"
         | "feedback"
         | "canceled"
         | "repair_required"
@@ -259,9 +260,15 @@ function matchesOptions(event: WorkflowToolEvent, options: ClaimWorkflowToolEven
 }
 
 function isDurableAccepted(event: DurableEvent | null | undefined): event is DurableAcceptedEvent {
-    return event?.version === 1 && event.state === "accepted" && typeof event.eventId === "string" &&
-        typeof event.toolCallId === "string" && typeof event.kind === "string" && event.owner === "root" &&
-        typeof event.acceptedAtMs === "number";
+    return (
+        event?.version === 1 &&
+        event.state === "accepted" &&
+        typeof event.eventId === "string" &&
+        typeof event.toolCallId === "string" &&
+        typeof event.kind === "string" &&
+        event.owner === "root" &&
+        typeof event.acceptedAtMs === "number"
+    );
 }
 
 function isDurableSettled(event: DurableEvent | null | undefined): event is DurableSettledEvent {
@@ -278,12 +285,14 @@ function readUnsettledDurableEvents(hostedSession: HostedSession): WorkflowToolE
         if (isDurableSettled(entry.data)) settled.add(entry.data.eventId);
     }
     const rootSession = hostedSession.getRootAgentSession();
-    return accepted.filter((event) => !settled.has(event.eventId)).map((event) => ({
-        ...event,
-        owningSession: rootSession,
-        claimed: false,
-        settled: false,
-    }));
+    return accepted
+        .filter((event) => !settled.has(event.eventId))
+        .map((event) => ({
+            ...event,
+            owningSession: rootSession,
+            claimed: false,
+            settled: false,
+        }));
 }
 
 function refreshDurableState(hostedSession: HostedSession): void {
@@ -331,9 +340,8 @@ export function publishWorkflowToolEvent<K extends WorkflowToolEventKind>(
 ): WorkflowToolEvent<K> {
     const { hostedSession, toolCallId, kind, payload } = options;
     const source = toolEventSources.getStore();
-    const owningSession = source?.hostedSession === hostedSession
-        ? source.owningSession
-        : hostedSession.getActiveSteeringTargetSession();
+    const owningSession =
+        source?.hostedSession === hostedSession ? source.owningSession : hostedSession.getActiveSteeringTargetSession();
     const rootSession = hostedSession.getRootAgentSession();
     const owner: WorkflowToolEventOwnerKind = isRootOwnedSession(owningSession, rootSession) ? "root" : "isolated";
     const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
@@ -408,7 +416,8 @@ export function claimWorkflowToolEvent(
             const activeAttempt = workflowAttemptKey(activeWorkflow);
             if (candidateAttempt && activeAttempt && candidateAttempt !== activeAttempt) return false;
         } else if (!activeWorkflow && workflowPlanName) {
-            const candidatePlanName = candidate.workflow?.planName ||
+            const candidatePlanName =
+                candidate.workflow?.planName ||
                 (candidate.kind === "plan_written"
                     ? (candidate.payload as PlanWrittenEventPayload).planName
                     : undefined);
@@ -475,5 +484,7 @@ export function settleWorkflowToolEvent(
 
 export function listPendingWorkflowToolEvents(hostedSession: HostedSession): WorkflowToolEvent[] {
     refreshDurableState(hostedSession);
-    return stateFor(hostedSession).events.filter((event) => !event.settled).map((event) => ({ ...event }));
+    return stateFor(hostedSession)
+        .events.filter((event) => !event.settled)
+        .map((event) => ({ ...event }));
 }

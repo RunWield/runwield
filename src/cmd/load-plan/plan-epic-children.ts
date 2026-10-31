@@ -69,10 +69,13 @@ export interface EpicChildPlan {
  * @returns {boolean}
  */
 export function isDecomposedEpicStatus(attrs: PlanFrontMatter): boolean {
-    return attrs.status === "ready_for_decomposition" || attrs.status === "ready_for_work" ||
+    return (
+        attrs.status === "ready_for_decomposition" ||
+        attrs.status === "ready_for_work" ||
         attrs.status === "implemented" ||
         (["reviewed", "validated", "verified", "closed_without_verification"].includes(attrs.status) &&
-            attrs.epicCompletionMode === "done_enough");
+            attrs.epicCompletionMode === "done_enough")
+    );
 }
 
 /**
@@ -82,9 +85,10 @@ export function isDecomposedEpicStatus(attrs: PlanFrontMatter): boolean {
 export function formatChildPlanLabel(child: EpicChildPlan): string {
     const order = child.attrs.order !== undefined ? `${String(child.attrs.order).padStart(2, "0")}. ` : "";
     const summary = child.attrs.summary ? ` — ${child.attrs.summary}` : "";
-    const dependencies = Array.isArray(child.attrs.dependencies) && child.attrs.dependencies.length > 0
-        ? ` — deps: ${child.attrs.dependencies.join(", ")}`
-        : "";
+    const dependencies =
+        Array.isArray(child.attrs.dependencies) && child.attrs.dependencies.length > 0
+            ? ` — deps: ${child.attrs.dependencies.join(", ")}`
+            : "";
     return `${order}${child.name} [${child.attrs.status}]${summary}${dependencies}`;
 }
 
@@ -116,9 +120,12 @@ export function formatNextChildLabel(child: EpicChildPlan): string {
  * @returns {boolean}
  */
 export function isActionableNextChild(child: EpicChildPlan): boolean {
-    return child.attrs.status !== "validated" && child.attrs.status !== "verified" &&
+    return (
+        child.attrs.status !== "validated" &&
+        child.attrs.status !== "verified" &&
         child.attrs.status !== "user_verified" &&
-        child.attrs.status !== "closed_without_verification";
+        child.attrs.status !== "closed_without_verification"
+    );
 }
 
 /**
@@ -158,7 +165,7 @@ export function countEpicChildStatuses(children: EpicChildPlan[]): EpicChildCoun
         else if (status === "in_progress" || isInValidation(status)) counts.active += 1;
         else if (status === "failed") counts.failed += 1;
         else if (status === "on_hold") counts.onHold += 1;
-        else if (["draft", "approved", "ready_for_work", "ready_for_decomposition", "feedback"].includes(status)) {
+        else if (["draft", "approved", "ready_for_work", "ready_for_decomposition"].includes(status)) {
             counts.remaining += 1;
         }
     }
@@ -189,10 +196,7 @@ export function formatEpicProgressSummary(children: EpicChildPlan[]): string {
  */
 export function formatEpicChildFeatureList(children: EpicChildPlan[]): string {
     if (children.length === 0) return "Child Plans:\n  (none)";
-    return [
-        "Child Plans:",
-        ...children.map((child) => `  - ${formatChildPlanLabel(child)}`),
-    ].join("\n");
+    return ["Child Plans:", ...children.map((child) => `  - ${formatChildPlanLabel(child)}`)].join("\n");
 }
 
 /**
@@ -264,8 +268,8 @@ export async function confirmChildFeatureDependencies(
         plan.attrs.parentPlan,
         dependencies,
     );
-    const unmetDependencies = dependencyStates.filter((dependency) =>
-        dependency.state !== "verified" && dependency.state !== "user_verified"
+    const unmetDependencies = dependencyStates.filter(
+        (dependency) => dependency.state !== "verified" && dependency.state !== "user_verified",
     );
     if (unmetDependencies.length === 0) return true;
 

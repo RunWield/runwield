@@ -171,6 +171,32 @@ export function ensureRemoteProject(
     return project;
 }
 
+export function sameRemoteHost(left: RemoteHostIdentity, right: RemoteHostIdentity): boolean {
+    return (
+        left.hostname === right.hostname &&
+        left.user === right.user &&
+        left.port === right.port &&
+        left.hostKeyFingerprint === right.hostKeyFingerprint
+    );
+}
+
+/** Retain a host answer without changing the project's canonical identity. */
+export function recordRemoteHostAnswer(
+    baseDir: string,
+    project: FileSessionProject,
+    host: RemoteHostIdentity,
+    answer: "acceptedHosts" | "refusedHosts",
+): void {
+    const path = projectPath(sessionDirForProject(baseDir, project));
+    const saved = readJson<FileSessionProject>(path);
+    if (!saved.remote) throw new Error("Remote host answer requires a remote project");
+    const hosts = saved.remote[answer] || [];
+    if (hosts.some((prior) => sameRemoteHost(prior, host))) return;
+    saved.remote[answer] = [...hosts, { ...host }];
+    saved.updatedAt = isoNow();
+    writeJsonAtomically(path, saved);
+}
+
 export function sessionDirForProject(baseDir: string, project: FileSessionProject): string {
     return project.remote ? join(baseDir, project.projectId) : sessionDirForRoot(baseDir, project.currentRoot);
 }
@@ -248,7 +274,7 @@ function writeRecoveryDescriptors(manifest: FileSessionManifest): void {
     }
 }
 
-function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
+function readRecoverableManifests(sessionDir: string) {
     const recoverable = new Map<string, FileSessionManifest>();
     try {
         for (const entry of readdirSync(sessionDir, { withFileTypes: true })) {
@@ -267,7 +293,11 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    for (const [runwieldSessionId, candidate] of recoverable) {
+    return recoverable;
+}
+
+function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
+    for (const [runwieldSessionId, candidate] of readRecoverableManifests(sessionDir)) {
         const path = manifestPath(sessionDir, runwieldSessionId);
         if (pathExists(path)) {
             try {
@@ -288,9 +318,9 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
 
 export function listManifests(
     sessionDir: string,
-    recover = true,
+    readOnly = false,
 ): Array<{ path: string; manifest: FileSessionManifest }> {
-    if (recover) restoreManifestsFromRecoveryDescriptors(sessionDir);
+    if (!readOnly) restoreManifestsFromRecoveryDescriptors(sessionDir);
     const manifests: Array<{ path: string; manifest: FileSessionManifest }> = [];
     try {
         for (const entry of readdirSync(bundlesDir(sessionDir), { withFileTypes: true })) {
@@ -309,6 +339,13 @@ export function listManifests(
         }
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    if (readOnly) {
+        for (const [id, manifest] of readRecoverableManifests(sessionDir)) {
+            if (!manifests.some((item) => item.manifest.runwieldSessionId === id)) {
+                manifests.push({ path: manifestPath(sessionDir, id), manifest });
+            }
+        }
     }
     return manifests;
 }

@@ -12,24 +12,12 @@ provenance:
         - "4de05d1a-78a4-4694-a109-d6e9b2d816bc"
 ---
 
-# RunWield-owned web tools surface delivered
+# RunWield-owned web tools
 
 ## Summary
 
-The user attested verification; RunWield Workflow Validation did not establish this result. RunWield now provides
-`web_search`, `web_fetch`, `web_code_search`, and `web_docs_search` as owned tools backed by the required `ketch`
-helper. The work gives Pi and Claude CLI sessions the same web surface, removes Claude native `WebFetch` and `WebSearch`
-authorization, protects the new tool names from overrides, updates prompts and docs away from the deleted `ketch` Skill,
-and adds runtime, installer, bridge, and tool coverage. The user established verification: No feedback; verified
-manually from merged worktree runwield-web-tools-surface-0ac7eb0e.
-
-## Deferred Work
-
-Manual interactive Pi-backed and Claude CLI `wld` sessions were not exercised in the non-interactive run; bridge and
-startup behavior were covered by automated tests.
+The user attested verification; RunWield Workflow Validation did not establish this result. RunWield provides web_search, web_fetch, web_code_search, and web_docs_search through the required ketch helper. Pi and Claude CLI Sessions share the same protected tool surface instead of relying on native Claude web authorization or advisory Skill guidance. User verification note: Manually checked from the merged worktree; no feedback.
 
 ## Future Planning Notes
 
-When a helper-backed capability must be consistent across model backends, implement it as RunWield-owned tools with
-pinned behavior, required-helper preflight, installer coverage, and backend bridge tests rather than as advisory Skill
-guidance.
+Cross-backend helper capabilities require owned tools, pinned behavior, helper preflight, installer coverage, and bridge tests.

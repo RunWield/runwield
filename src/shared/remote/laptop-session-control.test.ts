@@ -1,3 +1,9 @@
+import { SessionRuntime } from "../session/session-runtime.ts";
+import { SessionHost } from "../session/session-host.ts";
+import { RemoteSessionControl } from "./session-control-client.ts";
+import { renderSessionExportHtml } from "../../ui/session-export/session-export-html.ts";
+import { strict as assert } from "node:assert";
+import { writeFileSync, statSync, existsSync } from "node:fs";
 import { rm as fsRm } from "node:fs/promises";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { readdirSync, readFileSync } from "node:fs";
@@ -10,6 +16,7 @@ import {
     listManifests,
     listProjectsFromDisk,
     lockPath,
+    manifestPath,
     sessionDirForProject,
 } from "../session/file-session-storage.ts";
 import { startRemoteControlService } from "./control.ts";
@@ -186,6 +193,7 @@ test("remote begin and list refuse another target's Session", async () => {
                 "does not belong",
             );
             await assertRejects(() => other.handle({ kind: "list", sessionId }), Error, "does not belong");
+            await assertRejects(() => other.handle({ kind: "export", sessionId }), Error, "does not belong");
             other.close();
         }
         const otherRoot = new LaptopSessionControl({
@@ -198,6 +206,7 @@ test("remote begin and list refuse another target's Session", async () => {
             Error,
             "does not belong",
         );
+        await assertRejects(() => otherRoot.handle({ kind: "export", sessionId }), Error, "does not belong");
         otherRoot.close();
     });
 });
@@ -424,5 +433,190 @@ test("laptop control owns persistence and its operation registry despite extra c
         } finally {
             control.close();
         }
+    });
+});
+
+function exportMessage(text: string): string {
+    return (
+        JSON.stringify({
+            type: "message",
+            id: text,
+            parentId: null,
+            timestamp: new Date().toISOString(),
+            message: { role: "user", content: [{ type: "text", text }], timestamp: Date.now() },
+        }) + "\n"
+    );
+}
+
+async function createExportSession(f: Awaited<ReturnType<typeof setup>>) {
+    const sessionId = crypto.randomUUID();
+    const created = await f.request({
+        kind: "create",
+        sessionId,
+        name: "Complete remote export",
+        admissionId: crypto.randomUUID(),
+    });
+    await f.save(created.operation, 0, "hydrate");
+    await f.save(created.operation, 1, "append", exportMessage("predecessor-export-sentinel"));
+    await f.save(
+        created.operation,
+        2,
+        "artifact",
+        JSON.stringify({ kind: "report", path: "report.md", title: "Export report", registeredBy: "test" }),
+    );
+    const segment = f.store.getCurrentSessionSegment(sessionId)!;
+    await f.save(
+        created.operation,
+        3,
+        "plan-association",
+        JSON.stringify({
+            planId: "export-plan",
+            planName: "remote-export",
+            purpose: "planning",
+            segmentId: segment.segmentId,
+            segmentKind: segment.kind,
+            recordedAt: new Date().toISOString(),
+        }),
+    );
+    await f.request({ kind: "checkpoint", operation: created.operation });
+    const begun = await f.request({ kind: "begin", sessionId, admissionId: crypto.randomUUID() });
+    await f.save(begun.operation, 0, "hydrate");
+    const rolled = await f.save(
+        begun.operation,
+        1,
+        "rollover",
+        JSON.stringify({ kind: "execution", continuation: { next: "engineer" } }),
+    );
+    const successor = JSON.parse(rolled.contents).operation;
+    await f.save(successor, 0, "hydrate");
+    await f.save(successor, 1, "append", exportMessage("successor-export-sentinel"));
+    await f.request({ kind: "checkpoint", operation: successor });
+    const control = new RemoteSessionControl({ port: f.service.port, credential: f.service.credential });
+    const host = new SessionHost();
+    const runtime = new SessionRuntime({
+        sessionHost: host,
+        sessionStore: null,
+        remoteSessionControl: control,
+        ownerInstanceId: "export-test",
+        ownerProcessKind: "test",
+    });
+    const hosted = host.createSession({ cwd: f.target.cwd });
+    const current = f.store.getCurrentSessionSegment(sessionId)!;
+    hosted.setManagedMetadata({
+        runwieldSessionId: sessionId,
+        projectId: current.projectId,
+        piSessionId: current.piSessionId,
+        transcriptPath: "",
+        currentSegmentId: current.segmentId,
+        generation: null,
+        name: null,
+        activeAgent: null,
+        workflowContext: null,
+    });
+    return { sessionId, runtime, runtimeId: hosted.id, control };
+}
+
+function exportEvidenceSnapshot(f: Awaited<ReturnType<typeof setup>>, sessionId: string) {
+    const project = listProjectsFromDisk(f.baseDir).find(
+        (project) => project.projectId === f.store.getCurrentSessionSegment(sessionId)!.projectId,
+    )!;
+    const paths = [
+        ...f.store.listSessionTranscriptSegments(sessionId).map((segment) => segment.transcriptPath),
+        manifestPath(sessionDirForProject(f.store.path, project), sessionId),
+    ];
+    return paths.map((path) =>
+        existsSync(path)
+            ? { path, bytes: readFileSync(path, "utf8"), modified: statSync(path).mtimeMs }
+            : { path, missing: true },
+    );
+}
+
+test("remote runtime exports complete committed multi-segment JSON and HTML without a local store", async () => {
+    await fixture(async (f) => {
+        const exported = await createExportSession(f);
+        try {
+            const segment = f.store.getCurrentSessionSegment(exported.sessionId)!;
+            writeFileSync(
+                segment.transcriptPath,
+                readFileSync(segment.transcriptPath, "utf8") + customEntry("uncommitted-export-sentinel"),
+            );
+            const before = exportEvidenceSnapshot(f, exported.sessionId);
+            const snapshot = await exported.runtime.readSessionExport(exported.runtimeId);
+            assertEquals(snapshot.document.segments.length, 2);
+            assertEquals(snapshot.document.artifacts.length, 1);
+            assertEquals(snapshot.document.planAssociations.length, 1);
+            assertEquals(snapshot.document.session.runwieldSessionId, exported.sessionId);
+            assert(snapshot.timeline.every((event) => event.sessionId === exported.runtimeId));
+            for (const output of [JSON.stringify(snapshot.document), renderSessionExportHtml(snapshot)]) {
+                assert(output.includes("predecessor-export-sentinel"));
+                assert(output.includes("successor-export-sentinel"));
+                assert(!output.includes("uncommitted-export-sentinel"));
+                assert(!output.includes(segment.transcriptPath));
+            }
+            assertEquals(exportEvidenceSnapshot(f, exported.sessionId), before);
+        } finally {
+            await exported.runtime.closeAllSessions();
+        }
+    });
+});
+
+for (const damage of ["missing", "corrupt"] as const) {
+    test(`remote export refuses ${damage} predecessor evidence without partial output or storage mutation`, async () => {
+        await fixture(async (f) => {
+            const exported = await createExportSession(f);
+            try {
+                const predecessor = f.store.listSessionTranscriptSegments(exported.sessionId)[0];
+                if (damage === "missing") await fsRm(predecessor.transcriptPath);
+                else
+                    writeFileSync(
+                        predecessor.transcriptPath,
+                        readFileSync(predecessor.transcriptPath, "utf8").replace(
+                            "predecessor-export-sentinel",
+                            "predecessor-export-CORRUPT!",
+                        ),
+                    );
+                const before = {
+                    evidence: exportEvidenceSnapshot(f, exported.sessionId),
+                    activation: f.store.inspectSessionActivation(exported.sessionId),
+                };
+                await assert.rejects(() => exported.runtime.readSessionExport(exported.runtimeId));
+                const response = await f.post(
+                    "/session/control",
+                    JSON.stringify({ kind: "export", sessionId: exported.sessionId }),
+                );
+                assertEquals(response.status, 409);
+                assert(!(await response.text()).includes("successor-export-sentinel"));
+                assertEquals(
+                    {
+                        evidence: exportEvidenceSnapshot(f, exported.sessionId),
+                        activation: f.store.inspectSessionActivation(exported.sessionId),
+                    },
+                    before,
+                );
+            } finally {
+                await exported.runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
+test("remote export does not publish or repair an unpublished first turn", async () => {
+    await fixture(async (f) => {
+        const sessionId = crypto.randomUUID();
+        const created = await f.request({ kind: "create", sessionId, name: "", admissionId: crypto.randomUUID() });
+        await f.save(created.operation, 0, "hydrate");
+        await f.save(created.operation, 1, "append", exportMessage("not-published"));
+        const before = {
+            evidence: exportEvidenceSnapshot(f, sessionId),
+            activation: f.store.inspectSessionActivation(sessionId),
+        };
+        const response = await f.post("/session/control", JSON.stringify({ kind: "export", sessionId }));
+        assertEquals(response.status, 409);
+        assert(!(await response.text()).includes("not-published"));
+        assertEquals(
+            { evidence: exportEvidenceSnapshot(f, sessionId), activation: f.store.inspectSessionActivation(sessionId) },
+            before,
+        );
+        await f.request({ kind: "markUncertain", operation: created.operation });
     });
 });

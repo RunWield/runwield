@@ -4,6 +4,8 @@ status: accepted
 
 # Remote SSH with Local Personal Authority
 
+Last updated: 2026-10-26 EDT
+
 ## Context and Constraints
 
 Remote development uses an existing Linux project without a laptop checkout or source synchronization. The owner
@@ -49,16 +51,42 @@ Split execution from personal authority:
   idle remote snapshot as authoritative. Saved Agent, model, and thinking settings therefore survive concurrent
   connections; explicit selections for the new operation apply after hydration. Recovery uses durable laptop evidence,
   never automatic effect replay.
-- Host identity consists of the effective hostname, user, port, and verified host key. Only an exact match reuses
-  history. Certificate configurations without a stable reported key use hostname, user, and port. The canonical remote
-  primary root identifies the project; execution cwd and temporary mount roots remain separate facts.
+- Host identity consists of the effective hostname, user, port, and verified host key. Exact matches reuse history.
+  A partly matching host requires a saved user confirmation before it uses the canonical saved identity for Sessions
+  and Memory. Resolving that choice once at connection startup keeps downstream identity checks exact. Neither an SSH
+  alias nor a host key alone authorizes history reuse. Certificate configurations without a stable reported key use a
+  `null` fingerprint; two missing fingerprints do not prove a shared key. The canonical remote primary root identifies
+  the project; execution cwd and temporary mount roots remain separate facts.
 - Laptop-only history views read published transcript evidence without SSH, repair writes, or a writer lock. A connected
   remote TUI can continue the same saved Session through target-scoped control operations.
 - Clipboard images use a connection-scoped authenticated byte bridge from the laptop. Ctrl+V reads the current laptop
   clipboard, not a server clipboard or a cached startup image. The save bridge persists attachment bytes on the laptop
   before transcript references are recorded. Stable `attachment:<id>` references and image markers survive reconnect
   without exposing laptop paths or temporary mount roots. Project-relative image reads still execute remotely.
-- Remote review servers stay with project files; SSH forwards their full origin to a laptop browser.
+- One remote Session-owned Pi MCP integration handles both origins. Project MCP processes use remote execution cwd;
+  personal MCP processes use laptop home cwd with minimal inherited and configured environment. An authenticated
+  connection-scoped relay forwards native MCP messages; only enabled personal names, not executable definitions, cross
+  its configuration boundary. Pi retains naming, discovery, resources, results, cancellation, and reconnect ownership.
+  A second laptop tool host would split that authority and is not used.
+- Personal MCP home cwd is stable across launch folders, not a sandbox or a selected checkout. Memory collection
+  sharing does not map files. Roots and paths remain remote metadata without translation. Disconnect stops owned
+  processes and pending starts; neither failed sends nor uncertain calls are replayed. Native cancellation does not
+  guarantee rollback of accepted actions. Server output remains trusted content and can contain secrets.
+- One review host stays with remote project files. The main SSH connection establishes one laptop-loopback `-L`
+  forward at startup to `review.sock` in the supervisor's private remote directory. Its laptop origin serves the whole
+  review surface, including files, images, uploads, and polling. This keeps project access remote and gives every review
+  and document link one connection-owned origin, without per-review SSH processes or a custom content relay.
+- The remote `BrowserPort` requests laptop browser opening through authenticated `/browser/open`. The laptop permits
+  this connection's review origin and public HTTP/HTTPS links. Laptop DNS resolution rejects nonpublic or unknown
+  destinations. This initial URL check does not constrain later browser redirects or DNS rebinding. No browser runs on
+  the server.
+  Review tokens and revision-safe decisions remain with the remote host. A live review keeps its URL through
+  conversation, revision, and approval; an explanation alone does not refresh reviewed content.
+- Built-in Guided Review runs in memory in the remote view process with the remote worktree and laptop model bridge.
+  It creates no saved remote Session. A separate built-in guide subprocess was set aside to avoid passing connection
+  credentials and duplicating remote startup. An explicit `RUNWIELD_GUIDED_REVIEW_COMMAND` retains its configured
+  remote subprocess behavior. Direct server CLI review, remote ACP clients, and hosted Workspace registration are
+  outside this connection's scope.
 
 This extends [ADR-015](015-file-authoritative-session-bundles.md). It preserves Pi entry formats, file-authoritative
 history, native locks, operation-scoped ownership, and recovery without automatic effect replay. Ordinary local Sessions
@@ -70,6 +98,11 @@ not copy credentials or SSH keys; neither that rule nor the private mount path c
 Authenticated model requests execute on the laptop. No separate laptop shell service is part of this design.
 
 ### Alternatives
+
+**Per-review SSH forwards:** Set aside in favor of one connection-start forward. A separate SSH process can require
+another sign-in for each review; multiplexing does not meet the Windows OpenSSH constraint. A custom relay is not
+needed because the one remote review host supplies the complete origin. This choice does not establish Windows laptop
+support; its qualification is deferred.
 
 **Guarded mounted Session files:** Evaluated with stock SFTP/SSHFS and a restricted SFTP prototype. The owner set this
 approach aside after the save-bridge proof. A mount still needs operation-scoped writer ownership, local settlement, and
@@ -89,6 +122,9 @@ single-writer guarantees.
 
 ## Implications
 
+- The SSH server must permit Unix-socket forwarding (`AllowStreamLocalForwarding`, enabled by default), as well as
+  TCP forwarding for the existing control service. Closing a browser tab does not end a pending review. Connection
+  cleanup ends the forward and removes the private socket directory; reconnect uses a new review origin and tokens.
 - SSHFS/FUSE availability and stock SFTP packaging remain personal-resource compatibility obligations, not Session
   commit evidence.
 - A synchronous save can block the Agent thread until acknowledgement or a finite failure deadline. Supervision runs
@@ -105,5 +141,5 @@ single-writer guarantees.
   semantics.
 
 The [Remote SSH Epic](../plans/remote-ssh-development.md) owns implementation and qualification work. The
-[Remote SSH PRD](../prd/remote-ssh-prd.md) distinguishes delivered conversation behavior from target workflow, Memory,
-review, and release capabilities.
+[Remote SSH PRD](../prd/remote-ssh-prd.md) distinguishes delivered conversation, workflow, and local review behavior
+from remaining release qualification.

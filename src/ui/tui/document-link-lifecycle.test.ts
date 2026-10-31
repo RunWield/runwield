@@ -1,5 +1,5 @@
 import process from "node:process";
-import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
-import { VirtualTerminal } from "./testing/virtual-terminal.js";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { getTUI } from "./tui.ts";
 
 /** Exercise a hyperlink-capable terminal independently of the developer's terminal. */
@@ -98,12 +98,10 @@ test("Agent document links serve the Session Project without changing saved tran
             assertEquals(new URL(url).hostname, "127.0.0.1");
             assertEquals((await readDocument(url)).markdown, markdown);
             assertStringIncludes(terminal.getScreenText(), output);
-            const exportedPath = join(projectRoot, "transcript.jsonl");
-            await composition.runtime.exportSession(composition.sessionId, exportedPath);
-            const entries: TranscriptEntry[] = (await fsReadFile(exportedPath, "utf8")).trim().split("\n").map((line) =>
-                JSON.parse(line)
-            );
-            const assistantText = entries.filter((entry) => entry.message?.role === "assistant")
+            const exported = await composition.runtime.readSessionExport(composition.sessionId);
+            const entries = exported.document.segments.flatMap((segment) => segment.entries) as TranscriptEntry[];
+            const assistantText = entries
+                .filter((entry) => entry.message?.role === "assistant")
                 .flatMap((entry) => entry.message?.content || [])
                 .filter((block) => block.type === "text")
                 .map((block) => block.text);
@@ -162,9 +160,9 @@ test("Session replacement revokes old links and binds the new Project before rep
                 onSessionReplaced: () => {
                     // Use the same live UiAPI; no replacement host or adapter is supplied.
                     composition.uiAPI.clearMessages?.();
-                    composition.uiAPI.appendAgentMessageStart("Engineer").appendText(
-                        "Read README.md and alternate-only.md.",
-                    );
+                    composition.uiAPI
+                        .appendAgentMessageStart("Engineer")
+                        .appendText("Read README.md and alternate-only.md.");
                     replacementOutput = captureCurrentRender(terminal);
                 },
             });

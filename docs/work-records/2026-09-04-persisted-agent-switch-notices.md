@@ -12,17 +12,12 @@ provenance:
         - "5d5685b0-9234-495d-ae78-00f0f2eb7edc"
 ---
 
-# Persisted Agent Switch Notices
+# Persistent Agent switch notices
 
 ## Summary
 
-RunWield now shows and replays visible RunWield notices when Session ownership moves to a different root Agent.
-Active-Agent transcript markers store both canonical Agent names and display names, runtime events distinguish real root
-handoffs from quiet profile refreshes, and replay preserves switch notices across transcript segments. Verification
-passed with targeted session and TUI tests, the golden /agent journey, named-invocation preservation, seams check, full
-test suite, and full CI.
+RunWield displays and replays notices when Session ownership moves to a different root Agent. Active-Agent transcript markers store canonical names and display names. Runtime events distinguish root handoffs from quiet profile refreshes, and replay preserves notices across transcript segments.
 
 ## Future Planning Notes
 
-Keep runwield.active_agent as the durable source for root-Agent identity. Treat temporary Prompt Template profiles and
-same-Agent rebuilds as presentation updates, not ownership handoffs.
+Keep committed active-Agent markers as the durable source for root-Agent identity. Treat temporary Prompt Template profiles and same-Agent rebuilds as presentation updates, not ownership handoffs.

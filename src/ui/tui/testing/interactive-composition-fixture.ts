@@ -28,7 +28,7 @@ import { createInteractiveTuiComposition } from "../interactive-tui-composition.
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 import type { SessionRuntime } from "../../../shared/session/session-runtime.ts";
 import { stopTUI } from "../tui.ts";
-import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
+import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 20_000;
 
@@ -95,9 +95,7 @@ async function pollScreen(
         if (predicate(screen)) return screen;
         await delay(20);
     }
-    throw new Error(
-        `Timed out after ${timeoutMs}ms waiting for ${describe}. Screen:\n${terminal.getScreenText()}`,
-    );
+    throw new Error(`Timed out after ${timeoutMs}ms waiting for ${describe}. Screen:\n${terminal.getScreenText()}`);
 }
 
 export function createInteractiveCompositionHarness(
@@ -125,9 +123,12 @@ export function createInteractiveCompositionHarness(
     });
     // Teardown also needs to see startup finish when the test fails before its
     // first waitForComposition call. Observe rejection immediately as well.
-    void compositionPromise.then((composition) => {
-        resolvedComposition = composition;
-    }, () => {});
+    void compositionPromise.then(
+        (composition) => {
+            resolvedComposition = composition;
+        },
+        () => {},
+    );
 
     // Feed startup-declared input while the composition is still in flight.
     // Input sent before the TUI attaches its handler to the VirtualTerminal is
@@ -149,9 +150,9 @@ export function createInteractiveCompositionHarness(
         await target.flush();
     }
 
-    async function waitForComposition(timeoutMs = DEFAULT_WAIT_TIMEOUT_MS): Promise<
-        Awaited<ReturnType<typeof createInteractiveTuiComposition>>
-    > {
+    async function waitForComposition(
+        timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+    ): Promise<Awaited<ReturnType<typeof createInteractiveTuiComposition>>> {
         if (resolvedComposition) return resolvedComposition;
         if (!compositionPromise) throw new Error("Composition was never started.");
         let timeoutId: ReturnType<typeof setTimeout> | undefined;

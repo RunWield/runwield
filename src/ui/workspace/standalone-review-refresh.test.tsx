@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeTempDirectory } from "../../testing/temp-file.ts";
+import { mapReviewAnnotations } from "../../shared/standalone-review/forge-review.ts";
 
 const requireBanner = `import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -30,7 +31,7 @@ export const reactAct = require("react").act;`);
     }
 });
 
-async function withReviewSurface(standaloneReview, verify) {
+async function withReviewSurface(standaloneReview, verify, network) {
     const bundle = await build({
         entryPoints: [fileURLToPath(new URL("./react/CodeReviewSurface.tsx", import.meta.url))],
         banner: {
@@ -121,6 +122,8 @@ async function withReviewSurface(standaloneReview, verify) {
             Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
         }
         globalThis.fetch = (url, options) => {
+            const response = network?.(url, options);
+            if (response) return Promise.resolve(response);
             if (String(url).includes("/feedback") || String(url).includes("/deny")) {
                 submitted.push(JSON.parse(options.body));
                 revision++;
@@ -301,11 +304,321 @@ test("Code Review uncommitted page has Engineer feedback and Operator approval",
     );
 });
 
-test("Code Review validation page retains approval and annotation feedback", async () => {
+test("Code Review validation page retains approval and sends annotations through chat", async () => {
     await withReviewSurface(undefined, async ({ browser, container, button }) => {
         await addModeAnnotation({ browser, button });
-        assertEquals(actionLabels(container), ["OKApprove", "Send Annotations", "Add to Engineer chat"]);
+        assertEquals(actionLabels(container), ["OKApprove"]);
         assertEquals(button("OKApprove").disabled, false);
-        assertEquals(button("Send Annotations").disabled, false);
+        assertEquals(button("Send to Engineer").disabled, false);
     });
+});
+
+function aiReviewNetwork() {
+    const state = { launches: 0, polls: 0, deleted: [], pending: false, error: "", revision: 0, resultPending: null };
+    const annotation = (id, scope = "general") => ({
+        id,
+        type: "comment",
+        scope,
+        filePath: scope === "line" ? "a.ts" : null,
+        lineStart: scope === "line" ? 1 : null,
+        lineEnd: scope === "line" ? 1 : null,
+        side: "old",
+        text: `**Tests · blocking** — ${id}`,
+        author: "AI review",
+        source: "ai-review",
+        severity: "issue",
+        createdAt: Date.now(),
+    });
+    const network = (url, options) => {
+        const path = new URL(url, "http://localhost").pathname;
+        if (path === "/api/agents/capabilities")
+            return Response.json({ available: true, providers: [{ id: "ai-review", available: true }] });
+        if (path === "/api/agents/jobs" && options?.method === "POST") {
+            state.launches++;
+            return Response.json(
+                {
+                    job: {
+                        id: `job-${state.launches}`,
+                        status: "running",
+                        provider: "ai-review",
+                        model: "fixture-model",
+                    },
+                },
+                { status: 202 },
+            );
+        }
+        if (path === "/api/agents/jobs") {
+            state.polls++;
+            return Response.json({
+                jobs: [
+                    {
+                        id: `job-${state.launches}`,
+                        status: state.pending ? "running" : state.error ? "failed" : "done",
+                        error: state.error,
+                        elapsedMs: 800,
+                        providerName: "fixture-host",
+                        model: "fixture-model",
+                        usageState: "available",
+                        tokens: { inputTokens: 10, outputTokens: 20 },
+                        cost: { usd: 0.001 },
+                    },
+                ],
+            });
+        }
+        if (path.startsWith("/api/agents/jobs/") && options?.method === "DELETE") {
+            state.deleted.push(path);
+            if (state.cancelPending) return state.cancelPending.then(() => Response.json({ ok: true }));
+            return Response.json({ ok: true });
+        }
+        if (path.startsWith("/api/ai-review/")) {
+            const result = {
+                specSource: null,
+                counts: { standards: 0, spec: 0, tests: 3 },
+                annotations: [
+                    annotation(`keep-${state.launches}`),
+                    annotation(`replace-${state.launches}`),
+                    annotation(`inline-${state.launches}`, "line"),
+                ],
+            };
+            if (state.empty) {
+                result.annotations = [];
+                result.counts.tests = 0;
+            }
+            if (state.resultPending) return state.resultPending.then(() => Response.json(result));
+            return Response.json(result);
+        }
+    };
+    return { state, network };
+}
+
+async function waitForUi(check) {
+    for (let attempt = 0; attempt < 160; attempt++) {
+        if (check()) return;
+        await act(() => new Promise((resolve) => setTimeout(resolve, 25)));
+    }
+    throw new Error("Review UI did not reach the expected state");
+}
+
+async function enterComment(browser, input, text) {
+    await act(() => {
+        Object.getOwnPropertyDescriptor(browser.HTMLTextAreaElement.prototype, "value").set.call(input, text);
+        input.dispatchEvent(new browser.Event("input", { bubbles: true }));
+    });
+}
+
+test("AI review is manual and standalone-only even when the provider is advertised", async () => {
+    const { state, network } = aiReviewNetwork();
+    await withReviewSurface(
+        undefined,
+        ({ button }) => {
+            assertEquals(button("Run AI Review"), undefined);
+        },
+        network,
+    );
+    await withReviewSurface(
+        { mode: "branch" },
+        ({ button }) => {
+            assertEquals(Boolean(button("Run AI Review")), true);
+            assertStringIncludes(button("Run AI Review").title, "additional LLM call");
+            assertEquals(state.launches, 0);
+        },
+        network,
+    );
+});
+
+test("AI review annotations can be edited, deleted, rerun, and posted with line and side intact", async () => {
+    const { state, network } = aiReviewNetwork();
+    await withReviewSurface(
+        { mode: "pr", forge: { available: true, postEnabled: true } },
+        async ({ browser, container, button, submitted }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => button("Run AI Review").click());
+            assertEquals(Boolean(button("Cancel")), true);
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "Standards 0 · Spec 0 · Tests 3");
+            assertStringIncludes(container.textContent, "spec: no spec");
+            assertStringIncludes(container.textContent, "fixture-model");
+            assertStringIncludes(container.textContent, "cost $0.001");
+            const note = [...container.querySelectorAll(".review-comment-markdown")].find((node) =>
+                node.textContent.includes("keep-1"),
+            );
+            assertStringIncludes(note.parentElement.textContent, "AI review");
+            await act(() => note.click());
+            const input = browser.document.querySelector('textarea[placeholder="Add a global comment..."]');
+            assertEquals(Boolean(input), true);
+            assertEquals(browser.document.querySelector('button[title="Attachments"]'), null);
+            await enterComment(browser, input, "Owner edited finding");
+            await act(() =>
+                [...browser.document.querySelectorAll("button")]
+                    .find((node) => node.textContent.trim() === "Add")
+                    .click(),
+            );
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertEquals(state.launches, 2);
+            assertStringIncludes(container.textContent, "Owner edited finding");
+            assertStringIncludes(container.textContent, "Mode review note");
+            assertEquals(container.textContent.includes("replace-1"), false);
+            assertStringIncludes(container.textContent, "replace-2");
+            const removeNote = [...container.querySelectorAll(".review-comment-markdown")].find((node) =>
+                node.textContent.includes("replace-2"),
+            );
+            const card = removeNote.parentElement;
+            const deleteButton =
+                card.querySelector('button[title="Delete"]') || card.querySelector('button[aria-label="Delete"]');
+            await act(() => deleteButton.click());
+            assertEquals(container.textContent.includes("replace-2"), false);
+            await act(() => button("Post comments").click());
+            const posted = submitted[0].annotations;
+            assertEquals(
+                posted.some((annotation) => annotation.text.includes("replace-2")),
+                false,
+            );
+            assertEquals(posted.find((annotation) => annotation.text === "Owner edited finding").edited, true);
+            const mapped = mapReviewAnnotations("", posted);
+            assertEquals(mapped.fileComments, [
+                { path: "a.ts", line: 1, side: "LEFT", body: "**Tests · blocking** — inline-2" },
+            ]);
+            assertStringIncludes(mapped.body, "Owner edited finding");
+        },
+        network,
+    );
+});
+
+test("AI review Cancel stops a running job without adding findings", async () => {
+    const { state, network } = aiReviewNetwork();
+    state.pending = true;
+    await withReviewSurface(
+        { mode: "branch" },
+        async ({ container, button }) => {
+            await act(() => button("Run AI Review").click());
+            await act(() => button("Cancel").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertEquals(state.deleted.length, 1);
+            assertStringIncludes(container.textContent, "AI review canceled");
+            assertEquals(container.textContent.includes("keep-1"), false);
+        },
+        network,
+    );
+});
+
+test("failed AI review preserves existing annotations and can be retried", async () => {
+    const { state, network } = aiReviewNetwork();
+    state.error = "Model unavailable";
+    await withReviewSurface(
+        { mode: "branch" },
+        async ({ browser, container, button }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "Model unavailable");
+            assertStringIncludes(container.textContent, "Mode review note");
+            state.error = "";
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "keep-2");
+        },
+        network,
+    );
+});
+
+test("AI review drops a result after the active diff changes", async () => {
+    const { state, network } = aiReviewNetwork();
+    let release;
+    state.resultPending = new Promise((resolve) => {
+        release = resolve;
+    });
+    let statusReads = 0;
+    const refreshNetwork = (url, options) => {
+        if (String(url).includes("/status")) {
+            statusReads++;
+            return Response.json({
+                revision: statusReads > 1 ? 1 : 0,
+                gitRef: statusReads > 1 ? "new-head" : "old-head",
+                rawPatch: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+updated\n",
+                standaloneReview: { mode: "pr", forge: { available: true, postEnabled: true } },
+            });
+        }
+        return network(url, options);
+    };
+    await withReviewSurface(
+        { mode: "pr", forge: { available: true, postEnabled: true } },
+        async ({ container, button }) => {
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => state.polls > 0);
+            await act(() => button("Post comments").click());
+            await act(() => release());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "AI review results are for an older diff");
+            assertEquals(container.textContent.includes("keep-1"), false);
+        },
+        refreshNetwork,
+    );
+});
+
+test("AI review sends its remaining annotations to Engineer through ordinary feedback", async () => {
+    const { network } = aiReviewNetwork();
+    await withReviewSurface(
+        { mode: "branch" },
+        async ({ button, submitted }) => {
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            await act(() => button("Send to Engineer").click());
+            assertEquals(submitted[0].annotations.length, 3);
+            assertEquals(
+                submitted[0].annotations.every(
+                    (annotation) => annotation.source === "ai-review" && annotation.text.includes("Tests · blocking"),
+                ),
+                true,
+            );
+        },
+        network,
+    );
+});
+
+test("an empty AI rerun reports no issues and clears only unedited AI annotations", async () => {
+    const { state, network } = aiReviewNetwork();
+    await withReviewSurface(
+        { mode: "branch" },
+        async ({ browser, container, button }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "keep-1");
+            state.empty = true;
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "AI review found no issues");
+            assertStringIncludes(container.textContent, "Mode review note");
+            assertEquals(container.textContent.includes("keep-1"), false);
+        },
+        network,
+    );
+});
+
+test("Cancel discards completion even while the server cancellation request is pending", async () => {
+    const { state, network } = aiReviewNetwork();
+    let releaseResult;
+    let releaseCancel;
+    state.resultPending = new Promise((resolve) => {
+        releaseResult = resolve;
+    });
+    state.cancelPending = new Promise((resolve) => {
+        releaseCancel = resolve;
+    });
+    await withReviewSurface(
+        { mode: "branch" },
+        async ({ container, button }) => {
+            await act(() => button("Run AI Review").click());
+            await waitForUi(() => state.polls > 0);
+            await act(() => button("Cancel").click());
+            await act(() => releaseResult());
+            assertEquals(container.textContent.includes("keep-1"), false);
+            await act(() => releaseCancel());
+            await waitForUi(() => Boolean(button("Run AI Review")));
+            assertStringIncludes(container.textContent, "AI review canceled");
+            assertEquals(container.textContent.includes("keep-1"), false);
+        },
+        network,
+    );
 });

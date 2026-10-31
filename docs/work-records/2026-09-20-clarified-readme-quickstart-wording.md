@@ -12,10 +12,8 @@ provenance:
         - "1c6f85b7-b9e9-45b4-8217-20e1ce546a1c"
 ---
 
-# Clarified README Quickstart wording
+# Clear Quickstart setup terminology
 
 ## Summary
 
-Updated the README Install section to clearly name model provider authentication, runtime helpers, and running from
-source while preserving the existing Quickstart Guide link and unrelated work. RunWield Workflow Validation verified the
-focused documentation change.
+The README Install guidance distinguishes model-provider authentication, runtime helpers, and running from source. It retains the Quickstart Guide link.

@@ -11,20 +11,12 @@ provenance:
         - "81dd4419-cdc6-4c70-9476-73830dd60834"
 ---
 
-# Golden TUI scenario testing completed enough
+# Golden TUI scenario coverage
 
 ## Summary
 
-Completed the Golden TUI Scenario Testing Epic enough for project closure: the reusable deterministic TUI scenario
-harness was verified, and the follow-on workflow portfolio was completed with user-established verification. The result
-gives RunWield durable composed TUI/workflow regression coverage across harness setup, role/workflow journeys, terminal
-behaviors, coverage gating, release tiering, and authoring documentation.
-
-## Deferred Work
-
-No remaining Epic work was identified in the done-enough closure summary.
+The Epic was closed as done enough. A deterministic Golden TUI harness provides composed terminal and workflow coverage across role journeys, terminal behavior, coverage gates, release tiers, and authoring guidance. Workflow portfolio completion rests on user attestation, not the harness’s verification.
 
 ## Future Planning Notes
 
-Future TUI/workflow changes should treat the Golden TUI harness as the durable regression surface for composed terminal
-behavior and canonical workflow state, while keeping live-model benchmarking and PTY smoke coverage as separate scopes.
+Golden scenarios cover composed terminal behavior and canonical workflow state. Live-model benchmarking and PTY smoke coverage remain separate scopes.

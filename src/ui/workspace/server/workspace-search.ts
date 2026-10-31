@@ -8,7 +8,7 @@ import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
 import { getHomeDir } from "../../../constants.js";
 import { listPlanResources } from "../../../plan-store.js";
-import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.js";
+import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
@@ -81,7 +81,7 @@ async function scanMarkdownDirectory(root, directory, type) {
             }
         }
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
     return documents;
@@ -112,8 +112,8 @@ class SearchReaderError extends Error {
     constructor(reader, cause) {
         const causeMessage = cause instanceof Error ? cause.message : "";
         const repairMessage = /without durable identity|duplicate durable identities|duplicate planId values/i.test(
-                causeMessage,
-            )
+            causeMessage,
+        )
             ? ` ${causeMessage}`
             : "";
         super(`${reader} indexing failed.${repairMessage}`);
@@ -137,7 +137,7 @@ async function scanProjectDocuments(root) {
     /** @type {SearchDocument[]} */
     const documents = [];
     documents.push(
-        ...await readSearchDocuments("Plan reader", async () => {
+        ...(await readSearchDocuments("Plan reader", async () => {
             try {
                 await assertContainedProjectPath(root, join(root, "docs", "plans"));
             } catch (error) {
@@ -164,15 +164,15 @@ async function scanProjectDocuments(root) {
                 });
             }
             return found;
-        }),
+        })),
     );
 
     documents.push(
-        ...await readSearchDocuments("Work Record reader", async () => {
+        ...(await readSearchDocuments("Work Record reader", async () => {
             try {
                 await assertContainedProjectPath(root, getWorkRecordsDir(root));
             } catch (error) {
-                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
                 throw error;
             }
             const found = [];
@@ -211,14 +211,14 @@ async function scanProjectDocuments(root) {
                 });
             }
             return found;
-        }),
+        })),
     );
 
     documents.push(
-        ...await readSearchDocuments("Documentation reader", async () => {
+        ...(await readSearchDocuments("Documentation reader", async () => {
             const found = [
-                ...await scanMarkdownDirectory(root, "docs/prd", "prd"),
-                ...await scanMarkdownDirectory(root, "docs/adr", "adr"),
+                ...(await scanMarkdownDirectory(root, "docs/prd", "prd")),
+                ...(await scanMarkdownDirectory(root, "docs/adr", "adr")),
             ];
             try {
                 found.push(await documentationRecord(root, "docs/design-system.md", "design-system"));
@@ -229,7 +229,7 @@ async function scanProjectDocuments(root) {
                 found.push(await documentationRecord(root, relativePath, "domain-language"));
             }
             return found;
-        }),
+        })),
     );
     return documents;
 }
@@ -254,9 +254,8 @@ async function scanSessionDocuments(store, projectId, root) {
                     limit: 1,
                 });
                 if (!projection.ok) continue;
-                firstMessage = typeof projection.snapshot.firstMessage === "string"
-                    ? projection.snapshot.firstMessage
-                    : "";
+                firstMessage =
+                    typeof projection.snapshot.firstMessage === "string" ? projection.snapshot.firstMessage : "";
                 if (typeof projection.snapshot.name === "string" && projection.snapshot.name.trim()) {
                     committedName = projection.snapshot.name.trim();
                 }
@@ -389,10 +388,8 @@ async function hydrateCandidate(root, row, store, catalogs) {
     if (row.content_type === "session") {
         const session = store.getSessionById(row.source_id, row.project_id);
         if (!session) throw new Error("Session not found.");
-        const documents = await cachedCatalog(
-            catalogs,
-            `${row.project_id}:session`,
-            () => scanSessionDocuments(store, row.project_id, root),
+        const documents = await cachedCatalog(catalogs, `${row.project_id}:session`, () =>
+            scanSessionDocuments(store, row.project_id, root),
         );
         const document = documents.find((candidate) => candidate.sourceId === row.source_id);
         if (!document) throw new Error("Session evidence is unavailable.");
@@ -406,10 +403,8 @@ async function hydrateCandidate(root, row, store, catalogs) {
         };
     }
     if (row.content_type === "plan") {
-        const plans = await cachedCatalog(
-            catalogs,
-            `${row.project_id}:plan`,
-            () => listPlanResources(root, { backfillMissing: false }),
+        const plans = await cachedCatalog(catalogs, `${row.project_id}:plan`, () =>
+            listPlanResources(root, { backfillMissing: false }),
         );
         const plan = plans.find((candidate) => candidate.planId === row.source_id);
         if (!plan) throw new Error("Plan not found.");
@@ -427,10 +422,11 @@ async function hydrateCandidate(root, row, store, catalogs) {
     }
     if (row.content_type === "work-record") {
         await assertContainedProjectPath(root, getWorkRecordsDir(root));
-        const records = (await cachedCatalog(catalogs, `${row.project_id}:work-record`, () =>
-            listWorkRecords(root, { createDir: false }))).filter((record) =>
-                record.attrs.recordId.toLowerCase() === row.source_id.toLowerCase()
-            );
+        const records = (
+            await cachedCatalog(catalogs, `${row.project_id}:work-record`, () =>
+                listWorkRecords(root, { createDir: false }),
+            )
+        ).filter((record) => record.attrs.recordId.toLowerCase() === row.source_id.toLowerCase());
         if (records.length !== 1 || !isCurrentWorkRecord(records[0])) {
             throw new Error("Work Record is not current.");
         }
@@ -452,10 +448,8 @@ async function hydrateCandidate(root, row, store, catalogs) {
             }),
         };
     }
-    if (
-        row.content_type === "domain-language" &&
-        !(await domainLanguagePaths(root)).includes(row.relative_path)
-    ) throw new Error("Domain Language document is not in the current map.");
+    if (row.content_type === "domain-language" && !(await domainLanguagePaths(root)).includes(row.relative_path))
+        throw new Error("Domain Language document is not in the current map.");
     const markdown = await readContainedMarkdown(root, join(root, row.relative_path));
     const facts = markdownFacts(markdown);
     const stat = await fsStat(await assertContainedProjectPath(root, join(root, row.relative_path)));
@@ -471,11 +465,14 @@ async function hydrateCandidate(root, row, store, catalogs) {
 
 /** @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
 export function createWorkspaceSearchService(options) {
-    const dbPath = options.dbPath ||
-        (options.store.path === ":memory:" ? ":memory:" : join(
-            dirname(options.store.path || join(getHomeDir(), ".wld", "owner.sqlite3")),
-            "workspace-search.sqlite3",
-        ));
+    const dbPath =
+        options.dbPath ||
+        (options.store.path === ":memory:"
+            ? ":memory:"
+            : join(
+                  dirname(options.store.path || join(getHomeDir(), ".wld", "owner.sqlite3")),
+                  "workspace-search.sqlite3",
+              ));
     const db = openSearchDatabase(dbPath);
     const scanIntervalMs = Math.min(
         options.scanIntervalMs || WORKSPACE_SEARCH_SCAN_INTERVAL_MS,
@@ -507,14 +504,14 @@ export function createWorkspaceSearchService(options) {
                     const root = options.store.requireEnabledProjectRoot(project.projectId);
                     const documents = await scanProjectDocuments(root);
                     documents.push(
-                        ...await readSearchDocuments(
-                            "Session reader",
-                            () => scanSessionDocuments(options.store, project.projectId, root),
-                        ),
+                        ...(await readSearchDocuments("Session reader", () =>
+                            scanSessionDocuments(options.store, project.projectId, root),
+                        )),
                     );
                     db.exec("BEGIN IMMEDIATE");
                     try {
-                        const oldIdentities = db.prepare("SELECT identity FROM search_documents WHERE project_id = ?")
+                        const oldIdentities = db
+                            .prepare("SELECT identity FROM search_documents WHERE project_id = ?")
                             .all(project.projectId)
                             .map((row) => String(row.identity));
                         for (const identity of oldIdentities) {
@@ -630,18 +627,20 @@ export function createWorkspaceSearchService(options) {
             filters.push("documents.content_type = ?");
             values.push(contentType);
         }
-        const rows = db.prepare(
-            `SELECT documents.* FROM search_documents_fts JOIN search_documents documents USING(identity) WHERE ${
-                filters.join(" AND ")
-            }`,
-        ).all(...values);
+        const rows = db
+            .prepare(
+                `SELECT documents.* FROM search_documents_fts JOIN search_documents documents USING(identity) WHERE ${filters.join(
+                    " AND ",
+                )}`,
+            )
+            .all(...values);
         const valid = [];
         const catalogs = new Map();
         for (const row of rows) {
             try {
                 const root = options.store.requireEnabledProjectRoot(String(row.project_id));
                 const hydrated = await hydrateCandidate(root, row, options.store, catalogs);
-                const candidate = /** @type {SearchDocument} */ ({
+                const candidate = /** @type {SearchDocument} */ {
                     projectId: String(row.project_id),
                     projectName: String(row.project_name),
                     type: String(row.content_type),
@@ -653,7 +652,7 @@ export function createWorkspaceSearchService(options) {
                     revision: String(hydrated.revision),
                     updatedAt: String(hydrated.updated_at),
                     metadata: String(hydrated.metadata),
-                });
+                };
                 if (!documentMatches(candidate, query)) continue;
                 const rank = matchRank(candidate, query);
                 const metadata = JSON.parse(candidate.metadata || "{}");
@@ -664,23 +663,26 @@ export function createWorkspaceSearchService(options) {
                     contentType: candidate.type,
                     sourceId: candidate.sourceId,
                     title: candidate.title,
-                    snippet: candidate.body.replace(/^---[\s\S]*?---\s*/, "").replace(/[#*_`>\[\]()]/g, " ").replace(
-                        /\s+/g,
-                        " ",
-                    ).trim().slice(0, 220),
+                    snippet: candidate.body
+                        .replace(/^---[\s\S]*?---\s*/, "")
+                        .replace(/[#*_`>\[\]()]/g, " ")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .slice(0, 220),
                     revision: candidate.revision,
                     freshness: candidate.revision === String(row.revision) ? "current" : "changed",
-                    destination: candidate.type === "plan"
-                        ? `/projects/${encodeURIComponent(candidate.projectId)}/plans/${
-                            encodeURIComponent(candidate.sourceId)
-                        }`
-                        : candidate.type === "session"
-                        ? `/projects/${encodeURIComponent(candidate.projectId)}/sessions/${
-                            encodeURIComponent(candidate.sourceId)
-                        }`
-                        : `/projects/${encodeURIComponent(candidate.projectId)}/artifacts/${
-                            encodeURIComponent(candidate.type)
-                        }/${browserSourceKey(candidate.sourceId)}`,
+                    destination:
+                        candidate.type === "plan"
+                            ? `/projects/${encodeURIComponent(candidate.projectId)}/plans/${encodeURIComponent(
+                                  candidate.sourceId,
+                              )}`
+                            : candidate.type === "session"
+                              ? `/projects/${encodeURIComponent(candidate.projectId)}/sessions/${encodeURIComponent(
+                                    candidate.sourceId,
+                                )}`
+                              : `/projects/${encodeURIComponent(candidate.projectId)}/artifacts/${encodeURIComponent(
+                                    candidate.type,
+                                )}/${browserSourceKey(candidate.sourceId)}`,
                     rank,
                     updatedAt: candidate.updatedAt,
                     ...metadata,
@@ -704,7 +706,9 @@ export function createWorkspaceSearchService(options) {
     }
 
     function projectOptions() {
-        return options.store.listProjects().filter((project) => project.lifecycle === "enabled")
+        return options.store
+            .listProjects()
+            .filter((project) => project.lifecycle === "enabled")
             .map((project) => ({ projectId: project.projectId, name: project.displayName }));
     }
     function stateValues() {

@@ -11,17 +11,12 @@ provenance:
         - "d684dbd2-21ec-4743-89cc-814cb018bac9"
 ---
 
-# Frontend Engineer and Pair Execution shipped
+# Frontend Engineer and Pair Execution
 
 ## Summary
 
-Completed the Epic done-enough with all 4 child FEATURE plans verified. RunWield now has a first-class Frontend Engineer
-execution owner, recommendation-driven Pair versus autonomous frontend execution, TUI-hosted non-terminal Pair
-checkpoints, owner-preserving validation repair, autonomous ACP/Headless fallback, content-free Pair metrics, active
-Plan migration away from the legacy frontend flag, and updated skills/docs for the settled workflow.
+The Epic was closed as done enough. RunWield provides Frontend Engineer ownership, recommendation-driven Pair or autonomous execution, TUI Pair checkpoints, owner-preserving validation repair, autonomous ACP and headless fallback, and content-free Pair metrics.
 
 ## Future Planning Notes
 
-Pair Execution is runtime workflow state, not Plan Status or Plan Front Matter. Future visual-pairing surfaces such as
-ACP or Workspace support should extend the host-capability model rather than reintroducing frontend flags or simulated
-checkpoints.
+Pair Execution is runtime workflow state, not Plan status or front matter. Additional pairing surfaces extend host capabilities rather than frontend flags or simulated checkpoints.

@@ -1,6 +1,6 @@
 ---
 name: Shared Plan Execution Practice
-description: "Practice rules for personas that execute against an approved Plan in a user-facing session. Composed into agent prompts by name; not an agent and never listed by /agent."
+description: "Practice rules for personas that execute against an approved Plan in a user-facing session."
 ---
 
 ## Runtime Collaboration Style

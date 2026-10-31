@@ -49,6 +49,18 @@ findings, advisories, or feedback. Inside an Epic, an intermediate state that a 
 nothing about it unless the protocol asks you to record it for the integration review. A real defect is still a finding:
 name it, cite it, and say what it breaks.
 
+### A Check That Did Not Run Did Not Pass
+
+Look for these defects:
+
+- An `if`/`else` or a `catch` turns "the check did not run" into "the check passed" or "the item is gone".
+- An empty collection gives a negative or passing result. For example, `any()` or `some()` over an empty list is read
+  as "no item holds this", or `every()` over an empty list is read as "all passed".
+- An answer is matched to its question by a name that one side invents, not by a shared identifier.
+
+Such code is a concrete correctness defect (a Review Issue) when the result releases, deletes, takes over, or reports
+success. A result that means "could not tell" must take the safe path.
+
 ### Out of Scope
 
 - **Verification procedures.** Commands to run, CI/build/test execution, browser walkthroughs, smoke checks, and manual

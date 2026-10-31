@@ -1,5 +1,8 @@
 import process from "node:process";
-import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import {
+    removeExecutableFixtureDirectory,
+    writeRuntimeExecutableFixture,
+} from "../../testing/runtime-executable-fixture.ts";
 import { copyFile, symlink } from "node:fs/promises";
 import {
     chmod as fsChmod,
@@ -7,7 +10,6 @@ import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     realpath as fsRealpath,
-    rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
@@ -16,7 +18,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { sha256Bytes } from "../../../scripts/build-metadata.js";
+import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import { linuxTarget } from "./runtime.js";
 
 const BUILD_ID = "a".repeat(64);
@@ -50,10 +52,11 @@ async function fixture(fn) {
         for (const [source, destination] of [
             ["src/shared/remote/runtime.js", join(remote, "runtime.js")],
             ["src/shared/remote/target.ts", join(remote, "target.ts")],
+            ["src/shared/remote/host-prerequisites.ts", join(remote, "host-prerequisites.ts")],
         ])
             await copyFile(source, destination);
         for (const relative of [
-            "scripts/build-metadata.js",
+            "scripts/build-metadata.ts",
             "runtime-root.js",
             "src/constants.js",
             "src/shared/foreground-process.ts",
@@ -91,7 +94,7 @@ async function fixture(fn) {
         await fsWriteFile(artifact + ".build.json", JSON.stringify(metadata));
         await fn({ root, ssh, artifact, module, metadata });
     } finally {
-        await fsRm(root, { recursive: true });
+        await removeExecutableFixtureDirectory(root);
     }
 }
 

@@ -12,20 +12,12 @@ provenance:
         - "bc990d08-29bc-41c9-8548-7c51bbc4d5e0"
 ---
 
-# Lost-worktree User Verification recovery added
+# User verification in lost-worktree recovery
 
 ## Summary
 
-RunWield now offers the existing User Verified action from the lost-worktree recovery menu when the Plan status is
-eligible, such as implemented. The normal recovery menu now also hides that action for ineligible statuses, such as
-failed. The change reuses the existing attestation flow and does not add a new validation claim.
-
-## Deviations from Plan
-
-Full `deno task ci` did not pass because `src/ui/tui/golden-scenarios/project-workflow.test.ts` failed under the full
-suite twice, although that file passed when rerun standalone.
+Lost-worktree recovery offers the existing User Verified action when the Plan lifecycle permits it. Normal and lost-worktree recovery use the same eligibility rules. The action records user attestation without adding a RunWield validation claim.
 
 ## Future Planning Notes
 
-Recovery menu actions should use the same lifecycle eligibility checks across normal and lost-worktree paths so users do
-not see choices that the lifecycle will reject.
+Recovery menus must share lifecycle eligibility checks so they do not offer actions that the lifecycle rejects.

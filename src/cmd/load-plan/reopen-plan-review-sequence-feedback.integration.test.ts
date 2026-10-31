@@ -50,7 +50,10 @@ test("reopened Sequence combines container and child feedback for its planning A
                     requestInteraction(request) {
                         if (request.type !== RuntimeInteractionTypes.PLAN_REVIEW) return { outcome: "canceled" };
                         const documents = request._meta?.sequenceDocuments as SequenceReviewDocument[];
-                        assertEquals(documents.map((doc) => doc.planName), ["sequence", "sequence/first"]);
+                        assertEquals(
+                            documents.map((doc) => doc.planName),
+                            ["sequence", "sequence/first"],
+                        );
                         return {
                             outcome: "accepted",
                             _meta: {
@@ -71,8 +74,8 @@ test("reopened Sequence combines container and child feedback for its planning A
                 });
                 const result = await runtime.reopenPlanReview(sessionId);
                 assertEquals(result.kind, "complete", result.message);
-                assertEquals((await loadPlan(projectRoot, "sequence"))?.attrs.status, "feedback");
-                assertEquals((await loadPlan(projectRoot, "sequence/first"))?.attrs.status, "feedback");
+                assertEquals((await loadPlan(projectRoot, "sequence"))?.attrs.status, "draft");
+                assertEquals((await loadPlan(projectRoot, "sequence/first"))?.attrs.status, "draft");
                 assertEquals(runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId, persistentId);
                 assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "architect");
                 assert(planningTurn, "The saved planning Agent did not receive the Sequence feedback");

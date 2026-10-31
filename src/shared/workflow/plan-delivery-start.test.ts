@@ -77,7 +77,7 @@ for (const scenario of ["authored", "child", "quick-fix"] as const) {
             const session = new HostedSession({ id: crypto.randomUUID(), cwd: root });
             try {
                 const target = scenario === "authored" ? "plan/custom" : "release";
-                await git(root, ["branch", target]);
+                if (scenario !== "child") await git(root, ["branch", target]);
                 if (scenario === "child") {
                     await savePlan(root, "epic", "# Epic\n", {
                         planId: "epic",
@@ -93,6 +93,11 @@ for (const scenario of ["authored", "child", "quick-fix"] as const) {
                     targetBranch: target,
                     ...(scenario === "child" ? { parentPlan: "epic" } : {}),
                 });
+                if (scenario === "child") {
+                    await git(root, ["add", "docs/plans"]);
+                    await git(root, ["commit", "-m", "Publish child Plan to its target"]);
+                    await git(root, ["branch", target]);
+                }
                 const workflow = await startActiveExecutionWorkflow({
                     planName: "p",
                     triageMeta: {},

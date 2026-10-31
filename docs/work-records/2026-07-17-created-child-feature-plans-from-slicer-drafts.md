@@ -11,10 +11,8 @@ provenance:
         - "e4c15155-3a9b-4e19-9d0e-3ddf15c1d90d"
 ---
 
-# Created Child FEATURE Plans from Slicer Drafts
+# Child FEATURE Plans from Slicer drafts
 
 ## Summary
 
-Added deterministic, path-safe materialization of Slicer child-plan descriptors as draft FEATURE plans beneath their
-parent Epic. Child plans use stable names, parent and dependency metadata, centralized plan persistence, created/updated
-result reporting, and a thin workflow-facing wrapper. Automated verification passed.
+RunWield deterministically materializes Slicer child descriptors as draft FEATURE Plans under their parent Epic. Child Plans have stable names, parent and dependency metadata, centralized persistence, and created-or-updated result reporting. Materialization enforces path safety.

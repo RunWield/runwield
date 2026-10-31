@@ -5,6 +5,7 @@ import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontM
 import { readPlanActionWorktreeEvidence } from "../worktree-registry.js";
 import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.js";
 import type { PlanEvent, PlanStatus } from "./plan-lifecycle.js";
+import { PlanningNotStartedError } from "./plan-location.ts";
 
 export type PlanActionName =
     | "move_status"
@@ -17,15 +18,15 @@ export type PlanActionName =
 export type PlanWorktreeExpectation =
     | { kind: "none" }
     | {
-        kind: "attempt";
-        id: string;
-        planId: string;
-        status: string;
-        branch: string;
-        baseBranch: string;
-        baseRef: string;
-        baseCommit: string;
-    };
+          kind: "attempt";
+          id: string;
+          planId: string;
+          status: string;
+          branch: string;
+          baseBranch: string;
+          baseRef: string;
+          baseCommit: string;
+      };
 
 export type PlanActionRequest = {
     planId: string;
@@ -102,29 +103,25 @@ function toAttemptExpectation(entry: WorktreeEntry): PlanWorktreeExpectation {
 }
 
 function sameAttempt(expected: Extract<PlanWorktreeExpectation, { kind: "attempt" }>, current: WorktreeEntry): boolean {
-    return expected.id === current.id &&
+    return (
+        expected.id === current.id &&
         expected.planId === (current.planId || "") &&
         expected.status === current.status &&
         expected.branch === current.branch &&
         expected.baseBranch === current.baseBranch &&
         expected.baseRef === current.baseRef &&
-        expected.baseCommit === current.baseCommit;
+        expected.baseCommit === current.baseCommit
+    );
 }
 
 function currentStatus(attrs: PlanFrontMatter): PlanStatus {
-    return (String(attrs.status || "draft") as PlanStatus);
+    return String(attrs.status || "draft") as PlanStatus;
 }
 
-async function resolvePlanActionAuthority(
-    projectRoot: string,
-    planId: string,
-): Promise<PlanActionAuthorityResult> {
+async function resolvePlanActionAuthority(projectRoot: string, planId: string): Promise<PlanActionAuthorityResult> {
     return await withProjectRuntimeReadScope<PlanActionAuthorityResult>(async () => {
         try {
-            const registry = await readPlanActionWorktreeEvidence(
-                projectRoot,
-                planId,
-            );
+            const registry = await readPlanActionWorktreeEvidence(projectRoot, planId);
             if (registry.kind !== "ok") {
                 return {
                     kind: "recovery_required",
@@ -156,21 +153,21 @@ async function resolvePlanActionAuthority(
             }
             const plan: PlanActionAuthority = executionPlan
                 ? {
-                    cwd: registry.live?.path || projectRoot,
-                    planId: primaryPlan.planId,
-                    planName: primaryPlan.planName,
-                    attrs: executionPlan.attrs,
-                    markdown: executionPlan.markdown,
-                    revision: executionPlan.revision,
-                }
+                      cwd: registry.live?.path || projectRoot,
+                      planId: primaryPlan.planId,
+                      planName: primaryPlan.planName,
+                      attrs: executionPlan.attrs,
+                      markdown: executionPlan.markdown,
+                      revision: executionPlan.revision,
+                  }
                 : {
-                    cwd: projectRoot,
-                    planId: primaryPlan.planId,
-                    planName: primaryPlan.planName,
-                    attrs: primaryPlan.attrs,
-                    markdown: primaryPlan.markdown,
-                    revision: primaryPlan.revision,
-                };
+                      cwd: projectRoot,
+                      planId: primaryPlan.planId,
+                      planName: primaryPlan.planName,
+                      attrs: primaryPlan.attrs,
+                      markdown: primaryPlan.markdown,
+                      revision: primaryPlan.revision,
+                  };
             return { kind: "ok", plan, registry };
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -183,7 +180,7 @@ export async function loadPlanActionEvidence(projectRoot: string, planId: string
     const resolved = await resolvePlanActionAuthority(projectRoot, planId);
     if (resolved.kind !== "ok") return resolved;
     const { plan, registry } = resolved;
-    const revision = plan.revision || await getPlanRevisionForText(plan.markdown);
+    const revision = plan.revision || (await getPlanRevisionForText(plan.markdown));
     return {
         kind: "success",
         message: "Plan action evidence loaded.",
@@ -215,9 +212,11 @@ function validateRequest(request: PlanActionRequest): string | null {
 function eventForRequest(
     request: PlanActionRequest,
     attrs: PlanFrontMatter,
-): { event: PlanEvent; details: Record<string, string | PlanFrontMatter | undefined>; message: string } | {
-    error: string;
-} {
+):
+    | { event: PlanEvent; details: Record<string, string | PlanFrontMatter | undefined>; message: string }
+    | {
+          error: string;
+      } {
     const status = currentStatus(attrs);
     const metadata = getPlanLifecycleActionMetadata(status, attrs);
     const details: Record<string, string | PlanFrontMatter | undefined> = { triageMeta: attrs };
@@ -251,15 +250,15 @@ function eventForRequest(
         if (!metadata.canPutOnHold) return { error: metadata.blockedReasons.put_on_hold };
         details.holdReason = request.holdReason;
         details.heldFromStatus = status;
-        details.holdStalenessBaseline = typeof attrs.executionBaselineTree === "string"
-            ? attrs.executionBaselineTree
-            : undefined;
+        details.holdStalenessBaseline =
+            typeof attrs.executionBaselineTree === "string" ? attrs.executionBaselineTree : undefined;
         return {
             event: "plan_held",
             details,
-            message: attrs.classification === "PROJECT"
-                ? "Epic put on hold. Child Plan statuses were not changed."
-                : "Plan put on hold.",
+            message:
+                attrs.classification === "PROJECT"
+                    ? "Epic put on hold. Child Plan statuses were not changed."
+                    : "Plan put on hold.",
         };
     }
     if (request.action === "resume_from_hold") {
@@ -288,7 +287,7 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
     const resolved = await resolvePlanActionAuthority(projectRoot, request.planId);
     if (resolved.kind !== "ok") return resolved;
     const { plan, registry } = resolved;
-    const revision = plan.revision || await getPlanRevisionForText(plan.markdown);
+    const revision = plan.revision || (await getPlanRevisionForText(plan.markdown));
     const status = currentStatus(plan.attrs);
     const currentEvidence: PlanActionEvidence = {
         planId: plan.planId,
@@ -350,7 +349,10 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
                 evidence: currentEvidence,
             };
         }
-        return { kind: "invalid_action", message: sanitizeMessage(message) };
+        return {
+            kind: "invalid_action",
+            message: error instanceof PlanningNotStartedError ? error.message : sanitizeMessage(message),
+        };
     }
     const next = await loadPlanActionEvidence(projectRoot, plan.planId);
     if (next.kind !== "success") return next;

@@ -11,18 +11,16 @@ provenance:
         - "a342bf39-b529-49ba-909b-40e5d53d0ee7"
 ---
 
-# Personal Remote Workspace v2 completed
+# Plan-centered personal Workspace
 
 ## Summary
 
-Completed the Epic to a done-enough state after all four child Plans passed validation. Workspace is now Plan-centered:
-an attention-first home and Plan-first navigation show what needs the owner, durable Plan-to-Session associations
-preserve planning context, unified search finds supported Project knowledge and Session entry points, and shared Core
-notifications support live browser delivery. The result also removes the duplicate standalone Plan Progress screen while
-preserving canonical Plan, Session, and workflow authority.
+The Epic was closed as done enough. Workspace uses an attention-first home and Plan-first navigation to show what needs the owner. Durable Plan-to-Session associations preserve planning context, unified search finds supported Project knowledge and Session entry points, and shared Core notifications support live browser delivery. Plan-centered navigation replaces the duplicate standalone Plan Progress screen while preserving canonical workflow authority.
+
+## Out of Scope
+
+This work does not include multi-user policy, source-code search, cross-process browser delivery, or persistent notification state.
 
 ## Future Planning Notes
 
-Keep Dashboard and search data as rebuildable read projections. Keep mutations in the existing Plan and Session workflow
-paths, and treat multi-user policy, source-code search, cross-process browser delivery, and persistent notification
-state as separate future scope.
+Keep Dashboard and search data as rebuildable read projections. Keep mutations in the authoritative Plan and Session workflow paths.

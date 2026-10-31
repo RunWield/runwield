@@ -48,7 +48,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-    runConfiguredGuideCommand,
+    getGuideRunner,
 } from "./routes/api/review-agent-handlers.js";
 import {
     resolveWorkspaceFile,
@@ -117,7 +117,9 @@ import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/
 import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
-import { WORKSPACE_PWA_PATHS, workspacePwaResponse } from "./server/workspace-pwa.ts";
+import { workspacePwaResponse } from "./server/workspace-pwa.ts";
+import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
+import { reviewHost } from "./server/review-host.ts";
 import { createWorkspaceSearchService } from "./server/workspace-search.ts";
 
 const WORKSPACE_DIR = join(RUNWIELD_SOURCE_ROOT, "ui", "workspace");
@@ -288,7 +290,12 @@ export function createOwnerWorkspaceApp(options) {
             ) {
                 response = renewDeviceCookies(ctx.req, response, ctx.state, ctx.state.ownerDevice.deviceId);
             }
-            return withOwnerSecurityHeaders(response);
+            response = withOwnerSecurityHeaders(response);
+            // File-content requests need the live review context, but never send it to another origin.
+            if (/^\/projects\/[^/]+\/sessions\/[^/]+\/review\/code$/.test(path)) {
+                response.headers.set("referrer-policy", "same-origin");
+            }
+            return response;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (ctx.url.pathname.startsWith("/api/")) return ownerJsonResponse({ error: message }, 403);
@@ -575,7 +582,7 @@ function linkedDocumentKind(path) {
 export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType, reviewConversation }) {
     const reviewAgentState =
         reviewType === "code"
-            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: getGuideRunner() })
             : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
@@ -610,6 +617,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             typeof source.headRef === "string"
                                 ? source.headRef
                                 : undefined,
+                        targetBranch:
+                            typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
                     });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
@@ -648,6 +657,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             standaloneReview: reviewPayload.standaloneReview,
                             agentLabel: reviewConversation.agentLabel,
                             revision: reviewConversation.revision,
+                            reviewRevision: reviewPayload.reviewRevision,
+                            error: reviewConversation.error,
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
                             rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
@@ -660,7 +671,9 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                 }
                 if (
                     reviewType === "code" &&
-                    (url.pathname.startsWith("/api/agents/") || url.pathname.startsWith("/api/guide/"))
+                    (url.pathname.startsWith("/api/agents/") ||
+                        url.pathname.startsWith("/api/guide/") ||
+                        url.pathname.startsWith("/api/ai-review/"))
                 ) {
                     if (
                         !hasReviewAssetToken(request, token) &&
@@ -1039,13 +1052,34 @@ function ownerReviewProjectId(request) {
     }
 }
 
+/** @param {Request} request */
+function ownerCodeReviewContext(request) {
+    try {
+        const url = new URL(request.headers.get("referer") || "");
+        const match = /^\/projects\/([^/]+)\/sessions\/([^/]+)\/review\/code$/.exec(url.pathname);
+        const operationId = url.searchParams.get("operation");
+        const interactionId = url.searchParams.get("interaction");
+        if (!match || !operationId || !interactionId) return null;
+        return {
+            projectId: decodeURIComponent(match[1]),
+            runwieldSessionId: decodeURIComponent(match[2]),
+            operationId,
+            interactionId,
+        };
+    } catch {
+        return null;
+    }
+}
+
 /** @param {any} ctx */
 async function ownerInSituReviewFileContent(ctx) {
     const projectId = ownerReviewProjectId(ctx.req);
     if (!projectId) return ownerErrorJson(new Error("Review Project context is missing."), 400);
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, projectId);
-        return await reviewFileContentApi(ctx.req, { cwd: root });
+        const context = ownerCodeReviewContext(ctx.req);
+        const checkout = context ? await ctx.state.sessionContinuation.getLiveCodeReviewCheckout(context) : null;
+        return await reviewFileContentApi(ctx.req, checkout || { cwd: root });
     } catch (error) {
         return ownerErrorJson(error, 404);
     }
@@ -1310,22 +1344,6 @@ async function textFileResponse(path, contentType) {
     }
 }
 
-/** @param {string} pathname */
-function isPublicWorkspaceAsset(pathname) {
-    return (
-        WORKSPACE_PWA_PATHS.includes(pathname) ||
-        pathname === "/styles.css" ||
-        pathname === "/tokens.css" ||
-        pathname === "/components.css" ||
-        pathname === "/workspace.css" ||
-        pathname === "/workspace-shell.js" ||
-        pathname === "/design-system/sidebar-motion.js" ||
-        pathname === "/theme.css" ||
-        pathname === "/brand/logo.svg" ||
-        pathname.startsWith("/_astro/")
-    );
-}
-
 function jsonNotFound() {
     return Response.json(
         { error: "not_found", message: "Not found.", status: 404 },
@@ -1459,11 +1477,12 @@ export function startSessionQuestionWorkspaceServer(options) {
 }
 
 /**
- * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation, host?: string, port?: number, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
+ * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
  */
 export function startReviewWorkspaceServer(options) {
     const cwd = options.cwd ?? getCwd();
-    const host = options.host ?? "127.0.0.1";
+    let reviewRevision = 0;
+    if (options.reviewType === "code") options.reviewPayload.reviewRevision = reviewRevision;
     let decision = registerReviewDecisionPromise(options.token);
     const app = createReviewWorkspaceApp({
         cwd,
@@ -1472,34 +1491,22 @@ export function startReviewWorkspaceServer(options) {
         reviewType: options.reviewType,
         reviewConversation: options.reviewConversation,
     });
-    let server;
+    let registration;
     try {
-        server = serveHttp(
-            {
-                hostname: host,
-                port: options.port ?? 0,
-                automaticCompression: true,
-                onListen(address) {
-                    options.onOutput?.({
-                        stream: "stdout",
-                        text: `Listening on http://${address.hostname}:${address.port}/\n`,
-                    });
-                },
-                onError(error) {
-                    const text = error instanceof Error ? error.stack || error.message : String(error);
-                    options.onOutput?.({ stream: "stderr", text: `${text}\n` });
-                    return new Response("Internal Server Error", { status: 500 });
-                },
+        registration = reviewHost.register(options.token, app.handler(), {
+            onError(error) {
+                const text = error instanceof Error ? error.stack || error.message : String(error);
+                options.onOutput?.({ stream: "stderr", text: `${text}\n` });
+                return new Response("Internal Server Error", { status: 500 });
             },
-            app.handler(),
-        );
+        });
     } catch (error) {
         const text = error instanceof Error ? error.stack || error.message : String(error);
         options.onOutput?.({ stream: "stderr", text: `${text}\n` });
         throw error;
     }
-    const port = server.addr.port;
-    const url = `http://${host}:${port}`;
+    const url = registration.origin;
+    options.onOutput?.({ stream: "stdout", text: `Listening on ${url}/\n` });
     /** @type {Promise<void> | null} */
     let stopPromise = null;
 
@@ -1511,7 +1518,7 @@ export function startReviewWorkspaceServer(options) {
                 : { approved: false, feedback: "", annotations: [], exit: true, canceled: true };
         resolveReviewDecision(options.token, canceledDecision);
         stopPromise ??= Promise.resolve(app.cleanup())
-            .then(() => server.shutdown())
+            .then(() => registration.release())
             .catch((error) => {
                 const text = error instanceof Error ? error.stack || error.message : String(error);
                 options.onOutput?.({ stream: "stderr", text: `${text}\n` });
@@ -1531,6 +1538,7 @@ export function startReviewWorkspaceServer(options) {
         beginReviewRound({ reviewPayload, reviewConversation }) {
             for (const key of Object.keys(options.reviewPayload)) delete options.reviewPayload[key];
             Object.assign(options.reviewPayload, reviewPayload);
+            if (options.reviewType === "code") options.reviewPayload.reviewRevision = ++reviewRevision;
             if (options.reviewConversation && reviewConversation) {
                 options.reviewConversation.agentLabel = reviewConversation.agentLabel;
                 options.reviewConversation.revision += 1;

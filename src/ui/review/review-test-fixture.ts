@@ -21,6 +21,7 @@ export interface ReviewAnnotationDecision {
 }
 
 export interface ReviewDecisionBody {
+    reviewRevision?: number;
     documents?: import("../../shared/workflow/sequence-review.ts").SequenceDocumentDecision[];
     approved?: boolean;
     conversationTurn?: boolean;

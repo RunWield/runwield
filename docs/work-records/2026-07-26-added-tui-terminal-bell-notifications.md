@@ -11,21 +11,12 @@ provenance:
         - "6be1cd31-a2a2-4ca6-9f4c-d3e7982cd121"
 ---
 
-# Added TUI Terminal Bell Notifications
+# TUI terminal bell notifications
 
 ## Summary
 
-RunWield TUI attention notifications now emit a portable terminal BEL by default, giving terminal emulators and
-multiplexers control over audible, visual, urgency, or tab-marker feedback. The feature preserves existing macOS desktop
-notification behavior, adds a `notifications.terminalBell` opt-out, updates schema/docs/TODO tracking, and was verified
-with targeted notification tests, formatting checks, and full `deno run ci`.
-
-## Deferred Work
-
-Manual terminal-emulator checks in Kitty, WezTerm, iTerm2, or Terminal.app were not run in the non-interactive session;
-automated tests cover BEL emission, opt-out, disabled events, fallback behavior, and failure isolation.
+TUI attention notifications emit terminal BEL by default, with an opt-out setting. Terminal emulators and multiplexers control audible or visual feedback, while existing macOS desktop notifications remain available.
 
 ## Future Planning Notes
 
-Keep terminal feedback owned by the TUI boundary and user terminal configuration; avoid native desktop notification
-sound options so BEL and desktop alerts do not create duplicate sound behavior.
+Terminal feedback belongs to the TUI boundary and terminal configuration. Desktop notification sound controls must not duplicate BEL feedback.

@@ -1,4 +1,4 @@
-name: release-wld
+name: release-gate
 
 on:
     push:
@@ -7,23 +7,32 @@ on:
     workflow_dispatch:
         inputs:
             tag:
-                description: Existing immutable release tag to recover
-                required: true
+                description: Existing immutable release tag to recover (required unless qualification_only)
+                required: false
                 type: string
+            qualification_only:
+                description: Qualify selected branch candidate bytes only; never publish or promote
+                required: false
+                type: boolean
+                default: false
 
 permissions:
     contents: write
 
 concurrency:
-    group: release-${{ inputs.tag || github.ref_name }}
+    group: release-${{ inputs.qualification_only && github.sha || inputs.tag || github.ref_name }}
     cancel-in-progress: false
 
 jobs:
     metadata:
         runs-on: ubuntu-latest
         outputs:
-            published: ${{ steps.existing.outputs.published }}
+            published: ${{ steps.existing.outputs.published || 'false' }}
+            qualification_only: ${{ github.event_name == 'workflow_dispatch' && inputs.qualification_only }}
             tag: ${{ steps.metadata.outputs.tag }}
+            source_sha: ${{ steps.source.outputs.sha }}
+            bun_version: ${{ steps.source.outputs.bun_version }}
+            legacy_containers: ${{ steps.source.outputs.legacy_containers }}
             kind: ${{ steps.metadata.outputs.kind }}
             build_version: ${{ steps.metadata.outputs.build_version }}
             prerelease: ${{ steps.metadata.outputs.prerelease }}
@@ -35,6 +44,7 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -47,8 +57,21 @@ jobs:
             - name: Validate release metadata
               id: metadata
               env:
-                  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+                  RELEASE_TAG: ${{ inputs.qualification_only && 'v0.0.0-rc.1' || inputs.tag || github.ref_name }}
+                  QUALIFICATION_ONLY: ${{ inputs.qualification_only || false }}
+                  DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+                  RECOVERY_TAG: ${{ inputs.tag }}
               run: |
+                  # Interface: qualification_only=true uses selected github.sha and v0.0.0-rc.1.
+                  # Recovery: qualification_only=false requires an existing immutable tag.
+                  if [[ "$DISPATCH" == true && "$QUALIFICATION_ONLY" != true && -z "$RECOVERY_TAG" ]]; then
+                    echo "Recovery requires tag; use qualification_only=true to qualify a branch" >&2
+                    exit 1
+                  fi
+                  if [[ "$QUALIFICATION_ONLY" == true && -n "$RECOVERY_TAG" ]]; then
+                    echo "Qualification does not accept a recovery tag" >&2
+                    exit 1
+                  fi
                   bun run release:metadata --tag "$RELEASE_TAG" > metadata.json
                   bun -e '
                     const metadata = JSON.parse(await Bun.file("metadata.json").text());
@@ -63,11 +86,40 @@ jobs:
                     await (await import("node:fs/promises")).appendFile(process.env.GITHUB_OUTPUT, lines.join("\n") + "\n");
                   '
 
+            - name: Resolve the immutable product commit
+              id: source
+              env:
+                  RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+                  RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
+                  QUALIFICATION_ONLY: ${{ inputs.qualification_only || false }}
+              run: |
+                  set -euo pipefail
+                  if [[ "$QUALIFICATION_ONLY" == true ]]; then
+                    source_sha="$GITHUB_SHA"
+                  else
+                    git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"
+                    source_sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+                  fi
+                  echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+                  bun_version=$(git show "$source_sha:.bun-version")
+                  echo "bun_version=$bun_version" >> "$GITHUB_OUTPUT"
+                  # Frozen compatibility set: existing Bun releases with Deno container recipes.
+                  # New source never falls back because a tool or test went missing.
+                  legacy_containers=false
+                  if [[ "$RECOVERY" == true && "$QUALIFICATION_ONLY" != true ]]; then
+                    case "$source_sha" in
+                      55cc60ec1cf5a96eeb41c9fddd12459200101aab|d46be40f400aa3d07c56007c0a8aadabea5b6aeb)
+                        legacy_containers=true ;;
+                    esac
+                  fi
+                  echo "legacy_containers=$legacy_containers" >> "$GITHUB_OUTPUT"
+
             - name: Generate one workspace encryption key for all release targets
               id: build-key
               run: echo "value=$(openssl rand -base64 32)" >> "$GITHUB_OUTPUT"
 
             - name: Detect existing release without hiding API failures
+              if: ${{ !inputs.qualification_only }}
               id: existing
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -81,6 +133,7 @@ jobs:
                   fi
 
     ci-shards:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
 
@@ -96,6 +149,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v5
               with:
+                  ref: ${{ github.sha }}
                   submodules: recursive
 
             - name: Setup Bun
@@ -189,6 +243,7 @@ jobs:
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     golden-shards:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
         strategy:
@@ -202,7 +257,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ needs.metadata.outputs.tag }}
+                  ref: ${{ needs.metadata.outputs.source_sha }}
                   submodules: recursive
 
             - name: Setup Bun
@@ -256,7 +311,13 @@ jobs:
             - name: Run Golden TUI release gate
               env:
                   WLD_TEST_CONCURRENCY: "3"
-              run: bun scripts/write-version.js && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
+              run: |
+                  if [ -f scripts/write-version.ts ]; then
+                    bun scripts/write-version.ts
+                  else
+                    bun scripts/write-version.js
+                  fi
+                  bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''
@@ -296,13 +357,14 @@ jobs:
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     release-check:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
         steps:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ needs.metadata.outputs.tag }}
+                  ref: ${{ needs.metadata.outputs.source_sha }}
                   submodules: recursive
 
             - name: Setup Bun
@@ -318,6 +380,27 @@ jobs:
                   WLD_BUILD_VERSION: ${{ needs.metadata.outputs.build_version }}
                   ASTRO_KEY: ${{ needs.metadata.outputs.astro_key }}
               run: bun scripts/release-check.js --runtime bun --binary-only --build-version "${{ needs.metadata.outputs.build_version }}"
+
+    unix-checks:
+        if: needs.metadata.outputs.qualification_only != 'true'
+        needs: metadata
+        uses: ./.github/workflows/release-unix.yml
+        with:
+            source_sha: ${{ needs.metadata.outputs.source_sha }}
+            build_version: ${{ needs.metadata.outputs.build_version }}
+        permissions:
+            contents: read
+
+    containers-checks:
+        if: needs.metadata.outputs.qualification_only != 'true'
+        needs: metadata
+        uses: ./.github/workflows/release-containers.yml
+        with:
+            source_sha: ${{ needs.metadata.outputs.source_sha }}
+            build_version: ${{ needs.metadata.outputs.build_version }}
+            legacy_recovery: ${{ needs.metadata.outputs.legacy_containers == 'true' }}
+        permissions:
+            contents: read
 
     build:
         if: needs.metadata.outputs.published != 'true'
@@ -345,16 +428,12 @@ jobs:
                       bun_target: bun-linux-arm64
                       asset_suffix: linux-arm64
                       binary_name: wld
-                    - target: x86_64-pc-windows-msvc
-                      bun_target: bun-windows-x64
-                      asset_suffix: windows-x64
-                      binary_name: wld.exe
 
         steps:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ needs.metadata.outputs.tag }}
+                  ref: ${{ needs.metadata.outputs.source_sha }}
                   submodules: recursive
 
             - name: Setup Bun
@@ -397,18 +476,10 @@ jobs:
               run: |
                   VERSION="${{ needs.metadata.outputs.build_version }}"
                   ASSET_BASE="wld-${VERSION}-${{ matrix.asset_suffix }}"
-                  if [[ "${{ matrix.binary_name }}" == "wld" ]]; then
-                    tar -czf "${ASSET_BASE}.tar.gz" wld wld.build.json
-                    tar -cf - wld wld.build.json | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
-                  else
-                    tar -czf "${ASSET_BASE}.tar.gz" wld.exe wld.exe.build.json
-                    tar -cf - wld.exe wld.exe.build.json | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
-                  fi
+                  tar -czf "${ASSET_BASE}.tar.gz" wld wld.build.json LICENSE
+                  tar -cf - wld wld.build.json LICENSE | zstd -10 -T0 -o "${ASSET_BASE}.tar.zst"
                   sha256sum "${ASSET_BASE}.tar.gz" > "${ASSET_BASE}.tar.gz.sha256"
                   sha256sum "${ASSET_BASE}.tar.zst" > "${ASSET_BASE}.tar.zst.sha256"
-                  if [[ "${{ matrix.asset_suffix }}" == "windows-x64" ]]; then
-                    bun scripts/package-windows.js --tag "$VERSION" --binary "${{ matrix.binary_name }}" --output .
-                  fi
 
             - name: Upload build artifact
               uses: actions/upload-artifact@v5
@@ -417,25 +488,94 @@ jobs:
                   path: |
                       *.tar.gz
                       *.tar.zst
-                      *.zip
-                      runwield-windows-package.json
                       *.sha256
 
-    assets:
+    docs-artifact:
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' }}
+        needs: metadata
         runs-on: ubuntu-latest
-        if: ${{ !cancelled() && (needs.build.result == 'success' || needs.metadata.outputs.published == 'true') }}
-        needs: [metadata, build]
+        outputs:
+            sha: ${{ steps.prepare.outputs.sha }}
         steps:
             - name: Checkout release tooling
               uses: actions/checkout@v5
               with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
+                  ref: ${{ github.sha }}
+                  submodules: recursive
+                  fetch-depth: 0
+                  path: tooling
+            - name: Checkout Stable source
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ needs.metadata.outputs.source_sha }}
+                  fetch-depth: 0
+                  path: source
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: tooling/.bun-version
+            - name: Install frozen dependencies
+              working-directory: tooling
+              run: bun run install:locked
+            - name: Prepare one documentation commit
+              id: prepare
+              working-directory: source
+              env:
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+              run: |
+                  set -euo pipefail
+                  sha=$(bash ../tooling/scripts/reconcile-docs-branch.sh "$RELEASE_TAG")
+                  echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                  git update-ref refs/docs/prepared "$sha"
+                  git bundle create "$RUNNER_TEMP/prepared-docs.bundle" refs/docs/prepared "^$RELEASE_TAG"
+            - name: Build and package qualified documentation
+              if: needs.metadata.outputs.published != 'true'
+              env:
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+                  DOCS_SHA: ${{ steps.prepare.outputs.sha }}
+              run: |
+                  set -euo pipefail
+                  bun -e '
+                    const path = "source/docs-site/release.json";
+                    const release = await Bun.file(path).json();
+                    release.sourceRef = process.env.DOCS_SHA;
+                    await Bun.write(path, JSON.stringify(release, null, 2) + "\n");
+                  '
+                  bun tooling/scripts/build-stable-docs.ts source
+                  cp source/docs-site/release.json source/dist/docs/release.json
+                  mkdir docs-artifact
+                  tar -czf "docs-artifact/runwield-docs-$RELEASE_TAG.tar.gz" -C source/dist/docs .
+                  bun -e '
+                    import { sha256File } from "./tooling/scripts/build-metadata.ts";
+                    const name = `runwield-docs-${process.env.RELEASE_TAG}.tar.gz`;
+                    const path = `docs-artifact/${name}`;
+                    await Bun.write(`${path}.sha256`, `${await sha256File(path)}  ${name}\n`);
+                  '
+            - uses: actions/upload-artifact@v5
+              if: needs.metadata.outputs.published != 'true'
+              with:
+                  name: wld-docs
+                  path: docs-artifact/*
+            - uses: actions/upload-artifact@v5
+              with:
+                  name: prepared-docs
+                  path: ${{ runner.temp }}/prepared-docs.bundle
+
+    assets:
+        runs-on: ubuntu-latest
+        if: ${{ !cancelled() && (needs.build.result == 'success' || needs.metadata.outputs.published == 'true') && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
+        needs: [metadata, build, docs-artifact]
+        steps:
+            - name: Checkout release tooling
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Checkout tagged schema
               if: needs.metadata.outputs.published != 'true'
               uses: actions/checkout@v5
               with:
-                  ref: ${{ needs.metadata.outputs.tag }}
+                  ref: ${{ needs.metadata.outputs.source_sha }}
                   path: release-source
 
             - name: Setup Bun
@@ -478,39 +618,84 @@ jobs:
                   name: release-upload
                   path: release-upload/*
 
-    windows-package-check:
+    native-package-check:
         if: ${{ !cancelled() && needs.assets.result == 'success' }}
-        runs-on: windows-latest
         needs: [metadata, assets]
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 10
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - runner: ubuntu-latest
+                      asset: linux-x64
+                      target: x86_64-unknown-linux-gnu
+                    - runner: ubuntu-24.04-arm
+                      asset: linux-arm64
+                      target: aarch64-unknown-linux-gnu
+                    - runner: macos-15
+                      asset: darwin-arm64
+                      target: aarch64-apple-darwin
+                    - runner: macos-15-intel
+                      asset: darwin-x64
+                      target: x86_64-apple-darwin
         steps:
-            - name: Checkout
+            - name: Checkout package verification tooling
               uses: actions/checkout@v5
               with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
+                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: ${{ runner.os == 'Linux' && 'recursive' || 'false' }}
+            - uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
+            - name: Install frozen dependencies for Linux SSH gate
+              if: runner.os == 'Linux' && needs.metadata.outputs.published != 'true'
               run: bun run install:locked
-
-            - name: Download Windows package artifact
+            - name: Download checked release bytes
               uses: actions/download-artifact@v5
               with:
                   name: release-upload
-                  path: windows-package
-
-            - name: Run native Windows package checks
-              shell: pwsh
+                  path: release-upload
+            - name: Validate the actual native release archive
+              env:
+                  BUILD_VERSION: ${{ needs.metadata.outputs.build_version }}
+                  ASSET: ${{ matrix.asset }}
+                  TARGET: ${{ matrix.target }}
+                  PRODUCT_BUN_VERSION: ${{ needs.metadata.outputs.bun_version }}
               run: |
-                  $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
-                  if (-not $zip) { throw "Windows package ZIP not found" }
-                  bun run package:windows:check --package $zip.FullName
+                  mkdir native-package
+                  tar -xzf "release-upload/wld-$BUILD_VERSION-$ASSET.tar.gz" -C native-package
+                  ./native-package/wld --help > /dev/null
+                  ./native-package/wld --version | tee version.txt
+                  grep -F "runwield $BUILD_VERSION (" version.txt
+                  ./native-package/wld --remote-preflight > preflight.json
+                  bun -e '
+                    const embedded = await Bun.file("preflight.json").json();
+                    const artifact = await Bun.file("native-package/wld.build.json").json();
+                    if (embedded.buildId !== artifact.buildId || embedded.protocol !== artifact.protocol ||
+                        embedded.version !== artifact.version || artifact.version !== process.env.BUILD_VERSION ||
+                        artifact.target !== process.env.TARGET || embedded.runtime !== "bun" ||
+                        embedded.runtimeVersion !== process.env.PRODUCT_BUN_VERSION) {
+                      throw new Error("Release archive identity differs from selected release");
+                    }
+                  '
+
+            # Recovery keeps immutable published bytes, including releases that
+            # predate private remote helpers. New publications always run this gate.
+            - name: Qualify release archive over real loopback SSH
+              if: runner.os == 'Linux' && needs.metadata.outputs.published != 'true'
+              run: bun scripts/check-remote-ssh-package.ts release-upload "${{ needs.metadata.outputs.build_version }}"
+            - name: Retain SSH qualification evidence
+              if: always() && runner.os == 'Linux'
+              uses: actions/upload-artifact@v5
+              with:
+                  name: remote-ssh-${{ matrix.asset }}-${{ github.run_attempt }}
+                  include-hidden-files: true
+                  path: ${{ runner.temp }}/wld-remote-ssh-evidence-*/
+                  if-no-files-found: warn
 
     homebrew-check:
-        if: ${{ !cancelled() && needs.assets.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.assets.result == 'success' }}
         runs-on: macos-15
         timeout-minutes: 30
         needs: [metadata, assets]
@@ -518,7 +703,8 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
+                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -570,21 +756,24 @@ jobs:
                   bun run package:homebrew:check --tap homebrew-check
 
     release:
-        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.windows-package-check.result == 'success' && needs.homebrew-check.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
         runs-on: ubuntu-latest
         needs:
             - metadata
+            - docs-artifact
             - ci
             - golden
             - release-check
             - assets
-            - windows-package-check
+            - native-package-check
             - homebrew-check
+            - unix-checks
+            - containers-checks
         steps:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ needs.metadata.outputs.tag }}
+                  ref: ${{ needs.metadata.outputs.source_sha }}
 
             - name: Download checked release bytes
               if: needs.metadata.outputs.published != 'true'
@@ -605,122 +794,10 @@ jobs:
                   fail_on_unmatched_files: true
                   files: release-upload/*
 
-    winget-package:
-        runs-on: ubuntu-latest
-        if: ${{ !cancelled() && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
-        needs:
-            - metadata
-            - release
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v5
-              with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
-              with:
-                  bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
-              run: bun run install:locked
-
-            - name: Render WinGet manifest artifact
-              run: |
-                  bun run package:winget --tag "${{ needs.metadata.outputs.tag }}" --output winget-manifests
-                  tar -czf "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz" -C winget-manifests .
-                  shasum -a 256 "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz" > "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz.sha256"
-
-            - name: Upload WinGet manifest artifact
-              uses: actions/upload-artifact@v5
-              with:
-                  name: runwield-winget-manifests-${{ needs.metadata.outputs.tag }}
-                  path: |
-                      runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz
-                      runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz.sha256
-
-    winget-submit:
-        runs-on: windows-latest
-        # Owner paused submissions until further notice; keep manifest preparation active.
-        if: ${{ false }}
-        needs:
-            - metadata
-            - winget-package
-
-        steps:
-            - name: Download WinGet manifest artifact
-              uses: actions/download-artifact@v5
-              with:
-                  name: runwield-winget-manifests-${{ needs.metadata.outputs.tag }}
-                  path: winget-package
-
-            - name: Submit WinGet pull request
-              shell: pwsh
-              env:
-                  WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
-              run: |
-                  if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
-                      throw "WINGET_CREATE_GITHUB_TOKEN is not configured"
-                  }
-
-                  $version = "${{ needs.metadata.outputs.build_version }}".TrimStart("v")
-                  $prTitle = "New version: Gandazgul.RunWield version $version"
-                  $headers = @{
-                      Authorization = "Bearer $env:WINGET_CREATE_GITHUB_TOKEN"
-                      Accept = "application/vnd.github+json"
-                      "X-GitHub-Api-Version" = "2022-11-28"
-                  }
-
-                  $catalogUri = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/g/Gandazgul/RunWield/$version"
-                  try {
-                      Invoke-RestMethod $catalogUri -Headers $headers -ErrorAction Stop | Out-Null
-                      Write-Host "Gandazgul.RunWield $version is already in the WinGet catalog; submission is complete."
-                      exit 0
-                  } catch {
-                      if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
-                  }
-
-                  $query = [uri]::EscapeDataString("repo:microsoft/winget-pkgs is:pr is:open in:title `"$prTitle`"")
-                  $search = Invoke-RestMethod "https://api.github.com/search/issues?q=$query" -Headers $headers
-                  $existingPr = $search.items | Where-Object { $_.title -eq $prTitle } | Select-Object -First 1
-                  if ($existingPr) {
-                      Write-Host "WinGet submission already exists: $($existingPr.html_url)"
-                      exit 0
-                  }
-
-                  $archive = Join-Path $PWD "winget-package/runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz"
-                  $checksumFile = "$archive.sha256"
-                  $expectedChecksum = ((Get-Content $checksumFile -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
-                  $actualChecksum = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-                  if ($actualChecksum -ne $expectedChecksum) {
-                      throw "WinGet manifest artifact checksum mismatch"
-                  }
-
-                  $manifestRoot = Join-Path $PWD "winget-manifests"
-                  New-Item -ItemType Directory -Path $manifestRoot | Out-Null
-                  tar -xzf $archive -C $manifestRoot
-
-                  $wingetCreateVersion = "1.12.13.0"
-                  $wingetCreateChecksum = "24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea"
-                  $wingetCreate = Join-Path $PWD "wingetcreate.exe"
-                  $wingetCreateUrl = "https://github.com/microsoft/winget-create/releases/download/v$wingetCreateVersion/wingetcreate.exe"
-                  Invoke-WebRequest $wingetCreateUrl -OutFile $wingetCreate
-                  $actualToolChecksum = (Get-FileHash $wingetCreate -Algorithm SHA256).Hash.ToLowerInvariant()
-                  if ($actualToolChecksum -ne $wingetCreateChecksum) {
-                      throw "WingetCreate checksum mismatch"
-                  }
-
-                  $manifestPath = Join-Path $manifestRoot "Gandazgul.RunWield/$version"
-                  & $wingetCreate submit $manifestPath --prtitle $prTitle --no-open
-                  if ($LASTEXITCODE -ne 0) {
-                      throw "WingetCreate submission failed with exit code $LASTEXITCODE"
-                  }
-
     homebrew-package:
         runs-on: macos-15
         timeout-minutes: 30
-        if: ${{ !cancelled() && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
         needs:
             - metadata
             - release
@@ -732,7 +809,8 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
+                  ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: recursive
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -815,29 +893,94 @@ jobs:
                   git push origin HEAD:main
 
     publish-docs:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
-        needs:
-            - metadata
-            - release
-        uses: ./.github/workflows/docs.yml
-        with:
-            tag: ${{ needs.metadata.outputs.tag }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        needs: [metadata, release, docs-artifact]
+        runs-on: ubuntu-latest
         permissions:
             contents: write
-            pages: write
-            id-token: write
+            actions: write
+        concurrency:
+            group: stable-docs-publication
+            cancel-in-progress: false
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+            - uses: actions/download-artifact@v5
+              with:
+                  name: prepared-docs
+                  path: prepared-docs
+            - name: Publish prepared documentation commit
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+                  DOCS_SHA: ${{ needs.docs-artifact.outputs.sha }}
+              run: |
+                  set -euo pipefail
+                  # Keep recovery tooling outside the tree that reconciliation checks out.
+                  cp scripts/reconcile-docs-branch.sh "$RUNNER_TEMP/reconcile-docs-branch.sh"
+                  git fetch prepared-docs/prepared-docs.bundle refs/docs/prepared
+                  for attempt in {1..3}; do
+                    latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+                    test "$RELEASE_TAG" = "$latest"
+                    git fetch origin docs/stable:refs/remotes/origin/docs/stable
+                    tip=$(git rev-parse origin/docs/stable)
+                    if ! git merge-base --is-ancestor "$tip" "$DOCS_SHA"; then
+                      DOCS_SHA=$(bash "$RUNNER_TEMP/reconcile-docs-branch.sh" "$RELEASE_TAG")
+                    fi
+                    if git push origin "$DOCS_SHA:refs/heads/docs/stable"; then exit 0; fi
+                  done
+                  echo "docs/stable kept advancing or rejected publication; retry this job without forcing the branch" >&2
+                  exit 1
+            - name: Dispatch and await documentation deployment
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+              run: |
+                  set -euo pipefail
+                  request="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+                  gh workflow run docs.yml --ref docs/stable -f tag="$RELEASE_TAG" -f request="$request"
+                  for attempt in {1..60}; do
+                    run=$(gh run list --workflow docs.yml --event workflow_dispatch --branch docs/stable --limit 100 \
+                      --json databaseId,displayTitle --jq ".[] | select(.displayTitle == \"docs $RELEASE_TAG $request\") | .databaseId")
+                    if [ -n "$run" ]; then
+                      gh run watch "$run" --exit-status --interval 15
+                      exit 0
+                    fi
+                    sleep 5
+                  done
+                  echo "Could not locate dispatched docs run for $request" >&2
+                  exit 1
+
+    integrate-release-branch:
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        needs: [metadata, release]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - name: Integrate and retire the Release Branch
+              env:
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+              run: bash scripts/integrate-release-branch.sh "$RELEASE_TAG"
 
     ci:
-        if: always()
-        needs: ci-shards
+        if: ${{ always() && needs.metadata.outputs.qualification_only != 'true' }}
+        needs: [metadata, ci-shards]
         runs-on: ubuntu-latest
         steps:
             - name: Require every source shard
               run: test '${{ needs.ci-shards.result }}' = 'success'
 
     golden:
-        if: always()
-        needs: golden-shards
+        if: ${{ always() && needs.metadata.outputs.qualification_only != 'true' }}
+        needs: [metadata, golden-shards]
         runs-on: ubuntu-latest
         steps:
             - name: Require every Golden shard

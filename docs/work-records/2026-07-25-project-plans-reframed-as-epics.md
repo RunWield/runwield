@@ -11,15 +11,12 @@ provenance:
         - "df583cba-2ac7-4892-9002-49371ee5b3ae"
 ---
 
-# PROJECT Plans Reframed as Epics
+# PROJECT Plans as Epic containers
 
 ## Summary
 
-Completed and verified the PROJECT decomposition Epic, reframing PROJECT work as non-executable Epic containers that can
-be decomposed by Slicer into independently executable FEATURE plans. This gives future planning a durable model for
-shipping large work incrementally without treating the Epic itself as executable.
+PROJECT Plans organize large work as non-executable Epics. Slicer decomposes Epics into independently executable child Plans for incremental delivery.
 
 ## Future Planning Notes
 
-Future PROJECT workflow work should preserve the Epic-versus-FEATURE boundary: Epics organize and track decomposition,
-while FEATURE plans remain the executable unit.
+Epics organize and track decomposition; child Plans remain the executable unit.

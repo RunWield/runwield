@@ -74,7 +74,7 @@ test("saved Epic chat review keeps one conversation and live page across two run
             const firstAnswer = await first;
             assertEquals(firstAnswer.outcome, "selected");
             assertEquals(turns[0], true);
-            assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "feedback");
+            assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "draft");
 
             const current = await loadPlan(projectRoot, "epic");
             assert(current);
@@ -104,9 +104,11 @@ test("saved Epic chat review keeps one conversation and live page across two run
                 const page = new URL(url);
                 const token = page.searchParams.get("token");
                 assert(token);
-                const status = await (await fetch(new URL(`/api/review/conversation?token=${token}`, page.origin), {
-                    headers: { "x-runwield-review-token": token },
-                })).json();
+                const status = await (
+                    await fetch(new URL(`/api/review/conversation?token=${token}`, page.origin), {
+                        headers: { "x-runwield-review-token": token },
+                    })
+                ).json();
                 await decide(url, "decision", { approved: true, approvalAction: "decompose" });
                 const secondAnswer = await second;
                 settled = true;
@@ -119,8 +121,8 @@ test("saved Epic chat review keeps one conversation and live page across two run
                 assertEquals(secondAnswer.outcome, "accepted");
                 assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "approved");
                 await runtime.closeAllSessionsWhenIdle();
-                const closed = await fetch(new URL(`/api/review/conversation?token=${token}`, page.origin)).catch(() =>
-                    null
+                const closed = await fetch(new URL(`/api/review/conversation?token=${token}`, page.origin)).catch(
+                    () => null,
                 );
                 assert(!closed?.ok, "Closing the owner must close its review page");
             } finally {

@@ -1,4 +1,10 @@
-import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
@@ -8,7 +14,6 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { HostedSession } from "./hosted-session.js";
-import { exportRootSessionToJsonl } from "./root-session.js";
 import {
     acknowledgeTaskCompletion,
     claimPendingTaskCompletion,
@@ -80,9 +85,9 @@ test("task completion claim survives process resume until validation handles it"
 
     assertEquals(listPendingTaskCompletions(resumed), []);
     assertEquals(claimPendingTaskCompletion(resumed, resumedRoot), null);
-    const journalEntries = sessionManager.getBranch().filter((entry) =>
-        entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE
-    );
+    const journalEntries = sessionManager
+        .getBranch()
+        .filter((entry) => entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE);
     assertEquals(journalEntries.length, 2);
 });
 
@@ -115,8 +120,14 @@ test("accepted task completion is recovered from a reopened session JSONL", asyn
             undefined,
             EXTENSION_CONTEXT,
         );
-        const sessionPath = exportRootSessionToJsonl(sessionManager, sessionManager.getSessionFile());
+        const sessionPath = sessionManager.getSessionFile();
         assertExists(sessionPath);
+        await fsWriteFile(
+            sessionPath,
+            [sessionManager.getHeader(), ...sessionManager.getEntries()]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n",
+        );
         assertEquals((await fsReadFile(sessionPath, "utf8")).includes(TASK_COMPLETION_CUSTOM_TYPE), true);
 
         const reopenedManager = SessionManager.open(sessionPath, sessionDir, projectRoot);
@@ -133,7 +144,12 @@ test("accepted task completion is recovered from a reopened session JSONL", asyn
         assertEquals(completion.report, "- Persisted to JSONL.");
         acknowledgeTaskCompletion(resumed, completion);
         assertEquals(listPendingTaskCompletions(resumed), []);
-        exportRootSessionToJsonl(reopenedManager, sessionPath);
+        await fsWriteFile(
+            sessionPath,
+            [reopenedManager.getHeader(), ...reopenedManager.getEntries()]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n",
+        );
 
         const reopenedAfterAcknowledgment = SessionManager.open(sessionPath, sessionDir, projectRoot);
         const afterAcknowledgment = new HostedSession({
@@ -179,9 +195,9 @@ test("isolated task completion remains outside the root JSONL outbox", async () 
     assertEquals(claimPendingTaskCompletion(hostedSession, root), null);
     assertEquals(claimPendingTaskCompletion(hostedSession, isolated)?.report, "- Isolated work completed.");
     assertEquals(
-        sessionManager.getBranch().some((entry) =>
-            entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE
-        ),
+        sessionManager
+            .getBranch()
+            .some((entry) => entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE),
         false,
     );
 });
@@ -231,13 +247,7 @@ test("acknowledging one completion consumes only that completion", async () => {
         hostedSession: original,
         agentName: "plan-engineer",
     });
-    await tool.execute(
-        "duplicate-first",
-        { message: "- First completion." },
-        undefined,
-        undefined,
-        EXTENSION_CONTEXT,
-    );
+    await tool.execute("duplicate-first", { message: "- First completion." }, undefined, undefined, EXTENSION_CONTEXT);
     await tool.execute(
         "duplicate-second",
         { message: "- Second completion." },

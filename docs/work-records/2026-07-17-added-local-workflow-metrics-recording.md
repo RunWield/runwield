@@ -11,14 +11,8 @@ provenance:
         - "bd94f056-1974-4066-8b36-8f1bb380fa3a"
 ---
 
-# Added local workflow metrics recording
+# Local workflow metrics recording
 
 ## Summary
 
-Implemented opt-in, local-only JSONL metrics for routing, planning, execution, validation, recovery, model selection,
-and tool usage. Recording is best-effort and privacy-safe, defaults to disabled, stores project-scoped data under
-~/.wld/workflow-metrics/, and includes settings/schema documentation and automated coverage.
-
-## Future Planning Notes
-
-A future feature can add CLI or Workspace reporting once the raw event vocabulary has stabilized.
+RunWield provides opt-in, local-only JSONL metrics for routing, planning, execution, validation, recovery, model selection, and tool use. Recording defaults to disabled, is best-effort and privacy-safe, and keeps data project-scoped.

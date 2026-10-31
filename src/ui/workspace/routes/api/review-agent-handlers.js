@@ -3,13 +3,14 @@ import { isStandaloneExecutable } from "../../../../shared/runtime-identity.ts";
 import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
 import { getCwd } from "../../../../constants.js";
 import process from "node:process";
-/** Review-surface Guided Review agent/job routes. */
+/** Review-surface background review agent/job routes. */
 
 import {
     parseGuidedReviewMetadataLine,
     parseGuidedReviewUsageEventLine,
 } from "../../../../cmd/guided-review/protocol.ts";
 import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../../../shared/workflow/guided-review.js";
+import { buildAiReviewPrompt, validateAiReviewResult } from "../../../../shared/standalone-review/ai-review.ts";
 import { recordWorkflowMetric } from "../../../../shared/workflow/metrics.js";
 import { parseDiffFiles } from "../../../../shared/workflow/review-diff-tool.js";
 import { createReviewWidgetStore } from "./review-widget-handlers.js";
@@ -29,10 +30,13 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
  * @property {number} usd
  */
 
+/** @typedef {import("../../../../shared/standalone-review/ai-review.ts").AiReviewValue} AiReviewJobResult */
+
 /**
  * @typedef {Object} ReviewGuideJobEntry
  * @property {Record<string, unknown>} info
  * @property {Record<string, unknown> | null} guide
+ * @property {AiReviewJobResult | null} [aiReview]
  * @property {boolean[]} reviewed
  * @property {AbortController} abortController
  * @property {Promise<void>} done
@@ -40,6 +44,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
 
 /**
  * @typedef {Object} ReviewAgentState
+ * @property {boolean} stopped
  * @property {string} token
  * @property {string} cwd
  * @property {Record<string, unknown>} reviewPayload
@@ -49,6 +54,31 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
  * @property {(prompt: string, signal: AbortSignal, cwd: string, progress?: { onUsage?: (usage: GuideUsageTotals) => void }) => Promise<{ stdout: string, stderr?: string, provider: string, model?: string, thinkingLevel?: string, usage?: GuideUsageTotals, cost?: GuideCostTotals }>} runGuideCommand
  */
 
+/** @typedef {ReviewAgentState["runGuideCommand"]} GuideRunner */
+
+/**
+ * @typedef {Object} GuideRunnerSelection
+ * @property {GuideRunner} runner
+ */
+
+/** @type {GuideRunnerSelection | null} */
+let configuredGuideRunner = null;
+
+/** Select the process runner before the review host starts. @param {GuideRunner} runner */
+export function configureGuideRunner(runner) {
+    if (configuredGuideRunner) throw new Error("Guided Review runner is already configured");
+    const selection = { runner };
+    configuredGuideRunner = selection;
+    return () => {
+        if (configuredGuideRunner === selection) configuredGuideRunner = null;
+    };
+}
+
+/** @returns {GuideRunner} */
+export function getGuideRunner() {
+    return configuredGuideRunner?.runner || runWldJobCommand;
+}
+
 /**
  * @param {{ token: string, cwd: string, reviewPayload: Record<string, unknown>, runGuideCommand: ReviewAgentState["runGuideCommand"] }} options
  * @returns {ReviewAgentState}
@@ -56,6 +86,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
 export function createReviewAgentState(options) {
     return {
         ...options,
+        stopped: false,
         jobs: new Map(),
         streams: new Set(),
         widgets: createReviewWidgetStore(),
@@ -65,7 +96,16 @@ export function createReviewAgentState(options) {
 
 /** @param {ReviewAgentState} state */
 export async function cleanupReviewAgentState(state) {
+    state.stopped = true;
     for (const entry of state.jobs.values()) entry.abortController.abort("review server stopped");
+    for (const controller of state.streams) {
+        try {
+            controller.close();
+        } catch {
+            // The client may already have closed its stream.
+        }
+    }
+    state.streams.clear();
     await Promise.allSettled([...state.jobs.values()].map((entry) => entry.done));
     await state.widgets.cleanup();
 }
@@ -77,6 +117,7 @@ export async function cleanupReviewAgentState(state) {
  * @returns {Promise<Response | null>}
  */
 export async function reviewAgentApi(request, url, state) {
+    if (state.stopped) return new Response("Review stopped.", { status: 503, ...noStore() });
     if (request.method === "GET" && url.pathname === "/api/agents/capabilities") {
         const provider = detectGuideProvider();
         return Response.json(
@@ -84,6 +125,18 @@ export async function reviewAgentApi(request, url, state) {
                 mode: "review",
                 available: Boolean(provider),
                 providers: [
+                    ...(state.reviewPayload.standaloneReview
+                        ? [
+                              {
+                                  id: "ai-review",
+                                  name: "AI Review",
+                                  available: true,
+                                  provider: detectAiReviewProvider().provider,
+                                  model: detectAiReviewProvider().model,
+                                  costAvailable: false,
+                              },
+                          ]
+                        : []),
                     {
                         id: "guide",
                         name: "Guided Review Explainer",
@@ -108,19 +161,30 @@ export async function reviewAgentApi(request, url, state) {
 
     if (request.method === "POST" && url.pathname === "/api/agents/jobs") {
         const body = await request.json().catch(() => ({}));
+        if (state.stopped) return new Response("Review stopped.", { status: 503, ...noStore() });
         if (
             !body ||
             typeof body !== "object" ||
             Array.isArray(body) ||
             !Object.hasOwn(body, "provider") ||
-            body.provider !== "guide"
+            !["guide", "ai-review"].includes(body.provider)
         ) {
             return Response.json(
-                { error: "Only the guide provider is available in RunWield code review." },
+                { error: "Unknown review provider. Use guide or ai-review (standalone only)." },
                 {
                     status: 400,
                 },
             );
+        }
+        if (body.provider === "ai-review") {
+            if (!state.reviewPayload.standaloneReview) {
+                return Response.json(
+                    { error: "AI review is available only in Standalone Code Review." },
+                    { status: 400 },
+                );
+            }
+            const entry = createAiReviewJob(state);
+            return Response.json({ job: entry.info }, { status: 202, headers: noStore().headers });
         }
         const provider = detectGuideProvider();
         if (!provider && !state.reviewPayload.guidedReviewFixture) {
@@ -139,12 +203,30 @@ export async function reviewAgentApi(request, url, state) {
     if (request.method === "DELETE" && deleteMatch) {
         const entry = state.jobs.get(decodeURIComponent(deleteMatch[1]));
         if (entry && entry.info.status === "running") {
-            entry.abortController.abort("Guide job killed by reviewer.");
+            entry.abortController.abort("Review job killed by reviewer.");
             entry.info.status = "killed";
             entry.info.endedAt = Date.now();
             broadcastJobs(state);
         }
         return Response.json({ ok: true }, noStore());
+    }
+
+    const aiReviewMatch = /^\/api\/ai-review\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "GET" && aiReviewMatch) {
+        const entry = state.jobs.get(decodeURIComponent(aiReviewMatch[1]));
+        if (!entry || entry.info.provider !== "ai-review") {
+            return Response.json({ error: "AI review not found" }, { status: 404 });
+        }
+        if (entry.info.status !== "done" || !entry.aiReview) {
+            return Response.json(
+                { error: entry.info.error || "AI review is not ready", job: withElapsed(entry.info) },
+                {
+                    status: entry.info.status === "failed" ? 422 : 202,
+                    headers: noStore().headers,
+                },
+            );
+        }
+        return Response.json(entry.aiReview, noStore());
     }
 
     const guideMatch = /^\/api\/guide\/([^/]+)$/.exec(url.pathname);
@@ -189,9 +271,10 @@ function createGuideJob(state, provider) {
         startedAt: now,
         endedAt: null,
         command: provider ? [provider.provider, "guided-review"] : ["fixture"],
-        cwd: typeof state.reviewPayload.agentCwd === "string" && state.reviewPayload.agentCwd.trim()
-            ? state.reviewPayload.agentCwd
-            : state.cwd,
+        cwd:
+            typeof state.reviewPayload.agentCwd === "string" && state.reviewPayload.agentCwd.trim()
+                ? state.reviewPayload.agentCwd
+                : state.cwd,
         engine: provider?.provider || "fixture",
         model: provider?.model || "unknown",
         usageState: provider?.provider === "wld" ? "pending" : "unavailable",
@@ -205,6 +288,114 @@ function createGuideJob(state, provider) {
     broadcastJobs(state);
     entry.done = runGuideJob(state, entry, changedFiles);
     return entry;
+}
+
+/** @param {ReviewAgentState} state */
+function createAiReviewJob(state) {
+    const id = crypto.randomUUID();
+    const provider = detectAiReviewProvider();
+    const cwd =
+        typeof state.reviewPayload.agentCwd === "string" && state.reviewPayload.agentCwd.trim()
+            ? state.reviewPayload.agentCwd
+            : state.cwd;
+    const rawPatch = String(state.reviewPayload.rawPatch || "");
+    const info = {
+        id,
+        source: `ai-review-${id.slice(0, 8)}`,
+        provider: "ai-review",
+        label: "AI Review",
+        status: "running",
+        startedAt: Date.now(),
+        endedAt: null,
+        command: [provider.provider, "ai-review"],
+        cwd,
+        engine: provider.provider,
+        model: provider.model,
+        usageState: provider.provider === "wld" ? "pending" : "unavailable",
+        tokens: null,
+        cost: null,
+        costUnavailable: true,
+    };
+    /** @type {ReviewGuideJobEntry} */
+    const entry = {
+        info,
+        guide: null,
+        aiReview: null,
+        reviewed: [],
+        abortController: new AbortController(),
+        done: Promise.resolve(),
+    };
+    state.jobs.set(id, entry);
+    broadcastJobs(state);
+    // Capture all target data before prompt expansion yields to a refresh.
+    const standalone = state.reviewPayload.standaloneReview;
+    const target = {
+        headRef:
+            standalone && typeof standalone === "object" && "headRef" in standalone ? standalone.headRef : undefined,
+        mode: standalone && typeof standalone === "object" && "mode" in standalone ? standalone.mode : undefined,
+        baseLabel:
+            standalone && typeof standalone === "object" && "baseLabel" in standalone
+                ? standalone.baseLabel
+                : undefined,
+    };
+    entry.done = runAiReviewJob(state, entry, {
+        rawPatch,
+        mode:
+            target.mode === "uncommitted"
+                ? "uncommitted"
+                : typeof target.headRef === "string"
+                  ? String(target.mode)
+                  : "worktree",
+        gitRef: typeof target.headRef === "string" ? target.headRef : "HEAD",
+        baseLabel: typeof target.baseLabel === "string" ? target.baseLabel : "",
+        reviewContext: readStandaloneReviewContext(standalone),
+    });
+    return entry;
+}
+
+/**
+ * @typedef {Object} AiReviewJobTarget
+ * @property {string} rawPatch
+ * @property {string} mode
+ * @property {string} gitRef
+ * @property {string} baseLabel
+ * @property {string} reviewContext
+ */
+
+/** @param {ReviewAgentState} state @param {ReviewGuideJobEntry} entry @param {AiReviewJobTarget} target */
+async function runAiReviewJob(state, entry, target) {
+    try {
+        const prompt = await buildAiReviewPrompt({ ...target, diffText: target.rawPatch, cwd: String(entry.info.cwd) });
+        entry.abortController.signal.throwIfAborted();
+        const result = await runWldJobCommand(
+            prompt,
+            entry.abortController.signal,
+            String(entry.info.cwd),
+            {
+                onUsage: (usage) => addGuideJobUsage(state, entry, usage),
+            },
+            "ai-review",
+            "RUNWIELD_AI_REVIEW_COMMAND",
+        );
+        entry.abortController.signal.throwIfAborted();
+        if (result.usage && entry.info.usageState !== "available") setGuideJobUsage(state, entry, result.usage);
+        entry.info.providerName = result.provider;
+        entry.info.model = result.model || entry.info.model;
+        entry.info.thinkingLevel = result.thinkingLevel;
+        const validation = validateAiReviewResult(result.stdout, { rawPatch: target.rawPatch });
+        if (!validation.ok) throw new Error(validation.error);
+        entry.aiReview = validation.value;
+        entry.info.status = "done";
+        entry.info.summary = { counts: validation.value.counts, specSource: validation.value.specSource };
+    } catch (error) {
+        entry.info.status = entry.abortController.signal.aborted ? "killed" : "failed";
+        entry.info.error = error instanceof Error ? error.message : String(error);
+    } finally {
+        finishGuideJobUsage(entry);
+        entry.info.endedAt = Date.now();
+        await recordGuideJobMetric(state, entry);
+        broadcastJobs(state);
+    }
 }
 
 /** @returns {GuideUsageTotals} */
@@ -332,7 +523,7 @@ async function recordGuideJobMetric(state, entry) {
     await recordWorkflowMetric(
         {
             category: "validation",
-            event: "guided_review_generation_result",
+            event: info.provider === "ai-review" ? "ai_review_generation_result" : "guided_review_generation_result",
             details: {
                 status: info.status,
                 provider: info.providerName || info.engine,
@@ -341,7 +532,18 @@ async function recordGuideJobMetric(state, entry) {
                 tokensAvailable: Boolean(info.tokens),
                 costAvailable: Boolean(info.cost),
                 costUnavailable: Boolean(info.costUnavailable),
-                sectionCount: entry.guide && Array.isArray(entry.guide.sections) ? entry.guide.sections.length : 0,
+                ...(info.provider === "ai-review"
+                    ? {
+                          annotationCount:
+                              entry.aiReview && Array.isArray(entry.aiReview.annotations)
+                                  ? entry.aiReview.annotations.length
+                                  : 0,
+                          counts: entry.aiReview?.counts || null,
+                      }
+                    : {
+                          sectionCount:
+                              entry.guide && Array.isArray(entry.guide.sections) ? entry.guide.sections.length : 0,
+                      }),
                 hasError: typeof info.error === "string" && info.error.length > 0,
                 errorKind: classifyGuideJobError(info.error),
             },
@@ -413,6 +615,15 @@ function parseJsonFromModel(raw) {
         if (!match) throw new Error("Guide provider output was not JSON.");
         return JSON.parse(match[1]);
     }
+}
+
+function detectAiReviewProvider() {
+    return {
+        provider: process.env["RUNWIELD_AI_REVIEW_COMMAND"] ? "custom" : "wld",
+        model:
+            process.env["RUNWIELD_AI_REVIEW_MODEL"] ||
+            (process.env["RUNWIELD_AI_REVIEW_COMMAND"] ? "configured-command" : "wld"),
+    };
 }
 
 function detectGuideProvider() {
@@ -533,10 +744,25 @@ async function writeGuidePrompt(stdin, prompt) {
     }
 }
 
-/** @param {string} prompt @param {AbortSignal} signal @param {string} cwd @param {{ onUsage?: (usage: GuideUsageTotals) => void }} [progress] */
-export async function runConfiguredGuideCommand(prompt, signal, cwd, progress = {}) {
-    const configured = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
-    const command = configured ? shellCommand(configured) : await resolveRunWieldGuideCommand(cwd);
+/**
+ * @param {string} prompt
+ * @param {AbortSignal} signal
+ * @param {string} cwd
+ * @param {{ onUsage?: (usage: GuideUsageTotals) => void }} [progress]
+ * @param {"guided-review" | "ai-review"} [subcommand]
+ * @param {string} [overrideVariable]
+ */
+export async function runWldJobCommand(
+    prompt,
+    signal,
+    cwd,
+    progress = {},
+    subcommand = "guided-review",
+    overrideVariable = "RUNWIELD_GUIDED_REVIEW_COMMAND",
+) {
+    const configured = process.env[overrideVariable];
+    const modelVariable = overrideVariable.replace(/_COMMAND$/, "_MODEL");
+    const command = configured ? shellCommand(configured) : await resolveRunWieldJobCommand(cwd, subcommand);
     const provider = configured ? "custom" : "wld";
     const child = spawnNativeProcess(command.command, {
         args: command.args,
@@ -560,7 +786,9 @@ export async function runConfiguredGuideCommand(prompt, signal, cwd, progress = 
     if (stderrResult.status === "rejected") throw stderrResult.reason;
     if (stderrResult.value.protocolError) throw stderrResult.value.protocolError;
     if (!statusResult.value.success) {
-        throw new Error(stderrResult.value.stderr.trim() || `Guide provider exited with ${statusResult.value.code}`);
+        throw new Error(
+            stderrResult.value.stderr.trim() || `${subcommand} provider exited with ${statusResult.value.code}`,
+        );
     }
     if (inputResult.status === "rejected") throw inputResult.reason;
     return {
@@ -569,7 +797,7 @@ export async function runConfiguredGuideCommand(prompt, signal, cwd, progress = 
         provider: stderrResult.value.metadata?.provider || provider,
         model:
             stderrResult.value.metadata?.model ||
-            process.env["RUNWIELD_GUIDED_REVIEW_MODEL"] ||
+            process.env[modelVariable] ||
             (configured ? "configured-command" : "wld"),
         thinkingLevel: stderrResult.value.metadata?.thinkingLevel,
         ...(stderrResult.value.usage
@@ -578,12 +806,14 @@ export async function runConfiguredGuideCommand(prompt, signal, cwd, progress = 
     };
 }
 
-/** @param {string} cwd */
-async function resolveRunWieldGuideCommand(cwd) {
-    if (await commandExists("wld")) return { command: "wld", args: ["guided-review"] };
+/** @param {string} cwd @param {string} subcommand */
+async function resolveRunWieldJobCommand(cwd, subcommand) {
+    // Private job commands must use the running binary, not a different installed version.
+    if (isStandaloneExecutable()) return { command: process.execPath, args: [subcommand] };
+    if (await commandExists("wld")) return { command: "wld", args: [subcommand] };
     return {
         command: process.execPath,
-        args: isStandaloneExecutable() ? ["guided-review"] : ["run", ...[], "src/cli.ts", "guided-review"],
+        args: isStandaloneExecutable() ? [subcommand] : ["run", ...[], "src/cli.ts", subcommand],
         cwd,
     };
 }

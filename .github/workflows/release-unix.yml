@@ -1,0 +1,106 @@
+name: Unix release checks
+
+on:
+    workflow_call:
+        inputs:
+            source_sha:
+                description: Exact product commit selected by release-gate
+                required: true
+                type: string
+            build_version:
+                description: Candidate or Stable identity
+                required: true
+                type: string
+    workflow_dispatch:
+
+env:
+    WLD_BUILD_VERSION: ${{ inputs.build_version || 'v0.0.0-rc.1' }}
+
+permissions:
+    contents: read
+
+jobs:
+    source:
+        name: ${{ matrix.runner }} source ${{ matrix.shard }}
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 50
+        strategy:
+            fail-fast: false
+            matrix:
+                runner: [macos-latest]
+                shard: [1, 2, 3, 4]
+        env:
+            WLD_TEST_CONCURRENCY: "4"
+            WLD_TEST_FILE_TIMEOUT_MS: "600000"
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.source_sha || github.sha }}
+                  submodules: recursive
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+            - uses: actions/setup-go@v6
+              with:
+                  go-version: "1.25.x"
+                  cache: false
+            - name: Prepare external tool boundaries
+              run: |
+                  mkdir -p "$RUNNER_TEMP/runwield-ci-bin"
+                  GOBIN="$RUNNER_TEMP/runwield-ci-bin" go install github.com/edouard-claude/snip/cmd/snip@v0.24.1
+                  for binary in mnemoteca cymbal ketch; do
+                    cat > "$RUNNER_TEMP/runwield-ci-bin/$binary" <<'EOF'
+                  #!/usr/bin/env bash
+                  if [[ "$1" == "--help" ]]; then exit 0; fi
+                  printf '%s test stub\n' "$(basename "$0")"
+                  EOF
+                    chmod +x "$RUNNER_TEMP/runwield-ci-bin/$binary"
+                  done
+                  echo "$RUNNER_TEMP/runwield-ci-bin" >> "$GITHUB_PATH"
+            - name: Install frozen dependencies
+              run: bun run install:locked
+            - name: Check source and test types
+              run: bun run check
+            - name: Build embedded Workspace for source integration tests
+              run: bun run workspace:build
+            - name: Run isolated source and Golden shard
+              env:
+                  WLD_TEST_SHARD: ${{ matrix.shard }}/4
+              run: bun scripts/run-tests.js
+            - name: Retain test reports
+              if: always()
+              uses: actions/upload-artifact@v5
+              with:
+                  name: unix-${{ matrix.runner }}-source-${{ matrix.shard }}-${{ github.run_attempt }}
+                  retention-days: 3
+                  include-hidden-files: true
+                  if-no-files-found: warn
+                  path: .ci-cache/
+
+    package:
+        name: ${{ matrix.runner }} package
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 20
+        strategy:
+            fail-fast: false
+            matrix:
+                runner: [ubuntu-latest, macos-latest]
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.source_sha || github.sha }}
+                  submodules: recursive
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+            - uses: denoland/setup-deno@v2
+              with:
+                  deno-version: v2.9.7
+            - name: Install frozen dependencies
+              run: bun run install:locked
+            - name: Verify native lock interoperability
+              run: bun scripts/check-lock-interoperability.ts "$(command -v deno)"
+            - name: Check compiled release surfaces
+              run: bun scripts/release-check.js --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"

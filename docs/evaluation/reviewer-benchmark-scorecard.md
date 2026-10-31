@@ -6,19 +6,44 @@ Measure whether RunWield's Semantic Reviewer finds real defects without manufact
 verification rounds track repairs accurately. The benchmark compares the current discovery prompt with candidate Review
 Reconnaissance behavior through the normal isolated Reviewer Session, tools, and structured completion path.
 
-This is an Agent-specific evaluator for the shared End-to-End Benchmark Harness. It does not define another runner,
-replace Workflow Validation, or add passive product telemetry.
+The current interim runner is Reviewer-only: `bun scripts/run-reviewer-benchmark.ts`. It runs the production
+Reviewer through `runReviewerRound`, not a generic model request. It does not replace Workflow Validation or add
+passive product telemetry. The shared End-to-End Benchmark Harness remains target.
+
+## Current Smoke Scope
+
+Five packages under `evals/reviewer/` provide nine discovery cases: RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B,
+and RV-M01 A. The smoke run uses one trial per case and the effective configured Reviewer model. It does not author
+or compare a reconnaissance candidate.
+
+The runner scores decision accuracy and clean approval mechanically. Evidence-path matches are suggestions only.
+Defect recall, blocking-finding precision, and severe-defect recall require human labels in `adjudications.json`.
+Missing or partial labels keep semantic scores pending; `novel_valid` freezes them until oracle correction. Failures
+and missing cases stay in denominators. Reports split decisions and semantic measures by coverage group.
+
+Results retain actual model/provider identity, prompt hashes, fixture hashes, checkout revision and dirtiness,
+findings, advisories, usage, elapsed time, tool calls, and nudges. Missing measurements say `unavailable`. Model-turn
+counts, inspection breadth, repair-state scoring, repetitions, and paired comparison remain target.
+
+The [2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine rounds: mechanical
+decision accuracy 7/9, defective rejections 5/5, and clean approval 2/4. The owner accepted all 13 blocking findings.
+Six match the original oracle; seven require oracle corrections, including
+an independent RV-D12 concern formerly bundled under one id. Semantic scoring remains frozen against the historical
+oracle. Four packages are now revision 2, with no new paid measurements. The clean rejections were not automatically
+false positives.
+
+See [run and adjudication instructions](../../evals/reviewer/README.md#run-and-score).
 
 ## Evaluated Configurations
 
-The first experiment compares two configurations:
+The smoke run measures the baseline only. The planned paired experiment compares two configurations:
 
 1. **Baseline** — the current Semantic Reviewer discovery and verification prompts.
 2. **Candidate** — the same Reviewer with a first-discovery reconnaissance pass that:
-   - explains the changed behavior and its input, environment, state, and surrounding-code assumptions;
-   - searches adversarially for failure modes;
-   - carries only confirmed defects and still-plausible risks into the verdict;
-   - suppresses every risk it rules out.
+    - explains the changed behavior and its input, environment, state, and surrounding-code assumptions;
+    - searches adversarially for failure modes;
+    - carries only confirmed defects and still-plausible risks into the verdict;
+    - suppresses every risk it rules out.
 
 Keep the model, provider, tools, Plan, repository revision, Runtime settings, and sampling settings equal. Randomize
 configuration order within each fixture repetition so provider drift or warm-cache order does not consistently favor one
@@ -118,7 +143,8 @@ configuration that found the defect.
 
 ## Repetitions and Comparison
 
-- Run at least three independent trials per fixture and configuration in the pilot.
+- For the full paired pilot, run at least three independent trials per fixture and configuration. The current
+  one-trial smoke run establishes neither stability nor a candidate improvement.
 - Keep every timeout, interruption, invalid tool result, and infrastructure failure in the report denominator.
 - Compare paired per-fixture deltas before aggregate averages.
 - Report confidence intervals or paired bootstrap intervals once the corpus is large enough; do not imply precision from
@@ -149,11 +175,11 @@ precision collapse, a severe miss, or a clean-approval regression.
 
 The reviewable pilot catalog contains:
 
-- 12 discovery families, each with a defective and clean twin: 24 scenarios;
+- 16 discovery families, each with a defective and clean twin: 32 scenarios;
 - 6 multi-defect discovery scenarios;
 - 6 repair-state verification scenarios.
 
-That produces 36 scenarios. Two prompt configurations with three trials each require 216 Reviewer rounds. Start with a
+That produces 44 scenarios. Two prompt configurations with three trials each require 264 Reviewer rounds. Start with a
 one-trial smoke pass before spending the full model budget.
 
 ## External Methodology References

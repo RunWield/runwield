@@ -1,5 +1,6 @@
 import { RunWieldTui } from "./tui.ts";
 import { getCwd } from "../../constants.js";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
@@ -37,7 +38,7 @@ import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blo
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { type FooterTheme, renderUpdateNoticeLine } from "./chat-footer.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
-import { hasClipboardImage } from "./clipboard.ts";
+import { disposeKeybindings } from "./keybindings.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { ImageAttachment } from "../../shared/session/types.js";
@@ -52,7 +53,7 @@ import {
     type TuiSessionSidebarSnapshot,
 } from "./session-sidebar.ts";
 import { readSessionArtifact } from "../../shared/session/read-session-artifact.ts";
-import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
+import { type BrowserPort } from "../../shared/browser-port.ts";
 import { startArtifactReadSurface } from "../review/review-launcher.ts";
 
 import { TuiAgentMascot } from "./agent-mascot.ts";
@@ -70,6 +71,7 @@ export interface ChatViewSessionSnapshot extends TuiSessionSidebarSnapshot {
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 
 interface ChatViewSharedOptions {
+    browser: BrowserPort;
     documentLinks: DocumentLinkHost | null;
     tui: TUI;
     getSessionId(): string;
@@ -205,10 +207,12 @@ export interface ChatView {
     resetForSessionReplacement(): void;
     focusEditor(): void;
     requestRender(): void;
+    showClipboardImageMissing(): void;
+    clearClipboardImageNotice(): void;
     dispose(): void;
 }
 
-const CLIPBOARD_IMAGE_HINT_TEXT = "Image in clipboard · ctrl+v to paste";
+const CLIPBOARD_IMAGE_MISSING_TEXT = "No image in clipboard";
 
 export function findVisibleToolBlocks(
     containerLayout: RenderedChildLayout[],
@@ -247,14 +251,13 @@ export function findVisibleToolBlocks(
     return visibleBlocks;
 }
 
-export function renderClipboardImageHintLines(
-    clipboardImageAvailable: boolean,
-    pastedImageCount: number,
+export function renderClipboardImageNoticeLines(
+    showNotice: boolean,
     width: number,
     themeImpl: FooterTheme = theme,
 ): string[] {
-    if (!clipboardImageAvailable || pastedImageCount > 0 || width <= 0) return [];
-    const text = truncateToWidth(CLIPBOARD_IMAGE_HINT_TEXT, width);
+    if (!showNotice || width <= 0) return [];
+    const text = truncateToWidth(CLIPBOARD_IMAGE_MISSING_TEXT, width);
     const padding = " ".repeat(Math.max(0, width - visibleWidth(text)));
     return [padding + themeImpl.fg("dim" as ThemeColor, text)];
 }
@@ -287,22 +290,25 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         );
         const helpText = new Text(compactHelp, 0, 0);
         const updateNoticeText = new Text("", 0, 0);
-        const cachedUpdateAvailability = getCachedUpdateAvailabilitySync(SYSTEM_UPDATE_CHECK_PORTS.clock, {
-            currentVersion: VERSION,
-        });
-        if (cachedUpdateAvailability) {
-            if (cachedUpdateAvailability.available) {
-                updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
+        // The laptop owns the launcher version. A supplied remote runtime never updates itself.
+        if (!remotePersonalResourcesActive()) {
+            const cachedUpdateAvailability = getCachedUpdateAvailabilitySync(SYSTEM_UPDATE_CHECK_PORTS.clock, {
+                currentVersion: VERSION,
+            });
+            if (cachedUpdateAvailability) {
+                if (cachedUpdateAvailability.available) {
+                    updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
+                }
+            } else {
+                void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
+                    .then((availability) => {
+                        updateNoticeText.setText(
+                            availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
+                        );
+                        tui.requestRender();
+                    })
+                    .catch(() => {});
             }
-        } else {
-            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
-                .then((availability) => {
-                    updateNoticeText.setText(
-                        availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
-                    );
-                    tui.requestRender();
-                })
-                .catch(() => {});
         }
         renderBootLogo(container);
         container.addChild(new Text(titleLine, 0, 0));
@@ -327,14 +333,14 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const queuedInputContainer = new Container();
     composerContainer.addChild(queuedInputContainer);
     const pastedImages: ImageAttachment[] = [];
-    let clipboardImageAvailable = false;
+    let clipboardImageMissing = false;
     const previewImages = new Container();
     composerContainer.addChild(previewImages);
-    const clipboardImageHint: Component = {
+    const clipboardImageNotice: Component = {
         invalidate: () => {},
-        render: (w: number) => renderClipboardImageHintLines(clipboardImageAvailable, pastedImages.length, w),
+        render: (w: number) => renderClipboardImageNoticeLines(clipboardImageMissing, w),
     };
-    composerContainer.addChild(clipboardImageHint);
+    composerContainer.addChild(clipboardImageNotice);
     const editor = new Editor(tui, getEditorTheme());
     composerContainer.addChild(editor);
     const footerContainer = new Container();
@@ -350,7 +356,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             return [];
         }
         return mascot.render(width, compact, {
-            agentName: snapshot?.activeAgentInfo?.agentName || snapshot?.activeAgent || "",
+            agentName: snapshot?.activeAgentInfo?.agentName || snapshot?.activeAgent || "router",
             parentAgentName: snapshot?.activeAgent || undefined,
             sessionId: options.getSessionId(),
             pose: mascotPose({ busy: runningTasksComponent.isBusy, answering: mascotAnswering }),
@@ -510,7 +516,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
                 title: artifact.title,
                 path: artifact.path,
                 imageBaseDir: document.imageBaseDir,
-                browser: SYSTEM_BROWSER_PORT,
+                browser: options.browser,
             });
             if (disposed) {
                 await surface.stop();
@@ -631,49 +637,10 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         },
     });
     options.configureUiAPI?.(uiAPI);
-    const basePromptSelect = uiAPI.promptSelect?.bind(uiAPI);
-    if (basePromptSelect) {
-        uiAPI.promptSelect = async (title, promptOptions, hooks) => {
-            const result = await basePromptSelect(title, promptOptions, hooks);
-            tui.setFocus(editor);
-            tui.requestRender();
-            return result;
-        };
-    }
-    const basePromptText = uiAPI.promptText?.bind(uiAPI);
-    if (basePromptText) {
-        uiAPI.promptText = async (title, promptOptions) => {
-            const result = await basePromptText(title, promptOptions);
-            tui.setFocus(editor);
-            tui.requestRender();
-            return result;
-        };
-    }
     const unsubscribeThemeChange = onThemeChange(() => {
         tui.invalidate();
         tui.requestRender();
     });
-    let clipboardCheckInFlight = false;
-    async function refreshClipboardImageHint(): Promise<void> {
-        if (clipboardCheckInFlight) return;
-        clipboardCheckInFlight = true;
-        try {
-            const nextClipboardImageAvailable = await hasClipboardImage();
-            if (nextClipboardImageAvailable !== clipboardImageAvailable) {
-                clipboardImageAvailable = nextClipboardImageAvailable;
-                tui.requestRender();
-            }
-        } catch {
-            if (clipboardImageAvailable) {
-                clipboardImageAvailable = false;
-                tui.requestRender();
-            }
-        } finally {
-            clipboardCheckInFlight = false;
-        }
-    }
-    void refreshClipboardImageHint();
-    const clipboardPollingInterval = setInterval(() => void refreshClipboardImageHint(), 1500);
     Object.assign(editor, {
         onFocus: () => {
             try {
@@ -714,6 +681,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             editor.setAutocompleteProvider(provider);
         },
         addPastedImagePreview(image) {
+            clipboardImageMissing = false;
             pastedImages.push(image);
             previewImages.addChild(createPastedImagePreview(image));
         },
@@ -722,6 +690,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             previewImages.clear();
         },
         resetForSessionReplacement() {
+            clipboardImageMissing = false;
             mascotAnswering = false;
             pastedImages.length = 0;
             previewImages.clear();
@@ -740,8 +709,19 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         requestRender() {
             tui.requestRender();
         },
+        showClipboardImageMissing() {
+            if (disposed) return;
+            clipboardImageMissing = true;
+            tui.requestRender();
+        },
+        clearClipboardImageNotice() {
+            if (!clipboardImageMissing || disposed) return;
+            clipboardImageMissing = false;
+            tui.requestRender();
+        },
         dispose() {
             disposed = true;
+            disposeKeybindings(editor);
             mascot.dispose();
             for (const surface of artifactReaders) void Promise.resolve(surface.stop()).catch(() => {});
             artifactReaders.clear();
@@ -749,7 +729,6 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             snapshotWindow?.dispose();
             removeSidebarKeyListener();
             removeSidebarActionListener();
-            clearInterval(clipboardPollingInterval);
             unsubscribeThemeChange();
             if (isViewportTUI(tui)) tui.setLayoutRoot(undefined);
             endBlink();

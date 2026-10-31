@@ -248,9 +248,9 @@ materially replace the outcomes of the existing Pair Execution or Work Records r
 - Automated Plan storage/tool behavior:
   `deno run -A scripts/run-tests.js src/plan-store.test.js src/shared/plan-deviations.test.ts src/tools/__tests__/plan-deviation.test.ts src/tools/__tests__/pair-checkpoint.test.js src/ui/tui/runtime-interaction-adapter.test.js`.
 - Automated execution and prompt behavior:
-  `deno run -A scripts/run-tests.js src/shared/workflow/pair-execution.test.js src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/workflow-prompts.test.js src/shared/session/agent-contracts.test.ts src/shared/session/agents-shared-practice.test.ts src/shared/session/__tests__/session-tools-policy.test.js`.
+  `deno run -A scripts/run-tests.js src/shared/workflow/pair-execution.test.js src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/workflow-prompts.test.ts src/shared/session/agent-contracts.test.ts src/shared/session/agents-shared-practice.test.ts src/shared/session/__tests__/session-tools-policy.test.js`.
 - Automated review and Work Record behavior:
-  `deno run -A scripts/run-tests.js src/shared/workflow/validation-prompts.test.js src/shared/workflow/validation-loop-review.test.js src/shared/workflow/validation-work-record-handoff.test.ts src/shared/work-records/work-records.test.js`.
+  `deno run -A scripts/run-tests.js src/shared/workflow/validation-prompts.test.ts src/shared/workflow/validation-loop-review.test.js src/shared/workflow/validation-work-record-handoff.test.ts src/shared/work-records/work-records.test.js`.
 - Add one objective-level `plan-deviation-lifecycle.integration.test.ts` using a real Git fixture and real Plan writes.
   It confirms a proposed deviation, reads the execution Plan Markdown directly to prove the accepted entry was written,
   disposes the original Hosted Session, creates a fresh validation context from the saved Plan, and captures the

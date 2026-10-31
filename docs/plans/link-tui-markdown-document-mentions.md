@@ -187,7 +187,7 @@ does not replace that record.
 ## Verification Plan
 
 - Automated focused tests:
-  `deno run -A scripts/run-tests.js src/ui/tui/mermaid-markdown.test.js src/ui/tui/blocks.test.js src/ui/tui/chat-session.test.ts src/ui/workspace/workspace-review.test.js src/ui/workspace/workspace-lifecycle.test.js`
+  `deno run -A scripts/run-tests.js src/ui/tui/mermaid-markdown.test.ts src/ui/tui/blocks.test.js src/ui/tui/chat-session.test.ts src/ui/workspace/workspace-review.test.js src/ui/workspace/workspace-lifecycle.test.js`
   plus the focused new host/reader test file discovered during implementation.
 - Automated repository gates: `deno task workspace:check`, `deno task workspace:test`, `deno task workspace:build`,
   `deno task test:golden-tui`, `deno task seams:check`, and `deno task ci`.

@@ -8,6 +8,10 @@ import { createTuiInteractionAdapter as createAdapter } from "./runtime-interact
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { ToolExecutionBlock } from "./blocks.js";
+import { initRunWieldTheme } from "../theme/theme.js";
+
+initRunWieldTheme();
 
 /** @param {import('./types.js').UiAPI} uiAPI */
 function createTuiInteractionAdapter(uiAPI) {
@@ -69,7 +73,7 @@ test("TUI interaction adapter closes a question answered on another surface", as
     let resolvePrompt = /** @type {(value: string | null) => void} */ (() => {});
     let promptClosed = false;
     const uiAPI = /** @type {any} */ ({
-        promptSelect: () => new Promise((resolve) => resolvePrompt = resolve),
+        promptSelect: () => new Promise((resolve) => (resolvePrompt = resolve)),
         promptText: () => Promise.resolve(null),
         abortActivePrompt: () => {
             promptClosed = true;
@@ -78,11 +82,14 @@ test("TUI interaction adapter closes a question answered on another surface", as
     });
     const adapter = createTuiInteractionAdapter(uiAPI);
     const controller = new AbortController();
-    const responsePromise = adapter.requestInteraction({
-        type: "select",
-        prompt: "Pick",
-        options: [{ value: "valid", label: "Valid" }],
-    }, controller.signal);
+    const responsePromise = adapter.requestInteraction(
+        {
+            type: "select",
+            prompt: "Pick",
+            options: [{ value: "valid", label: "Valid" }],
+        },
+        controller.signal,
+    );
 
     controller.abort();
     await Promise.resolve();
@@ -108,7 +115,10 @@ test("TUI interaction adapter maps declined approval choices to canceled outcome
     const response = await adapter.requestInteraction({
         type: "approval",
         prompt: "Approve?",
-        options: [{ value: "approve", label: "Approve" }, { value: "deny", label: "Deny" }],
+        options: [
+            { value: "approve", label: "Approve" },
+            { value: "deny", label: "Deny" },
+        ],
     });
 
     assertEquals(response.outcome, "canceled");
@@ -183,12 +193,13 @@ test("TUI interaction adapter confirms Plan Deviations explicitly", async () => 
     assertEquals(response, { outcome: "accepted", value: true });
     assertEquals(
         prompt,
-        "Plan Deviation confirmation\n\n" + [
-            "Confirm this Plan Deviation before I treat it as authority.",
-            "Superseded requirement: Replace nav.",
-            "Replacement requirement: Keep nav.",
-            "Confirmed text will be saved in the Plan and Work Record.",
-        ].join("\n"),
+        "Plan Deviation confirmation\n\n" +
+            [
+                "Confirm this Plan Deviation before I treat it as authority.",
+                "Superseded requirement: Replace nav.",
+                "Replacement requirement: Keep nav.",
+                "Confirmed text will be saved in the Plan and Work Record.",
+            ].join("\n"),
     );
     assertEquals(options, [
         { value: "confirm", label: "Confirm Plan Deviation" },
@@ -292,11 +303,54 @@ test("TUI code review exposes each real surface URL without browser opening and 
         assertEquals(state.ended, [false, false]);
         assertEquals(scripted.urls[0] === scripted.urls[1], false);
         for (let index = 0; index < 2; index++) {
-            assertStringIncludes(state.outputs[index * 2], `Review Code: \x1b]8;;${scripted.urls[index]}\x07`);
-            assertStringIncludes(state.outputs[index * 2], "Open the review link to continue.");
-            assertEquals(state.outputs[index * 2 + 1], "Code Review approved.");
+            assertEquals(state.outputs[index * 3], "Waiting for Code Review. Opening browser review UI.");
+            assertStringIncludes(state.outputs[index * 3 + 1], `Review Code: \x1b]8;;${scripted.urls[index]}\x07`);
+            assertStringIncludes(state.outputs[index * 3 + 1], "Waiting for Code Review.");
+            assertStringIncludes(state.outputs[index * 3 + 1], "Open the review link to continue.");
+            assertEquals(state.outputs[index * 3 + 2], "Code Review approved.");
         }
     } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("TUI keeps the waiting message and clickable Code Review link visible until cancellation", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-tui-code-wait-"));
+    const controller = new AbortController();
+    const block = new ToolExecutionBlock("code_review", "Code Review");
+    const ui = makeUi(null);
+    ui.startToolExecution = () => block;
+    const adapter = createAdapter(ui, { browser: NO_OPEN_BROWSER_PORT });
+    let checked = false;
+    try {
+        const response = await adapter.requestInteraction(
+            {
+                type: RuntimeInteractionTypes.CODE_REVIEW,
+                prompt: "Review",
+                _meta: {
+                    planName: "feature",
+                    diffText: "diff --git a/a b/a\n",
+                    executionCwd: cwd,
+                    onSurfaceReady: (/** @type {{url: string}} */ surface) => {
+                        for (const width of [60, 120]) {
+                            const rendered = block.render(width).join("\n");
+                            assertStringIncludes(rendered, "Waiting for Code Review");
+                            assertStringIncludes(rendered, `\x1b]8;;${surface.url}\x07`);
+                            assertStringIncludes(rendered, "\x1b]8;;\x07");
+                            assertEquals(block.ended, false);
+                        }
+                        checked = true;
+                        controller.abort();
+                    },
+                },
+            },
+            controller.signal,
+        );
+        assertEquals(checked, true);
+        assertEquals(response.outcome, "canceled");
+        assertEquals(block.render(120).join("\n").includes("\x1b]8;;"), false);
+    } finally {
+        controller.abort();
         await fsRm(cwd, { recursive: true });
     }
 });
@@ -311,16 +365,19 @@ test("TUI code review closes the live link and restores progress on cancellation
     const controller = new AbortController();
     const adapter = createAdapter(makeUi(null, state), { browser: NO_OPEN_BROWSER_PORT });
     try {
-        const response = await adapter.requestInteraction({
-            type: RuntimeInteractionTypes.CODE_REVIEW,
-            prompt: "Review",
-            _meta: {
-                planName: "feature",
-                diffText: "diff --git a/a b/a\n",
-                executionCwd: cwd,
-                onSurfaceReady: () => controller.abort(),
+        const response = await adapter.requestInteraction(
+            {
+                type: RuntimeInteractionTypes.CODE_REVIEW,
+                prompt: "Review",
+                _meta: {
+                    planName: "feature",
+                    diffText: "diff --git a/a b/a\n",
+                    executionCwd: cwd,
+                    onSurfaceReady: () => controller.abort(),
+                },
             },
-        }, controller.signal);
+            controller.signal,
+        );
         assertEquals(response.outcome, "canceled");
         assertEquals(
             state.outputs.at(-1),
@@ -340,12 +397,13 @@ test("TUI review setup failure closes its block as an error", async () => {
         ended: /** @type {boolean[]} */ ([]),
     };
     const adapter = createAdapter(makeUi(null, state), { browser: NO_OPEN_BROWSER_PORT });
-    await assertRejects(async () =>
-        await adapter.requestInteraction({
-            type: RuntimeInteractionTypes.CODE_REVIEW,
-            prompt: "Review",
-            _meta: { planName: "feature", diffText: "", executionCwd: "" },
-        })
+    await assertRejects(
+        async () =>
+            await adapter.requestInteraction({
+                type: RuntimeInteractionTypes.CODE_REVIEW,
+                prompt: "Review",
+                _meta: { planName: "feature", diffText: "", executionCwd: "" },
+            }),
     );
     assertEquals(state.outputs.at(-1), "Code Review could not be opened.");
     assertEquals(state.ended, [true]);

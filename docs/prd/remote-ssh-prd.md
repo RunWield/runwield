@@ -1,12 +1,13 @@
 # Product Requirements Document: Remote SSH
 
-Last updated: 2026-09-24 EDT
+Last updated: 2026-10-24 EDT
 
 **Status:** Remote conversation, laptop history, image paste, and connected resume are implemented and verified on the
 compiled macOS laptop/Linux `sct` pilot with matching build identity and an authenticated synthetic OpenAI-compatible
-streaming provider. See [journey evidence](#conversation-journey-evidence). Laptop-owned remote Memory and MCP placement
-are delivered. Delivery workflows, personal MCP forwarding, and the production-provider/platform matrix remain target
-scope. **Document role:** Transient feature proposal. [RunWield Core](runwield-core-prd.md) owns shared installation,
+streaming provider. See [journey evidence](#conversation-journey-evidence). Laptop-owned remote Memory, personal MCP
+transport forwarding, Core delivery workflows, and local browser review are delivered. See
+[workflow qualification](#workflow-journey-evidence) and [review qualification](#review-journey-evidence). The
+production-provider/platform matrix remains target scope. **Document role:** Transient feature proposal. [RunWield Core](runwield-core-prd.md) owns shared installation,
 location, connection cleanup, and Session continuity requirements; this document keeps the remaining remote journey
 clear.
 
@@ -35,14 +36,15 @@ local RunWield setup.
 local browser reviews, connected-only execution, and saved Session resume.
 
 **Not included:** Unattended execution, source-code synchronization, a required local checkout, multi-user
-collaboration, hosted Workspace registration, remote ACP clients, migration of an existing local Session to another
+collaboration, remote ACP clients, migration of an existing local Session to another
 checkout, or automatic installation of every project dependency. Hostile-server isolation is not promised.
 
 ## Product Fit and Main Journey
 
 The conversation journey covers connection, normal Agent turns with core project tools and laptop Pi models, laptop
 clipboard images, offline history, and connected resume. It passed the qualified `sct` pilot below. Laptop-owned Memory
-extends this journey. Delivery workflows, personal MCP forwarding, and local browser review follow in their child Plans.
+and personal MCP forwarding extend this journey. Delivery workflows and local browser review are delivered in their
+child Plans.
 
 Command forms:
 
@@ -93,27 +95,31 @@ on the server after exit; a separate saved personal profile must not remain.
 ### Remote connection and setup
 
 **Scope and maturity:** Remote conversation and saved-history journeys passed the compiled macOS/Linux `sct` pilot with
-an authenticated synthetic provider. Full remote delivery and provider/platform qualification remain target scope. The
+an authenticated synthetic provider. Delivery also passed the compiled `sct` workflow journeys. Local browser review
+is delivered; provider/platform qualification remains target scope. Windows laptop qualification is deferred, and
+Windows laptops are not claimed as supported for Remote SSH. The
 [Core installation](runwield-core-prd.md#installation-and-updates),
 [project context](runwield-core-prd.md#project-context-and-initialization), and
 [recovery](runwield-core-prd.md#execution-validation-and-recovery) capabilities own the current subset.
 
-**Current conversation-only behavior:** `wld remote <host>[:<directory>]` uses OpenSSH configuration, authentication,
+**Current connection behavior:** `wld remote <host>[:<directory>]` uses OpenSSH configuration, authentication,
 and host verification, resolves an existing remote directory (remote home by default), and opens the normal remote TUI
-there. Git is optional. The remote Linux host needs `python3`, SSHFS/FUSE for the personal mount, a writable private
-cache, and an executable compatible with the preflight for the matching glibc-linked Linux x86-64 or ARM64 build. The
-local machine needs OpenSSH and an explicitly built matching development bundle; see
-[build steps](runwield-core-prd.md#installation-and-updates). Runtime preparation checks build/protocol identity and
-checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
-profile. Normal runtime startup requires executable `cymbal` and `ketch` helpers on the remote `PATH`; private binary
-staging alone does not supply them. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
+there. Git is optional. The server needs glibc Linux x86-64 or ARM64, `python3`, `sshfs`, `fuse3`, usable `/dev/fuse`,
+writable private cache storage, and OpenSSH with terminal allocation, TCP forwarding, and Unix-socket forwarding
+(`AllowStreamLocalForwarding`, enabled by default). The launcher checks these before artifact access and gives
+package guidance for missing prerequisites. It refuses macOS servers before downloading tools.
+The laptop needs OpenSSH and a released launcher or an [explicit matching development
+bundle](../contributing.md#remote-development-bundle). The [Core installation
+contract](runwield-core-prd.md#installation-and-updates) owns the verified laptop runtime/helper caches, private server
+runtime/helper caches, offline reconnect, and pinned `cymbal`/`ketch` supply with notices. No remote personal installer,
+system helper installation, or separate personal profile is required. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
 owned processes, with uncertain termination reported when it cannot be confirmed. The launcher starts a connection-owned
 stock SFTP server and SSHFS mount of the laptop's full `~/.wld` at a fresh private remote root. A direct personal Skill
 file edit through this mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote
 project's `.wld` remained remote. The normal TUI accepts conversation turns with any Agent and core project tools
 through the laptop model connection. Opening an empty composer creates no saved Session or writer lock. The first
-message starts laptop-owned history; personal resources are not copied. Workflow execution and browser review follow in
-their owning child Plans.
+message starts laptop-owned history; personal resources are not copied. Workflow execution and browser review use the
+same remote project and laptop personal authority.
 
 **Current acceptance scenarios:**
 
@@ -130,14 +136,15 @@ their owning child Plans.
 SSH user, key, port, jump-host, and host-verification behavior remains effective. Paths are data, not shell commands. An
 invalid or inaccessible folder fails clearly; RunWield must not silently work in another folder or create the target.
 
-**Remaining target requirement: Prepare RunWield automatically.** A supported host does not need a prior RunWield
-installation or provider login. RunWield prepares compatible required tools and reports progress. It does not overwrite
-a remote user's existing profile or package-managed installation. Missing permission or unsupported platform errors
-identify the real prerequisite; ordinary internal setup and repair stay automatic.
+**Requirement: Prepare RunWield automatically.** The [Core installation
+contract](runwield-core-prd.md#installation-and-updates) owns automatic runtime/helper preparation and repair. A supported
+host needs neither prior RunWield installation nor provider login. Profiles and package-managed installations stay
+unchanged. The Linux x64/ARM64 SSH release gate blocks publication on failure; live provider/platform qualification
+remains with child 13.
 
-**Remaining target acceptance scenario:** Given a supported host without RunWield, when the user connects, full release
-setup completes without manual profile copying. Current runtime preparation follows the
-[Core installation contract](runwield-core-prd.md#installation-and-updates).
+**Acceptance scenario:** Given a supported host without RunWield and with the system prerequisites, connection prepares
+the runtime and helpers without manual profile copying. Subsequent connections use verified laptop caches, including
+when GitHub is unavailable or the server cache is empty.
 
 **Shared requirements:** [Installation and updates](runwield-core-prd.md#installation-and-updates),
 [project context](runwield-core-prd.md#project-context-and-initialization).
@@ -169,10 +176,18 @@ through the mount without making working copies; local paths must not accidental
 Machine-specific scripts are best effort, not a promise that every local executable works remotely.
 
 **Delivered requirement: Run MCP servers on their owning machine.** Personal definitions come from the laptop, not the
-server user’s home. `/mcp` lists them as `laptop — not started remotely`; command arguments and credentials stay on the
-laptop. Project definitions retain normal safety checks and override rules, run with the remote cwd, and appear as
-`remote`. Personal tool forwarding is target scope in
-[child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md).
+server user's home. Effective personal servers run on the laptop with home cwd, minimal inherited environment, and
+configured environment values. Commands, arguments, and configured secrets are not sent as remote configuration.
+Project definitions retain normal safety, whole-entry replacement, and disable rules and run with the remote Session
+execution cwd. Unsafe project files do not suppress valid personal entries. One remote Session-owned Pi integration
+handles discovery, naming, resources, live updates, progress, cancellation, results, and reconnect for both origins.
+`/mcp` shows real status and `laptop` or `remote`; `/mcp reconnect <server>` restarts the owning transport without a
+model request. Server output can contain secrets; forwarding does not filter arbitrary output.
+
+Personal home cwd is not a sandbox. Relative commands and file arguments resolve there. Remote MCP roots and tool paths
+are forwarded unchanged, not translated or copied to laptop files. Sharing a Memory collection does not select a laptop
+checkout or imply matching files, branches, or worktrees. Use project configuration for servers that need remote project
+files; use server-supported absolute arguments for deliberate access to a laptop checkout.
 
 **Current bounded proof scenarios (not ordinary remote user turns):**
 
@@ -196,6 +211,15 @@ laptop. Project definitions retain normal safety checks and override rules, run 
   can access laptop-account files through standard SFTP; the mount is not a credential sandbox.
 - Given an incompatible provider or path-dependent integration, when it is needed, RunWield reports the specific limit
   instead of silently substituting a model, omitting required tools, or operating on laptop files.
+- Given a personal tool and a project tool, a remote root turn calls their actual processes on the laptop and remote
+  host respectively, receives native results, and retains access after Agent handoff. Delegated and isolated Agents
+  receive no inherited MCP access. A shared local Memory collection does not change personal home cwd.
+- Given project replacement or disable of a personal name, the personal process never starts. Given a failed startup
+  or empty inventory, the root remains eligible for later discovery or reconnect without a model request.
+- Given cancellation during an admitted cooperative personal call, the laptop receives native cancellation. Before
+  dispatch, cancellation produces no call. A non-cooperative server may finish an accepted external effect.
+- Given disconnect or Session disposal, owned laptop processes stop and pending calls fail. Reconnect opens a new
+  transport without replaying uncertain calls; closing one Session leaves another Session's servers usable.
 
 **Shared requirements:** [Customization](runwield-core-prd.md#agent-and-skill-customization),
 [models and providers](runwield-core-prd.md#models-and-providers).
@@ -207,8 +231,8 @@ provider. `wld remote sessions` reads laptop history offline. Connected remote `
 current target. The [Core Session continuity](runwield-core-prd.md#session-continuity) and
 [laptop-owned save contract](runwield-core-prd.md#laptop-owned-remote-session-saves) own shared history and save
 behavior. The connection-wide personal mount is not a Session writer. Remote Memory is delivered in
-[child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md); workflow context
-and rollover on resume are target scope in
+[child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md). Workflow context,
+segment rollover, and successor resume are delivered in
 [child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md).
 
 **Delivered requirement: Read and update the same local memories.** Core Memory injection, recall, additions, and
@@ -219,8 +243,10 @@ until exit.
 **Requirement: Keep project knowledge correctly scoped (Sessions and Memory delivered).** Unrelated remote folders must
 not share Sessions because their names match. Session identity follows the
 [Core remote project locator](runwield-core-prd.md#project-context-and-initialization): exact host identity and
-canonical project root, separate from the execution cwd and temporary mount paths. An ambiguous host match never merges
-history; confirmation for ambiguous aliases remains target scope.
+canonical project root, separate from the execution cwd and temporary mount paths. A partly matching host asks once
+before the TUI opens. Yes reuses the selected saved project's identity, history, and Memory key; No keeps a separate
+target. Both answers are retained. The Core requirement defines the matching and cancellation rules; history is never
+merged without confirmation.
 
 Memory normally uses `<folder>@<hostname>-<hash>`, from the normalized resolved hostname, user, port, and canonical
 remote primary root. It excludes the host key, so a server rebuild retains memories. Worktrees share the primary root.
@@ -239,8 +265,9 @@ first submitted message creates the saved Session, not connection or an empty co
 TUI transcript renderer without a composer; one footer names the target and the reconnect command followed by `/resume`.
 Reading history starts no SSH connection and takes no Session Writer Lock. Reconnect and target-scoped `/resume`
 continue the same Session with its saved Agent and model. Local TUI, ACP, Workspace, and `/load-plan` lists hide remote
-Sessions. Resume never repeats unfinished tool effects. Workflow context on remote resume remains target behavior in
-child07.
+Sessions. Resume restores saved workflow and tutorial context and pending segment continuation. It checks remote
+workflow evidence without starting validation, repair, or publication before the user chooses. It never repeats
+unfinished tool effects.
 
 **Conversation acceptance scenarios:**
 
@@ -255,6 +282,8 @@ child07.
 - Given a saved remote Session, local TUI, ACP, Workspace, and `/load-plan` lists do not offer it as local work.
 - Given loss during a Session save, RunWield does not report success without laptop evidence or overwrite newer saved
   history on reconnect. The next operation uses committed evidence and does not repeat the uncertain effect.
+- Given an execution or semantic-repair handoff, the laptop commits the successor and lineage under the same native
+  writer lock. Reconnect resumes that successor; offline history includes its sealed predecessors.
 
 **Delivered Memory acceptance scenarios:**
 
@@ -272,28 +301,46 @@ child07.
 
 ### Remote workflows and local review
 
-**Scope and maturity:** Target extension in
-[child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md) and local browser
-review in [child08](../plans/remote-ssh-development/08-open-remote-reviews-in-the-local-browser.md). Existing approval
-and validation meanings remain unchanged. Conversation turns and core project tools passed the `sct` pilot. Workflow
-handoffs, child Sessions, write delegation, Plan review, and transcript rollover belong to the remaining workflow
-extensions.
+**Scope and maturity:** Non-browser Core delivery is delivered in
+[child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md). Planning, remote Plan
+review, isolated execution, validation, semantic review and repair, Work Records, and publication use the normal Core
+workflow. In-memory delegated agents and reviewers use the laptop model bridge. Session artifacts, Plan Associations,
+review references, and transcript rollover are laptop-owned. Existing approval and validation meanings remain unchanged.
+Local browser review is delivered in
+[child10](../plans/remote-ssh-development/10-open-remote-reviews-in-the-local-browser.md). One loopback forward in the
+main SSH connection reaches the remote review host through its private `review.sock`. The laptop browser uses
+`http://127.0.0.1:<port>`; review files and project operations stay remote.
 
-**Requirement: Complete normal Core work remotely.** Reading and editing, Git, code search, planning, isolated
+**Delivered requirement: Complete normal Core work remotely.** Reading and editing, Git, code search, planning, isolated
 execution, validation, repair, and publication use the remote project and its environment. This is not a shell-only
 shortcut while other tools operate on the laptop. Existing permissions and external prerequisites still apply;
 connecting does not silently grant access to local Git credentials.
 
-**Requirement: Review remote work locally.** Plan and Code Review open in the user's local browser, show the actual
+**Delivered requirement: Review remote work locally.** Plan and Code Review open in the user's local browser, show the actual
 remote artifacts, and apply decisions to the correct live Session. Users need not configure tunnels or expose a public
-review server. Closing only the browser does not end the SSH Session.
+review server. Closing only the browser does not end the SSH Session or cancel the pending review. The same Plan or
+Code Review URL stays active through conversation, revision, and approval. Explanation-only turns do not refresh the
+reviewed content; a changed Plan or reviewed patch produces a revision at that URL. Existing token authorization and
+revision-safe decisions still apply. The Code Review sidebar action reopens the live laptop URL.
+
+TUI links and artifact actions use the remote Session's `BrowserPort` to request laptop browser opening through the
+authenticated `/browser/open` control route. It permits the connection's review origin and public HTTP/HTTPS links,
+not other laptop services. Files, expanded diffs, images, uploads, and polling use the remote review host. Built-in
+Guided Review runs in memory in the remote view process, reads the remote worktree, and uses the laptop model bridge;
+it creates no saved remote Session. An explicit `RUNWIELD_GUIDED_REVIEW_COMMAND` keeps its remote subprocess behavior.
+Direct server CLI review (`wld review`, `wld plans ui`, `wld wr`), remote ACP clients, and hosted Workspace registration
+remain out of scope.
 
 **Acceptance scenarios:**
 
 - Given a project available only remotely, when the user takes a change through planning, review, execution, validation,
   and publication, all project effects and validation commands occur remotely and the local Session records the results.
-- Given Plan or Code Review, when it opens, the laptop browser displays the remote content. Approval or feedback reaches
-  the same Session. Closing and reopening the browser while SSH remains connected does not cancel the wait.
+- **Delivered:** Given Plan or Code Review, when it opens, the laptop browser displays the remote content. Approval or
+  feedback reaches the same Session. Closing and reopening the browser while SSH remains connected does not cancel the
+  wait. Conversation and revision keep the same URL until approval; explanation-only turns keep the reviewed content
+  unchanged, and changed content appears as a revision.
+- Given a remote Code Review, expanded files, images, uploads, and polling reach the remote host. Built-in Guided Review
+  reads the remote worktree through an in-memory Agent using the laptop model, without a saved remote Session.
 - Given remote home without Git or a project with missing build dependencies, RunWield retains the ordinary supported
   non-Git behavior or reports the relevant prerequisite; it does not invent a repository or validate on the laptop.
 
@@ -305,30 +352,40 @@ review server. Closing only the browser does not end the SSH Session.
 
 **Scope and maturity:** Connected-only conversation supervision and recovery passed the `sct` pilot: killing the owned
 SSH transport during a turn retained saved entries, and reconnect/resume continued the same Session without replay.
-Workflow recovery remains target scope. The supervisor stops its owned processes on exit or detected loss, independently
-of a blocked save thread. Session-save uncertainty follows the
-[Core remote-save recovery contract](runwield-core-prd.md#laptop-owned-remote-session-saves). This does not change
-Workspace browser-disconnect behavior.
+Workflow recovery is delivered: reconnect restores saved context, checks remote evidence, and reports proven or
+uncertain outcomes without automatic effect replay. A save fault blocks later workflow effects even if a caller caught
+the save error. Full descendant termination is delivered: the Linux supervisor retains orphaned descendants and stops
+all live owned subprocesses on normal exit or detected loss, including after a forced TUI kill. It runs independently
+of a blocked save thread. Agent-started background servers (`nohup` or `&`) stop with the connection. Session-save
+uncertainty follows the [Core remote-save recovery contract](runwield-core-prd.md#laptop-owned-remote-session-saves).
+This does not change Workspace browser-disconnect behavior.
 
 **Requirement: Do not continue unattended.** Normal exit ends the remote TUI and stops active RunWield-owned work.
 Unexpected connection loss stops new work and cancels active owned processes when loss is detected, including when the
 laptop cannot send a final stop request. No detached Agent continues or restarts automatically. Unrelated server
-processes must not be stopped.
+processes must not be stopped. Laptop MCP transport streams, pending starts, and owned stdio processes close on control
+revocation or health loss; final shutdown awaits cleanup. New connections use fresh transport lifetimes and never replay
+failed sends or uncertain MCP effects.
 
 **Requirement: Preserve work and report uncertainty.** Disconnect is neither workflow completion nor deliberate
 abandonment. Remote edits and project artifacts remain. Local saved history remains. Unreceived output is not claimed as
 saved; uncertain remote effects are checked on reconnect before further work or retry.
 
-Instant network-loss detection, rollback of completed effects, and cancellation of an external action already accepted
-by another service are not promised. Detection and process-cleanup behavior must be demonstrated before release; a
-best-effort stop request alone does not meet connected-only operation.
+Instant network-loss detection and rollback of completed effects are not promised. Cleanup covers process descendants,
+not work handed to another service (`systemd-run`, a container daemon, `at`, an existing `tmux` server, or a remote API).
+Work run under another user is outside this guarantee. Cleanup requires the supervisor to run: force-killing the
+supervisor itself (for example with SIGKILL or the out-of-memory killer) can leave work running. A visible descendant
+that survives the cleanup deadline is reported as termination unconfirmed, not success. Exited adopted orphans can
+appear as `<defunct>` until the connection ends; the supervisor does not reap Bun-owned child statuses. Detection and
+process-cleanup behavior must be demonstrated before release; a best-effort stop request alone does not meet
+connected-only operation.
 
 **Acceptance scenarios:**
 
-- Given an active Agent and a long-running owned subprocess, when the user exits normally, both stop and saved work
-  remains. No background Agent continues after the TUI closes.
-- Given abrupt laptop or network loss, when the server detects loss, owned work stops without requiring a final client
-  message. Unrelated processes remain running.
+- **Delivered:** Given an active Agent and a long-running owned subprocess, when the user exits normally, both stop
+  and saved work remains. No background Agent or Agent-started server continues after the TUI closes.
+- **Delivered:** Given abrupt laptop or network loss, when the server detects loss, owned work stops without requiring
+  a final client message. Detached subprocesses and orphans of a force-killed TUI stop. Unrelated processes remain running.
 - Given a remote edit or publication attempt whose result was not saved locally before loss, when the user reconnects,
   RunWield checks available evidence and reports the actual or uncertain result without repeating the action blindly.
 - Given completed personal-data saves and remote edits, when the user reconnects, those saves and edits remain. No
@@ -392,9 +449,10 @@ fix references, and remove this transient proposal under project policy.
 current connection mounts laptop personal files and opens the normal remote TUI for conversation turns. It can create
 and continue a saved **Session** whose history belongs to the laptop. A **Remote project locator** binds that history to
 an exact host identity and canonical remote project root; execution cwd and mount paths are separate facts. Memory
-bindings separately select laptop collections. Workflows, child Sessions, write delegation, Plan review, and transcript
-rollover remain target relationships. The compiled `sct` conversation journey passed with an authenticated synthetic
-provider.
+bindings separately select laptop collections. Delivery workflows, in-memory child Sessions, write delegation, and Plan
+review run remotely with laptop-owned Session records and transcript rollover. Reviews stay on the remote review host;
+one forward at connection start gives the laptop browser access. Connection cleanup stops owned processes. The compiled
+`sct` conversation and workflow journeys passed with synthetic laptop providers.
 
 ## Evidence and Open Checks
 
@@ -418,8 +476,8 @@ This verifies the conversation journey, not a production-provider or platform ma
 installations verified on `sct` under `/usr/local/bin` for runtime preflight. Observed startup was about 35 seconds warm
 and about 100 seconds on first cold use, before further performance fixes; these samples are not speed promises. Remote
 Memory is delivered in
-[child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md), and full delivery
-workflows remain in [child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md).
+[child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md). The later
+[workflow journey evidence](#workflow-journey-evidence) covers child07.
 
 The owner requested the two commands above, existing remote files with no local checkout, local personal data, and no
 unattended work. [VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh) is the setup and interaction
@@ -435,3 +493,41 @@ evidence limits. Before committing delivery scope, planning must resolve:
 
 These are technical evidence gaps, not a need to repeat the product interview. If a gap requires a narrower product,
 bring that specific scope decision back to the owner.
+
+### Workflow journey evidence
+
+The current compiled Linux x64 workflow client completed four live journeys on `sct` with the real laptop Session
+owner and synthetic laptop model responses. The production CLI also passed a separate packaged save check after
+relocation. Project tools, Plan review, worktrees, Git, validation, review and repair agents, Manual QA, and the Recorder
+used production code.
+
+- Planning and `plan_written`, review approval, isolated execution, semantic rejection
+  and repair, Work Record generation, merge, and confirmed publication completed. The laptop saved planning, execution,
+  and semantic-repair segments with lineage.
+- Each journey disconnected after execution rollover. Connected `/resume` restored the successor's Pi Session ID.
+- A transport cut during active validation left CI running evidence without a saved success. Reconnect reported
+  uncertainty and started no model, validation, or publication work. An explicit user retry reached publication.
+- A transport cut after publication but before the laptop accepted the final result retained one push. Reconnect
+  proved publication from remote evidence without repeating CI, review, Recorder, or publication. With canonical
+  evidence temporarily unavailable, it reported uncertainty instead. A user-selected recheck confirmed the result after
+  the evidence was restored.
+- Each journey compared the entire laptop fixture project tree and found no changed path or byte. No remote Session
+  store or transcript was created.
+
+Run `bun run src/shared/remote/verify-remote-workflows.ts` to repeat the source qualification, or set `WLD_LIVE_SOURCE=0`
+for the compiled checks. The script prints its local evidence and owned remote scratch locations. Fixture publication
+uses throwaway remote repositories, not this repository. This qualifies workflow behavior with synthetic models, not
+terminal interaction, full process-tree termination, or the release platform/provider matrix. Local browser review has
+separate evidence below.
+
+### Review journey evidence
+
+The live macOS laptop/Linux `sct` review journey used the production connection's single SSH forward. Plan Review and
+Code Review kept the same URL through conversation, revision, and approval. Explanation-only turns did not refresh
+reviewed content; code changes produced a diff revision. Reopening Code Review from the sidebar was verified.
+Remote files, images, uploads, polling, and built-in Guided Review use the remote review host and laptop model boundary.
+
+While Plan Review was pending, `/plan-review` printed its existing complete URL. Reopening that URL preserved the
+pending decision, and approval completed the review. Ordinary terminal input stayed queued without a concurrent model
+request. Windows laptop qualification is deferred and Windows Remote SSH support is not claimed. Direct server CLI
+review, remote ACP clients, and hosted Workspace registration are not qualified by this journey.

@@ -94,16 +94,18 @@ export function buildEffectProver(
             if (!group?.plans?.length) {
                 return { settled: false, reason: "Sequence journal has no complete document set" };
             }
-            const states = await Promise.all(group.plans.map(async (plan) => {
-                const loaded = await readPlan(projectRoot, plan.planName);
-                return {
-                    planName: plan.planName,
-                    before: loaded.kind === "loaded" && "revision" in loaded &&
-                        loaded.revision === plan.beforeRevision,
-                    after: loaded.kind === "loaded" && "revision" in loaded &&
-                        loaded.revision === plan.afterRevision,
-                };
-            }));
+            const states = await Promise.all(
+                group.plans.map(async (plan) => {
+                    const loaded = await readPlan(projectRoot, plan.planName);
+                    return {
+                        planName: plan.planName,
+                        before:
+                            loaded.kind === "loaded" && "revision" in loaded && loaded.revision === plan.beforeRevision,
+                        after:
+                            loaded.kind === "loaded" && "revision" in loaded && loaded.revision === plan.afterRevision,
+                    };
+                }),
+            );
             if (states.every((state) => state.before) || states.every((state) => state.after)) {
                 return {
                     settled: true,
@@ -112,19 +114,64 @@ export function buildEffectProver(
             }
             return {
                 settled: false,
-                reason:
-                    `Sequence review is incomplete. Preserve new edits and restore the complete before set or finish the after set recorded in this journal before resuming: ${
-                        states.map((state) =>
-                            `${state.planName} (${state.before ? "before" : state.after ? "after" : "changed"})`
-                        ).join(", ")
-                    }`,
+                reason: `Sequence review is incomplete. Preserve new edits and restore the complete before set or finish the after set recorded in this journal before resuming: ${states
+                    .map(
+                        (state) => `${state.planName} (${state.before ? "before" : state.after ? "after" : "changed"})`,
+                    )
+                    .join(", ")}`,
             };
         }
         if (effect.effect === "sequence_review_accepted") {
             return {
                 settled: true,
-                reason:
-                    "the complete decision was accepted; document proof is checked separately, and dispatch requires transition commit",
+                reason: "the complete decision was accepted; document proof is checked separately, and dispatch requires transition commit",
+            };
+        }
+        if (effect.effect === "planning_refresh_prepared") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const before = typeof proof.beforeHead === "string" ? proof.beforeHead : undefined;
+            const after = typeof proof.afterHead === "string" ? proof.afterHead : undefined;
+            if (!entry || entry.status !== "planning" || !before || !after) {
+                return { settled: false, reason: "planning refresh has no tracked planning attempt or commit pair" };
+            }
+            const branch = await runGitLines(entry.path, ["branch", "--show-current"]);
+            const head = await runGitLines(entry.path, ["rev-parse", "HEAD"]);
+            const settled = branch[0] === entry.branch && (head[0] === before || head[0] === after);
+            return {
+                settled,
+                reason: settled
+                    ? "planning branch retains the complete before or after snapshot"
+                    : "planning branch moved beyond the recorded refresh",
+            };
+        }
+        if (effect.effect === "planning_target_refreshed") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const base = typeof proof.baseCommit === "string" ? proof.baseCommit : undefined;
+            const settled = Boolean(
+                entry &&
+                entry.status === "planning" &&
+                base &&
+                entry.baseCommit === base &&
+                (await isGitAncestor(entry.path, base, "HEAD")),
+            );
+            return {
+                settled,
+                reason: settled
+                    ? "planning baseline and Git history include the refreshed target"
+                    : "planning target refresh cannot be confirmed",
+            };
+        }
+        if (effect.effect === "execution_preparation_checkpoint_settled") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const commit = typeof proof.preparationCommit === "string" ? proof.preparationCommit : undefined;
+            if (!entry || !commit)
+                return { settled: false, reason: "preparation checkpoint has no tracked attempt or commit" };
+            const settled = await isGitAncestor(entry.path, commit, "HEAD");
+            return {
+                settled,
+                reason: settled
+                    ? "recorded preparation commit is retained in the attempt"
+                    : "preparation commit cannot be confirmed",
             };
         }
         if (REGISTRY_STATUS_EFFECTS.has(effect.effect)) {
@@ -133,23 +180,23 @@ export function buildEffectProver(
             if (!entry) {
                 return {
                     settled: true,
-                    reason:
-                        `attempt ${worktreeId} is not in the registry, so the recorded status change has nothing left to apply`,
+                    reason: `attempt ${worktreeId} is not in the registry, so the recorded status change has nothing left to apply`,
                 };
             }
             // The registry is rewritten whole under its own lock, so a status update
             // either landed or never started. Neither leaves a partial row.
             return {
                 settled: true,
-                reason:
-                    `registry attempt ${worktreeId} reads ${entry.status} and registry writes are atomic, so no partial update is outstanding`,
+                reason: `registry attempt ${worktreeId} reads ${entry.status} and registry writes are atomic, so no partial update is outstanding`,
             };
         }
 
         if (WORKTREE_CREATION_EFFECTS.has(effect.effect)) {
             const path = typeof proof.path === "string" ? proof.path : undefined;
             if (!path) return { settled: false, reason: "the record names no worktree path to inspect" };
-            const exists = await fsStat(path).then((stat) => stat.isDirectory()).catch(() => false);
+            const exists = await fsStat(path)
+                .then((stat) => stat.isDirectory())
+                .catch(() => false);
             if (!exists) {
                 return { settled: true, reason: `worktree ${path} does not exist, so nothing was left behind` };
             }
@@ -172,10 +219,9 @@ export function buildEffectProver(
             }
             return {
                 settled: true,
-                reason:
-                    `the operation had already applied and proved itself when it was interrupted; Plan ${planName} reads ${
-                        loaded.attrs.status ?? "an unset status"
-                    }`,
+                reason: `the operation had already applied and proved itself when it was interrupted; Plan ${planName} reads ${
+                    loaded.attrs.status ?? "an unset status"
+                }`,
             };
         }
 
@@ -187,7 +233,11 @@ export async function runGitLines(projectRoot: string, args: string[]) {
     const command = captureForegroundProcess("git", { args, cwd: projectRoot });
     const { code, stdout } = await command;
     if (code !== 0) return [];
-    return new TextDecoder().decode(stdout).split("\n").map((line) => line.trim()).filter(Boolean);
+    return new TextDecoder()
+        .decode(stdout)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
 }
 
 export async function isGitAncestor(projectRoot: string, ancestor: string, ref: string) {

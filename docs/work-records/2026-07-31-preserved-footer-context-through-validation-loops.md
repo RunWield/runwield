@@ -12,18 +12,12 @@ provenance:
         - "ccba05d1-e42a-481e-a97d-c213ee7c6526"
 ---
 
-# Preserved Footer Context Through Validation Loops
+# Workflow footer context continuity
 
 ## Summary
 
-Workflow footer context now remains available from Plan execution through Semantic Reviewer, repair, re-review, human
-review, delivery, recovery, and terminal validation paths. The change seeds execution context, preserves and re-persists
-it across root transcript segment swaps, derives snapshot fallback from active execution workflow when needed, and keeps
-validation continuation ownership stable until explicit terminal cleanup. Regression coverage and architecture
-documentation were updated, and RunWield Workflow Validation passed with focused tests and `deno task ci`.
+Workflow footer context remains available through execution, AI review, repair, Code Review, delivery, recovery, and validation outcomes. Context persists across transcript segment replacement, with fallback from active execution workflow and stable continuation ownership.
 
 ## Future Planning Notes
 
-Footer context should remain a projection of workflow authority, not a lifecycle source of truth. Future validation-loop
-changes should preserve active execution workflow through pauses and repair cycles, clearing ownership only at terminal
-outcomes.
+Footer context is a projection, not lifecycle authority. Pauses and repair cycles preserve workflow ownership until explicit terminal cleanup.

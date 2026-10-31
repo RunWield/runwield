@@ -47,6 +47,7 @@ export function createSilentUiApi() {
         updateValidationProgress: () => {},
         updateValidationReport: () => {},
         clearValidationPanel: () => {},
+        setValidationPanelVisible: () => {},
         setManagedSyncStatus: () => {},
         appendSystemMessage: () => {},
         startToolExecution: () => ({
@@ -134,11 +135,13 @@ export function createUiApi(
 
     /** @param {import('./types.js').ManagedSyncStatus} state */
     const isSameVisibleManagedSyncState = (state) => {
-        return visibleManagedSyncState?.status === state.status &&
+        return (
+            visibleManagedSyncState?.status === state.status &&
             visibleManagedSyncState.localGeneration === state.localGeneration &&
             visibleManagedSyncState.latestGeneration === state.latestGeneration &&
             visibleManagedSyncState.owningSurfaceKind === state.owningSurfaceKind &&
-            visibleManagedSyncState.message === state.message;
+            visibleManagedSyncState.message === state.message
+        );
     };
 
     /** @type {(() => void) | null} */
@@ -163,6 +166,7 @@ export function createUiApi(
     let validationReportOrder = 0;
     /** @type {ValidationHandoffBlock | null} */
     let validationPanelBlock = null;
+    let validationPanelVisible = true;
 
     const removeInputAccessoryResources = () => {
         if (!inputAccessoryContainer) {
@@ -186,7 +190,7 @@ export function createUiApi(
 
     const renderValidationPanel = () => {
         if (!validationPanelContainer || outputSuppressed) return;
-        if (!validationProgress) {
+        if (!validationProgress || !validationPanelVisible) {
             validationPanelContainer.clear?.();
             validationPanelBlock = null;
             return;
@@ -213,8 +217,10 @@ export function createUiApi(
         if (activeToolBlocks.size === 0) return false;
         const retainedActiveToolBlocks = new Set(activeToolBlocks.values());
         if (retainedActiveToolBlocks.has(child)) return true;
-        return child instanceof ToolExecutionGroupBlock &&
-            child.children.some((block) => retainedActiveToolBlocks.has(block));
+        return (
+            child instanceof ToolExecutionGroupBlock &&
+            child.children.some((block) => retainedActiveToolBlocks.has(block))
+        );
     };
 
     const pruneMessageList = () => {
@@ -254,8 +260,8 @@ export function createUiApi(
         const messageChild = messageList.children.includes(block)
             ? block
             : block instanceof ToolExecutionBlock
-            ? messageList.children.find((child) => child instanceof ToolExecutionGroupBlock && child.contains(block))
-            : undefined;
+              ? messageList.children.find((child) => child instanceof ToolExecutionGroupBlock && child.contains(block))
+              : undefined;
         if (messageChild) messageList.invalidateChild?.(messageChild);
     };
 
@@ -516,6 +522,13 @@ export function createUiApi(
             }
         },
 
+        /** @param {boolean} visible */
+        setValidationPanelVisible: (visible) => {
+            validationPanelVisible = visible;
+            renderValidationPanel();
+            tui.requestRender();
+        },
+
         /** @param {boolean} [preserveProgress=false] */
         clearValidationPanel: (preserveProgress = false) => {
             validationProgress = null;
@@ -546,7 +559,8 @@ export function createUiApi(
             const lastBlock = lastBlockIndex >= 0 ? children[lastBlockIndex] : null;
 
             if (
-                lastBlock instanceof SystemMessageBlock && lastBlock.isError === isError &&
+                lastBlock instanceof SystemMessageBlock &&
+                lastBlock.isError === isError &&
                 JSON.stringify(lastBlock.style) === JSON.stringify(style)
             ) {
                 // Async status transitions can leave more than one trailing spacer.
@@ -613,7 +627,7 @@ export function createUiApi(
                 block.setExpanded(true);
                 appendMessageListChild(block);
                 appendMessageListChild(new Spacer(1));
-            } else if ((WORKFLOW_TOOL_NAME_SET.has(toolName) || toolName === "code_review")) {
+            } else if (WORKFLOW_TOOL_NAME_SET.has(toolName) || toolName === "code_review") {
                 closeCurrentToolGroup();
                 appendMessageListChild(block);
                 appendMessageListChild(new Spacer(1));
@@ -633,8 +647,8 @@ export function createUiApi(
 
         toggleToolOutputsExpanded: () => {
             const toolBlocks = /** @type {VisibleToolBlock[]} */ (
-                messageList.children.filter((child) =>
-                    child instanceof ToolExecutionGroupBlock || child instanceof ToolExecutionBlock
+                messageList.children.filter(
+                    (child) => child instanceof ToolExecutionGroupBlock || child instanceof ToolExecutionBlock,
                 )
             );
             const retainedToolBlocks = new Set(toolBlocks);

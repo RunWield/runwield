@@ -558,6 +558,14 @@ Left by the reviewers of individual children for the integration review. These a
 
 <!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
 
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
+**reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status**
+
+- Check allowlist edits when an unavailable approved Project's directory no longer exists. Workspace preserves that root, but Core currently calls realpathSync for every retained root, which can prevent edits to the remaining Projects. (src/ui/workspace/server/owner-usage-settings.ts::preserveUnavailableRoots; src/shared/workflow/metrics-export-grants.ts::saveDestinationGrant)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status" -->
+
 ## Edge Cases & Considerations
 
 ### Reviewable assumptions

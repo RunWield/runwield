@@ -1,0 +1,65 @@
+diff --git a/src/pagination.ts b/src/pagination.ts
+--- a/src/pagination.ts
++++ b/src/pagination.ts
+@@ -1,5 +1,17 @@
+ import type { Project, ProjectCatalog } from "./model.ts";
+ 
+ export async function collectProjects(catalog: ProjectCatalog): Promise<Project[]> {
+-    return (await catalog.page()).items;
++    const projects: Project[] = [];
++    const visited = new Set<string>();
++    let cursor: string | undefined;
++    while (true) {
++        const page = await catalog.page(cursor);
++        projects.push(...page.items);
++
++        if (page.nextCursor === undefined) break;
++        if (visited.has(page.nextCursor)) throw new Error("Catalog repeated cursor");
++        visited.add(page.nextCursor);
++        cursor = page.nextCursor;
++    }
++    return projects;
+ }
+diff --git a/src/settings.ts b/src/settings.ts
+--- a/src/settings.ts
++++ b/src/settings.ts
+@@ -5,6 +5,6 @@
+     filterEnabled: boolean;
+ }
+ 
+-export function loadSettings(_configured: ListingConfig = {}): ListingSettings {
+-    return { filterEnabled: true };
++export function loadSettings(configured: ListingConfig = {}): ListingSettings {
++    return { filterEnabled: configured.filterEnabled ?? true };
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -28,5 +28,27 @@
+     };
+     await assert.rejects(() => listProjects(catalog), /Catalog unavailable/);
+ });
++await check("listing collects ordinary continuation pages in order", async () => {
++    const catalog: ProjectCatalog = {
++        page: async (cursor) => {
++            if (cursor === undefined) return { items: [{ id: "one", archived: false }], nextCursor: "two" };
++            assert.equal(cursor, "two", "Continuation must use the returned cursor");
++            return { items: [{ id: "two", archived: false }] };
++        },
++    };
++    assert.deepEqual(await listProjects(catalog, { filterEnabled: true }), [
++        { id: "one", archived: false },
++        { id: "two", archived: false },
++    ]);
++});
++await check("listing refuses a repeated continuation cursor", async () => {
++    const catalog: ProjectCatalog = {
++        page: async () => ({
++            items: [{ id: "one", archived: false }],
++            nextCursor: "again",
++        }),
++    };
++    await assert.rejects(() => listProjects(catalog), /Catalog repeated cursor/);
++});
+ 
+ console.log(`# tests ${passed}`);

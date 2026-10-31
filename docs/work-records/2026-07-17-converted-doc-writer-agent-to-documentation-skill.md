@@ -11,15 +11,12 @@ provenance:
         - "4a62e441-8964-4c68-90f7-a40a8e831d7e"
 ---
 
-# Converted Doc Writer Agent to Documentation Skill
+# Reusable Documentation Skill
 
 ## Summary
 
-Replaced the standalone Doc Writer Agent with the reusable Documentation Skill. Updated Engineer and Operator guidance,
-removed Doc Writer from agent constants and legacy task scheduling, refreshed tests and user-facing documentation, and
-verified the change through the project quality gate.
+The reusable Documentation Skill replaces the standalone Doc Writer Agent. Documentation work belongs to Engineer using the skill, and active Plans that assign the retired Agent fail validation.
 
 ## Future Planning Notes
 
-Archived plans may still reference doc-writer for historical accuracy. Existing external plans that assign doc-writer
-should now fail validation and must be updated to assign documentation work to Engineer using the Documentation Skill.
+Historical Plans can retain retired Agent references for accuracy; active Plans must use supported assignments.

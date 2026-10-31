@@ -374,6 +374,60 @@ test("spawnForegroundShell observes an abort immediately after spawn returns", {
 });
 
 test(
+    "macOS Stop closes inherited pipes when cancellation races a shell fork",
+    { skip: platform !== "darwin", timeout: 60_000 },
+    async () => {
+        for (let attempt = 0; attempt < 400; attempt++) {
+            const controller = new AbortController();
+            const shell = spawnForegroundShell({
+                command: "sleep 5; printf late",
+                cwd: getCwd(),
+                signal: controller.signal,
+            });
+            const drained = Promise.all([shell.done, readAll(shell.stdout), readAll(shell.stderr)]);
+            // Cover the shell's fork/exec window, not only an established descendant.
+            await new Promise((resolve) => setTimeout(resolve, attempt % 10));
+            controller.abort();
+            let deadline: ReturnType<typeof setTimeout> | undefined;
+            let closed = false;
+            try {
+                const result = await Promise.race([
+                    drained,
+                    new Promise<never>((_resolve, reject) => {
+                        deadline = setTimeout(
+                            () => reject(new Error(`Stop left a descendant holding a pipe on attempt ${attempt}`)),
+                            3_000,
+                        );
+                    }),
+                ]);
+                closed = true;
+                assertEquals(result, [{ exitCode: null, terminatedBy: "abort" }, "", ""]);
+            } finally {
+                clearTimeout(deadline);
+                if (!closed && shell.pid) {
+                    // Independent cleanup also works when the implementation left a stopped descendant.
+                    try {
+                        kill(-shell.pid, "SIGKILL");
+                    } catch {
+                        /* The group already exited. */
+                    }
+                }
+                try {
+                    await Promise.race([
+                        drained,
+                        new Promise<void>((resolve) => {
+                            deadline = setTimeout(resolve, 2_000);
+                        }),
+                    ]);
+                } finally {
+                    clearTimeout(deadline);
+                }
+            }
+        }
+    },
+);
+
+test(
     "spawnForegroundShell timeout kills the whole descendant tree and stays distinguishable from abort",
     {
         skip: IS_WINDOWS,

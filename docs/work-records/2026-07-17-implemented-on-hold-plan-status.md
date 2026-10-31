@@ -11,10 +11,8 @@ provenance:
         - "2a5bea91-b8e6-4c4c-9319-c53787daded3"
 ---
 
-# Implemented On-Hold Plan Status
+# On-hold Plan lifecycle
 
 ## Summary
 
-Added first-class on-hold Plan support, including hold metadata, hold/resume/reset flows in `wld load-plan`, Resume
-Check safety validation, parent Epic blocking semantics, and dedicated held-Plan presentation in `wld plans`. Added
-focused lifecycle, worktree, command, hierarchy, and display coverage; the completed work passed verification.
+RunWield supports an on-hold Plan status with hold metadata and hold, resume, and reset actions. Resume Check validates safe continuation, held children block their parent Epic as appropriate, and Plan listings distinguish held work.
