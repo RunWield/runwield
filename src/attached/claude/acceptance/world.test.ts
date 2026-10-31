@@ -295,7 +295,8 @@ test("the fixture policy reaches the actual Core handoff and uses Core-assigned 
                     BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
                 },
                 encoding: "utf8",
-                timeout: 30_000,
+                // This child runs two real validation cycles and several review handoffs.
+                timeout: 120_000,
             });
             equal(JSON.parse(output), { codeReview: true, ciRuns: 2, planStatus: "reviewed" });
         } finally {

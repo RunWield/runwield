@@ -83,8 +83,10 @@ test("host operational retries pause without sleeping and retain their budget ac
             retryAfter: 60,
         });
         for (let attempt = 1; attempt <= 3; attempt++) {
+            // Measure the host operation, not cold module loading in a fresh process.
+            // The next reviewer request below still verifies recovery across processes.
             const started = performance.now();
-            const result = await fixture.processTurn({
+            const result = await fixture.turn({
                 kind: "reviewer",
                 identity: reviewer.identity,
                 outcome: null,

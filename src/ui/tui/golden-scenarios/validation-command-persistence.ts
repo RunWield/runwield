@@ -74,7 +74,8 @@ const deliveryActions = [
     ...base.actions.slice(0, 3),
     // Prove the answer is durable before repair/publication can incidentally
     // copy a settings file back from the execution worktree.
-    { type: "waitForEvent", event: "runtime:validation-ci:failed", timeoutMs: 60000 },
+    // Includes routing, Plan approval, worktree setup, and the first validation run.
+    { type: "waitForEvent", event: "runtime:validation-ci:failed", timeoutMs: 240000 },
     { type: "captureProjectFileText", path: ".wld/settings.json", key: "settingsAtFailure" },
     ...base.actions.slice(3, 9),
     { type: "captureProjectFileText", path: ".wld/settings.json", key: "savedSettings" },

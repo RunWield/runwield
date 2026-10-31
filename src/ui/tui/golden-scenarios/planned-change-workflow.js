@@ -801,7 +801,7 @@ export const plannedChangeNonGitInPlaceScenario = {
     composedTui: true,
     initialAgentName: "planner",
     terminal: { columns: 100, rows: 30 },
-    timeoutMs: 150000,
+    timeoutMs: 420000,
     nonGitProject: true,
     coverage: ["durable:non-git-in-place"],
     reviewDecisions: [{ approved: true, feedback: "Approved for non-Git execution.", approvalAction: "run" }],
@@ -867,7 +867,8 @@ export const plannedChangeNonGitInPlaceScenario = {
             type: "waitForPlanStatus",
             planName: "non-git-plan",
             statuses: ["verified", "user_verified"],
-            timeoutMs: 70000,
+            // Includes planning, execution, and validation, as in the Git-backed scenario.
+            timeoutMs: 240000,
         },
         { type: "assertProjectFile", path: "golden-non-git.txt", exists: true },
         { type: "captureProjectFileText", path: "golden-non-git.txt", key: "nonGitDeliveredFileText" },

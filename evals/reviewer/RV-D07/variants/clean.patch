@@ -154,7 +154,7 @@ index 56149ce..49a1a27 100644
 +        await waitFor(() => probes >= 2);
 +        await within(closed);
 +        // Drain public-result reactions after the real child close event.
-+        await Promise.resolve();
++        await new Promise<void>((resolve) => setImmediate(resolve));
 +        assert.equal(observed, false, "Public result must wait for group settlement");
 +        released = true;
 +        if (failSettlement) {
