@@ -15,16 +15,22 @@ affectedPaths:
     - "src/ui/review/"
     - "src/ui/workspace/server.js"
     - "scripts/compile.js"
-    - "scripts/release-assets.ts"
+    - "scripts/release-assets.js"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
 createdAt: "2026-09-20"
-status: "ready_for_work"
 origin: "internal"
-userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
+status: "user_verified"
+userVerifiedAt: "2026-10-31T15:46:47.916Z"
+userVerificationNote: "the only defect is docs"
+workRecord:
+    status: "generated"
+    recordId: "4fcf6a50-cd7e-444d-b619-1335087591f2"
+    path: "docs/work-records/2026-10-31-remote-ssh-development-with-laptop-owned-personal-data.md"
+    lastAttemptAt: "2026-10-31T15:47:02.730Z"
 ---
 
 # Remote SSH Development
@@ -71,17 +77,17 @@ and automatic installation of arbitrary project/custom-skill dependencies. Brows
 
 ### Product ownership
 
-The transient [Remote SSH PRD](../prd/remote-ssh-prd.md) owns the detailed proposal scenarios. Core is the lasting
+The transient [Remote SSH PRD](../prd/runwield-core-prd.md#remote-connection) owns the detailed proposal scenarios. Core is the lasting
 owner. This Epic records later owner decisions where the older proposal still describes compatibility checks or
 undecided platforms. These decisions do not mark capabilities delivered.
 
-| Proposed capability                               | Owning proposal                                                                                 | Lasting Core requirements                                                                                                                               |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Connect and prepare the intended remote directory | [Remote connection and setup](../prd/remote-ssh-prd.md#remote-connection-and-setup)             | [Installation](../prd/runwield-core-prd.md#installation-and-updates), [project context](../prd/runwield-core-prd.md#project-context-and-initialization) |
-| Use the local personal environment                | [Local personal environment](../prd/remote-ssh-prd.md#local-personal-environment)               | [Customization](../prd/runwield-core-prd.md#agent-and-skill-customization), [models](../prd/runwield-core-prd.md#models-and-providers)                  |
-| Save and resume with correct memories             | [Local memories and saved Sessions](../prd/remote-ssh-prd.md#local-memories-and-saved-sessions) | [Session continuity](../prd/runwield-core-prd.md#session-continuity), [project context](../prd/runwield-core-prd.md#project-context-and-initialization) |
-| Deliver and review remote changes                 | [Remote workflows and local review](../prd/remote-ssh-prd.md#remote-workflows-and-local-review) | [Plan Review](../prd/runwield-core-prd.md#plan-review), [delivery and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery)          |
-| Stop safely on loss and recover truthfully        | [Disconnect and recovery](../prd/remote-ssh-prd.md#disconnect-and-recovery)                     | [Recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery)                                                                               |
+| Proposed capability                               | Owning proposal                                                                                   | Lasting Core requirements                                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connect and prepare the intended remote directory | [Remote connection and setup](../prd/runwield-core-prd.md#remote-connection)                      | [Installation](../prd/runwield-core-prd.md#installation-and-updates), [project context](../prd/runwield-core-prd.md#project-context-and-initialization) |
+| Use the local personal environment                | [Local personal environment](../prd/runwield-core-prd.md#agent-and-skill-customization)           | [Customization](../prd/runwield-core-prd.md#agent-and-skill-customization), [models](../prd/runwield-core-prd.md#models-and-providers)                  |
+| Save and resume with correct memories             | [Local memories and saved Sessions](../prd/runwield-core-prd.md#session-continuity)               | [Session continuity](../prd/runwield-core-prd.md#session-continuity), [project context](../prd/runwield-core-prd.md#project-context-and-initialization) |
+| Deliver and review remote changes                 | [Remote workflows and local review](../prd/runwield-core-prd.md#remote-connection)                | [Plan Review](../prd/runwield-core-prd.md#plan-review), [delivery and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery)          |
+| Stop safely on loss and recover truthfully        | [Disconnect and recovery](../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) | [Recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery)                                                                               |
 
 ## Objective
 
@@ -263,10 +269,12 @@ Keep the SSH connection recipe separate from host identity. A local host record 
 port, and verified host evidence after an alias rename. Neither alias spelling nor a host-key fingerprint alone is
 sufficient. Ambiguous equivalence requires confirmation, not automatic history merging.
 
-New unrelated remote projects get separate local Memory collections. Deliberate mapping to an existing collection by
-name does not require a local checkout and does not merge Sessions. Ask once when the intended mapping is ambiguous,
-then retain it. Core injection, explicit recall/store/delete, and `/sleep` all use that same resolved mapping. Backups
-stay local. Existing local project IDs, collection names, and saved Sessions remain unchanged.
+A remote project's Memory collection is built automatically from the normalized server name and the project folder name,
+with no prompt. The one exception: when the remote folder name equals a local project's folder name, ask once whether it
+is the same project. **Yes** shares that local project's collection; **No** uses the normal rule. The answer is
+retained. Sharing a collection does not merge Sessions. Core injection and explicit recall/store/delete use the same
+resolved mapping. Remote `/sleep` is deferred scope. Existing local project IDs, main-checkout collection names, and
+saved Sessions remain unchanged.
 
 ### Browser review and connection lifetime
 
@@ -331,6 +339,26 @@ widely distributed but has limited maintainer capacity. Reuse separate executabl
 required licenses/source notices when distributing helpers. The exit path is a different storage transport behind the
 same Session owner, not a new transcript format. Any evidence requiring a different architecture returns to the owner
 rather than becoming an unreviewed fallback.
+
+### Child Plan Deviations
+
+User-confirmed replacements from child Plans. Each child Plan remains the authority for its deviations.
+
+<!-- runwield:child-plan-deviations:start child="remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal" -->
+
+**remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal**
+
+1. Superseded requirement: `verify-remote-workflows.ts` keeps its scripted runtime client for stage-exact cuts (validation, publication proven,
+   publication uncertain, rollover then disconnect). Its `WLD_LIVE_SOURCE=0` path already accepts a production binary; it
+   reruns with the release `wld` from the Linux archive. It changes only if it cannot accept that binary.
+
+- `verify-remote-workflows.ts` journeys `delivery`, `validation-cut`, `publication-proven`, and `publication-uncertain`
+  pass with the release `wld` as the production binary.
+  Replacement requirement: Keep the existing scripted runtime-client journeys as separate code-level evidence, not release-CLI qualification. Qualify delivery, validation-cut, publication-proven, publication-uncertain, and rollover then disconnect through the unchanged release CLI in a PTY with the synthetic provider. Adapt the qualification drivers to use supported terminal commands and assert visible state plus durable Session, Git, and publication evidence instead of claiming raw runtime reports. Retain stage-specific fault cuts, reconnect and /resume checks, conservative handling of uncertain outcomes without automatic replay, laptop Session ownership, and per-case cleanup. Do not add a product command or protocol solely for qualification. All other Group R, Group S, Group A, release-artifact, real-profile safety, and proposal-retirement requirements remain unchanged.
+  Reason: The existing production-binary option runs only a save smoke check. Workflow commands and in-memory reports come from a separately compiled test entry that the release CLI does not expose. Terminal-driven journeys preserve release qualification without adding a product API.
+  Approved at: 2026-10-28T18:08:17.540Z
+
+<!-- runwield:child-plan-deviations:end child="remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal" -->
 
 ## Vertical Slice Findings
 
