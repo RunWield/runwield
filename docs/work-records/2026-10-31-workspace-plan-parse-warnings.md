@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "b8079944-3169-4e06-b724-fd53a271e9d4"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "d21a5c60-a381-443a-9c8d-bbd26cfdc90f"
 ---
-
 # Workspace Plan parse warnings
 
 ## Summary
