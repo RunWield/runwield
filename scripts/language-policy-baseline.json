@@ -83,7 +83,6 @@
     "src/ui/workspace/islands/PlanBodyEditor.jsx",
     "src/ui/workspace/islands/PlanLifecycleActions.jsx",
     "src/ui/workspace/islands/SessionSurface.jsx",
-    "src/ui/workspace/pages/api/plans/[...segments].js",
 
     "src/ui/workspace/react/remote-review-payload.js",
     "src/ui/workspace/routes/api/review-agent-handlers.js",
