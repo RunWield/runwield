@@ -101,6 +101,64 @@ it is not shared project knowledge or a source for cross-Session Agent retrieval
 interaction results as committed transcript history; a live unanswered interaction is not committed history until its
 result is written. _Avoid_: Work Record, planning memory, shared conversation
 
+**Usage observation**: A content-free measurement that RunWield Core observes while `workflowMetrics` is enabled. It
+records workflow activity, model tokens, measured or estimated costs, timing, or tool/context coverage, not user
+conversation content or a provider invoice. It belongs to one primary Project history and collection epoch. It may link
+to a Session and, when observed, a Plan; it does not replace Session Transcript or Plan Association authority. Missing
+measurements are unavailable, not zero. See
+[Core usage measurement and export](prd/runwield-core-prd.md#usage-measurement-and-export). _Avoid_: Transcript, billing
+charge, invoice, complete activity history
+
+**Metrics exporter**: An optional, destination-specific package entry point that receives approved Core observations.
+Core owns its host-global approval and binds it to its installed identity: exporter ID, configured user-scope source,
+real installed path, and version. Core dispatches one immutable, content-free observation under a separate Export grant.
+The package handles transport, not permission, retries, or journal access. It is not loaded as a Session extension.
+_Avoid_: model Provider, Pi Agent extension, RunWield Connect plugin
+
+**Export grant**: Saved host-global permission to send future eligible observations to one approved exporter identity,
+endpoint, and external project from an explicit Project allowlist. Each Project has its own journal start position.
+Credentials are separate. A new endpoint or re-enablement starts new consent; it does not sweep earlier history. See
+[Core export consent](prd/runwield-core-prd.md#export-consent). _Avoid_: collection opt-in, exporter package approval
+
+<a id="delivery-accepted"></a>
+
+**Delivery accepted**: The exporter reports acceptance of an observation. Read-back has not proved its remote presence.
+_Avoid_: confirmed publication, Plan Status
+
+<a id="delivery-confirmed"></a>
+
+**Delivery confirmed**: Exporter read-back proves that the remote observation is present. This does not confirm workflow
+publication. _Avoid_: published Plan, workflow success
+
+<a id="delivery-rejected"></a>
+
+**Delivery rejected**: The destination did not accept an observation. A permanent rejection stays rejected; a correction
+rejection becomes pending only after credentials change. _Avoid_: failed Plan, abandoned workflow
+
+**Delivery unconfirmed**: An exporter delivery state where acceptance is unknown. Core never resends it automatically.
+Read-back can change it to [Delivery confirmed](#delivery-confirmed). It differs from
+[Delivery accepted](#delivery-accepted) and [Delivery rejected](#delivery-rejected). It is not a Plan Status or a
+workflow failure. _Avoid_: retryable send, failed workflow
+
+**Active day**: A reporting-zone calendar day with accepted human input or an explicit user-started continuation,
+recorded through user-initiated execution or command provenance. An open window, automatic repair, or background result
+is not user activity. Usage can complete on a day that is not active. _Avoid_: Login day, model activity day, open tab
+
+**Usage gap**: A reporting interval without complete measurement coverage. Disabled, legacy, unavailable, incomplete,
+and not-yet-collected evidence are distinct gap reasons. A gap breaks the usage trend; it is not a measured zero. A
+known zero requires an enabled interval bounded by recorded evidence. _Avoid_: Zero usage, disabled duration, failed
+workflow
+
+**Collection epoch**: The local identity for a collection interval. Normal recording controls commit a host-level
+boundary with the setting; Projects with an explicit boolean recording override keep their epoch. An empty Project
+setting inherits global enablement and its boundaries. Direct settings-file edits are
+observed lazily by Core. An observed disabled transition can be retained as control evidence, but is not a Usage
+observation. Unobserved intervals contain no recorded measurements and do not prove disabled durations. Collection
+epochs are not Session lifetimes or Plan statuses. _Avoid_: Disabled duration, Session epoch
+
+**History epoch**: The identity of one local primary Project measurement history. Usage observations and collection
+control records link to it; Session and Plan links remain separate. It does not authorize replay or reconstruction from
+Session Transcripts. _Avoid_: Session history, Plan revision, billing period
 **Session Export**: A file copy of one Session's complete committed Session Transcript across all Session Transcript
 Segments, with Session Manifest facts. `/export` writes HTML or JSON; `/share` uploads both to a secret GitHub Gist. It is
 not a Shared Session Snapshot. _Avoid_: Pi export, segment export

@@ -265,7 +265,7 @@ through the Epic's own document root, not through the lookup. The domain languag
 ## Verification Plan
 
 - Automated, focused:
-  `bun scripts/run-tests.js src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/planning-worktree.test.ts src/shared/workflow/epic-branch-planning.integration.test.ts src/cmd/load-plan/index.integration.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/workflow/plan-document-authority.integration.test.ts src/plan-catalog-isolation.test.ts src/ui/workspace/plan-workflow-review.integration.test.js`
+  `bun scripts/run-tests.js src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/planning-worktree.test.ts src/shared/workflow/epic-branch-planning.integration.test.ts src/cmd/load-plan/index.integration.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/workflow/plan-document-authority.integration.test.ts src/plan-catalog-isolation.test.ts src/ui/workspace/plan-workflow-review.integration.test.ts`
 - Also run `bun run seams:check`. The new module must add no injection seam.
 
 ### New behavioral tests (real Git fixtures, real registry)

@@ -1,4 +1,5 @@
-// @ts-nocheck: served as plain browser JavaScript from the owner Workspace static route.
+// @ts-nocheck -- Served as plain browser JavaScript from the owner Workspace static route.
+import { PANEL_ICON_PATHS } from "../../design-system/panel-icon.ts";
 import { animateSidebarChange } from "../../design-system/sidebar-motion.js";
 export const LAST_SESSION_KEY = "runwield:owner:last-session";
 export const LAST_PROJECT_KEY = "runwield:owner:last-project";
@@ -244,9 +245,8 @@ function sessionStatusLabel(state) {
     return normalized === "active" || normalized === "busy" ? "busy" : "";
 }
 
-function panelCollapseIcon(side) {
-    const path = side === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
-    return `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"><path d="M5 4v16" stroke-width="1.5" stroke-linecap="round"></path><path d="M19 4v16" stroke-width="1.5" stroke-linecap="round"></path><path d="${path}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
+function panelIcon() {
+    return `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${PANEL_ICON_PATHS.left}"></path></svg>`;
 }
 
 function isNarrowSidebarMode() {
@@ -320,7 +320,7 @@ function renderMainHeader(payload, current) {
         restore.dataset.workspaceSidebarRestore = "";
         restore.setAttribute("aria-label", "Open Workspace sidebar");
         restore.title = "Open Workspace sidebar";
-        restore.innerHTML = panelCollapseIcon("right");
+        restore.innerHTML = panelIcon();
         header.prepend(restore);
     }
     if (title) {
@@ -469,7 +469,7 @@ function ensureSidebarScaffold(sidebar, payload, current) {
         collapse.dataset.workspaceSidebarCollapse = "";
         collapse.setAttribute("aria-label", "Collapse Workspace sidebar");
         collapse.title = "Collapse Workspace sidebar";
-        collapse.innerHTML = panelCollapseIcon("left");
+        collapse.innerHTML = panelIcon();
         brand.append(collapse);
     }
     let home = sidebar.querySelector(".workspace-sidebar-home");

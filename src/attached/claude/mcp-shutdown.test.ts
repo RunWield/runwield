@@ -99,7 +99,7 @@ for (const trigger of ["stdin EOF", "SIGTERM", "SIGINT"] as const) {
             const canceled = await fixture.status();
             assertEquals(canceled.state, "validating");
             assertEquals((await fixture.evidence()).filter((entry) => entry.kind === "ci").length, 0);
-            assertEquals((await fixture.metrics()).includes('"ci_attempt"'), false);
+            assertEquals((await fixture.metrics()).includes('"validation_attempt"'), false);
             await saveValidationCommand(fixture.cwd, "exit 0", "exact-project");
             await saveValidationCommand(fixture.root, "exit 0", "exact-project");
             const current = await fixture.status();

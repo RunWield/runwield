@@ -1,4 +1,5 @@
 import React from "react";
+import { PANEL_ICON_PATHS } from "../../panel-icon.ts";
 import { RunWieldIconButton } from "./RunWieldIconButton.tsx";
 import * as Tabs from "@radix-ui/react-tabs";
 
@@ -45,6 +46,7 @@ export interface RunWieldTabsProps {
     onValueChange?: (value: string) => void;
     keepMounted?: boolean;
     label?: string;
+    variant?: "default" | "underline";
 }
 
 type ClassNamePart = string | undefined | false | null;
@@ -54,11 +56,8 @@ function classNames(parts: ClassNamePart[]) {
 }
 
 export function RunWieldButton({ variant = "secondary", className, children, ...props }: RunWieldButtonProps) {
-    const variantClass = variant === "primary"
-        ? "primary-action"
-        : variant === "danger"
-        ? "danger-action"
-        : "secondary-action";
+    const variantClass =
+        variant === "primary" ? "primary-action" : variant === "danger" ? "danger-action" : "secondary-action";
     return React.createElement(
         "button",
         { type: "button", ...props, className: classNames([variantClass, className]) },
@@ -66,8 +65,25 @@ export function RunWieldButton({ variant = "secondary", className, children, ...
     );
 }
 
+export function RunWieldPanelIcon({ side }: Pick<RunWieldPanelToggleProps, "side">) {
+    return (
+        <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <path d={PANEL_ICON_PATHS[side]} />
+        </svg>
+    );
+}
+
 export function RunWieldPanelToggle({ side, collapsed, label, controls, onClick }: RunWieldPanelToggleProps) {
-    const pointsLeft = (side === "left") !== collapsed;
     const title = `${collapsed ? "Show" : "Collapse"} ${label}`;
     return (
         <RunWieldIconButton
@@ -78,15 +94,7 @@ export function RunWieldPanelToggle({ side, collapsed, label, controls, onClick 
             aria-controls={controls}
             onClick={onClick}
         >
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
-                <path d="M5 4v16M19 4v16" strokeWidth="1.5" strokeLinecap="round" />
-                <path
-                    d={pointsLeft ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"}
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                />
-            </svg>
+            <RunWieldPanelIcon side={side} />
         </RunWieldIconButton>
     );
 }
@@ -96,11 +104,8 @@ export function RunWieldPanelToggle({ side, collapsed, label, controls, onClick 
  * an anchor, so browser affordances and accessibility semantics stay intact.
  */
 export function RunWieldLink({ variant = "secondary", className, children, ...props }: RunWieldLinkProps) {
-    const variantClass = variant === "primary"
-        ? "primary-action"
-        : variant === "danger"
-        ? "danger-action"
-        : "secondary-action";
+    const variantClass =
+        variant === "primary" ? "primary-action" : variant === "danger" ? "danger-action" : "secondary-action";
     return React.createElement("a", { ...props, className: classNames([variantClass, className]) }, children);
 }
 
@@ -117,21 +122,31 @@ export function RunWieldThinkingDots({ label = "Thinking", className, showLabel 
     );
 }
 
-export function RunWieldTabs(
-    { defaultValue, tabs, value, onValueChange, keepMounted = false, label = "Review sections" }: RunWieldTabsProps,
-) {
+export function RunWieldTabs({
+    defaultValue,
+    tabs,
+    value,
+    onValueChange,
+    keepMounted = false,
+    label = "Review sections",
+    variant = "default",
+}: RunWieldTabsProps) {
     return React.createElement(
         Tabs.Root,
         { defaultValue, value, onValueChange, className: "rw-react-tabs" },
         React.createElement(
             Tabs.List,
-            { className: "tabs", "aria-label": label },
+            { className: variant === "underline" ? "rw-underline-tabs" : "tabs", "aria-label": label },
             tabs.map((tab) =>
                 React.createElement(
                     Tabs.Trigger,
-                    { key: tab.value, value: tab.value, className: "rw-react-tabs-trigger" },
+                    {
+                        key: tab.value,
+                        value: tab.value,
+                        className: variant === "underline" ? undefined : "rw-react-tabs-trigger",
+                    },
                     tab.label,
-                )
+                ),
             ),
         ),
         tabs.map((tab) =>
@@ -145,7 +160,7 @@ export function RunWieldTabs(
                     className: "rw-react-tabs-content",
                 },
                 tab.children,
-            )
+            ),
         ),
     );
 }

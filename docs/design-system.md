@@ -61,6 +61,33 @@ correct choice obvious:
 - document when to use and not use a pattern;
 - keep Workflow and Plan vocabulary aligned with `docs/domain-language.md`.
 
+## Usage reports
+
+`src/ui/design-system/usage.css` owns the compact Usage report layout, scrollable tables, and semantic trend styles.
+`src/ui/design-system/components/react/UsageTrend.tsx` renders a daily token trend without a charting dependency. Its
+input uses `null` for a gap and `0` for a covered zero: gaps split line segments and have no numeric point; known zero
+has a baseline point. The SVG has a readable description and each point has a date/value title.
+
+Always pair a trend with a readable table. The Workspace daily table shows tokens, estimated USD cost, and **Data
+Complete** as **Complete** or **Partial**, with gap reasons. On partial days show known cost as a subtotal, or a dash
+when no cost is known. Do not turn missing cost into zero. Summary figures keep exclusion and partial-day counts beside
+the values. Coverage notices distinguish pending measurements from settled spend, identify excluded Projects, and keep
+the host time zone and recorded-through marker visible.
+
+Usage settings keeps each destination's identity, endpoint, approval, and compact delivery summary visible above its
+**Approved Projects**, **Credentials**, **Delivery status**, and **Destination** tabs. Use `RunWieldTabs` from
+`src/ui/design-system/components/react/RunWieldPrimitives.tsx` with `variant="underline"` to reuse
+`.rw-underline-tabs`. Keep panels mounted with a controlled value so switching tabs preserves unsaved input. Each
+destination has its own tab state and a distinct accessible label. On phones, the tab rail scrolls within the card.
+
+Project checklists in `usage.css` have a bounded scroll area, a selected count, and search for lists longer than eight
+Projects. Search filters the visible rows, not the saved selection. Local recording rows also scroll within their
+section so a large Project registry does not push exporter controls far down the page.
+
+Use `--rw-*` semantic colors, existing rectangular controls, and two summary columns on phone. Wide tables scroll inside
+a focusable, named region rather than widening the page. Project rows may show deduplicated, verified Session and Plan
+links with readable labels; do not add raw event-ID lists.
+
 ## Source of truth
 
 ### Printed documents
@@ -424,6 +451,14 @@ Use the `.session-context-*` classes and `--rw-*` semantic tokens for the tab ra
 links. The sidebar is a flat adjacent pane with dividers, not a stack of floating cards. At narrow browser widths it
 overlays the conversation below the shared header without changing its information model.
 
+**Sidebar toggle icon**
+
+Use `RunWieldPanelIcon` for sidebar open and close controls on all browser surfaces. The icon is a rounded panel outline
+with a vertical divider on the sidebar edge: left for navigation, Contents, and files; right for context, Workflow, and
+annotations. Keep the same icon in both states. Do not use directional arrows. `RunWieldPanelToggle` supplies this icon
+with state labels and ARIA attributes. The imperative Workspace shell uses the same paths from
+`src/ui/design-system/panel-icon.ts`. Keep the current control sizes, semantic colors, and focus styles.
+
 **Sidebar motion**
 
 Workspace navigation, Session context, review Contents/files and annotations, and artifact Contents share a short
@@ -463,6 +498,10 @@ keyboard focus, and a fixed compact 28px height at every viewport width. Menu na
 Projects and Devices are peer Workspace-level views in `SettingsLayout.astro`. Their shared underline tabs sit in the
 Workspace header; content has matching panel spacing on both sides with a 64rem maximum width. Cards and Project rows on
 Projects, Project Settings, and Devices use square corners. Project rows open that Project’s settings as a child page.
+
+Usage Report and Settings use the same header pattern and 64rem content width. `UsageLayout.astro` owns the two links,
+the `header-tabs` slot, and active `aria-current="page"`. `/usage` and `/usage/settings` remain separate routes for direct
+links and browser Back; do not duplicate their tab markup in each page.
 Its header replaces the tabs with a **Back to Projects** control and **Project settings** title. Keep the Project name
 and root status as compact context inside the content. Do not repeat Plan Board or New Session actions here. Devices
 lists Workspace-wide paired browsers and never inherits a Project-specific scope. Device rows place the shared `badge`
@@ -712,11 +751,16 @@ visible “excluded” text, and a plus control to include them again. Controls 
 Plan annotations, file annotations, images, direct edits, and unsent answers are included by default. Validation-time
 Code Review includes annotations, attachments, and edit suggestions by default. Send accepts text, included queue items,
 or both. After acceptance, remove only sent items and restore inclusion for the next send. A busy
-Agent disables queue controls, Send, and Submit answer; a failed request keeps the draft. Sequence tabs share inclusion
+Agent disables queue controls, Send, and question submit buttons; a failed request keeps the draft. Sequence tabs share inclusion
 and counts across the whole group. Approval forwards all remaining items regardless of one-send exclusions.
 
-Embedded Plan Questions offer Submit answer for an entered answer. It sends only that answer, marks it “Answer sent”,
-and removes it from the unsent queue. Changing the answer makes it unsent again. Retain the chosen answer for approval.
+Embedded Plan Questions share one pending-answer count: **Submit Answer**, **Submit 2 Answers**, **Submit 3 Answers**,
+and so on. Any question submit button sends every answered, unsent question across the review, including all Sequence
+tabs and answers excluded from a normal chat send. Blank text and blank Other answers do not count; No does. Keep the
+composer message, annotations, attachments, and direct edits queued. Before waiting, open the right sidebar on Planner,
+even after a manual collapse or a visit to Annotations; on compact screens close Contents. Reuse the sidebar motion and
+working/error states. Mark accepted values “Answer sent” and remove only those values from the unsent queue. Edits and
+new answers entered during work stay queued; failures preserve the batch for retry. Retain chosen answers for approval.
 After a completed reply-only turn, Plan approval uses the existing compact confirmation-dialog treatment with Ask Agent
 to update the Plan, Approve as is, and Cancel. Approve as is continues to the open-questions confirmation.
 
@@ -778,9 +822,11 @@ workflow-critical changes.
 
 ### Dialogs
 
-Dialog is a general modal primitive for browser surfaces that need focused confirmation, short forms, or blocking
-workflow decisions. Workspace does not currently provide a source pattern for dialogs, so new dialogs should preserve
-the Workspace visual language while using Radix-compatible React behavior for accessibility and interaction behavior.
+`RunWieldDialog` in `src/ui/design-system/components/react/RunWieldDialog.tsx` is the shared modal primitive for focused
+confirmation, short forms, or blocking workflow decisions. It uses installed Radix Dialog behavior and the semantic
+`.rw-dialog-*` styles in `components.css`. Supply a trigger, title, description, optional body, footer, controlled open
+state, and a busy flag. The title labels the dialog; focus is trapped and returns to the trigger on dismissal. Escape
+closes it unless a request is running. Busy state blocks outside dismissal and Escape; callers disable their actions.
 
 Dialog should be flexible rather than confirmation-only:
 

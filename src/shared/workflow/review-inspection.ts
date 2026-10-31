@@ -50,6 +50,10 @@ export class ReviewInspection {
         if (end > start) this.reads.push({ scope, path, start, end });
     }
 
+    recorded(): ReviewDiffSpan[] {
+        return this.reads.map((span) => ({ ...span }));
+    }
+
     unread(): ReviewDiffSpan[] {
         return this.files.flatMap((file) => {
             const spans = this.reads

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { readdir as fsReaddir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
@@ -2258,6 +2259,32 @@ export async function buildAgentSession({
                 cwd: sessionCwd,
                 sessionManager: effectiveSessionManager,
                 completeSimpleFn: completeSimple,
+                onModelStart: async () => {
+                    const activeRecorder = executionMetricsForSession.get(session);
+                    const recorder =
+                        activeRecorder ||
+                        new ExecutionMetricsRecorder({
+                            projectRoot: sessionCwd,
+                            hostedSession: targetHostedSession || undefined,
+                            sessionId: effectiveSessionManager.getSessionId(),
+                            managedSessionId: targetHostedSession?.getManagedMetadata()?.runwieldSessionId,
+                            segmentId: targetHostedSession?.getManagedMetadata()?.currentSegmentId,
+                            commandId: targetHostedSession?.activeCommandInvocationId || undefined,
+                            agentName,
+                            dispatchKind: "auxiliary",
+                            userInitiated: false,
+                        });
+                    if (!activeRecorder) await recorder.recordExecutionStart();
+                    return {
+                        async finish(observation, outcome) {
+                            try {
+                                await recorder.recordModelUsage(observation);
+                            } finally {
+                                if (!activeRecorder) await recorder.settleExecution(outcome, "vision_completed");
+                            }
+                        },
+                    };
+                },
             }),
         );
     }
@@ -3202,9 +3229,15 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
     const toolArgs = new Map();
     /** @type {Set<string>} */
     let turnPriorEntryIds = new Set();
-    /** @type {SessionContextMetricsRecorder | null} */
-    let manualCompaction = null;
-    let manualPriorIds = new Set();
+    /**
+     * @typedef {Object} ManualCompactionMeasurement
+     * @property {SessionContextMetricsRecorder} recorder
+     * @property {Set<string>} priorIds
+     * @property {number | null} retryAttempt
+     * @property {Promise<void> | null} completion
+     */
+    /** @type {AsyncLocalStorage<ManualCompactionMeasurement>} */
+    const manualCompactions = new AsyncLocalStorage();
     /** @type {SessionContextMetricsRecorder | null} */
     let branchSummaryRetries = null;
     /** @type {number | null} */
@@ -3212,49 +3245,86 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
     /** @param {ExecutionMetricsRecorder} recorder
      * @param {"turn_start" | "turn_end" | "before_compaction"} point */
     const snapshot = (recorder, point) => recordPiExecutionContext(recorder, session, projection, point);
-    return session.subscribe((event) => {
-        const recorder = executionMetricsForSession.get(session);
-        if (!recorder && event.type === "compaction_start" && event.reason === "manual") {
-            manualPriorIds = new Set(session.sessionManager.getEntries().map((entry) => entry.id));
-            manualCompaction = new SessionContextMetricsRecorder(
+    // Pi subscriptions are synchronous: returning a promise does not delay model work.
+    // Await the measurement start at the public manual-compaction boundary instead.
+    const originalCompact = session.compact;
+    /**
+     * @param {ManualCompactionMeasurement} measurement
+     * @param {"success" | "error" | "canceled"} outcome
+     * @param {number | null} [before]
+     * @param {number | null} [after]
+     */
+    function finishManualCompaction(measurement, outcome, before = null, after = null) {
+        if (measurement.completion) return measurement.completion;
+        if (measurement.retryAttempt !== null) {
+            void measurement.recorder.retryFinish(
+                measurement.retryAttempt,
+                outcome === "success" ? "succeeded" : outcome === "error" ? "failed" : "canceled",
+            );
+            measurement.retryAttempt = null;
+        }
+        measurement.completion = measurement.recorder.finish(
+            outcome,
+            before,
+            after,
+            session.model?.contextWindow ?? null,
+            session.sessionManager.getEntries(),
+            measurement.priorIds,
+        );
+        const previous = pendingManualCompactionMetrics.get(session);
+        pendingManualCompactionMetrics.set(
+            session,
+            Promise.all([previous, measurement.completion]).then(() => {}),
+        );
+        return measurement.completion;
+    }
+    session.compact = async function (customInstructions) {
+        if (executionMetricsForSession.get(session)) return await originalCompact.call(session, customInstructions);
+        const measurement = {
+            recorder: new SessionContextMetricsRecorder(
                 hostedSession.cwd,
                 session.sessionManager.getSessionId(),
                 hostedSession.activeCommandInvocationId,
-            );
-            void manualCompaction.start(piContextSnapshot(session, projection, "before_compaction"));
-            return;
+                hostedSession,
+            ),
+            priorIds: new Set(session.sessionManager.getEntries().map((entry) => entry.id)),
+            retryAttempt: null,
+            completion: null,
+        };
+        return await manualCompactions.run(measurement, async () => {
+            await measurement.recorder.start(piContextSnapshot(session, projection, "before_compaction"));
+            try {
+                return await originalCompact.call(session, customInstructions);
+            } finally {
+                // SDK abort/error can precede compaction_end. Every started call settles its own recorder.
+                await finishManualCompaction(measurement, "error");
+            }
+        });
+    };
+    const unsubscribe = session.subscribe((event) => {
+        const recorder = executionMetricsForSession.get(session);
+        const manual = manualCompactions.getStore();
+        if (manual && event.type === "compaction_start" && event.reason === "manual") {
+            // The SDK has now waited for any earlier call to end. Exclude its saved entries.
+            manual.priorIds = new Set(session.sessionManager.getEntries().map((entry) => entry.id));
         }
         if (!recorder && event.type === "compaction_end" && event.reason === "manual") {
-            const pending = manualCompaction;
-            manualCompaction = null;
-            if (pending) {
-                if (summarizationRetryAttempt !== null) {
-                    void pending.retryFinish(
-                        summarizationRetryAttempt,
-                        event.aborted ? "canceled" : event.errorMessage ? "failed" : "succeeded",
-                    );
-                    summarizationRetryAttempt = null;
-                }
-                pendingManualCompactionMetrics.set(
-                    session,
-                    pending.finish(
-                        event.aborted ? "canceled" : event.errorMessage ? "error" : "success",
-                        event.result?.tokensBefore ?? null,
-                        event.result?.estimatedTokensAfter ?? null,
-                        session.model?.contextWindow ?? null,
-                        session.sessionManager.getEntries(),
-                        manualPriorIds,
-                    ),
+            if (manual) {
+                void finishManualCompaction(
+                    manual,
+                    event.aborted ? "canceled" : event.errorMessage ? "error" : "success",
+                    event.result?.tokensBefore ?? null,
+                    event.result?.estimatedTokensAfter ?? null,
                 );
             }
             return;
         }
-        if (!recorder && manualCompaction && event.type === "summarization_retry_scheduled") {
-            if (summarizationRetryAttempt !== null) {
-                void manualCompaction.retryFinish(summarizationRetryAttempt, "failed");
+        if (!recorder && manual && event.type === "summarization_retry_scheduled") {
+            if (manual.retryAttempt !== null) {
+                void manual.recorder.retryFinish(manual.retryAttempt, "failed");
             }
-            summarizationRetryAttempt = event.attempt;
-            void manualCompaction.retryStart(event.attempt, event.maxAttempts, event.delayMs);
+            manual.retryAttempt = event.attempt;
+            void manual.recorder.retryStart(event.attempt, event.maxAttempts, event.delayMs);
             return;
         }
         if (!recorder && event.type === "summarization_retry_scheduled") {
@@ -3262,6 +3332,7 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                 hostedSession.cwd,
                 session.sessionManager.getSessionId(),
                 hostedSession.activeCommandInvocationId,
+                hostedSession,
             );
             if (summarizationRetryAttempt !== null) {
                 void branchSummaryRetries.retryFinish(summarizationRetryAttempt, "failed");
@@ -3292,6 +3363,9 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                     });
                     summarizationRetryAttempt = null;
                 }
+                break;
+            case "message_end":
+                if (event.message.role === "assistant") recorder.recordPiAssistantMessageEnd(event.message);
                 break;
             case "message_update":
                 void recorder.recordResponseLatency("first_response");
@@ -3404,6 +3478,10 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                 break;
         }
     });
+    return () => {
+        unsubscribe();
+        session.compact = originalCompact;
+    };
 }
 
 /**
@@ -4625,6 +4703,8 @@ export async function runRootTurn({
             ...(targetHostedSession.generatedTaskTurnId ? { taskId: targetHostedSession.generatedTaskTurnId } : {}),
             backend,
         });
+        const userInitiated = targetHostedSession.metricsHumanInputPending && !targetHostedSession.generatedTaskTurnId;
+        targetHostedSession.metricsHumanInputPending = false;
         meta.rootTurnCount += 1;
         const finalRequest =
             dispatch.promptMode === "continuation"
@@ -4650,6 +4730,7 @@ export async function runRootTurn({
                 attemptId: dispatch.attemptId,
                 dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
                 executionKind: "root",
+                userInitiated,
                 mode: "foreground",
                 sourceSurface:
                     targetHostedSession.localInputSurface || targetHostedSession.notificationSurface || "cli",
@@ -4659,6 +4740,7 @@ export async function runRootTurn({
             const piSession = isExecutionSession(session) ? session.session : session;
             const recorder = new ExecutionMetricsRecorder({
                 projectRoot: meta.cwd || targetHostedSession.cwd,
+                hostedSession: targetHostedSession,
                 sessionId: sessionManager.getSessionId?.(),
                 managedSessionId: targetHostedSession.getManagedMetadata()?.runwieldSessionId,
                 segmentId: targetHostedSession.getManagedMetadata()?.currentSegmentId,
@@ -4671,6 +4753,7 @@ export async function runRootTurn({
                 backend: "pi",
                 dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
                 executionKind: "root",
+                userInitiated,
                 mode: "foreground",
                 sourceSurface:
                     targetHostedSession.localInputSurface || targetHostedSession.notificationSurface || "cli",

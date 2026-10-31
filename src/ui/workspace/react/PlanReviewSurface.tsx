@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
 import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
@@ -643,10 +644,10 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         }
     }
 
-    async function sendPlannerMessage({ answerId, fixedMessage } = {}) {
+    async function sendPlannerMessage({ answersOnly = false, fixedMessage } = {}) {
         if (turnInFlight.current || plannerWorking || reviewGroup?.busy || submitting !== null) return;
-        const message = answerId ? "" : (fixedMessage ?? conversationComposer.trim());
-        const selection = { queued: true, answerId, answerPlanId: initialPayload.planId };
+        const message = answersOnly ? "" : (fixedMessage ?? conversationComposer.trim());
+        const selection = { queued: true, answersOnly };
         const documents = reviewGroup ? reviewGroup.collect(selection) : null;
         const sent = documents || [{ planId: initialPayload.planId, ...readReview(selection) }];
         const attachedFeedback = sent
@@ -654,8 +655,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             .filter(Boolean)
             .join("\n\n");
         if (!message && !attachedFeedback) return;
-        const contextLabel = answerId
-            ? "1 answer"
+        const answerCount = sent.reduce((count, document) => count + document.questionAnswers.length, 0);
+        const contextLabel = answersOnly
+            ? `${answerCount} ${answerCount === 1 ? "answer" : "answers"}`
             : queueItems
                   .filter((item) => item.included && item.count)
                   .map((item) => `${item.count} ${item.label}`)
@@ -668,6 +670,13 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         let accepted = false;
 
         turnInFlight.current = true;
+        if (answersOnly) {
+            animateSidebarUpdate(() => {
+                setRightSidebarView("planner");
+                setAnnotationsOpen(true);
+                if (compactLayout) setSidebarOpen(false);
+            });
+        }
         setPlannerWorking(true);
         reviewGroup?.setBusy(true);
         setPlannerError("");
@@ -705,7 +714,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             if (result?.status === "recovery_required" || result?.result?.kind === "recovery_required") return;
 
             accepted = true;
-            if (!answerId && fixedMessage === undefined) setConversationComposer("");
+            if (!answersOnly && fixedMessage === undefined) setConversationComposer("");
             if (reviewGroup) reviewGroup.clear(sent);
             else clearSent(sent[0]);
             setExcluded([]);
@@ -1028,16 +1037,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         });
     }
 
-    function readReview({ queued = false, answerId, answerPlanId } = {}) {
-        const onlyAnswer = Boolean(answerId);
-        const includes = (type) => !onlyAnswer && (!queued || !excluded.includes(type));
-        const answers = onlyAnswer
-            ? answerPlanId === initialPayload.planId
-                ? unsentAnswers.filter((answer) => answer.id === answerId)
-                : []
-            : !queued || !excluded.includes("answers")
-              ? unsentAnswers
-              : [];
+    function readReview({ queued = false, answersOnly = false } = {}) {
+        const includes = (type) => !answersOnly && (!queued || !excluded.includes(type));
+        const answers = answersOnly || !queued || !excluded.includes("answers") ? unsentAnswers : [];
         const reviewedPlan = includes("directEdit") ? currentPlan() : reviewBasePlan;
         const notes = {
             annotations: includes("annotations") ? annotations : [],
@@ -1433,7 +1435,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     title="Collapse contents sidebar"
                                     aria-label="Collapse contents sidebar"
                                 >
-                                    <PanelCollapseIcon side="left" />
+                                    <RunWieldPanelIcon side="left" />
                                 </RunWieldIconButton>
                             )}
                             <main className="rw-plannotator-main-pane">
@@ -1446,7 +1448,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                 title="Contents"
                                                 onClick={() => openSidebarTab("toc")}
                                             >
-                                                <ToggleIcon name="contents" />
+                                                <RunWieldPanelIcon side="left" />
                                                 <span>Contents</span>
                                             </RunWieldIconButton>
                                         )}
@@ -1538,7 +1540,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     })
                                                 }
                                             >
-                                                <ToggleIcon name="annotations" />
+                                                <RunWieldPanelIcon side="right" />
                                                 <span>Annotations</span>
                                             </RunWieldIconButton>
                                         )}
@@ -1631,9 +1633,12 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     onAnswer={answerQuestion}
                                                     sentAnswers={sentAnswers}
                                                     busy={plannerWorking || submitting !== null || reviewGroup?.busy}
-                                                    onSubmitAnswer={
+                                                    pendingAnswerCount={
+                                                        queueItems.find((item) => item.type === "answers").count
+                                                    }
+                                                    onSubmitAnswers={
                                                         conversationEnabled
-                                                            ? (answerId) => sendPlannerMessage({ answerId })
+                                                            ? () => sendPlannerMessage({ answersOnly: true })
                                                             : undefined
                                                     }
                                                 />
@@ -1713,7 +1718,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             title="Collapse annotations sidebar"
                                             aria-label="Collapse annotations sidebar"
                                         >
-                                            <PanelCollapseIcon side="right" />
+                                            <RunWieldPanelIcon side="right" />
                                         </RunWieldIconButton>
                                     </div>
                                     {!conversationEnabled || rightSidebarView === "annotations" ? (
@@ -2329,17 +2334,6 @@ function ClockIcon() {
     return (
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2M12 22a10 10 0 110-20 10 10 0 010 20z" />
-        </svg>
-    );
-}
-
-function PanelCollapseIcon({ side }) {
-    const path = side === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
-    return (
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
-            <path d="M5 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M19 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d={path} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
 }

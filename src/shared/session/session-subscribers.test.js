@@ -110,15 +110,24 @@ test("session subscriber emits thinking, message, status, error, usage, and life
     assertEquals(thinking[0].messageId, thinking[1].messageId);
     assertStringIncludes(thinking[0].messageId, "turn-known:thinking:");
     assertEquals(events.filter((event) => event.type === "assistant_thinking_end").length, 1);
-    assertEquals(text.map((event) => event.delta), ["answer 1", "answer 2"]);
-    assertEquals(text.every((event) => event.messageId === "assistant-known"), true);
-    assertEquals(text.every((event) => event.agentName === "Tester" && event.messageKind === "assistant"), true);
+    assertEquals(
+        text.map((event) => event.delta),
+        ["answer 1", "answer 2"],
+    );
+    assertEquals(
+        text.every((event) => event.messageId === "assistant-known"),
+        true,
+    );
+    assertEquals(
+        text.every((event) => event.agentName === "Tester" && event.messageKind === "assistant"),
+        true,
+    );
     assertEquals(events.find((event) => event.type === "usage")?.usage, {
         inputTokens: 12,
         outputTokens: 4,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        costUsd: 0,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        costUsd: null,
     });
     assertEquals(events.filter((event) => event.type === "terminal_error").length, 1);
     assertEquals(events.filter((event) => event.type === "system_status").length, 4);
@@ -138,13 +147,10 @@ test("plan_written tool start ends active thinking before waiting for review", (
     emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "reviewing" } });
     emit({ type: "tool_execution_start", toolCallId: "tool-plan", toolName: "plan_written", args: { planName: "p" } });
 
-    assertEquals(events.map((event) => event.type), [
-        "turn_start",
-        "assistant_thinking_delta",
-        "assistant_thinking_end",
-        "attention_requested",
-        "tool_start",
-    ]);
+    assertEquals(
+        events.map((event) => event.type),
+        ["turn_start", "assistant_thinking_delta", "assistant_thinking_end", "attention_requested", "tool_start"],
+    );
     assertEquals(events[2].messageId, events[1].messageId);
 });
 
@@ -172,13 +178,10 @@ test("session subscriber maps one Pi tool lifecycle to one runtime tool lifecycl
     emit({ type: "tool_execution_start", toolCallId: "tool-3", toolName: "user_interview", args: {} });
 
     const toolEvents = events.filter((event) => event.type.startsWith("tool_"));
-    assertEquals(toolEvents.map((event) => event.type), [
-        "tool_start",
-        "tool_update",
-        "tool_end",
-        "tool_start",
-        "tool_start",
-    ]);
+    assertEquals(
+        toolEvents.map((event) => event.type),
+        ["tool_start", "tool_update", "tool_end", "tool_start", "tool_start"],
+    );
     assertEquals(toolEvents[0].title, "$ echo hi");
     assertEquals(toolEvents[0].kind, "execute");
     assertEquals(toolEvents[1].output, "hi");
@@ -219,8 +222,14 @@ test("delegated child messages remain visible on the parent HostedSession event 
     const textEvent = events.find((event) => event.type === "assistant_text_delta");
     assertEquals(textEvent?.delta, "child handoff");
     assertEquals(textEvent?.agentName, "Delegated Agent");
-    assertEquals(events.some((event) => event.type === "turn_start"), true);
-    assertEquals(events.some((event) => event.type === "turn_end"), true);
+    assertEquals(
+        events.some((event) => event.type === "turn_start"),
+        true,
+    );
+    assertEquals(
+        events.some((event) => event.type === "turn_end"),
+        true,
+    );
     state.unsubscribe();
 });
 
@@ -266,16 +275,17 @@ test("provider notices use shared safe language while retaining diagnostic evide
     emit({ type: "compaction_end", reason: "overflow", errorMessage: "503 <html>secret</html>" });
     assertEquals(
         events.filter((event) => event.type === "terminal_error").map((event) => [event.message, event.error]),
+        [["The model service stopped responding before the reply was complete.", "Unexpected EOF"]],
+    );
+    assertEquals(
+        events.filter((event) => event.type === "system_status").map((event) => event.message),
         [
-            ["The model service stopped responding before the reply was complete.", "Unexpected EOF"],
+            "The model service stopped responding before the reply was complete. Retrying in 2 seconds (1 of 3).",
+            "The model service stopped responding before the reply was complete. 3 retries were completed. You can try again.",
+            "The model service stopped responding before the reply was complete. Retrying summary in 4 seconds (2 of 3).",
+            "Auto-compaction failed: The model service is temporarily unavailable.",
         ],
     );
-    assertEquals(events.filter((event) => event.type === "system_status").map((event) => event.message), [
-        "The model service stopped responding before the reply was complete. Retrying in 2 seconds (1 of 3).",
-        "The model service stopped responding before the reply was complete. 3 retries were completed. You can try again.",
-        "The model service stopped responding before the reply was complete. Retrying summary in 4 seconds (2 of 3).",
-        "Auto-compaction failed: The model service is temporarily unavailable.",
-    ]);
     state.unsubscribe();
 });
 
@@ -295,7 +305,10 @@ test("cancelled retry emits no provider failure or exhaustion notice", () => {
         delayMs: 2000,
         errorMessage: "Unexpected EOF",
     });
-    assertEquals(events.filter((event) => event.type === "terminal_error" || event.type === "system_status"), []);
+    assertEquals(
+        events.filter((event) => event.type === "terminal_error" || event.type === "system_status"),
+        [],
+    );
     state.unsubscribe();
 });
 
@@ -304,8 +317,11 @@ test("a permanent final error gives its action instead of suggesting another unc
     const { hostedSession, events } = makeRuntimeHarness("provider-permanent-after-retry");
     const state = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
     emit({ type: "auto_retry_end", success: false, attempt: 1, finalError: "401 Unauthorized" });
-    assertEquals(events.filter((event) => event.type === "system_status").map((event) => event.message), [
-        "The model service could not verify your access. Check your sign-in or API credentials. 1 retry was completed.",
-    ]);
+    assertEquals(
+        events.filter((event) => event.type === "system_status").map((event) => event.message),
+        [
+            "The model service could not verify your access. Check your sign-in or API credentials. 1 retry was completed.",
+        ],
+    );
     state.unsubscribe();
 });

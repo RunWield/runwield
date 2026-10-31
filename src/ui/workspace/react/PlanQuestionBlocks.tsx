@@ -12,7 +12,8 @@ interface PlanQuestionBlocksProps {
     answers: PlanQuestionAnswer[];
     busy?: boolean;
     sentAnswers?: PlanQuestionAnswer[];
-    onSubmitAnswer?: (id: string) => void;
+    pendingAnswerCount: number;
+    onSubmitAnswers?: () => void;
     onAnswer: (id: string, value: boolean | string) => void;
 }
 interface QuestionMount {
@@ -30,7 +31,8 @@ export function PlanQuestionBlocks({
     onAnswer,
     busy,
     sentAnswers,
-    onSubmitAnswer,
+    onSubmitAnswers,
+    pendingAnswerCount,
 }: PlanQuestionBlocksProps) {
     const [mounts, setMounts] = useState<QuestionMount[]>([]);
     useEffect(() => {
@@ -79,7 +81,8 @@ export function PlanQuestionBlocks({
                             answer.id === block.id &&
                             answer.value === answers.find((candidate) => candidate.id === block.id)?.value,
                     )}
-                    onSubmitAnswer={onSubmitAnswer}
+                    onSubmitAnswers={onSubmitAnswers}
+                    pendingAnswerCount={pendingAnswerCount}
                 />
             ),
             target,
@@ -94,10 +97,11 @@ interface QuestionFormProps {
     onAnswer: PlanQuestionBlocksProps["onAnswer"];
     busy?: boolean;
     sent?: boolean;
-    onSubmitAnswer?: PlanQuestionBlocksProps["onSubmitAnswer"];
+    onSubmitAnswers?: PlanQuestionBlocksProps["onSubmitAnswers"];
+    pendingAnswerCount: number;
 }
 
-function QuestionForm({ block, value, onAnswer, busy, sent, onSubmitAnswer }: QuestionFormProps) {
+function QuestionForm({ block, value, onAnswer, busy, sent, onSubmitAnswers, pendingAnswerCount }: QuestionFormProps) {
     const fieldId = useId();
     const question = block.question!;
     const id = block.id!;
@@ -183,9 +187,9 @@ function QuestionForm({ block, value, onAnswer, busy, sent, onSubmitAnswer }: Qu
                 <p className="rw-question-help" role="status">
                     Answer sent
                 </p>
-            ) : onSubmitAnswer && value !== undefined && (typeof value !== "string" || value.trim()) ? (
-                <RunWieldButton disabled={busy} onClick={() => onSubmitAnswer(id)}>
-                    Submit answer
+            ) : onSubmitAnswers && value !== undefined && (typeof value !== "string" || value.trim()) ? (
+                <RunWieldButton disabled={busy} onClick={onSubmitAnswers}>
+                    {pendingAnswerCount === 1 ? "Submit Answer" : `Submit ${pendingAnswerCount} Answers`}
                 </RunWieldButton>
             ) : null}
         </div>

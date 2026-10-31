@@ -208,6 +208,46 @@ registerCase("recovery preserves damaged manifests and restores transcript-adjac
     }
 });
 
+for (const ownerState of ["intact", "missing manifest", "missing manifest and project record"]) {
+    registerCase(`worktree recovery keeps one Session authority with ${ownerState}`, () => {
+        const f = fixture();
+        try {
+            const worktreeRoot = join(f.root, "worktree");
+            mkdirSync(worktreeRoot);
+            ensureProject(f.baseDir, worktreeRoot);
+            const worktreeSessionDir = sessionDirForRoot(f.baseDir, worktreeRoot);
+            const repairTranscript = join(worktreeSessionDir, "repair.jsonl");
+            writeFileSync(repairTranscript, "repair transcript\n");
+            f.manifest.segments[0].sealedAt = timestamp;
+            f.manifest.segments.push({
+                ...f.manifest.segments[0],
+                segmentId: "repair",
+                piSessionId: "repair-pi",
+                transcriptPath: repairTranscript,
+                transcriptCwd: worktreeRoot,
+                ordinal: 1,
+                kind: "semantic_repair",
+                sealedAt: null,
+            });
+            f.manifest.currentSegmentId = "repair";
+            writeManifest(f.manifest, f.path);
+            if (ownerState !== "intact") rmSync(f.path);
+            if (ownerState === "missing manifest and project record") {
+                rmSync(join(f.sessionDir, ".runwield", "project.json"));
+            }
+
+            deepEqual(
+                listManifests(worktreeSessionDir),
+                [],
+                "A repair transcript must not create another writer bundle",
+            );
+            deepEqual(readJson(f.path), f.manifest, "Recovery must retain the owning Project's manifest");
+        } finally {
+            rmSync(f.root, { recursive: true, force: true });
+        }
+    });
+}
+
 registerCase("abandoned initial writers reconcile changed bytes and release unchanged baselines", () => {
     const f = fixture();
     try {

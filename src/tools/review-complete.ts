@@ -10,17 +10,13 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import { emitReviewResultMessage } from "../shared/session/workflow-messages.js";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowOutcome, workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { ReviewLedger } from "../shared/workflow/review-ledger.ts";
 import type { ReviewInspection } from "../shared/workflow/review-inspection.ts";
 
 export type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "../shared/workflow/review-outcome.ts";
-import {
-    normalizeReviewOutcome,
-    reviewCompletionMetricDetails,
-    type ReviewOutcomeDetails,
-} from "../shared/workflow/review-outcome.ts";
+import { normalizeReviewOutcome, type ReviewOutcomeDetails } from "../shared/workflow/review-outcome.ts";
 
 const FINDING_PARAMS = Type.Object({
     origin: Type.Optional(
@@ -172,15 +168,14 @@ export function createReviewCompletedTool({
             const result = normalizeReviewOutcome(params, ledger);
             if (!result.accepted) {
                 if (result.reason === "approved_with_open_findings") {
-                    await recordWorkflowMetric(
-                        {
-                            category: "validation",
-                            event: "review_complete",
-                            agentName,
-                            details: { ...reviewCompletionMetricDetails(result) },
-                        },
-                        hostedSession.cwd,
-                    );
+                    await recordWorkflowOutcome(hostedSession.cwd, {
+                        category: "validation",
+                        event: "review_complete",
+                        operationId: crypto.randomUUID(),
+                        outcome: "rejected",
+                        session: hostedSession.getManagedMetadata(),
+                        planName: hostedSession.getActiveExecutionWorkflow()?.planName,
+                    });
                 }
                 return {
                     content: [{ type: "text", text: result.message }],
@@ -189,24 +184,24 @@ export function createReviewCompletedTool({
                 };
             }
             const { details, message } = result;
-            const { approved } = details;
+            const { approved, outcome, findings, advisories } = details;
 
             emitReviewResultMessage(hostedSession, agentName, message, approved, toolCallId);
-            await recordWorkflowMetric(
-                {
-                    category: "validation",
-                    event: "review_complete",
-                    agentName,
-                    details: { ...reviewCompletionMetricDetails(result) },
-                },
-                hostedSession.cwd,
-            );
-
-            publishWorkflowToolEvent({
+            const event = publishWorkflowToolEvent({
                 hostedSession,
                 toolCallId,
                 kind: "review_complete",
                 payload: details,
+            });
+            await recordWorkflowOutcome(hostedSession.cwd, {
+                category: "validation",
+                event: "review_complete",
+                operationId: workflowOutcomeEventId("review", `${hostedSession.id}:${event.eventId}`),
+                outcome,
+                findingCount: findings.length,
+                advisoryCount: advisories.length,
+                session: hostedSession.getManagedMetadata(),
+                planName: event.workflow?.planName,
             });
             return {
                 content: [{ type: "text", text: message }],

@@ -318,7 +318,7 @@ export async function finalizeLocalPublicationLifecycle(
     }
 }
 
-/** Derive the search index from confirmed published bytes, never the pending candidate. */
+/** Derive the index and observed Plan classifications from the same confirmed published bytes. */
 export async function indexPublishedWorkRecords(
     projectRoot: string,
     gitRoot: string,
@@ -326,7 +326,8 @@ export async function indexPublishedWorkRecords(
     planPaths: string[],
     mnemotecaPort: WorkRecordMnemotecaPort,
     sourcePlanCommit = commit,
-): Promise<void> {
+): Promise<Map<string, string>> {
+    const planKinds = new Map<string, string>();
     const linkedIds = new Set<string>();
     for (const path of planPaths) {
         // The original delivery owns these record identities even if its Plan
@@ -334,11 +335,12 @@ export async function indexPublishedWorkRecords(
         const text = await sealedDocument(gitRoot, sourcePlanCommit, path);
         if (!text) continue;
         const source = parsePlanFrontMatter(text).attrs;
+        if (source.planId && source.classification) planKinds.set(source.planId, source.classification);
         if (source.workRecord?.status === "generated" && source.workRecord.recordId) {
             linkedIds.add(source.workRecord.recordId);
         }
     }
-    if (!linkedIds.size) return;
+    if (!linkedIds.size) return planKinds;
     const paths = (await git(gitRoot, ["ls-tree", "-r", "--name-only", commit, "--", "docs/work-records/"]))
         .split("\n")
         .filter((path) => path.endsWith(".md"));
@@ -353,4 +355,5 @@ export async function indexPublishedWorkRecords(
             await syncWorkRecordToIndex(projectRoot, record, { mnemotecaPort });
         }
     }
+    return planKinds;
 }

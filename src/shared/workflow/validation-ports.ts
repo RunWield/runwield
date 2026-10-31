@@ -206,6 +206,8 @@ export type IsolatedAgentSessionRequest =
           userRequest: string;
           cwd: string;
           reviewerMode: ReviewerRoundMode;
+          /** Review round within the durable validation generation. */
+          round?: number;
           review: ValidationReviewData;
           ledger: ReviewLedger;
           /** Identity reused for retries of one unfinished review. */
@@ -307,6 +309,7 @@ export type ValidationLocalCIPort = {
 export type ValidationSessionPort = {
     /** The session's working directory. */
     readonly cwd: string;
+    readonly metricsSession?: import("./outcome-observations.ts").OutcomeSession | null;
     /** Active execution workflow state (session-owned; coordinator owns its equivalent later). */
     getActiveWorkflow(): ValidationWorkflowState | null;
     setActiveWorkflow(workflow: ValidationWorkflowState): void;

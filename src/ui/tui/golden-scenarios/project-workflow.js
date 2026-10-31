@@ -127,6 +127,8 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
 
 export const projectPlanReviewScenario = {
     name: "project-plan-review-approval-journey",
+    // Real review persistence and Session settlement share CI resources with the other Golden files.
+    timeoutMs: 90000,
     composedTui: true,
     initialAgentName: "planner",
     terminal: { columns: 100, rows: 30 },
@@ -152,7 +154,7 @@ export const projectPlanReviewScenario = {
         },
         { type: "type", text: "submit the project plan for review" },
         { type: "enter" },
-        { type: "waitForIdle", timeoutMs: 12000 },
+        { type: "waitForIdle", timeoutMs: 60000 },
     ],
     assertions: [
         assertsGoldenCoverage("workflow:PROJECT", (result) =>

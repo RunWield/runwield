@@ -163,7 +163,12 @@ async function buildReplantedCommit(entry: WorktreeRegistryEntry, target: string
     }
 }
 
-export async function refreshPlanningWorktree(projectRoot: string, entry: WorktreeRegistryEntry, targetCommit: string) {
+export async function refreshPlanningWorktree(
+    projectRoot: string,
+    entry: WorktreeRegistryEntry,
+    targetCommit: string,
+    targetRef: string,
+) {
     await healSettledTransitionRecords(entry.path, { planName: entry.planName });
     if (entry.baseCommit === targetCommit) return entry;
     const transition = await runExecutionPreparationTransition({
@@ -315,7 +320,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                 }
             }
             const updated = await refreshPlanningWorktreeBase(projectRoot, entry.id, entry.baseCommit, {
-                baseRef: targetCommit,
+                baseRef: targetRef,
                 baseCommit: targetCommit,
                 baseTree: (await git(entry.path, ["rev-parse", `${targetCommit}^{tree}`])).trim(),
             });

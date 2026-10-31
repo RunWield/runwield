@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
@@ -1283,7 +1284,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                         title="Collapse file sidebar"
                                         aria-label="Collapse file sidebar"
                                     >
-                                        <PanelCollapseIcon side="left" />
+                                        <RunWieldPanelIcon side="left" />
                                     </RunWieldIconButton>
                                 </div>
                                 <div
@@ -1549,7 +1550,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                         title="Collapse annotations sidebar"
                                         aria-label="Collapse annotations sidebar"
                                     >
-                                        <PanelCollapseIcon side="right" />
+                                        <RunWieldPanelIcon side="right" />
                                     </RunWieldIconButton>
                                 </div>
                                 {rightSidebarView === "annotations" ? (
@@ -1759,7 +1760,7 @@ function DiffStyleToggle({
                 <div className="rw-code-diff-sidebar-restore rw-code-diff-sidebar-restore-left">
                     {!fileTreeOpen && (
                         <RunWieldIconButton type="button" onClick={onRestoreFiles}>
-                            <FileTreeIcon />
+                            <RunWieldPanelIcon side="left" />
                             <span>Files</span>
                         </RunWieldIconButton>
                     )}
@@ -1845,24 +1846,13 @@ function DiffStyleToggle({
                 <div className="rw-code-diff-sidebar-restore rw-code-diff-sidebar-restore-right">
                     {!annotationsOpen && (
                         <RunWieldIconButton type="button" onClick={onRestoreAnnotations}>
-                            <CommentIcon />
+                            <RunWieldPanelIcon side="right" />
                             <span>Annotations</span>
                         </RunWieldIconButton>
                     )}
                 </div>
             </div>
         </div>
-    );
-}
-
-function PanelCollapseIcon({ side }) {
-    const path = side === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
-    return (
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
-            <path d="M5 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M19 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d={path} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
     );
 }
 

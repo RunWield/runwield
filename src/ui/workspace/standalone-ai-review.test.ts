@@ -221,8 +221,10 @@ test("standalone AI review is authenticated and returns placed annotations and a
         }
         const metrics = await readMetrics();
         const metric = metrics.find((entry) => entry.event === "ai_review_generation_result");
-        assertEquals(metric?.details?.status, "done");
-        assertEquals(metric?.details?.annotationCount, 1);
+        assertEquals(metric?.v, 2);
+        assertEquals(metric?.outcome, "succeeded");
+        assertEquals(metric?.annotationCount, 1);
+        assertEquals(metric?.counts, { standards: 0, spec: 0, tests: 1 });
     });
 });
 
@@ -306,7 +308,7 @@ for (const failure of [
                 await app.cleanup();
             }
             assertEquals(
-                (await readMetrics()).find((entry) => entry.event === "ai_review_generation_result")?.details?.status,
+                (await readMetrics()).find((entry) => entry.event === "ai_review_generation_result")?.outcome,
                 "failed",
             );
         });
@@ -331,8 +333,8 @@ test("a running AI review returns 202 and DELETE cancels it", async () => {
             await app.cleanup();
         }
         assertEquals(
-            (await readMetrics()).find((entry) => entry.event === "ai_review_generation_result")?.details?.status,
-            "killed",
+            (await readMetrics()).find((entry) => entry.event === "ai_review_generation_result")?.outcome,
+            "interrupted",
         );
     });
 });
@@ -398,7 +400,8 @@ test("AI review snapshots the launch patch and uses wld ai-review with usage and
             await cleanupReviewAgentState(state);
         }
         const metric = (await readMetrics()).find((entry) => entry.event === "ai_review_generation_result");
-        assertEquals(metric?.details?.status, "done");
-        assertEquals(metric?.details?.costAvailable, true);
+        assertEquals(metric?.v, 2);
+        assertEquals(metric?.outcome, "succeeded");
+        assertEquals(metric?.costAvailability, "complete");
     });
 });

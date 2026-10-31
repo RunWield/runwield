@@ -213,6 +213,113 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
     });
 }
 
+test("continue resumes paused AI review with its prior review context, not an Engineer turn", async () => {
+    await withRuntimeCommandFixture("paused-review-continuation-", async (fixture) => {
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        settings.retry = { enabled: false };
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
+        const root = await repository.checkout();
+        const worktreeRoot = await fsMkdtemp(join(tmpdir(), "paused-review-tree-"));
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store });
+        try {
+            const name = "paused-review";
+            const body = "# Paused review\n\nImplement the requested change.\n";
+            await savePlan(root, name, body, {
+                planId: "paused-review-plan",
+                classification: "PLANNED_CHANGE",
+                status: "validated_ci",
+                executionAgent: "engineer",
+                targetBranch: "main",
+            });
+            await git(root, ["add", "."]);
+            await git(root, ["commit", "-m", "Plan"]);
+            const baseline = await git(root, ["rev-parse", "HEAD^{tree}"]);
+            const tree = await createTestWorktreeAttempt({
+                projectRoot: root,
+                planName: name,
+                planId: "paused-review-plan",
+                worktreeRoot,
+            });
+            await fsWriteFile(join(tree.path, "implementation.txt"), "review-continuity-sentinel\n");
+            const plan = await loadPlan(tree.path, name);
+            assertExists(plan);
+            await savePlan(
+                tree.path,
+                name,
+                body,
+                {
+                    ...plan.attrs,
+                    executionMode: "worktree",
+                    executionBaselineTree: baseline,
+                },
+                { expectedRevision: plan.revision },
+            );
+            const ready = await loadPlan(tree.path, name);
+            assertExists(ready);
+            const id = await runtime.createPromptReadySession({ cwd: root, agentName: "engineer" });
+            const interrupted = () =>
+                fauxAssistantMessage(fauxText("Review interrupted."), {
+                    stopReason: "error",
+                    errorMessage: "Unexpected EOF",
+                });
+            fixture.setModelResponseFactories([
+                () => fauxAssistantMessage(fauxToolCall("review_diff", { command: "list" })),
+                () =>
+                    fauxAssistantMessage(fauxToolCall("review_diff", { command: "show", path: "implementation.txt" })),
+                interrupted,
+            ]);
+            const result = await runtime.runValidation(id, {
+                planName: name,
+                planContent: body,
+                triageMeta: { ...ready.attrs, revision: ready.revision },
+            });
+            assertEquals(result?.kind, "paused");
+            const paused = await loadPlan(tree.path, name);
+            assertEquals(paused?.attrs.validationCheckpoint?.state, "paused");
+            assertEquals(paused?.attrs.validationCheckpoint?.nextPhase, "semantic");
+            let resumedTools = "";
+            let resumedMessages = "";
+            let resumedRequest = "";
+            fixture.setModelResponseFactories([
+                (context) => {
+                    resumedTools = JSON.stringify(context.messages.filter((message) => message.role === "system"));
+                    resumedMessages = JSON.stringify(context.messages);
+                    resumedRequest = JSON.stringify(
+                        context.messages.filter((message) => message.role === "user").at(-1),
+                    );
+                    return interrupted();
+                },
+            ]);
+            const followUp = await runtime.promptUserTurn(id, { initialRequest: "continue" });
+            assertEquals(followUp.ok, true);
+            assertStringIncludes(resumedTools, "review_complete");
+            assertStringIncludes(resumedMessages, "review-continuity-sentinel");
+            assertStringIncludes(resumedRequest, `docs/plans/${name}.md (full), unread bytes`);
+            assertEquals(resumedRequest.includes("implementation.txt (full), unread bytes"), false);
+            assertEquals(await fsRealpath(runtime.getSessionSnapshot(id)!.cwd), await fsRealpath(tree.path));
+
+            // A different candidate must not inherit earlier coverage or findings.
+            await fsWriteFile(join(tree.path, "implementation.txt"), "changed-candidate\n");
+            fixture.setModelResponseFactories([
+                (context) => {
+                    resumedTools = JSON.stringify(context.messages.filter((message) => message.role === "system"));
+                    resumedMessages = JSON.stringify(context.messages);
+                    return interrupted();
+                },
+            ]);
+            assertEquals((await runtime.promptUserTurn(id, { initialRequest: "retry" })).ok, true);
+            assertStringIncludes(resumedTools, "review_complete");
+            assertEquals(resumedMessages.includes("review-continuity-sentinel"), false);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await fsRm(worktreeRoot, { recursive: true });
+            await fsRm(root, { recursive: true });
+        }
+    });
+});
+
 for (const entrypoint of ["prompt", "validation"] as const) {
     test(`Epic repair completion through ${entrypoint} replaces the completed child Session once`, async () => {
         await withRuntimeCommandFixture("epic-repair-continuation-", async ({ setModelResponseFactories }) => {

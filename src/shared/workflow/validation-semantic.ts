@@ -4,6 +4,7 @@
  * dispatch, and the round-limit decision when the automatic rounds are spent.
  */
 
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
@@ -39,7 +40,6 @@ import {
     readHumanReviewMetadata,
     readSemanticRoundState,
     recordLifecycleEvent,
-    recordMetric,
     resolvePhaseContext,
 } from "./validation-context.ts";
 import { SEMANTIC_REVIEW_CYCLES, semanticReviewMode } from "./validation-types.ts";
@@ -81,7 +81,11 @@ async function semanticPassedCheckpoint(args: ValidationLoopArgs, context: Phase
         candidateIdentity: context.nonGitInPlace
             ? undefined
             : candidateIdentity(
-                  await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || ""),
+                  await getWorktreeReviewDiff(
+                      context.executionCwd,
+                      context.worktreeBaseBranch || "",
+                      context.worktreeBaseRef,
+                  ),
                   args.planName,
               ),
     });
@@ -143,7 +147,11 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     const state = readSemanticRoundState(args, context);
     const round = state.semanticRound;
     const ledger = state.reviewLedger;
-    const diffText = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+    const diffText = await getWorktreeReviewDiff(
+        context.executionCwd,
+        context.worktreeBaseBranch || "",
+        context.worktreeBaseRef,
+    );
     if (requiresImplementationDiff(args.triageMeta) && !hasImplementationDiff(diffText, args.planName)) {
         const planOnly = Boolean(diffText.trim());
         const reason = planOnly
@@ -330,6 +338,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 checks: { semanticReview: "running" },
             },
         );
+        const reviewOperationId = crypto.randomUUID();
         const review = await runReviewerRound(
             args,
             context,
@@ -337,6 +346,27 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             reviewMode,
             diffText,
         );
+        await recordWorkflowOutcome(context.projectRoot, {
+            category: "validation",
+            event: "validation_attempt",
+            operationId: reviewOperationId,
+            attemptId: context.worktreeId,
+            planName: args.planName,
+            attempt: nextRound,
+            phase: "semantic",
+            outcome:
+                review.kind === "paused"
+                    ? "ongoing"
+                    : review.kind === "failed"
+                      ? "failed"
+                      : review.outcome.approved
+                        ? "succeeded"
+                        : "failed",
+            findingCount: review.kind === "complete" ? review.outcome.findings.length : undefined,
+            advisoryCount: review.kind === "complete" ? review.outcome.advisories.length : undefined,
+            ...(review.kind === "complete" ? reviewFindingMetrics(review.outcome.findings, nextRound) : {}),
+            session: args.session.metricsSession,
+        });
         if (review.kind === "paused") return review.result;
         if (review.kind === "failed") {
             await recordLifecycleEvent(
@@ -363,21 +393,6 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "````json\n" + JSON.stringify(review.outcome, null, 2) + "\n````",
         );
         if (review.outcome.approved) {
-            await recordMetric(args, context.projectRoot, {
-                category: "validation",
-                event: "semantic_review_result",
-                planName: args.planName,
-                details: {
-                    semanticRound: nextRound,
-                    reviewMode,
-                    approved: true,
-                    hasDiff: true,
-                    approvedByRoundTwo: nextRound <= 2,
-                    resolvedThisRound: review.resolvedCount,
-                    advisoryCount: review.outcome.advisories.length,
-                    ...reviewFindingMetrics(review.outcome.findings, nextRound),
-                },
-            });
             emitProgress(args, buildValidationUserMessage({ kind: "semantic_approved", round: nextRound }), "success", {
                 stage: "semantic_review",
                 cycle: clampCycle(nextRound, SEMANTIC_REVIEW_CYCLES),
@@ -401,7 +416,11 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 state: "ready",
                 reviewState,
                 candidateIdentity: candidateIdentity(
-                    await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || ""),
+                    await getWorktreeReviewDiff(
+                        context.executionCwd,
+                        context.worktreeBaseBranch || "",
+                        context.worktreeBaseRef,
+                    ),
                     args.planName,
                 ),
             });
@@ -426,23 +445,6 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
         }
 
         const openCount = openItems(review.ledger).length;
-        await recordMetric(args, context.projectRoot, {
-            category: "validation",
-            event: "semantic_review_result",
-            planName: args.planName,
-            details: {
-                semanticRound: nextRound,
-                reviewMode,
-                approved: false,
-                hasReviewerOutput: Boolean(review.outcome.feedback),
-                openFindingCount: openCount,
-                resolvedThisRound: review.resolvedCount,
-                appendedThisRound: review.appendedCount,
-                advisoryCount: review.outcome.advisories.length,
-                ...reviewFindingMetrics(review.outcome.findings, nextRound),
-            },
-        });
-
         const repairBaselineTree = await captureWorktreeTree(context.executionCwd);
         const findingsSection = openCount > 0 ? renderOpenItems(review.ledger) : review.outcome.feedback;
         const priorCheckpoint = args.validationCheckpoint || args.triageMeta.validationCheckpoint;
@@ -479,6 +481,18 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             reviewLedger: review.ledger,
             repairBaselineTree,
             validationRepairGeneration: repairGeneration,
+        });
+        await recordWorkflowOutcome(context.projectRoot, {
+            category: "recovery",
+            event: "repair_round",
+            operationId: repairGeneration,
+            roundId: repairGeneration,
+            attemptId: context.worktreeId,
+            planName: args.planName,
+            round: nextRound,
+            phase: "semantic",
+            outcome: "ongoing",
+            session: args.session.metricsSession,
         });
         if (!args.supportsSemanticRepairHandoff) {
             const repair = await dispatchReviewFeedbackRepair(args, context, {
@@ -624,7 +638,10 @@ export async function runReviewerRound(
         args.hostTurn && savedHostReview?.semanticRound === state.semanticRound
             ? savedHostReview.correctionCount + 1
             : 1;
+    let correctionAttempt = initialAttempt - 1;
     for (let attempt = initialAttempt; !latestOutcome; attempt++) {
+        correctionAttempt++;
+        const unreadBytes = inspection.unread().reduce((total, span) => total + span.end - span.start, 0);
         if (attempt > 1) {
             emitStatus(
                 args,
@@ -657,6 +674,7 @@ export async function runReviewerRound(
                 userRequest: config.prompt,
                 cwd: context.executionCwd,
                 reviewerMode: reviewMode,
+                round: state.semanticRound,
                 controllerRequestId,
                 review: config.review,
                 ledger: state.reviewLedger,
@@ -697,11 +715,17 @@ export async function runReviewerRound(
                     if (normalized && !resume.failure && !inspection.feedback()) {
                         const metricDetails = reviewCompletionMetricDetails(normalized);
                         if (metricDetails) {
-                            await recordMetric(args, context.projectRoot, {
+                            await recordWorkflowOutcome(context.projectRoot, {
                                 category: "validation",
                                 event: "review_complete",
-                                agentName: AGENTS.REVIEWER,
-                                details: { ...metricDetails },
+                                operationId: controllerRequestId,
+                                outcome: metricDetails.outcome,
+                                findingCount: "findingCount" in metricDetails ? metricDetails.findingCount : undefined,
+                                advisoryCount:
+                                    "advisoryCount" in metricDetails ? metricDetails.advisoryCount : undefined,
+                                attemptId: context.worktreeId,
+                                planName: args.planName,
+                                session: args.session.metricsSession,
                             });
                         }
                     }
@@ -746,7 +770,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure: sessionOutcome.failure,
                     attempt: sessionOutcome.failure.recoveryClass === "transient" ? operationalAttempt : attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });
@@ -808,6 +832,10 @@ export async function runReviewerRound(
             const outcome = sessionOutcome.reviewOutcome;
             const unaccounted = unaccountedOpenItems(state.reviewLedger, outcome?.findings);
             if (!outcome) {
+                // New coverage is review work, not a repeated protocol error. The
+                // controller request still enforces its cumulative model-turn limit.
+                const remainingBytes = inspection.unread().reduce((total, span) => total + span.end - span.start, 0);
+                if (!args.hostTurn && remainingBytes < unreadBytes) correctionAttempt = 1;
                 const correction =
                     inspection.feedback() ||
                     (unaccounted.length
@@ -827,7 +855,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure,
                     attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });
@@ -869,7 +897,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure,
                     attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });
@@ -916,7 +944,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure,
                     attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });

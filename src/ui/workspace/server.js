@@ -60,6 +60,9 @@ import {
     ownerProjectPlanDetailApi,
     ownerProjectPlanProgressApi,
     ownerSidebarApi,
+    ownerUsageApi,
+    ownerUsageSettingsApi,
+    ownerUsageSettingsMutationApi,
     ownerWorkspaceSearchApi,
     ownerWorkspaceSearchRefreshApi,
     pairingClaimApi,
@@ -314,6 +317,8 @@ export function createOwnerWorkspaceApp(options) {
     });
     app.get("/pair", renderRequiredOwnerAstroPage);
     app.get("/devices", renderRequiredOwnerAstroPage);
+    app.get("/usage", renderRequiredOwnerAstroPage);
+    app.get("/usage/settings", renderRequiredOwnerAstroPage);
     app.get("/search", renderRequiredOwnerAstroPage);
     app.get("/projects", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/plans", renderRequiredOwnerAstroPage);
@@ -336,6 +341,10 @@ export function createOwnerWorkspaceApp(options) {
     app.post("/api/owner/pairing/claim", pairingClaimApi);
     app.get("/api/owner/projects", projectsApi);
     app.get("/api/owner/dashboard", ownerDashboardApi);
+    app.get("/api/owner/usage", ownerUsageApi);
+    app.get("/api/owner/usage/settings", ownerUsageSettingsApi);
+    app.post("/api/owner/usage/settings/:action", ownerUsageSettingsMutationApi);
+    app.post("/api/owner/usage/clear", ownerUsageSettingsMutationApi);
     app.get("/api/owner/dashboard/stream", ownerDashboardStreamApi);
     app.get("/api/owner/sidebar", ownerSidebarApi);
     app.get("/api/owner/search", ownerWorkspaceSearchApi);
@@ -396,19 +405,21 @@ export function createOwnerWorkspaceApp(options) {
             status: 404,
         });
     });
-    app.store = store;
-    app.ownerConnections = connections;
-    app.sessionContinuation = sessionContinuation;
-    app.workspaceSearch = workspaceSearch;
     let closePromise;
-    app.close = () => {
+    const close = () => {
         closePromise ||= Promise.resolve(workspaceSearch.close()).finally(() => {
             connections.closeAll();
             return sessionContinuation.close();
         });
         return closePromise;
     };
-    return app;
+    return Object.assign(app, {
+        store,
+        ownerConnections: connections,
+        sessionContinuation,
+        workspaceSearch,
+        close,
+    });
 }
 
 /** @param {LocalWorkspaceAppOptions} options */
@@ -610,6 +621,8 @@ export function createReviewWorkspaceApp(options) {
                                 : undefined,
                         targetBranch:
                             typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
+                        targetBaseRef:
+                            typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
                     });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
@@ -744,13 +757,18 @@ async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token 
     const payload = { ...reviewPayload, token, mode: "workflow" };
     if (reviewType === "code" && typeof reviewPayload.targetBranch === "string") {
         try {
-            payload.rawPatch = await getWorktreeReviewDiff(cwd, reviewPayload.targetBranch);
+            payload.rawPatch = await getWorktreeReviewDiff(
+                cwd,
+                reviewPayload.targetBranch,
+                typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
+            );
         } catch (error) {
             if (error instanceof WorktreeReviewComparisonError) throw error;
             // Keep the last complete patch if the checkout is temporarily unreadable.
         }
     }
     delete payload.targetBranch;
+    delete payload.targetBaseRef;
     delete payload.agentCwd;
     return payload;
 }
@@ -1260,6 +1278,7 @@ function registerStaticRoutes(app) {
     app.get("/components.css", async () => await handleStaticRoute("/components.css"));
     app.get("/workspace.css", async () => await handleStaticRoute("/workspace.css"));
     app.get("/workspace-shell.js", async () => await handleStaticRoute("/workspace-shell.js"));
+    app.get("/design-system/panel-icon.ts", async () => await handleStaticRoute("/design-system/panel-icon.ts"));
     app.get(
         "/design-system/sidebar-motion.js",
         async () => await handleStaticRoute("/design-system/sidebar-motion.js"),
@@ -1271,6 +1290,9 @@ function registerStaticRoutes(app) {
 
 /** @param {string} pathname */
 async function handleStaticRoute(pathname) {
+    if (pathname === "/design-system/panel-icon.ts") {
+        return await textFileResponse(join(DESIGN_SYSTEM_DIR, "panel-icon.ts"), "text/javascript; charset=utf-8");
+    }
     if (pathname === "/design-system/sidebar-motion.js") {
         return await textFileResponse(join(DESIGN_SYSTEM_DIR, "sidebar-motion.js"), "text/javascript; charset=utf-8");
     }
@@ -1369,6 +1391,7 @@ function isPublicWorkspaceAsset(pathname) {
         pathname === "/workspace.css" ||
         pathname === "/workspace-shell.js" ||
         pathname === "/design-system/sidebar-motion.js" ||
+        pathname === "/design-system/panel-icon.ts" ||
         pathname === "/theme.css" ||
         pathname === "/brand/logo.svg" ||
         pathname.startsWith("/_astro/")

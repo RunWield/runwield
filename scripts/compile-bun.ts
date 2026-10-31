@@ -55,6 +55,7 @@ export const PASSIVE_PATHS = [
     "src/ui/design-system/tokens.css",
     "src/ui/design-system/components.css",
     "src/ui/design-system/sidebar-motion.js",
+    "src/ui/design-system/panel-icon.ts",
     "brand/logo.svg",
     "src/agent-definitions",
     "src/model-presets",
@@ -210,7 +211,11 @@ export async function compileBun(
         // https://bun.com/docs/bundler/executables#embed-directories
         await mkdir(dirname(outfile), { recursive: true });
         await build({
-            entrypoints: [entry, join(ROOT, "src/utils/image-resize-worker.ts")],
+            entrypoints: [
+                entry,
+                join(ROOT, "src/utils/image-resize-worker.ts"),
+                join(ROOT, "src/shared/workflow/metrics-exporter-worker.ts"),
+            ],
             root: ROOT,
             target: "bun",
             format: "esm",
