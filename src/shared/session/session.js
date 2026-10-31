@@ -131,7 +131,7 @@ import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources }
 import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.js";
 import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.js";
 import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "../workflow/execution-metrics.ts";
-import { describeRuntimeTool } from "./tool-event-title.js";
+import { describeRuntimeTool } from "./tool-event-title.ts";
 import { createSessionContextProjection, estimateContextTextTokens } from "./session-context-report.ts";
 import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";

@@ -12,7 +12,7 @@ import { readPersistedWorkflowContext } from "./workflow-context-session.js";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.js";
-import { describeRuntimeTool } from "./tool-event-title.js";
+import { describeRuntimeTool } from "./tool-event-title.ts";
 import { formatProviderError } from "./provider-errors.ts";
 import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.js";
 import { isPathInside, readCatalogSafeRootSessionLocator } from "./root-session.js";

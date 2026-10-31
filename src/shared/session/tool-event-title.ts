@@ -5,18 +5,59 @@
  * of whether the event came from an active turn or persisted history.
  */
 
-/**
- * @typedef {Object} CodeBatchOperation
- * @property {string} op
- * @property {string} [target]
- * @property {string} [file]
- */
+interface CodeBatchOperation {
+    op: string;
+    target?: string;
+    file?: string;
+}
 
-/**
- * @param {{ operations?: CodeBatchOperation[] } | undefined | null} args
- * @returns {string}
- */
-function formatCodeBatchHeaderArgs(args) {
+interface ToolFileEdit {
+    path?: string;
+    file_path?: string;
+}
+
+export interface RuntimeToolTitleArgs {
+    path?: string | string[];
+    file_path?: string;
+    AbsolutePath?: string;
+    TargetFile?: string;
+    edits?: ToolFileEdit[];
+    operations?: CodeBatchOperation[];
+    command?: string;
+    CommandLine?: string;
+    Action?: string;
+    TaskId?: string;
+    pattern?: string;
+    query?: string;
+    textSearch?: boolean;
+    target?: string;
+    file?: string;
+    symbol?: string;
+    library?: string;
+    url?: string;
+    planName?: string;
+    action?: string;
+    id?: string | number;
+    content?: string;
+    recordId?: string;
+    summary?: string;
+    supersededRequirement?: string;
+    message?: string;
+    name?: string;
+    brief?: string;
+    mode?: string;
+}
+
+export type RuntimeToolKind =
+    "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
+
+export interface RuntimeToolDescriptor {
+    toolName: string;
+    title: string;
+    kind: RuntimeToolKind;
+}
+
+function formatCodeBatchHeaderArgs(args: RuntimeToolTitleArgs | undefined | null): string {
     if (!args || !Array.isArray(args.operations)) return "0 operations";
 
     const operations = args.operations;
@@ -32,21 +73,7 @@ function formatCodeBatchHeaderArgs(args) {
     return summaries.join("; ");
 }
 
-/**
- * @typedef {Object} ToolFileTitleArgs
- * @property {string} [path]
- * @property {string} [file_path]
- * @property {string} [AbsolutePath]
- * @property {string} [TargetFile]
- * @property {Array<{ path?: string, file_path?: string }>} [edits]
- */
-
-/**
- * @param {string} toolName
- * @param {ToolFileTitleArgs} args
- * @returns {string | null}
- */
-function getFilePathForTool(toolName, args) {
+function getFilePathForTool(toolName: string, args: RuntimeToolTitleArgs | null | undefined): string | null {
     if (!args) return null;
 
     switch (toolName) {
@@ -63,8 +90,8 @@ function getFilePathForTool(toolName, args) {
             return typeof args.path === "string"
                 ? args.path
                 : typeof args.file_path === "string"
-                ? args.file_path
-                : null;
+                  ? args.file_path
+                  : null;
         case "multi_file_edit": {
             if (!Array.isArray(args.edits) || args.edits.length === 0) return null;
             const paths = args.edits
@@ -72,8 +99,8 @@ function getFilePathForTool(toolName, args) {
                     typeof edit.path === "string"
                         ? edit.path
                         : typeof edit.file_path === "string"
-                        ? edit.file_path
-                        : null
+                          ? edit.file_path
+                          : null,
                 )
                 .filter(Boolean);
             const uniquePaths = [...new Set(paths)];
@@ -86,14 +113,9 @@ function getFilePathForTool(toolName, args) {
     }
 }
 
-/**
- * @param {string} toolName
- * @param {any} args
- * @returns {string}
- */
-function formatToolEventTitle(toolName, args) {
+function formatToolEventTitle(toolName: string, args: RuntimeToolTitleArgs | null | undefined): string {
     const filePath = getFilePathForTool(toolName, args);
-    let headerArgs = "";
+    let headerArgs: string | string[] = "";
     if (filePath) headerArgs = filePath;
     else if (toolName === "bash") headerArgs = args?.command || "";
     else if (toolName === "run_command") headerArgs = args?.CommandLine || "";
@@ -115,8 +137,11 @@ function formatToolEventTitle(toolName, args) {
     } else if (toolName === "code_batch") {
         headerArgs = formatCodeBatchHeaderArgs(args);
     } else if (
-        toolName === "code_refs" || toolName === "code_impact" || toolName === "code_trace" ||
-        toolName === "code_investigate" || toolName === "code_impls"
+        toolName === "code_refs" ||
+        toolName === "code_impact" ||
+        toolName === "code_trace" ||
+        toolName === "code_investigate" ||
+        toolName === "code_impls"
     ) {
         headerArgs = args?.symbol || "";
     } else if (toolName === "code_importers") {
@@ -130,7 +155,9 @@ function formatToolEventTitle(toolName, args) {
     } else if (toolName === "code_structure" || toolName === "code_codebase_info") {
         headerArgs = "";
     } else if (toolName === "plan_written") {
-        const planName = String(args?.planName || "").replace(/\.md$/i, "").trim();
+        const planName = String(args?.planName || "")
+            .replace(/\.md$/i, "")
+            .trim();
         headerArgs = planName ? `docs/plans/${planName}.md` : "";
     } else if (toolName === "memory") {
         if (args?.action === "recall") {
@@ -181,31 +208,43 @@ function formatToolEventTitle(toolName, args) {
 }
 
 /**
- * @typedef {"read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other"} RuntimeToolKind
- */
-
-/**
  * Build the complete stable identity consumers use to present a tool call.
- * @param {string} toolName
- * @param {any} args
- * @returns {{ toolName: string, title: string, kind: RuntimeToolKind }}
  */
-export function describeRuntimeTool(toolName, args) {
-    /** @type {RuntimeToolKind} */
-    let kind = "other";
+export function describeRuntimeTool<Args extends RuntimeToolTitleArgs>(
+    toolName: string,
+    args: Args | null | undefined,
+): RuntimeToolDescriptor {
+    let kind: RuntimeToolKind = "other";
     if (toolName === "read" || toolName === "ls" || toolName === "view_file") kind = "read";
     else if (
-        toolName === "edit" || toolName === "write" || toolName === "write_to_file" ||
-        toolName === "replace_file_content" || toolName === "multi_file_edit" ||
-        toolName === "edit_docs" || toolName === "write_docs"
-    ) kind = "edit";
+        toolName === "edit" ||
+        toolName === "write" ||
+        toolName === "write_to_file" ||
+        toolName === "replace_file_content" ||
+        toolName === "multi_file_edit" ||
+        toolName === "edit_docs" ||
+        toolName === "write_docs"
+    )
+        kind = "edit";
     else if (
-        toolName === "grep" || toolName === "find" || toolName === "code_search" || toolName === "code_refs" ||
-        toolName === "code_impact" || toolName === "code_trace" || toolName === "code_impls" ||
-        toolName === "code_importers" || toolName === "code_structure" || toolName === "code_codebase_info" ||
-        toolName === "memory_recall" || toolName === "memory_recall_global" || toolName === "work_record_search" ||
-        toolName === "web_search" || toolName === "web_code_search" || toolName === "web_docs_search"
-    ) kind = "search";
+        toolName === "grep" ||
+        toolName === "find" ||
+        toolName === "code_search" ||
+        toolName === "code_refs" ||
+        toolName === "code_impact" ||
+        toolName === "code_trace" ||
+        toolName === "code_impls" ||
+        toolName === "code_importers" ||
+        toolName === "code_structure" ||
+        toolName === "code_codebase_info" ||
+        toolName === "memory_recall" ||
+        toolName === "memory_recall_global" ||
+        toolName === "work_record_search" ||
+        toolName === "web_search" ||
+        toolName === "web_code_search" ||
+        toolName === "web_docs_search"
+    )
+        kind = "search";
     else if (toolName === "memory") {
         if (args?.action === "recall") kind = "search";
         else kind = args?.action === "delete" ? "delete" : "edit";
