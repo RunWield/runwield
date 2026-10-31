@@ -28,13 +28,13 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 routingIntent: "PLANNED_CHANGE"
-status: "reviewed"
 validatedCommit: "58b97893d880573f8b7bb44381930ca0311f1583"
 workRecord:
     status: "generated"
     recordId: "bab673b1-4b30-4ead-85a4-1e3f0ed6380b"
     path: "docs/work-records/2026-10-31-independent-homebrew-package-refresh-and-safe-publication.md"
     lastAttemptAt: "2026-10-31T21:07:19.236Z"
+status: "verified"
 ---
 
 # Prevent Homebrew Dependency Rollbacks

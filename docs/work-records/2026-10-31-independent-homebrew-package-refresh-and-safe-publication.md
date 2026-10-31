@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "bab673b1-4b30-4ead-85a4-1e3f0ed6380b"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -13,7 +13,6 @@ provenance:
     sourcePlans:
         - "274d740a-4fd9-4152-824d-d2e90d84f5e3"
 ---
-
 # Independent Homebrew package refresh and safe publication
 
 ## Summary
