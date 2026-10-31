@@ -2262,16 +2262,16 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
-**Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. Homebrew packages are
-prepared; public availability waits for owner publication. Windows releases and checks, including WinGet manifest
+**Scope and maturity:** Current Linux/macOS shell installation, public macOS Homebrew packages, and Candidate release
+baseline. Windows releases and checks, including WinGet manifest
 preparation and submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout changes during upgrades follow
 [Work protection](#work-protection).
 
 Remote runtime preparation follows the [qualified matrix and scope](#remote-connection).
 
 **Requirement: Install through a shell installer or a package manager.** Users install RunWield as a standalone binary
-with the shell installer or, after owner publication, through the `gandazgul/homebrew-tap` macOS tap or the
-`Gandazgul.RunWield` WinGet package for Windows x64. `wld update` and `wld upgrade` update shell installs and print the
+with the shell installer or through the public `gandazgul/tap` macOS tap hosted at `RunWield/homebrew-tap`. The
+`Gandazgul.RunWield` WinGet package for Windows x64 remains paused. `wld update` and `wld upgrade` update shell installs and print the
 package-manager command for package-managed installs. Public docs mark package availability as pending until each
 listing is public.
 
@@ -2299,6 +2299,11 @@ WinGet (retained packaging capability; publication and checks paused):
 - `https://runwield.dev/privacy/` as the package `PrivacyUrl`;
 - Stable manifests only. Automatic submission to `microsoft/winget-pkgs` is paused until the owner resumes it; while
   paused, releases prepare manifest artifacts.
+
+**Requirement: Preserve independently released Homebrew packages.** A RunWield release updates only its own formula
+and owned package metadata. It qualifies with the Mnemoteca version already in the tap and does not replace another
+package's formula, version, or metadata. A concurrent tap change blocks publication until a fresh snapshot passes
+qualification. Recovery preserves published product tags and asset bytes.
 
 **Requirement: Honor the displayed Candidate update default.** For shell installs, `wld update --rc` and
 `wld upgrade --rc` accept Enter at `[Y/n]` as Yes, and `y` or `yes` in any case. Any other answer, including
@@ -2328,6 +2333,10 @@ or incorrect notice while recovery preserves already published bytes.
 - Given a loose Windows executable, `wld update` gives Windows package guidance.
 - Given missing helpers in a package install, RunWield tells the user to repair the package.
 - Given a new Homebrew install, Ketch comes from Homebrew Core.
+- Given a newer Mnemoteca formula in the tap than the local preparation inputs, a RunWield release preserves that formula,
+  version, and dependency metadata while updating wld.
+- Given a tap update after package qualification, stale publication is rejected; a fresh-snapshot retry preserves the
+  independent update and qualifies it before publishing wld.
 - Given a release while Windows publication is paused, it publishes only Linux/macOS assets, runs no Windows jobs,
   and prepares no WinGet manifests. Existing Windows releases remain unchanged.
 - Given an available Candidate, Enter or Yes starts the update; No or Ctrl-D cancels it.

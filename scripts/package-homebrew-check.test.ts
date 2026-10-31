@@ -1,6 +1,6 @@
 import { delimiter } from "node:path";
 import { spawn } from "node:child_process";
-import { waitForScriptExit } from "./script-process.ts";
+import { captureScriptProcess, waitForScriptExit } from "./script-process.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { getCwd } from "../src/constants.js";
@@ -113,3 +113,160 @@ exit 42
         }
     },
 );
+
+interface InstalledMnemotecaResponse {
+    stdout: string;
+    exitCode: number;
+}
+
+async function checkInstalledMnemoteca(response: InstalledMnemotecaResponse) {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-homebrew-version-"));
+    const tap = join(root, "tap");
+    const bin = join(root, "bin");
+    const prefix = join(root, "installed-wld");
+    const home = join(root, "home");
+    const log = join(root, "brew.log");
+    try {
+        await fsMkdir(join(tap, "Formula"), { recursive: true });
+        await fsMkdir(join(prefix, "libexec"), { recursive: true });
+        await fsMkdir(bin);
+        await fsMkdir(home);
+        await fsWriteFile(join(tap, "Formula", "wld.rb"), "class Wld < Formula\nend\n");
+        await fsWriteFile(join(tap, "Formula", "mnemoteca.rb"), "class Mnemoteca < Formula\nend\n");
+        await fsWriteFile(
+            join(tap, "runwield-homebrew-package.json"),
+            JSON.stringify({ wldTag: "v1.2.3", mnemotecaTag: "v0.3.4" }),
+        );
+        await fsWriteFile(
+            join(prefix, "libexec", "runwield-install.json"),
+            JSON.stringify({
+                packageManager: "homebrew",
+                packageIdentifier: "gandazgul/tap/wld",
+                version: "v1.2.3",
+                updateCommand: "brew upgrade gandazgul/tap/wld",
+            }),
+        );
+        const wld = join(root, "wld");
+        await fsWriteFile(
+            wld,
+            `#!/bin/sh
+case "$*" in
+    --version) printf 'wld v1.2.3\\n' ;;
+    update|upgrade) printf 'Use brew upgrade gandazgul/tap/wld\\n' ;;
+    *) exit 97 ;;
+esac
+`,
+        );
+        await fsChmod(wld, 0o755);
+        const brew = join(bin, "brew");
+        await fsWriteFile(
+            brew,
+            `#!/bin/sh
+printf '%s\\n' "$*" >> "$BREW_LOG"
+case "$*" in
+    '--repo gandazgul/tap') printf '%s\\n' "$FIXTURE_TAP" ;;
+    'audit --strict --formula gandazgul/tap/wld gandazgul/tap/mnemoteca') exit 0 ;;
+    'install gandazgul/tap/mnemoteca') exit 0 ;;
+    'install gandazgul/tap/wld')
+        mkdir -p "$FIXTURE_PREFIX/bin"
+        cp "$FIXTURE_WLD" "$FIXTURE_PREFIX/bin/wld"
+        ;;
+    '--prefix gandazgul/tap/wld') printf '%s\\n' "$FIXTURE_PREFIX" ;;
+    'list --versions gandazgul/tap/mnemoteca')
+        printf '%s' "$INSTALLED_MNEMOTECA_OUTPUT"
+        exit "$INSTALLED_MNEMOTECA_EXIT"
+        ;;
+    'test gandazgul/tap/mnemoteca'|'test gandazgul/tap/wld')
+        printf 'formula test passed: %s\\n' "$2"
+        ;;
+    'upgrade gandazgul/tap/mnemoteca gandazgul/tap/wld') exit 0 ;;
+    'uninstall gandazgul/tap/wld') rm "$FIXTURE_PREFIX/bin/wld" ;;
+    'uninstall gandazgul/tap/mnemoteca') exit 0 ;;
+    *) printf 'Unexpected brew arguments: %s\\n' "$*" >&2; exit 98 ;;
+esac
+`,
+        );
+        await fsChmod(brew, 0o755);
+        const output = await captureScriptProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", "scripts/package-homebrew-check.ts", "--tap", tap]),
+            cwd: getCwd(),
+            env: {
+                HOME: home,
+                PATH: `${bin}${delimiter}${process.env["PATH"] || ""}`,
+                BREW_LOG: log,
+                FIXTURE_TAP: tap,
+                FIXTURE_PREFIX: prefix,
+                FIXTURE_WLD: wld,
+                INSTALLED_MNEMOTECA_OUTPUT: response.stdout,
+                INSTALLED_MNEMOTECA_EXIT: String(response.exitCode),
+            },
+        });
+        return {
+            success: output.success,
+            stdout: new TextDecoder().decode(output.stdout),
+            stderr: new TextDecoder().decode(output.stderr),
+            calls: (await fsReadFile(log, "utf8")).trim().split("\n"),
+        };
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+    }
+}
+
+test(
+    "package:homebrew:check completes the full lifecycle when the installed Mnemoteca version matches its tag",
+    { skip: process.platform !== "darwin" },
+    async () => {
+        const output = await checkInstalledMnemoteca({ stdout: "mnemoteca 0.3.4\n", exitCode: 0 });
+        assertEquals(output.success, true, output.stderr);
+        assertStringIncludes(
+            output.stdout,
+            "Homebrew formulas audited, installed, tested, upgraded, uninstalled, and ownership-checked.",
+        );
+        assertStringIncludes(output.stdout, "formula test passed: gandazgul/tap/mnemoteca");
+        assertStringIncludes(output.stdout, "formula test passed: gandazgul/tap/wld");
+        assertEquals(output.calls.slice(-6), [
+            "upgrade gandazgul/tap/mnemoteca gandazgul/tap/wld",
+            "--prefix gandazgul/tap/wld",
+            "uninstall gandazgul/tap/wld",
+            "uninstall gandazgul/tap/mnemoteca",
+            "install gandazgul/tap/wld",
+            "--prefix gandazgul/tap/wld",
+        ]);
+    },
+);
+
+for (const version of ["0.3.3", "0.3.5", "0.3.40", "0.3.4_1"]) {
+    test(
+        `package:homebrew:check rejects installed Mnemoteca ${version} despite passing formula tests`,
+        { skip: process.platform !== "darwin" },
+        async () => {
+            const output = await checkInstalledMnemoteca({ stdout: `mnemoteca ${version}\n`, exitCode: 0 });
+            assertEquals(output.success, false, output.stdout);
+            assertStringIncludes(output.stdout, "formula test passed: gandazgul/tap/mnemoteca");
+            assertStringIncludes(output.stdout, "formula test passed: gandazgul/tap/wld");
+            assertStringIncludes(output.stderr, `Installed Mnemoteca version ${version} does not match v0.3.4.`);
+            assertEquals(output.stdout.includes("ownership-checked."), false);
+        },
+    );
+}
+
+for (const scenario of [
+    { name: "empty", stdout: "", exitCode: 0 },
+    { name: "whitespace-only", stdout: " \n\t", exitCode: 0 },
+    { name: "missing package name", stdout: "0.3.4\n", exitCode: 0 },
+    { name: "wrong package", stdout: "wld 0.3.4\n", exitCode: 0 },
+    { name: "malformed version", stdout: "mnemoteca not-a-version\n", exitCode: 0 },
+    { name: "multiple installed versions", stdout: "mnemoteca 0.3.3 0.3.4\n", exitCode: 0 },
+    { name: "failed", stdout: "mnemoteca 0.3.4\n", exitCode: 42 },
+]) {
+    test(
+        `package:homebrew:check cannot qualify Mnemoteca with ${scenario.name} installed-package metadata`,
+        { skip: process.platform !== "darwin" },
+        async () => {
+            const output = await checkInstalledMnemoteca(scenario);
+            assertEquals(output.success, false, output.stdout);
+            assertStringIncludes(output.stderr, "Cannot determine the installed Mnemoteca version from Homebrew.");
+            assertEquals(output.stdout.includes("ownership-checked."), false);
+        },
+    );
+}

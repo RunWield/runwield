@@ -850,7 +850,15 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
             },
         );
         await fixture.search.refresh();
-        const payload = await fixture.search.search({ query: "Current Record" });
+        // A background refresh can replace the diagnostic with an interim indexing state.
+        const pendingRefresh = fixture.search.refresh();
+        let payload = await fixture.search.search({ query: "Current Record" });
+        const failed = await waitFor(async () => {
+            payload = await fixture.search.search({ query: "Current Record" });
+            return payload.states[0]?.state === "failed";
+        });
+        await pendingRefresh;
+        assertEquals(failed, true, `Search did not report failure: ${JSON.stringify(payload.states)}`);
         assertStringIncludes(payload.states[0].message, "duplicate durable identities");
     } finally {
         await fixture.close();

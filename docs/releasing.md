@@ -201,16 +201,23 @@ build files such as `package.json` are not release assets.
 
 After Stable asset publication succeeds, the release workflow:
 
-1. Renders the Homebrew formulas from the published release assets.
-2. Runs the complete package check on macOS.
-3. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact.
-4. Pushes the verified files to `RunWield/homebrew-tap`.
+1. Records the current `RunWield/homebrew-tap` revision and copies its package files to a disposable check directory.
+2. Refreshes only `wld` from the published release assets. Mnemoteca remains the version in that tap snapshot.
+3. Runs the complete package check on macOS, including the installed Mnemoteca version against the manifest.
+4. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact.
+5. Publishes only `Formula/wld.rb` and the wld-owned manifest fields from the recorded base revision.
+
+RunWield releases do not rewrite Mnemoteca, README, or dependency metadata. A normal push rejects a concurrent tap
+update. Recovery takes a fresh snapshot and repeats qualification; it does not force-push or resolve a manifest
+conflict with an old generated file. Repository concurrency groups do not serialize Mnemoteca's separate release workflow.
 
 The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `RunWield/homebrew-tap`.
-Publication stops if the credential is absent or any package check fails. To reproduce the check locally, use:
+Publication stops if the credential is absent or any package check fails. To reproduce the check on disposable macOS
+infrastructure, use the following commands. Do not replace your working Homebrew tap or installed packages to run this check:
 
 ```bash
-bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag v0.3.3 --output /tmp/runwield-tap
+git clone https://github.com/RunWield/homebrew-tap.git /tmp/runwield-tap
+bun run package:homebrew --wld-tag vX.Y.Z --output /tmp/runwield-tap
 bun run package:homebrew:check --tap /tmp/runwield-tap
 ```
 
@@ -218,10 +225,18 @@ The checked formula installs metadata beside `libexec/wld`; a Homebrew-owned `wl
 `brew upgrade gandazgul/tap/wld` and must not run `install.sh`.
 
 `mnemoteca` can be refreshed independently by omitting `--wld-tag` and passing a new `--mnemoteca-tag` against an
-existing tap tree. First update `packaging/homebrew/tested-dependencies.json` with the verified macOS URLs, SHA-256
+existing tap tree. Supplying both tags explicitly rebuilds both packages for preparation, not ordinary RunWield releases.
+First update `packaging/homebrew/tested-dependencies.json` with the verified macOS URLs, SHA-256
 values, license, homepage, and tested helper versions. Base URL overrides require `--test-only`; publishable output must
 point at immutable GitHub release URLs. Formula installation does not run Mnemoteca model setup or
 `agent-browser install`; those remain first-use operations.
+
+For recovery, dispatch `release-gate` from a default-branch revision that contains the packaging fix, with the existing
+release tag. Do not rerun an old workflow job that hardcodes Mnemoteca v0.3.3. Published asset bytes and tags stay unchanged.
+Before repairing a dependency rollback in the public tap, confirm the corrected workflow is active and no old publication
+job remains in flight. Verify the dependency archives against release checksums and asset digests, run the full macOS
+check on a disposable copy, then publish only its formula and owned manifest fields. Fetch the public tap to confirm the
+repair and that wld is unchanged. A local repair or recovery artifact is not confirmed publication.
 
 ## Windows ZIP and WinGet preparation
 

@@ -63,9 +63,9 @@ interface ExistingPackageManifest extends Partial<ExistingRunWieldPackage> {
 
 function usage() {
     return [
-        "Usage: package-homebrew.js [--wld-tag <stable-tag>] --mnemoteca-tag <stable-tag> --output <dir>",
+        "Usage: package-homebrew.js [--wld-tag <stable-tag>] [--mnemoteca-tag <stable-tag>] --output <dir>",
         "       [--inputs <path>] [--wld-base-url <url>] [--mnemoteca-base-url <url>] [--test-only]",
-        "       Omit --wld-tag to refresh only the Mnemoteca formula in an existing tap tree.",
+        "       Supply at least one tag. A single tag refreshes only that package in an existing tap tree.",
     ].join("\n");
 }
 
@@ -88,8 +88,11 @@ export function parsePackageHomebrewArgs(args: string[]): HomebrewOptions {
         else if (arg === "--mnemoteca-base-url") options.mnemotecaBaseUrl = args[++index] || "";
         else throw new Error(`Unknown package:homebrew option: ${arg}\n${usage()}`);
     }
-    if (!options.mnemotecaTag || !options.output || !options.inputsPath) throw new Error(usage());
+    if ((!options.wldTag && !options.mnemotecaTag) || !options.output || !options.inputsPath) throw new Error(usage());
     if (!options.wldTag && options.wldBaseUrl) throw new Error("--wld-base-url requires --wld-tag.");
+    if (!options.mnemotecaTag && options.mnemotecaBaseUrl) {
+        throw new Error("--mnemoteca-base-url requires --mnemoteca-tag.");
+    }
     return options;
 }
 
@@ -271,9 +274,9 @@ end
 function renderReadme() {
     return `# gandazgul/homebrew-tap
 
-Generated tap source for RunWield packages.
+Homebrew tap source for independently released RunWield packages.
 
-Install after the owner publishes this tap:
+Install:
 
 \`\`\`sh
 brew install gandazgul/tap/wld
@@ -284,10 +287,15 @@ RunWield license: https://github.com/RunWield/runwield/blob/main/LICENSE
 
 RunWield v0.14.0 and later use MIT metadata. Recovery of earlier releases preserves their original license metadata.
 
-Regenerate from this repository with:
+Refresh one package from this repository while preserving the other. Mnemoteca refresh requires matching verified
+preparation inputs. Supplying both tags explicitly prepares both packages in a separate output directory.
+Publish only after full macOS qualification from the same tap revision; a concurrent update requires a fresh check.
+
+Use a copy of the current tap:
 
 \`\`\`sh
-bun run package:homebrew --wld-tag <stable-tag> --mnemoteca-tag <stable-tag> --output <dir>
+git clone https://github.com/RunWield/homebrew-tap.git <existing-tap-dir>
+bun run package:homebrew --wld-tag <stable-tag> --output <existing-tap-dir>
 bun run package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-dir>
 \`\`\`
 `;
@@ -334,7 +342,70 @@ async function readExistingRunWieldPackage(
     return { wldTag: parsed.tag, testOnly: Boolean(manifest.testOnly) || requestedTestOnly };
 }
 
+interface ExistingMnemotecaManifest {
+    mnemotecaTag: string;
+    testOnly: boolean;
+    formulas: string[];
+}
+
+async function readExistingMnemotecaPackage(output: string, requestedTestOnly: boolean) {
+    const manifest: ExistingMnemotecaManifest = JSON.parse(
+        await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"),
+    );
+    if (
+        !manifest ||
+        typeof manifest.mnemotecaTag !== "string" ||
+        typeof manifest.testOnly !== "boolean" ||
+        !Array.isArray(manifest.formulas) ||
+        !manifest.formulas.includes("Formula/mnemoteca.rb")
+    ) {
+        throw new Error("RunWield-only refresh requires a valid Mnemoteca package manifest.");
+    }
+    const tag = assertStableTag(manifest.mnemotecaTag).tag;
+    const formula = await fsReadFile(join(output, "Formula", "mnemoteca.rb"), "utf8");
+    if (!requestedTestOnly && (manifest.testOnly || formula.includes("test-only artifact"))) {
+        throw new Error("Cannot publish a preserved test-only Mnemoteca package.");
+    }
+    const pairs = Array.from(formula.matchAll(/\burl\s+"([^"]+)"\s+sha256\s+"([0-9a-f]{64})"/gi));
+    if (
+        pairs.length !== 2 ||
+        Array.from(formula.matchAll(/\burl\s+/g)).length !== 2 ||
+        Array.from(formula.matchAll(/\bsha256\s+/g)).length !== 2
+    ) {
+        throw new Error("Existing Mnemoteca formula requires two complete macOS URL/checksum pairs.");
+    }
+    for (const arch of ["arm64", "amd64"]) {
+        const name = `mnemoteca_${tag.slice(1)}_darwin_${arch}.tar.gz`;
+        if (
+            !pairs.some((pair) =>
+                [MNEMOTECA_REPO, "RunWield/mnemoteca"].some(
+                    (repo) => pair[1] === `https://github.com/${repo}/releases/download/${tag}/${name}`,
+                ),
+            )
+        ) {
+            throw new Error(
+                `Existing Mnemoteca formula must use matching immutable release URLs for ${tag} (${arch}).`,
+            );
+        }
+    }
+    return manifest;
+}
+
+async function verifiedWldAssets(options: HomebrewOptions, tag: string) {
+    const assets: PackageAssets = {};
+    const base = releaseBaseUrl(RUNWIELD_REPO, tag, options.wldBaseUrl);
+    for (const arch of ARCHES) {
+        assets[arch] = await verifiedRunWieldAsset(base, `wld-${tag}-${arch}.tar.gz`);
+        if (!options.testOnly) assertReleasedAssetUrl(assets[arch].url, RUNWIELD_REPO, tag);
+    }
+    return assets;
+}
+
 export async function packageHomebrew(options: HomebrewOptions) {
+    if (!options.wldTag && !options.mnemotecaTag) throw new Error(usage());
+    if (!options.mnemotecaTag && options.mnemotecaBaseUrl) {
+        throw new Error("--mnemoteca-base-url requires --mnemoteca-tag.");
+    }
     if (!options.testOnly && (options.wldBaseUrl || options.mnemotecaBaseUrl)) {
         throw new Error("Base URL overrides require --test-only.");
     }
@@ -343,6 +414,27 @@ export async function packageHomebrew(options: HomebrewOptions) {
             ? parseReleaseTag(options.wldTag)
             : assertStableTag(options.wldTag)
         : null;
+    if (wldTag && !options.mnemotecaTag) {
+        const existing = await readExistingMnemotecaPackage(options.output, options.testOnly);
+        const assets = await verifiedWldAssets(options, wldTag.tag);
+        const formula = renderWldFormula({ version: wldTag.tag.slice(1), assets }, options.testOnly);
+        assertNoPlaceholders(formula);
+        await fsWriteFile(join(options.output, "Formula", "wld.rb"), formula);
+        await fsWriteFile(
+            join(options.output, "runwield-homebrew-package.json"),
+            `${JSON.stringify(
+                {
+                    ...existing,
+                    wldTag: wldTag.tag,
+                    testOnly: options.testOnly,
+                    generatedAt: new Date().toISOString(),
+                },
+                null,
+                4,
+            )}\n`,
+        );
+        return;
+    }
     const mnemotecaTag = assertStableTag(options.mnemotecaTag);
     const inputs: HomebrewInputs = JSON.parse(await fsReadFile(options.inputsPath, "utf8"));
     validateInputs(inputs, mnemotecaTag.tag);
@@ -356,15 +448,7 @@ export async function packageHomebrew(options: HomebrewOptions) {
         }
     }
 
-    const wldAssets: PackageAssets = {};
-    if (wldTag) {
-        const wldBase = releaseBaseUrl(RUNWIELD_REPO, wldTag.tag, options.wldBaseUrl);
-        for (const arch of ARCHES) {
-            const name = `wld-${wldTag.tag}-${arch}.tar.gz`;
-            wldAssets[arch] = await verifiedRunWieldAsset(wldBase, name);
-            if (!options.testOnly) assertReleasedAssetUrl(wldAssets[arch].url, RUNWIELD_REPO, wldTag.tag);
-        }
-    }
+    const wldAssets = wldTag ? await verifiedWldAssets(options, wldTag.tag) : {};
 
     const formulaDir = join(options.output, "Formula");
     const readmePath = join(options.output, "README.md");

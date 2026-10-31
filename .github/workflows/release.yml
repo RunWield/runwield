@@ -745,6 +745,19 @@ jobs:
                     unlink "$brew_prefix/bin/openssl"
                   fi
 
+            - name: Checkout current Homebrew tap
+              uses: actions/checkout@v5
+              with:
+                  repository: RunWield/homebrew-tap
+                  path: homebrew-base
+                  persist-credentials: false
+
+            - name: Copy dependency snapshot
+              run: |
+                  mkdir -p homebrew-check/Formula
+                  cp homebrew-base/Formula/*.rb homebrew-check/Formula/
+                  cp homebrew-base/README.md homebrew-base/runwield-homebrew-package.json homebrew-check/
+
             - name: Validate Homebrew before publication
               env:
                   RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
@@ -756,7 +769,7 @@ jobs:
                     if curl --fail --silent http://127.0.0.1:8765/SHA256SUMS > /dev/null; then break; fi
                     sleep 1
                   done
-                  bun run package:homebrew --wld-tag "$RELEASE_TAG" --mnemoteca-tag v0.3.3 \
+                  bun run package:homebrew --wld-tag "$RELEASE_TAG" \
                     --output homebrew-check --test-only --wld-base-url http://127.0.0.1:8765
                   bun run package:homebrew:check --tap homebrew-check
 
@@ -834,11 +847,26 @@ jobs:
                     exit 1
                   fi
 
+            - name: Checkout Homebrew publication base
+              uses: actions/checkout@v5
+              with:
+                  repository: RunWield/homebrew-tap
+                  token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+                  path: homebrew-tap-publish
+                  fetch-depth: 0
+
+            - name: Record and copy qualified base
+              id: tap-base
+              run: |
+                  echo "sha=$(git -C homebrew-tap-publish rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+                  mkdir -p homebrew-tap/Formula
+                  cp homebrew-tap-publish/Formula/*.rb homebrew-tap/Formula/
+                  cp homebrew-tap-publish/README.md homebrew-tap-publish/runwield-homebrew-package.json homebrew-tap/
+
             - name: Render Homebrew tap
               run: |
                   bun run package:homebrew \
                     --wld-tag "${{ needs.metadata.outputs.tag }}" \
-                    --mnemoteca-tag "v0.3.3" \
                     --output homebrew-tap
 
             - name: Register Homebrew dependency tap
@@ -872,30 +900,12 @@ jobs:
                       runwield-homebrew-tap-${{ needs.metadata.outputs.tag }}.tar.gz
                       runwield-homebrew-tap-${{ needs.metadata.outputs.tag }}.tar.gz.sha256
 
-            - name: Checkout Homebrew tap repository
-              uses: actions/checkout@v5
-              with:
-                  repository: RunWield/homebrew-tap
-                  token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-                  path: homebrew-tap-publish
-                  fetch-depth: 0
-
             - name: Publish verified Homebrew tap
+              env:
+                  TAP_BASE: ${{ steps.tap-base.outputs.sha }}
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
               run: |
-                  cp homebrew-tap/Formula/wld.rb homebrew-tap-publish/Formula/wld.rb
-                  cp homebrew-tap/Formula/mnemoteca.rb homebrew-tap-publish/Formula/mnemoteca.rb
-                  cp homebrew-tap/README.md homebrew-tap-publish/README.md
-                  cp homebrew-tap/runwield-homebrew-package.json homebrew-tap-publish/runwield-homebrew-package.json
-                  cd homebrew-tap-publish
-                  git config user.name "github-actions[bot]"
-                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                  git add Formula README.md runwield-homebrew-package.json
-                  if git diff --cached --quiet; then
-                    echo "Homebrew tap already matches ${{ needs.metadata.outputs.tag }}"
-                    exit 0
-                  fi
-                  git commit -m "Update RunWield to ${{ needs.metadata.outputs.tag }}"
-                  git push origin HEAD:main
+                  bun scripts/publish-homebrew.ts homebrew-tap-publish homebrew-tap "$TAP_BASE" "$RELEASE_TAG"
 
     publish-docs:
         if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
