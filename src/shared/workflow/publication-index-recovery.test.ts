@@ -149,6 +149,9 @@ test("remote delivery retains verification through index failure and recovers in
             // A stopped process did not persist onVerified or index the delivery.
         });
         assertEquals(attempt.phase, "target_published");
+        const unconfirmedPlan = await loadPlan(root, "demo");
+        assertEquals(unconfirmedPlan?.attrs.status, "reviewed");
+        assertEquals(unconfirmedPlan?.attrs.worktreeId, entry.id);
         assertEquals(parsePlanFrontMatter(await git(remote, ["show", `main:${planPath}`])).attrs.status, "verified");
         assertEquals(index.snapshot().length, 1);
         await assertRejects(() => git(root, ["cat-file", "-e", `${delivered.publicationCommit}^{commit}`]));
@@ -160,6 +163,8 @@ test("remote delivery retains verification through index failure and recovers in
         assertStringIncludes(failed.details.join("\n"), "Index service unavailable");
         const completedPlan = await loadPlan(root, "demo");
         assertEquals(completedPlan?.attrs.status, "verified");
+        assertEquals(completedPlan?.attrs.worktreeId, undefined);
+        assertEquals(completedPlan?.attrs.worktreeStatus, undefined);
         assertEquals(completedPlan?.attrs.publicationReceipt?.publishedCommit, delivered.publicationCommit);
         assertEquals(await fsReadFile(join(root, planPath), "utf8"), primaryPlan);
         assertEquals(await git(root, ["rev-parse", "HEAD"]), primaryHead);

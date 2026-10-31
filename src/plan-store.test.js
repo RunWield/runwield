@@ -3440,3 +3440,19 @@ for (const status of /** @type {const} */ (["in_progress", "validated"])) {
         }
     });
 }
+
+test("body-only save retains the existing Plan identity", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-body-identity-" });
+    try {
+        await savePlan(cwd, "p", "# Original\n", { planId: "stable-plan-id", status: "draft" });
+        const prior = await loadPlan(cwd, "p");
+        assert(prior);
+        await savePlan(cwd, "p", "# Revised\n", {}, { expectedRevision: prior.revision });
+        const current = await loadPlan(cwd, "p");
+        assert(current);
+        assertEquals(current.attrs.planId, "stable-plan-id");
+        assertEquals(current.body.trim(), "# Revised");
+    } finally {
+        await fsRm(cwd, { recursive: true, force: true });
+    }
+});

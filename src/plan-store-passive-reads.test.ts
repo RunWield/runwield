@@ -22,7 +22,7 @@ import {
     ProjectRuntimeEntryRefusedError,
     WORKFLOW_DETAILS_PENDING,
 } from "./shared/project-runtime-layout.ts";
-import { writeControllerState } from "./shared/workflow/controller-registry.ts";
+import { inspectControllerView, writeControllerState } from "./shared/workflow/controller-registry.ts";
 import { loadTargetPlan } from "./shared/workflow/planning-worktree.ts";
 
 function document(id: string, extra = "", body = "# Plan\n\nRésumé 世界 🧭\n") {
@@ -449,3 +449,87 @@ test("legacy validated metadata cannot reuse a historical verification timestamp
         await rm(root, { recursive: true, force: true });
     }
 });
+
+test("pending identity repair retains committed controller evidence and revision without writes", async () => {
+    const root = await fixture.checkout();
+    try {
+        await enterProjectRuntime(root);
+        await writeControllerState(
+            root,
+            { planName: "ordinary" },
+            {
+                executionReport: "committed report",
+            },
+        );
+        await writeDocument(root, "ordinary", document(""));
+        const before = await snapshot(root);
+        const plan = await loadPlan(root, "ordinary");
+        strictEqual(plan?.readAvailability?.kind, "pending");
+        strictEqual(plan?.attrs.executionReport, "committed report");
+        strictEqual(plan?.controllerRevision, 1);
+        deepStrictEqual(await snapshot(root), before);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+for (const proof of ["matching", "candidate", "published", "target"] as const) {
+    test(`confirmed publication proof matches the durable receipt: ${proof}`, async () => {
+        const root = await fixture.checkout();
+        try {
+            const { addEntry } = await import("./shared/worktree-registry.js");
+            const { createPublicationAttempt } = await import("./shared/workflow/publication-attempt.ts");
+            const path = join(root, "execution");
+            await git(root, ["worktree", "add", "-b", "execution", path]);
+            const publication = {
+                ...createPublicationAttempt({
+                    attemptId: "confirmed-attempt",
+                    planId: "ordinary-id",
+                    planName: "ordinary",
+                    targetBranch: "main",
+                    executionBranch: "execution",
+                    executionCwd: path,
+                    publicationRoot: root,
+                    validatedCommit: "a".repeat(40),
+                    targetHeadAtSeal: "d".repeat(40),
+                }),
+                publishedCommit: "b".repeat(40),
+                phase: "publication_verified" as const,
+            };
+            await addEntry(root, {
+                id: "confirmed-attempt",
+                planId: "ordinary-id",
+                planName: "ordinary",
+                path,
+                branch: "execution",
+                baseBranch: "main",
+                baseRef: "main",
+                baseCommit: await git(root, ["rev-parse", "HEAD"]),
+                status: "active",
+                createdAt: "now",
+                updatedAt: "now",
+                publication,
+            });
+            await writeControllerState(
+                root,
+                { planName: "ordinary", planId: "ordinary-id" },
+                {
+                    publicationReceipt: {
+                        validatedCommit: proof === "candidate" ? "c".repeat(40) : publication.validatedCommit,
+                        publishedCommit: proof === "published" ? "c".repeat(40) : publication.publishedCommit,
+                        targetBranch: proof === "target" ? "release" : publication.targetBranch,
+                    },
+                },
+            );
+            const before = await snapshot(root);
+            const plan = await loadPlan(root, "ordinary");
+            const view = await inspectControllerView(root, { planName: "ordinary", planId: "ordinary-id" }, {});
+            strictEqual(view.publicationConfirmed, proof === "matching");
+            if (proof === "matching") strictEqual(plan?.attrs.status, "verified");
+            strictEqual(plan?.attrs.worktreeId, undefined);
+            deepStrictEqual(await snapshot(root), before);
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+}
