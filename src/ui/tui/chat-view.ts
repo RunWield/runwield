@@ -1,5 +1,6 @@
 import { RunWieldTui } from "./tui.ts";
 import { getCwd } from "../../constants.js";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
@@ -52,7 +53,7 @@ import {
     type TuiSessionSidebarSnapshot,
 } from "./session-sidebar.ts";
 import { readSessionArtifact } from "../../shared/session/read-session-artifact.ts";
-import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
+import { type BrowserPort } from "../../shared/browser-port.ts";
 import { startArtifactReadSurface } from "../review/review-launcher.ts";
 
 import { TuiAgentMascot } from "./agent-mascot.ts";
@@ -70,6 +71,7 @@ export interface ChatViewSessionSnapshot extends TuiSessionSidebarSnapshot {
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 
 interface ChatViewSharedOptions {
+    browser: BrowserPort;
     documentLinks: DocumentLinkHost | null;
     tui: TUI;
     getSessionId(): string;
@@ -288,22 +290,25 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         );
         const helpText = new Text(compactHelp, 0, 0);
         const updateNoticeText = new Text("", 0, 0);
-        const cachedUpdateAvailability = getCachedUpdateAvailabilitySync(SYSTEM_UPDATE_CHECK_PORTS.clock, {
-            currentVersion: VERSION,
-        });
-        if (cachedUpdateAvailability) {
-            if (cachedUpdateAvailability.available) {
-                updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
+        // The laptop owns the launcher version. A supplied remote runtime never updates itself.
+        if (!remotePersonalResourcesActive()) {
+            const cachedUpdateAvailability = getCachedUpdateAvailabilitySync(SYSTEM_UPDATE_CHECK_PORTS.clock, {
+                currentVersion: VERSION,
+            });
+            if (cachedUpdateAvailability) {
+                if (cachedUpdateAvailability.available) {
+                    updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
+                }
+            } else {
+                void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
+                    .then((availability) => {
+                        updateNoticeText.setText(
+                            availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
+                        );
+                        tui.requestRender();
+                    })
+                    .catch(() => {});
             }
-        } else {
-            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
-                .then((availability) => {
-                    updateNoticeText.setText(
-                        availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
-                    );
-                    tui.requestRender();
-                })
-                .catch(() => {});
         }
         renderBootLogo(container);
         container.addChild(new Text(titleLine, 0, 0));
@@ -339,10 +344,13 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const editor = new Editor(tui, getEditorTheme());
     composerContainer.addChild(editor);
     const footerContainer = new Container();
+    const snapshotWindow = options.sessionRuntime
+        ? createSessionSnapshotWindow(options.sessionRuntime, options.getSessionId)
+        : null;
     const mascot = new TuiAgentMascot(() => tui.requestRender());
     let mascotAnswering = false;
     const renderMascot = (width: number, compact: boolean) => {
-        const snapshot = options.sessionRuntime?.getSessionSnapshot(options.getSessionId());
+        const snapshot = snapshotWindow?.read();
         if (!isMascotEnabled(snapshot?.cwd || getCwd())) {
             mascot.pause();
             return [];
@@ -355,13 +363,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         });
     };
     let liveValidationProgress: TuiSessionSidebarSnapshot["validationProgress"] = null;
-    const sessionSidebar = new TuiSessionSidebar(
-        options.getSessionId,
-        () => options.sessionRuntime?.getSessionSnapshot(options.getSessionId()) ?? null,
-    );
-    const snapshotWindow = options.sessionRuntime
-        ? createSessionSnapshotWindow(options.sessionRuntime, options.getSessionId)
-        : null;
+    const sessionSidebar = new TuiSessionSidebar(options.getSessionId, () => snapshotWindow?.read() ?? null);
     const bottomDock: Component = {
         invalidate: () => {
             composerContainer.invalidate();
@@ -514,7 +516,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
                 title: artifact.title,
                 path: artifact.path,
                 imageBaseDir: document.imageBaseDir,
-                browser: SYSTEM_BROWSER_PORT,
+                browser: options.browser,
             });
             if (disposed) {
                 await surface.stop();

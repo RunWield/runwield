@@ -36,20 +36,21 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Object} ReviewRequestFields
  * @property {string} [executionAgent]
  * @property {string} [collaborationRecommendation]
+ * @property {number} [reviewRevision]
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
  * @property {ReviewPlanSave} [planSave]
- * @property {number} [reviewRevision]
  *
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
  * @typedef {Object} ReviewPayload
+ * @property {number} [reviewRevision]
  * @property {string} [classification]
  * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
- * @property {number} [reviewRevision]
  *
  * @typedef {Object} ReviewRequestState
+ * @property {"plan" | "code"} [reviewType]
  * @property {string} cwd
  * @property {string} [reviewToken]
  * @property {ReviewPayload} [reviewPayload]
@@ -256,12 +257,10 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
-    if (
-        ctx.state?.reviewPayload?.reviewRevision !== undefined &&
-        body?.reviewRevision !== ctx.state.reviewPayload.reviewRevision
-    ) {
+    const expectedRevision = ctx.state?.reviewPayload?.reviewRevision;
+    if (expectedRevision !== undefined && body?.reviewRevision !== expectedRevision) {
         return jsonError(
-            "stale_sequence_review",
+            ctx.state?.reviewType === "code" ? "stale_code_review" : "stale_sequence_review",
             "This browser page shows a superseded review revision. Reload it.",
             409,
         );

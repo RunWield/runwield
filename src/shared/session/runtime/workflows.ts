@@ -175,7 +175,8 @@ export class RuntimeWorkflows {
         const reference = managed
             ? this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId)
             : null;
-        if (!reference) return { kind: "no_reference", message: "This Session has no previous Plan review." };
+        if (!reference && !this.services.remotePersistence)
+            return { kind: "no_reference", message: "This Session has no previous Plan review." };
         this.reopeningPlanReviews.add(sessionId);
         try {
             await this.restoreDormantManagedInvariant(session);
@@ -188,9 +189,11 @@ export class RuntimeWorkflows {
                 {},
                 async () => {
                     const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
-                    const current = managed
-                        ? this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId)
-                        : null;
+                    const current = this.services.remotePersistence
+                        ? this.services.remotePersistence.records(session).lastPlanReview
+                        : managed
+                          ? this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId)
+                          : null;
                     if (!current) {
                         return { kind: "no_reference" as const, message: "This Session has no previous Plan review." };
                     }
@@ -413,7 +416,7 @@ ${outcome.feedback || ""}`,
         const approved = await findPlanEvidenceById(session.cwd, outcome.triageMeta?.planId || planId);
         const evidence = await loadPlanActionEvidence(session.cwd, approved.planId);
         if (evidence.kind !== "success") throw new Error(evidence.message);
-        const result = await this.executePlan(sessionId, {
+        const result = await this.executeApprovedPlan(sessionId, {
             planName: approved.planName,
             triageMeta: approved.attrs,
             approvalEvidence: evidence.evidence,
@@ -421,12 +424,16 @@ ${outcome.feedback || ""}`,
             reviewImages: outcome.images,
         });
         if (result.error) throw new Error(result.error);
-        if (!result.executionComplete) return result;
+        return result;
+    }
+
+    async executeApprovedPlan(sessionId: string, options: RuntimeExecutePlanOptions): Promise<RuntimeValidationResult> {
+        const result = await this.executePlan(sessionId, options);
+        if (result.error || !result.executionComplete) return result;
         return (
             (await this.runValidation(sessionId, {
-                planName: approved.planName,
-                planContent: approved.markdown,
-                triageMeta: approved.attrs,
+                planName: options.planName,
+                triageMeta: options.triageMeta,
                 executionContext: result.executionContext,
                 trigger: "execution_completion",
             })) || result
@@ -448,6 +455,7 @@ ${outcome.feedback || ""}`,
             const pendingResult = await this.resumePendingExecutionSegmentHandoff(session, options);
             if (pendingResult) return pendingResult;
             const prepared = await this.runWorkflowOperation(session, "prepareExecutePlan", options, async () => {
+                session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../workflow/workflow.js");
                 const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
                 const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
@@ -721,6 +729,7 @@ ${outcome.feedback || ""}`,
         const projectRoot = workflow.projectRoot || session.cwd;
         const executionCwd = workflow.executionCwd || session.cwd;
         const runRepair = async () => {
+            session.getManagedOperationCapability?.()?.assertLive();
             const planId = continuation.plan?.planId || workflow.triageMeta?.planId || options.triageMeta?.planId;
             const planName = continuation.plan?.planName || options.planName;
             if (planId && planName && session.getManagedOperationCapability?.()) {
@@ -741,6 +750,7 @@ ${outcome.feedback || ""}`,
                           workflow.worktreeBaseBranch || "",
                           workflow.worktreeBaseRef,
                       );
+            session.getManagedOperationCapability?.()?.assertLive();
             await runActiveAgentTurn({
                 hostedSession: session,
                 agentName: AGENTS.REVIEWER_FEEDBACK_ENGINEER,

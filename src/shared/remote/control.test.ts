@@ -19,9 +19,11 @@ test("remote control admits only a matching handshake before readiness", async (
         assertEquals((await request(service, "readiness")).status, 403);
         assertEquals((await fetch(`http://127.0.0.1:${service.port}/models/catalog`)).status, 401);
         assertEquals(
-            (await fetch(`http://127.0.0.1:${service.port}/models/catalog`, {
-                headers: { Authorization: `Bearer ${service.credential}` },
-            })).status,
+            (
+                await fetch(`http://127.0.0.1:${service.port}/models/catalog`, {
+                    headers: { Authorization: `Bearer ${service.credential}` },
+                })
+            ).status,
             403,
         );
         assertEquals(
@@ -56,6 +58,38 @@ test("wrong and prior credentials cannot stop a valid connection", async () => {
         assertEquals(service.status().shutdown, true);
     } finally {
         await service.close();
+    }
+});
+
+test("remote cleanup confirmation requires authenticated peer shutdown, not local intent", async () => {
+    const local = startRemoteControlService(identity);
+    const peer = startRemoteControlService(identity);
+    try {
+        const confirmations = [local.status().remoteCleanupConfirmed];
+        await request(local, "handshake", local.credential, JSON.stringify(identity));
+        await request(local, "readiness");
+        local.requestShutdown();
+        assertEquals(local.status().shutdown, true);
+        confirmations.push(local.status().remoteCleanupConfirmed);
+
+        assertEquals((await fetch(`http://127.0.0.1:${peer.port}/shutdown`, { method: "POST" })).status, 401);
+        confirmations.push(peer.status().remoteCleanupConfirmed);
+        assertEquals((await request(peer, "shutdown")).status, 403);
+        confirmations.push(peer.status().remoteCleanupConfirmed);
+        assertEquals((await request(peer, "handshake", peer.credential, JSON.stringify(identity))).status, 200);
+        assertEquals((await request(peer, "readiness")).status, 200);
+        assertEquals((await request(peer, "shutdown", "x".repeat(64))).status, 401);
+        confirmations.push(peer.status().remoteCleanupConfirmed);
+        assertEquals(peer.status().shutdown, false);
+
+        const response = await request(peer, "shutdown");
+        assertEquals(response.status, 200);
+        assertEquals(await response.json(), { shutdown: true });
+        confirmations.push(peer.status().remoteCleanupConfirmed);
+        assertEquals(peer.status().shutdown, true);
+        assertEquals(confirmations, [false, false, false, false, false, true]);
+    } finally {
+        await Promise.all([local.close(), peer.close()]);
     }
 });
 

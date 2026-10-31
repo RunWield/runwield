@@ -57,6 +57,7 @@ import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
 import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.js";
+import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
 
 /**
  * Scenario waits poll and return the moment the condition holds, so this budget
@@ -102,6 +103,10 @@ function createGoldenReviewBrowser(
                 if (!humanReviewSurface) throw new Error("Unexpected Code Review interaction.");
                 const response = humanReviewSurface.submit({ url });
                 if (response.manual) return false;
+                const pageUrl = new URL(url);
+                const statusResponse = await fetch(new URL(`/api/review/conversation${pageUrl.search}`, pageUrl));
+                if (!statusResponse.ok) throw new Error(`Code Review status failed: ${statusResponse.status}`);
+                const { reviewRevision } = await statusResponse.json();
                 const opened = await createScriptedReviewBrowser(
                     response.conversationTurn ? "deny" : response.approved ? "decision" : "feedback",
                     {
@@ -111,6 +116,7 @@ function createGoldenReviewBrowser(
                         annotations: response.annotations,
                         images: response.images,
                         reviewType: "code",
+                        reviewRevision,
                     },
                 ).browser.open(url);
                 onHumanReviewDecision?.(response);
@@ -2563,9 +2569,12 @@ async function runComposedTuiScenario(scenario, options) {
                             );
                         }
                         const localPlan = await loadPlan(getCwd(), planName).catch(() => null);
-                        const registry = await (
-                            await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        const registry = await readScenarioRegistryForPoll(getCwd());
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
@@ -2682,9 +2691,12 @@ async function runComposedTuiScenario(scenario, options) {
                                 )}; latest=${latestStatus || "missing"}`,
                             );
                         }
-                        const registry = await (
-                            await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        const registry = await readScenarioRegistryForPoll(getCwd());
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         latestStatus = entry ? String(entry.status || "") : "absent";
                         await terminal.flush();

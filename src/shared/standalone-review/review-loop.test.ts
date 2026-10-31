@@ -20,6 +20,7 @@ const fixture = defineGitFixture(async (cwd) => {
 });
 interface ConversationStatus {
     revision: number;
+    reviewRevision: number;
     rawPatch: string;
     events: Array<{ delta: string; agentName: string }>;
 }
@@ -27,13 +28,14 @@ async function status(url: URL): Promise<ConversationStatus> {
     const response = await fetch(new URL(`/api/review/conversation${url.search}`, url));
     return await response.json();
 }
-async function decide(url: URL, endpoint: string, body: Record<string, string | boolean>) {
+async function decide(url: URL, endpoint: string, body: Record<string, string | boolean | number>) {
+    const { reviewRevision } = await status(url);
     const response = await fetch(new URL(`/api/review/${endpoint}${url.search}`, url), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ reviewRevision, ...body }),
     });
-    await response.text();
+    assertEquals(response.status, 200, await response.text());
 }
 test("Engineer uses one real saved Session and refreshes its edited worktree diff", async () => {
     await withRuntimeCommandFixture("standalone-loop-", async ({ setModelResponseFactories }) => {
@@ -97,6 +99,7 @@ test("Engineer uses one real saved Session and refreshes its edited worktree dif
                                         await decide(url, "deny", {
                                             conversationTurn: true,
                                             feedback: "Make a follow-up edit",
+                                            reviewRevision: next.reviewRevision,
                                         });
                                         let refreshed = false;
                                         for (let j = 0; j < 300; j++) {

@@ -37,6 +37,12 @@ export type RuntimeExecutePlanOptions = Partial<
     initialRequest?: string;
     planContent?: string;
 };
+/** Accepted execution intent returned to the runtime before its planning writer is released. */
+export interface DeferredPlanExecution {
+    kind: "approved_execution";
+    executionToStart: RuntimeExecutePlanOptions;
+}
+
 export type RuntimePlanningOptions = Partial<
     Omit<
         import("../../workflow/planning-agent.ts").RunPlanningAgentOptions,

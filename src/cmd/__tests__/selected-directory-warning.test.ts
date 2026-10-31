@@ -172,6 +172,20 @@ test("ACP Load Plan at a registered home root keeps protocol behavior without a 
         const runtime = createSessionRuntime();
         const messages: string[] = [];
         try {
+            // ACP bypasses terminal consent, not attached-worktree validation.
+            await git(homeDir, ["init", "-b", "main"]);
+            await git(homeDir, [
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "home authority",
+            ]);
+            rmSync(projectRoot, { recursive: true });
+            await git(homeDir, ["worktree", "add", "-b", "acp-project", projectRoot]);
             mkdirSync(join(homeDir, "docs/plans"), { recursive: true });
             writeText(
                 join(homeDir, "docs/plans/acp.md"),

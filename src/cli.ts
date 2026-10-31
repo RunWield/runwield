@@ -36,7 +36,7 @@ if (["--remote-preflight", "--remote-view", "--remote-supervisor", "--remote-mod
     try {
         const { runRemoteModelProofEntry, runRemotePreflight, runRemoteView } =
             await import("./shared/remote/entry.ts");
-        if (cliArgs.length !== (cliArgs[0] === "--remote-supervisor" ? 2 : 1)) {
+        if (cliArgs.length !== (cliArgs[0] === "--remote-supervisor" ? 3 : 1)) {
             throw new Error("Unexpected remote entry arguments");
         }
         if (cliArgs[0] === "--remote-preflight") await runRemotePreflight();

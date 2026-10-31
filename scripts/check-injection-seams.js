@@ -70,6 +70,7 @@ import process from "node:process";
  * still rejected.
  */
 
+import ts from "typescript";
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
@@ -200,7 +201,10 @@ export function isMachinerySeam(name) {
         // transaction never once fired, and `runImplementationCheckpointTransition`
         // sat behind a seam under a green ratchet.
         if (!pattern.includes("*")) return normalizedName === pattern;
-        const escaped = pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+        const escaped = pattern
+            .split("*")
+            .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+            .join(".*");
         return new RegExp(`^${escaped}$`).test(normalizedName);
     });
 }
@@ -230,8 +234,9 @@ function isBehavioralCollaborator(name) {
     const normalized = normalizeCollaboratorName(name);
     if (isMachinerySeam(normalized)) return true;
     if (/^[A-Z][A-Za-z0-9_$]*(?:Ctor)?$/.test(normalized)) return true;
-    return /^(?:abort|append|apply|attach|build|check|checkpoint|clear|close|collect|complete|compute|connect|create|delete|detect|dispatch|dispose|emit|ensure|execute|exit|fetch|finalize|find|format|generate|get|handle|install|invoke|list|load|make|mark|merge|notify|now|open|parse|prepare|probe|prompt|publish|query|read|record|refresh|reload|remove|render|report|request|reset|resolve|restore|resume|run|save|schedule|seal|send|set|settle|show|spawn|stage|start|steer|stop|store|submit|subscribe|switch|sync|teardown|track|update|validate|verify|wait|warn|watch|write)(?:$|[A-Z0-9_$])/
-        .test(normalized);
+    return /^(?:abort|append|apply|attach|build|check|checkpoint|clear|close|collect|complete|compute|connect|create|delete|detect|dispatch|dispose|emit|ensure|execute|exit|fetch|finalize|find|format|generate|get|handle|install|invoke|list|load|make|mark|merge|notify|now|open|parse|prepare|probe|prompt|publish|query|read|record|refresh|reload|remove|render|report|request|reset|resolve|restore|resume|run|save|schedule|seal|send|set|settle|show|spawn|stage|start|steer|stop|store|submit|subscribe|switch|sync|teardown|track|update|validate|verify|wait|warn|watch|write)(?:$|[A-Z0-9_$])/.test(
+        normalized,
+    );
 }
 
 /**
@@ -281,7 +286,12 @@ function substitutesImplementation(property, local, implementation, broad) {
 
 /** @param {string} expression */
 function finalMemberName(expression) {
-    return expression.trim().split(/\s*(?:\?\.|\.)\s*/).at(-1) || "";
+    return (
+        expression
+            .trim()
+            .split(/\s*(?:\?\.|\.)\s*/)
+            .at(-1) || ""
+    );
 }
 
 /**
@@ -325,11 +335,9 @@ function collectCapabilityFallbacks(text) {
     // nothing — a port passed straight into a call (`run(argv, options.sessionPort ||
     // DEFAULT_SESSION_PORT)`) is the same seam as one bound to a local first, and an
     // earlier version that keyed on the surrounding syntax missed exactly those.
-    for (
-        const fallback of text.matchAll(
-            /[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*)\s*(?![.\w])/g,
-        )
-    ) {
+    for (const fallback of text.matchAll(
+        /[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*)\s*(?![.\w])/g,
+    )) {
         const [, property, implementation] = fallback;
         if (CAPABILITY_IMPLEMENTATION.test(implementation) && CAPABILITY_NAMED.test(implementation)) {
             found.push(property);
@@ -339,11 +347,9 @@ function collectCapabilityFallbacks(text) {
     // A capability whose implementation is not named like one still counts when the
     // binding it lands in is invoked. `defaultCommandRegistry` happens to end in a noun
     // this recognizes; the next one will not, and calling it is the durable evidence.
-    for (
-        const fallback of text.matchAll(
-            /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*)\s*(?![.\w])/g,
-        )
-    ) {
+    for (const fallback of text.matchAll(
+        /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*)\s*(?![.\w])/g,
+    )) {
         const [, binding, property, implementation] = fallback;
         if (CAPABILITY_IMPLEMENTATION.test(implementation) && isInvoked(binding)) found.push(property);
     }
@@ -355,22 +361,18 @@ function collectCapabilityFallbacks(text) {
     // same way: in `waitForIdle?.(scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS).catch(…)`
     // the parens belong to the call and `.catch` chains off its result, so a timeout in
     // milliseconds was recorded as an injected capability being invoked.
-    for (
-        const fallback of text.matchAll(
-            /(?<![\w$)\].])\(\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*)\s*\)\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*\s*\(/g,
-        )
-    ) {
+    for (const fallback of text.matchAll(
+        /(?<![\w$)\].])\(\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*)\s*\)\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*\s*\(/g,
+    )) {
         if (CAPABILITY_IMPLEMENTATION.test(fallback[2])) found.push(fallback[1]);
     }
 
     // Callable options also hide behind inline implementations. Invocation of the
     // resulting binding proves this is behavior, while the behavioral property name
     // keeps ordinary data transforms out of the scan.
-    for (
-        const fallback of text.matchAll(
-            /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*\(+\s*(?:async\s*)?\(?[^=;\n]*\)?\s*=>/g,
-        )
-    ) {
+    for (const fallback of text.matchAll(
+        /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*\(+\s*(?:async\s*)?\(?[^=;\n]*\)?\s*=>/g,
+    )) {
         const [, binding, property] = fallback;
         if (isBehavioralCollaborator(property) && isInvoked(binding)) found.push(property);
     }
@@ -388,19 +390,15 @@ function collectCapabilityFallbacks(text) {
         "WeakMap",
         "WeakSet",
     ]);
-    for (
-        const fallback of text.matchAll(
-            /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*new\s+([A-Za-z_$][\w$]*)\s*\(/g,
-        )
-    ) {
+    for (const fallback of text.matchAll(
+        /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*new\s+([A-Za-z_$][\w$]*)\s*\(/g,
+    )) {
         const [, binding, property, constructorName] = fallback;
         if (!nativeDataConstructors.has(constructorName) && isInvoked(binding)) found.push(property);
     }
-    for (
-        const fallback of text.matchAll(
-            /this\s*\.\s*#?([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*new\s+([A-Za-z_$][\w$]*)\s*\(/g,
-        )
-    ) {
+    for (const fallback of text.matchAll(
+        /this\s*\.\s*#?([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*new\s+([A-Za-z_$][\w$]*)\s*\(/g,
+    )) {
         const [, binding, property, constructorName] = fallback;
         if (!nativeDataConstructors.has(constructorName) && isInvoked(binding)) found.push(property);
     }
@@ -420,7 +418,10 @@ function collectTestHookAssignments(text) {
     const hook = /export\s+function\s+__(?:set|reset)[A-Za-z_$][\w$]*Tests?\s*\(([^)]*)\)\s*\{/g;
     for (const match of text.matchAll(hook)) {
         const params = new Set(
-            match[1].split(",").map((part) => part.trim().match(/^([A-Za-z_$][\w$]*)/)?.[1]).filter(Boolean),
+            match[1]
+                .split(",")
+                .map((part) => part.trim().match(/^([A-Za-z_$][\w$]*)/)?.[1])
+                .filter(Boolean),
         );
         if (params.size === 0) continue;
         const open = (match.index || 0) + match[0].lastIndexOf("{");
@@ -453,11 +454,9 @@ function collectTestHookAssignments(text) {
  */
 function collectDeclaredMachinery(text) {
     const names = new Set();
-    for (
-        const declaration of text.matchAll(
-            /(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>]+>)?[^\{=]*(?:=\s*)?\{([^}]*)\}/g,
-        )
-    ) {
+    for (const declaration of text.matchAll(
+        /(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>]+>)?[^\{=]*(?:=\s*)?\{([^}]*)\}/g,
+    )) {
         for (const member of declaration[1].matchAll(/^\s*([A-Za-z_$][\w$]*)\s*\??\s*:/gm)) {
             if (isMachinerySeam(member[1])) names.add(member[1]);
         }
@@ -466,6 +465,19 @@ function collectDeclaredMachinery(text) {
         if (isMachinerySeam(property[2])) names.add(property[2]);
     }
     return [...names];
+}
+
+/**
+ * Literal contents are data, but code in a template interpolation still counts.
+ * @param {import("typescript").Node} node
+ * @param {number} position
+ * @returns {boolean}
+ */
+function isLiteralTextAt(node, position) {
+    if (position < node.getStart() || position >= node.getEnd()) return false;
+    if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
+        return true;
+    return ts.forEachChild(node, (child) => isLiteralTextAt(child, position) || undefined) ?? false;
 }
 
 /**
@@ -492,22 +504,21 @@ export function collectSeamNames(text) {
         // The bag name must start a word. Without that, a bag called `deps` matches
         // inside the module specifier `"./load-plan-test-deps.ts"` and invents a seam
         // named `ts` — a filename, not something anyone injects.
-        for (
-            const read of scannedText.matchAll(
-                new RegExp(`(?<![\\w$-])${source}\\s*(?:\\?\\.|\\.)\\s*([A-Za-z_$][\\w$]*)`, "g"),
-            )
-        ) {
+        for (const read of scannedText.matchAll(
+            new RegExp(`(?<![\\w$-])${source}\\s*(?:\\?\\.|\\.)\\s*([A-Za-z_$][\\w$]*)`, "g"),
+        )) {
             names.add(read[1]);
         }
         // Destructured reads: `const { a, b: bLocal } = bag`. The declared name is the
         // left of the colon — renaming the local binding does not rename the seam.
-        for (
-            const block of scannedText.matchAll(
-                new RegExp(`(?:const|let)\\s*\\{([^}]*)\\}\\s*=\\s*${source}\\b`, "g"),
-            )
-        ) {
+        for (const block of scannedText.matchAll(
+            new RegExp(`(?:const|let)\\s*\\{([^}]*)\\}\\s*=\\s*${source}\\b`, "g"),
+        )) {
             for (const part of block[1].split(",")) {
-                const name = part.split(":")[0].trim().replace(/^\.\.\./, "");
+                const name = part
+                    .split(":")[0]
+                    .trim()
+                    .replace(/^\.\.\./, "");
                 if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
             }
         }
@@ -530,25 +541,21 @@ export function collectSeamNames(text) {
     // Module-global test registries (`let clipboardDeps = defaultClipboardDeps`) are
     // bags too. A test setter mutates process-wide behavior, which is more dangerous
     // than an argument-local override because leakage crosses test and Session bounds.
-    for (
-        const bag of scannedText.matchAll(
-            /(?:let|var)\s+([A-Za-z_$][\w$]*(?:Deps|Dependencies))\s*=\s*[A-Za-z_$][\w$]*(?:Deps|Dependencies)\b/g,
-        )
-    ) {
+    for (const bag of scannedText.matchAll(
+        /(?:let|var)\s+([A-Za-z_$][\w$]*(?:Deps|Dependencies))\s*=\s*[A-Za-z_$][\w$]*(?:Deps|Dependencies)\b/g,
+    )) {
         collectFromBag(bag[1]);
     }
 
     // Nested optional bags use a property as the bag expression:
     // `args.semanticReviewPort?.getDiffText`. The singular `Port`, `Overrides`, and
     // `Dependencies` spellings used to evade both the name and type checks.
-    for (
-        const read of scannedText.matchAll(
-            new RegExp(
-                `\\b(?:[A-Za-z_$][\\w$]*\\.)*([A-Za-z_$][\\w$]*${NESTED_OVERRIDE_PROPERTY_SUFFIX})\\s*\\?\\.\\s*([A-Za-z_$][\\w$]*)`,
-                "g",
-            ),
-        )
-    ) {
+    for (const read of scannedText.matchAll(
+        new RegExp(
+            `\\b(?:[A-Za-z_$][\\w$]*\\.)*([A-Za-z_$][\\w$]*${NESTED_OVERRIDE_PROPERTY_SUFFIX})\\s*\\?\\.\\s*([A-Za-z_$][\\w$]*)`,
+            "g",
+        ),
+    )) {
         names.add(read[2]);
     }
 
@@ -574,11 +581,9 @@ export function collectSeamNames(text) {
     // sees both `options._buildAgentSession || buildAgentSession` and
     // `options.runGuideCommand || runConfiguredGuideCommand`; renaming the concrete
     // implementation must not make the seam disappear.
-    for (
-        const fallback of scannedText.matchAll(
-            /((?:options|args|opts|deps|ports|overrides|dependencies)(?:\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*)+)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)/g,
-        )
-    ) {
+    for (const fallback of scannedText.matchAll(
+        /((?:options|args|opts|deps|ports|overrides|dependencies)(?:\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*)+)\s*(?:\|\||\?\?)\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)/g,
+    )) {
         const member = finalMemberName(fallback[1]);
         const implementation = finalMemberName(fallback[2]);
         // A field read can supply data even when the option name is a verb:
@@ -592,11 +597,9 @@ export function collectSeamNames(text) {
     // default because the command can report success while silently doing nothing:
     // `options.setActiveModel || (() => {})`. There is no implementation name to
     // compare, so the behavioral member name is the evidence.
-    for (
-        const fallback of scannedText.matchAll(
-            /((?:[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*)+[A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/g,
-        )
-    ) {
+    for (const fallback of scannedText.matchAll(
+        /((?:[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*)+[A-Za-z_$][\w$]*)\s*(?:\|\||\?\?)\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/g,
+    )) {
         const member = finalMemberName(fallback[1]);
         if (isBehavioralCollaborator(member)) names.add(member);
     }
@@ -624,19 +627,18 @@ export function collectSeamNames(text) {
     /** @param {number} index */
     const allowsBroadRule = (index) =>
         !statementDestructureRanges.some(([open, close]) => index > open && index < close);
-    for (
-        const fallback of scannedText.matchAll(
-            /(?:^|[{,]\s*)([A-Za-z_$][\w$]*)(?:\s*:\s*([A-Za-z_$][\w$]*))?\s*=\s*([A-Za-z_$][\w$]*)(?=\s*[,}])/gm,
-        )
-    ) {
+    for (const fallback of scannedText.matchAll(
+        /(?:^|[{,]\s*)([A-Za-z_$][\w$]*)(?:\s*:\s*([A-Za-z_$][\w$]*))?\s*=\s*([A-Za-z_$][\w$]*)(?=\s*[,}])/gm,
+    )) {
         const property = fallback[1];
         const local = fallback[2] || property;
         const implementation = fallback[3];
-        if (
-            substitutesImplementation(property, local, implementation, allowsBroadRule(fallback.index || 0))
-        ) names.add(property);
+        if (substitutesImplementation(property, local, implementation, allowsBroadRule(fallback.index || 0)))
+            names.add(property);
     }
 
+    /** @type {import("typescript").SourceFile | undefined} */
+    let parsedSource;
     // Positional parameter defaults are another spelling of the same seam:
     // `getModelRegistry = getModelRegistryFn` and `readTextFile = Deno.readTextFile`.
     //
@@ -644,15 +646,14 @@ export function collectSeamNames(text) {
     // parsed as the parameter being called `CommandLog`, which is capitalized and so
     // looked behavioral. That reported a *type name* as the injected collaborator —
     // a seam nobody could act on, in a module that had not done anything wrong.
-    for (
-        const fallback of scannedText.matchAll(
-            /\b([A-Za-z_$][\w$]*)\s*(?::[^=,()<>!]*)?(?<![=!<>])=(?!=)\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)\s*(?=[,)])/g,
-        )
-    ) {
+    for (const fallback of scannedText.matchAll(
+        /\b([A-Za-z_$][\w$]*)\s*(?::[^=,()<>!]*)?(?<![=!<>])=(?!=)\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)\s*(?=[,)])/g,
+    )) {
         const local = fallback[1];
         const implementation = finalMemberName(fallback[2]);
         if (substitutesImplementation(local, local, implementation, allowsBroadRule(fallback.index || 0))) {
-            names.add(normalizeCollaboratorName(local));
+            parsedSource ??= ts.createSourceFile("source.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+            if (!isLiteralTextAt(parsedSource, fallback.index || 0)) names.add(normalizeCollaboratorName(local));
         }
     }
 
@@ -682,11 +683,9 @@ export function collectSeamNames(text) {
     // `||`, `??` or `;` right after it separates `const deps = __testDeps || {}` from
     // `const agentDef = await loadSlicerAgentDef(__deps)`, where the result is an agent
     // definition and counting `agentDef.displayName` would invent a seam nothing injects.
-    for (
-        const alias of scannedText.matchAll(
-            /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?__(?:test)?[Dd]eps\s*(?:\|\||\?\?|;)/g,
-        )
-    ) {
+    for (const alias of scannedText.matchAll(
+        /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?__(?:test)?[Dd]eps\s*(?:\|\||\?\?|;)/g,
+    )) {
         collectFromBag(alias[1]);
     }
 
@@ -706,8 +705,8 @@ export function collectSeamNames(text) {
     for (const param of scannedText.matchAll(new RegExp(DEPS_PARAMETER_SOURCE, "g"))) {
         const typeName = param[2];
         const hasLocalDeclaration = new RegExp(`(?:interface|type)\\s+${typeName}\\b`).test(scannedText);
-        const requiredImportedSingularPort = typeName.endsWith("Port") && !param[0].includes("?") &&
-            !hasLocalDeclaration;
+        const requiredImportedSingularPort =
+            typeName.endsWith("Port") && !param[0].includes("?") && !hasLocalDeclaration;
         if (declaresBag || (!requiredImportedSingularPort && isOverrideBagType(scannedText, typeName))) {
             collectFromBag(param[1]);
         }
@@ -839,31 +838,20 @@ function containsOverrideBagReference(expression, bagNames) {
 function conditionalSeamKey(condition, bagNames) {
     const members = new Set();
     const bags = new Set();
-    for (
-        const read of condition.matchAll(
-            /\b(__testDeps|__deps|__Deps)\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)/g,
-        )
-    ) {
+    for (const read of condition.matchAll(/\b(__testDeps|__deps|__Deps)\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)/g)) {
         members.add(read[2]);
     }
     for (const read of condition.matchAll(/\.\s*(__test[A-Za-z_$][\w$]*)\b/g)) members.add(read[1]);
-    for (
-        const read of condition.matchAll(
-            new RegExp(
-                `\\b[A-Za-z_$][\\w$]*${NESTED_OVERRIDE_PROPERTY_SUFFIX}\\s*\\?\\.\\s*([A-Za-z_$][\\w$]*)`,
-                "g",
-            ),
-        )
-    ) {
+    for (const read of condition.matchAll(
+        new RegExp(`\\b[A-Za-z_$][\\w$]*${NESTED_OVERRIDE_PROPERTY_SUFFIX}\\s*\\?\\.\\s*([A-Za-z_$][\\w$]*)`, "g"),
+    )) {
         members.add(read[1]);
     }
     for (const name of bagNames) {
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        for (
-            const read of condition.matchAll(
-                new RegExp(`\\b${escaped}\\s*(?:\\?\\.|\\.)\\s*([A-Za-z_$][\\w$]*)`, "g"),
-            )
-        ) {
+        for (const read of condition.matchAll(
+            new RegExp(`\\b${escaped}\\s*(?:\\?\\.|\\.)\\s*([A-Za-z_$][\\w$]*)`, "g"),
+        )) {
             members.add(read[1]);
         }
         if (new RegExp(`\\b${escaped}\\s*(?![.?\\w])`).test(condition)) bags.add(name);
@@ -887,11 +875,10 @@ function scanConditionalSeams(text) {
     const scanned = blankComments(text);
     const bagNames = new Set();
     for (const bag of scanned.matchAll(/\b(deps|dependencies)\s*=\s*\{\}/gi)) bagNames.add(bag[1]);
-    for (
-        const bag of scanned.matchAll(
-            /(?:let|var)\s+([A-Za-z_$][\w$]*(?:Deps|Dependencies))\s*=\s*[A-Za-z_$][\w$]*(?:Deps|Dependencies)\b/g,
-        )
-    ) bagNames.add(bag[1]);
+    for (const bag of scanned.matchAll(
+        /(?:let|var)\s+([A-Za-z_$][\w$]*(?:Deps|Dependencies))\s*=\s*[A-Za-z_$][\w$]*(?:Deps|Dependencies)\b/g,
+    ))
+        bagNames.add(bag[1]);
     for (let index = 0; index < scanned.length; index++) {
         if (scanned[index] !== "?") continue;
         // Not a ternary: optional chaining (`__deps?.name`), nullish coalescing, and
@@ -901,7 +888,8 @@ function scanConditionalSeams(text) {
         const condition = scanned.slice(findConditionStart(scanned, index), index);
         if (!containsOverrideBagReference(condition, bagNames)) continue;
         const line = text.slice(0, index).split("\n").length;
-        const gatedOnBag = /__(?:test)?[Dd]eps\s*(?![.?\w])/.test(condition) ||
+        const gatedOnBag =
+            /__(?:test)?[Dd]eps\s*(?![.?\w])/.test(condition) ||
             [...bagNames].some((name) => new RegExp(`\\b${name}\\s*(?![.?\\w])`).test(condition));
         hits.push({
             offender: `line ${line} (${gatedOnBag ? "gated on the bag itself" : "one seam gated on another dep"})`,
@@ -930,7 +918,9 @@ export function collectConditionalSeams(text) {
  * @returns {string[]}
  */
 export function collectConditionalSeamKeys(text) {
-    return scanConditionalSeams(text).map((hit) => hit.key).sort();
+    return scanConditionalSeams(text)
+        .map((hit) => hit.key)
+        .sort();
 }
 
 /**
@@ -1051,9 +1041,9 @@ export function findRegressions(current, baseline, adoptNewlyVisible = false) {
             .filter((name) => !before.seams.includes(name));
         if (addedMachinery.length > 0 && !adoptNewlyVisible) {
             problems.push(
-                `${path}: machinery must never be replaceable, but these became injectable: ${
-                    addedMachinery.join(", ")
-                }.`,
+                `${path}: machinery must never be replaceable, but these became injectable: ${addedMachinery.join(
+                    ", ",
+                )}.`,
             );
         }
     }
@@ -1086,9 +1076,9 @@ function findStaleBaseline(current, baseline) {
         const reclassified = entry.machinery.filter((name) => !before.machinery.includes(name));
         if (reclassified.length > 0) {
             stale.push(
-                `${path}: existing seam(s) now recognized as machinery (${
-                    reclassified.join(", ")
-                }) — record them so they can only shrink.`,
+                `${path}: existing seam(s) now recognized as machinery (${reclassified.join(
+                    ", ",
+                )}) — record them so they can only shrink.`,
             );
         }
     }
@@ -1109,9 +1099,9 @@ function applyRenames(baseline, renames) {
         renamed[path] = {
             seams: [...new Set(entry.seams.map((name) => map.get(name) || name))].sort(),
             machinery: [...new Set(entry.machinery.map((name) => map.get(name) || name))].sort(),
-            conditional: (entry.conditional || []).map((key) =>
-                key.replace(/[A-Za-z_$][\w$]*/g, (name) => map.get(name) || name)
-            ).sort(),
+            conditional: (entry.conditional || [])
+                .map((key) => key.replace(/[A-Za-z_$][\w$]*/g, (name) => map.get(name) || name))
+                .sort(),
         };
     }
     return renamed;
@@ -1206,17 +1196,15 @@ if (import.meta.main) {
         }
         await fsWriteFile(
             BASELINE_PATH,
-            `${
-                JSON.stringify(
-                    {
-                        comment:
-                            "Injection-seam ratchet. Seam, machinery, and conditional lists may only shrink. See docs/plans/finish-injection-seam-ownership-enforcement.md.",
-                        files: sortedSeams,
-                    },
-                    null,
-                    4,
-                )
-            }\n`,
+            `${JSON.stringify(
+                {
+                    comment:
+                        "Injection-seam ratchet. Seam, machinery, and conditional lists may only shrink. See docs/plans/finish-injection-seam-ownership-enforcement.md.",
+                    files: sortedSeams,
+                },
+                null,
+                4,
+            )}\n`,
         );
         console.log("Updated scripts/injection-seam-baseline.json.");
         process.exit(0);
@@ -1279,10 +1267,7 @@ if (import.meta.main) {
 
     const total = Object.values(sortedSeams).reduce((sum, entry) => sum + entry.seams.length, 0);
     const machinery = Object.values(sortedSeams).reduce((sum, entry) => sum + entry.machinery.length, 0);
-    const conditional = Object.values(sortedSeams).reduce(
-        (sum, entry) => sum + (entry.conditional?.length || 0),
-        0,
-    );
+    const conditional = Object.values(sortedSeams).reduce((sum, entry) => sum + (entry.conditional?.length || 0), 0);
     console.log(
         `Injection-seam baseline holds: ${total} seam(s) across ${
             Object.keys(sortedSeams).length

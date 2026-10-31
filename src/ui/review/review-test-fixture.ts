@@ -21,6 +21,7 @@ export interface ReviewAnnotationDecision {
 }
 
 export interface ReviewDecisionBody {
+    reviewRevision?: number;
     documents?: import("../../shared/workflow/sequence-review.ts").SequenceDocumentDecision[];
     approved?: boolean;
     conversationTurn?: boolean;
@@ -56,6 +57,12 @@ export function createScriptedReviewBrowser(
                 const reviewUrl = new URL(url);
                 const token = reviewUrl.searchParams.get("token");
                 if (!token) throw new Error("Review URL did not contain a token.");
+                const page = await fetch(reviewUrl);
+                if (!page.ok) throw new Error(`Review page failed: ${page.status}`);
+                const html = await page.text();
+                const embedded = html.match(/<script[^>]*data-(?:code-)?review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+                if (!embedded) throw new Error("Review page did not contain a payload.");
+                const { reviewRevision } = JSON.parse(embedded);
                 const response = await fetch(
                     new URL(`/api/review/${route}?token=${encodeURIComponent(token)}`, reviewUrl.origin),
                     {
@@ -64,7 +71,7 @@ export function createScriptedReviewBrowser(
                             "content-type": "application/json",
                             "x-runwield-review-token": token,
                         },
-                        body: JSON.stringify(body),
+                        body: JSON.stringify({ reviewRevision, ...body }),
                     },
                 );
                 if (!response.ok) {

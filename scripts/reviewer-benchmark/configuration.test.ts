@@ -64,9 +64,24 @@ test("fixture identity ignores its location but changes with source or hidden gr
 });
 
 const cleanCheckouts = defineGitFixture(async (root) => {
+    await cp(new URL("../../.gitignore", import.meta.url), join(root, ".gitignore"));
     await writeFile(join(root, "source.ts"), "export const value = 1;\n");
     await rawGit(root, ["add", "."]);
     await rawGit(root, ["commit", "-m", "Initial implementation"]);
+});
+
+test("transient Bun build files do not change checkout identity, but source edits do", async () => {
+    const root = await cleanCheckouts.checkout();
+    try {
+        const initial = await captureCheckoutIdentity(root);
+        assert.equal(initial.dirty, false);
+        await writeFile(join(root, ".4451952dc3295271-00000000.bun-build"), "temporary compiler output\n");
+        assert.deepEqual(await captureCheckoutIdentity(root), initial);
+        await writeFile(join(root, "source.ts"), "export const value = 2;\n");
+        assert.equal((await captureCheckoutIdentity(root)).dirty, true);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("checkout-local run artifacts do not change identity, but source and other files do", async () => {

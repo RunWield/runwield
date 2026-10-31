@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
@@ -23,11 +24,7 @@ function setup(execImpl) {
         registerTool(tool) {
             tools.push(tool);
         },
-        async exec(
-            /** @type {string} */ command,
-            /** @type {string[]} */ args,
-            /** @type {{ cwd: string }} */ opts,
-        ) {
+        async exec(/** @type {string} */ command, /** @type {string[]} */ args, /** @type {{ cwd: string }} */ opts) {
             calls.push({ command, args, opts });
             return await execImpl(command, args, opts);
         },
@@ -51,8 +48,9 @@ function setup(execImpl) {
  */
 async function executeTool(tool, params) {
     const execute =
-        /** @type {(id: string, params: object, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<{ content: Array<{ type: string, text?: string }>, details: unknown, callMessage?: string }>} */ (tool
-            .execute);
+        /** @type {(id: string, params: object, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<{ content: Array<{ type: string, text?: string }>, details: unknown, callMessage?: string }>} */ (
+            tool.execute
+        );
     return await execute("tool-call-1", params, new AbortController().signal, () => {}, {});
 }
 
@@ -94,14 +92,17 @@ test("memory recall searches both scopes and escapes quotes", async () => {
     assertEquals(result.details, params);
     assertEquals(
         firstText(result),
-        `Project memories (${
-            basename(getCwd())
-        }) — these take precedence over global memories:\nfound memory\n\nGlobal memories (cross-project defaults):\nglobal hit`,
+        `Project memories (${basename(
+            getCwd(),
+        )}) — these take precedence over global memories:\nfound memory\n\nGlobal memories (cross-project defaults):\nglobal hit`,
     );
-    assertArrayIncludes(calls.map((call) => call.args.join(" ")), [
-        ["search", "--name", basename(getCwd()), "--format", "plain", '"he said ""hello"""'].join(" "),
-        ["search", "--global", "--format", "plain", '"he said ""hello"""'].join(" "),
-    ]);
+    assertArrayIncludes(
+        calls.map((call) => call.args.join(" ")),
+        [
+            ["search", "--name", basename(getCwd()), "--format", "plain", '"he said ""hello"""'].join(" "),
+            ["search", "--global", "--format", "plain", '"he said ""hello"""'].join(" "),
+        ],
+    );
 });
 
 test("memory recall returns one missing binary message when mnemoteca is unavailable", async () => {
@@ -125,14 +126,7 @@ test("memory stores project memory with optional core tag", async () => {
     assertEquals(result.details, params);
     assertEquals(firstText(result), "stored");
     assertEquals(result.callMessage, "Storing project memory:\n\nUse deno task ci");
-    assertEquals(calls.at(-1)?.args, [
-        "add",
-        "--name",
-        basename(getCwd()),
-        "--tag",
-        "core",
-        "Use deno task ci",
-    ]);
+    assertEquals(calls.at(-1)?.args, ["add", "--name", basename(getCwd()), "--tag", "core", "Use deno task ci"]);
 });
 
 test("memory initializes global storage then adds memory", async () => {
@@ -146,22 +140,27 @@ test("memory initializes global storage then adds memory", async () => {
     assertEquals(firstText(result), "ok");
     assertEquals(result.callMessage, "Storing global memory:\n\nPrefer concise commit messages");
     assertEquals(calls[0]?.args, ["init", "--global"]);
-    assertEquals(calls[1]?.args, [
-        "add",
-        "--global",
-        "--tag",
-        "core",
-        "Prefer concise commit messages",
-    ]);
+    assertEquals(calls[1]?.args, ["add", "--global", "--tag", "core", "Prefer concise commit messages"]);
 });
 
 test("memory delete checks the requested scope before deleting by id", async () => {
     const { getTool, calls } = setup((_command, args) => {
         if (args[0] === "init") return Promise.resolve({ code: 0, stdout: "", stderr: "" });
-        if (args[0] === "list" && args.includes("--global")) {
-            return Promise.resolve({ code: 0, stdout: "42 global memory", stderr: "" });
+        if (args[0] === "export") {
+            const global = args.includes("--global");
+            writeFileSync(
+                args[args.indexOf("--output") + 1],
+                JSON.stringify({
+                    version: 1,
+                    collection: global ? "global" : args[args.indexOf("--name") + 1],
+                    doc_count: 1,
+                }) +
+                    "\n" +
+                    JSON.stringify({ original_document_id: global ? 42 : 7 }) +
+                    "\n",
+            );
+            return Promise.resolve({ code: 0, stdout: "Exported", stderr: "" });
         }
-        if (args[0] === "list") return Promise.resolve({ code: 0, stdout: "7 project memory", stderr: "" });
         return Promise.resolve({ code: 0, stdout: "   ", stderr: "" });
     });
     const tool = getTool("memory");

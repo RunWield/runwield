@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     const moduleUrl = request.scenarioModule.startsWith("file:")
         ? request.scenarioModule
         : toFileUrl(join(repoRoot, request.scenarioModule)).href;
-    const scenarioModule = await import(moduleUrl) as ScenarioModule;
+    const scenarioModule = (await import(moduleUrl)) as ScenarioModule;
     const scenario = scenarioModule[request.exportName];
     if (!scenario) throw new Error(`Missing scenario export: ${request.exportName}`);
     try {
@@ -38,13 +38,14 @@ async function main(): Promise<void> {
         });
         console.log(JSON.stringify({ ok: true, result }));
     } catch (error) {
-        console.log(JSON.stringify({
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-            artifactDir: error && typeof error === "object" && "artifactDir" in error
-                ? String(error.artifactDir || "")
-                : "",
-        }));
+        console.log(
+            JSON.stringify({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+                artifactDir:
+                    error && typeof error === "object" && "artifactDir" in error ? String(error.artifactDir || "") : "",
+            }),
+        );
         throw error;
     }
 }

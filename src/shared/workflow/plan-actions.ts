@@ -303,10 +303,26 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
     if (invalid) return { kind: "invalid_action", message: invalid };
     try {
         await prepareWorktreeRegistry(projectRoot);
+        const registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        if (registry.kind !== "ok") {
+            return {
+                kind: "recovery_required",
+                message: sanitizeMessage(registry.message),
+                entryIds: registry.entryIds,
+            };
+        }
         const selected = await findPlanEvidenceById(projectRoot, request.planId);
         if (!selected) return { kind: "invalid_action", message: "Plan not found." };
         await preparePlanWorkflow(projectRoot, selected.planName);
     } catch (error) {
+        const registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        if (registry.kind !== "ok" || registry.live) {
+            return {
+                kind: "recovery_required",
+                message: sanitizeMessage(error instanceof Error ? error.message : String(error)),
+                entryIds: registry.kind !== "ok" ? registry.entryIds : registry.live ? [registry.live.id] : [],
+            };
+        }
         return {
             kind: "invalid_action",
             message: sanitizeMessage(error instanceof Error ? error.message : String(error)),

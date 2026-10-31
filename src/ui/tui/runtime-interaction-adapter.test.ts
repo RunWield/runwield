@@ -280,7 +280,7 @@ test("TUI code review exposes each real surface URL without browser opening and 
         outputs: [],
         ended: [],
     };
-    const scripted = createScriptedReviewBrowser("decision", { approved: true }, false);
+    const scripted = createScriptedReviewBrowser("decision", { approved: true, reviewRevision: 0 }, false);
     const adapter = createAdapter(makeUi(null, state), { browser: scripted.browser });
     const callbacks: string[] = [];
     try {

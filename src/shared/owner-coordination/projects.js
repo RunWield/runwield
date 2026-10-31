@@ -77,9 +77,9 @@ function requireAbsoluteRoot(root, field) {
  * @param {string} [allowedProjectId]
  */
 function assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot, allowedProjectId) {
-    const rows = db.prepare("SELECT project_id, canonical_root FROM project_roots WHERE entered_root = ?").all(
-        enteredRoot,
-    );
+    const rows = db
+        .prepare("SELECT project_id, canonical_root FROM project_roots WHERE entered_root = ?")
+        .all(enteredRoot);
     for (const row of rows) {
         if (row.canonical_root !== canonicalRoot) {
             throw new Error(`Project root path reuse or symlink retarget conflict: ${enteredRoot}`);
@@ -95,16 +95,18 @@ function assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot, allowedProj
  * @param {{ projectId: string, enteredRoot: string, canonicalRoot: string, rootState: 'current' | 'historical', now: string, idFactory?: () => string }} options
  */
 function ensureProjectRootEvidence(db, options) {
-    const existing = db.prepare(
-        "SELECT id, canonical_root FROM project_roots WHERE project_id = ? AND entered_root = ?",
-    ).get(options.projectId, options.enteredRoot);
+    const existing = db
+        .prepare("SELECT id, canonical_root FROM project_roots WHERE project_id = ? AND entered_root = ?")
+        .get(options.projectId, options.enteredRoot);
     if (existing) {
         if (existing.canonical_root !== options.canonicalRoot) {
             throw new Error(`Project root path reuse or symlink retarget conflict: ${options.enteredRoot}`);
         }
-        db.prepare(
-            "UPDATE project_roots SET root_state = ?, ended_at = ? WHERE id = ?",
-        ).run(options.rootState, options.rootState === "current" ? null : options.now, existing.id);
+        db.prepare("UPDATE project_roots SET root_state = ?, ended_at = ? WHERE id = ?").run(
+            options.rootState,
+            options.rootState === "current" ? null : options.now,
+            existing.id,
+        );
         return;
     }
     db.prepare(
@@ -163,9 +165,11 @@ export function registerProject(database, options) {
     return ownerDb.transaction(() => {
         const db = ownerDb.handle;
         assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot);
-        const existingRoot = db.prepare(
-            "SELECT DISTINCT projects.* FROM project_roots JOIN projects ON projects.id = project_roots.project_id WHERE project_roots.canonical_root = ? ORDER BY projects.created_at LIMIT 1",
-        ).get(canonicalRoot);
+        const existingRoot = db
+            .prepare(
+                "SELECT DISTINCT projects.* FROM project_roots JOIN projects ON projects.id = project_roots.project_id WHERE project_roots.canonical_root = ? ORDER BY projects.created_at LIMIT 1",
+            )
+            .get(canonicalRoot);
         const now = isoNow(options.now);
         if (existingRoot) {
             const existingProjectId = String(existingRoot.id);
@@ -218,9 +222,9 @@ export function setProjectEnabled(database, projectId, enabled, options = {}) {
         const project = getProjectById(ownerDb, projectId);
         if (!project) throw new Error(`Project not found: ${projectId}`);
         const now = isoNow(options.now);
-        ownerDb.handle.prepare(
-            "UPDATE projects SET lifecycle = ?, updated_at = ?, disabled_at = ? WHERE id = ?",
-        ).run(enabled ? "enabled" : "disabled", now, enabled ? null : now, projectId);
+        ownerDb.handle
+            .prepare("UPDATE projects SET lifecycle = ?, updated_at = ?, disabled_at = ? WHERE id = ?")
+            .run(enabled ? "enabled" : "disabled", now, enabled ? null : now, projectId);
         return /** @type {RegisteredProject} */ (getProjectById(ownerDb, projectId));
     });
 }
@@ -255,17 +259,16 @@ export function relinkProject(database, options) {
         const project = getProjectById(ownerDb, options.projectId);
         if (!project) throw new Error(`Project not found: ${options.projectId}`);
         assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot, options.projectId);
-        const existingRoots = db.prepare("SELECT DISTINCT project_id FROM project_roots WHERE canonical_root = ?").all(
-            canonicalRoot,
-        );
+        const existingRoots = db
+            .prepare("SELECT DISTINCT project_id FROM project_roots WHERE canonical_root = ?")
+            .all(canonicalRoot);
         if (existingRoots.some((root) => root.project_id !== options.projectId)) {
             throw new Error(`Project root is already registered to another Project: ${canonicalRoot}`);
         }
         const now = isoNow(options.now);
         db.prepare(
             "UPDATE project_roots SET root_state = 'historical', ended_at = COALESCE(ended_at, ?) WHERE project_id = ?",
-        )
-            .run(now, options.projectId);
+        ).run(now, options.projectId);
         ensureProjectRootEvidence(db, {
             projectId: options.projectId,
             enteredRoot,
@@ -288,13 +291,16 @@ export function relinkProject(database, options) {
  */
 export function listProjectRootEvidence(database, projectId) {
     const db = requireDatabase(database).handle;
-    return db.prepare(
-        "SELECT entered_root, canonical_root, root_state FROM project_roots WHERE project_id = ? ORDER BY root_state = 'current' DESC, created_at DESC",
-    ).all(projectId).map((row) => ({
-        enteredRoot: String(row.entered_root),
-        canonicalRoot: String(row.canonical_root),
-        rootState: String(row.root_state),
-    }));
+    return db
+        .prepare(
+            "SELECT entered_root, canonical_root, root_state FROM project_roots WHERE project_id = ? ORDER BY root_state = 'current' DESC, created_at DESC",
+        )
+        .all(projectId)
+        .map((row) => ({
+            enteredRoot: String(row.entered_root),
+            canonicalRoot: String(row.canonical_root),
+            rootState: String(row.root_state),
+        }));
 }
 
 /**

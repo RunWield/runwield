@@ -112,6 +112,18 @@ async function withCodeReview(verify, overrides = {}) {
                 revision++;
                 return Promise.resolve(Response.json({ ok: true }));
             }
+            if (String(url) === "/conversation") {
+                return Promise.resolve(
+                    Response.json({
+                        revision,
+                        reviewRevision: revision,
+                        rawPatch: patch,
+                        events: [],
+                        error:
+                            overrides.failConversation && revision === 1 ? "Turn failed. Retry the turn." : undefined,
+                    }),
+                );
+            }
             if (String(url) === "/operation") {
                 const response = () =>
                     Response.json({
@@ -373,5 +385,25 @@ test("a changed reopened patch makes the retained guide stale and clears viewed 
             );
         },
         { revisedRawPatch: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+revised\n" },
+    );
+});
+
+test("standalone Code Review releases failed chat and can retry at the rearmed revision", async () => {
+    await withCodeReview(
+        async ({ container, send, submitted }) => {
+            await send("Explain this patch");
+            assertStringIncludes(container.textContent, "Turn failed. Retry the turn.");
+            assertEquals(container.querySelector('textarea[aria-label="Message Engineer"]').disabled, false);
+            await send("Try again");
+            assertEquals(submitted[0].reviewRevision, 0);
+            assertEquals(submitted[1].reviewRevision, 1);
+            assertStringIncludes(container.textContent, "Code Review is ready to continue.");
+        },
+        {
+            conversationStatusUrl: "/conversation",
+            interactionAnswerUrl: undefined,
+            interactionAnswerBaseUrl: undefined,
+            failConversation: true,
+        },
     );
 });

@@ -892,7 +892,9 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             return controller?.state.documentWorktreeId === entry.id ? { ...entry, documentSelected: true } : entry;
         }),
     );
-    const identityDocuments = await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries);
+    const identityDocuments = (await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries)).sort((left, right) =>
+        left.name.localeCompare(right.name),
+    );
     for (const parent of [...identityDocuments]) {
         const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
         if (!targetBranch || !isProjectPlan(parent.attrs)) continue;

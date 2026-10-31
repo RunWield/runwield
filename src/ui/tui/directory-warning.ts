@@ -15,8 +15,12 @@ const acknowledgedRoots = new Set<string>();
 export class DirectoryStartupCanceled extends Error {}
 
 /** Consent is invocation-local and tied to the resolved directory. */
-export async function confirmProjectDirectory(path = getCwd(), allow = false): Promise<boolean> {
-    return await confirmInspectedDirectory(inspectProjectDirectory(path), allow);
+export async function confirmProjectDirectory(
+    path = getCwd(),
+    allow = false,
+    startupNotice?: string,
+): Promise<boolean> {
+    return await confirmInspectedDirectory(inspectProjectDirectory(path), allow, startupNotice);
 }
 
 /** Preflight only a missing registered execution target; recheck the restored directory afterwards. */
@@ -24,7 +28,11 @@ export async function confirmMissingManagedProjectDirectory(path: string): Promi
     return await confirmInspectedDirectory(inspectMissingManagedProjectDirectory(path), false);
 }
 
-async function confirmInspectedDirectory(directory: DirectoryInspection, allow: boolean): Promise<boolean> {
+async function confirmInspectedDirectory(
+    directory: DirectoryInspection,
+    allow: boolean,
+    startupNotice?: string,
+): Promise<boolean> {
     const path = directory.enteredRoot;
     if (!directory.classified) return true;
     const key = directory.canonicalRoot;
@@ -46,7 +54,8 @@ async function confirmInspectedDirectory(directory: DirectoryInspection, allow: 
     }
     initRunWieldTheme();
     const tui = initTUI();
-    const block = new PromptSelectBlock(`${DIRECTORY_WARNING}\n${path}`, [
+    const warning = `${DIRECTORY_WARNING}\n${path}`;
+    const block = new PromptSelectBlock(startupNotice ? `${startupNotice}\n\n${warning}` : warning, [
         { value: "quit", label: "Quit" },
         { value: "continue", label: "Continue" },
     ]);

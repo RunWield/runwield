@@ -13,10 +13,7 @@ export interface InteractiveSessionOptions {
 }
 
 export interface InteractiveSessionPort {
-    startInteractiveSession(
-        userRequest: string | null,
-        options: InteractiveSessionOptions,
-    ): Promise<UiAPI | void>;
+    startInteractiveSession(userRequest: string | null, options: InteractiveSessionOptions): Promise<UiAPI | void>;
 }
 
 /** Production composition for commands that launch the interactive TUI. */
