@@ -15,6 +15,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
+import { setCustomSetting } from "../settings.js";
 import { openFileSessionStore } from "./file-session-store.ts";
 
 const repository = defineCommittedGitFixture({
@@ -202,6 +203,261 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 } finally {
                     await restarted.closeAllSessionsWhenIdle();
                 }
+            } finally {
+                await runtime.closeAllSessionsWhenIdle();
+                store.close();
+                await fsRm(worktreeRoot, { recursive: true });
+                await fsRm(root, { recursive: true });
+            }
+        });
+    });
+}
+
+test("continue resumes paused AI review with its prior review context, not an Engineer turn", async () => {
+    await withRuntimeCommandFixture("paused-review-continuation-", async (fixture) => {
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        settings.retry = { enabled: false };
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
+        const root = await repository.checkout();
+        const worktreeRoot = await fsMkdtemp(join(tmpdir(), "paused-review-tree-"));
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store });
+        try {
+            const name = "paused-review";
+            const body = "# Paused review\n\nImplement the requested change.\n";
+            await savePlan(root, name, body, {
+                planId: "paused-review-plan",
+                classification: "PLANNED_CHANGE",
+                status: "validated_ci",
+                executionAgent: "engineer",
+                targetBranch: "main",
+            });
+            await git(root, ["add", "."]);
+            await git(root, ["commit", "-m", "Plan"]);
+            const baseline = await git(root, ["rev-parse", "HEAD^{tree}"]);
+            const tree = await createTestWorktreeAttempt({
+                projectRoot: root,
+                planName: name,
+                planId: "paused-review-plan",
+                worktreeRoot,
+            });
+            await fsWriteFile(join(tree.path, "implementation.txt"), "review-continuity-sentinel\n");
+            const plan = await loadPlan(tree.path, name);
+            assertExists(plan);
+            await savePlan(
+                tree.path,
+                name,
+                body,
+                {
+                    ...plan.attrs,
+                    executionMode: "worktree",
+                    executionBaselineTree: baseline,
+                },
+                { expectedRevision: plan.revision },
+            );
+            const ready = await loadPlan(tree.path, name);
+            assertExists(ready);
+            const id = await runtime.createPromptReadySession({ cwd: root, agentName: "engineer" });
+            const interrupted = () =>
+                fauxAssistantMessage(fauxText("Review interrupted."), {
+                    stopReason: "error",
+                    errorMessage: "Unexpected EOF",
+                });
+            fixture.setModelResponseFactories([
+                () => fauxAssistantMessage(fauxToolCall("review_diff", { command: "list" })),
+                () =>
+                    fauxAssistantMessage(fauxToolCall("review_diff", { command: "show", path: "implementation.txt" })),
+                interrupted,
+            ]);
+            const result = await runtime.runValidation(id, {
+                planName: name,
+                planContent: body,
+                triageMeta: { ...ready.attrs, revision: ready.revision },
+            });
+            assertEquals(result?.kind, "paused");
+            const paused = await loadPlan(tree.path, name);
+            assertEquals(paused?.attrs.validationCheckpoint?.state, "paused");
+            assertEquals(paused?.attrs.validationCheckpoint?.nextPhase, "semantic");
+            let resumedTools = "";
+            let resumedMessages = "";
+            let resumedRequest = "";
+            fixture.setModelResponseFactories([
+                (context) => {
+                    resumedTools = JSON.stringify(context.messages.filter((message) => message.role === "system"));
+                    resumedMessages = JSON.stringify(context.messages);
+                    resumedRequest = JSON.stringify(
+                        context.messages.filter((message) => message.role === "user").at(-1),
+                    );
+                    return interrupted();
+                },
+            ]);
+            const followUp = await runtime.promptUserTurn(id, { initialRequest: "continue" });
+            assertEquals(followUp.ok, true);
+            assertStringIncludes(resumedTools, "review_complete");
+            assertStringIncludes(resumedMessages, "review-continuity-sentinel");
+            assertStringIncludes(resumedRequest, `docs/plans/${name}.md (full), unread bytes`);
+            assertEquals(resumedRequest.includes("implementation.txt (full), unread bytes"), false);
+            assertEquals(await fsRealpath(runtime.getSessionSnapshot(id)!.cwd), await fsRealpath(tree.path));
+
+            // A different candidate must not inherit earlier coverage or findings.
+            await fsWriteFile(join(tree.path, "implementation.txt"), "changed-candidate\n");
+            fixture.setModelResponseFactories([
+                (context) => {
+                    resumedTools = JSON.stringify(context.messages.filter((message) => message.role === "system"));
+                    resumedMessages = JSON.stringify(context.messages);
+                    return interrupted();
+                },
+            ]);
+            assertEquals((await runtime.promptUserTurn(id, { initialRequest: "retry" })).ok, true);
+            assertStringIncludes(resumedTools, "review_complete");
+            assertEquals(resumedMessages.includes("review-continuity-sentinel"), false);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await fsRm(worktreeRoot, { recursive: true });
+            await fsRm(root, { recursive: true });
+        }
+    });
+});
+
+for (const entrypoint of ["prompt", "validation"] as const) {
+    test(`Epic repair completion through ${entrypoint} replaces the completed child Session once`, async () => {
+        await withRuntimeCommandFixture("epic-repair-continuation-", async ({ setModelResponseFactories }) => {
+            const root = await repository.checkout();
+            const worktreeRoot = await fsMkdtemp(join(tmpdir(), "epic-repair-tree-"));
+            const store = openFileSessionStore();
+            const runtime = createSessionRuntime({ sessionStore: store });
+            try {
+                await setCustomSetting("verification_command", "bun --version", "project", root);
+                const parentPlan = "repair-epic";
+                const name = `${parentPlan}/01-repair`;
+                const next = `${parentPlan}/02-next`;
+                const body = "# Repair child\n\nImplement the requested change.\n";
+                await savePlan(root, parentPlan, "# Repair Epic\n", {
+                    planId: "repair-epic-plan",
+                    classification: "PROJECT",
+                    status: "ready_for_work",
+                });
+                await savePlan(root, next, "# Next child\n", {
+                    planId: "next-child-plan",
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    parentPlan,
+                    order: 2,
+                });
+                await savePlan(root, name, body, {
+                    planId: "repair-child-plan",
+                    classification: "PLANNED_CHANGE",
+                    status: "validated_ci",
+                    executionAgent: "engineer",
+                    targetBranch: "main",
+                    parentPlan,
+                    order: 1,
+                    humanReviewMode: "none",
+                });
+                await git(root, ["add", "."]);
+                await git(root, ["commit", "-m", "Epic Plans"]);
+                const baseline = await git(root, ["rev-parse", "HEAD^{tree}"]);
+                const tree = await createTestWorktreeAttempt({
+                    projectRoot: root,
+                    planName: name,
+                    planId: "repair-child-plan",
+                    worktreeRoot,
+                });
+                await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
+                const plan = await loadPlan(tree.path, name);
+                assertExists(plan);
+                await savePlan(
+                    tree.path,
+                    name,
+                    body,
+                    {
+                        ...plan.attrs,
+                        executionMode: "worktree",
+                        executionBaselineTree: baseline,
+                        worktreeId: tree.id,
+                        worktreePath: tree.path,
+                        worktreeBranch: tree.branch,
+                        worktreeBaseBranch: "main",
+                    },
+                    { expectedRevision: plan.revision },
+                );
+                const id = await runtime.createPromptReadySession({ cwd: root, agentName: "engineer" });
+                await runtime.setActiveExecutionWorkflow(id, {
+                    planName: name,
+                    projectRoot: root,
+                    executionCwd: tree.path,
+                    executionAgent: "engineer",
+                    executionMode: "worktree",
+                    baselineTree: baseline,
+                    worktreeId: tree.id,
+                    worktreeBranch: tree.branch,
+                    worktreeBaseBranch: "main",
+                    triageMeta: { ...plan.attrs, classification: "PLANNED_CHANGE" },
+                    validationContinuation: true,
+                });
+                const reviewDiff = () => [
+                    () => fauxAssistantMessage(fauxToolCall("review_diff", { command: "list" })),
+                    () =>
+                        fauxAssistantMessage(
+                            fauxToolCall("review_diff", { command: "show", path: "implementation.txt" }),
+                        ),
+                    () =>
+                        fauxAssistantMessage(
+                            fauxToolCall("review_diff", { command: "show", path: `docs/plans/${name}.md` }),
+                        ),
+                ];
+                setModelResponseFactories([
+                    ...(entrypoint === "prompt"
+                        ? [
+                              () =>
+                                  fauxAssistantMessage(
+                                      fauxToolCall("task_completed", { message: "Implementation complete." }),
+                                  ),
+                          ]
+                        : []),
+                    ...reviewDiff(),
+                    () =>
+                        fauxAssistantMessage(
+                            fauxToolCall("review_complete", {
+                                approved: false,
+                                feedback: "Missing guard",
+                                findings: [
+                                    {
+                                        title: "Missing guard",
+                                        requirement: "Implement the requested change",
+                                        evidence: "implementation.txt",
+                                    },
+                                ],
+                            }),
+                        ),
+                    () => fauxAssistantMessage(fauxToolCall("task_completed", { message: "Guard repaired." })),
+                    ...reviewDiff(),
+                    () =>
+                        fauxAssistantMessage(
+                            fauxToolCall("review_complete", {
+                                approved: true,
+                                findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
+                            }),
+                        ),
+                    () => fauxAssistantMessage(fauxText("Planning the next child.")),
+                ]);
+                const replacements: string[] = [];
+                runtime.subscribeSessionEvents(id, (event) => {
+                    if (event.type === "session_replaced") replacements.push(event.newSessionId);
+                });
+                if (entrypoint === "prompt") {
+                    const result = await runtime.promptUserTurn(id, { initialRequest: "Yes, continue the repair." });
+                    assertEquals(result.ok, true);
+                    assertEquals(result.replacementSessionId, replacements[0]);
+                } else {
+                    const result = await runtime.runValidation(id, { planName: name });
+                    assertEquals(result?.kind, "verified");
+                }
+                assertEquals(replacements.length, 1);
+                assertEquals(runtime.getSessionSnapshot(id), null);
+                assertExists(runtime.getSessionSnapshot(replacements[0]));
+                assertEquals((await loadPlan(root, name))?.attrs.status, "verified");
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
                 store.close();

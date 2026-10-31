@@ -173,6 +173,33 @@ send again.
 
 For a quick Plan Board of the current checkout without linking a project or pairing, run `wld plans ui`.
 
+## Usage and export
+
+Choose **Usage** in the sidebar. **Report** shows local usage and outcomes with period and Project filters. Missing
+measurements stay distinct from measured zero. The recording and export summary links to **Settings**.
+
+In **Settings**, turn recording on or off globally and check each Project's effective state. Project settings override
+the global choice and are not edited by the browser. Recording is opt-in; turning it off keeps existing history.
+
+To export, install and approve a metrics exporter on the host with `wld install <source>`. Approval is not available in
+the browser. Then choose **Add destination**, enter the endpoint and external project, and explicitly select Projects.
+New Projects are not exported automatically. Use HTTPS, or select the local-development option for loopback HTTP.
+
+Each destination has its own **Approved Projects**, **Credentials**, **Delivery status**, and **Destination** tabs.
+Long Project lists have search; hidden search results keep their approval. Credential fields come from the exporter.
+Saved credentials never return to the browser, and successful saves clear the inputs. Delivery status shows Core's
+counts and codes; **Refresh** reads them again. Delivery unconfirmed is not a workflow failure, and RunWield does not
+resend those items.
+
+Use **Destination** to change the endpoint or external project, or revoke export. These actions require confirmation.
+A new boundary does not send old pending items. Revoking stops new sends but cannot recall a sent request.
+**Clear history** also requires confirmation: it removes selected Projects' measurements and pending payloads, not
+Sessions, Plans, worktrees, settings, or remote data. Disabling or removing a Project in Workspace does not revoke its
+export approval.
+
+See [recording and export settings](settings.md#export-settings-and-history-removal) for storage and consent details,
+and the [Langfuse exporter](../../packages/langfuse-exporter/README.md) for its fields and protocol limits.
+
 ## Run Workspace in a container
 
 A container setup for running Workspace on a server is coming soon.

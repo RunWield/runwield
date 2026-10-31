@@ -6,7 +6,6 @@ complexity: "HIGH"
 affectedPaths:
     - "AGENTS.md"
     - "docs/domain-language.md"
-    - "docs/plans/deep-semantic-source-modules.md"
     - "scripts/check-injection-seams.js"
     - "scripts/check-injection-seams.test.ts"
     - "scripts/external-capability-ports.json"
@@ -207,8 +206,6 @@ grows, or the Verification Plan no longer proves the objective.
   prove real composition and preserve behavior after the test-only replacement points disappear.
 - `docs/domain-language.md` — update **Session-Independent Validation Engine** to describe the implemented runtime
   context and narrow Agent/interaction capabilities; do not present `ValidationSessionPort` as current truth.
-- `docs/plans/deep-semantic-source-modules.md` — update the future move map and checks to move the resulting
-  declarations, with no legacy `ValidationSessionPort` exception.
 
 The completed and archived Init seam-risk Plan is deliberately outside the change surface. Its behavior is a
 compatibility constraint, not a document to revise.
@@ -272,8 +269,7 @@ compatibility constraint, not a document to revise.
   real RunWield composition and fixture environments. Fakes remain only for manifest-declared external capabilities and
   fail loudly if a scenario unexpectedly reaches a real browser, model, CI process, terminal host, network, or Mnemoteca
   process.
-- `docs/domain-language.md`, `AGENTS.md`, and `docs/plans/deep-semantic-source-modules.md` describe the implemented
-  names, ownership rule, and move sequence. The glossary no longer names `ValidationSessionPort`, and no customer-facing
+- `docs/domain-language.md` and `AGENTS.md` describe the implemented names and ownership rule. The glossary no longer names `ValidationSessionPort`, and no customer-facing
   Init prompt or check exposes this repository-private manifest.
 
 ## Approval Confirmation
@@ -342,9 +338,6 @@ session-independent validation extraction rather than replacing their historical
   path for the Attached Workflow coordinator.
 - Tests that mutate `HOME`, `PATH`, or cwd use `withProcessGlobalTestLock`; all source cwd/home reads use `getCwd()` and
   `getHomeDir()` at call time.
-- Do not execute this Plan concurrently with `docs/plans/deep-semantic-source-modules.md`. Finish this ownership change
-  first and then update the source-move Plan to move the resulting modules. If the move lands first, translate paths to
-  the moved modules without restoring a legacy-port exception.
 - The archived Init seam-risk work is complete. Keep it advisory and language-neutral; do not modify its archived Plan
   or introduce `wld check` ownership enforcement.
 - Pure formatters and data transforms do not need ports.

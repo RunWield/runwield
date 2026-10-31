@@ -29,6 +29,10 @@ first-party plugins. A Connect plugin lets users explicitly invoke RunWield work
 while that host retains the conversation and makes every model call. _Avoid_: Plugin mode, always-on RunWield, trial
 mode
 
+**Compatibility Matrix**: Core-owned, versioned data of tested External Agent Host versions, adapter contracts,
+capabilities, and limits for a Connect adapter. Activation checks it; only acceptance evidence adds tested entries.
+_Avoid_: support list, capability manifest
+
 **Attached Mode**: The internal architecture underlying RunWield Connect, in which an External Agent Host makes every
 model call and users invoke RunWield explicitly for individual user requests. Use RunWield Connect in customer-facing
 product language. _Avoid_: Public product name, RunWield Execution Backend
@@ -36,6 +40,35 @@ product language. _Avoid_: Public product name, RunWield Execution Backend
 **Attached Workflow**: The per-request RunWield workflow active inside an External Agent Host through RunWield Connect,
 with RunWield governing durable workflow truth while the host performs agent reasoning and execution. _Avoid_: Attached
 Mode, Managed Mode, RunWield Session
+
+An Attached Workflow can continue through another compatible External Agent Host in the same local repository. The
+originating host remains provenance; the current host supplies reasoning. Continuation preserves Core's saved Plan,
+action, and execution directory without transferring host conversation history.
+
+**Attached Workflow Coordinator**: The Core runtime that advances Attached Workflows through short `wld attached`
+operations. It is a sibling of `SessionRuntime`: it loads the Attached Workflow Record, checks it, makes at most one
+change, saves, and exits. It never creates a Session, calls a model, or stores a host transcript. _Avoid_: Attached
+adapter, attached Session, host bridge
+
+**Attached Workflow Record**: The durable file that holds one Attached Workflow's state, revision, pending host action,
+accepted operation results, and binding evidence. It lives under `~/.wld/attached/`, keyed by the primary checkout root.
+It references its Plan but does not own it. The same Plan can be opened and run with `wld`. _Avoid_: Attached Session,
+host transcript, controller record
+
+**Attached Review Round**: The durable pending-review identity on an Attached Workflow Record: round, action ID, actual
+reviewed Plan revision, and waiting reason. It keeps a browser decision and its outcome recoverable across process loss.
+Core Plan review remains the authority for approval, Feedback, and readiness. _Avoid_: review promise, session-scoped
+review
+
+**Attached Execution Handoff**: The durable handoff of a Core-prepared execution directory, Plan path, issued action,
+and current implementer role instructions to an External Agent Host worker. The Attached Workflow Record references
+RunWield's registry and baseline evidence; it does not own a second worktree lifecycle. The host worker returns a bullet
+report to the coordinating conversation, which submits Core's `task_completed` contract. With remembered non-Git
+consent, the directory is the current checkout rather than a worktree. _Avoid_: worker session, host worktree
+
+**Attached Role Instructions**: The effective layered agent instructions Core returns with a pending host action. They
+are resolved for each response from project, home, and bundled definitions and are not saved in the Attached Workflow
+Record. _Avoid_: generated Skill, role contract copy
 
 **Headless Mode**: The non-interactive RunWield execution surface that emits machine-readable Agent Session events for
 external hosts. _Avoid_: TUI mode, batch wrapper, remote UI
@@ -68,6 +101,64 @@ it is not shared project knowledge or a source for cross-Session Agent retrieval
 interaction results as committed transcript history; a live unanswered interaction is not committed history until its
 result is written. _Avoid_: Work Record, planning memory, shared conversation
 
+**Usage observation**: A content-free measurement that RunWield Core observes while `workflowMetrics` is enabled. It
+records workflow activity, model tokens, measured or estimated costs, timing, or tool/context coverage, not user
+conversation content or a provider invoice. It belongs to one primary Project history and collection epoch. It may link
+to a Session and, when observed, a Plan; it does not replace Session Transcript or Plan Association authority. Missing
+measurements are unavailable, not zero. See
+[Core usage measurement and export](prd/runwield-core-prd.md#usage-measurement-and-export). _Avoid_: Transcript, billing
+charge, invoice, complete activity history
+
+**Metrics exporter**: An optional, destination-specific package entry point that receives approved Core observations.
+Core owns its host-global approval and binds it to its installed identity: exporter ID, configured user-scope source,
+real installed path, and version. Core dispatches one immutable, content-free observation under a separate Export grant.
+The package handles transport, not permission, retries, or journal access. It is not loaded as a Session extension.
+_Avoid_: model Provider, Pi Agent extension, RunWield Connect plugin
+
+**Export grant**: Saved host-global permission to send future eligible observations to one approved exporter identity,
+endpoint, and external project from an explicit Project allowlist. Each Project has its own journal start position.
+Credentials are separate. A new endpoint or re-enablement starts new consent; it does not sweep earlier history. See
+[Core export consent](prd/runwield-core-prd.md#export-consent). _Avoid_: collection opt-in, exporter package approval
+
+<a id="delivery-accepted"></a>
+
+**Delivery accepted**: The exporter reports acceptance of an observation. Read-back has not proved its remote presence.
+_Avoid_: confirmed publication, Plan Status
+
+<a id="delivery-confirmed"></a>
+
+**Delivery confirmed**: Exporter read-back proves that the remote observation is present. This does not confirm workflow
+publication. _Avoid_: published Plan, workflow success
+
+<a id="delivery-rejected"></a>
+
+**Delivery rejected**: The destination did not accept an observation. A permanent rejection stays rejected; a correction
+rejection becomes pending only after credentials change. _Avoid_: failed Plan, abandoned workflow
+
+**Delivery unconfirmed**: An exporter delivery state where acceptance is unknown. Core never resends it automatically.
+Read-back can change it to [Delivery confirmed](#delivery-confirmed). It differs from
+[Delivery accepted](#delivery-accepted) and [Delivery rejected](#delivery-rejected). It is not a Plan Status or a
+workflow failure. _Avoid_: retryable send, failed workflow
+
+**Active day**: A reporting-zone calendar day with accepted human input or an explicit user-started continuation,
+recorded through user-initiated execution or command provenance. An open window, automatic repair, or background result
+is not user activity. Usage can complete on a day that is not active. _Avoid_: Login day, model activity day, open tab
+
+**Usage gap**: A reporting interval without complete measurement coverage. Disabled, legacy, unavailable, incomplete,
+and not-yet-collected evidence are distinct gap reasons. A gap breaks the usage trend; it is not a measured zero. A
+known zero requires an enabled interval bounded by recorded evidence. _Avoid_: Zero usage, disabled duration, failed
+workflow
+
+**Collection epoch**: The local identity for a collection interval. Normal recording controls commit a host-level
+boundary with the setting; Projects with an explicit boolean recording override keep their epoch. An empty Project
+setting inherits global enablement and its boundaries. Direct settings-file edits are
+observed lazily by Core. An observed disabled transition can be retained as control evidence, but is not a Usage
+observation. Unobserved intervals contain no recorded measurements and do not prove disabled durations. Collection
+epochs are not Session lifetimes or Plan statuses. _Avoid_: Disabled duration, Session epoch
+
+**History epoch**: The identity of one local primary Project measurement history. Usage observations and collection
+control records link to it; Session and Plan links remain separate. It does not authorize replay or reconstruction from
+Session Transcripts. _Avoid_: Session history, Plan revision, billing period
 **Session Export**: A file copy of one Session's complete committed Session Transcript across all Session Transcript
 Segments, with Session Manifest facts. `/export` writes HTML or JSON; `/share` uploads both to a secret GitHub Gist. It is
 not a Shared Session Snapshot. _Avoid_: Pi export, segment export
@@ -666,12 +757,18 @@ primary branch; the user merges it or opens a pull request. _Avoid_: Release bra
 **Integration Notes**: What a child's Semantic Reviewer leaves for the **Integration Gate**: checks that only the
 assembled Epic can show, such as an assumption about a sibling's work. RunWield keeps them in a managed
 `### Integration Notes` subsection of the Epic's Verification Plan. They are places to look, not requirements, and they
-never block the child. _Avoid_: Integration requirements, deferred findings
+never block the child. Notes are written in the child's execution checkout and reach the Epic branch with child
+delivery. _Avoid_: Integration requirements, deferred findings
 
 **Integration Gate**: The check that finishes an Epic with an **Epic Branch** once every included child is delivered to
 it. It runs the project's checks, an integration review of the whole Epic diff, and Code Review per the `codereview`
-setting, on the exact branch head. A pass makes the Epic `validated` for that commit; findings become a draft repair
-child that Planner starts from. _Avoid_: Epic validation run, final review
+setting, on the exact branch head. A pass makes the Epic `reviewed` for that commit. One full review opens a persistent
+finding ledger; later reviews verify stable finding IDs and check the repair delta for regressions. Findings create draft
+repair children before round three. From round three onward, the user chooses another repair, Code Review takeover
+(only with passing project checks), or stop. Human takeover approval is not AI approval. Existing integration repair
+children count toward the limit. When only unstarted gate repair drafts remain, the user can retry from the Epic menu.
+A pass closes those drafts without verification and names the checked commit in the reason. New findings update the
+newest draft after any required round-limit decision. The automatic gate still waits for repair delivery. _Avoid_: Epic validation run, final review
 
 **Sequence**: A PROJECT Plan with `type: sequence` whose brief context and complete child Plans are authored by Planner
 and reviewed together. Approve & Execute starts the first child; normal PROJECT continuation runs subsequent children in
@@ -708,11 +805,13 @@ express. Plan Status still selects the validation phase. Session workflow state 
 cleared when validation ends, review reopens, or the implementation attempt is replaced. _Avoid_: Second status, Session
 state
 
-**Session-Independent Validation Engine**: The Workflow Validation sequencing, convergence policy, and gate predicates
-run on a session-independent engine (`src/shared/workflow/validation-engine.ts` and its phase modules) that consumes
-Pi/session turn machinery only through a narrow `ValidationSessionPort`. The Core Session runtime's `validation.ts`
-builds that port over the HostedSession machinery; other runtimes can drive the same engine by implementing the port.
-_Avoid_: Second validation implementation, session-coupled engine
+**Session-Independent Validation Engine**: Workflow Validation sequencing, convergence policy, and gate predicates run
+on the shared engine (`src/shared/workflow/validation-engine.ts` and its phase modules). Its supervisor and local CI
+command runner also work without a Session. Core's `validation.ts` builds `ValidationSessionPort` over HostedSession;
+`validation-host-turn.ts` uses the same supervisor and engine but returns typed reviewer, repair, and decision requests
+instead of in-process waits. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
+Host-turn validation stops at `reviewed`, before delivery. _Avoid_: Second validation implementation, session-coupled
+engine
 
 **Mechanical Validation**: RunWield's automated command validation loop. In no-plan QUICK_FIX work it runs local CI only
 without semantic review or Plan status transitions; inside Workflow Validation for executable Plans it runs the
@@ -728,7 +827,10 @@ worktree Plan edit, lifecycle edit
 autonomous or Pair style, including restored Sessions and validation repairs. The execution Agent proposes the
 superseded requirement, replacement requirement, and optional reason through `record_plan_deviation`; a typed user
 confirmation writes it to the authoritative execution Plan. Confirmed Plan Deviations supersede conflicting original
-Plan text for execution, Semantic Code Review, and Work Records. Ordinary Pair feedback, transcript text, metrics,
+Plan text for execution, Semantic Code Review, and Work Records. An Epic child's confirmed entries also appear in the
+Epic's managed `### Child Plan Deviations` subsection under its Objective. This is a projection; the child Plan stays
+the authority. The projection travels with child delivery. Integration review treats these replacements as approved
+and names affected Epic outcomes in advisories. Ordinary Pair feedback, transcript text, metrics,
 arbitrary Plan-file edits, and one-delivery Review Overrides are not Plan Deviations. _Avoid_: automatic Plan Amendment,
 checkpoint feedback, review waiver, silent Plan edit
 
@@ -882,6 +984,10 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   truth, review, validation, recovery evidence, Work Records, and organizational memory.
 - An **Attached Workflow** persists structured evidence and durable artifacts without copying the host conversation into
   a **Session Transcript**.
+- One **Attached Workflow Record** exists for each **Attached Workflow**. It is not a **Session**. Only the **Attached
+  Workflow Coordinator** writes it.
+- An **Attached Workflow Record** references **Plan** and worktree truth and never copies it. It stores the
+  **Compatibility Matrix** activation assessment as evidence, not authority.
 - An **Aggregate Transcript Projection** emits no part of a generation until every included **Sealed Session Transcript
   Segment** and the current committed segment prefix have verified.
 - A **Verified Plan** has the same meaning in **RunWield Connect** and **RunWield Core**, regardless of which
@@ -922,7 +1028,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 - Only a non-Epic Plan at **Ready For Work** can proceed to implementation.
 - An **Epic** contains decomposition context; its **Child PLANNED_CHANGE Plans** are the independently executable units.
 - An **Epic** with an **Epic Branch** is implemented when every included child is delivered to that branch, not when
-  every child shows a finished status, and is validated only by a passing **Integration Gate** on the current head.
+  every child shows a finished status, and is reviewed only by a passing **Integration Gate** on the current head.
 - An **Implemented Plan** must pass **Workflow Validation** before becoming a **Verified Plan**.
 - An **In-Progress Plan** or **Failed Plan** may require **Plan Recovery** before workflow can continue safely.
 - A **Verified Plan** or **Closed Without Verification Plan** may produce a **Work Record**. A Plan accumulates zero or

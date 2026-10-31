@@ -6,8 +6,8 @@
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
-import { encodeCwdForSessionDir } from "./session-directory-name.ts";
-export { encodeCwdForSessionDir } from "./session-directory-name.ts";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
+export { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { getHomeDir } from "../../constants.js";
 import { parseRemoteSessionTranscript } from "../remote/session-protocol.ts";

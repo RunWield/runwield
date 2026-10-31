@@ -10,16 +10,20 @@ The current interim runner is Reviewer-only: `bun scripts/run-reviewer-benchmark
 Reviewer through `runReviewerRound`, not a generic model request. It does not replace Workflow Validation or add
 passive product telemetry. The shared End-to-End Benchmark Harness remains target.
 
-## Current Smoke Scope
+## Current Corpus Scope
 
-Five packages under `evals/reviewer/` provide nine discovery cases: RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B,
-and RV-M01 A. The smoke run uses one trial per case and the effective configured Reviewer model. It does not author
-or compare a reconnaissance candidate.
+Seventeen packages under `evals/reviewer/` provide 33 discovery cases: RV-D01–D16 A/B and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario ID then variant.
+`--scenarios smoke` preserves the original nine cases: RV-D04 A/B, RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A.
+Each case runs once with the effective configured Reviewer model. The runner does not author or compare a
+reconnaissance candidate. RV-M02–M06, repair-state execution, repetitions, and paired comparison remain target.
 
 The runner scores decision accuracy and clean approval mechanically. Evidence-path matches are suggestions only.
-Defect recall, blocking-finding precision, and severe-defect recall require human labels in `adjudications.json`.
-Missing or partial labels keep semantic scores pending; `novel_valid` freezes them until oracle correction. Failures
-and missing cases stay in denominators. Reports split decisions and semantic measures by coverage group.
+Defect recall, blocking-finding precision, and severe-defect recall require human oracle verdicts and finding labels
+in `adjudications.json`. A `fixture_needs_repair` verdict or any `novel_valid` finding excludes the entire case from
+every score, including decision measures and variant/group splits. Other cases still score. Failed, timed-out, and
+missing cases remain in denominators unless excluded. Semantic scores stay `pending adjudication` while a counted
+case lacks a verdict or any of its blocking findings lacks a label; otherwise they are `scored`. Reports split
+decisions and semantic measures by the manifest's coverage group.
 
 Results retain actual model/provider identity, prompt hashes, fixture hashes, checkout revision and dirtiness,
 findings, advisories, usage, elapsed time, tool calls, and nudges. Missing measurements say `unavailable`. Model-turn
@@ -27,16 +31,21 @@ counts, inspection breadth, repair-state scoring, repetitions, and paired compar
 
 The [2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine rounds: mechanical
 decision accuracy 7/9, defective rejections 5/5, and clean approval 2/4. The owner accepted all 13 blocking findings.
-Six match the original oracle; seven require oracle corrections, including
-an independent RV-D12 concern formerly bundled under one id. Semantic scoring remains frozen against the historical
-oracle. Four packages are now revision 2, with no new paid measurements. The clean rejections were not automatically
-false positives.
+Six matched the original oracle; seven required oracle corrections, including
+an independent RV-D12 concern formerly bundled under one id. Under the baseline's scoring rules, semantic scoring
+was frozen against that historical oracle. This is a historical observation, not the current run-wide rule. Its saved
+labels have no oracle verdicts and remain valid; rescoring with the current runner is pending adjudication. Four
+packages are now revision 2. The clean rejections were not automatically false positives.
+
+The latest run is the [33-case discovery run](reviewer-benchmark-results/2026-10-discovery-pairs.md), pending
+adjudication. It evaluates the current fixture revisions. One trial does not establish stability; no threshold applies.
+Changed smoke fixtures prevent interpreting it as a trend against the October baseline.
 
 See [run and adjudication instructions](../../evals/reviewer/README.md#run-and-score).
 
 ## Evaluated Configurations
 
-The smoke run measures the baseline only. The planned paired experiment compares two configurations:
+The current runner measures one configuration only. The planned paired experiment compares two configurations:
 
 1. **Baseline** — the current Semantic Reviewer discovery and verification prompts.
 2. **Candidate** — the same Reviewer with a first-discovery reconnaissance pass that:
@@ -59,9 +68,9 @@ One scored unit is one Reviewer round over:
 - normal read-only repository tools;
 - a hidden oracle that the evaluated Reviewer cannot access.
 
-Discovery fixtures run from an empty Review Issue Ledger. Repair fixtures begin with a supplied ledger, repair report,
-and repair-scoped diff. They exercise the production verification prompt instead of asking a generic model to describe
-whether a patch looks fixed.
+Discovery fixtures run from an empty Review Issue Ledger. Target repair fixtures begin with a supplied ledger, repair
+report, and repair-scoped diff. They exercise the production verification prompt instead of asking a generic model
+to describe whether a patch looks fixed.
 
 ## Output Policy
 
@@ -77,16 +86,19 @@ whether a patch looks fixed.
 
 The fraction of distinct oracle defects matched by at least one supported finding:
 
-`matched oracle defects / all oracle defects`
+`matched oracle defects / all oracle defects in counted cases`
 
 Report recall by defect family and severity. Critical and high-severity misses remain visible even when aggregate recall
 is good.
 
 ### Blocking-finding precision
 
-The fraction of blocking findings that match a real oracle defect or are adjudicated as a novel valid defect:
+The fraction of blocking findings in counted cases that uniquely match an oracle defect:
 
-`supported unique findings / all blocking findings`
+`matched findings / all blocking findings in counted cases`
+
+A `novel_valid` finding excludes its case until a revised fixture runs again; it does not add precision credit to the
+old run.
 
 Unsupported findings and duplicate restatements reduce precision. A Reviewer cannot improve by producing a large list
 around one correct observation.
@@ -95,20 +107,20 @@ around one correct observation.
 
 The fraction of clean twins approved without a blocking finding:
 
-`approved clean variants / all clean variants`
+`approved clean variants / all counted clean variants`
 
 This is the primary check against an adversarial prompt that rejects any code containing a suspicious-looking branch,
 fallback, retry, cache, or concurrent operation.
 
 ### Severe-defect recall
 
-Report critical and high-severity defect recall as its own release measure. Do not let several easy low-severity matches
-offset a missed destructive, authorization, data-isolation, or lifecycle-authority defect.
+Report critical and high-severity defect recall in counted cases as its own release measure. Do not let several easy
+low-severity matches offset a missed destructive, authorization, data-isolation, or lifecycle-authority defect.
 
 ### Repair-state accuracy
 
-For every prior ledger item, score whether the Reviewer correctly classifies it as resolved or still open. Score new
-regressions introduced by a repair as discovery recall and precision in the same round.
+Target: for every prior ledger item, score whether the Reviewer correctly classifies it as resolved or still open.
+Score new regressions introduced by a repair as discovery recall and precision in the same round.
 
 ## Secondary Measures
 
@@ -133,19 +145,36 @@ Each emitted blocking finding receives one state:
 - `unsupported` — no concrete defect can be established from the fixture;
 - `novel_valid` — establishes a real defect that the oracle omitted.
 
-Mechanical matching may use expected paths, spans, structured lifecycle decisions, and verifier outcomes. Semantic
-equivalence requires a blinded human decision or a separately reported model-judge annotation. A model judge never
-overrides deterministic proof.
+The runner suggests evidence-path matches, but these never earn semantic credit. The owner judges each fixture's
+Plan, patch, proof, and oracle together with the Reviewer's output after the paid run. Fixture approval is not a
+pre-run requirement; mechanical admission of all selected packages still precedes every model call. Separately
+reported model-judge annotations do not replace owner verdicts or deterministic proof.
 
-When a finding appears novel and valid, freeze scoring for that fixture. A human updates the oracle first, then both
-baseline and candidate outputs are rescored against the same corrected truth. Do not amend the oracle only for the
-configuration that found the defect.
+The run's `adjudications.json` accepts an optional `oracleVerdicts` list of `{ caseId, verdict, note? }` entries:
+
+- `confirmed` — the fixture oracle is correct;
+- `fixture_needs_repair` — the case leaves every score, with the owner's note as its reason when supplied.
+
+Any `novel_valid` finding also excludes its entire case. Other cases still score. Repair the fixture and rerun the
+revised fixture; do not treat rescoring old output as a substitute. In a future paired comparison, both configurations
+must use the same revised truth. Do not amend an oracle only for the configuration that exposed the defect.
+
+Unknown cases, duplicate verdicts, unknown verdict values, and `confirmed` together with `novel_valid` stop scoring.
+Invalid or stale finding labels also stop scoring. Older files without `oracleVerdicts` are valid but remain pending.
+A counted case needs a verdict even if it has no blocking findings.
+
+`summary.md` presents each case as a readable worksheet before its JSON block: package and patch paths; oracle
+ID, severity, trigger, expected and wrong behavior, and proof command (or “Oracle: no defect”); finding indexes,
+titles, suggested path matches, verdict, and labels. “Fixtures needing repair” lists excluded cases and reasons;
+`summary.json` records the same list under `fixturesNeedingRepair`, including owner notes or default reasons and
+`novel_valid` finding indexes. See the [label format](../../evals/reviewer/README.md#human-adjudication).
 
 ## Repetitions and Comparison
 
 - For the full paired pilot, run at least three independent trials per fixture and configuration. The current
-  one-trial smoke run establishes neither stability nor a candidate improvement.
-- Keep every timeout, interruption, invalid tool result, and infrastructure failure in the report denominator.
+  one-trial runner establishes neither stability nor a candidate improvement.
+- Keep every timeout, interruption, invalid tool result, and infrastructure failure in the report denominator unless
+  its case is excluded for fixture repair.
 - Compare paired per-fixture deltas before aggregate averages.
 - Report confidence intervals or paired bootstrap intervals once the corpus is large enough; do not imply precision from
   a small pilot.
@@ -173,14 +202,15 @@ precision collapse, a severe miss, or a clean-approval regression.
 
 ## Pilot Size
 
-The reviewable pilot catalog contains:
+The full target pilot catalog contains:
 
 - 16 discovery families, each with a defective and clean twin: 32 scenarios;
 - 6 multi-defect discovery scenarios;
 - 6 repair-state verification scenarios.
 
-That produces 44 scenarios. Two prompt configurations with three trials each require 264 Reviewer rounds. Start with a
-one-trial smoke pass before spending the full model budget.
+That produces 44 scenarios, not the current 17-case corpus. Completing the discovery pairs alone would provide 33
+cases (all 16 pairs plus RV-M01). Two prompt configurations with three trials each require 264 Reviewer rounds.
+Start with a one-trial smoke pass before spending the full model budget.
 
 ## External Methodology References
 

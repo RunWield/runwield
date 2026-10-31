@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile, symlink, writeFile } from "node:fs/promises";
+import { readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { loadFixture } from "./fixtures.ts";
-import { corpusPath, smokeIds, withFixtureCopy } from "./test-fixtures.ts";
+import { FIXTURE_GROUPS, loadFixture, readFixturePatch } from "./fixtures.ts";
+import { materializeFixture } from "./materialize.ts";
+import { projectEngineerPlanBody } from "../../src/shared/workflow/engineer-plan-projection.ts";
+import { corpusPath, corpusIds, withFixtureCopy } from "./test-fixtures.ts";
 
-for (const id of smokeIds) {
+for (const id of corpusIds) {
     test(`${id} loads the reviewed manifest, oracle, and all required proof commands`, async () => {
         const fixture = await loadFixture(join(corpusPath, id));
         assert.equal(fixture.manifest.scenarioId, id);
+        assert.ok(FIXTURE_GROUPS.includes(fixture.manifest.group));
         assert.equal(fixture.oracle.variants.A!.expectedDecision, "reject");
         assert.equal(fixture.oracle.variants.B?.expectedDecision, id === "RV-M01" ? undefined : "approve");
         assert.ok(Object.keys(fixture.oracle.proofs).length > 0);
@@ -23,6 +26,34 @@ interface InvalidInput {
     error: RegExp;
 }
 const invalidInputs: InvalidInput[] = [
+    {
+        name: "missing coverage group",
+        file: "scenario.yaml",
+        from: "group: correctness-beyond-plan\n",
+        to: "",
+        error: /invalid coverage group/,
+    },
+    {
+        name: "unknown coverage group",
+        file: "scenario.yaml",
+        from: "group: correctness-beyond-plan",
+        to: "group: custom-plan-group",
+        error: /invalid coverage group/,
+    },
+    {
+        name: "malformed scenario ID",
+        file: "scenario.yaml",
+        from: "scenarioId: RV-D04",
+        to: "scenarioId: RV-D004",
+        error: /invalid scenario ID/,
+    },
+    {
+        name: "scenario directory mismatch",
+        file: "scenario.yaml",
+        from: "scenarioId: RV-D04",
+        to: "scenarioId: RV-D99",
+        error: /scenario directory mismatch/,
+    },
     {
         name: "schema version",
         file: "scenario.yaml",
@@ -141,3 +172,59 @@ test("rejects an independence matrix that claims one repair fixes both defects",
         await assert.rejects(loadFixture(packageDir), /incorrect independence matrix/);
     });
 });
+
+for (const id of ["RV-D99", "RV-M99"]) {
+    test(`accepts corpus scenario ${id} outside the smoke set with an allowed group`, async () => {
+        await withFixtureCopy("RV-D04", async (packageDir) => {
+            const destination = join(packageDir, "..", id);
+            await rename(packageDir, destination);
+            for (const file of ["scenario.yaml", "evaluation/oracle.yaml"]) {
+                const path = join(destination, file);
+                await writeFile(
+                    path,
+                    (await readFile(path, "utf8"))
+                        .replace("scenarioId: RV-D04", `scenarioId: ${id}`)
+                        .replace("group: correctness-beyond-plan", "group: cross-file-context"),
+                );
+            }
+            const fixture = await loadFixture(destination);
+            assert.equal(fixture.manifest.scenarioId, id);
+            assert.equal(fixture.manifest.group, "cross-file-context");
+        });
+    });
+}
+
+for (const variant of ["A", "B"] as const) {
+    test(`RV-D14 ${variant} projects the approved age replacement into Reviewer context`, async () => {
+        const fixture = await loadFixture(join(corpusPath, "RV-D14"));
+        const project = await materializeFixture(fixture, variant);
+        try {
+            const projected = projectEngineerPlanBody(project.planContent);
+            assert.match(projected, /## Approved Plan Deviations/);
+            assert.ok(
+                projected.includes(
+                    "Replacement requirement: Delete only records older than 30 days; retain all records at or after the 30-day cutoff, regardless of count.",
+                ),
+            );
+            assert.equal((projected.match(/Replacement requirement:/g) || []).length, 1);
+        } finally {
+            await project.cleanup();
+        }
+    });
+}
+
+for (const id of corpusIds) {
+    const fixture = await loadFixture(join(corpusPath, id));
+    if (fixture.manifest.group !== "cross-file-context") continue;
+    test(`${id} requires evidence outside the defective patch`, async () => {
+        const candidate = fixture.oracle.variants.A!;
+        const patch = await readFixturePatch(fixture, candidate.patch);
+        const changed = new Set([...patch.matchAll(/^diff --git a\/\S+ b\/(\S+)$/gm)].map((match) => match[1]));
+        for (const defect of candidate.defects) {
+            assert.ok(
+                defect.evidence.some((path) => !changed.has(path)),
+                `${defect.defectId} needs untouched evidence`,
+            );
+        }
+    });
+}

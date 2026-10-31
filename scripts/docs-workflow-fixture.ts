@@ -19,7 +19,7 @@ import { ok as assert } from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { defineGitFixture, git } from "../src/shared/git-test-fixture.ts";
 import { PUBLIC_DOCS } from "./public-docs.ts";
-import { releaseAssetNames } from "./release-assets.js";
+import { releaseAssetNames } from "./release-assets.ts";
 import { sha256File } from "./build-metadata.ts";
 
 export function jobBlock(workflow: string, name: string): string {

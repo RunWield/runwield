@@ -26,7 +26,7 @@ import {
  * @property {string} origin
  * @property {string} completionMode
  * @property {string[]} sourcePlans
- * @property {import('../ticket-references.js').TicketReference[]} tickets
+ * @property {import('../ticket-references.ts').TicketReference[]} tickets
  * @property {string} path
  * @property {string[]} notices
  */

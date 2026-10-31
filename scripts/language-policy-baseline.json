@@ -28,12 +28,10 @@
     "src/shared/session/session-runtime-interactions.js",
     "src/shared/session/session-transcript-projection.js",
     "src/shared/session/session.js",
-    "src/shared/session/tool-event-title.js",
     "src/shared/session/types.js",
     "src/shared/session/workflow-context-session.js",
     "src/shared/session/workflow-messages.js",
     "src/shared/settings.js",
-    "src/shared/ticket-references.js",
     "src/shared/types.js",
     "src/shared/update-check.js",
     "src/shared/work-records/auto-generation.js",
@@ -45,7 +43,6 @@
     "src/shared/workflow/metrics.js",
     "src/shared/workflow/plan-lifecycle.js",
     "src/shared/workflow/plan-review-recovery.js",
-    "src/shared/workflow/review-diff-tool.js",
     "src/shared/workflow/validation-test-helpers.js",
     "src/shared/workflow/workflow-results.js",
     "src/shared/workflow/workflow.js",
@@ -63,7 +60,6 @@
     "src/ui/tui/golden-scenarios/initial-scenarios.js",
     "src/ui/tui/golden-scenarios/planned-change-workflow.js",
     "src/ui/tui/golden-scenarios/project-workflow.js",
-    "src/ui/tui/managed-session-sync.js",
     "src/ui/tui/mermaid-markdown.js",
     "src/ui/tui/runtime-adapter.js",
     "src/ui/tui/runtime-interaction-adapter.js",
@@ -84,7 +80,6 @@
     "src/ui/workspace/islands/PlanBodyEditor.jsx",
     "src/ui/workspace/islands/PlanLifecycleActions.jsx",
     "src/ui/workspace/islands/SessionSurface.jsx",
-    "src/ui/workspace/pages/api/plans/[...segments].js",
 
     "src/ui/workspace/react/remote-review-payload.js",
     "src/ui/workspace/routes/api/review-agent-handlers.js",
@@ -98,7 +93,5 @@
     "src/ui/workspace/server/astro-owner-data.js",
     "src/ui/workspace/server/plan-adapter.js",
     "src/ui/workspace/server/remote-adapter.js",
-    "src/ui/workspace/server/remote-dev-api.js",
-    "src/ui/workspace/server/session-continuation.js",
-    "src/ui/workspace/workspace-test-helpers.js"
+    "src/ui/workspace/server/session-continuation.js"
 ]

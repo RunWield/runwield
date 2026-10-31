@@ -18,12 +18,12 @@ import {
     REMOTE_CLEANUP_INTERVAL_MS,
     runRemoteWorkspaceServer,
 } from "./remote-server.ts";
-import { handleRemoteSpaceApi } from "./server/remote-dev-api.js";
+import { handleRemoteSpaceApi } from "./server/remote-dev-api.ts";
 import { isRemoteDevelopmentModeEnabled } from "./server/remote-mode.ts";
 
 import { createWorkspaceApp } from "./server.js";
 
-import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.js";
+import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 interface RemoteStatusResponse {
@@ -43,7 +43,7 @@ test("remote Shared Space development gate requires both development and remote 
 });
 
 test("remote development API and page share the central gate", async () => {
-    const apiSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/server/remote-dev-api.js"), "utf8");
+    const apiSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/server/remote-dev-api.ts"), "utf8");
     const pageSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/pages/p/[spaceId].astro"), "utf8");
     assertStringIncludes(apiSource, "isRemoteDevelopmentModeEnabled");
     assertStringIncludes(pageSource, "isRemoteDevelopmentModeEnabled");

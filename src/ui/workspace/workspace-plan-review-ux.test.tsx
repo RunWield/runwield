@@ -275,7 +275,7 @@ test("Plan and Code review use shared toolbar structure with edge-aligned restor
     const annotationsIndex = surface.indexOf("Annotations", rightRestoreIndex);
     const saveControlsIndex = surface.indexOf('className="rw-editor-save-controls"', rightRestoreIndex);
     const sidebarIndex = surface.indexOf('className="rw-plan-review-annotation-sidebar"');
-    const collapseIndex = surface.indexOf('<PanelCollapseIcon side="right" />', sidebarIndex);
+    const collapseIndex = surface.indexOf('<RunWieldPanelIcon side="right" />', sidebarIndex);
 
     assertStringIncludes(surface, "data-plan-width={planWidthMode}");
     assertStringIncludes(surface, 'className="rw-review-toolbar rw-plan-review-controls"');
@@ -329,13 +329,13 @@ test("Plan and Code review use shared toolbar structure with edge-aligned restor
     assertStringIncludes(surface, 'className="rw-plan-review-sidebar-collapse"');
     assertStringIncludes(surface, 'title="Collapse contents sidebar"');
     assertStringIncludes(surface, 'aria-label="Collapse contents sidebar"');
-    assertStringIncludes(surface, '<PanelCollapseIcon side="left" />');
+    assertStringIncludes(surface, '<RunWieldPanelIcon side="left" />');
     assertStringIncludes(surface, 'title="Collapse annotations sidebar"');
     assertStringIncludes(surface, 'aria-label="Collapse annotations sidebar"');
     const sharedStyles = await fsReadFile("src/ui/design-system/components.css", "utf8");
     assertStringIncludes(sharedStyles, ".rw-menu-positioner {\n    z-index: 90;");
     assertStringIncludes(surface, 'planWidthMode === "wide"');
-    assertStringIncludes(surface, "function PanelCollapseIcon({ side })");
+    assertStringIncludes(surface, "import { RunWieldPanelIcon }");
     assertStringIncludes(styles, ".fixed.inset-0.z-50.bg-black\\/50.backdrop-blur-\\[2px\\]");
     assertStringIncludes(styles, '[data-popout="true"] {');
     assertStringIncludes(styles, "z-index: 1100 !important;");
@@ -481,8 +481,8 @@ test("Plan reviews recover unfinished work and send direct edits as feedback", a
     assertStringIncludes(surface, "Restore draft");
     assertStringIncludes(surface, "persistReviewDraftLocally");
     assertStringIncludes(surface, "directEdits={directEditPanel}");
-    assertMatch(surface, /disabled=\{\s*!hasGroupFeedback \|\| submitting !== null \|\| plannerWorking\s*\}/);
-    assertStringIncludes(surface, "plannerWorking || reviewGroup?.busy}");
+    assertMatch(surface, /disabled=\{\s*!hasGroupFeedback \|\|\s*submitting !== null \|\|/);
+    assertMatch(surface, /plannerWorking \|\| waitingForRevision \|\|\s*reviewGroup\?\.busy\s*\}/);
     assertStringIncludes(surface, "buildPlanReviewFeedback");
 });
 

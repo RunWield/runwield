@@ -4,7 +4,7 @@ import { readFileSync as fsReadFileSync, statSync as fsStatSync } from "node:fs"
 import { env } from "node:process";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
-import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
+import { type BuiltinProvider, builtinProviders, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type {
     Api,
     AuthInteraction,
@@ -150,6 +150,7 @@ interface ExternalCliProviderDefinition {
     maxTokens: number;
     aliases?: readonly string[];
     supportedModels?: readonly string[];
+    priceCatalog?: BuiltinProvider;
     modelDisplayNames?: Record<string, string>;
 }
 
@@ -174,6 +175,7 @@ const EXTERNAL_CLI_PROVIDER_DEFINITIONS: Record<ExternalCliExecutionBackend, Ext
         contextWindow: 128000,
         maxTokens: 16384,
         supportedModels: AGY_CLI_MODEL_IDS,
+        priceCatalog: "google",
         modelDisplayNames: AGY_CLI_DISPLAY_NAMES,
     },
 };
@@ -447,6 +449,13 @@ function isExternalCliBackend(backend: string | undefined): backend is ExternalC
 export function isExternalCliModel(model: Pick<RunWieldModel, "provider" | "executionBackend"> | undefined): boolean {
     if (!model) return false;
     return isExternalCliProvider(model.provider) || isExternalCliBackend(model.executionBackend);
+}
+
+/** Only a built-in exact ID is price evidence; CLI descriptors and configured overrides are not. */
+export function getExternalCliPriceModel(model: Pick<RunWieldModel, "provider" | "id">): Model<Api> | undefined {
+    if (!isExternalCliProvider(model.provider)) return undefined;
+    const catalog = EXTERNAL_CLI_PROVIDER_DEFINITIONS[model.provider].priceCatalog;
+    return catalog ? getBuiltinModels(catalog).find((candidate) => candidate.id === model.id) : undefined;
 }
 
 function createExternalCliModelDescriptor(provider: string, selector: string): RunWieldModel | undefined {

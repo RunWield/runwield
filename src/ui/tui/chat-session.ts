@@ -18,7 +18,7 @@ import { setTerminalTitleForName } from "./terminal-title.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
 import { notifyRunWieldEventQuietly } from "./system-notifications.ts";
-import { createManagedSessionSyncController, SYSTEM_MANAGED_SESSION_TIMER } from "./managed-session-sync.js";
+import { createManagedSessionSyncController, SYSTEM_MANAGED_SESSION_TIMER } from "./managed-session-sync.ts";
 import { ensureCymbalBinary, ensureKetchBinary, ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import {
@@ -52,6 +52,7 @@ import { isProjectInitComplete } from "../../cmd/init/init-completion.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { setActiveSessionModel } from "../../shared/session/model-selection.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
+import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { renderBootBanner } from "./boot-banner.ts";
 import { getSelectedDefaultModelAvailability, maybeShowModelWelcome } from "./model-welcome.ts";
@@ -191,7 +192,7 @@ export async function startInteractiveSession(
         remoteSessionControl: options.remoteSessionControl,
         ownerProcessKind: "tui",
     });
-    const disposables: Array<() => void | Promise<void>> = [];
+    const disposables: Array<() => void | Promise<void>> = [startMetricsExportScheduler()];
     let uiAPIForDispose: UiAPI | null = null;
     let lifecycleDisposed = false;
     const historyReplay = new AbortController();

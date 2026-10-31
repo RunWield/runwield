@@ -33,6 +33,7 @@ import { type LocalFileSessionStore, openLocalFileSessionStore } from "./file-se
 import type { FileSessionStore, OpenFileSessionStoreOptions } from "./file-session-store-types.ts";
 
 export type { FileSessionProject, FileSessionStore } from "./file-session-store-types.ts";
+export type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 export { FILE_SESSION_STORE_VERSION } from "./file-session-storage.ts";
 
 interface RemoteOperation {

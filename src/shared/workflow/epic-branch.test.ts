@@ -114,12 +114,12 @@ test("an unstarted Epic gets its own branch from the latest primary branch with 
     assertEquals(epic?.attrs.targetBranch, "epic/epic");
     assertEquals(epic?.attrs.epicBaseCommit, primaryHead);
     assertEquals((await loadPlan(repo, "epic/01-first"))?.attrs.targetBranch, "epic/epic");
-    // The seed commit sits on top of the primary head and carries only the child drafts.
+    // The seed commit carries the Epic requirements and child drafts above the primary head.
     assertEquals(await git(repo, ["rev-parse", "epic/epic^"]), primaryHead);
     const onBranch = await filesOnRef(repo, "epic/epic");
     assert(onBranch.includes("docs/plans/epic/01-first.md"));
     assert(onBranch.includes("docs/plans/epic/02-second.md"));
-    assert(!onBranch.includes("docs/plans/epic.md"));
+    assert(onBranch.includes("docs/plans/epic.md"));
     // The user's checkout did not move and its files were not staged or rewritten by Git.
     assertEquals(await git(repo, ["branch", "--show-current"]), "main");
     assertEquals(await git(repo, ["rev-parse", "main"]), primaryHead);
@@ -243,4 +243,30 @@ test("a Sequence gets no branch unless the user named one", async () => {
     assertEquals((await loadPlan(repo, "epic"))?.attrs.targetBranch, undefined);
     assertEquals((await loadPlan(repo, "epic/01-first"))?.attrs.targetBranch, undefined);
     assertEquals(await git(repo, ["branch", "--list", "epic/epic"]), "");
+});
+
+test("branch preparation keeps existing branch Epic requirements instead of the primary copy", async () => {
+    const repo = await repoFixture.checkout();
+    await git(repo, ["switch", "-c", "epic/epic"]);
+    await writePlan(repo, "epic", epicAttrs({ targetBranch: "epic/epic" }), "# Branch requirements\n");
+    await git(repo, ["add", "docs/plans/epic.md"]);
+    await git(repo, ["commit", "-m", "branch requirements"]);
+    await git(repo, ["switch", "main"]);
+    await writePlan(repo, "epic", epicAttrs({ targetBranch: "epic/epic" }), "# Stale primary requirements\n");
+    await writePlan(repo, "epic/01-first", childAttrs(1, { targetBranch: "epic/epic" }), "# First\n");
+    await ensureEpicBranch(repo, "epic");
+    assertStringIncludes(await git(repo, ["show", "epic/epic:docs/plans/epic.md"]), "# Branch requirements");
+});
+
+test("branch preparation seeds missing Epic requirements even when no child drafts are pending", async () => {
+    const repo = await repoFixture.checkout();
+    await git(repo, ["switch", "-c", "epic/epic"]);
+    await writePlan(repo, "epic/01-first", childAttrs(1, { targetBranch: "epic/epic" }), "# First\n");
+    await git(repo, ["add", "docs/plans/epic/01-first.md"]);
+    await git(repo, ["commit", "-m", "existing child draft"]);
+    await git(repo, ["switch", "main"]);
+    await writePlan(repo, "epic", epicAttrs({ targetBranch: "epic/epic" }), "# Epic requirements\n");
+    const result = await ensureEpicBranch(repo, "epic");
+    assertEquals(result.seededChildren, []);
+    assertStringIncludes(await git(repo, ["show", "epic/epic:docs/plans/epic.md"]), "# Epic requirements");
 });

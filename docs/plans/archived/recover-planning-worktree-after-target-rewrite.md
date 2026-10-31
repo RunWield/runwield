@@ -214,7 +214,7 @@ for a `planning` entry), `src/shared/workflow/planning-worktree.ts` (callers alr
 
 ## Verification Plan
 
-- Automated: `bun scripts/run-tests.js src/shared/workflow/planning-worktree.test.ts src/shared/worktree-registry.test.js`
+- Automated: `bun scripts/run-tests.js src/shared/workflow/planning-worktree.test.ts src/shared/worktree-registry.test.ts`
 - The replant test fails against today's code (it throws "already contains implementation changes"). It also fails
   if the fix only changes the measurement and keeps the merge, because the merge of rewritten history conflicts in
   non-Plan files or adds old commits that `git diff <target> HEAD` would show.

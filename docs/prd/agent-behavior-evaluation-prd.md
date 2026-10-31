@@ -1,6 +1,6 @@
 # Product Requirements Document: Agent Evaluation and Benchmark Harness
 
-**Status:** Shared harness proposed; Reviewer-only smoke runner current. The Router golden set and the interim
+**Status:** Shared harness proposed; Reviewer-only corpus runner current. The Router golden set and the interim
 Reviewer runner do not deliver the shared capability. This PRD combines Agent scorecards, support policy, and the
 benchmark-running experience, with current and target scope separated below.
 
@@ -37,7 +37,7 @@ Evaluation is deliberate and local; normal RunWield use remains independent of b
 
 ### Agent scorecards and support decisions
 
-**Scope and maturity:** Mixed. Reviewer-only smoke evaluation is current. The shared scorecards and support-decision
+**Scope and maturity:** Mixed. Reviewer-only discovery evaluation is current. The shared scorecards and support-decision
 capability remain target.
 
 **Requirement: Score each Agent against its role.** Each run measures the applicable scorecard and expected workflow
@@ -56,20 +56,38 @@ tool calls before triage, and repeated or forbidden tool attempts.
 
 #### Semantic Reviewer
 
-**Current requirement: Evaluate the production Reviewer on the smoke corpus.** The interim
-`bun scripts/run-reviewer-benchmark.ts` runner evaluates nine admitted discovery cases in five synthetic Bun 1.4.3
-TypeScript packages. It uses the effective Reviewer model, production prompt, tools, inspection gate, nudges, and
-`review_complete` through `runReviewerRound`, with round 1 and an empty ledger. It does not run outer workflow
-lifecycle or Delivery Evidence writes.
+**Current requirement: Evaluate the production Reviewer on every admitted discovery package.** The interim
+`bun scripts/run-reviewer-benchmark.ts` runner evaluates 33 admitted discovery cases in 17 synthetic Bun 1.4.3
+TypeScript packages: RV-D01–D16 A/B and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario
+ID then variant. The original nine-case `--scenarios smoke` set is unchanged. The runner uses the effective Reviewer
+model, production prompt, tools, inspection gate, nudges, and `review_complete` through `runReviewerRound`, with
+round 1 and an empty ledger. It does not run outer workflow lifecycle or Delivery Evidence writes.
 
 The [one-trial baseline](../evaluation/reviewer-benchmark-results/2026-10-baseline-smoke.md) completed RV-D04 A/B,
 RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A: nine complete rounds, mechanical decisions 7/9, and clean approval
-2/4. The owner accepted all 13 findings; the original oracle needs corrections before semantic scoring. Four fixture
-packages
-are now revision 2 after repairs; the paid baseline measures revision 1 only. Mechanical decision accuracy and clean
-approval are separate from finding quality. Evidence-path matches are suggestions, never recall.
-Human `adjudications.json` labels control defect recall, blocking-finding precision, and severe-defect recall; absent
-or partial labels leave them pending. A novel valid finding requires oracle correction before semantic scoring.
+2/4. The owner accepted all 13 findings; under the historical scoring rules, the original oracle needed corrections
+before semantic scoring. Seven fixture packages are now revision 2 and RV-D08 is revision 3 after repairs; the paid baseline measures revision 1
+only. The [full discovery report](../evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md) records one
+trial on all 33 cases before the revision-2 repairs to RV-D06–D08 and RV-D10. Current fixtures retain their planted A
+defects while checking conflicting authority hints, truthful cancellation settlement, recorded completion delivery, and
+fresh retry diagnostics. RV-D08 revision 3 checks exactly one validation-owned consumption and transition for
+recorded, live, and recovered repairs. Its defective public suite fails with a declared assertion while its clean twin
+passes. The saved run does not measure these repaired revisions. Changed smoke fixtures cannot show a
+trend against the baseline.
+Mechanical decision accuracy and clean approval are separate from finding quality. Evidence-path matches are
+suggestions, never recall.
+
+The owner judges each fixture together with the Reviewer's results after the paid run, not as a pre-run requirement.
+Human `adjudications.json` accepts an optional `oracleVerdicts` list of `{ caseId, verdict, note? }`, with verdict
+`confirmed` or `fixture_needs_repair`, alongside blocking-finding labels. A `fixture_needs_repair` verdict or any
+`novel_valid` finding excludes the entire case from every score: decision accuracy, clean approval, variant/group
+splits, recall, precision, and severe-defect recall. Other cases still score. Reports retain excluded cases and reasons
+under fixtures needing repair. Repair the fixture and rerun the revised fixture before it can score.
+
+Semantic status stays `pending adjudication` while a counted case lacks an oracle verdict or any of its blocking
+findings lacks a label; otherwise it is `scored`. Older files without verdicts remain valid but pending. Unknown
+cases, duplicate verdicts, unknown verdict values, and a `confirmed` verdict with a `novel_valid` finding stop scoring.
+Invalid or stale finding labels also stop scoring.
 
 **Target requirement: Compare discovery and repair judgment.** Compare the current discovery prompt with the proposed
 Review Reconnaissance prompt on paired fixtures with the same model configuration and repository context. Report:
@@ -86,22 +104,28 @@ Review Reconnaissance prompt on paired fixtures with the same model configuratio
 A blocking finding requires repository evidence. Reports retain supported findings rather than risks ruled out during
 review. Recall, precision, clean approval, and severe misses remain separate measures.
 
-The shared harness, candidate prompt authoring/comparison, repeated trials, and repair-state scenarios remain target.
-The smoke run does not establish stability, a prompt improvement, or a model support decision.
+The shared harness, candidate prompt authoring/comparison, repeated trials, RV-M02–M06 multi-defect fixtures, and
+RV-R01–R06 repair-state scenarios remain target. One-trial runs do not establish stability, a prompt improvement, or a
+model support decision.
 
-**Current smoke acceptance scenarios:**
+**Current acceptance scenarios:**
 
+- Given `--scenarios all`, the runner admits all 17 packages before model calls and records all 33 cases in the discovery report.
 - Given a finding that cites an oracle path but has no human label, recall stays pending rather than counting a match.
-- Given fully adjudicated findings, recall counts distinct matched defects, precision penalizes duplicates and
-  unsupported findings, and high/critical recall remains separate.
-- Given a `novel_valid` label, semantic scores freeze until the oracle is corrected.
+- Given confirmed counted cases and fully adjudicated findings, recall counts distinct matched defects, precision
+  penalizes duplicates and unsupported findings, and high/critical recall remains separate.
+- Given a `fixture_needs_repair` verdict or a `novel_valid` label on a case, that case leaves every score and is
+  listed as needing repair, and the other cases still score.
+- Given a counted case without an oracle verdict, semantic scores stay pending.
+- Given `confirmed` and `novel_valid` on the same case, scoring reports invalid adjudications.
+- Given an older adjudications file without oracle verdicts, scoring accepts it and keeps semantic scores pending.
 
 Scorecards, fixtures, and the current runner:
 
 - [Reviewer Benchmark Scorecard](../evaluation/reviewer-benchmark-scorecard.md)
 - [Reviewer Benchmark Fixture Contract](../evaluation/reviewer-benchmark-fixtures.md)
 - [Reviewer Benchmark Pilot Corpus](../evaluation/reviewer-benchmark-pilot-corpus.md)
-- [Smoke runner and adjudication instructions](../../evals/reviewer/README.md)
+- [Runner and adjudication instructions](../../evals/reviewer/README.md)
 
 #### Engineer and Operator
 
@@ -128,19 +152,23 @@ judgment rather than one mechanical score.
 
 ### Repeatable scenario runs
 
-**Scope and maturity:** Mixed. Reviewer-only smoke selection, admission, isolation, timeouts, persistence, and resume
-are current. General selection, repetitions, concurrency, and the shared runner remain target.
+**Scope and maturity:** Mixed. Reviewer-only corpus selection, admission, isolation, timeouts, persistence, and resume
+are current. Shared selection by tag, Agent, or workflow, repetitions, concurrency, and the shared runner remain target.
 
-**Current requirement: Run an isolated Reviewer smoke batch.** Select the smoke set, supported scenario ids, or
-individual variants. Options include `--model`, `--timeout-ms`, `--out`, and `--resume`. Admission, model resolution,
-and credential checks precede model turns. Each case gets a fresh external temporary Git project with neutral history.
+**Current requirement: Run an isolated Reviewer batch.** Select `all`, the preserved nine-case `smoke` set, package
+scenario IDs, or individual variants. Corpus membership comes from package directories with `scenario.yaml`; each
+manifest supplies a `group` from `plan-adherence`, `plan-named-edge-case`, `correctness-beyond-plan`,
+`cross-file-context`, `architecture`, or `multiple-defects`. New packages need no runner registry edit. Unknown cases
+fail before admission. Options include `--model`, `--timeout-ms`, `--out`, and `--resume`. Mechanical admission of
+every selected package, model resolution, and credential checks precede model turns. Each case gets a fresh external
+temporary Git project with neutral history.
 The project excludes the oracle, hidden proofs, variant labels, fixing patches, and pointers to the corpus. Absolute
-read sandboxing is not provided; guessed checkout paths remain an accepted smoke-only risk.
+read sandboxing is not provided; guessed checkout paths remain an accepted interim-runner risk.
 
 Each result is flushed locally after the case. Timeout, pause, provider error, and harness error retain their cause
-and stay in denominators. Resume keeps completed cases, even incorrect decisions, and retries unfinished cases only.
-It rejects changed configuration, selected cases, fixture hashes, or timeout. Scoring uses the latest attempt rather
-than the best. Runner tests use a faux provider and make no paid calls; fixture payloads are outside ordinary source CI.
+and stay in denominators unless their case is excluded for fixture repair. Resume keeps completed cases, even
+incorrect decisions, and retries unfinished cases only. It rejects changed configuration, selected cases, fixture
+hashes, or timeout. Scoring uses the latest attempt rather than the best. Runner tests use a faux provider and make no paid calls; fixture payloads are outside ordinary source CI.
 
 **Target requirement: Run one scenario or a resumable batch.** Maintainers select scenarios by name, tag, Agent,
 workflow,
@@ -159,7 +187,8 @@ fixtures, and oracle solutions stay outside the Agent's available Project tools.
 
 **Requirement: Failures stay contained and visible.** Timeouts and cancellation settle the current run and leave later
 runs usable. Reports distinguish Agent, verifier, harness, infrastructure, provider, model-server, sandbox, and dataset
-failures. Interrupted, unsupported, and unscored trials remain visible in results and denominators.
+failures. Interrupted, unsupported, and unscored trials remain visible in results and denominators, except cases
+explicitly excluded for fixture repair.
 
 **Acceptance scenarios:**
 
@@ -211,17 +240,21 @@ that maintainers can inspect, then expand after failure classification is trustw
 
 ### Reports and comparison
 
-**Scope and maturity:** Mixed. Local single-configuration Reviewer smoke reports are current. Paired comparison,
+**Scope and maturity:** Mixed. Local single-configuration Reviewer reports are current. Paired comparison,
 variance, and shared workflow reports remain target.
 
-**Current requirement: Report saved Reviewer smoke evidence.** `score <run-directory>` writes `summary.md` and
+**Current requirement: Report saved Reviewer evidence.** `score <run-directory>` writes `summary.md` and
 `summary.json` without model calls. Reports preserve case/variant/revision/trial/attempt identity, expected and observed
 decisions, exact accepted findings and advisories, failure causes, actual model/provider, checkout revision/dirtiness,
 prompt hashes, fixture hashes, usage, tool calls, elapsed time, and nudges. Missing measurements say `unavailable`.
 Decision measures split by variant and group; semantic measures split by group. Missing results remain visible.
-Human labels stay in the local run directory, separate from passive metrics.
+Each case in `summary.md` has a readable worksheet before its JSON record: package and patch paths, oracle defect
+IDs/severities/triggers/expected and wrong behavior/proof commands (or “Oracle: no defect”), blocking findings with
+indexes and suggested path matches, and any verdict and labels. “Fixtures needing repair” lists exclusions and
+reasons; `summary.json` stores this list under `fixturesNeedingRepair`, with owner notes or default reasons and
+`novel_valid` finding indexes. Human verdicts and labels stay in the local run directory, separate from passive metrics.
 
-**Current smoke acceptance scenarios:**
+**Current acceptance scenarios:**
 
 - Given saved results, `score` produces both report formats without invoking a model.
 - Given missing measurements, the report says `unavailable` rather than estimating values or reporting zero.
@@ -233,7 +266,7 @@ status, elapsed time, usage, intervention counts, methodology differences, and e
 Comparisons show improvements, regressions, variance, and missing results separately.
 
 Detailed fixtures and outputs belong to the deliberate evaluation run. Passive
-[workflow metrics](runwield-core-prd.md#local-workflow-metrics) remain content-free; private requests, prompts, code,
+[workflow metrics](runwield-core-prd.md#usage-measurement-and-export) remain content-free; private requests, prompts, code,
 diffs, tool arguments and results, and credentials stay out of that stream.
 
 **Acceptance scenarios:**

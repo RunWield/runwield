@@ -1,0 +1,176 @@
+diff --git a/src/command.ts b/src/command.ts
+index e32d1a0..05d7a43 100644
+--- a/src/command.ts
++++ b/src/command.ts
+@@ -3,6 +3,8 @@ import type { CommandResult } from "./model.ts";
+
+ export class Command {
+     private child;
++    private cancelled = false;
++    private settlement?: Promise<void>;
+     readonly result: Promise<CommandResult>;
+
+     get pid(): number | undefined {
+@@ -20,7 +22,48 @@ export class Command {
+                 output += chunk.toString();
+             });
+             this.child.once("error", reject);
+-            this.child.once("close", (code) => resolve({ status: code === 0 ? "passed" : "failed", code, output }));
++            this.child.once("close", (code) => {
++                const result: CommandResult = { status: this.cancelled ? "cancelled" : code === 0 ? "passed" : "failed", code, output };
++                if (this.settlement) this.settlement.then(() => resolve(result), reject);
++                else resolve(result);
++            });
+         });
+     }
++
++    async cancel(): Promise<CommandResult> {
++        const pid = this.child.pid;
++        if (pid === undefined) return this.result;
++        try {
++            process.kill(-pid, 0);
++        } catch (error) {
++            if ((error as NodeJS.ErrnoException).code === "ESRCH") return this.result;
++            if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
++        }
++        try {
++            process.kill(-pid, "SIGKILL");
++            this.cancelled = true;
++        } catch (error) {
++            if (!["ESRCH", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
++        }
++        if (this.cancelled) {
++            this.settlement ??= this.waitForGroup(pid);
++            // Observe failures even if the process has not emitted close yet.
++            void this.settlement.catch(() => {});
++        }
++        return this.result;
++    }
++
++    private async waitForGroup(pid: number): Promise<void> {
++        const deadline = Date.now() + 10000;
++        while (true) {
++            try {
++                process.kill(-pid, 0);
++            } catch (error) {
++                if ((error as NodeJS.ErrnoException).code === "ESRCH") break;
++                if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
++            }
++            if (Date.now() > deadline) throw new Error("Validation process group did not settle");
++            await new Promise((resolve) => setTimeout(resolve, 5));
++        }
++    }
+ }
+diff --git a/tests/public.ts b/tests/public.ts
+index 56149ce..49a1a27 100644
+--- a/tests/public.ts
++++ b/tests/public.ts
+@@ -1,3 +1,10 @@
++import childProcess from "node:child_process";
++import { syncBuiltinESMExports } from "node:module";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { alive, ready, stopGroup, within, waitFor } from "./process-fixture.ts";
+ import assert from "node:assert/strict";
+ import { startValidation } from "../src/validation.ts";
+
+@@ -12,3 +19,97 @@ assert.equal(failure.output.trim(), "broken");
+ console.log("PASS failed command");
+ await assert.rejects(startValidation("/missing-validation-command", []).result, /ENOENT/);
+ console.log("PASS unavailable command");
++
++const root = await mkdtemp(join(tmpdir(), "rv-d07-public-"));
++const run = startValidation(process.execPath, [
++    fileURLToPath(new URL("./workload.ts", import.meta.url)),
++    "direct",
++    root,
++]);
++try {
++    await ready(join(root, "ready"));
++    assert.equal((await within(run.cancel())).status, "cancelled");
++    assert.equal(alive(Number(await readFile(join(root, "ready"), "utf8"))), false);
++    console.log("PASS active cancellation settles");
++} finally {
++    try {
++        if (run.pid !== undefined) await stopGroup(run.pid);
++        await run.result;
++    } finally {
++        await rm(root, { recursive: true, force: true });
++    }
++}
++const finished = startValidation(process.execPath, ["-e", "process.exit(0)"]);
++await finished.result;
++assert.equal((await within(finished.cancel())).status, "passed");
++console.log("PASS cancellation retains a finished result");
++
++// Keep the real subprocess, but control the OS group-probe boundary after SIGKILL.
++// A probe handshake makes this independent of process scheduling or kill latency.
++for (const failSettlement of [false, true]) {
++    const root = await mkdtemp(join(tmpdir(), "rv-d07-settlement-"));
++    const spawn = childProcess.spawn;
++    let closed!: Promise<void>;
++    childProcess.spawn = (...args: Parameters<typeof spawn>) => {
++        const child = spawn(...args);
++        closed = new Promise((resolve) => child.once("close", () => resolve()));
++        return child;
++    };
++    syncBuiltinESMExports();
++    const run = startValidation(process.execPath, [
++        fileURLToPath(new URL("./workload.ts", import.meta.url)), "direct", root,
++    ]);
++    childProcess.spawn = spawn;
++    syncBuiltinESMExports();
++    const kill = process.kill;
++    let killed = false;
++    let probes = 0;
++    let released = false;
++    let observed = false;
++    const publicResult = run.result.then(
++        (result) => { observed = true; return result; },
++        (error: Error) => { observed = true; throw error; },
++    );
++    void publicResult.catch(() => {});
++    try {
++        await ready(join(root, "ready"));
++        process.kill = (pid, signal) => {
++            if (pid === -run.pid! && signal === "SIGKILL") {
++                const sent = kill(pid, signal);
++                killed = true;
++                return sent;
++            }
++            if (pid === -run.pid! && signal === 0 && killed) {
++                probes++;
++                if (!released) return true;
++                if (failSettlement) throw new Error("Group probe failed");
++                throw Object.assign(new Error("Gone"), { code: "ESRCH" });
++            }
++            return kill(pid, signal);
++        };
++        const cancellation = run.cancel();
++        void cancellation.catch(() => {});
++        // The second probe proves the settlement loop has yielded to the event loop.
++        await waitFor(() => probes >= 2);
++        await within(closed);
++        // Drain public-result reactions after the real child close event.
++        await new Promise<void>((resolve) => setImmediate(resolve));
++        assert.equal(observed, false, "Public result must wait for group settlement");
++        released = true;
++        if (failSettlement) {
++            await assert.rejects(publicResult, /Group probe failed/);
++            await assert.rejects(cancellation, /Group probe failed/);
++        } else {
++            const result = await within(publicResult);
++            assert.equal(result.status, "cancelled");
++            assert.strictEqual(await within(cancellation), result);
++        }
++    } finally {
++        released = true;
++        process.kill = kill;
++        if (run.pid !== undefined) await stopGroup(run.pid);
++        await run.result.catch(() => {});
++        await rm(root, { recursive: true, force: true });
++    }
++}
++console.log("PASS public result and cancellation share settlement success or failure");

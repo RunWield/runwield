@@ -19,6 +19,7 @@ export function isPublicWorkspaceAsset(pathname: string): boolean {
         pathname === "/workspace.css" ||
         pathname === "/workspace-shell.js" ||
         pathname === "/design-system/sidebar-motion.js" ||
+        pathname === "/design-system/panel-icon.ts" ||
         pathname === "/theme.css" ||
         pathname === "/brand/logo.svg" ||
         pathname.startsWith("/_astro/")

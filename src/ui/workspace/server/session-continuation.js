@@ -1,3 +1,9 @@
+/**
+ * @typedef {Object} CodeReviewRefreshContext
+ * @property {string} cwd
+ * @property {string} targetBranch
+ * @property {string} [targetBaseRef]
+ */
 import fs, { stat as fsStat } from "node:fs/promises";
 /**
  * @typedef {Object} LiveCodeReviewOptions
@@ -366,7 +372,7 @@ export class WorkspaceSessionContinuationService {
         this.createRequests = new Map();
         /** @type {Map<string, PendingCreateRequest>} */
         this.pendingCreateRequests = new Map();
-        /** @type {Map<string, { cwd: string, targetBranch: string }>} */
+        /** @type {Map<string, CodeReviewRefreshContext>} */
         this.codeReviewRefreshContexts = new Map();
         /** @type {Map<string, { sessionId: string, unsubscribe: () => void }>} */
         this.retainedSessions = new Map();
@@ -1124,11 +1130,35 @@ export class WorkspaceSessionContinuationService {
             if (options.confirmed !== true) {
                 throw new Error("This Session is busy. Confirm to stop its work and archive it.");
             }
-            const live = await this.liveSession(options.projectId, options.runwieldSessionId);
-            if (!live.operation) throw new Error("No running turn to stop. Refresh and try again.");
-            const canceled = await this.cancelOperation({ operationId: live.operation.operationId });
-            if (!canceled?.ok) throw new Error("Could not stop this Session. Try again.");
+            try {
+                const live = await this.liveSession(options.projectId, options.runwieldSessionId);
+                if (!live.operation) throw new Error("No running turn to stop. Refresh and try again.");
+                const current = this.store.inspectSessionActivation(options.runwieldSessionId).activation;
+                if (
+                    current?.fence !== inspected.activation.fence ||
+                    current?.operationId !== inspected.activation.operationId
+                ) {
+                    throw new Error("This Session started different work. Refresh and confirm again.");
+                }
+                const canceled = await this.cancelOperation({ operationId: live.operation.operationId });
+                if (!canceled?.ok) throw new Error("Could not stop this Session. Try again.");
+            } catch (error) {
+                const current = this.store.inspectSessionActivation(options.runwieldSessionId).activation;
+                const finishing =
+                    current?.state === "active" &&
+                    current.phase === "checkpointing" &&
+                    current.operationId === inspected.activation.operationId;
+                // A disappearing live connection is not proof of settlement. Only the same writer's
+                // durable idle/checkpointing state permits continuing this confirmed archive.
+                if (current?.fence !== inspected.activation.fence || (current?.state !== "idle" && !finishing)) {
+                    throw error;
+                }
+            }
             await waitForSessionActivationSettlement(this.store, options.runwieldSessionId);
+            const settled = this.store.inspectSessionActivation(options.runwieldSessionId).activation;
+            if (settled?.state !== "idle" || settled.fence !== inspected.activation.fence) {
+                throw new Error("This Session changed before it could be archived. Refresh and try again.");
+            }
         }
         const archived = this.store.archiveSession(options.runwieldSessionId, options.projectId);
         return { runwieldSessionId: archived.runwieldSessionId, archivedAt: archived.archivedAt };
@@ -1285,6 +1315,7 @@ export class WorkspaceSessionContinuationService {
                 this.codeReviewRefreshContexts.set(`${operationId}:${interactionId}`, {
                     cwd: executionCwd,
                     targetBranch,
+                    ...(typeof meta.targetBaseRef === "string" ? { targetBaseRef: meta.targetBaseRef } : {}),
                 });
             }
         }
@@ -2295,7 +2326,7 @@ export class WorkspaceSessionContinuationService {
         let rawPatch = String(codeReview.rawPatch);
         if (refresh) {
             try {
-                rawPatch = await getWorktreeReviewDiff(refresh.cwd, refresh.targetBranch);
+                rawPatch = await getWorktreeReviewDiff(refresh.cwd, refresh.targetBranch, refresh.targetBaseRef);
             } catch (error) {
                 if (error instanceof WorktreeReviewComparisonError) throw error;
                 // Keep the last complete interaction patch while the checkout is temporarily unreadable.

@@ -1,6 +1,7 @@
 schemaVersion: 1
 scenarioId: RV-D12
 track: discovery
+group: architecture
 fixtureRevision: 2
 planPath: docs/plans/cover-registration-persistence.md
 baselineRef: main

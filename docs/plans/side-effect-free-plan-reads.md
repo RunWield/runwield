@@ -18,8 +18,10 @@ executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-27"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
+status: "ready_for_work"
+targetBranch: "main"
+deliveryBranch: "main"
 ---
 
 # Side-Effect-Free Plan Reads
@@ -27,19 +29,22 @@ userVerifiedAt: null
 ## Context
 
 Reading Plans can currently change the Project. Workspace lists and search reach `listPlanResources` and `listPlans`.
-Those readers can enter runtime migration, reconcile `.gitignore`, import controller state, and fetch target branches.
-Dashboard and progress reads also reach registry migration and remote publication checks.
+Those readers can enter runtime migration, reconcile `.gitignore`, and import controller state. Normal target-child
+catalog discovery already uses local Git evidence with `refresh: false`; preserve that behavior. Target document
+hydration still writes temporary files, while Doctor check-only inspection and progress reads can clone or fetch.
+Dashboard reads also reach registry migration.
 
 The owner requires these effects to run only from explicit user actions or RunWield processes intended to perform them.
-The owner accepts a pending read state for unmigrated Projects or Plans. The earlier Workspace search speed and
-missing-ID fix is separate existing work; preserve it and other uncommitted changes.
+The owner accepts a pending read state for unmigrated Projects or Plans. Existing Workspace search skips ID-less Plans
+and reuses its catalog per query. Ordinary resource listing already avoids identity backfill and the catalog writer
+lock. Preserve these behaviors and the existing read-only picker/autocomplete flow.
 
 Owning requirements and proposed changes:
 
 - [Core Plan authoring and external adoption](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption): extend
   read-only browsing beyond the existing `/load-plan` picker. Preserve external Markdown, body ownership, identity,
   ordering, and explicit adoption.
-- [Core Work protection](../prd/runwield-core-prd.md#work-protection): change **Enter project runtime state before use**
+- [Core Work protection](../prd/runwield-core-prd.md#work-protection): change **Enter project runtime state safely**
   to distinguish passive inspection from mutation admission. Preserve all migration security and work protection.
 - [Core execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery): preserve
   automatic recovery by the owning action or workflow. Browsing is not permission to run that recovery.
@@ -112,14 +117,23 @@ mutation admission. Replace `listPlanResources({ backfillMissing: true })` usage
 operations such as `ensurePlanIdentity`; ordinary listing has no backfill mode.
 
 Target-child discovery reads locally available Git refs and objects, with existing identity and worktree precedence.
-Fetch stays in explicit planning/workflow preparation. `inspectTargetBranchPlansByParent` is not a safe replacement: its
-temporary clone/fetch also has effects. Missing local target evidence is unavailable, not proof of no children.
-Target-only `commit:path` entries must remain readable through local Git objects rather than filesystem loaders.
+Fetch stays in explicit planning/workflow preparation. Preserve the existing no-fetch catalog tests.
+`inspectTargetBranchPlansByParent` is not a safe replacement: its temporary clone/fetch also has effects, including in
+Doctor's check-only path. Missing local target evidence is unavailable, not proof of no children.
+
+`loadTargetPlan` currently writes Git-sourced Markdown into a temporary directory and calls `loadPlan`. Parse those
+bytes directly instead, using the shared strict parser and checked authority. Target-only `commit:path` entries must
+remain readable through local Git objects in resource and body reads; `listPlanResources` and `loadPlanBodyById` must
+not pass them to filesystem-only loaders. Keep write authorization separate from read access to a Git object.
 
 Progress reads must not invoke `isCommitPublishedToTarget` when it clones or fetches. Show saved evidence and its
 limits. Do not substitute a stale local tracking ref for fresh remote publication proof. If available evidence cannot
 establish completion, show it as unconfirmed; the existing publication/recovery owner obtains fresh proof and records
 progress. This changes read-time verification, not the publication success contract in ADR-016.
+
+A saved `publicationReceipt` can retain already-established delivery after registry cleanup. Its presence alone does
+not prove completion of the current attempt. Preserve the existing identity and invalidation rules when a Plan is
+reopened or executed again; neither erase valid saved proof nor promote a stale receipt to current completion.
 
 ### Pending presentation
 
@@ -194,15 +208,19 @@ scope. Shared helper callers in those areas must retain required action preparat
    upgrades, and identity migration have named mutation owners. Registry mutations enter before locking and do not
    re-enter migration while holding the registry lock. Read APIs have no mutation-enabling flags.
 3. **Plan catalogs and evidence reads are pure and complete for available local authority.** Active/archived listing,
-   strict loads, ID lookup, summaries, action evidence, and worktree path authorization use the pure owners. They retain
-   ordering, hierarchy, archive suppression, duplicate/mismatch rejection, and authoritative document precedence.
+   strict loads, ID/body lookup, summaries, action evidence, and worktree path authorization use the pure owners.
+   They retain ordering, hierarchy, archive suppression, duplicate/mismatch rejection, and authoritative document precedence.
    Target-only resources hydrate from local Git objects; target discovery never fetches. Identity backfill moves to
    explicit adoption calls. Missing authority produces a typed pending/unavailable result, not false absence.
 4. **Actions still perform required automatic preparation.** `savePlan`, deliberate external adoption, selected/named
    `/load-plan`, lifecycle/edit/review actions, execution, recovery, and publication enter and prepare before relying on
    runtime facts. Direct callers do not depend on an earlier list to initialize them. Existing locks, revision checks,
-   body preservation, recovery journals, and publication proof remain effective. Init, Session activation, and explicit
-   Doctor repair keep their current intentional preparation; Doctor `--check` stays passive.
+   body preservation, recovery journals, and publication proof remain effective. `executePlanAction` prepares before
+   authority/revision decisions rather than depending on the shared evidence reader. Selected `/load-plan` works
+   without a preceding list; `savePlan` keeps required controller import without introducing lock re-entry. Explicit
+   refresh remains owned by `plan-epic-flow.ts`, `epic-continuation.ts`, `epic-review-context.ts`, and
+   `epic-integration.ts`. Init, Session activation, and explicit Doctor repair keep their current intentional
+   preparation; Doctor `--check` becomes fully passive, including target-child inspection.
 5. **Production read surfaces expose the new contract.** CLI list/read/UI dispatch, Workspace board/detail/search,
    dashboard/progress and passive TUI guidance perform no source mutation, fetch, clone, or repair scheduling. Pending
    notices are visible without changing lifecycle metadata. Existing read navigation and selected-load actions remain
@@ -235,8 +253,13 @@ after asynchronous work settles. Allow only the tested search service's derived 
 - Use a local Git remote with newer target data plus Git subprocess/transport tracing to assert no read invokes fetch,
   clone, or mutating Git commands, including temporary repositories. Filesystem snapshots alone cannot detect a clone
   that is removed later. Hold real catalog/registry locks in another process and show reads do not wait on them. Run a
-  passive-reader child with no filesystem write permission to catch transient lock/write attempts; do not mock owned
-  modules. Search uses its normal writable derived store in its separate integration test.
+  passive-reader child under OS-enforced write denial as an additional check; Bun has no Deno permission sandbox.
+  On macOS, `/usr/bin/sandbox-exec` is available for this subprocess check. Verify the restriction with a deliberate
+  forbidden write before relying on it. Denial alone does not detect a caught
+  error or a nonblocking lock probe. Review the full checked-inspection call graph for write-capable opens and writer
+  locks, including `canTakeControllerLock`; where host tracing is available, record attempted operations outside the
+  child so swallowed errors remain visible. Do not mock owned modules. Search uses its normal writable derived store
+  in its separate integration test.
 - Pending fixtures keep local documents browseable and show a notice. Search withholds uncertain Plan evidence and
   retains healthy Project results; ID-less Plan bytes remain unchanged. Unsafe markers, symlinks, conflicts, or missing
   registered execution documents must not fall back to stale primary workflow evidence or authorize an action.
@@ -244,36 +267,44 @@ after asynchronous work settles. Allow only the tested search service's derived 
   occurs, body and original age survive, current decisions are not overwritten, and a later read becomes ready. Preserve
   interruption/retry, concurrency, selected-checkout ownership, and lock-order tests. Prove a fresh action rechecks
   authority even when a prior read in the same async chain succeeded.
-- For progress, absent registry plus unreachable upstream must not fetch or claim newly confirmed delivery. Existing
-  publication/recovery tests must still require fresh remote proof before success/cleanup. Saved facts remain visible.
+- For progress, absent registry plus unreachable upstream must not fetch or claim newly confirmed delivery. Test no
+  receipt, a valid saved receipt after attempt cleanup, and a receipt invalidated by reopening or a new execution.
+  Valid saved completion remains visible; absent or inapplicable proof stays unconfirmed. Existing publication/recovery
+  tests must still require fresh remote proof before success/cleanup.
 - Source review traces every passive entry listed above through its callers: no indirect preparation or queued repair.
   This complements behavioral tests; renaming a mutating helper does not satisfy the objective.
 
-Focused commands (include new focused test files beside these owners):
+Use Bun 1.4.3 and run `bun run install:locked` before checks. Focused commands (include new focused test files beside
+these owners):
 
 ```sh
-deno run -A scripts/run-tests.js src/plan-store.test.js src/plan-store-locks.test.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-read-scope.test.ts src/shared/worktree-registry.test.js
-deno run -A scripts/run-tests.js src/shared/workflow/controller-registry.integration.test.ts src/shared/workflow/planning-worktree.test.ts src/cmd/plans src/cmd/load-plan
-deno run -A scripts/run-tests.js src/ui/workspace/server src/ui/workspace/owner-workspace.test.js src/ui/workspace/owner-dashboard-stream.test.ts
-deno task seams:check
+bun scripts/run-tests.js src/plan-store.test.js src/plan-store-locks.test.ts src/plan-identity-registry.integration.test.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-read-scope.test.ts src/shared/worktree-registry.test.ts
+bun scripts/run-tests.js src/shared/workflow/controller-registry.integration.test.ts src/shared/workflow/planning-worktree.test.ts src/shared/workflow/plan-location.integration.test.ts src/cmd/plans src/cmd/load-plan
+bun scripts/run-tests.js src/ui/workspace/server src/ui/workspace/owner-workspace.test.js src/ui/workspace/owner-dashboard-stream.test.ts src/ui/workspace/owner-plan-actions.test.ts
+bun run seams:check
+bun run doc-links:check
 ```
 
-Retain the existing composed `/load-plan` picker/autocomplete preservation test and affected publication/recovery tests.
-Run them through `scripts/run-tests.js`, never `deno test`. Use `getHomeDir`/`getCwd` and `withProcessGlobalTestLock`
+Retain `src/cmd/load-plan/index.integration.test.ts` picker/autocomplete preservation, `src/cmd/plans/doctor.test.ts`,
+`src/ui/workspace/server/workspace-search.test.ts`, and affected publication/recovery tests. Run them through the
+isolated `scripts/run-tests.js` runner, never direct `bun test`. Use `getHomeDir`/`getCwd` and `withProcessGlobalTestLock`
 when tests alter HOME or cwd. Do not re-baseline new injection seams.
 
-**Coverage changes:** migration-on-list, import-on-read, fetch-on-list, and read-time remote verification are expected
-to stop. Move their mutation assertions to the owning action tests; do not delete authority, security, recovery, or
-freshness coverage. Existing picker behavior, ID-less search handling, current-source checks, and per-query search reuse
+**Coverage changes:** migration-on-list, import-on-read, temporary-file target hydration, Doctor check-only remote
+inspection, and read-time remote verification are expected to stop. Move their mutation assertions to the owning action
+tests; do not delete authority, security, recovery, or freshness coverage. Existing no-fetch catalog behavior stays
+protected. Existing picker behavior, ID-less search handling, current-source checks, and per-query search reuse
 survive.
 
 **Manual:** use a sandbox Project and isolated Workspace process, not BrandChef.ai or the owner's live store. In a
-headed browser, inspect board/detail, search, and progress at desktop and phone widths. Confirm pending text is
-readable, is not a lifecycle column, and leaves local document navigation usable. Repeated refresh must preserve source
+headed browser, inspect board/detail, search, and progress in the current Plan home at desktop and phone widths; test
+its progress API as well, not a removed standalone progress page. Confirm pending text is readable, is not a lifecycle
+column, and leaves local document navigation usable. Repeated refresh must preserve source
 snapshots. Load the Plan deliberately, then refresh and confirm the notice clears when preparation succeeds. Check
 console/network errors and normal ready-state controls. Use the production Workspace command with sandbox HOME and a
 spare port; the Astro fixture server alone does not prove runtime purity. For component-only inspection,
-`deno task workspace:dev` serves `http://127.0.0.1:5173/dev`.
+`bun run workspace:dev` serves `http://127.0.0.1:5173/dev`. Use an isolated, worktree-specific `agent-browser` session;
+record the production host command, URL, and sandbox paths with the manual evidence.
 
 **AI review:** verify the read/action separation, positive action coverage, truthful pending/publication display, and
 same-change PRD/ADR/glossary synchronization. Passing old tests alone is not proof.
@@ -290,4 +321,4 @@ same-change PRD/ADR/glossary synchronization. Passing old tests alone is not pro
   durable-ID search results.
 - The new preparation boundary must not create circular imports or lock re-entry. Keep authoritative decisions in the
   existing runtime/controller/registry owners, not duplicated per UI surface.
-- No production migrations, service restarts, or source edits are part of planning. Preserve pre-existing dirty files.
+- No production migrations, service restarts, or source edits are part of planning.

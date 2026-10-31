@@ -111,7 +111,7 @@ export async function runHumanReviewPhase(
 
     let diffText = context.nonGitInPlace
         ? ""
-        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "", context.worktreeBaseRef);
     const planAttrs = getPlanAttrs(args.planContent);
     const planTitle = codeReviewPlanTitle(args.planContent, args.planName);
     const agentLabel = args.session.getAgentDisplayName(AGENTS.REVIEWER_FEEDBACK_ENGINEER, context.projectRoot);
@@ -173,6 +173,7 @@ export async function runHumanReviewPhase(
                 planAttrs,
                 diffText,
                 targetBranch: context.worktreeBaseBranch,
+                targetBaseRef: context.worktreeBaseRef,
                 executionCwd: context.executionCwd,
                 guidedReview,
                 reviewConversation,
@@ -244,10 +245,14 @@ export async function runHumanReviewPhase(
                           feedbackText,
                       ].join("\n")
                     : feedbackText;
-            if (humanReview.conversationTurn && !context.nonGitInPlace) {
+            if (humanReview.conversationTurn && !context.nonGitInPlace && !args.hostTurn) {
                 reviewConversation.error = undefined;
                 // Capture after all RunWield writes, immediately before the isolated turn.
-                const before = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                const before = await getWorktreeReviewDiff(
+                    context.executionCwd,
+                    context.worktreeBaseBranch || "",
+                    context.worktreeBaseRef,
+                );
                 const turn = await dispatchReviewConversationTurn(args, context, {
                     diffText: before,
                     findingsSection: conversationContext,
@@ -255,7 +260,11 @@ export async function runHumanReviewPhase(
                     images: humanReview.images,
                     reason: feedbackText,
                 });
-                const after = await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                const after = await getWorktreeReviewDiff(
+                    context.executionCwd,
+                    context.worktreeBaseBranch || "",
+                    context.worktreeBaseRef,
+                );
                 const changed = before !== after;
                 if (turn.report.trim()) {
                     conversationHistory.push(
@@ -337,7 +346,9 @@ export async function runHumanReviewPhase(
                 humanReviewDecision: "changes_requested",
                 humanReviewedAt: null,
             });
-            await recordLifecycleEvent(args, context.projectRoot, "validation_failed", "reviewed", feedbackText);
+            if (!args.hostTurn) {
+                await recordLifecycleEvent(args, context.projectRoot, "validation_failed", "reviewed", feedbackText);
+            }
             const repair = await dispatchReviewFeedbackRepair(args, context, {
                 diffText,
                 findingsSection: conversationContext,
@@ -357,7 +368,11 @@ export async function runHumanReviewPhase(
                     });
                     diffText = context.nonGitInPlace
                         ? ""
-                        : await getWorktreeReviewDiff(context.executionCwd, context.worktreeBaseBranch || "");
+                        : await getWorktreeReviewDiff(
+                              context.executionCwd,
+                              context.worktreeBaseBranch || "",
+                              context.worktreeBaseRef,
+                          );
                 }
                 return {
                     kind: "decided",
@@ -464,7 +479,7 @@ export function normalizeHumanReview(response: ValidationInteractionResponse): {
         };
     }
     return {
-        approved: meta.approved === true,
+        approved: meta.approved === true || response.outcome === "approved",
         feedback: typeof meta.feedback === "string" ? meta.feedback : response.message || "",
         annotations: Array.isArray(meta.annotations) ? meta.annotations : [],
         images: Array.isArray(meta.images) ? meta.images : [],
@@ -474,7 +489,7 @@ export function normalizeHumanReview(response: ValidationInteractionResponse): {
     };
 }
 
-function buildHumanReviewFeedbackText(feedback: string, annotations: HumanReviewAnnotations): string {
+export function buildHumanReviewFeedbackText(feedback: string, annotations: HumanReviewAnnotations): string {
     const baseFeedback = feedback.trim() || "(no free-text feedback provided)";
     const missingAnnotations = feedback.trim()
         ? annotations.filter((annotation) => !feedbackIncludesAnnotation(feedback, annotation))

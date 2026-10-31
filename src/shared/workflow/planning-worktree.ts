@@ -1,7 +1,14 @@
+import { resolvePublicationUpstream } from "../publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { mkdir as fsMkdir, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
@@ -101,6 +108,17 @@ async function gitRefExists(projectRoot: string, ref: string): Promise<boolean> 
     return result.success;
 }
 
+/** Preserve cached origin history for read-only lookups without overriding an explicit local remote. */
+async function cachedTargetRemote(projectRoot: string, branch: string): Promise<string | undefined> {
+    const upstream = await resolvePublicationUpstream(projectRoot, branch);
+    if (upstream) return upstream.remote;
+    const configured = await captureForegroundProcess("git", {
+        cwd: projectRoot,
+        args: ["config", "--get", `branch.${branch}.remote`],
+    });
+    return configured.code === 1 ? "origin" : undefined;
+}
+
 async function resolveExistingTargetSnapshot(
     projectRoot: string,
     targetBranch: string,
@@ -111,22 +129,23 @@ async function resolveExistingTargetSnapshot(
         throw new Error(`Invalid target branch name: ${targetBranch}`);
     }
     const branch = target.startsWith("origin/") ? target.slice("origin/".length) : target;
-    let remoteTargetExists = await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`);
-    const remote =
-        options.refresh === false
-            ? null
-            : await captureForegroundProcess("git", { cwd: projectRoot, args: ["remote", "get-url", "origin"] });
-    if (remote?.success) {
+    const upstream = await resolvePublicationUpstream(projectRoot, branch);
+    const snapshotRemote =
+        upstream?.remote || (options.refresh === false ? await cachedTargetRemote(projectRoot, branch) : undefined);
+    let remoteTargetExists = snapshotRemote
+        ? await gitRefExists(projectRoot, `refs/remotes/${snapshotRemote}/${branch}`)
+        : false;
+    if (upstream && options.refresh !== false) {
         const fetched = await captureForegroundProcess("git", {
             cwd: projectRoot,
-            args: ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
+            args: ["fetch", upstream.remote, `+refs/heads/${branch}:refs/remotes/${upstream.remote}/${branch}`],
         });
         remoteTargetExists = fetched.success;
         if (!fetched.success) {
             const error = new TextDecoder().decode(fetched.stderr);
             if (!error.includes("couldn't find remote ref")) {
                 throw new Error(
-                    `Could not refresh target branch origin/${branch}. Planning was stopped before Planner starts.`,
+                    `Could not refresh target branch ${upstream.remote}/${branch}. Planning was stopped before Planner starts.`,
                 );
             }
         }
@@ -134,14 +153,14 @@ async function resolveExistingTargetSnapshot(
         remoteTargetExists = false;
     }
     const baseRef =
-        remoteTargetExists && (await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`))
-            ? `refs/remotes/origin/${branch}`
+        snapshotRemote && remoteTargetExists
+            ? `refs/remotes/${snapshotRemote}/${branch}`
             : (await gitRefExists(projectRoot, `refs/heads/${branch}`))
               ? `refs/heads/${branch}`
               : "";
     if (!baseRef) throw new Error(`Target branch does not exist: ${targetBranch}. Create it before planning.`);
     const commit = (await runGit(projectRoot, ["rev-parse", `${baseRef}^{commit}`])).trim();
-    return { baseRef: commit, baseBranch: branch };
+    return { baseRef: commit, baseBranch: branch, targetRef: baseRef };
 }
 
 async function readTargetPlanMarkdown(projectRoot: string, planName: string, baseRef: string) {
@@ -206,14 +225,35 @@ export async function loadTargetPlan(projectRoot: string, planName: string, base
         : null;
 }
 
+/** Only the primary checkout on the named target can supply unpublished family edits. */
+async function isPrimaryTargetCheckout(projectRoot: string, targetBranch: string): Promise<boolean> {
+    const branch = targetBranch.trim().replace(/^origin\//, "");
+    const current = await captureForegroundProcess("git", {
+        cwd: projectRoot,
+        args: ["symbolic-ref", "--quiet", "HEAD"],
+    });
+    return current.success && new TextDecoder().decode(current.stdout).trim() === `refs/heads/${branch}`;
+}
+
+/** Document authority is independent of the committed code baseline used for a new worktree. */
+async function loadPlanningTargetPlan(projectRoot: string, planName: string, targetBranch: string, baseRef: string) {
+    return (await isPrimaryTargetCheckout(projectRoot, targetBranch))
+        ? await loadPlan(projectRoot, planName)
+        : await loadTargetPlan(projectRoot, planName, baseRef);
+}
+
 export async function findTargetBranchPlan(cwd: string, targetBranch: string, planName: string) {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     const branch = targetBranch.trim().replace(/^origin\//, "");
     if (!branch || branch === "HEAD" || branch.startsWith("refs/")) {
         throw new Error(`Invalid target branch name: ${targetBranch}`);
     }
+    if (await isPrimaryTargetCheckout(projectRoot, targetBranch)) {
+        return await loadPlan(projectRoot, canonicalizeStoredPlanName(planName).name);
+    }
     // Lookup uses the known snapshot. Only session preparation fetches into project refs.
-    const remoteRef = `refs/remotes/origin/${branch}`;
+    const remote = await cachedTargetRemote(projectRoot, branch);
+    const remoteRef = remote ? `refs/remotes/${remote}/${branch}` : `refs/heads/${branch}`;
     const ref = (await gitRefExists(projectRoot, remoteRef)) ? remoteRef : `refs/heads/${branch}`;
     // Undefined means this checkout has not fetched the branch; null means the
     // known branch has no document at this path.
@@ -250,13 +290,13 @@ async function readTargetChildren(projectRoot: string, ref: string, parentPlanNa
     const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", ref, "docs/plans"]);
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
     const children: Array<{ name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }> = [];
-    for (const relativePath of listed.split(/\r?\n/).filter((line) => line.endsWith(".md"))) {
+    const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
+    const sources = await readTargetPlanMarkdowns(projectRoot, relativePaths, ref);
+    for (const [relativePath, markdown] of sources) {
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
-        const source = await readTargetPlanMarkdown(projectRoot, planName, ref);
-        if (!source) continue;
-        const parsed = parsePlanFrontMatter(source.markdown);
+        const parsed = parsePlanFrontMatter(markdown);
         if (parsed.attrs.parentPlan !== parentName) continue;
-        children.push({ name: planName, path: `${ref}:${source.relativePath}`, attrs: parsed.attrs });
+        children.push({ name: planName, path: `${ref}:${relativePath}`, attrs: parsed.attrs });
     }
     return children;
 }
@@ -268,22 +308,43 @@ export async function findTargetBranchPlansByParent(
     options: TargetSnapshotOptions = {},
 ) {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch, options);
-    const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", target.baseRef, "docs/plans"]);
+    const localTarget = await isPrimaryTargetCheckout(projectRoot, targetBranch);
+    const target = localTarget ? null : await resolveExistingTargetSnapshot(projectRoot, targetBranch, options);
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
     const children = new Map<
         string,
         { name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }
     >();
-    const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
-    const sources = await readTargetPlanMarkdowns(projectRoot, relativePaths, target.baseRef);
+    const sources = new Map<string, string>();
+    if (localTarget) {
+        const listed = await runGit(projectRoot, [
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "docs/plans",
+        ]);
+        for (const relativePath of new Set(listed.split("\0").filter((path) => path.endsWith(".md")))) {
+            if (await pathExists(join(projectRoot, relativePath))) {
+                sources.set(relativePath, await fsReadFile(join(projectRoot, relativePath), "utf8"));
+            }
+        }
+    } else if (target) {
+        const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", target.baseRef, "docs/plans"]);
+        const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
+        for (const [path, markdown] of await readTargetPlanMarkdowns(projectRoot, relativePaths, target.baseRef)) {
+            sources.set(path, markdown);
+        }
+    }
     for (const [relativePath, markdown] of sources) {
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
         const parsed = parsePlanFrontMatter(markdown);
         if (parsed.attrs.parentPlan !== parentName) continue;
         children.set(planName, {
             name: planName,
-            path: `${target.baseRef}:${relativePath}`,
+            path: target ? `${target.baseRef}:${relativePath}` : join(projectRoot, relativePath),
             attrs: parsed.attrs,
         });
     }
@@ -320,9 +381,18 @@ export async function preparePlanningWorktreeForPlan(
             let stablePlanId = registered?.planId;
             if (!stablePlanId) {
                 const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
-                const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+                const targetPlan = await loadPlanningTargetPlan(
+                    projectRoot,
+                    planName,
+                    target.baseBranch,
+                    target.baseRef,
+                );
                 if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
-                stablePlanId = targetPlan.attrs.planId || crypto.randomUUID();
+                // A local draft can omit an existing identity, but must not replace it with a new one.
+                const committedPlan = targetPlan.attrs.planId
+                    ? null
+                    : await loadTargetPlan(projectRoot, planName, target.baseRef);
+                stablePlanId = targetPlan.attrs.planId || committedPlan?.attrs.planId || crypto.randomUUID();
             }
             return await preparePlanningWorktreeForPlan(projectRoot, planName, { ...planAttrs, planId: stablePlanId });
         });
@@ -339,11 +409,11 @@ export async function preparePlanningWorktreeForPlan(
                 );
             }
             const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
-            const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+            const targetPlan = await loadPlanningTargetPlan(projectRoot, planName, target.baseBranch, target.baseRef);
             if (!targetPlan || targetPlan.attrs.planId !== planId || existing.baseBranch !== target.baseBranch) {
                 throw new Error(`Target Plan ${planName} does not match the saved planning identity.`);
             }
-            existing = await refreshPlanningWorktree(projectRoot, existing, target.baseRef);
+            existing = await refreshPlanningWorktree(projectRoot, existing, target.baseRef, target.targetRef);
             const renamed = await loadPlan(existing.path, planName);
             if (!renamed || renamed.attrs.planId !== planId) {
                 throw new Error(`Refreshed planning worktree is missing ${planName}. Your saved work is preserved.`);
@@ -364,14 +434,19 @@ export async function preparePlanningWorktreeForPlan(
                 );
             }
             if (target.baseRef !== existing.baseCommit) {
-                const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+                const targetPlan = await loadPlanningTargetPlan(
+                    projectRoot,
+                    planName,
+                    target.baseBranch,
+                    target.baseRef,
+                );
                 if (!targetPlan || (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId)) {
                     throw new Error(
                         `Target Plan ${planName} is missing or has a different Plan ID. Your files were not changed.`,
                     );
                 }
             }
-            const entry = await refreshPlanningWorktree(projectRoot, existing, target.baseRef);
+            const entry = await refreshPlanningWorktree(projectRoot, existing, target.baseRef, target.targetRef);
             const refreshedPlan = await loadPlan(entry.path, planName);
             if (!refreshedPlan) throw new Error(`Registered worktree is missing its Plan: ${entry.path}`);
             return { entry, plan: refreshedPlan, reused: true };
@@ -384,10 +459,17 @@ export async function preparePlanningWorktreeForPlan(
         await prepareTargetBranchRef(projectRoot, targetBranch);
     }
     const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
-    const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+    const targetPlan = await loadPlanningTargetPlan(projectRoot, planName, target.baseBranch, target.baseRef);
     if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
     if (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId) {
         throw new Error(`Target Plan ${planName} has a different Plan ID. Your files were not changed.`);
+    }
+    const localTarget = await isPrimaryTargetCheckout(projectRoot, target.baseBranch);
+    if (localTarget) {
+        const committedPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+        if (committedPlan?.attrs.planId && committedPlan.attrs.planId !== planId) {
+            throw new Error(`Target Plan ${planName} has a different Plan ID. Your files were not changed.`);
+        }
     }
     const canonicalPlan = targetPlan.attrs.planId
         ? targetPlan
@@ -430,7 +512,7 @@ export async function preparePlanningWorktreeForPlan(
                 baseBranch: target.baseBranch,
                 attemptId,
             });
-            const entry: WorktreeRegistryEntry = { ...artifacts, status: "planning" };
+            const entry: WorktreeRegistryEntry = { ...artifacts, baseRef: target.targetRef, status: "planning" };
             registerRollback("remove_clean_created_worktree_and_registry_entry", async () => {
                 await removeWorktreeGitArtifacts({ projectRoot, path: entry.path, force: true });
                 await removeWorktreeRegistryEntry(projectRoot, entry.id);
@@ -453,7 +535,8 @@ export async function preparePlanningWorktreeForPlan(
                 planName,
                 canonicalSource: loadedCanonicalSource(planName, canonicalPlan),
                 reconcileFromCanonical: !targetPlan.attrs.planId,
-                replaceFromCanonical: false,
+                // Only the selected document transfers; all code stays on the latest target snapshot.
+                replaceFromCanonical: localTarget,
             });
             if (!["present", "restored", "reconciled"].includes(planFile.kind)) {
                 throw new Error(

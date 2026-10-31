@@ -34,13 +34,13 @@ I would order the overlapping group like this:
 
 6. flag-test-seam-risks-during-init.md - done
 
-7. Optional before foundation: guided-validation-repair.md - done
+7. Optional before foundation: guided repair - delivered through Engineer follow-up and Code Review
 
 8. simplify-validation-and-lifecycle-messages.md Better after the error/repair model is stable. - done
 
-9. plan-packages-and-independent-validation.md - in progress
+9. Package storage proposal removed; the [Plan Store PRD](docs/prd/plan-store-prd.md) owns storage direction.
 
-10. plan-package-frontend-experience-planning.md
+10. Package frontend proposal removed; shipped journey guidance remains in the Agent instructions.
 
 11. epic-branch-publication-workflow.md
 
@@ -85,7 +85,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 7. [ ] **Needs Plan — Make review match its promised checks.** Require the second whole-change review, distinguish
        reading changed code from listing filenames, and retain useful human-review conversation through repair and
        checks. Evidence: [semantic review](src/shared/workflow/validation-semantic.ts),
-       [diff inspection](src/shared/workflow/review-diff-tool.js),
+       [diff inspection](src/shared/workflow/review-diff-tool.ts),
        [human review](src/shared/workflow/validation-human-review.ts).
 
 8. [ ] **Needs Plan — Retain image access across Session handoffs.** Planning attachments must remain available after

@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+        "runwield": {
+            "command": "wld",
+            "timeout": 3600000,
+            "args": [
+                "attached",
+                "mcp"
+            ],
+            "env": {
+                "RUNWIELD_ATTACHED_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
+            }
+        }
+    }
+}

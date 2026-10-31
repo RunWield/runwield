@@ -8,6 +8,7 @@ import {
     readFile as fsReadFile,
     rm as fsRm,
     stat as fsStat,
+    symlink as fsSymlink,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
@@ -79,7 +80,7 @@ async function* findTestFiles(dir) {
  * @param {string} name
  * @returns {Promise<Record<string, string>>}
  */
-async function createSandboxEnv(sandboxRoot, name) {
+export async function createSandboxEnv(sandboxRoot, name) {
     const home = join(sandboxRoot, name);
     const temp = join(home, "tmp");
     const snipFiltersDir = join(home, ".config", "snip", "filters");
@@ -98,6 +99,22 @@ async function createSandboxEnv(sandboxRoot, name) {
             fsCopyFile(join(REPO_ROOT, "src", "snip-filters", fileName), join(snipFiltersDir, fileName)),
         ),
     );
+    // Reuse installed ML dependencies, never the user's database or configuration.
+    // Otherwise each isolated file downloads the same models before it can index a Work Record.
+    const sourceHome = process.env.HOME || process.env.USERPROFILE;
+    if (sourceHome) {
+        const runtime = join(home, ".local", "share", "mnemoteca");
+        await fsMkdir(runtime, { recursive: true });
+        for (const name of ["lib", "models"]) {
+            const source = join(sourceHome, ".local", "share", "mnemoteca", name);
+            try {
+                if ((await fsStat(source)).isDirectory())
+                    await fsSymlink(source, join(runtime, name), process.platform === "win32" ? "junction" : "dir");
+            } catch (error) {
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            }
+        }
+    }
     if (process.platform === "win32") {
         await fsWriteFile(join(home, ".gitconfig"), "[core]\n\tlongpaths = true\n");
     }

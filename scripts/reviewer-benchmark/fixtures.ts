@@ -1,6 +1,16 @@
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { load, JSON_SCHEMA } from "js-yaml";
+
+export const FIXTURE_GROUPS: readonly string[] = [
+    "plan-adherence",
+    "plan-named-edge-case",
+    "correctness-beyond-plan",
+    "cross-file-context",
+    "architecture",
+    "multiple-defects",
+];
+export const SCENARIO_ID_PATTERN = /^RV-(?:D|M)\d{2}$/;
 
 export type VariantId = "A" | "B";
 export type ProofOutcome = "pass" | "fail";
@@ -8,6 +18,7 @@ export type ProofOutcome = "pass" | "fail";
 export interface FixtureManifest {
     schemaVersion: number;
     scenarioId: string;
+    group: string;
     fixtureRevision: number;
     track: string;
     language: string;
@@ -164,7 +175,7 @@ export function fixtureVariant(fixture: ReviewerFixture, variant: VariantId): Fi
     return value!;
 }
 
-/** Parse the checked-in smoke contract, not a general command or fixture registry. */
+/** Parse a corpus package and validate its public and hidden fixture contract. */
 export async function loadFixture(packagePath: string): Promise<ReviewerFixture> {
     const packageDir = await realpath(packagePath);
     const manifest = load(await readFile(await regularFile(packageDir, "scenario.yaml"), "utf8"), {
@@ -174,7 +185,9 @@ export async function loadFixture(packagePath: string): Promise<ReviewerFixture>
         schema: JSON_SCHEMA,
     }) as FixtureOracle;
     requireValue(manifest?.schemaVersion === 1 && oracle?.schemaVersion === 1, "unsupported schema");
-    requireValue(/^RV-(?:D04|D05|D12|D13|M01)$/.test(manifest.scenarioId), "unsupported smoke scenario");
+    requireValue(SCENARIO_ID_PATTERN.test(manifest.scenarioId), "invalid scenario ID");
+    requireValue(manifest.scenarioId === basename(packageDir), "scenario directory mismatch");
+    requireValue(FIXTURE_GROUPS.includes(manifest.group), "invalid coverage group");
     requireValue(oracle.scenarioId === manifest.scenarioId, "oracle scenario mismatch");
     requireValue(
         Number.isInteger(manifest.fixtureRevision) && manifest.fixtureRevision > 0,

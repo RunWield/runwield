@@ -23,16 +23,18 @@
  * iterates without rebuilding LLM context.
  */
 
-import { AGENTS, isPlannedChangeClassification, normalizeRoutingIntent } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { ensurePlansDir, loadPlan } from "../../plan-store.js";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
+import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.js";
 import { runRootTurn } from "../session/session.js";
 import { getAgentDisplayName } from "../session/agents.js";
-import { sanitizeSessionName } from "../session/session-name.ts";
+import { sanitizeSessionName } from "../session-name.ts";
+import { normalizeTriageOutcome, type TriageOutcome, type TriageOutcomeInput } from "./triage-outcome.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
@@ -40,6 +42,7 @@ import {
 } from "../session/session-runtime-events.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { buildAgentHandoffRequest } from "./workflow-prompts.ts";
 import {
@@ -50,7 +53,7 @@ import {
     runSlicerAgent,
 } from "./workflow.js";
 import { runMechanicalValidation, shouldRunWorkflowValidation, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
-import { runWorkflowValidationToStableBoundary } from "./validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import type { LocalCIPort } from "./validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -60,28 +63,6 @@ import type { DeferredPlanExecution } from "../session/session-runtime.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 
 export { runLocalCI, runMechanicalValidation } from "./validation.ts";
-
-type RoutingIntent = "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT";
-type PlanClassification = "PLANNED_CHANGE" | "FEATURE" | "PROJECT";
-type WorkKind = "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
-
-export interface TriageOutcome {
-    routingIntent: RoutingIntent;
-    classification?: PlanClassification;
-    workKind?: WorkKind;
-    complexity: "LOW" | "MEDIUM" | "HIGH";
-    summary: string;
-    sessionName?: string;
-}
-
-interface TriageOutcomeInput {
-    routingIntent?: RoutingIntent | "FEATURE";
-    classification?: PlanClassification | "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX";
-    workKind?: WorkKind;
-    complexity?: "LOW" | "MEDIUM" | "HIGH";
-    summary?: string;
-    sessionName?: string;
-}
 
 interface TriageToolResultMessage {
     role: "toolResult";
@@ -228,52 +209,6 @@ async function confirmNonGitQuickFixExecution(
 }
 
 /**
- * Normalize a routing value supplied by tool details.
- */
-function asRoutingIntent(value: string | null | undefined): RoutingIntent | null {
-    const normalized = normalizeRoutingIntent(value);
-    if (!normalized) return null;
-    return normalized;
-}
-
-/**
- * Normalize canonical `routingIntent` details and legacy `classification`
- * details into a Routing Intent outcome. Plan Classification is preserved only
- * for plan-producing intents.
- *
- * Return a canonical outcome only when the required routing fields are present.
- */
-function normalizeTriageOutcome(details: TriageOutcomeInput | null | undefined): TriageOutcome | null {
-    if (!details) return null;
-    const routingIntent = asRoutingIntent(details.routingIntent) || asRoutingIntent(details.classification);
-    if (!routingIntent) return null;
-
-    if (!details.complexity || !details.summary) return null;
-    const outcome: TriageOutcome = {
-        routingIntent,
-        complexity: details.complexity,
-        summary: details.summary,
-        ...(details.workKind ? { workKind: details.workKind } : {}),
-    };
-    const sessionName = sanitizeSessionName(details.sessionName);
-    if (sessionName) {
-        outcome.sessionName = sessionName;
-    } else {
-        delete outcome.sessionName;
-    }
-
-    if (routingIntent === "PLANNED_CHANGE") {
-        outcome.classification = "PLANNED_CHANGE";
-    } else if (routingIntent === "PROJECT") {
-        outcome.classification = "PROJECT";
-    } else {
-        delete outcome.classification;
-    }
-
-    return outcome;
-}
-
-/**
  * Read the latest triage_report tool result's details from a message stream.
  * This is a compatibility helper for legacy tests and transcript display. Live
  * routing uses accepted Workflow Tool Events.
@@ -348,8 +283,30 @@ export async function dispatchPostTriage({
         throw new Error("dispatchPostTriage: hostedSession is required");
     }
     const projectRoot = hostedSession.cwd;
-    const recordMetric = (metric: Parameters<typeof recordWorkflowMetric>[0]) =>
-        recordWorkflowMetric(metric, projectRoot);
+    const recordMetric = (metric: Parameters<typeof recordWorkflowMetric>[0]) => {
+        if (
+            metric.event === "feature_project_outcome" ||
+            metric.event === "operation_completed_observed" ||
+            metric.event === "quick_fix_completed_observed"
+        ) {
+            const details = metric.details;
+            const completed =
+                details &&
+                typeof details === "object" &&
+                "taskCompletedObserved" in details &&
+                details.taskCompletedObserved === true;
+            return recordWorkflowOutcome(projectRoot, {
+                category: "execution",
+                event: metric.event,
+                operationId: crypto.randomUUID(),
+                planName: typeof metric.planName === "string" ? metric.planName : undefined,
+                attemptId: hostedSession.getActiveExecutionWorkflow()?.worktreeId,
+                session: hostedSession.getManagedMetadata(),
+                outcome: completed ? "succeeded" : "ongoing",
+            });
+        }
+        return recordWorkflowMetric(metric, projectRoot);
+    };
 
     const normalizedTriage = normalizeTriageOutcome(triage);
     if (!normalizedTriage) throw new Error("dispatchPostTriage: routingIntent is required");
@@ -645,8 +602,9 @@ export async function dispatchPostTriage({
             });
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            const executionOwner =
-                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
+            const executionOwner = resolvePlanExecutionRuntimeAgent(
+                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta),
+            );
             await recordMetric({
                 category: "execution",
                 event: "feature_project_outcome",
@@ -670,8 +628,9 @@ export async function dispatchPostTriage({
             return;
         }
 
-        const executionOwner =
-            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
+        const executionOwner = resolvePlanExecutionRuntimeAgent(
+            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta),
+        );
         const executionDecision = decidePostExecution(executionResult, {
             planName,
             triageMeta: decisionTriageMeta,

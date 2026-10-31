@@ -91,6 +91,16 @@ function makeUi(selections: Array<string | null>, textInputs: Array<string | nul
     return { editor, messages, promptOptions, prompts, uiAPI };
 }
 
+async function waitForArchive(ui: LoadPlanUiFixture): Promise<void> {
+    for (let attempt = 0; attempt < 1500; attempt++) {
+        const failure = ui.messages.find((message) => message.startsWith("Archive failed for"));
+        if (failure) throw new Error(failure);
+        if (ui.messages.some((message) => message.startsWith("Archived"))) return;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error("Background archive did not finish");
+}
+
 async function createRuntime(
     projectRoot: string,
     agentName = "router",
@@ -568,6 +578,7 @@ test("load-plan archives a verified Plan through the real Plan store", async () 
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(await loadPlan(projectRoot, "finished"), null);
             assertEquals((await loadArchivedPlan(projectRoot, "finished"))?.attrs.archivedFromStatus, "verified");
@@ -613,6 +624,7 @@ test("load-plan offers lifecycle actions for a validated Plan already published 
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(ui.prompts.includes("What would you like to do?"), true);
             assertEquals(await loadPlan(projectRoot, "published"), null);
@@ -640,6 +652,7 @@ test("load-plan offers completed actions for a validated non-Git Plan without co
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
             assertEquals(
                 ui.prompts.some((prompt) => prompt.startsWith("Plan recovery")),
                 false,
@@ -759,6 +772,7 @@ for (const confirmRemoval of [true, false]) {
                     uiAPI: reload.uiAPI,
                     editor: reload.editor,
                 });
+                await waitForArchive(reload);
                 assertEquals(
                     reload.promptOptions[0].map((option) => option.value),
                     ["archive", "review", "view", "cancel"],
@@ -822,6 +836,7 @@ test("load-plan confirms cleanup of unregistered legacy recovery when archiving 
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(await loadPlan(projectRoot, "finished-with-stale-worktree"), null);
             const archived = await loadArchivedPlan(projectRoot, "finished-with-stale-worktree");
@@ -853,6 +868,7 @@ test("load-plan archives a verified Epic with every child Plan and keeps the fol
                 uiAPI: ui.uiAPI,
                 editor: ui.editor,
             });
+            await waitForArchive(ui);
 
             assertEquals(await loadPlan(projectRoot, "epic"), null);
             assertEquals(await loadPlan(projectRoot, "epic/01-first"), null);
@@ -1058,6 +1074,66 @@ test("load-plan distinguishes validated Epic children from pending publication",
         }
     });
 });
+
+for (const ordinaryChildPending of [false, true]) {
+    test(`load-plan ${ordinaryChildPending ? "withholds" : "offers"} integration retry with ${ordinaryChildPending ? "undelivered scope" : "only an open repair draft"}`, async () => {
+        await withRuntimeCommandFixture("runwield-epic-retry-", async () => {
+            const projectRoot = await recoverableArchiveFixture.checkout({ prefix: "runwield-epic-retry-git-" });
+            await writePlan(projectRoot, "epic", {
+                classification: "PROJECT",
+                status: "implemented",
+                targetBranch: "epic/epic",
+                epicIntegrationReport: "docs/plans/epic/integration-report.md",
+            });
+            await writePlan(projectRoot, "epic/01-delivered", {
+                parentPlan: "epic",
+                status: "verified",
+                order: 1,
+            });
+            await git(projectRoot, ["add", "docs/plans"]);
+            await git(projectRoot, ["commit", "-m", "Delivered Epic"]);
+            await git(projectRoot, ["branch", "epic/epic"]);
+            const repairName = "epic/02-repair-integration-findings";
+            await writePlan(projectRoot, repairName, {
+                parentPlan: "epic",
+                status: "draft",
+                order: 2,
+                targetBranch: "epic/epic",
+            });
+            if (ordinaryChildPending) {
+                await writePlan(projectRoot, "epic/03-pending", {
+                    parentPlan: "epic",
+                    status: "draft",
+                    order: 3,
+                });
+            }
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["cancel"]);
+            try {
+                await runLoadPlanCommand(["epic"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                assertEquals(
+                    ui.promptOptions.flat().filter((option) => option.value === "integration_gate"),
+                    ordinaryChildPending ? [] : [{ value: "integration_gate", label: "Retry the integration gate" }],
+                );
+                if (!ordinaryChildPending) {
+                    assertStringIncludes(ui.messages.join("\n"), repairName);
+                    assertStringIncludes(ui.messages.join("\n"), "docs/plans/epic/integration-report.md");
+                    assertStringIncludes(
+                        ui.messages.join("\n"),
+                        "Retry the integration gate or plan the repair child.",
+                    );
+                }
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
 
 test("Approve for Later creates no execution segment", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
@@ -2074,6 +2150,133 @@ test("load-plan abandon names a rescue branch and cleanup can be retried after m
         } finally {
             runtime.closeAllSessions();
             await fsRm(attempt.worktreePath, { recursive: true }).catch(() => {});
+        }
+    });
+});
+
+for (const orders of [
+    [2, 1],
+    [undefined, 1],
+    [1, 1],
+]) {
+    test(`Epic picker uses explicit order and readable child names ${JSON.stringify(orders)}`, async () => {
+        await withRuntimeCommandFixture("runwield-child-picker-", async ({ projectRoot }) => {
+            await writePlan(projectRoot, "long-parent-prefix", { classification: "PROJECT", status: "ready_for_work" });
+            for (const [index, order] of orders.entries()) {
+                await writePlan(projectRoot, `long-parent-prefix/${index === 0 ? "99-first" : "middle"}`, {
+                    status: orders[0] === 2 && index === 1 ? "ready_for_work" : "draft",
+                    parentPlan: "long-parent-prefix",
+                    ...(order === undefined ? {} : { order }),
+                });
+            }
+            if (orders[0] === 2) {
+                await writePlan(projectRoot, "long-parent-prefix/01-last", {
+                    parentPlan: "long-parent-prefix",
+                    order: 10,
+                    status: "failed",
+                });
+            }
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["pick_child", "long-parent-prefix/99-first", "view", "back", null, null]);
+            try {
+                await runLoadPlanCommand(["long-parent-prefix"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                const options =
+                    ui.promptOptions.find((items) =>
+                        items.some((item) => item.value === "long-parent-prefix/99-first"),
+                    ) || [];
+                assertEquals(options.length > 0, true);
+                const next = options.find((item) => item.value === "__next_child__");
+                if (orders[0] === 2) {
+                    assertStringIncludes(next?.label || "", "middle");
+                    assertEquals(
+                        options.filter((item) => item.value !== "__next_child__").map((item) => item.value),
+                        ["long-parent-prefix/middle", "long-parent-prefix/99-first", "long-parent-prefix/01-last"],
+                    );
+                } else {
+                    assertEquals(next, undefined);
+                    assertStringIncludes(ui.messages.join("\n"), "order");
+                }
+                assertEquals(
+                    options
+                        .filter((item) => item.value !== "__next_child__")
+                        .every((item) => !item.label.includes("long-parent-prefix/")),
+                    true,
+                );
+                assertStringIncludes(ui.messages.join("\n"), "Planned Change: long-parent-prefix/99-first");
+                if (orders[0] === 2) {
+                    const last = await loadPlan(projectRoot, "long-parent-prefix/01-last");
+                    if (!last) throw new Error("Expected last child");
+                    await updatePlanFrontMatter(
+                        projectRoot,
+                        "long-parent-prefix/01-last",
+                        { order: 0 },
+                        {},
+                        { expectedRevision: last.revision },
+                    );
+                    const reopened = makeUi(["pick_child", "long-parent-prefix/99-first", "view", "back", null, null]);
+                    await runLoadPlanCommand(["long-parent-prefix"], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: reopened.uiAPI,
+                        editor: reopened.editor,
+                    });
+                    const reordered =
+                        reopened.promptOptions.find((items) =>
+                            items.some((item) => item.value === "long-parent-prefix/99-first"),
+                        ) || [];
+                    assertEquals(
+                        reordered.filter((item) => item.value !== "__next_child__").map((item) => item.value),
+                        ["long-parent-prefix/01-last", "long-parent-prefix/middle", "long-parent-prefix/99-first"],
+                    );
+                    assertStringIncludes(reopened.messages.join("\n"), "Planned Change: long-parent-prefix/99-first");
+                }
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
+test("Epic picker distinguishes nested child paths without repeating the Epic prefix", async () => {
+    await withRuntimeCommandFixture("runwield-nested-child-picker-", async ({ projectRoot }) => {
+        await writePlan(projectRoot, "long-parent-prefix", { classification: "PROJECT", status: "ready_for_work" });
+        for (const area of ["frontend", "backend"]) {
+            await writePlan(projectRoot, `long-parent-prefix/${area}/setup`, {
+                status: "draft",
+                parentPlan: "long-parent-prefix",
+                order: 1,
+                summary: "Setup",
+            });
+        }
+        const { runtime, sessionId } = await createRuntime(projectRoot);
+        const ui = makeUi(["pick_child", null, null]);
+        try {
+            await runLoadPlanCommand(["long-parent-prefix"], {
+                sessionRuntime: runtime,
+                sessionId,
+                uiAPI: ui.uiAPI,
+                editor: ui.editor,
+            });
+            const options =
+                ui.promptOptions.find((items) =>
+                    items.some((item) => item.value === "long-parent-prefix/frontend/setup"),
+                ) || [];
+            const frontend = options.find((item) => item.value === "long-parent-prefix/frontend/setup");
+            const backend = options.find((item) => item.value === "long-parent-prefix/backend/setup");
+            assertStringIncludes(frontend?.label || "", "frontend/setup");
+            assertStringIncludes(backend?.label || "", "backend/setup");
+            assertEquals(frontend?.label === backend?.label, false);
+            assertEquals(
+                options.every((item) => !item.label.includes("long-parent-prefix/")),
+                true,
+            );
+        } finally {
+            runtime.closeAllSessions();
         }
     });
 });

@@ -14,6 +14,7 @@ import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
 import { checkPackagedImageResize } from "./image-resize.ts";
 import { checkPackagedRemoteSessionSave } from "./remote-session-save.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
+import { checkPackagedMetricsExport } from "./metrics-export.ts";
 
 /** @param {string} name */
 function requiredEnv(name: string): string {
@@ -179,6 +180,11 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     const [subcommand] = argv;
+    if (subcommand === "metrics-export") {
+        await checkPackagedMetricsExport();
+        console.log("[RunWield] Packaged metrics export passed.");
+        return;
+    }
     if (subcommand === "image-resize") {
         await checkPackagedImageResize();
         console.log("[RunWield] Packaged image resize passed.");
@@ -199,5 +205,7 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         console.log("[RunWield] Packaged publication flow passed.");
         return;
     }
-    throw new Error("Usage: wld package-smoke <core-flows|publication|image-resize|remote-session-save>");
+    throw new Error(
+        "Usage: wld package-smoke <core-flows|publication|image-resize|remote-session-save|metrics-export>",
+    );
 }

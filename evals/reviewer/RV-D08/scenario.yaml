@@ -1,0 +1,19 @@
+schemaVersion: 1
+scenarioId: RV-D08
+track: discovery
+group: correctness-beyond-plan
+fixtureRevision: 3
+planPath: docs/plans/resume-after-repair.md
+baselineRef: main
+candidateRef: change
+language: typescript
+runtime:
+    name: bun
+    version: 1.4.3
+sourcePath: source
+tags:
+    - correctness-beyond-plan
+timeoutMs: 120000
+validation:
+    publicCommand: bun run test
+    publicExpectedOutcome: declared-per-variant

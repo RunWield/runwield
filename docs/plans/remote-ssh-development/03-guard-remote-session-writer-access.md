@@ -44,7 +44,7 @@ status: "verified"
 ## Context
 
 **Owner decision (2026-10-06):** the validated
-[Session-save proof](../remote-session-save-proof.md#execution-results-2026-10-05) selected the **synchronous
+[Session-save proof](../archived/remote-session-save-proof.md#execution-results-2026-10-05) selected the **synchronous
 laptop-owned save bridge with strict per-entry saves**. The original guarded stock SFTP approach is set aside. The owner
 accepted the measured latency after clarification: the remote main loop blocks only while a save is in flight (10–45 ms
 per entry on the healthy proof connection; 77 ms worst keystroke round trip), not on every keystroke; a stalled save
@@ -249,7 +249,7 @@ zero saved remote transcript. Measure per-turn delay and TUI responsiveness at r
 bounds a stall but does not keep keyboard handling responsive. Keep the existing independent supervisor able to stop
 owned work during a blocked save. Full Windows support remains outside the evidence.
 
-The owner authorized a throwaway proof on 2026-09-26; see the [proof Plan](../remote-session-save-proof.md). The proof
+The owner authorized a throwaway proof on 2026-09-26; see the [proof Plan](../archived/remote-session-save-proof.md). The proof
 ran and passed on 2026-10-05. On 2026-10-06 the owner selected the synchronous Session-save bridge with strict per-entry
 saves; the Objective and Implementation Steps of this Plan now describe that design.
 
@@ -368,7 +368,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 Recorded proof evidence for the owner's 2026-10-06 decision above. The proof itself changed no requirements, ADR, or
 PRD; the production design in this Plan is the owner's selection after reviewing these
-[results](../remote-session-save-proof.md#execution-results-2026-10-05).
+[results](../archived/remote-session-save-proof.md#execution-results-2026-10-05).
 
 | Check                                                                                | Result                                                                                                                                                                                                                                |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

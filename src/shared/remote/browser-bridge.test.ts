@@ -19,6 +19,7 @@ async function withLaptopBrowser(run: (opened: () => Promise<string[]>) => Promi
         const root = await mkdtemp(join(tmpdir(), "browser-bridge-"));
         const log = join(root, "opened");
         const previousPath = process.env.PATH;
+        const previousSandbox = process.env.WLD_TEST_SANDBOX_HOME;
         try {
             for (const command of ["open", "xdg-open"]) {
                 const path = join(root, command);
@@ -26,8 +27,12 @@ async function withLaptopBrowser(run: (opened: () => Promise<string[]>) => Promi
                 await chmod(path, 0o700);
             }
             process.env.PATH = `${root}${delimiter}${previousPath ?? ""}`;
+            // The launchers above are disposable commands, not the real desktop.
+            delete process.env.WLD_TEST_SANDBOX_HOME;
             await run(async () => (await readFile(log, "utf8").catch(() => "")).split("\n").filter(Boolean));
         } finally {
+            if (previousSandbox === undefined) delete process.env.WLD_TEST_SANDBOX_HOME;
+            else process.env.WLD_TEST_SANDBOX_HOME = previousSandbox;
             if (previousPath === undefined) delete process.env.PATH;
             else process.env.PATH = previousPath;
             await rm(root, { recursive: true, force: true });

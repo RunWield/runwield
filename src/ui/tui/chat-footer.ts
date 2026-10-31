@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { RuntimeUsageTotals } from "../../shared/session/runtime-usage-totals.ts";
+import type { RuntimeUsage } from "../../shared/session/session-runtime-events.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.js";
@@ -34,13 +36,6 @@ export interface FooterLocationOptions {
     home?: string;
     resolveBranch?: (cwd: string) => string | undefined;
 }
-export interface FooterRuntimeUsage {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    cost: number;
-}
 export interface FooterRuntimeSnapshot extends FooterLocationSnapshot {
     activeModel: { model?: string; provider?: string };
     thinkingLevel: string;
@@ -52,13 +47,7 @@ export interface FooterRuntimeSnapshot extends FooterLocationSnapshot {
 }
 export interface FooterUsageEvent {
     type: string;
-    usage: {
-        inputTokens: number;
-        outputTokens: number;
-        cacheReadTokens: number;
-        cacheWriteTokens: number;
-        costUsd: number;
-    };
+    usage: RuntimeUsage;
 }
 export type FooterRuntimeEvent = FooterUsageEvent | { type: string };
 export interface ChatFooterController {
@@ -278,7 +267,7 @@ function isUsageEvent(event: FooterRuntimeEvent): event is FooterUsageEvent {
 }
 
 export function createChatFooterController(options: CreateChatFooterControllerOptions): ChatFooterController {
-    const runtimeUsage: FooterRuntimeUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    let runtimeUsage = new RuntimeUsageTotals();
     let unsubscribeRuntimeTelemetry = () => {};
     let ctrlCPendingExit = false;
     let ctrlCPendingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -292,18 +281,10 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
     };
     function attachRuntimeTelemetry(sessionId: string): void {
         unsubscribeRuntimeTelemetry();
-        runtimeUsage.input = 0;
-        runtimeUsage.output = 0;
-        runtimeUsage.cacheRead = 0;
-        runtimeUsage.cacheWrite = 0;
-        runtimeUsage.cost = 0;
+        runtimeUsage = new RuntimeUsageTotals();
         unsubscribeRuntimeTelemetry = options.runtime.subscribeSessionEvents(sessionId, (event) => {
             if (!isUsageEvent(event)) return;
-            runtimeUsage.input += event.usage.inputTokens;
-            runtimeUsage.output += event.usage.outputTokens;
-            runtimeUsage.cacheRead += event.usage.cacheReadTokens;
-            runtimeUsage.cacheWrite += event.usage.cacheWriteTokens;
-            runtimeUsage.cost += event.usage.costUsd;
+            runtimeUsage.add(event.usage);
         });
     }
     function getModelAndProvider(snapshot: FooterRuntimeSnapshot): {
@@ -355,11 +336,12 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
                 renderFooterWorkflowLabelParts(line1RightParts);
             const contextStat = buildFooterContextStat(snapshot.contextUsage, snapshot.autoCompactionEnabled);
             const statsParts: string[] = [];
-            if (runtimeUsage.input > 0) statsParts.push(`↑${formatTokens(runtimeUsage.input)}`);
-            if (runtimeUsage.output > 0) statsParts.push(`↓${formatTokens(runtimeUsage.output)}`);
-            if (runtimeUsage.cacheRead > 0) statsParts.push(`R${formatTokens(runtimeUsage.cacheRead)}`);
-            if (runtimeUsage.cacheWrite > 0) statsParts.push(`W${formatTokens(runtimeUsage.cacheWrite)}`);
-            if (runtimeUsage.cost > 0) statsParts.push(`$${runtimeUsage.cost.toFixed(3)}`);
+            const usage = runtimeUsage.usage;
+            statsParts.push(`↑${usage.inputTokens === null ? "—" : formatTokens(usage.inputTokens)}`);
+            statsParts.push(`↓${usage.outputTokens === null ? "—" : formatTokens(usage.outputTokens)}`);
+            statsParts.push(`R${usage.cacheReadTokens === null ? "—" : formatTokens(usage.cacheReadTokens)}`);
+            statsParts.push(`W${usage.cacheWriteTokens === null ? "—" : formatTokens(usage.cacheWriteTokens)}`);
+            statsParts.push(usage.costUsd === null ? "$—" : `$${usage.costUsd.toFixed(3)}`);
             if (contextStat) statsParts.push(theme.fg(contextStat.token, contextStat.text));
             const showThinkingLevel = shouldShowFooterThinkingLevel(modelStr, thinkingLevel);
             const thinkingStr = `(${thinkingLevel})`;

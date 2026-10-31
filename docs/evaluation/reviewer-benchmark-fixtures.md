@@ -10,12 +10,13 @@ The fixture contract belongs to the Reviewer evaluator. The current interim runn
 result capture, resume, and single-configuration reports. The shared runner, repetition, repair-state execution, and
 paired comparison remain target. See [usage and human adjudication](../../evals/reviewer/README.md#run-and-score).
 
-RV-D04, RV-D12, RV-D13, and RV-M01 are revision 2 after owner adjudication. RV-D05 remains revision 1. The original
-paid baseline measures revision 1 only; see the [revision notes](../../evals/reviewer/README.md#fixture-revisions-after-owner-adjudication).
+RV-D04, RV-D12, RV-D13, and RV-M01 are revision 2 after owner adjudication. RV-D01, RV-D02, RV-D03, RV-D05, and
+RV-D06 are revision 1. The original paid baseline measures revision 1 only; see the [revision notes](../../evals/reviewer/README.md#fixture-revisions-after-owner-adjudication).
 
-The nine materialized smoke cases live in five packages under `evals/reviewer/`: RV-D04 A/B, RV-D05 A/B, RV-D12 A/B,
-RV-D13 A/B, and RV-M01 A. They are Bun 1.4.3 TypeScript projects. RunWield CI excludes their `source/`, `variants/`,
-and `evaluation/` payloads; fixture admission checks them separately. Runner code and tests remain in normal CI.
+The 17 materialized discovery cases live in nine packages under `evals/reviewer/`: RV-D01–D06 A/B, RV-D12 A/B,
+RV-D13 A/B, and RV-M01 A. The original nine-case smoke selection is unchanged. They are Bun 1.4.3 TypeScript
+projects. RunWield CI excludes their `source/`, `variants/`, and `evaluation/` payloads; fixture admission checks them
+separately. Runner code and tests remain in normal CI.
 
 ## Package Boundary
 
@@ -42,8 +43,8 @@ that project or its Git history:
 The runner records the internal variant identity outside the project and presents an ordinary baseline-to-candidate diff
 through `review_diff`. Each Reviewer project is outside the RunWield checkout, with neutral `main` baseline history
 and a `change` branch. Hidden proofs run in separate verification trees. `.wld/` settings do not enter the review diff.
-The smoke runner does not sandbox absolute reads: a Reviewer that guesses the checkout path could read hidden files.
-The project contains no pointer back to the corpus. This residual risk is accepted for the smoke run.
+The current runner does not sandbox absolute reads: a Reviewer that guesses the checkout path could read hidden files.
+The project contains no pointer back to the corpus. This residual risk remains accepted for the interim runner.
 
 ## Scenario Manifest
 
@@ -53,7 +54,8 @@ The non-secret scenario manifest records execution facts:
 schemaVersion: 1
 scenarioId: RV-D04
 track: discovery
-fixtureRevision: 1
+group: correctness-beyond-plan
+fixtureRevision: 2
 planPath: docs/plans/reuse-plan-summaries.md
 baselineRef: main
 candidateRef: change
@@ -69,6 +71,11 @@ validation:
     publicCommand: bun run test
     publicExpectedOutcome: pass-for-every-candidate
 ```
+
+`scenarioId` must match `^RV-(?:D|M)\d{2}$` and the package directory name. `group` is required and must be one of:
+`plan-adherence`, `plan-named-edge-case`, `correctness-beyond-plan`, `cross-file-context`, `architecture`, or
+`multiple-defects`. Reports use this group; package directories containing `scenario.yaml` define corpus membership
+for `--scenarios all`. No runner registry edit is needed to add a package.
 
 `publicExpectedOutcome` is `pass-for-every-candidate` unless it is `declared-per-variant`. In that mode, each oracle
 variant declares `validationOutcomes.bun run test` as `pass` or `fail`; a failure also needs `publicFailureMarker` with
@@ -150,7 +157,8 @@ should interact through a believable feature while remaining independently repai
 
 ## Repair-state Fixtures
 
-Repair-state execution is target; the smoke runner supports discovery only. A future repair fixture additionally supplies:
+Repair-state execution is target; the current runner supports discovery only. A future repair fixture additionally
+supplies:
 
 ```yaml
 priorLedger:
@@ -181,7 +189,7 @@ The last case protects restraint: unrelated edits alone are not a blocking defec
 
 ## Proof and Mutation Admission
 
-Before a fixture is scored:
+Mechanical admission steps 1–5 must pass for every selected package before any model call:
 
 1. Materialize the defective variant in an isolated temporary project.
 2. Run the hidden verifier and require the named proof to fail for the expected reason.
@@ -189,13 +197,16 @@ Before a fixture is scored:
 4. Check that normal project validation passes or fails exactly as the scenario declares. Some defects are intentionally
    invisible to the normal suite; others test whether the Reviewer catches a misleading touched test.
 5. Confirm that the Reviewer-accessible tree contains no oracle, fixing patch, revealing history, or benchmark label.
-6. Have a human inspect the Plan, diff, proof, and expected finding without seeing candidate benchmark output.
+6. After the paid run, the owner judges each fixture's Plan, diff, proof, and oracle together with the Reviewer's
+   result. This judgment is not a pre-run requirement. Record an oracle verdict for each case. A
+   `fixture_needs_repair` verdict or any `novel_valid` finding excludes that case from every score; other cases still
+   score. The excluded case does not score until a revised fixture runs again.
 
-Fixtures that do not survive this admission process remain drafts and do not affect scores.
+Fixtures that fail mechanical admission cannot enter the run. Reports retain excluded cases and their repair reasons.
 
 ## Finding Matching
 
-The smoke runner suggests matches when a finding cites an oracle evidence path. A path match earns no semantic
+The runner suggests matches when a finding cites an oracle evidence path. A path match earns no semantic
 credit. A human labels each blocking finding as `matched`, `duplicate`, `unsupported`, or `novel_valid` in the run's
 `adjudications.json`, keyed by run, case, attempt, and zero-based finding index. Invalid or stale labels stop scoring.
 Advisories are not blocking findings. See the [label format](../../evals/reviewer/README.md#human-adjudication).
@@ -207,20 +218,30 @@ The adjudicator answers:
 3. Does its evidence point to the cause rather than an unrelated suspicious line?
 4. Is it independent of a finding already matched in this round?
 
-All four are required for a unique `matched` result. A real newly discovered defect is `novel_valid` and triggers oracle
-review before scoring continues.
+All four are required for a unique `matched` result. A real newly discovered defect is `novel_valid` and excludes
+that case from every score, without stopping scores for other cases. The optional `oracleVerdicts` list in
+`adjudications.json` records `{ caseId, verdict, note? }`, where `verdict` is `confirmed` or `fixture_needs_repair`.
+A `confirmed` verdict with a `novel_valid` label is invalid. Unknown cases, duplicate verdicts, and unknown verdict
+values also stop scoring.
+
+Semantic scores stay `pending adjudication` while a counted case lacks a verdict or any of its blocking findings
+lacks a label. Older files without `oracleVerdicts` remain valid but pending. Failed, timed-out, and missing cases
+still count unless excluded.
 
 ## Result Record
 
-The current smoke runner writes a `run.json` manifest and append-only `results.jsonl` outside the Reviewer project.
+The current runner writes a `run.json` manifest and append-only `results.jsonl` outside the Reviewer project.
 The manifest holds the selected cases, oracle snapshot, fixture hashes, and configuration. Each result holds the case,
 variant, fixture revision, trial and attempt, expected/observed decision, protocol outcome and cause, exact accepted
 findings/advisories, nudges, actual model/provider, tokens, tool calls, elapsed time, and checkout/prompt identity.
 Absent measurements say `unavailable`, never an estimate. Resume keeps completed cases, including incorrect verdicts,
 and retries unfinished ones; scoring uses the latest attempt, not the best.
 
-`score` writes `summary.json` and `summary.md` from saved data without model calls. Human labels live separately in
-`adjudications.json`. These are deliberate local evaluation files, not passive metrics.
+`score` writes `summary.json` and `summary.md` from saved data without model calls. Human verdicts and finding
+labels live separately in `adjudications.json`. Each `summary.md` case has a readable worksheet before its JSON
+record: package/patch paths, oracle defects and proof commands (or “Oracle: no defect”), blocking findings and suggested path matches, verdict,
+and labels. Excluded cases and reasons appear in “Fixtures needing repair” and in `summary.json` under
+`fixturesNeedingRepair`. These are deliberate local evaluation files, not passive metrics.
 
 For the target shared harness, Reviewer-specific detail should remain nested under the common run record and include:
 

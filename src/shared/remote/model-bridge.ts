@@ -252,7 +252,8 @@ function safeMessage(message: AssistantMessage): AssistantMessage {
         responseModel,
         responseId,
         providerThinkingLevel,
-        usage: {
+        // Preserve upstream absence. Pi's type requires usage, but a remote completion can omit it.
+        usage: usage && {
             input: usage.input,
             output: usage.output,
             cacheRead: usage.cacheRead,
@@ -260,7 +261,7 @@ function safeMessage(message: AssistantMessage): AssistantMessage {
             cacheWrite1h: usage.cacheWrite1h,
             reasoning: usage.reasoning,
             totalTokens: usage.totalTokens,
-            cost: {
+            cost: usage.cost && {
                 input: usage.cost.input,
                 output: usage.cost.output,
                 cacheRead: usage.cost.cacheRead,

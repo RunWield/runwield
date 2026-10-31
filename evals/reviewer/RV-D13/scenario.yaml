@@ -1,6 +1,7 @@
 schemaVersion: 1
 scenarioId: RV-D13
 track: discovery
+group: plan-adherence
 fixtureRevision: 2
 planPath: docs/plans/archive-and-list-plans.md
 baselineRef: main

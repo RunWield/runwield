@@ -1,3 +1,4 @@
+import { resolvePublicationUpstream } from "../publication-target.ts";
 import { isMissingExecutableError } from "../foreground-process.ts";
 import { open } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -9,6 +10,15 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
 
 import { dirname, isAbsolute, join } from "node:path";
 import { assertGitRepository, GitRepositoryRequiredError } from "../git.ts";
+
+/** Stable headers and paths for every locally produced review patch. */
+export const REVIEW_DIFF_FORMAT_ARGS = [
+    "--no-color",
+    "--no-ext-diff",
+    "--no-relative",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+] as const;
 
 class GitCommandError extends Error {
     code: number;
@@ -30,9 +40,8 @@ export class WorktreeReviewComparisonError extends Error {
 }
 
 export class WorktreeReviewTargetError extends WorktreeReviewComparisonError {
-    constructor(targetBranch: string) {
-        const branch = targetBranch || "(missing)";
-        super(`Cannot compute the worktree review diff because target ref refs/heads/${branch} is unavailable.`);
+    constructor(targetRef: string) {
+        super(`Cannot compute the worktree review diff because target ref ${targetRef || "(missing)"} is unavailable.`);
         this.name = "WorktreeReviewTargetError";
     }
 }
@@ -135,6 +144,10 @@ export async function captureWorktreeTree(cwd: string, forcePaths: string[] = []
             await fsRm(indexPath);
         }
         await runGit(cwd, ["add", "-A", "--", "."], env);
+        // A copied index has a new timestamp. Its cached stat data can otherwise
+        // hide same-size edits whose file times match the old index. Re-read the
+        // tracked contents in this temporary index; never change the real index.
+        await runGit(cwd, ["add", "--renormalize", "-u", "--", "."], env);
         if (forcePaths.length > 0) await runGit(cwd, ["add", "-f", "--", ...forcePaths], env);
         return (await runGit(cwd, ["write-tree"], env)).trim();
     } finally {
@@ -144,13 +157,13 @@ export async function captureWorktreeTree(cwd: string, forcePaths: string[] = []
 
 export async function diffTrees(cwd: string, baseTree: string, currentTree: string): Promise<string> {
     await assertGitRepository(cwd, "Computing a workflow diff");
-    return await runGit(cwd, ["diff", `${baseTree}..${currentTree}`]);
+    return await runGit(cwd, ["diff", ...REVIEW_DIFF_FORMAT_ARGS, `${baseTree}..${currentTree}`]);
 }
 
 export async function getWorkflowDiff(cwd: string, baselineTree: string | undefined): Promise<string> {
     await assertGitRepository(cwd, "Computing a workflow diff");
     if (!baselineTree) {
-        return await runGit(cwd, ["diff"]);
+        return await runGit(cwd, ["diff", ...REVIEW_DIFF_FORMAT_ARGS]);
     }
 
     const currentTree = await captureWorktreeTree(cwd);
@@ -162,18 +175,48 @@ export async function getWorkflowDiff(cwd: string, baselineTree: string | undefi
  * execution HEAD. Both the proposed patch and its before-file text use this
  * shared comparison base.
  */
-export async function resolveWorktreeReviewBaseTree(cwd: string, targetBranch: string): Promise<string> {
+export async function resolveWorktreeReviewBaseTree(
+    cwd: string,
+    targetBranch: string,
+    recordedBaseRef?: string,
+): Promise<string> {
     await assertGitRepository(cwd, "Computing a worktree review diff");
     const branch = String(targetBranch || "").trim();
     if (!branch) throw new WorktreeReviewTargetError(branch);
 
-    let targetCommit;
+    let targetRef;
     try {
-        targetCommit = (await runGit(cwd, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`])).trim();
+        const upstream = await resolvePublicationUpstream(cwd, branch);
+        // A recorded remote execution target cannot become local proof merely
+        // because its remote configuration disappeared. Snapshot hashes and local
+        // base refs are recovery facts, not a boundary that hides proposed work.
+        if (!upstream && recordedBaseRef?.startsWith("refs/remotes/")) {
+            throw new WorktreeReviewTargetError(recordedBaseRef);
+        }
+        targetRef = upstream ? `refs/remotes/${upstream.remote}/${upstream.branch}` : `refs/heads/${branch}`;
     } catch (error) {
-        if (error instanceof Error && isMissingRevisionError(error)) throw new WorktreeReviewTargetError(branch);
-        throw error;
+        if (error instanceof WorktreeReviewComparisonError) throw error;
+        throw new WorktreeReviewComparisonError(
+            `Cannot determine the worktree review target: ${error instanceof Error ? error.message : String(error)}`,
+        );
     }
+    const targetRefs = [targetRef];
+    // A new target may not have been published yet. Only an execution recorded
+    // against this exact local branch permits local proof when the remote ref
+    // is missing; a recorded remote target must still fail closed.
+    const localRef = `refs/heads/${branch}`;
+    if (recordedBaseRef === localRef && targetRef !== localRef) targetRefs.push(localRef);
+    let targetCommit = "";
+    for (const ref of targetRefs) {
+        targetRef = ref;
+        try {
+            targetCommit = (await runGit(cwd, ["rev-parse", "--verify", `${ref}^{commit}`])).trim();
+            break;
+        } catch (error) {
+            if (!(error instanceof Error && isMissingRevisionError(error))) throw error;
+        }
+    }
+    if (!targetCommit) throw new WorktreeReviewTargetError(targetRef);
     let executionCommit;
     try {
         executionCommit = (await runGit(cwd, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
@@ -191,7 +234,7 @@ export async function resolveWorktreeReviewBaseTree(cwd: string, targetBranch: s
     } catch (error) {
         if (error instanceof GitCommandError && error.code === 1) {
             throw new WorktreeReviewComparisonError(
-                `Cannot compute the worktree review diff because refs/heads/${branch} and execution HEAD have no common ancestor.`,
+                `Cannot compute the worktree review diff because ${targetRef} and execution HEAD have no common ancestor.`,
             );
         }
         throw error;
@@ -251,8 +294,9 @@ export async function readWorktreeReviewBaseFile(
     cwd: string,
     targetBranch: string,
     path: string,
+    recordedBaseRef?: string,
 ): Promise<string | null> {
-    const baseTree = await resolveWorktreeReviewBaseTree(cwd, targetBranch);
+    const baseTree = await resolveWorktreeReviewBaseTree(cwd, targetBranch, recordedBaseRef);
     let blob;
     try {
         blob = (await runGit(cwd, ["rev-parse", "--verify", `${baseTree}:${path}`])).trim();
@@ -264,8 +308,12 @@ export async function readWorktreeReviewBaseFile(
 }
 
 /** Return the complete proposed patch using the shared review comparison base. */
-export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): Promise<string> {
-    const baseTree = await resolveWorktreeReviewBaseTree(cwd, targetBranch);
+export async function getWorktreeReviewDiff(
+    cwd: string,
+    targetBranch: string,
+    recordedBaseRef?: string,
+): Promise<string> {
+    const baseTree = await resolveWorktreeReviewBaseTree(cwd, targetBranch, recordedBaseRef);
     const currentTree = await captureWorktreeTree(cwd);
     return await diffTrees(cwd, baseTree, currentTree);
 }

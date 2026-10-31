@@ -50,9 +50,24 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
  *
  * @typedef {Object} ReviewRequestState
+ * @property {"plan" | "code"} [reviewType]
  * @property {string} cwd
  * @property {string} [reviewToken]
  * @property {ReviewPayload} [reviewPayload]
+ * @property {ReviewDecisionSink} [onDecision]
+ * @property {boolean} [keepConversationTurns]
+ *
+ * @typedef {Object} ReviewDecisionReceipt
+ * @property {string} operationId Core-created durable operation identity.
+ * @property {string} workflowId
+ * @property {string} actionId
+ * @property {string} attemptId
+ * @property {string} generation
+ * @property {string} decisionKey Candidate-bound validation decision identity.
+ *
+ * @callback ReviewDecisionSink
+ * @param {ReviewDecision} decision
+ * @returns {Promise<void | ReviewDecisionReceipt>}
  *
  * @typedef {Object} ReviewRequestContext
  * @property {Request} req
@@ -243,8 +258,12 @@ async function resolveFromRequest(ctx, createDecision) {
     }
 
     const expectedRevision = ctx.state?.reviewPayload?.reviewRevision;
-    if (expectedRevision !== undefined && (body.reviewRevision ?? 0) !== expectedRevision) {
-        return jsonError("stale_code_review", "Code Review changed. Reload the review before deciding.", 409);
+    if (expectedRevision !== undefined && body?.reviewRevision !== expectedRevision) {
+        return jsonError(
+            ctx.state?.reviewType === "code" ? "stale_code_review" : "stale_sequence_review",
+            "This browser page shows a superseded review revision. Reload it.",
+            409,
+        );
     }
     const decision = createDecision(body || {});
     if (decision instanceof Response) return decision;
@@ -256,10 +275,19 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
-    if (!resolveReviewDecision(token, decision)) {
+    /** @type {void | ReviewDecisionReceipt} */
+    let receipt = undefined;
+    if (ctx.state?.onDecision) {
+        try {
+            receipt = await ctx.state.onDecision(decision);
+        } catch (error) {
+            return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
+        }
+    }
+    if (!(decision.conversationTurn && ctx.state?.keepConversationTurns) && !resolveReviewDecision(token, decision)) {
         return jsonError("review_not_found", "Review expired or completed.", 404);
     }
-    return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, ...receipt }, { headers: { "cache-control": "no-store" } });
 }
 
 /**

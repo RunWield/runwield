@@ -122,7 +122,10 @@ work.
 - Allow child Plans to be integration-dependent slices when their boundaries are explicit.
 - Assemble children on a dedicated Epic branch, defaulting to `epic/<epic-name>`.
 - Run project checks, an integration AI review, and configured Code Review on the assembled Epic branch.
-- Turn integration findings into a draft repair child and repeat the integration gate after its delivery.
+- Turn integration findings into a draft repair child and repeat the integration gate after its delivery. When only
+  unstarted repair drafts remain, offer **Retry the integration gate** in the Epic menu. A pass closes the drafts without
+  verification and records the checked commit in the reason; new findings update the newest draft. The automatic gate
+  still waits for repair delivery.
 - Keep the Epic branch for an explicit final merge decision; RunWield does not automatically merge the Epic into main.
 
 ## Execution and review

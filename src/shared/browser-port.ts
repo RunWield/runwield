@@ -8,11 +8,15 @@ export interface BrowserPort {
 
 export const SYSTEM_BROWSER_PORT: BrowserPort = {
     async open(url: string): Promise<boolean> {
-        const launcher = process.platform === "darwin"
-            ? { command: "open", args: [url] }
-            : process.platform === "win32"
-            ? { command: "cmd", args: ["/c", "start", "", url] }
-            : { command: "xdg-open", args: [url] };
+        // Test isolation includes the desktop, also in CLI subprocesses that do not load the test preload.
+        if (process.env.WLD_TEST_SANDBOX_HOME) return false;
+
+        const launcher =
+            process.platform === "darwin"
+                ? { command: "open", args: [url] }
+                : process.platform === "win32"
+                  ? { command: "cmd", args: ["/c", "start", "", url] }
+                  : { command: "xdg-open", args: [url] };
 
         try {
             await captureForegroundProcess(launcher.command, { args: launcher.args, cwd: getCwd() });

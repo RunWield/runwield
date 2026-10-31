@@ -207,6 +207,8 @@ test("writable transcript hydration stays inside SessionRuntime lease enforcemen
         "src/shared/session/runtime/lifecycle-loading.ts",
         "src/shared/session/runtime/lifecycle.ts",
         "src/shared/session/runtime/managed-operations.ts",
+        // Test-only journey fixture; not a Runtime consumer.
+        "src/testing/usage-export-journey-fixture.ts",
     ]);
     const violations = await findViolations(
         ["src", "scripts"],
@@ -356,6 +358,8 @@ test("active and isolated Agents have exactly one production lifecycle boundary 
         "src/shared/session/hosted-session.js",
         "src/shared/session/session.js",
         "src/shared/session/agent-switching.js",
+        // Test-only workflow driver exercises the real validation machinery.
+        "src/testing/usage-export-journey-workflows.ts",
     ]);
     const activeTurnModules = new Set([
         "src/shared/session/session.js",

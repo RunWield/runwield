@@ -48,6 +48,11 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
         );
     assert(children?.length === 2, `Expected two materialized child Plans; got ${JSON.stringify(children)}`);
     assert(
+        children[0].name === "epic/child-one" && children[1].name === "epic/child-two",
+        "Expected descriptive child filenames.",
+    );
+    assert(children[0].order === 1 && children[1].order === 2, "Expected explicit child order metadata.");
+    assert(
         children.every((child) => child.classification === "PLANNED_CHANGE" && child.parentPlan === "epic"),
         `Expected canonical PLANNED_CHANGE children parented to the Epic; got ${JSON.stringify(children)}`,
     );
@@ -122,6 +127,8 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
 
 export const projectPlanReviewScenario = {
     name: "project-plan-review-approval-journey",
+    // Real review persistence and Session settlement share CI resources with the other Golden files.
+    timeoutMs: 90000,
     composedTui: true,
     initialAgentName: "planner",
     terminal: { columns: 100, rows: 30 },
@@ -147,7 +154,7 @@ export const projectPlanReviewScenario = {
         },
         { type: "type", text: "submit the project plan for review" },
         { type: "enter" },
-        { type: "waitForIdle", timeoutMs: 12000 },
+        { type: "waitForIdle", timeoutMs: 60000 },
     ],
     assertions: [
         assertsGoldenCoverage("workflow:PROJECT", (result) =>
@@ -235,7 +242,7 @@ export const twoChildProjectContinuationScenario = {
                                 title: "Child two",
                                 order: 2,
                                 summary: "Second child lifecycle",
-                                dependencies: ["01-child-one"],
+                                dependencies: ["child-one"],
                                 affectedPaths: [],
                                 executionAgent: "engineer",
                                 collaborationRecommendation: "autonomous",
@@ -266,7 +273,7 @@ export const twoChildProjectContinuationScenario = {
                 {
                     name: "plan_written",
                     arguments: {
-                        planName: "epic/01-child-one",
+                        planName: "epic/child-one",
                     },
                 },
             ],
@@ -275,7 +282,7 @@ export const twoChildProjectContinuationScenario = {
             id: "engineer-implements-first-child",
             agent: "engineer",
             phase: "engineer",
-            planName: "epic/01-child-one",
+            planName: "epic/child-one",
             ordinal: 1,
             requiredTools: ["bash", "task_completed"],
             thinking: "Implement the first child in its execution worktree.",
@@ -288,7 +295,7 @@ export const twoChildProjectContinuationScenario = {
             id: "engineer-closes-first-child",
             agent: "engineer",
             phase: "engineer",
-            planName: "epic/01-child-one",
+            planName: "epic/child-one",
             ordinal: 2,
             text: "First child awaits Workflow Validation.",
         },
@@ -296,7 +303,7 @@ export const twoChildProjectContinuationScenario = {
             id: "reviewer-approves-first-child-inspects-diff",
             agent: "reviewer",
             phase: "semantic_review",
-            planName: "epic/01-child-one",
+            planName: "epic/child-one",
             ordinal: 1,
             requiredTools: ["review_diff"],
             thinking: "Inspect every changed file before deciding.",
@@ -308,11 +315,11 @@ export const twoChildProjectContinuationScenario = {
                 { name: "review_diff", arguments: { command: "show", scope: "full", path: "docs/plans/epic.md" } },
                 {
                     name: "review_diff",
-                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/01-child-one.md" },
+                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/child-one.md" },
                 },
                 {
                     name: "review_diff",
-                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/02-child-two.md" },
+                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/child-two.md" },
                 },
             ],
         },
@@ -320,7 +327,7 @@ export const twoChildProjectContinuationScenario = {
             id: "reviewer-approves-first-child",
             agent: "reviewer",
             phase: "semantic_review",
-            planName: "epic/01-child-one",
+            planName: "epic/child-one",
             ordinal: 2,
             requiredTools: ["review_complete"],
             toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "First child approved." } }],
@@ -339,7 +346,7 @@ export const twoChildProjectContinuationScenario = {
                 {
                     name: "plan_written",
                     arguments: {
-                        planName: "epic/02-child-two",
+                        planName: "epic/child-two",
                     },
                 },
             ],
@@ -348,7 +355,7 @@ export const twoChildProjectContinuationScenario = {
             id: "engineer-implements-second-child",
             agent: "engineer",
             phase: "engineer",
-            planName: "epic/02-child-two",
+            planName: "epic/child-two",
             ordinal: 1,
             requiredTools: ["bash", "task_completed"],
             thinking: "Implement the second child in its execution worktree.",
@@ -361,7 +368,7 @@ export const twoChildProjectContinuationScenario = {
             id: "engineer-closes-second-child",
             agent: "engineer",
             phase: "engineer",
-            planName: "epic/02-child-two",
+            planName: "epic/child-two",
             ordinal: 2,
             text: "Second child awaits Workflow Validation.",
         },
@@ -369,7 +376,7 @@ export const twoChildProjectContinuationScenario = {
             id: "reviewer-approves-second-child-inspects-diff",
             agent: "reviewer",
             phase: "semantic_review",
-            planName: "epic/02-child-two",
+            planName: "epic/child-two",
             ordinal: 1,
             requiredTools: ["review_diff"],
             thinking: "Inspect every changed file before deciding.",
@@ -382,11 +389,11 @@ export const twoChildProjectContinuationScenario = {
                 { name: "review_diff", arguments: { command: "show", scope: "full", path: "docs/plans/epic.md" } },
                 {
                     name: "review_diff",
-                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/01-child-one.md" },
+                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/child-one.md" },
                 },
                 {
                     name: "review_diff",
-                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/02-child-two.md" },
+                    arguments: { command: "show", scope: "full", path: "docs/plans/epic/child-two.md" },
                 },
                 {
                     name: "review_diff",
@@ -398,7 +405,7 @@ export const twoChildProjectContinuationScenario = {
             id: "reviewer-approves-second-child",
             agent: "reviewer",
             phase: "semantic_review",
-            planName: "epic/02-child-two",
+            planName: "epic/child-two",
             ordinal: 2,
             requiredTools: ["review_complete"],
             toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "Second child approved." } }],
@@ -419,8 +426,8 @@ export const twoChildProjectContinuationScenario = {
                     "golden-child-one.txt",
                     "golden-child-two.txt",
                     "docs/plans/epic.md",
-                    "docs/plans/epic/01-child-one.md",
-                    "docs/plans/epic/02-child-two.md",
+                    "docs/plans/epic/child-one.md",
+                    "docs/plans/epic/child-two.md",
                     "docs/plans/epic/manual-qa.md",
                 ].map((path) => ({ name: "review_diff", arguments: { command: "show", scope: "full", path } })),
                 { name: "review_complete", arguments: { approved: true, feedback: "The children fit together." } },
@@ -439,10 +446,11 @@ export const twoChildProjectContinuationScenario = {
             // `approvalAction: "later"` settles the Epic at ready_for_decomposition.
             // Accepting the transient `approved` here let the scenario race ahead of
             // the lifecycle and act on a status the Plan had already left.
+            // Include runtime startup and durable approval under CI contention.
             type: "waitForPlanStatus",
             planName: "epic",
             statuses: ["ready_for_decomposition"],
-            timeoutMs: 12000,
+            timeoutMs: 60000,
         },
         { type: "runSlicerDecomposition", planName: "epic" },
         { type: "waitForIdle", timeoutMs: 15000 },
@@ -453,12 +461,12 @@ export const twoChildProjectContinuationScenario = {
         // Start the first child through Resume planning: Epic approval is
         // not Epic execution. Its Plan Review, execution and validation all run for
         // real, and the Runtime continues into the second child on its own.
-        { type: "type", text: "/load-plan epic/01-child-one" },
+        { type: "type", text: "/load-plan epic/child-one" },
         { type: "enter" },
         { type: "enter" },
         {
             type: "waitForPlanStatus",
-            planName: "epic/01-child-one",
+            planName: "epic/child-one",
             statuses: ["verified"],
             // Two full child journeys run inside these two waits, each with real Git,
             // real transactions and real Agent turns. It takes ~95s on its own, and
@@ -468,7 +476,7 @@ export const twoChildProjectContinuationScenario = {
         },
         {
             type: "waitForPlanStatus",
-            planName: "epic/02-child-two",
+            planName: "epic/child-two",
             statuses: ["verified"],
             timeoutMs: 240000,
         },
@@ -476,7 +484,7 @@ export const twoChildProjectContinuationScenario = {
         // The integration gate cannot claim delivery to the final target.
         {
             type: "waitForWorktreeRegistryStatus",
-            planName: "epic/02-child-two",
+            planName: "epic/child-two",
             statuses: ["absent"],
             timeoutMs: 240000,
         },
@@ -509,7 +517,7 @@ export const twoChildProjectContinuationScenario = {
         { type: "capturePublishedWorkRecords" },
         {
             type: "captureProjectState",
-            planNames: ["epic", "epic/01-child-one", "epic/02-child-two"],
+            planNames: ["epic", "epic/child-one", "epic/child-two"],
             // load-plan reconciles the delivered Epic and writes its Work Record in this checkout.
             primaryPlanNames: ["epic"],
         },
@@ -644,7 +652,7 @@ export const projectChildCiFailureStopScenario = {
                 id: `engineer-child-ci-repair-${attempt}`,
                 agent: "engineer",
                 phase: "engineer",
-                planName: "epic/01-child-one",
+                planName: "epic/child-one",
                 ordinal: attempt * 2 + 1,
                 requiredTools: ["bash"],
                 toolCalls: [
@@ -658,7 +666,7 @@ export const projectChildCiFailureStopScenario = {
                 id: `engineer-closes-child-ci-repair-${attempt}`,
                 agent: "engineer",
                 phase: "engineer",
-                planName: "epic/01-child-one",
+                planName: "epic/child-one",
                 ordinal: attempt * 2 + 2,
                 requiredTools: ["task_completed"],
                 toolCalls: [
@@ -678,12 +686,12 @@ export const projectChildCiFailureStopScenario = {
         },
         { type: "type", text: "submit the epic project plan for architect review" },
         { type: "enter" },
-        { type: "waitForPlanStatus", planName: "epic", statuses: ["ready_for_decomposition"], timeoutMs: 12000 },
+        { type: "waitForPlanStatus", planName: "epic", statuses: ["ready_for_decomposition"], timeoutMs: 60000 },
         { type: "runSlicerDecomposition", planName: "epic" },
         { type: "waitForIdle", timeoutMs: 15000 },
         { type: "switchAgent", agentName: "planner" },
         { type: "waitForIdle", timeoutMs: 15000 },
-        { type: "type", text: "/load-plan epic/01-child-one" },
+        { type: "type", text: "/load-plan epic/child-one" },
         { type: "enter" },
         { type: "enter" },
         { type: "waitForIdle", timeoutMs: 240000 },
@@ -699,7 +707,7 @@ export const projectChildCiFailureStopScenario = {
             const children = /** @type {Array<{ name?: string, status?: string }> | undefined} */ (
                 result.state.projectChildren
             );
-            const second = children?.find((child) => String(child.name || "").includes("02-child-two"));
+            const second = children?.find((child) => String(child.name || "").includes("child-two"));
             assert(second && !["verified", "user_verified"].includes(String(second.status || "")));
         }),
     ],

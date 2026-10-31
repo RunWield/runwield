@@ -720,7 +720,7 @@ export function createWorkspaceSearchService(options) {
         if (scanPromise) await scanPromise;
         if (scanTimer) clearTimeout(scanTimer);
         scanTimer = null;
-        return scan();
+        return await scan();
     }
     async function close() {
         if (closed) return;

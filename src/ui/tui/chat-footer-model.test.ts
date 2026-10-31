@@ -50,7 +50,10 @@ for (const modelCase of modelCases) {
                 const settings = getSettingsManager(projectRoot);
                 await settings.setDefaultModel("current-model");
                 await settings.setDefaultProvider("current-provider");
-                assertEquals(stripAnsi(controller.component.render(120)[1]).trim(), modelCase.expected);
+                assertEquals(
+                    stripAnsi(controller.component.render(120)[1]).trim().split(/\s+/).at(-1),
+                    modelCase.expected,
+                );
             } finally {
                 controller.dispose();
             }

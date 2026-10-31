@@ -1,4 +1,8 @@
 import { stat as fsStat } from "node:fs/promises";
+import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
+import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { runHostRecorder } from "./validation-host-recorder.ts";
+import { syncEpicChildPlanDeviations } from "./epic-review-context.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -28,7 +32,6 @@ import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.js";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
@@ -43,7 +46,6 @@ import type {
     ValidationLoopArgs,
     ValidationPhaseResult,
 } from "./validation-types.ts";
-import type { OpaqueToolDefinition } from "./validation-ports.ts";
 import type { EpicContinuationResolution } from "./epic-continuation.ts";
 import { MAX_AGENT_MERGE_REPAIRS } from "./validation-types.ts";
 import {
@@ -153,6 +155,7 @@ async function prepareEpicChildManualQaArtifact(
     cwd: string,
     projectRoot: string,
 ): Promise<ManualQaPreparationResult> {
+    if (args.hostTurn) return { kind: "ready" };
     const plan = await loadPlan(cwd, args.planName).catch(() => null);
     const parentPlan =
         typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim() ? plan.attrs.parentPlan.trim() : "";
@@ -187,12 +190,12 @@ async function prepareEpicChildManualQaArtifact(
             "### Source context",
             args.planContent,
         ].join("\n");
-        const tool = createQaChecklistGeneratedTool({
+        const manualQa = {
             projectRoot: cwd,
             epicPlanName: parentPlan,
             childPlanName: args.planName,
             childHeading: firstMarkdownHeading(args.planContent, args.planName),
-        });
+        };
         let outcome;
         try {
             outcome = await args.session.runIsolatedAgentSession({
@@ -200,8 +203,7 @@ async function prepareEpicChildManualQaArtifact(
                 agentName: AGENTS.OPERATOR,
                 userRequest,
                 cwd,
-                customTools: [tool as unknown as OpaqueToolDefinition],
-                sessionManager: args.session.createInMemorySessionManager(cwd),
+                manualQa,
             });
         } catch (caught) {
             args.session.assertLive();
@@ -298,12 +300,19 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
+        if (args.hostTurn) await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
             ...humanReviewMetadata,
         });
-        await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
+        if (args.hostTurn) {
+            await completeInPlaceWorkRecord(
+                context.executionCwd || context.projectRoot,
+                args.planName,
+                args.workRecordMnemotecaPort,
+            );
+        } else await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
         return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
     }
 
@@ -369,7 +378,7 @@ async function runLockedPublicationPhase(
             .catch(() => false);
         if (!exists) repairMergeWorktreePath = undefined;
     }
-    let agentRepairs = 0;
+    let agentRepairs = args.hostTurn ? args.validationCheckpoint?.publicationRepairs || 0 : 0;
     // A restarted validation can inherit a repair checkout that is still inside
     // Git's merge transaction. Normalize it before attempting another merge.
     let pendingFinalizeFailure: PublicationFailure | undefined;
@@ -444,6 +453,7 @@ async function runLockedPublicationPhase(
             try {
                 if (await dispatchMergeRepair(args, context, reason, failure)) continue;
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 pendingFinalizeFailure = normalizePublicationFailure(
                     caught instanceof Error ? caught : new Error(String(caught)),
                 );
@@ -550,6 +560,7 @@ async function runLockedPublicationPhase(
             return { kind: "published", outcome: await publishOnce() };
         } catch (caught) {
             args.session.assertLive();
+            if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
             const error = caught instanceof Error ? caught : new Error(String(caught));
             const failure = normalizePublicationFailure(error);
             // A source can change after this invocation sealed it. Recover in
@@ -588,6 +599,7 @@ async function runLockedPublicationPhase(
             try {
                 return await action();
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 const error = caught instanceof Error ? caught : new Error(String(caught));
                 throw annotatePublicationStage(error, stage);
             }
@@ -631,6 +643,10 @@ async function runLockedPublicationPhase(
                 async () => await ensureRunWieldOwnedGitignoreBlock(context.executionCwd),
             );
             const targetHeadAtSeal = await args.git.branchHead(context.projectRoot, targetBranch);
+            await atStage(
+                "candidate_checkpoint",
+                async () => await syncEpicChildPlanDeviations(context.executionCwd, args.planName),
+            );
             const candidate = await atStage(
                 "candidate_checkpoint",
                 async () =>
@@ -687,6 +703,10 @@ async function runLockedPublicationPhase(
             await atStage(
                 "artifact_preparation",
                 async () => await runPostVerificationHandoffs(args, context.executionCwd, true),
+            );
+            await atStage(
+                "candidate_sealing",
+                async () => await syncEpicChildPlanDeviations(context.executionCwd, args.planName),
             );
             const artifactCandidate = await atStage(
                 "candidate_sealing",
@@ -854,6 +874,7 @@ export async function runPostVerificationHandoffs(
     pendingPublication = false,
 ): Promise<void> {
     if (!isPlannedChangeClassification(args.triageMeta?.classification)) return;
+    if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,
         planContent: args.planContent,
@@ -961,6 +982,7 @@ export async function buildVerifiedResult(
         kind: "verified",
         planName: args.planName,
         projectRoot,
+        workRecord: recordingOwner?.attrs.workRecord,
         classification: args.triageMeta?.classification,
         ...(shouldContinueParentEpicAfterValidation(args.triageMeta)
             ? { epicContinuation: { completedPlanName: args.planName, projectRoot, resolution: epicResolution } }

@@ -1,13 +1,5 @@
 // @ts-nocheck: local wrapper includes a tiny Fresh-free router and production Astro bridge with dynamic handler shapes.
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
-/**
- * Programmatic Workspace server composition.
- *
- * Local Workspace serving is RunWield-owned: token checks, cwd state,
- * static/theme routes, and JSON APIs stay in this wrapper while page SSR can
- * delegate to the Astro Deno adapter output when it is available.
- */
-
 import { serveHttp } from "../../shared/http-server.ts";
 import { env, versions } from "node:process";
 import { readFile } from "node:fs/promises";
@@ -68,6 +60,9 @@ import {
     ownerProjectPlanDetailApi,
     ownerProjectPlanProgressApi,
     ownerSidebarApi,
+    ownerUsageApi,
+    ownerUsageSettingsApi,
+    ownerUsageSettingsMutationApi,
     ownerWorkspaceSearchApi,
     ownerWorkspaceSearchRefreshApi,
     pairingClaimApi,
@@ -121,6 +116,14 @@ import { workspacePwaResponse } from "./server/workspace-pwa.ts";
 import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
 import { reviewHost } from "./server/review-host.ts";
 import { createWorkspaceSearchService } from "./server/workspace-search.ts";
+
+/**
+ * Programmatic Workspace server composition.
+ *
+ * Local Workspace serving is RunWield-owned: token checks, cwd state,
+ * static/theme routes, and JSON APIs stay in this wrapper while page SSR can
+ * delegate to the Astro Deno adapter output when it is available.
+ */
 
 const WORKSPACE_DIR = join(RUNWIELD_SOURCE_ROOT, "ui", "workspace");
 const ROOT_DIR = RUNWIELD_ROOT;
@@ -316,6 +319,8 @@ export function createOwnerWorkspaceApp(options) {
     });
     app.get("/pair", renderRequiredOwnerAstroPage);
     app.get("/devices", renderRequiredOwnerAstroPage);
+    app.get("/usage", renderRequiredOwnerAstroPage);
+    app.get("/usage/settings", renderRequiredOwnerAstroPage);
     app.get("/search", renderRequiredOwnerAstroPage);
     app.get("/projects", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/plans", renderRequiredOwnerAstroPage);
@@ -338,6 +343,10 @@ export function createOwnerWorkspaceApp(options) {
     app.post("/api/owner/pairing/claim", pairingClaimApi);
     app.get("/api/owner/projects", projectsApi);
     app.get("/api/owner/dashboard", ownerDashboardApi);
+    app.get("/api/owner/usage", ownerUsageApi);
+    app.get("/api/owner/usage/settings", ownerUsageSettingsApi);
+    app.post("/api/owner/usage/settings/:action", ownerUsageSettingsMutationApi);
+    app.post("/api/owner/usage/clear", ownerUsageSettingsMutationApi);
     app.get("/api/owner/dashboard/stream", ownerDashboardStreamApi);
     app.get("/api/owner/sidebar", ownerSidebarApi);
     app.get("/api/owner/search", ownerWorkspaceSearchApi);
@@ -398,19 +407,21 @@ export function createOwnerWorkspaceApp(options) {
             status: 404,
         });
     });
-    app.store = store;
-    app.ownerConnections = connections;
-    app.sessionContinuation = sessionContinuation;
-    app.workspaceSearch = workspaceSearch;
     let closePromise;
-    app.close = () => {
+    const close = () => {
         closePromise ||= Promise.resolve(workspaceSearch.close()).finally(() => {
             connections.closeAll();
             return sessionContinuation.close();
         });
         return closePromise;
     };
-    return app;
+    return Object.assign(app, {
+        store,
+        ownerConnections: connections,
+        sessionContinuation,
+        workspaceSearch,
+        close,
+    });
 }
 
 /** @param {LocalWorkspaceAppOptions} options */
@@ -570,16 +581,9 @@ function linkedDocumentKind(path) {
     return "document";
 }
 
-/**
- * @typedef {Object} ReviewWorkspaceAppOptions
- * @property {string} cwd
- * @property {string} token
- * @property {Record<string, unknown>} reviewPayload
- * @property {"plan" | "code"} reviewType
- * @property {import("../review/review-launcher.ts").ReviewConversation} [reviewConversation]
- */
-/** @param {ReviewWorkspaceAppOptions} options */
-export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType, reviewConversation }) {
+/** @param {ReviewWorkspaceServerOptions} options */
+export function createReviewWorkspaceApp(options) {
+    const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
     const reviewAgentState =
         reviewType === "code"
             ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: getGuideRunner() })
@@ -619,6 +623,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                                 : undefined,
                         targetBranch:
                             typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
+                        targetBaseRef:
+                            typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
                     });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
@@ -632,6 +638,17 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                         return new Response("Review token required.", { status: 401 });
                     }
                     return reviewLocalConfigApi();
+                }
+                if (request.method === "GET" && url.pathname === "/api/review/revision") {
+                    if (!reviewPayload.reviewRevisionUrl || !hasReviewAssetToken(request, token)) {
+                        return new Response("Review revision unavailable.", { status: 404 });
+                    }
+                    return Response.json(
+                        { revision: reviewPayload.reviewRevision },
+                        {
+                            headers: { "cache-control": "no-store" },
+                        },
+                    );
                 }
                 if (
                     request.method === "POST" &&
@@ -649,6 +666,7 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                     if (!reviewConversation || !hasReviewAssetToken(request, token)) {
                         return new Response("Review conversation unavailable.", { status: 404 });
                     }
+                    await reviewConversation.refresh?.();
                     if (reviewConversation.completed) reviewConversation.completionDelivered = true;
                     return Response.json(
                         {
@@ -658,6 +676,10 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             agentLabel: reviewConversation.agentLabel,
                             revision: reviewConversation.revision,
                             reviewRevision: reviewPayload.reviewRevision,
+                            ...(reviewConversation.turns && {
+                                turns: reviewConversation.turns,
+                                pending: reviewConversation.pending,
+                            }),
                             error: reviewConversation.error,
                             sequenceDocuments: reviewPayload.sequenceDocuments,
                             plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
@@ -701,13 +723,22 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                 if (url.pathname.startsWith("/api/review/") || isLegacyReviewApiPath(url.pathname)) {
                     return await handleReviewApiRequest(
                         request,
-                        { cwd, reviewToken: token, reviewPayload },
+                        {
+                            cwd,
+                            reviewToken: token,
+                            reviewType,
+                            reviewPayload,
+                            onDecision: options.onDecision,
+                            keepConversationTurns: Boolean(reviewConversation?.refresh),
+                        },
                         url.pathname,
                     );
                 }
                 if (!hasWorkspaceToken(request, token)) return new Response("Review token required.", { status: 401 });
                 const expectedPath = reviewType === "plan" ? "/review/plan" : "/review/code";
                 if (url.pathname === expectedPath) {
+                    const opened = await options.onReviewOpen?.();
+                    if (opened instanceof Response) return opened;
                     const payload = await currentReviewPagePayload({ cwd, reviewPayload, reviewType, token });
                     const astroResponse = await renderAstroReviewPage(request, cwd, payload);
                     if (astroResponse) return astroResponse;
@@ -729,13 +760,18 @@ async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token 
     const payload = { ...reviewPayload, token, mode: "workflow" };
     if (reviewType === "code" && typeof reviewPayload.targetBranch === "string") {
         try {
-            payload.rawPatch = await getWorktreeReviewDiff(cwd, reviewPayload.targetBranch);
+            payload.rawPatch = await getWorktreeReviewDiff(
+                cwd,
+                reviewPayload.targetBranch,
+                typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
+            );
         } catch (error) {
             if (error instanceof WorktreeReviewComparisonError) throw error;
             // Keep the last complete patch if the checkout is temporarily unreadable.
         }
     }
     delete payload.targetBranch;
+    delete payload.targetBaseRef;
     delete payload.agentCwd;
     return payload;
 }
@@ -1245,6 +1281,7 @@ function registerStaticRoutes(app) {
     app.get("/components.css", async () => await handleStaticRoute("/components.css"));
     app.get("/workspace.css", async () => await handleStaticRoute("/workspace.css"));
     app.get("/workspace-shell.js", async () => await handleStaticRoute("/workspace-shell.js"));
+    app.get("/design-system/panel-icon.ts", async () => await handleStaticRoute("/design-system/panel-icon.ts"));
     app.get(
         "/design-system/sidebar-motion.js",
         async () => await handleStaticRoute("/design-system/sidebar-motion.js"),
@@ -1256,6 +1293,9 @@ function registerStaticRoutes(app) {
 
 /** @param {string} pathname */
 async function handleStaticRoute(pathname) {
+    if (pathname === "/design-system/panel-icon.ts") {
+        return await textFileResponse(join(DESIGN_SYSTEM_DIR, "panel-icon.ts"), "text/javascript; charset=utf-8");
+    }
     if (pathname === "/design-system/sidebar-motion.js") {
         return await textFileResponse(join(DESIGN_SYSTEM_DIR, "sidebar-motion.js"), "text/javascript; charset=utf-8");
     }
@@ -1477,20 +1517,42 @@ export function startSessionQuestionWorkspaceServer(options) {
 }
 
 /**
- * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
+ * @typedef {Object} ReviewWorkspaceConversationEvent
+ * @property {string} type
+ * @property {string} delta
+ * @property {string} messageId
+ * @property {string} agentName
+ *
+ * @typedef {Object} ReviewWorkspaceConversation
+ * @property {string} id
+ * @property {string} agentLabel
+ * @property {number} revision
+ * @property {ReviewWorkspaceConversationEvent[]} events
+ *
+ * @callback ReviewPageOpenListener
+ * @returns {Promise<void | Response>}
+ *
+ * @typedef {Object} ReviewWorkspaceServerOptions
+ * @property {string} [cwd]
+ * @property {string} token
+ * @property {Record<string, unknown>} reviewPayload
+ * @property {"plan" | "code"} reviewType
+ * @property {import("../review/review-launcher.ts").ReviewConversation} [reviewConversation]
+ * @property {string} [host]
+ * @property {number} [port]
+ * @property {AbortSignal} [signal]
+ * @property {ReviewServerOutputListener} [onOutput]
+ * @property {import("./routes/api/review-handlers.js").ReviewDecisionSink} [onDecision]
+ * @property {ReviewPageOpenListener} [onReviewOpen]
  */
+
+/** @param {ReviewWorkspaceServerOptions} options */
 export function startReviewWorkspaceServer(options) {
     const cwd = options.cwd ?? getCwd();
-    let reviewRevision = 0;
-    if (options.reviewType === "code") options.reviewPayload.reviewRevision = reviewRevision;
+    if (options.reviewType === "code") options.reviewPayload.reviewRevision = 0;
     let decision = registerReviewDecisionPromise(options.token);
-    const app = createReviewWorkspaceApp({
-        cwd,
-        token: options.token,
-        reviewPayload: options.reviewPayload,
-        reviewType: options.reviewType,
-        reviewConversation: options.reviewConversation,
-    });
+    const appOptions = { ...options, cwd };
+    const app = createReviewWorkspaceApp(appOptions);
     let registration;
     try {
         registration = reviewHost.register(options.token, app.handler(), {
@@ -1535,10 +1597,14 @@ export function startReviewWorkspaceServer(options) {
     return {
         url,
         waitForDecision: () => decision.promise,
-        beginReviewRound({ reviewPayload, reviewConversation }) {
+        beginReviewRound({ reviewPayload, reviewConversation, onDecision, onReviewOpen }) {
+            appOptions.onDecision = onDecision;
+            appOptions.onReviewOpen = onReviewOpen;
+            const priorRevision = options.reviewPayload.reviewRevision;
             for (const key of Object.keys(options.reviewPayload)) delete options.reviewPayload[key];
             Object.assign(options.reviewPayload, reviewPayload);
-            if (options.reviewType === "code") options.reviewPayload.reviewRevision = ++reviewRevision;
+            if (options.reviewType === "code" || reviewPayload.reviewRevisionUrl)
+                options.reviewPayload.reviewRevision = (priorRevision ?? 0) + 1;
             if (options.reviewConversation && reviewConversation) {
                 options.reviewConversation.agentLabel = reviewConversation.agentLabel;
                 options.reviewConversation.revision += 1;

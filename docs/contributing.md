@@ -48,7 +48,9 @@ bun run compile
 `bun run ci` runs all ten static gates, then the source tests and Golden TUI portfolio in one isolated worker queue.
 `bun run pr:check` is an alias for that complete local gate. Successful CI prints one summary; failure diagnostics are
 filtered through Snip and retained in the reported log. Use `bun run ci --source-only` when a separate required Golden
-job owns those scenarios, as the PR and release workflows do.
+job owns those scenarios, as the PR and release workflows do. On macOS, CI prevents automatic idle sleep while its
+checks run and releases the sleep assertion when they finish. The display can still sleep. Manual sleep and lid closure
+can still suspend CI.
 
 `bun run test` remains the focused source suite. `bun run test:golden-tui` runs the composed TUI scenarios and their
 harness tests; `test:golden-tui:extensive` runs the same complete portfolio. Always use these tasks or
@@ -88,7 +90,7 @@ wld snip-filters cleanup
 ## Task compatibility
 
 Use the established task names with Bun: `bun run compile`, `bun run ci`, `bun run workspace:build`, and so on.
-All 49 original Deno task names remain available. See the [complete task audit](plans/bun-task-compatibility.md) for
+All 49 original Deno task names remain available. See the [complete task audit](bun-task-compatibility.md) for
 per-task argument contracts and explicit runtime-specific exceptions.
 
 ```bash
@@ -112,7 +114,7 @@ bun run compile --output bin/wld
 BUILD_ID=$(bun -e 'console.log((await Bun.file("bin/wld.build.json").json()).buildId)')
 bun run compile --target x86_64-unknown-linux-gnu --output bin/wld-linux-x64 --expect-build-id "$BUILD_ID"
 bun run compile --target aarch64-unknown-linux-gnu --output bin/wld-linux-arm64 --expect-build-id "$BUILD_ID"
-bun scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
+bun scripts/release-assets.ts development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
 ```
 
 Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never

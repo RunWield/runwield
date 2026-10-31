@@ -24,7 +24,7 @@ import {
     SYSTEM_SEMANTIC_REVIEW_PORT,
     type WorkflowValidationResult,
 } from "../workflow/validation.ts";
-import { runWorkflowValidationToStableBoundary } from "../workflow/validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.js";
 import { getAgentDisplayName } from "./agents.js";
 import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.js";
@@ -44,6 +44,8 @@ import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { AGENTS } from "../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
+import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
@@ -186,6 +188,44 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
             hostedSession.setActiveExecutionWorkflow({ ...taskCompletion.workflow });
         }
         let rootWorkflowEvent: WorkflowToolEvent | null = null;
+        if (!taskCompletion && /^(continue|resume|retry)[.!]?$/i.test(userRequest.trim())) {
+            const workflow = hostedSession.getActiveExecutionWorkflow();
+            if (workflow?.planName && workflow.triageMeta.classification !== "QUICK_FIX") {
+                const location = await resolveWorkflowPlanLocation(projectRoot, workflow.planName);
+                const plan = location.plan;
+                const checkpoint = plan?.attrs.validationCheckpoint;
+                if (
+                    plan &&
+                    checkpoint &&
+                    isValidationCheckpoint(checkpoint) &&
+                    checkpoint.state === "paused" &&
+                    (!checkpoint.repairGeneration || checkpoint.repairCompletedOperationId) &&
+                    validationCheckpointCanResume(
+                        checkpoint,
+                        plan.attrs.worktreeId || "in-place",
+                        plan.attrs.status,
+                        plan.attrs.validationPhase,
+                    )
+                ) {
+                    const validationResult = await runWorkflowValidationToStableBoundary({
+                        hostedSession,
+                        planName: workflow.planName,
+                        planContent: plan.markdown,
+                        triageMeta: plan.attrs,
+                        sessionManager,
+                        finalAgentName: agentName,
+                        git: createGitPort(),
+                        localCI: systemLocalCIPort,
+                        workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                        semanticReviewPort: SYSTEM_SEMANTIC_REVIEW_PORT,
+                        supportsSemanticRepairHandoff: true,
+                        trigger: "session_resume",
+                    });
+                    requestAgentStoppedAttention();
+                    return { kind: "complete", validationResult };
+                }
+            }
+        }
         if (!taskCompletion) {
             const rootTurnResult = await runRootTurnUntilRootWorkflowEvent({
                 hostedSession,

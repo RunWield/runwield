@@ -204,9 +204,9 @@ After Stable asset publication succeeds, the release workflow:
 1. Renders the Homebrew formulas from the published release assets.
 2. Runs the complete package check on macOS.
 3. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact.
-4. Pushes the verified files to `gandazgul/homebrew-tap`.
+4. Pushes the verified files to `RunWield/homebrew-tap`.
 
-The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `gandazgul/homebrew-tap`.
+The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `RunWield/homebrew-tap`.
 Publication stops if the credential is absent or any package check fails. To reproduce the check locally, use:
 
 ```bash
@@ -244,6 +244,9 @@ Ubuntu source shards are removed rather than repeated in release qualification.
 `release-gate` owns broad platform coverage after the Candidate or Stable tag is created. Its internal
 `release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
 diagnostics at the selected workflow revision. Windows checks are paused.
+Linux and macOS source checks install the latest Stable Mnemoteca with `scripts/install-ci-mnemoteca.sh`.
+The script verifies the platform archive against the release checksum file and runs `mnemoteca setup` before tests.
+These checks use real Work Record indexing, not a placeholder command.
 Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
 No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly
 forward-ported to `main` under the release policy above.
@@ -282,6 +285,16 @@ recoverably incomplete and retry with:
 ```bash
 gh release edit <tag> --notes-file <notes-file>
 ```
+
+## Connect plugin versions
+
+Bump `version` in `src/attached/claude/plugin/.claude-plugin/plugin.json` whenever plugin files change. Claude Code
+caches plugins by version. Bump `adapterContract` in `runwield-adapter.json` only when Core and the plugin can no
+longer use the same protocol; update Core's supported contracts and guidance in the same change.
+
+Add tested host versions to the Core Compatibility Matrix only with passing live acceptance results. Keep each saved
+result's source identity and disclosed limits. Do not treat a headless permissions-bypassed run as default-permissions
+proof. Update the [Claude guide](user-documentation/connect-claude-code.md) with the matrix.
 
 ## Stable documentation publication
 

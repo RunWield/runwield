@@ -1,6 +1,7 @@
 schemaVersion: 1
 scenarioId: RV-D04
 track: discovery
+group: correctness-beyond-plan
 fixtureRevision: 2
 planPath: docs/plans/reuse-plan-summaries.md
 baselineRef: main

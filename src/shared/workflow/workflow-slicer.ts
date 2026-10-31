@@ -15,6 +15,7 @@ import {
     loadPlan,
     parsePlanFrontMatter,
     saveChildFeaturePlans,
+    resolveChildPlanNames,
     withPlanCatalogLock,
     writePlanMarkdownWithRevision,
 } from "../../plan-store.js";
@@ -53,8 +54,7 @@ export interface OpenSlicerDecompositionOptions {
 }
 
 export type OpenSlicerDecompositionResult =
-    | { ok: true; slicerInvoked: boolean }
-    | { ok: false; error: string; stage: "slicer" | "validation" };
+    { ok: true; slicerInvoked: boolean } | { ok: false; error: string; stage: "slicer" | "validation" };
 
 export const __dirname = dirname(fromFileUrl(import.meta.url));
 const SLICER_CONTEXT_BOUNDARY_SUMMARY = [
@@ -67,8 +67,12 @@ const SLICER_CONTEXT_BOUNDARY_SUMMARY = [
 function isActiveSlicerContextBoundary(entry) {
     if (!entry || typeof entry !== "object" || !("type" in entry) || entry.type !== "compaction") return false;
     if (!("details" in entry) || !entry.details || typeof entry.details !== "object") return false;
-    return "kind" in entry.details && entry.details.kind === "agent_context_boundary" &&
-        "agentName" in entry.details && entry.details.agentName === AGENTS.SLICER;
+    return (
+        "kind" in entry.details &&
+        entry.details.kind === "agent_context_boundary" &&
+        "agentName" in entry.details &&
+        entry.details.agentName === AGENTS.SLICER
+    );
 }
 
 /**
@@ -83,10 +87,10 @@ function isActiveSlicerContextBoundary(entry) {
  * @returns {{ manager: import('@earendil-works/pi-coding-agent').SessionManager, previousLeafId: string | null } | null}
  */
 export function beginSlicerContextPhase({ planName, hostedSession, sessionManager }) {
-    const manager = sessionManager ||
-        /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
-            hostedSession.getRootSessionManager?.() || null
-        );
+    const manager =
+        sessionManager ||
+        /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ hostedSession.getRootSessionManager?.() ||
+        null;
     if (!manager || typeof manager.appendCompaction !== "function") return null;
     const alreadyInSlicerPhase = manager.buildContextEntries?.().some(isActiveSlicerContextBoundary);
     if (hostedSession.getRootAgentName() === AGENTS.SLICER && alreadyInSlicerPhase) return null;
@@ -94,7 +98,7 @@ export function beginSlicerContextPhase({ planName, hostedSession, sessionManage
     if (!Array.isArray(existingMessages) || existingMessages.length === 0) return null;
 
     const previousLeafId = manager.getLeafId?.() || null;
-    const rootSession = /** @type {any} */ (hostedSession.getRootAgentSession?.());
+    const rootSession = /** @type {any} */ hostedSession.getRootAgentSession?.();
     const usage = rootSession?.getContextUsage?.();
     const tokensBefore = typeof usage?.tokens === "number" ? usage.tokens : 0;
     manager.appendCompaction(
@@ -126,46 +130,57 @@ const CHILD_DESCRIPTOR_SCHEMA = Type.Object({
     summary: Type.String({ description: "Brief child planned change summary." }),
     dependencies: Type.Array(Type.String(), { description: "Child plan dependencies, if any." }),
     affectedPaths: Type.Array(Type.String(), { description: "Expected affected paths." }),
-    tickets: Type.Optional(Type.Array(TICKET_REFERENCE_SCHEMA, {
-        description:
-            "Direct child Ticket References only when the user identified those URLs as Tickets. Omit to preserve existing child references; [] clears direct child references.",
-    })),
-    executionAgent: Type.Union([
-        Type.Literal("engineer"),
-        Type.Literal("frontend-engineer"),
-    ], { description: "Canonical owner; Frontend Engineer is browser-rendered UI only." }),
-    collaborationRecommendation: Type.Union([
-        Type.Literal("pair"),
-        Type.Literal("autonomous"),
-    ], {
+    tickets: Type.Optional(
+        Type.Array(TICKET_REFERENCE_SCHEMA, {
+            description:
+                "Direct child Ticket References only when the user identified those URLs as Tickets. Omit to preserve existing child references; [] clears direct child references.",
+        }),
+    ),
+    executionAgent: Type.Union([Type.Literal("engineer"), Type.Literal("frontend-engineer")], {
+        description: "Canonical owner; Frontend Engineer is browser-rendered UI only.",
+    }),
+    collaborationRecommendation: Type.Union([Type.Literal("pair"), Type.Literal("autonomous")], {
         description:
             "Suggested execution style. Use pair when live user judgment between increments is worth the interruptions; otherwise autonomous.",
     }),
-    devServerCommand: Type.Optional(Type.String({
-        description: "Dev or preview command to run for browser verification, if known.",
-    })),
-    devServerUrl: Type.Optional(Type.String({
-        description: "Local URL to open for browser verification, if known.",
-    })),
-    devServerHmr: Type.Optional(Type.Boolean({
-        description: "Whether the dev server is expected to support hot module reload.",
-    })),
-    targetBranch: Type.Optional(Type.Union([
+    devServerCommand: Type.Optional(
         Type.String({
-            description: "Target branch this child planned change should execute from and merge back into.",
+            description: "Dev or preview command to run for browser verification, if known.",
         }),
-        Type.Null({ description: "Do not inherit the parent Epic target branch for this child planned change." }),
-    ])),
-    workKind: Type.Optional(Type.Union([
-        Type.Literal("BUG_FIX"),
-        Type.Literal("FEATURE"),
-        Type.Literal("REFACTOR"),
-        Type.Literal("MAINTENANCE"),
-        Type.Literal("DOCUMENTATION"),
-    ], {
-        description:
-            "Child Work Kind. Set for new child planned changes based on the work's nature, including DOCUMENTATION for documentation creation or substantial documentation updates; omit only to preserve an existing child draft's Work Kind.",
-    })),
+    ),
+    devServerUrl: Type.Optional(
+        Type.String({
+            description: "Local URL to open for browser verification, if known.",
+        }),
+    ),
+    devServerHmr: Type.Optional(
+        Type.Boolean({
+            description: "Whether the dev server is expected to support hot module reload.",
+        }),
+    ),
+    targetBranch: Type.Optional(
+        Type.Union([
+            Type.String({
+                description: "Target branch this child planned change should execute from and merge back into.",
+            }),
+            Type.Null({ description: "Do not inherit the parent Epic target branch for this child planned change." }),
+        ]),
+    ),
+    workKind: Type.Optional(
+        Type.Union(
+            [
+                Type.Literal("BUG_FIX"),
+                Type.Literal("FEATURE"),
+                Type.Literal("REFACTOR"),
+                Type.Literal("MAINTENANCE"),
+                Type.Literal("DOCUMENTATION"),
+            ],
+            {
+                description:
+                    "Child Work Kind. Set for new child planned changes based on the work's nature, including DOCUMENTATION for documentation creation or substantial documentation updates; omit only to preserve an existing child draft's Work Kind.",
+            },
+        ),
+    ),
     content: Type.String({
         description:
             "Child planned change plan markdown body without YAML front matter. A seed shaped like a Plan: the whole body in canonical planner sections, carrying the boundary and its intent. Planner elaborates executable detail before execution, so do not invent implementation steps or verification you would be guessing at.",
@@ -183,13 +198,11 @@ const CHILD_DESCRIPTOR_SCHEMA = Type.Object({
  * @param {import('../../plan-store.js').PlanWriteOptions} [opts.writeOptions]
  * @returns {ReturnType<typeof saveChildFeaturePlans>}
  */
-export async function materializeSlicerDraft(
-    { cwd, epicPlanName, children, parentTargetBranch, writeOptions },
-) {
+export async function materializeSlicerDraft({ cwd, epicPlanName, children, parentTargetBranch, writeOptions }) {
     const inheritedChildren = parentTargetBranch
         ? children.map((child) =>
-            Object.hasOwn(child, "targetBranch") ? child : { ...child, targetBranch: parentTargetBranch }
-        )
+              Object.hasOwn(child, "targetBranch") ? child : { ...child, targetBranch: parentTargetBranch },
+          )
         : children;
     return await saveChildFeaturePlans(cwd, epicPlanName, inheritedChildren, writeOptions);
 }
@@ -200,31 +213,6 @@ export async function materializeSlicerDraft(
  */
 function formatToolError(text) {
     return `Slicer tool failed: ${text}`;
-}
-
-/** @param {string} title */
-function slicerChildSlug(title) {
-    return String(title || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-}
-
-/** @param {number | undefined} order */
-function slicerChildOrderPrefix(order) {
-    if (order === undefined) return "";
-    if (!Number.isInteger(order) || order < 0) {
-        throw new Error(`Child plan sequence must be a non-negative integer: ${order}`);
-    }
-    return `${String(order).padStart(2, "0")}-`;
-}
-
-/** @param {string} epicPlanName @param {import('../../plan-store.js').ChildFeaturePlanDescriptor} child */
-function slicerChildPlanName(epicPlanName, child) {
-    const slug = slicerChildSlug(child.title);
-    if (!slug) throw new Error(`Child plan title must produce a valid plan name: ${child.title}`);
-    return `${epicPlanName}/${slicerChildOrderPrefix(child.order)}${slug}`;
 }
 
 /**
@@ -241,9 +229,11 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
         description:
             "Materialize child planned change draft plans and finalize the current Epic decomposition after explicit user confirmation.",
         parameters: Type.Object({
-            children: Type.Optional(Type.Array(CHILD_DESCRIPTOR_SCHEMA, {
-                description: "Child planned change plan descriptors to create or update before finalizing.",
-            })),
+            children: Type.Optional(
+                Type.Array(CHILD_DESCRIPTOR_SCHEMA, {
+                    description: "Child planned change plan descriptors to create or update before finalizing.",
+                }),
+            ),
             confirmation: Type.String({
                 description: "A short statement that the user explicitly confirmed finalizing decomposition.",
             }),
@@ -259,22 +249,25 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                     if (!isEpicPlan(epic.attrs)) throw new Error(`Plan is not a PROJECT Epic: ${planName}`);
                     if (epic.attrs.status === "draft") throw new Error("Draft Epics cannot be finalized.");
                     if (
-                        epic.attrs.status !== "approved" && epic.attrs.status !== "ready_for_decomposition" &&
+                        epic.attrs.status !== "approved" &&
+                        epic.attrs.status !== "ready_for_decomposition" &&
                         epic.attrs.status !== "ready_for_work"
                     ) {
                         throw new Error(
                             `Cannot finalize Epic from status "${epic.attrs.status}". Expected approved or ready_for_decomposition.`,
                         );
                     }
-                    const childDescriptors = /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
-                        (params.children || []);
+                    const childDescriptors =
+                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                        params.children || [];
                     const beforeChildren = await findPlansByParent(cwd, planName);
                     /** @type {Array<{ name: string, path: string, markdown: string, revision: string }>} */
                     const beforeSnapshots = [];
                     for (const child of beforeChildren) {
                         const loadedChild = await loadPlan(cwd, child.name);
                         if (
-                            loadedChild?.path && typeof loadedChild.markdown === "string" &&
+                            loadedChild?.path &&
+                            typeof loadedChild.markdown === "string" &&
                             typeof loadedChild.revision === "string"
                         ) {
                             beforeSnapshots.push({
@@ -290,7 +283,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                     /** @type {Map<string, string>} */
                     const stagedWriteRevisions = new Map();
                     try {
-                        const plannedChildNames = childDescriptors.map((child) => slicerChildPlanName(planName, child));
+                        const plannedChildNames = await resolveChildPlanNames(cwd, planName, childDescriptors);
                         return await (async () => {
                             const lockedEpic = await loadPlan(cwd, planName);
                             if (!lockedEpic) throw new Error(`Epic plan not found while finalizing: ${planName}`);
@@ -344,7 +337,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                             }
 
                             const children = (await findPlansByParent(cwd, planName)).filter((child) =>
-                                isPlannedChangeClassification(child.attrs.classification)
+                                isPlannedChangeClassification(child.attrs.classification),
                             );
                             if (children.length === 0) {
                                 throw new Error(
@@ -353,11 +346,12 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                             }
 
                             const childNames = children.map((child) => child.name);
-                            const writeSummary = writeResults.length === 0
-                                ? "No child planned change drafts were written."
-                                : writeResults.map((writeResult) => `${writeResult.action}: ${writeResult.name}`).join(
-                                    "\n",
-                                );
+                            const writeSummary =
+                                writeResults.length === 0
+                                    ? "No child planned change drafts were written."
+                                    : writeResults
+                                          .map((writeResult) => `${writeResult.action}: ${writeResult.name}`)
+                                          .join("\n");
 
                             if (epic.attrs.status === "ready_for_work") {
                                 return {
@@ -375,14 +369,14 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                                 planName,
                                 event: "decomposition_finalized",
                                 currentStatus:
-                                    /** @type {import('./plan-lifecycle.js').PlanStatus} */ (epic.attrs.status),
+                                    /** @type {import('./plan-lifecycle.js').PlanStatus} */ epic.attrs.status,
                                 details: { triageMeta: epic.attrs },
                             });
                             return { updated, children, childNames, writeResults, writeSummary, alreadyReady: false };
                         })();
                     } catch (error) {
-                        const createdResults = writeResults.filter((writeResult) =>
-                            writeResult.action === "created" && typeof writeResult.path === "string"
+                        const createdResults = writeResults.filter(
+                            (writeResult) => writeResult.action === "created" && typeof writeResult.path === "string",
                         );
                         for (const writeResult of createdResults) {
                             const stagedRevision = stagedWriteRevisions.get(writeResult.name);
@@ -403,10 +397,11 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                         throw error;
                     }
                 };
-                const result = /** @type {any} */ (await (withPlanCatalogLock(cwd, async () => {
-                    const childDescriptors = /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
-                        (params.children || []);
-                    const plannedChildNames = childDescriptors.map((child) => slicerChildPlanName(planName, child));
+                const result = /** @type {any} */ await withPlanCatalogLock(cwd, async () => {
+                    const childDescriptors =
+                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                        params.children || [];
+                    const plannedChildNames = await resolveChildPlanNames(cwd, planName, childDescriptors);
                     const existingChildNames = (await findPlansByParent(cwd, planName)).map((child) => child.name);
                     const transition = await runEpicDecompositionFinalizeTransition({
                         projectRoot: cwd,
@@ -415,28 +410,27 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                             { kind: "catalog" },
                             { kind: "plan", id: planName },
                             ...existingChildNames.map((name) => ({
-                                kind: /** @type {const} */ ("plan"),
+                                kind: /** @type {const} */ "plan",
                                 id: name,
                             })),
-                            ...plannedChildNames.map((name) => ({ kind: /** @type {const} */ ("plan"), id: name })),
+                            ...plannedChildNames.map((name) => ({ kind: /** @type {const} */ "plan", id: name })),
                         ],
                         finalize: async () => await runFinalizeBody(),
                     });
                     if (transition.status !== "committed") {
-                        throw new Error(
-                            transition.message || `Epic decomposition transaction failed for ${planName}.`,
-                        );
+                        throw new Error(transition.message || `Epic decomposition transaction failed for ${planName}.`);
                     }
                     return transition.value;
-                })));
+                });
                 const branchSummary = await prepareEpicBranchSummary(cwd, planName);
                 if (result.alreadyReady) {
                     return {
-                        content: [{
-                            type: "text",
-                            text:
-                                `${result.writeSummary}\nEpic already ready_for_work with ${result.children.length} child planned change plan(s).${branchSummary}`,
-                        }],
+                        content: [
+                            {
+                                type: "text",
+                                text: `${result.writeSummary}\nEpic already ready_for_work with ${result.children.length} child planned change plan(s).${branchSummary}`,
+                            },
+                        ],
                         details: {
                             status: "ready_for_work",
                             children: result.childNames,
@@ -446,11 +440,12 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                     };
                 }
                 return {
-                    content: [{
-                        type: "text",
-                        text:
-                            `${result.writeSummary}\nFinalized Epic decomposition: ${planName} is ready_for_work.${branchSummary}`,
-                    }],
+                    content: [
+                        {
+                            type: "text",
+                            text: `${result.writeSummary}\nFinalized Epic decomposition: ${planName} is ready_for_work.${branchSummary}`,
+                        },
+                    ],
                     details: {
                         status: result.updated.status,
                         children: result.childNames,
@@ -498,7 +493,7 @@ async function prepareEpicBranchSummary(cwd, planName) {
 
 /**
  * @param {{ name: string, attrs: import('../../plan-store.js').PlanFrontMatter }} child
- * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.js').TicketReference[] }}
+ * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.ts').TicketReference[] }}
  */
 function summarizeChild(child) {
     return {
@@ -612,9 +607,13 @@ export async function runSlicerAgent({
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: true, slicerInvoked: boolean } | { ok: false, error: string, stage: "slicer" | "validation" }>}
  */
-export async function openSlicerDecomposition(
-    { planName, planPath, triageMeta, hostedSession, sessionManager }: OpenSlicerDecompositionOptions,
-): Promise<OpenSlicerDecompositionResult> {
+export async function openSlicerDecomposition({
+    planName,
+    planPath,
+    triageMeta,
+    hostedSession,
+    sessionManager,
+}: OpenSlicerDecompositionOptions): Promise<OpenSlicerDecompositionResult> {
     if (!hostedSession) throw new Error("openSlicerDecomposition: hostedSession is required");
 
     /**

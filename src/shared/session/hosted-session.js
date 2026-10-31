@@ -298,6 +298,8 @@ export class HostedSession {
         this.toolExecutionIds = new Map();
         /** @type {string | null} */
         this.generatedTaskTurnId = null;
+        /** Consumed once by the first execution started for an accepted human input. */
+        this.metricsHumanInputPending = false;
         /** @type {ManagedSessionMetadata | null} */
         this.managed = options.managed || null;
         /** @type {import('./managed-operation.ts').ManagedOperationCapability | null} */

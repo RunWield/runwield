@@ -61,7 +61,9 @@ function selectedLockPath(projectRoot, fileName) {
 
 /** @param {string} path */
 async function pathExists(path) {
-    return await fsStat(path).then(() => true).catch(() => false);
+    return await fsStat(path)
+        .then(() => true)
+        .catch(() => false);
 }
 
 const PLAN_EVENT_TRANSITION_INVENTORY = [
@@ -402,7 +404,10 @@ test("checked-in transition inventory covers Plan Events and semantic writers", 
         "hold_resumed",
         "hold_reset_to_draft",
     ];
-    assertEquals(PLAN_EVENT_TRANSITION_INVENTORY.map((row) => row[0]), expectedEvents);
+    assertEquals(
+        PLAN_EVENT_TRANSITION_INVENTORY.map((row) => row[0]),
+        expectedEvents,
+    );
     for (const row of [...PLAN_EVENT_TRANSITION_INVENTORY, ...SEMANTIC_WRITER_TRANSITION_INVENTORY]) {
         assertEquals(row.length, 7, `${row[0]} has event/writer, inputs, locks, effects, proof, rollback, recovery`);
         for (const cell of row) assert(Boolean(cell), `${row[0]} has no blank inventory cells`);
@@ -526,11 +531,14 @@ test("Plan front matter transition records its committed metric through the real
         assertEquals(result.status, "committed");
         const metrics = await readMetrics();
         assertEquals(
-            metrics.some((metric) =>
-                metric.category === "recovery" &&
-                metric.event === "plan_transition_committed" &&
-                metric.planName === "metric-demo" &&
-                metric.details?.operation === "metric_test_status"
+            metrics.some(
+                (metric) =>
+                    metric.category === "recovery" &&
+                    metric.v === 2 &&
+                    metric.event === "workflow_transition_committed" &&
+                    metric.transitionId === result.transitionId &&
+                    metric.operationId === result.transitionId &&
+                    metric.outcome === "succeeded",
             ),
             true,
         );
@@ -854,8 +862,9 @@ test("a rejected precondition leaves no journal and the Plan stays usable", asyn
             affectedPaths: [],
         });
         // validation_passed is not reachable from draft: a pure rule rejection.
-        await recordPlanEvent({ cwd, planName: "demo", event: "validation_passed", currentStatus: "draft" })
-            .catch(() => {});
+        await recordPlanEvent({ cwd, planName: "demo", event: "validation_passed", currentStatus: "draft" }).catch(
+            () => {},
+        );
         assertEquals(
             (await listTransitionRecoveryRecords(cwd)).length,
             0,

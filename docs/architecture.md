@@ -876,10 +876,13 @@ after the rebuild succeeds.
 
 ### Metrics and fail-open services
 
-Workflow metrics are opt-in JSONL under `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked execution
-worktrees write to the primary project's metrics file. Records hash the project root, redact prompts, output, secrets,
-and paths, and fail open so telemetry cannot stop a workflow. Session footer-context markers, event listeners, extension
-warnings, and selected cleanup paths are also fail-open. In contrast, missing Mnemoteca or Cymbal is a hard
+Workflow metrics are opt-in JSONL under `~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl`. The
+basename is sanitized and limited to 40 characters; the key is the full SHA-256 of the primary checkout's real path.
+Linked execution worktrees share that Project identity. Core adopts legacy journals under their guard, separating
+attributable rows and fencing copied rows from existing export grants when legacy paths collide. The Workspace Usage
+report reads these journals; clear removes selected histories. Optional export requires separate package approval and
+destination consent. Records exclude prompts, output, secrets, and paths, and fail open so metrics cannot stop a workflow.
+Session footer-context markers, event listeners, extension warnings, and selected cleanup paths are also fail-open. In contrast, missing Mnemoteca or Cymbal is a hard
 agent-construction failure, and invalid lifecycle/worktree gates are hard workflow failures.
 
 ## Persistence map
@@ -890,15 +893,15 @@ map for Core persistence.
 
 | Data                                      | Location                                                                                            | Authority and write behavior                         |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Session transcript                        | `~/.wld/sessions/<encoded-project-root>/`                                                           | Pi `SessionManager`; guarded load by cwd/id/path     |
+| Session transcript                        | `~/.wld/sessions/<encoded-session-root>/`                                                           | Pi `SessionManager`; guarded load by cwd/id/path     |
 | Session image and memory-backup artifacts | Beside the persisted session                                                                        | Session-scoped file helpers                          |
 | Global settings, models, auth             | `~/.wld/`                                                                                           | RunWield settings/model services                     |
 | Project settings and overrides            | `<project>/.wld/`                                                                                   | Project-scoped settings/catalog services             |
 | Plans                                     | `<project>/docs/plans/**/*.md`                                                                      | Plan store and Plan lifecycle                        |
 | Archived Plans                            | `<project>/docs/plans/archived/`                                                                    | Plan store archive/restore operations                |
 | Worktree registry                         | `<primary-project>/.wld/internal/worktrees.json`                                                    | Worktree registry under a local lock file            |
-| Execution worktrees                       | `~/.wld/worktrees/<encoded-project-root>/` by default                                               | Git worktree service                                 |
-| Workflow metrics                          | `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`                                      | Optional, sanitized, fail-open append                |
+| Execution worktrees                       | `~/.wld/worktrees/<encoded-worktree-root>/` by default                                              | Git worktree service                                 |
+| Workflow metrics                          | `~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl`                            | Optional, sanitized, fail-open append                |
 | Collaboration secrets                     | `~/.wld/collaboration-secrets.json` or `<primary-project>/.wld/internal/collaboration-secrets.json` | Atomic temp-file/rename with restrictive permissions |
 
 ## Adapters over Core
@@ -1060,13 +1063,13 @@ Git behavior.
 | Core area                    | Principal test suites                                                                                                                 | Existing emphasis                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Hosted state and registry    | `hosted-session.test.js`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
-| Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.js`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
+| Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.ts`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
 | Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.js`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.js`, `plan-lifecycle.test.js`, `src/ui/review/plan-review.test.js`, `plan-written.test.js`                           | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
 | Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
-| Git worktrees                | `worktree.test.js`, `worktree-registry.test.js`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
-| Configuration and policy     | `settings.test.js`, `model-registry.test.js`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.js` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
+| Git worktrees                | `worktree.test.js`, `worktree-registry.test.ts`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
+| Configuration and policy     | `settings.test.ts`, `model-registry.test.ts`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.js` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
 | Collaboration primitives     | Tests under `src/shared/collaboration/`                                                                                               | Crypto, capabilities, protocol normalization, locks, secrets, client behavior                   |
 | Adapter/boundary conformance | `src/shared/session/architecture-boundary.test.ts`, ACP tests, TUI runtime-adapter tests, Workspace tests                             | Dependency direction, protocol mapping, single event consumption, interactions, Plan projection |
 

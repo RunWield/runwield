@@ -4,7 +4,7 @@
  */
 
 import { type Static, StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type {
@@ -250,7 +250,9 @@ function toInterviewQuestion(question: Static<typeof INTERVIEW_QUESTION>): Inter
     };
 }
 
-export function createUserInterviewTool(opts: UserInterviewToolOptions = {}) {
+export function createUserInterviewTool(
+    opts: UserInterviewToolOptions = {},
+): ToolDefinition<typeof PARAMETERS, InterviewResultDetails> {
     const hostedSession = opts.hostedSession;
     return defineTool<typeof PARAMETERS, InterviewResultDetails>({
         name: "user_interview",

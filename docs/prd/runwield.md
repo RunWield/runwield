@@ -89,6 +89,13 @@ Connect is a first-class way to use RunWield, not a deliberately weakened trial 
 requirements live in [runwield-connect-prd.md](runwield-connect-prd.md). That document retains **attached mode** and
 **Attached Workflow** as internal architectural terms while using RunWield Connect as the public product name.
 
+The Claude Code FEATURE Preview has recorded live acceptance with explicit source and permission limits. The Codex
+adapter targets desktop and CLI through the native `$runwield:run` skill and the same Core coordinator; both surfaces
+remain unqualified for a complete live workflow. Installation, continuation across hosts, and qualification evidence belong to
+the [Connect capabilities](runwield-connect-prd.md#capability-requirements) and the
+[Codex guide](../user-documentation/connect-codex.md). Available source code does not imply published package or Stable
+release availability.
+
 When RunWield Core owns the Session and invokes another harness non-interactively, such as Claude Code through
 `claude -p` or Antigravity CLI, that harness is an **Execution Backend** alongside Pi. Execution Backends are Core
 capabilities, not RunWield Connect plugins or separately branded product modes.
@@ -192,6 +199,10 @@ each surface document owns its detailed behavior. A reference adds context, not 
 | [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, Project access, knowledge search, pairing                        |
 | [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                   |
 | [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance              |
+
+Workspace owns [Personal usage and outcomes](runwield-workspace-prd.md#personal-usage-and-outcomes), including its
+owner-only browser report and Project access. Core owns the
+[measurement and reporting rules](runwield-core-prd.md#usage-measurement-and-export).
 
 When behavior changes, update the owning capability and its acceptance scenarios in the same implementation change.
 Other PRDs and Plans link to that owner. Proposed additions, changes, and removals stay labeled until reconciled with

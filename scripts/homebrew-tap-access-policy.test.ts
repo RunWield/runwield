@@ -8,7 +8,7 @@ test("Homebrew credential check proves write access without changing the tap def
     const deleteIndex = workflow.indexOf('git push origin --delete "$CHECK_BRANCH"', createIndex);
 
     assertStringIncludes(workflow, "workflow_dispatch:");
-    assertStringIncludes(workflow, "repository: gandazgul/homebrew-tap");
+    assertStringIncludes(workflow, "repository: RunWield/homebrew-tap");
     assertStringIncludes(workflow, "token: ${{ secrets.HOMEBREW_TAP_TOKEN }}");
     assertStringIncludes(workflow, "CHECK_BRANCH: credential-check-${{ github.run_id }}-${{ github.run_attempt }}");
     assertEquals(createIndex >= 0, true);

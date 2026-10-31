@@ -15,7 +15,7 @@ import { SessionHost } from "../session/session-host.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../workflow/execution-start.ts";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { runValidationPhase, createEngineValidationArgs } from "../workflow/validation.ts";
-import { continueWorkflowValidation } from "../workflow/validation-supervisor.ts";
+import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { runPublicationPhase } from "../workflow/validation-publication.ts";
 import { resolvePhaseContext } from "../workflow/validation-context.ts";
 import type { PhaseContext } from "../workflow/validation-types.ts";

@@ -15,9 +15,9 @@ test("install.sh delegates missing Mnemoteca installs to the official installer"
             });
             assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
             const curlLog = await readCurlLog(fixture.curlLog);
-            assertEquals(curlLog.split("raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh").length - 1, 1);
+            assertEquals(curlLog.split("raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh").length - 1, 1);
             const installerLog = await fsReadFile(fixture.mnemotecaInstallerLog, "utf8");
-            assertStringIncludes(installerLog, "repo=gandazgul/mnemoteca");
+            assertStringIncludes(installerLog, "repo=RunWield/mnemoteca");
             assertStringIncludes(installerLog, `install_dir=${bashFixturePath(fixture.installDir)}`);
             assertStringIncludes(installerLog, `db_path=${join(fixture.root, "memory.db")}`);
             const stat = await fsStat(join(fixture.installDir, "mnemoteca"));
@@ -33,7 +33,7 @@ test("install.sh delegates missing Mnemoteca installs to the official installer"
             const result = await runInstaller(fixture, { unsetEnv: ["MNEMOTECA_DB_PATH"] });
             assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
             const curlLog = await readCurlLog(fixture.curlLog);
-            assertEquals(curlLog.split("raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh").length - 1, 1);
+            assertEquals(curlLog.split("raw.githubusercontent.com/RunWield/mnemoteca/main/install.sh").length - 1, 1);
             const installerLog = await fsReadFile(fixture.mnemotecaInstallerLog, "utf8");
             assertStringIncludes(installerLog, "db_path=unset");
         } finally {

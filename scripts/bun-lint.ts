@@ -4,7 +4,7 @@ import ts from "typescript-eslint";
 import react from "eslint-plugin-react";
 import mapping from "./bun-lint-rules.json" with { type: "json" };
 import { rules as parityRules } from "./lint-rules/bun-parity.ts";
-import owned from "./lint-rules/no-module-scope-process-state.js";
+import owned from "./lint-rules/no-module-scope-process-state.ts";
 
 const aliases = new Map(mapping.map((entry) => [entry.deno, entry.eslint]));
 const rules: TSESLint.FlatConfig.Rules = Object.fromEntries(

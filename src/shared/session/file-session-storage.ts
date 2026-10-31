@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
 import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
 export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../private-json-file.ts";
-import { encodeCwdForSessionDir } from "./session-directory-name.ts";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import type { FileSessionManifest, FileSessionProject } from "./file-session-store-types.ts";
 import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
 
@@ -298,7 +298,13 @@ function readRecoverableManifests(sessionDir: string) {
 
 function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
     for (const [runwieldSessionId, candidate] of readRecoverableManifests(sessionDir)) {
-        const path = manifestPath(sessionDir, runwieldSessionId);
+        // Repair segments can live in a worktree's transcript directory. Their
+        // recovery descriptors still belong to the original Project's bundle.
+        const baseDir = dirname(sessionDir);
+        const project = findProject(baseDir, candidate.projectId);
+        const ownerSessionDir = sessionDirForRoot(baseDir, project?.currentRoot || candidate.transcriptCwd);
+        const path = manifestPath(ownerSessionDir, runwieldSessionId);
+
         if (pathExists(path)) {
             try {
                 const existing = readJson<FileSessionManifest>(path);

@@ -55,6 +55,10 @@ PROJECT Plans are non-executable containers. `type: epic` (or absent) uses Archi
 `type: sequence` uses a brief Planner-authored overview and complete child Plans reviewed together. Both store children
 under `docs/plans/<container-name>/`, linked with `parentPlan`, ordered with `order`, and connected by sibling
 `dependencies` (stable Plan IDs or legacy names).
+New child filenames use descriptive slugs without ordinal prefixes. Change Front Matter `order` to reorder children;
+keep paths, Plan IDs, and dependency references stable. Existing numbered filenames remain valid. Child menus and
+child-filtered completions use numeric order; top-level menus keep status/type priority. Missing or duplicate child
+orders allow manual browsing but block automatic next-child execution.
 
 Planner submits a Sequence through `plan_written({ planName, plans: [{ planName }, ...] })`. The optional `plans` list
 must match the complete child set in order; omitting it reloads that set for a later review. One tab per document
@@ -268,9 +272,18 @@ own Planner session can reshape it again. A sibling that has started stays as it
 
 Each child's Semantic Review judges only that child's correctness, with the Epic's objective and siblings as context.
 Its Integration Notes are written to a RunWield-managed `### Integration Notes` subsection of the Epic's Verification
-Plan; the Integration Reviewer reads them as places to look. The Integration Reviewer is its own subagent: it reads
-selectively from the Epic outcomes and notes instead of reading every line again, and can hand large areas to read-only
-delegates.
+Plan; the Integration Reviewer reads them as places to look. The notes are written in the child's execution checkout
+and reach the Epic branch with child delivery, without changing the primary copy.
+
+Confirmed child Plan Deviations also travel in that checkout's Epic document, under `### Child Plan Deviations` in the
+Objective. Each child has one managed block projected from its authoritative `planDeviations`; the Epic's own deviation
+front matter stays unchanged. Recording, same-call retries, and publication checkpoints synchronize the projection.
+Integration review treats the replacements as user-approved: a gap caused only by a deviation is an advisory naming the
+affected Epic outcome and child, not a finding. Other defects and unmet replacement requirements remain findings. Epic
+Work Records still collect child front matter once, not the projected blocks. Sequence containers do not get these blocks.
+
+The Integration Reviewer is its own subagent: it reads selectively from the Epic outcomes and notes instead of reading
+every line again, and can hand large areas to read-only delegates.
 
 Reading or archiving an Epic child never prepares a planning worktree for it: archive, restore, and Work Record
 generation resolve the local document read-only. Planning worktrees start only when Planner or execution starts the
@@ -295,8 +308,13 @@ runs the project's checks, then an integration review of the whole Epic diff fro
 then Code Review per the `codereview` setting. A pass records `epic_integration_passed`. Findings write
 `docs/plans/<epic>/integration-report.md`, record `epic_integration_failed`, and add a draft repair child under the Epic
 that Planner starts from. The repair child is reviewed and run like any other child, and its delivery runs the gate
-again. The user can mark the Epic done enough at any point. RunWield never merges the Epic branch into the primary
-branch; the user merges it or opens a pull request. A later load verifies the checked Epic commit against its recorded
+again. When an implemented Epic has only unstarted gate repair drafts left, its load-plan menu offers **Retry the
+integration gate** and names the drafts and report. A passing retry records the Epic as reviewed and closes each repair
+draft through `manual_closed_without_verification`, with a reason that names the checked commit. It preserves the draft
+body and identity. New findings update the newest draft's checked commit and Findings section, preserving other content
+and metadata. A pause leaves drafts unchanged. Started repairs and other undelivered children block retry. The automatic
+gate still waits for repair delivery. The user can mark the Epic done enough at any point. RunWield never merges the
+Epic branch into the primary branch; the user merges it or opens a pull request. A later load verifies the checked Epic commit against its recorded
 final target before recording `epic_publication_confirmed`. Plan-only completion metadata does not invalidate the
 reviewed implementation.
 

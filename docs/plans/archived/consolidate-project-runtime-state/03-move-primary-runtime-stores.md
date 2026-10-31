@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/workflow/publication-machine.ts"
     - "src/shared/isolated-publication.ts"
     - "src/shared/worktree.js"
-    - "src/shared/worktree-registry.test.js"
+    - "src/shared/worktree-registry.test.ts"
     - "src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts"
     - "src/shared/worktree-creation.test.ts"
     - "src/shared/project-runtime-layout.test.ts"
@@ -169,7 +169,7 @@ No Work Record replacement is proposed. Scope and ownership follow the approved 
 Run through the sandboxed test runner only:
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/worktree-registry.test.js src/shared/workflow/controller-registry.integration.test.ts src/shared/worktree-creation.test.ts
+deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/worktree-registry.test.ts src/shared/workflow/controller-registry.integration.test.ts src/shared/worktree-creation.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/publication-machine.test.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts
 deno task seams:check
 deno task ci

@@ -29,13 +29,11 @@ status: "draft"
 
 ## Context
 
-`plan-packages-and-independent-validation` makes the Epic the release unit. Children execute from and publish into an
-Epic branch, the Epic reaches `implemented` when its children are settled, and Validator runs the Epic's integrated
-validation contract before the Epic reaches `verified`.
+The earlier package and frontend Plans were removed on 2026-10-26. The
+[Plan Store PRD](../prd/plan-store-prd.md) owns the Plan storage direction.
 
-That PROJECT stops on purpose at `verified`, which means one thing: the Epic branch is proven and ready to merge. The
-merge stays a manual `git` operation by the owner. This works, but it leaves the last step of the release outside
-RunWield:
+This proposal assumes the Epic branch is proven and ready to merge at `verified`. The merge stays a manual `git`
+operation by the owner. This works, but it leaves the last step of the release outside RunWield:
 
 - The proof is against the Epic branch alone. An Epic branch can live for weeks while the primary branch moves, and the
   one thing most likely to break the release — other work landing underneath it — is never checked.
@@ -49,9 +47,8 @@ validates the result, updates the target reference with a compare-and-swap, and 
 target moves. This PROJECT lifts that pattern to the Epic and puts an owner decision in front of it, because merging an
 Epic is a release and releases are scheduled by people.
 
-This PROJECT must begin only after `plan-packages-and-independent-validation` lands and its Epic branch, Epic
-`implemented`, and integrated-validation authorities are re-audited. It does not depend on
-`plan-package-frontend-experience-planning`.
+Before this PROJECT begins, re-audit the current Epic branch, Epic `implemented`, and integrated-validation authorities.
+The earlier prerequisite and sibling Plans were removed on 2026-10-26; use the Plan Store PRD for Plan storage direction.
 
 ## Objective
 
@@ -157,8 +154,8 @@ Three existing invariants constrain the design and are not open for renegotiatio
 - Existing bounded repair segment pattern, which already gives a repair Engineer a fresh persisted segment under a
   stable Session with a frozen contract and no inherited planning history.
 - Existing Delivery Evidence structures and validation-delivery hierarchy.
-- Integrated validation, Validator, and the Epic `validation.md` contract from
-  `plan-packages-and-independent-validation`.
+- Re-audit integrated validation against the current implementation. The earlier package Plans were removed on
+  2026-10-26; the Plan Store PRD owns Plan storage direction.
 - Existing Plan Board and TUI action surfaces for owner-triggered Plan operations.
 
 ## Verification Plan

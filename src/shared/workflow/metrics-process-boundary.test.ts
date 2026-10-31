@@ -44,7 +44,7 @@ test("a producer lost after a flushed call start leaves no fabricated terminal r
     });
 });
 
-test("two local producers leave complete JSONL and unique observation IDs", async () => {
+test("two local producers preserve saved observations and report lock budget skips", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const metricsModule = new URL("./metrics.js", import.meta.url).href;
         const script = `const { recordWorkflowMetric, drainWorkflowMetrics } = await import(${JSON.stringify(
@@ -59,12 +59,14 @@ test("two local producers leave complete JSONL and unique observation IDs", asyn
                 if (performance.now() >= deadline) throw new Error("Producer start barrier timed out");
                 await new Promise((resolve) => setTimeout(resolve, 10));
             }
+            const outcomes = [];
             for (let seq = 0; seq < 64; seq++) {
-                await recordWorkflowMetric({ v: 2, category: "command", event: "command_started",
+                outcomes.push(await recordWorkflowMetric({ v: 2, category: "command", event: "command_started",
                     recorderId: (await import("node:process")).argv.slice(2)[1], commandId: (await import("node:process")).argv.slice(2)[1], seq, command: "help",
-                    kind: "builtin", sourceSurface: "tui" }, (await import("node:process")).argv.slice(2)[0]);
+                    kind: "builtin", sourceSurface: "tui" }, (await import("node:process")).argv.slice(2)[0]));
             }
-            await drainWorkflowMetrics();`;
+            await drainWorkflowMetrics();
+            console.log(JSON.stringify(outcomes));`;
         const run = (id: string) =>
             spawnNativeProcess(process.execPath, {
                 args: runtimeSourceArgs(["run", "-A", "--no-check", "-", projectRoot, id]),
@@ -97,6 +99,21 @@ test("two local producers leave complete JSONL and unique observation IDs", asyn
         await writeFile(join(projectRoot, "producers.start"), "start");
         const results = await pending;
         for (const result of results) assertEquals(result.success, true, new TextDecoder().decode(result.stderr));
+        const outcomes = results.flatMap((result, index) => {
+            const reported = JSON.parse(new TextDecoder().decode(result.stdout));
+            assertEquals(reported.length, 64);
+            for (const [seq, outcome] of reported.entries()) {
+                assertEquals(outcome.recorderId, index === 0 ? "producer_one" : "producer_two");
+                assertEquals(outcome.seq, seq);
+                assertEquals(typeof outcome.persisted, "boolean");
+                assertEquals(typeof outcome.eventId, "string");
+                if (!outcome.persisted) assertEquals(outcome.reason, "lock_timeout");
+            }
+            return reported;
+        });
+        assertEquals(new Set(outcomes.map((outcome) => outcome.eventId)).size, 128);
+        const saved = outcomes.filter((outcome) => outcome.persisted).map(({ persisted: _persisted, ...row }) => row);
+        assertEquals(saved.length > 0, true);
         const rows = await readMetrics().catch(async (error) => {
             const raw = await readFile(getWorkflowMetricsFilePath(projectRoot), "utf8");
             const lines = raw.trim().split("\n");
@@ -113,17 +130,12 @@ test("two local producers leave complete JSONL and unique observation IDs", asyn
                 { cause: error },
             );
         });
-        assertEquals(rows.length, 128);
-        assertEquals(new Set(rows.map((row) => row.eventId)).size, 128);
-        for (const id of ["producer_one", "producer_two"]) {
+        assertEquals(rows.length, saved.length);
+        for (const row of saved)
             assertEquals(
-                rows
-                    .filter((row) => row.recorderId === id)
-                    .map((row) => (typeof row.seq === "number" ? row.seq : -1))
-                    .sort((a, b) => a - b),
-                Array.from({ length: 64 }, (_, index) => index),
+                rows.find((record) => record.eventId === row.eventId),
+                row,
             );
-        }
     });
 });
 
@@ -131,7 +143,7 @@ test("metrics remain bounded under an external writer lock and resume after rele
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const filePath = getWorkflowMetricsFilePath(projectRoot);
         await mkdir(dirname(filePath), { recursive: true });
-        const lock = openNativeFileLock(`${filePath}.lock`);
+        const lock = openNativeFileLock(join(dirname(filePath), ".journal.guard"));
         lock.lockSync(true);
         let held = true;
         try {

@@ -221,7 +221,7 @@ export const loadPlanEpicSlicerScenario = {
         { type: "waitForIdle", timeoutMs: 30000 },
         {
             type: "captureProjectState",
-            planNames: ["decomposition-epic", "decomposition-epic/01-loaded-epic-child"],
+            planNames: ["decomposition-epic", "decomposition-epic/loaded-epic-child"],
         },
     ],
     assertions: [
@@ -239,7 +239,7 @@ export const loadPlanEpicSlicerScenario = {
             );
             assert(planStatus(result, "decomposition-epic") === "ready_for_work", "Expected decomposed loaded Epic.");
             const child = result.state.projectState?.plans?.find(
-                (entry) => entry.name === "decomposition-epic/01-loaded-epic-child",
+                (entry) => entry.name === "decomposition-epic/loaded-epic-child",
             );
             assert(child?.attrs?.parentPlan === "decomposition-epic", "Expected loaded Epic child parent metadata.");
         },

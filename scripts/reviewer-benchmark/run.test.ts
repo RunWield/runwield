@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile, writeFile, access, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, writeFile, access, cp, mkdir, symlink, unlink } from "node:fs/promises";
+import { load, JSON_SCHEMA } from "js-yaml";
+import { join, resolve } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
+import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 import { openNativeFileLock } from "../../src/shared/native-file-lock.ts";
+import type { FixtureOracle } from "./fixtures.ts";
+import { checkoutRoot } from "./configuration.ts";
 import { loadFixture } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
 import { latestResults, readRun } from "./records.ts";
 import { runBenchmark, selectCases } from "./run.ts";
 import type { SelectedCase } from "./run.ts";
 import { scoreRun } from "./score.ts";
-import { inspectionSteps, withFixtureCopy } from "./test-fixtures.ts";
+import { corpusPath, inspectionSteps, withFixtureCopy } from "./test-fixtures.ts";
 
 const finding = {
     title: "Cache escapes its project",
@@ -53,7 +57,83 @@ test("selection expands the nine smoke cases and accepts explicit subsets", asyn
         ["B", "A"],
     );
 });
-for (const selection of ["RV-D01", "RV-M01/B", "RV-D04/C", "RV-D04/A/extra", "RV-D04,RV-D04/A", ""]) {
+test("all selects every package and oracle variant in scenario and variant order", async () => {
+    const expected: string[] = [];
+    for (const entry of (await readdir(corpusPath, { withFileTypes: true })).sort((a, b) =>
+        a.name.localeCompare(b.name),
+    )) {
+        if (!entry.isDirectory() || !(await readdir(join(corpusPath, entry.name))).includes("scenario.yaml")) continue;
+        const oracle = load(await readFile(join(corpusPath, entry.name, "evaluation/oracle.yaml"), "utf8"), {
+            schema: JSON_SCHEMA,
+        }) as FixtureOracle;
+        for (const variant of Object.keys(oracle.variants).sort()) expected.push(`${entry.name}/${variant}`);
+    }
+    const selected = await selectCases("all");
+    assert.equal(selected.length, 33);
+    assert.equal(new Set(selected.map((entry) => entry.fixture.manifest.scenarioId)).size, 17);
+    assert.deepEqual(
+        selected.map((entry) => `${entry.fixture.manifest.scenarioId}/${entry.variant}`),
+        expected,
+    );
+});
+
+test("directory discovery admits an extra package for all and explicit selection but keeps smoke fixed", async () => {
+    await withFixtureCopy("RV-D04", async (packageDir) => {
+        const root = resolve(packageDir, "../..");
+        const corpus = join(root, "evals/reviewer");
+        await cp(join(packageDir, ".."), corpus, { recursive: true });
+        await cp(packageDir, join(corpus, "RV-D97"), { recursive: true });
+        for (const file of ["scenario.yaml", "evaluation/oracle.yaml"]) {
+            const path = join(corpus, "RV-D97", file);
+            await writeFile(path, (await readFile(path, "utf8")).replace("scenarioId: RV-D04", "scenarioId: RV-D97"));
+        }
+        // The discovery order must not depend on the variant keys' order in YAML.
+        const oraclePath = join(corpus, "RV-D97/evaluation/oracle.yaml");
+        const oracle = load(await readFile(oraclePath, "utf8"), { schema: JSON_SCHEMA }) as FixtureOracle;
+        oracle.variants = { B: oracle.variants.B, A: oracle.variants.A };
+        await writeFile(oraclePath, JSON.stringify(oracle));
+        await mkdir(join(corpus, "RV-D98"));
+        await cp(join(checkoutRoot, "scripts/reviewer-benchmark"), join(root, "scripts/reviewer-benchmark"), {
+            recursive: true,
+        });
+        await symlink(join(checkoutRoot, "src"), join(root, "src"), "dir");
+        await symlink(join(checkoutRoot, "node_modules"), join(root, "node_modules"), "dir");
+        const result = await captureForegroundProcess("bun", {
+            cwd: root,
+            args: [
+                "-e",
+                `import { selectCases } from "./scripts/reviewer-benchmark/run.ts";
+                const selections = {};
+                for (const name of ["all", "smoke", "RV-D97/B", "RV-D97"])
+                    selections[name] = (await selectCases(name)).map(({ fixture, variant }) => fixture.manifest.scenarioId + "/" + variant);
+                console.log(JSON.stringify(selections));`,
+            ],
+            timeoutMs: 30000,
+        });
+        assert.equal(result.code, 0, new TextDecoder().decode(result.stderr));
+        const selections = JSON.parse(new TextDecoder().decode(result.stdout)) as Record<string, string[]>;
+        const smoke = [
+            "RV-D04/A",
+            "RV-D04/B",
+            "RV-D05/A",
+            "RV-D05/B",
+            "RV-D12/A",
+            "RV-D12/B",
+            "RV-D13/A",
+            "RV-D13/B",
+            "RV-M01/A",
+        ];
+        const existing = (await selectCases("all")).map(
+            ({ fixture, variant }) => `${fixture.manifest.scenarioId}/${variant}`,
+        );
+        assert.deepEqual(selections.all, [...existing, "RV-D97/A", "RV-D97/B"].sort());
+        assert.deepEqual(selections.smoke, smoke);
+        assert.deepEqual(selections["RV-D97/B"], ["RV-D97/B"]);
+        assert.deepEqual(selections["RV-D97"], ["RV-D97/A", "RV-D97/B"]);
+    });
+});
+
+for (const selection of ["RV-D99", "RV-D99/A", "RV-M01/B", "RV-D04/C", "RV-D04/A/extra", "RV-D04,RV-D04/A", ""]) {
     test(`reject invalid selection ${JSON.stringify(selection)} before spending`, async () => {
         await assert.rejects(selectCases(selection), /Unknown|missing variant|Duplicate/);
     });
@@ -67,6 +147,8 @@ test("a batch saves exact production findings and actual configuration, then ref
         const run = await runBenchmark(selected, { out });
         const saved = await readRun(run.directory);
         assert.equal(saved.results.length, 2);
+        assert.equal(saved.manifest.cases[0].patch, selected[0].fixture.oracle.variants.A!.patch);
+        assert.equal(saved.manifest.cases[1].patch, selected[1].fixture.oracle.variants.B!.patch);
         assert.deepEqual(saved.results[0].outcome!.findings, [finding]);
         assert.deepEqual(saved.results[0].outcome!.advisories, [advisory]);
         assert.deepEqual(
@@ -105,6 +187,8 @@ test("a batch saves exact production findings and actual configuration, then ref
 test("a timed-out case settles before a fresh case and resume retries only the unfinished case", async () => {
     await withRuntimeCommandFixture("benchmark-batch-resume-", async (runtime) => {
         const selected = await selectCases("RV-D04");
+        // The stalled provider determines timeout behavior. Healthy reviews still run the real inspection tools.
+        const timeoutMs = 10000;
         let settled = false;
         const stall: FauxResponseFactory = async (_context, options) => {
             await new Promise<void>((resolve) => {
@@ -123,7 +207,7 @@ test("a timed-out case settles before a fresh case and resume retries only the u
             }),
         ]);
         const out = join(runtime.projectRoot, "resume-results");
-        const first = await runBenchmark(selected, { out, timeoutMs: 300 });
+        const first = await runBenchmark(selected, { out, timeoutMs });
         assert.deepEqual(
             first.results.map((row) => row.kind),
             ["timeout", "complete"],
@@ -133,7 +217,7 @@ test("a timed-out case settles before a fresh case and resume retries only the u
         assert.deepEqual(before.decisionAccuracy, { numerator: 1, denominator: 2, value: 0.5 });
         assert.match(before.cases[0].cause!, /exceeded/);
         runtime.setModelResponseFactories(await responses(selected[0]));
-        const resumed = await runBenchmark(selected, { out, resume: true, timeoutMs: 300 });
+        const resumed = await runBenchmark(selected, { out, resume: true, timeoutMs });
         assert.deepEqual(
             resumed.results.map((row) => [row.caseId, row.attempt, row.kind]),
             [
@@ -295,5 +379,21 @@ test("reports separate Plan-named containment from correctness beyond the Plan",
                 "plan-named-edge-case": { numerator: 1, denominator: 1, value: 1 },
             },
         );
+    });
+});
+
+test("run records take the coverage group from the fixture manifest", async () => {
+    await withRuntimeCommandFixture("benchmark-manifest-group-", async (runtime) => {
+        await withFixtureCopy("RV-D04", async (packageDir) => {
+            const path = join(packageDir, "scenario.yaml");
+            await writeFile(
+                path,
+                (await readFile(path, "utf8")).replace("correctness-beyond-plan", "cross-file-context"),
+            );
+            const entry: SelectedCase = { fixture: await loadFixture(packageDir), variant: "B" };
+            runtime.setModelResponseFactories(await responses(entry));
+            const run = await runBenchmark([entry], { out: join(runtime.projectRoot, "manifest-group") });
+            assert.equal((await readRun(run.directory)).manifest.cases[0].group, "cross-file-context");
+        });
     });
 });

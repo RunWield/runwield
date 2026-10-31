@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
-import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.js";
+import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";
 import { cp, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,12 @@ import { defineGitFixture } from "../../src/shared/git-test-fixture.ts";
 import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 
 export const corpusPath = fileURLToPath(new URL("../../evals/reviewer/", import.meta.url));
-export const smokeIds = ["RV-D04", "RV-D05", "RV-D12", "RV-D13", "RV-M01"];
+export const corpusIds: string[] = [];
+for (const entry of await readdir(corpusPath, { withFileTypes: true })) {
+    if (entry.isDirectory() && (await readdir(join(corpusPath, entry.name))).includes("scenario.yaml"))
+        corpusIds.push(entry.name);
+}
+corpusIds.sort();
 const copies = defineGitFixture(async (cwd) => {
     await cp(corpusPath, join(cwd, "fixtures"), { recursive: true });
 });

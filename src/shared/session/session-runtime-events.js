@@ -81,7 +81,7 @@ export const RuntimeEventTypes = Object.freeze({
  */
 
 /**
- * @typedef {import('./tool-event-title.js').RuntimeToolKind} RuntimeToolKind
+ * @typedef {import('./tool-event-title.ts').RuntimeToolKind} RuntimeToolKind
  */
 
 /**
@@ -192,11 +192,11 @@ export const RuntimeEventTypes = Object.freeze({
 
 /**
  * @typedef {Object} RuntimeUsage
- * @property {number} inputTokens
- * @property {number} outputTokens
- * @property {number} cacheReadTokens
- * @property {number} cacheWriteTokens
- * @property {number} costUsd
+ * @property {number | null} inputTokens
+ * @property {number | null} outputTokens
+ * @property {number | null} cacheReadTokens
+ * @property {number | null} cacheWriteTokens
+ * @property {number | null} costUsd
  * @property {number} [contextWindow]
  */
 
@@ -362,7 +362,8 @@ function validateRuntimeValidationProgress(progress, type) {
     }
     if (value.kind === "mechanical") {
         requireRuntimeEvent(
-            value.checks.semanticReview === "skipped" && value.checks.humanReview === "skipped" &&
+            value.checks.semanticReview === "skipped" &&
+                value.checks.humanReview === "skipped" &&
                 value.checks.merge === "skipped",
             type,
             "mechanical validation must skip non-CI checks",
@@ -437,24 +438,30 @@ function validateRuntimeValidationProgress(progress, type) {
             "delivery report requires completed workflow",
         );
         requireRuntimeEvent(
-            report?.version === 1 && typeof report.planName === "string" &&
-                typeof report.heading === "string" && typeof report.settings === "string" &&
-                typeof report.workRecordFailed === "boolean" && Array.isArray(report.rows) &&
+            report?.version === 1 &&
+                typeof report.planName === "string" &&
+                typeof report.heading === "string" &&
+                typeof report.settings === "string" &&
+                typeof report.workRecordFailed === "boolean" &&
+                Array.isArray(report.rows) &&
                 Array.isArray(report.artifacts),
             type,
             "delivery report is invalid",
         );
         for (const row of report.rows) {
             requireRuntimeEvent(
-                typeof row.label === "string" && typeof row.outcome === "string" &&
-                    typeof row.detail === "string" && ["success", "warning", "neutral"].includes(row.tone),
+                typeof row.label === "string" &&
+                    typeof row.outcome === "string" &&
+                    typeof row.detail === "string" &&
+                    ["success", "warning", "neutral"].includes(row.tone),
                 type,
                 "delivery report row is invalid",
             );
         }
         for (const artifact of report.artifacts) {
             requireRuntimeEvent(
-                typeof artifact.title === "string" && typeof artifact.path === "string" &&
+                typeof artifact.title === "string" &&
+                    typeof artifact.path === "string" &&
                     ["plan", "prd", "adr", "work-record", "epic-artifact", "report"].includes(artifact.kind),
                 type,
                 "delivery report artifact is invalid",
@@ -566,8 +573,8 @@ export function assertSessionRuntimeEvent(event) {
                 requireRuntimeEvent(Array.isArray(value.content), event.type, "content must be an array");
                 for (const block of value.content) {
                     const validText = block?.type === "text" && typeof block.text === "string";
-                    const validImage = block?.type === "image" && typeof block.data === "string" &&
-                        typeof block.mimeType === "string";
+                    const validImage =
+                        block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string";
                     requireRuntimeEvent(validText || validImage, event.type, "content block is invalid");
                 }
                 requireRuntimeEvent(
@@ -676,9 +683,12 @@ export function assertSessionRuntimeEvent(event) {
             requireRuntimeEvent(value.usage && typeof value.usage === "object", event.type, "usage required");
             for (const field of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "costUsd"]) {
                 requireRuntimeEvent(
-                    typeof value.usage[field] === "number",
+                    value.usage[field] === null ||
+                        (typeof value.usage[field] === "number" &&
+                            Number.isFinite(value.usage[field]) &&
+                            value.usage[field] >= 0),
                     event.type,
-                    `usage.${field} must be a number`,
+                    `usage.${field} must be a finite nonnegative number or null`,
                 );
             }
             break;
@@ -750,21 +760,52 @@ export function assertSessionRuntimeEvent(event) {
 }
 
 /**
- * Normalize provider-specific usage once at the Runtime boundary.
+ * @typedef {Object} ProviderUsageCost
+ * @property {number | null} [total]
+ */
+
+/**
+ * @typedef {Object} ProviderUsage
+ * @property {unknown} [input]
+ * @property {unknown} [inputTokens]
+ * @property {unknown} [output]
+ * @property {unknown} [outputTokens]
+ * @property {unknown} [cacheRead]
+ * @property {unknown} [cacheReadTokens]
+ * @property {unknown} [cacheWrite]
+ * @property {unknown} [cacheWriteTokens]
+ * @property {number | null | ProviderUsageCost} [cost]
+ * @property {unknown} [costUsd]
+ * @property {unknown} [contextWindow]
+ * @property {unknown} [context_window]
+ */
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function reportedUsageNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Normalize provider-specific usage once at the Runtime boundary. Absence is not zero.
  * @param {unknown} value
  * @returns {RuntimeUsage}
  */
 export function normalizeRuntimeUsage(value) {
-    const usage = /** @type {any} */ (value || {});
-    const contextWindow = Number(usage.contextWindow ?? usage.context_window ?? 0) || 0;
+    const usage = /** @type {ProviderUsage} */ (value && typeof value === "object" ? value : {});
+    const contextWindow = reportedUsageNumber(usage.contextWindow ?? usage.context_window);
     const normalized = {
-        inputTokens: Number(usage.input ?? usage.inputTokens ?? 0) || 0,
-        outputTokens: Number(usage.output ?? usage.outputTokens ?? 0) || 0,
-        cacheReadTokens: Number(usage.cacheRead ?? usage.cacheReadTokens ?? 0) || 0,
-        cacheWriteTokens: Number(usage.cacheWrite ?? usage.cacheWriteTokens ?? 0) || 0,
-        costUsd: Number(usage.cost?.total ?? usage.cost ?? 0) || 0,
+        inputTokens: reportedUsageNumber(usage.input ?? usage.inputTokens),
+        outputTokens: reportedUsageNumber(usage.output ?? usage.outputTokens),
+        cacheReadTokens: reportedUsageNumber(usage.cacheRead ?? usage.cacheReadTokens),
+        cacheWriteTokens: reportedUsageNumber(usage.cacheWrite ?? usage.cacheWriteTokens),
+        costUsd: reportedUsageNumber(
+            (typeof usage.cost === "object" ? usage.cost?.total : usage.cost) ?? usage.costUsd,
+        ),
     };
-    return contextWindow > 0 ? { ...normalized, contextWindow } : normalized;
+    return contextWindow !== null && contextWindow > 0 ? { ...normalized, contextWindow } : normalized;
 }
 
 /**
@@ -780,10 +821,14 @@ export function normalizeRuntimeUsage(value) {
  * @returns {string}
  */
 function removeModelOnlyImageOmissionNotes(output) {
-    return output.split("\n").filter((line) =>
-        !line.startsWith("[Image omitted:") &&
-        !line.startsWith("[Current model does not support images.")
-    ).join("\n").trimEnd();
+    return output
+        .split("\n")
+        .filter(
+            (line) =>
+                !line.startsWith("[Image omitted:") && !line.startsWith("[Current model does not support images."),
+        )
+        .join("\n")
+        .trimEnd();
 }
 
 /**
@@ -813,12 +858,17 @@ export function normalizeRuntimeToolResult(value) {
         }
         if (typeof block.text === "string") content.push({ type: "text", text: block.text });
     }
-    const details = source?.details && typeof source.details === "object"
-        ? /** @type {Record<string, unknown>} */ (source.details)
-        : null;
-    let output = details?.runwieldDisplay === "binary_display_suppressed"
-        ? ""
-        : content.filter((block) => block.type === "text").map((block) => block.text).join("");
+    const details =
+        source?.details && typeof source.details === "object"
+            ? /** @type {Record<string, unknown>} */ (source.details)
+            : null;
+    let output =
+        details?.runwieldDisplay === "binary_display_suppressed"
+            ? ""
+            : content
+                  .filter((block) => block.type === "text")
+                  .map((block) => block.text)
+                  .join("");
     if (Array.isArray(details?.runwieldDisplayImages)) {
         output = removeModelOnlyImageOmissionNotes(output);
     }
@@ -836,9 +886,10 @@ export function normalizeRuntimeToolResult(value) {
  * @returns {SessionRuntimeEvent}
  */
 export function createSessionRuntimeEvent(sessionId, event) {
-    const messageId = MESSAGE_ID_EVENT_TYPES.has(event.type) && !("messageId" in event)
-        ? `${sessionId}:${event.type}:${crypto.randomUUID()}`
-        : undefined;
+    const messageId =
+        MESSAGE_ID_EVENT_TYPES.has(event.type) && !("messageId" in event)
+            ? `${sessionId}:${event.type}:${crypto.randomUUID()}`
+            : undefined;
     const level = event.type === RuntimeEventTypes.SYSTEM_STATUS && !("level" in event) ? "info" : undefined;
     const images = event.type === RuntimeEventTypes.USER_MESSAGE && !("images" in event) ? [] : undefined;
     const runtimeEvent = /** @type {SessionRuntimeEvent} */ ({
@@ -847,9 +898,8 @@ export function createSessionRuntimeEvent(sessionId, event) {
         ...(level ? { level } : {}),
         ...(images ? { images } : {}),
         sessionId,
-        timestamp: "timestamp" in event && typeof event.timestamp === "string"
-            ? event.timestamp
-            : new Date().toISOString(),
+        timestamp:
+            "timestamp" in event && typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString(),
     });
     return assertSessionRuntimeEvent(runtimeEvent);
 }

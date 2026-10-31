@@ -1,0 +1,10 @@
+{
+    "mcpServers": {
+        "runwield": {
+            "command": "wld",
+            "args": ["attached", "mcp", "codex", "--adapter-version", "0.1.0", "--adapter-contract", "1"],
+            "tool_timeout_sec": 3600,
+            "startup_timeout_sec": 30
+        }
+    }
+}

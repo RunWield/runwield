@@ -1,7 +1,9 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
 import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
+import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
@@ -59,6 +61,7 @@ import {
 import { buildRunWieldDirectEditPanel } from "./plan-review-direct-edits.ts";
 import { buildPlanReviewFeedback } from "./plan-review-feedback.ts";
 import { normalizePlanReviewVersions } from "./plan-review-versions.ts";
+import { mergeSavedReviewMessages, useSavedReviewConversation } from "./use-saved-review-conversation.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 import "./plannotator.css";
 
@@ -256,6 +259,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         };
     }, []);
     const [plannerWorking, setPlannerWorking] = useState(false);
+    const savedPlannerWaitStarted = useRef(null);
     const [plannerError, setPlannerError] = useState("");
     const [plannerDiffBase, setPlannerDiffBase] = useState(null);
     const [plannerDiffRevision, setPlannerDiffRevision] = useState(0);
@@ -396,15 +400,69 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const primaryApprovalAction = reviewGroup
         ? PLAN_APPROVAL_ACTIONS.RUN
         : primaryPlanApprovalActionForClassification(planClassification, initialPayload.frontmatter?.type);
-    const outcomeCopy = reviewOutcomeCopy(
-        submitted,
-        planClassification,
-        initialPayload.reviewContext?.sessionLabel,
-        Boolean(reviewGroup),
-    );
+    const outcomeCopy = initialPayload.reviewRevisionUrl
+        ? submitted === "feedback"
+            ? {
+                  title: "Feedback sent",
+                  subtitle: "Claude can retrieve your feedback. The next review round opens in this page.",
+              }
+            : submitted === "approved-later"
+              ? {
+                    title: "Approved for later",
+                    subtitle: "The Plan is Ready For Work. /runwield:implement starts it.",
+                }
+              : {
+                    title: "Approved & Run",
+                    subtitle: "Claude starts implementation in a RunWield worktree.",
+                }
+        : reviewOutcomeCopy(
+              submitted,
+              planClassification,
+              initialPayload.reviewContext?.sessionLabel,
+              Boolean(reviewGroup),
+          );
     const [executionPolicy, setExecutionPolicy] = useState(trustedPolicy);
     const executionAgent = executionPolicy.executionAgent;
     const collaborationRecommendation = executionPolicy.collaborationRecommendation;
+    const waitingForRevision = Boolean(initialPayload.reviewRevisionUrl && submitted === "feedback");
+    const { fields: reviewRevisionFields, update: updateReviewRevision } = useReviewRevision(
+        initialPayload,
+        waitingForRevision,
+        setError,
+    );
+    useSavedReviewConversation(
+        initialPayload,
+        (snapshot, advanced) => {
+            if (submitted === "feedback") return;
+            updateReviewRevision(snapshot.reviewRevision);
+            setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
+            const waitStarted = savedPlannerWaitStarted.current;
+            savedPlannerWaitStarted.current = snapshot.pending ? (waitStarted ?? Date.now()) : null;
+            const timedOut = snapshot.pending && Date.now() - savedPlannerWaitStarted.current >= 180_000;
+            setPlannerWorking(snapshot.pending && !timedOut);
+            reviewGroup?.setBusy(snapshot.pending && !timedOut);
+            if (timedOut) {
+                setPlannerError(`${agentLabel} is still working. Check the terminal Session for progress.`);
+            } else if (!snapshot.pending && waitStarted !== null) {
+                setPlannerError("");
+            }
+            if (advanced) {
+                const event = snapshot.events.at(-1);
+                applyPlannerRevision({
+                    priorPlan: currentPlan(),
+                    revisedPlan: snapshot.plan,
+                    interactionId: `conversation-${snapshot.revision}`,
+                    reply: event?.delta,
+                    agentMessageId: event ? `agent-${event.messageId}` : undefined,
+                    clearAttachedContext: true,
+                });
+            }
+        },
+        setPlannerError,
+    );
+    const reviewNotice = waitingForRevision
+        ? { state: "info", title: outcomeCopy.title, message: outcomeCopy.subtitle }
+        : initialPayload.reviewNotice;
     const conversationEnabled =
         initialPayload.mode === "dev" ||
         Boolean(initialPayload.conversationStatusUrl) ||
@@ -586,10 +644,10 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         }
     }
 
-    async function sendPlannerMessage({ answerId, fixedMessage } = {}) {
+    async function sendPlannerMessage({ answersOnly = false, fixedMessage } = {}) {
         if (turnInFlight.current || plannerWorking || reviewGroup?.busy || submitting !== null) return;
-        const message = answerId ? "" : (fixedMessage ?? conversationComposer.trim());
-        const selection = { queued: true, answerId, answerPlanId: initialPayload.planId };
+        const message = answersOnly ? "" : (fixedMessage ?? conversationComposer.trim());
+        const selection = { queued: true, answersOnly };
         const documents = reviewGroup ? reviewGroup.collect(selection) : null;
         const sent = documents || [{ planId: initialPayload.planId, ...readReview(selection) }];
         const attachedFeedback = sent
@@ -597,8 +655,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             .filter(Boolean)
             .join("\n\n");
         if (!message && !attachedFeedback) return;
-        const contextLabel = answerId
-            ? "1 answer"
+        const answerCount = sent.reduce((count, document) => count + document.questionAnswers.length, 0);
+        const contextLabel = answersOnly
+            ? `${answerCount} ${answerCount === 1 ? "answer" : "answers"}`
             : queueItems
                   .filter((item) => item.included && item.count)
                   .map((item) => `${item.count} ${item.label}`)
@@ -611,20 +670,27 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         let accepted = false;
 
         turnInFlight.current = true;
+        if (answersOnly) {
+            animateSidebarUpdate(() => {
+                setRightSidebarView("planner");
+                setAnnotationsOpen(true);
+                if (compactLayout) setSidebarOpen(false);
+            });
+        }
         setPlannerWorking(true);
         reviewGroup?.setBusy(true);
         setPlannerError("");
         setError("");
-
-        setConversationMessages((items) => [
-            ...items,
-            {
-                id: userMessageId,
-                role: "user",
-                body: message || "Review annotations",
-                ...(contextLabel && { contextLabel }),
-            },
-        ]);
+        if (!initialPayload.savedConversation)
+            setConversationMessages((items) => [
+                ...items,
+                {
+                    id: userMessageId,
+                    role: "user",
+                    body: message || "Review annotations",
+                    ...(contextLabel && { contextLabel }),
+                },
+            ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -640,13 +706,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             const result = await submit("deny", {
                 ...sent.find((document) => document.planId === initialPayload.planId),
                 ...(documents && { documents }),
-                feedback: buildArtifactConversationFeedback({ message, attachedFeedback, agentLabel }),
+                feedback: initialPayload.savedConversation
+                    ? [message, attachedFeedback].filter(Boolean).join("\n\n")
+                    : buildArtifactConversationFeedback({ message, attachedFeedback, agentLabel }),
                 conversationTurn: true,
             });
             if (result?.status === "recovery_required" || result?.result?.kind === "recovery_required") return;
 
             accepted = true;
-            if (!answerId && fixedMessage === undefined) setConversationComposer("");
+            if (!answersOnly && fixedMessage === undefined) setConversationComposer("");
             if (reviewGroup) reviewGroup.clear(sent);
             else clearSent(sent[0]);
             setExcluded([]);
@@ -667,6 +735,8 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 });
                 return;
             }
+
+            if (initialPayload.savedConversation) return;
 
             if (initialPayload.conversationStatusUrl) {
                 await waitForStandaloneReview({
@@ -787,7 +857,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     }
 
     function applyPlannerRevision(options) {
-        upsertPlannerReply(options.agentMessageId, options.reply);
+        if (options.reply) upsertPlannerReply(options.agentMessageId, options.reply);
         setActiveInteractionId(options.interactionId);
         if (initialPayload.interactionAnswerBaseUrl) {
             setActiveInteractionAnswerUrl(
@@ -967,16 +1037,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         });
     }
 
-    function readReview({ queued = false, answerId, answerPlanId } = {}) {
-        const onlyAnswer = Boolean(answerId);
-        const includes = (type) => !onlyAnswer && (!queued || !excluded.includes(type));
-        const answers = onlyAnswer
-            ? answerPlanId === initialPayload.planId
-                ? unsentAnswers.filter((answer) => answer.id === answerId)
-                : []
-            : !queued || !excluded.includes("answers")
-              ? unsentAnswers
-              : [];
+    function readReview({ queued = false, answersOnly = false } = {}) {
+        const includes = (type) => !answersOnly && (!queued || !excluded.includes(type));
+        const answers = answersOnly || !queued || !excluded.includes("answers") ? unsentAnswers : [];
         const reviewedPlan = includes("directEdit") ? currentPlan() : reviewBasePlan;
         const notes = {
             annotations: includes("annotations") ? annotations : [],
@@ -1174,7 +1237,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     executionAgent={executionAgent}
                                     collaborationRecommendation={collaborationRecommendation}
                                     setExecutionPolicy={setExecutionPolicy}
-                                    disabled={submitting !== null || plannerWorking || reviewGroup?.busy}
+                                    disabled={
+                                        submitting !== null || plannerWorking || waitingForRevision || reviewGroup?.busy
+                                    }
                                     primaryApprovalAction={primaryApprovalAction}
                                     sequenceCount={reviewGroup?.count}
                                     onApprove={submitApprove}
@@ -1205,7 +1270,9 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                 executionAgent={executionAgent}
                                 collaborationRecommendation={collaborationRecommendation}
                                 setExecutionPolicy={setExecutionPolicy}
-                                disabled={submitting !== null || plannerWorking || reviewGroup?.busy}
+                                disabled={
+                                    submitting !== null || plannerWorking || waitingForRevision || reviewGroup?.busy
+                                }
                                 primaryApprovalAction={primaryApprovalAction}
                                 sequenceCount={reviewGroup?.count}
                                 onApprove={submitApprove}
@@ -1213,17 +1280,15 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                             />
                         </header>
                     )}
-                    {initialPayload.reviewNotice && (
+                    {reviewNotice && (
                         <section
-                            className={`rw-plan-review-notice state-${initialPayload.reviewNotice.state || "info"}`}
+                            className={`rw-plan-review-notice state-${reviewNotice.state || "info"}`}
                             role="status"
                         >
-                            <strong>{initialPayload.reviewNotice.title || "Review status"}</strong>
-                            <p>{initialPayload.reviewNotice.message}</p>
-                            {initialPayload.reviewNotice.actionLabel && initialPayload.reviewNotice.actionHref ? (
-                                <a href={initialPayload.reviewNotice.actionHref}>
-                                    {initialPayload.reviewNotice.actionLabel}
-                                </a>
+                            <strong>{reviewNotice.title || "Review status"}</strong>
+                            <p>{reviewNotice.message}</p>
+                            {reviewNotice.actionLabel && reviewNotice.actionHref ? (
+                                <a href={reviewNotice.actionHref}>{reviewNotice.actionLabel}</a>
                             ) : null}
                         </section>
                     )}
@@ -1370,7 +1435,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                     title="Collapse contents sidebar"
                                     aria-label="Collapse contents sidebar"
                                 >
-                                    <PanelCollapseIcon side="left" />
+                                    <RunWieldPanelIcon side="left" />
                                 </RunWieldIconButton>
                             )}
                             <main className="rw-plannotator-main-pane">
@@ -1383,7 +1448,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                 title="Contents"
                                                 onClick={() => openSidebarTab("toc")}
                                             >
-                                                <ToggleIcon name="contents" />
+                                                <RunWieldPanelIcon side="left" />
                                                 <span>Contents</span>
                                             </RunWieldIconButton>
                                         )}
@@ -1475,7 +1540,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     })
                                                 }
                                             >
-                                                <ToggleIcon name="annotations" />
+                                                <RunWieldPanelIcon side="right" />
                                                 <span>Annotations</span>
                                             </RunWieldIconButton>
                                         )}
@@ -1568,9 +1633,12 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                     onAnswer={answerQuestion}
                                                     sentAnswers={sentAnswers}
                                                     busy={plannerWorking || submitting !== null || reviewGroup?.busy}
-                                                    onSubmitAnswer={
+                                                    pendingAnswerCount={
+                                                        queueItems.find((item) => item.type === "answers").count
+                                                    }
+                                                    onSubmitAnswers={
                                                         conversationEnabled
-                                                            ? (answerId) => sendPlannerMessage({ answerId })
+                                                            ? () => sendPlannerMessage({ answersOnly: true })
                                                             : undefined
                                                     }
                                                 />
@@ -1650,17 +1718,20 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                             title="Collapse annotations sidebar"
                                             aria-label="Collapse annotations sidebar"
                                         >
-                                            <PanelCollapseIcon side="right" />
+                                            <RunWieldPanelIcon side="right" />
                                         </RunWieldIconButton>
                                     </div>
                                     {!conversationEnabled || rightSidebarView === "annotations" ? (
                                         <>
-                                            {!conversationEnabled && (
+                                            {(!conversationEnabled || initialPayload.agentTurnOwner === "host") && (
                                                 <div className="rw-review-feedback-action rw-review-action p-2">
                                                     <FeedbackButton
                                                         onClick={sendFallbackAnnotations}
                                                         disabled={
-                                                            !hasGroupFeedback || submitting !== null || plannerWorking
+                                                            !hasGroupFeedback ||
+                                                            submitting !== null ||
+                                                            plannerWorking ||
+                                                            waitingForRevision
                                                         }
                                                         isLoading={submitting === "feedback"}
                                                         label="Send Annotations"
@@ -1795,10 +1866,10 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     {active && (
                         <ReviewCompletion
                             payload={initialPayload}
-                            submitted={submitted}
+                            submitted={waitingForRevision ? null : submitted}
                             title={outcomeCopy.title}
                             subtitle={outcomeCopy.subtitle}
-                            agentLabel="RunWield"
+                            agentLabel={initialPayload.reviewRevisionUrl ? agentLabel : "RunWield"}
                         />
                     )}
                 </div>
@@ -1830,6 +1901,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             "x-runwield-review-token": initialPayload.token,
         };
         if (initialPayload.csrfToken) headers["x-runwield-csrf"] = initialPayload.csrfToken;
+        body = { ...body, ...reviewRevisionFields };
         const requestId = crypto.randomUUID();
         const response = await fetch(targetUrl, {
             method: "POST",
@@ -2262,17 +2334,6 @@ function ClockIcon() {
     return (
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2M12 22a10 10 0 110-20 10 10 0 010 20z" />
-        </svg>
-    );
-}
-
-function PanelCollapseIcon({ side }) {
-    const path = side === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
-    return (
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
-            <path d="M5 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M19 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d={path} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
 }

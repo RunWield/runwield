@@ -21,7 +21,7 @@ test("in-process guide returns model output and usage without creating a managed
         assert.equal(result.provider, "runtime-command-fixture");
         assert.equal(result.model, "fixture-model");
         assert.equal(events.length, 1);
-        assert.ok(events[0].inputTokens > 0);
+        assert.ok(events[0].inputTokens !== null && events[0].inputTokens > 0);
         assert.deepEqual(result.usage, events[0]);
         assert.equal(result.cost?.usd, events[0].costUsd);
         const store = openFileSessionStore();

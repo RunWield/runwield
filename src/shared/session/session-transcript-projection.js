@@ -12,7 +12,7 @@ import { readPersistedWorkflowContext } from "./workflow-context-session.js";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.js";
-import { describeRuntimeTool } from "./tool-event-title.js";
+import { describeRuntimeTool } from "./tool-event-title.ts";
 import { formatProviderError } from "./provider-errors.ts";
 import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.js";
 import { isPathInside, readCatalogSafeRootSessionLocator } from "./root-session.js";
@@ -22,6 +22,7 @@ import {
     namedInvocationImageReferences,
 } from "./named-invocation.ts";
 import { getAgentDisplayName, normalizeAgentInternalName } from "./agents.js";
+import { RuntimeUsageTotals } from "./runtime-usage-totals.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
 
 /** @typedef {{ state?: string, kind?: string, toolCallId?: string }} CompletionEventData */
@@ -416,7 +417,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                     error: value.message.errorMessage,
                 });
             }
-            if (value.message?.usage) {
+            if (role === "assistant" || value.message?.usage) {
                 events.push({
                     ...common,
                     type: RuntimeEventTypes.USAGE,
@@ -1038,6 +1039,8 @@ function estimateProjectedTextTokens(text) {
 /** @param {unknown[]} entries @param {{ sessionId: string, cwd: string, transcriptPath?: string }} options */
 export function buildProjectedSessionInfo(entries, options) {
     const summary = summarizeProjectedEntries(entries);
+    const assistantUsage = new RuntimeUsageTotals();
+    const compactionUsage = new RuntimeUsageTotals();
     const info = {
         name: summary.name || "",
         planAssociations: summary.planAssociations,
@@ -1048,16 +1051,15 @@ export function buildProjectedSessionInfo(entries, options) {
         assistantMessages: 0,
         toolCalls: 0,
         toolResults: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
         compactionSettings: null,
         contextUsage: null,
     };
     for (const entry of entries) {
         const value = /** @type {any} */ (entry || {});
-        if (value.type === "compaction") info.compactionCount++;
+        if (value.type === "compaction") {
+            info.compactionCount++;
+            compactionUsage.add(normalizeRuntimeUsage(value.usage));
+        }
         if (value.type !== "message" || !value.message) continue;
         const message = value.message;
         if (message.role === "user") {
@@ -1075,14 +1077,18 @@ export function buildProjectedSessionInfo(entries, options) {
                       (/** @type {any} */ block) => block?.type === "tool_use" || block?.type === "toolCall",
                   ).length
                 : 0;
-            const usage = normalizeRuntimeUsage(message.usage);
-            info.inputTokens += usage.inputTokens;
-            info.outputTokens += usage.outputTokens;
-            info.cacheReadTokens += usage.cacheReadTokens;
-            info.cacheWriteTokens += usage.cacheWriteTokens;
+            assistantUsage.add(normalizeRuntimeUsage(message.usage));
         }
     }
-    return info;
+    return {
+        ...info,
+        ...assistantUsage.usage,
+        usageAvailability: { ...assistantUsage.availability },
+        compactionUsage: {
+            ...compactionUsage.usage,
+            availability: { ...compactionUsage.availability },
+        },
+    };
 }
 
 /**

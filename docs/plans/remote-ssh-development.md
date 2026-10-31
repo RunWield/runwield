@@ -15,7 +15,7 @@ affectedPaths:
     - "src/ui/review/"
     - "src/ui/workspace/server.js"
     - "scripts/compile.js"
-    - "scripts/release-assets.js"
+    - "scripts/release-assets.ts"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
@@ -179,7 +179,7 @@ connected-only supervision.
 ### Personal mounts and laptop-owned Session saves
 
 **Owner decision (2026-10-06):** the validated
-[Session-save proof](remote-session-save-proof.md#execution-results-2026-10-05) selected the synchronous laptop-owned
+[Session-save proof](archived/remote-session-save-proof.md#execution-results-2026-10-05) selected the synchronous laptop-owned
 save bridge with strict per-entry saves. Child03's approved Plan owns the implementation details. Guarded SFTP/SSHFS
 Session writer mounts and the earlier descriptor-retention design are set aside. This is selected implementation scope,
 not a claim that production remote Sessions have shipped.

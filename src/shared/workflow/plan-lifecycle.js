@@ -484,7 +484,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         updatedAt: now,
     };
     const clearsValidationCheckpoint =
-        event === "validation_passed" ||
+        (event === "validation_passed" && !details.pendingPublication) ||
         (targetStatus === "implemented" && event !== "mechanical_validation_passed") ||
         event === "execution_started" ||
         event === "recovery_reset" ||
@@ -774,6 +774,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         // finished implementation is repaired and revalidated. Do not duplicate
         // that mutable state in Plan front matter.
         updates.failureReason = details.failureReason || "Workflow Validation failed.";
+        if (details.validationCheckpoint !== undefined) updates.validationCheckpoint = details.validationCheckpoint;
     }
 
     if (event === "epic_done_enough") {

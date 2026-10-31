@@ -16,6 +16,8 @@ const USER_DOCS_DIRECTORY = "user-documentation/";
 export const PUBLIC_DOCS = [
     "user-documentation/index.md",
     "user-documentation/quickstart.md",
+    "user-documentation/connect-claude-code.md",
+    "user-documentation/connect-codex.md",
     "user-documentation/workspace.md",
     "user-documentation/usage.md",
     "user-documentation/workflows.md",
@@ -63,20 +65,18 @@ function splitTarget(target: string): { path: string; suffix: string } {
     return index < 0 ? { path: target, suffix: "" } : { path: target.slice(0, index), suffix: target.slice(index) };
 }
 
-function rewriteTarget(
-    target: string,
-    sourcePath: string,
-    release: DocsRelease,
-    image = false,
-): string {
+function rewriteTarget(target: string, sourcePath: string, release: DocsRelease, image = false): string {
     if (
-        !target || target.startsWith("#") || target.startsWith("/") ||
-        /^[a-z][a-z+.-]*:/i.test(target) || target.startsWith("//")
-    ) return target;
+        !target ||
+        target.startsWith("#") ||
+        target.startsWith("/") ||
+        /^[a-z][a-z+.-]*:/i.test(target) ||
+        target.startsWith("//")
+    )
+        return target;
     const { path, suffix } = splitTarget(target);
     const sourceDirectory = dirname(`docs/${sourcePath}`);
-    const repositoryPath = normalize(join(sourceDirectory, path)).split(SEPARATOR)
-        .join("/");
+    const repositoryPath = normalize(join(sourceDirectory, path)).split(SEPARATOR).join("/");
     const docsPath = repositoryPath.startsWith("docs/") ? repositoryPath.slice(5) : "";
     if (docsPath && PUBLIC_SET.has(docsPath)) {
         return `${routeFor(docsPath)}${suffix}`;
@@ -92,16 +92,14 @@ interface LocalTarget {
 }
 
 function imageReferenceLabels(source: string): Set<string> {
-    return new Set(
-        Array.from(source.matchAll(/!\[[^\]]*\]\[([^\]]+)\]/g), (match) => match[1].toLowerCase()),
-    );
+    return new Set(Array.from(source.matchAll(/!\[[^\]]*\]\[([^\]]+)\]/g), (match) => match[1].toLowerCase()));
 }
 
 function localTargets(source: string): LocalTarget[] {
-    const targets = Array.from(
-        source.matchAll(/(!?)\[[^\]]*\]\(([^\s)]+)\)/g),
-        (match) => ({ target: match[2], image: match[1] === "!" }),
-    );
+    const targets = Array.from(source.matchAll(/(!?)\[[^\]]*\]\(([^\s)]+)\)/g), (match) => ({
+        target: match[2],
+        image: match[1] === "!",
+    }));
     const imageLabels = imageReferenceLabels(source);
     for (const match of source.matchAll(/^\s*\[([^\]]+)\]:\s*(\S+)/gm)) {
         targets.push({ target: match[2], image: imageLabels.has(match[1].toLowerCase()) });
@@ -113,8 +111,13 @@ function markdownFragmentIds(source: string): Set<string> {
     const ids = new Set<string>();
     const duplicateCounts = new Map<string, number>();
     for (const match of source.matchAll(/^#{1,6}\s+(.+?)\s*#*$/gm)) {
-        const base = match[1].replace(/<[^>]+>/g, "").replace(/[`*_~]/g, "").trim().toLowerCase()
-            .replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, "-");
+        const base = match[1]
+            .replace(/<[^>]+>/g, "")
+            .replace(/[`*_~]/g, "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}\s-]/gu, "")
+            .replace(/\s+/g, "-");
         const count = duplicateCounts.get(base) ?? 0;
         ids.add(count === 0 ? base : `${base}-${count}`);
         duplicateCounts.set(base, count + 1);
@@ -123,18 +126,11 @@ function markdownFragmentIds(source: string): Set<string> {
     return ids;
 }
 
-async function validateLocalTargets(
-    projectRoot: string,
-    source: string,
-    sourcePath: string,
-): Promise<string[]> {
+async function validateLocalTargets(projectRoot: string, source: string, sourcePath: string): Promise<string[]> {
     const images: string[] = [];
     for (const localTarget of localTargets(source)) {
         const { target, image } = localTarget;
-        if (
-            !target || target.startsWith("/") ||
-            /^[a-z][a-z+.-]*:/i.test(target) || target.startsWith("//")
-        ) continue;
+        if (!target || target.startsWith("/") || /^[a-z][a-z+.-]*:/i.test(target) || target.startsWith("//")) continue;
         const { path, suffix } = splitTarget(target);
         const repositoryPath = path
             ? resolve(projectRoot, dirname(`docs/${sourcePath}`), path)
@@ -164,17 +160,16 @@ async function validateLocalTargets(
     return images;
 }
 
-export function renderPublicDocument(
-    source: string,
-    sourcePath: string,
-    release: DocsRelease,
-): string {
+export function renderPublicDocument(source: string, sourcePath: string, release: DocsRelease): string {
     const heading = source.match(/^#\s+(.+)$/m);
     if (!heading) {
         throw new Error(`Public document docs/${sourcePath} needs one H1 heading`);
     }
     // Contributor documents may carry their own YAML front matter; the site writes its own.
-    let body = source.replace(/^---\n[\s\S]*?\n---\n/, "").replace(heading[0], "").replace(/^\s+/, "");
+    let body = source
+        .replace(/^---\n[\s\S]*?\n---\n/, "")
+        .replace(heading[0], "")
+        .replace(/^\s+/, "");
     body = body.replace(
         /(!?\[[^\]]*\]\()([^\s)]+)(\))/g,
         (_match, open, target, close) =>
@@ -188,19 +183,14 @@ export function renderPublicDocument(
     );
     const title = JSON.stringify(heading[1].trim());
     const editUrl = JSON.stringify(`${REPOSITORY_URL}/edit/docs/stable/docs/${sourcePath}`);
-    return `---\ntitle: ${title}\ndescription: ${
-        JSON.stringify(`RunWield ${heading[1].trim()}`)
-    }\neditUrl: ${editUrl}\n---\n\n${body}`;
+    return `---\ntitle: ${title}\ndescription: ${JSON.stringify(
+        `RunWield ${heading[1].trim()}`,
+    )}\neditUrl: ${editUrl}\n---\n\n${body}`;
 }
 
-export async function stagePublicDocs(
-    projectRoot: string,
-    outputDirectory: string,
-): Promise<void> {
+export async function stagePublicDocs(projectRoot: string, outputDirectory: string): Promise<void> {
     const releasePath = join(projectRoot, "docs-site", "release.json");
-    const release = JSON.parse(
-        await fsReadFile(releasePath, "utf8"),
-    ) as DocsRelease;
+    const release = JSON.parse(await fsReadFile(releasePath, "utf8")) as DocsRelease;
     await fsRm(outputDirectory, { recursive: true }).catch((error) => {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
@@ -228,7 +218,5 @@ if (import.meta.main) {
     const projectRoot = resolve(scriptDirectory, "..");
     const output = join(projectRoot, "docs-site", "src", "content", "docs");
     await stagePublicDocs(projectRoot, output);
-    console.log(
-        `Staged ${PUBLIC_DOCS.length} public documents in ${relative(projectRoot, output)}`,
-    );
+    console.log(`Staged ${PUBLIC_DOCS.length} public documents in ${relative(projectRoot, output)}`);
 }

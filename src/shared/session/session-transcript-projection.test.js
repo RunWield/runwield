@@ -6,7 +6,7 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { encodeCwdForSessionDir } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
     captureTranscriptEvidence,
     createReplayEvents,
@@ -107,11 +107,11 @@ test("committed projection verifies exact prefix and ignores later tail", async 
         });
         assertEquals(
             projected.events.map((event) => event.eventId),
-            ["entry-user:user_message:0", "entry-assistant:assistant_text_delta:0"],
+            ["entry-user:user_message:0", "entry-assistant:assistant_text_delta:0", "entry-assistant:usage:0"],
         );
         assertEquals(
             projected.events.map((event) => event.type),
-            ["user_message", "assistant_text_delta"],
+            ["user_message", "assistant_text_delta", "usage"],
         );
     });
 });
@@ -389,8 +389,10 @@ test("projection emits RunWield notices only for later different active Agents",
         ]),
         [
             ["assistant_text_delta", "guide-reply:assistant_text_delta:0", "Plan first.", "", "Guide"],
+            ["usage", "guide-reply:usage:0", "", "", ""],
             ["system_status", "agent-operator:agent_switch:0", "Agent switched to Operator", "RunWield", ""],
             ["assistant_text_delta", "operator-reply:assistant_text_delta:0", "Operate.", "", "Operator"],
+            ["usage", "operator-reply:usage:0", "", "", ""],
         ],
     );
 });

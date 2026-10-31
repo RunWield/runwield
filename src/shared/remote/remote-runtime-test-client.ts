@@ -34,7 +34,7 @@ import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { listEntries } from "../worktree-registry.js";
 import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
 import { loadPlan } from "../../plan-store.js";
-import { continueWorkflowValidation } from "../workflow/validation-supervisor.ts";
+import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";

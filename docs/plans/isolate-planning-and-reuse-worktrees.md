@@ -64,8 +64,7 @@ Owning Core PRD capabilities and proposed changes:
   [Work protection](../prd/runwield-core-prd.md#work-protection): preserve saved work across clients and protect user
   files.
 
-Automatic Epic branch creation remains in
-[Plan Packages and Independent Validation](plan-packages-and-independent-validation.md). This change uses an existing
+The earlier Plan Packages and Independent Validation Plan was removed on 2026-10-26. This change uses an existing
 recorded Epic target. It does not add Epic publication, integrated validation, or a Sequence release branch. No
 requirement is removed.
 

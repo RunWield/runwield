@@ -13,7 +13,7 @@ import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { computeBuildIdentity, sha256File, verifyBuildArtifact } from "./build-metadata.ts";
 import type { ArtifactMetadata } from "./build-metadata.ts";
-import { prepareDevelopmentArtifacts } from "./release-assets.js";
+import { prepareDevelopmentArtifacts } from "./release-assets.ts";
 import { writeBuildIdentityFile } from "./write-version.ts";
 
 async function fixture() {

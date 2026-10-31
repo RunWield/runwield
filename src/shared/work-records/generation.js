@@ -3,6 +3,7 @@
  * Generate canonical internal Work Records from completed Plans.
  */
 
+import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import {
     compareChildPlansByOrder,
@@ -21,7 +22,7 @@ import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts"
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { dedupeTicketReferencesByUrl } from "../ticket-references.js";
+import { dedupeTicketReferencesByUrl } from "../ticket-references.ts";
 import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
@@ -163,6 +164,24 @@ export function normalizeRecorderOutput(value) {
         throw new Error("Recorder output must be a JSON object.");
     }
     const record = /** @type {Record<string, unknown>} */ (value);
+    for (const key of Object.keys(record)) {
+        if (
+            ![
+                "title",
+                "summary",
+                "deviationsFromPlan",
+                "deferredWork",
+                "outOfScope",
+                "futurePlanningNotes",
+                "supersessionProposals",
+            ].includes(key)
+        ) {
+            throw new Error(`Recorder output field is not supported: ${key}.`);
+        }
+        if (key !== "supersessionProposals" && typeof record[key] !== "string") {
+            throw new Error(`Recorder output ${key} must be text.`);
+        }
+    }
     const title = optionalTrimmedString(record.title);
     const summary = optionalTrimmedString(record.summary);
     if (!title) throw new Error("Recorder output requires a non-empty title.");
@@ -466,7 +485,7 @@ async function validateDeclaredSupersession(cwd, successorRecordId, predecessorR
  * @param {string} successorRecordId
  * @param {import('./schema.ts').WorkRecordSupersessionCandidate[]} candidates
  */
-async function validateRecorderProposals(cwd, successorRecordId, candidates) {
+export async function validateRecorderProposals(cwd, successorRecordId, candidates) {
     if (!candidates.length) return [];
     const records = await listWorkRecords(cwd, { createDir: false });
     const byId = new Map(records.map((record) => [record.attrs.recordId.toLowerCase(), record]));
@@ -787,7 +806,9 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             };
         }
 
-        const recordId = options.idGenerator ? options.idGenerator() : crypto.randomUUID();
+        const recordId =
+            source.attrs.validationCheckpoint?.hostRecorder?.recordId ||
+            (options.idGenerator ? options.idGenerator() : crypto.randomUUID());
         declaredIds = await validateDeclaredSupersession(cwd, recordId, declaredIds);
         const sections = await generateRecorderSections(cwd, source, options, recordId, declaredIds);
         const declaredIdentities = new Set(declaredIds.map((id) => id.toLowerCase()));
@@ -858,6 +879,7 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             ...(indexWarning ? { indexWarning } : {}),
         };
     } catch (error) {
+        if (error instanceof ValidationHostWait || error instanceof ValidationHostRejected) throw error;
         await recordGenerationFailure(cwd, source, now, error);
         return { source, status: "failed", error: conciseError(error) };
     }

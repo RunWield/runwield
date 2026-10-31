@@ -1,5 +1,6 @@
 import process from "node:process";
 import { generateGuidedReview } from "../../cmd/guided-review/index.ts";
+import { RuntimeUsageTotals } from "../session/runtime-usage-totals.ts";
 import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
 import { runWldJobCommand } from "../../ui/workspace/routes/api/review-agent-handlers.js";
 
@@ -19,19 +20,14 @@ export async function runRemoteGuideCommand(
         return runWldJobCommand(prompt, signal, cwd, progress);
     }
     let usage: GuidedReviewUsage | undefined;
+    const totals = new RuntimeUsageTotals();
     const result = await generateGuidedReview(prompt, {
         cwd,
         signal,
         inMemory: true,
         onUsage: (event) => {
-            usage = {
-                inputTokens: (usage?.inputTokens || 0) + event.inputTokens,
-                outputTokens: (usage?.outputTokens || 0) + event.outputTokens,
-                cacheReadTokens: (usage?.cacheReadTokens || 0) + event.cacheReadTokens,
-                cacheWriteTokens: (usage?.cacheWriteTokens || 0) + event.cacheWriteTokens,
-                costUsd: (usage?.costUsd || 0) + event.costUsd,
-                ...(event.contextWindow === undefined ? {} : { contextWindow: event.contextWindow }),
-            };
+            totals.add(event);
+            usage = { ...totals.usage };
             progress.onUsage?.(event);
         },
     });

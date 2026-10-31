@@ -15,7 +15,7 @@ import {
     type NotificationEventName,
     type NotificationSettingsRecord,
 } from "../../shared/session/notification-content.ts";
-import { formatSessionTerminalTitle } from "../../shared/session/session-name.ts";
+import { formatSessionTerminalTitle } from "../../shared/session-name.ts";
 import { getCurrentTerminalFocusState, type TerminalFocusState } from "./terminal-focus-state.ts";
 
 const TERMINAL_BELL_BYTES = new Uint8Array([7]);
@@ -167,9 +167,10 @@ export function notifyRunWieldEventQuietly(eventName: string, options: NotifyRun
 
 export function resolveNotificationSettings(raw: ReturnType<typeof getMergedCustomSetting>): NotificationSettings {
     const common = normalizeNotificationPolicy(raw as NotificationSettingsRecord | null | undefined);
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as NotificationSettingsRecord & { activation?: string; terminalBell?: boolean }
-        : {};
+    const record =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+            ? (raw as NotificationSettingsRecord & { activation?: string; terminalBell?: boolean })
+            : {};
     return {
         ...common,
         activation: normalizeActivation(record.activation),
@@ -177,10 +178,7 @@ export function resolveNotificationSettings(raw: ReturnType<typeof getMergedCust
     };
 }
 
-export function detectTerminalIdentity(
-    sessionLabel: string,
-    process: TerminalProcessSnapshot,
-): TerminalIdentity {
+export function detectTerminalIdentity(sessionLabel: string, process: TerminalProcessSnapshot): TerminalIdentity {
     const env = process.env;
     const terminalTitle = formatSessionTerminalTitle(sessionLabel);
     return {
@@ -260,7 +258,9 @@ function normalizeActivation(value: string | undefined): NotificationActivationM
 }
 
 function normalizeLabel(value: string | undefined): string {
-    return String(value || "").replace(/\s+/g, " ").trim();
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 function buildNotificationTitle(eventName: string, terminal: TerminalIdentity, agentName: string | undefined): string {
@@ -300,11 +300,17 @@ function isWezTerm(terminal: TerminalIdentity): boolean {
 }
 
 function isKitty(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "kitty" || terminal.termProgram === "Kitty" || terminal.term === "xterm-kitty" ||
-        !!terminal.kittyListenOn || !!terminal.kittyWindowId;
+    return (
+        terminal.termProgram === "kitty" ||
+        terminal.termProgram === "Kitty" ||
+        terminal.term === "xterm-kitty" ||
+        !!terminal.kittyListenOn ||
+        !!terminal.kittyWindowId
+    );
 }
 
 function isGhostty(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "ghostty" || terminal.termProgram === "Ghostty" ||
-        terminal.term === "xterm-ghostty";
+    return (
+        terminal.termProgram === "ghostty" || terminal.termProgram === "Ghostty" || terminal.term === "xterm-ghostty"
+    );
 }

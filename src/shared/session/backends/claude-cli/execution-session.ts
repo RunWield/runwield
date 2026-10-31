@@ -1,9 +1,14 @@
 import type { McpIntegration } from "../../../mcp/integration.ts";
+import type { Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { RunWieldModel } from "../../../models/model-registry.ts";
 import type { HostedSession } from "../../hosted-session.js";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../session-runtime-events.js";
+import {
+    emitHostedSessionRuntimeEvent,
+    normalizeRuntimeUsage,
+    RuntimeEventTypes,
+} from "../../session-runtime-events.js";
 import type { ImageAttachment } from "../../types.js";
 import { WorkflowStepCompleted } from "../../../workflow/workflow-tool-events.ts";
 import {
@@ -60,6 +65,7 @@ export interface ClaudeCliRunOptions {
     parentToolCallId?: string;
     taskId?: string;
     sourceSurface?: string;
+    userInitiated?: boolean;
 }
 
 interface ClaudeCliQueueUpdateEvent {
@@ -259,6 +265,7 @@ export class ClaudeCliExecutionSession {
 
         const recorder = new ExecutionMetricsRecorder({
             projectRoot: this.cwd,
+            hostedSession: this.hostedSession ?? undefined,
             commandId: this.hostedSession?.activeCommandInvocationId || undefined,
             sessionId: this.sessionManager.getSessionId(),
             managedSessionId: this.hostedSession?.getManagedMetadata()?.runwieldSessionId,
@@ -279,6 +286,7 @@ export class ClaudeCliExecutionSession {
             parentToolCallId: options.parentToolCallId,
             taskId: options.taskId,
             sourceSurface: options.sourceSurface || "cli",
+            userInitiated: options.userInitiated,
         });
         await recorder.recordExecutionStart();
         await recorder.recordToolExposure(bridgedTools, "partial");
@@ -449,7 +457,14 @@ export class ClaudeCliExecutionSession {
                                 cacheWriteTokens: observation.usage.cacheWriteTokens,
                                 costUsd: observation.usage.costUsd,
                                 costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
-                                inputCacheBasis: "unknown",
+                                costAvailability: observation.usage.costUsd === null ? "unavailable" : "complete",
+                                inputCacheBasis: "excludes_cache",
+                                startedAt:
+                                    observation.aggregationBasis === "alternative"
+                                        ? null
+                                        : recorder.getObservedTurnStartedAt(),
+                                endedAt:
+                                    observation.aggregationBasis === "alternative" ? null : new Date().toISOString(),
                                 aggregationBasis: observation.aggregationBasis,
                                 usageKind: observation.aggregationBasis === "alternative" ? "request" : "turn",
                                 model: observation.model || this.model.id,
@@ -576,11 +591,7 @@ export class ClaudeCliExecutionSession {
     }
 
     private readMessages(): AgentMessage[] {
-        return readExternalCliConversation(this.sessionManager).map((message) => {
-            return message.role === "user"
-                ? (makeUserMessage(message.text) as AgentMessage)
-                : (makeAssistantMessage(message.text, this.model, zeroUsage()) as AgentMessage);
-        });
+        return this.sessionManager.getBranch().flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
     }
 }
 
@@ -592,6 +603,7 @@ function makeUserMessage(text: string): SessionAppendMessage {
     };
 }
 
+// Pi requires usage on assistant messages; CLI transcripts omit it when no measurement was reported.
 function makeAssistantMessage(text: string, model: RunWieldModel, usage: ClaudeCliUsage): SessionAppendMessage {
     return {
         role: "assistant",
@@ -600,48 +612,36 @@ function makeAssistantMessage(text: string, model: RunWieldModel, usage: ClaudeC
         api: model.api,
         provider: model.provider,
         model: model.id,
-        usage: toPiUsage(usage),
+        ...(Object.values(usage).some((value) => value !== null) ? { usage: toPiUsage(usage) } : {}),
         stopReason: "stop",
-    };
-}
-
-function zeroUsage(): ClaudeCliUsage {
-    return {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        costUsd: 0,
-    };
+    } as SessionAppendMessage;
 }
 
 function toRuntimeUsage(usage: ClaudeCliUsage) {
-    return {
-        inputTokens: usage.inputTokens ?? 0,
-        outputTokens: usage.outputTokens ?? 0,
-        cacheReadTokens: usage.cacheReadTokens ?? 0,
-        cacheWriteTokens: usage.cacheWriteTokens ?? 0,
-        costUsd: usage.costUsd ?? 0,
-    };
+    return normalizeRuntimeUsage({ ...usage, costUsd: usage.costUsd });
 }
 
-function toPiUsage(usage: ClaudeCliUsage) {
-    const cacheRead = usage.cacheReadTokens ?? 0;
-    const cacheWrite = usage.cacheWriteTokens ?? 0;
+function toPiUsage(usage: ClaudeCliUsage): Usage {
+    const normalized = toRuntimeUsage(usage);
+    const tokens = [
+        normalized.inputTokens,
+        normalized.outputTokens,
+        normalized.cacheReadTokens,
+        normalized.cacheWriteTokens,
+    ];
+    // Pi requires numeric Usage fields. Persist the honest partial shape instead:
+    // absent measurements and unreported cost components must not become measured zeros.
+    // A total is available only when all token categories are known.
     return {
-        input: usage.inputTokens ?? 0,
-        output: usage.outputTokens ?? 0,
-        cacheRead,
-        cacheWrite,
-        totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0) + cacheRead + cacheWrite,
-        cost: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: usage.costUsd ?? 0,
-        },
-    };
+        ...(normalized.inputTokens !== null ? { input: normalized.inputTokens } : {}),
+        ...(normalized.outputTokens !== null ? { output: normalized.outputTokens } : {}),
+        ...(normalized.cacheReadTokens !== null ? { cacheRead: normalized.cacheReadTokens } : {}),
+        ...(normalized.cacheWriteTokens !== null ? { cacheWrite: normalized.cacheWriteTokens } : {}),
+        ...(tokens.every((value) => value !== null)
+            ? { totalTokens: tokens.reduce<number>((total, value) => total + (value ?? 0), 0) }
+            : {}),
+        ...(normalized.costUsd !== null ? { cost: { total: normalized.costUsd } } : {}),
+    } as Usage;
 }
 
 function isAuthFailure(stderr: string): boolean {
