@@ -18,7 +18,7 @@ origin: "internal"
 targetBranch: "epic/connect-codex"
 userVerifiedAt: null
 deliveryBranch: "epic/connect-codex"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Persistent Codex Model and Thinking Settings per Role
