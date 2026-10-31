@@ -21,6 +21,8 @@ import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
     enterProjectRuntime,
+    checkedProjectRuntimeLayout,
+    inspectProjectRuntimeReadAccess,
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
 } from "./project-runtime-layout.ts";
@@ -29,26 +31,18 @@ import { listEntries } from "./worktree-registry.js";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime read scope\n" });
 
-test("runtime read scope shares checkout verification but rechecks changed evidence on the next read", async () => {
+test("runtime read scope shares passive checks but never shares writer admission", async () => {
     const root = await fixture.checkout({ prefix: "runwield-runtime-read-scope-" });
     try {
-        const layout = await withProjectRuntimeReadScope(async () => {
-            const first = enterProjectRuntime(root);
-            assertStrictEquals(enterProjectRuntime(root), first);
-            const verified = await first;
-            assertStrictEquals(await enterProjectRuntime(root), verified);
-            return await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
+        const layout = await enterProjectRuntime(root);
+        await withProjectRuntimeReadScope(async () => {
+            const first = inspectProjectRuntimeReadAccess(root);
+            assertStrictEquals(inspectProjectRuntimeReadAccess(root), first);
+            await first;
+            await fsWriteFile(layout.primary.layoutMarkerPath, "{invalid");
+            await assertRejects(() => enterProjectRuntime(root), ProjectRuntimeEntryRefusedError);
         });
-        const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
-        await fsWriteFile(layout.primary.layoutMarkerPath, "{invalid");
-        await assertRejects(
-            () => withProjectRuntimeReadScope(() => enterProjectRuntime(root)),
-            ProjectRuntimeEntryRefusedError,
-        );
-        await fsWriteFile(layout.primary.layoutMarkerPath, marker);
-        const refreshed = await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
-        assertNotStrictEquals(refreshed, layout);
-        assertEquals(refreshed.primary.checkoutRoot, layout.primary.checkoutRoot);
+        assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "blocked");
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -122,17 +116,17 @@ async function recreateLegacyDebug(root: string, name: string) {
 test("bounded runtime reads share real Git inspection and ask Git again only for changed evidence", async () => {
     await withTracedProject(async ({ root, listings }) => {
         await withProjectRuntimeReadScope(async () => {
-            await Promise.all([enterProjectRuntime(root), enterProjectRuntime(root)]);
-            await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
+            await Promise.all([checkedProjectRuntimeLayout(root), checkedProjectRuntimeLayout(root)]);
+            await withProjectRuntimeReadScope(() => checkedProjectRuntimeLayout(root));
         });
         assert((await listings()) <= 1);
         await settleGitEvidence();
-        await enterProjectRuntime(root);
+        await checkedProjectRuntimeLayout(root);
         const settled = await listings();
-        await enterProjectRuntime(root);
+        await checkedProjectRuntimeLayout(root);
         assertEquals(await listings(), settled);
         await git(root, ["branch", "-m", "renamed-main"]);
-        await enterProjectRuntime(root);
+        await checkedProjectRuntimeLayout(root);
         assertEquals(await listings(), settled + 1);
     });
 });

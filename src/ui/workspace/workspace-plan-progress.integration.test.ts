@@ -4,13 +4,14 @@ import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     rm as fsRm,
+    rename as fsRename,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
@@ -53,7 +54,7 @@ async function readIfExists(path: string) {
     }
 }
 
-test("Workspace progress recognizes publication with an unchanged local checkout and no worktree", async () => {
+test("Workspace progress does not infer publication from a remote or tracking ref without saved proof", async () => {
     const projectRoot = await publicationFixture.checkout();
     const remoteRoot = await fsMkdtemp(join(tmpdir(), "workspace-progress-upstream-"));
     try {
@@ -87,11 +88,12 @@ test("Workspace progress recognizes publication with an unchanged local checkout
         await git(projectRoot, ["push", "origin", "candidate:main"]);
 
         const after = await loadOwnerPlanProgress(makeStore(projectRoot), options);
-        assertEquals(after.overall.state, "completed");
-        assertEquals(after.overall.settled, true);
-        assertEquals(after.plan.status, "verified");
-        assertEquals(after.stages.find((stage) => stage.id === "delivery")?.state, "completed");
-        assertEquals(after.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
+        assertEquals(after.overall.state, before.overall.state);
+        assertEquals(after.overall.settled, false);
+        assertEquals(after.plan.status, "ready_for_work");
+        // Even a refreshed local ref cannot establish fresh remote publication proof.
+        await git(projectRoot, ["fetch", "origin"]);
+        assertEquals((await loadOwnerPlanProgress(makeStore(projectRoot), options)).overall.settled, false);
         assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), originalHead);
         assertEquals(await fsReadFile(`${projectRoot}/README.md`, "utf8"), "Before publication\n");
         assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
@@ -134,7 +136,7 @@ test("Workspace progress accepts a Session whose workflow stores the Plan name",
             fixture.store.publishGenerationAndRelease(proof, {
                 generation: 1,
                 currentSegmentId: fixture.store.getCurrentSessionSegment(fixture.session.runwieldSessionId).segmentId,
-                ...await readTranscriptEvidence(fixture.transcriptPath),
+                ...(await readTranscriptEvidence(fixture.transcriptPath)),
             });
             const progress = await loadOwnerPlanProgress(fixture.store, {
                 projectId: fixture.project.projectId,
@@ -154,8 +156,8 @@ test("Workspace progress uses the authoritative execution Plan and never mutates
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-progress-"));
     const projectRoot = `${dir}/project`;
     const worktreeRoot = `${dir}/worktree`;
-    await fsMkdir(projectRoot);
-    await fsMkdir(worktreeRoot);
+    await fsRename(await publicationFixture.checkout(), projectRoot);
+    await git(projectRoot, ["worktree", "add", "-b", "runwield/progress", worktreeRoot]);
     await savePlan(projectRoot, "feature-a", "# Feature A\n\nPrimary copy", {
         planId: "feature-a-id",
         classification: "PLANNED_CHANGE",
@@ -193,6 +195,21 @@ test("Workspace progress uses the authoritative execution Plan and never mutates
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:01.000Z",
     });
+    const { writeControllerState } = await import("../../shared/workflow/controller-registry.ts");
+    await writeControllerState(
+        projectRoot,
+        { planName: "feature-a", planId: "feature-a-id" },
+        {
+            validationPhase: "semantic",
+            validationCheckpoint: makeValidationCheckpoint({
+                attemptId: "attempt-1",
+                generation: "generation-1",
+                status: "implemented",
+                phase: "semantic",
+                state: "awaiting_repair",
+            }),
+        },
+    );
     const primaryPath = `${projectRoot}/docs/plans/feature-a.md`;
     const worktreePath = `${worktreeRoot}/docs/plans/feature-a.md`;
     const registryPath = getWorktreeRegistryPath(projectRoot);
@@ -236,8 +253,8 @@ test("Workspace progress shows publication states without treating reviewed work
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-progress-publication-"));
     const projectRoot = `${dir}/project`;
     const worktreeRoot = `${dir}/worktree`;
-    await fsMkdir(projectRoot);
-    await fsMkdir(worktreeRoot);
+    await fsRename(await publicationFixture.checkout(), projectRoot);
+    await git(projectRoot, ["worktree", "add", "-b", "runwield/progress", worktreeRoot]);
     await savePlan(projectRoot, "feature-b", "# Feature B\n\nBody", {
         planId: "feature-b-id",
         classification: "PLANNED_CHANGE",
@@ -296,5 +313,110 @@ test("Workspace progress shows publication states without treating reviewed work
         assertEquals(progress.stages.find((stage) => stage.id === "completion")?.state, "pending");
     } finally {
         await fsRm(dir, { recursive: true });
+    }
+});
+
+test("Workspace progress retains saved publication proof after cleanup and invalidates it on reopen and execution", async () => {
+    const projectRoot = await publicationFixture.checkout();
+    try {
+        const { writeControllerState } = await import("../../shared/workflow/controller-registry.ts");
+        const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.js");
+        await savePlan(projectRoot, "receipt", "# Saved publication", {
+            planId: "receipt-id",
+            classification: "PLANNED_CHANGE",
+            status: "reviewed",
+        });
+        await writeControllerState(
+            projectRoot,
+            { planId: "receipt-id", planName: "receipt" },
+            {
+                publicationReceipt: {
+                    validatedCommit: "a".repeat(40),
+                    publishedCommit: "b".repeat(40),
+                    targetBranch: "main",
+                },
+            },
+        );
+        // No registry, remote, or tracking ref is needed to retain already-recorded proof.
+        const before = await fsReadFile(`${projectRoot}/docs/plans/receipt.md`, "utf8");
+        const options = { projectId: "project-1", planId: "receipt-id" };
+        for (let repeat = 0; repeat < 2; repeat++) {
+            const progress = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+            assertEquals(progress.overall.state, "completed");
+            assertEquals(progress.plan.status, "verified");
+        }
+        assertEquals(await fsReadFile(`${projectRoot}/docs/plans/receipt.md`, "utf8"), before);
+        await recordPlanEvent({
+            cwd: projectRoot,
+            planName: "receipt",
+            event: "review_reopened",
+            currentStatus: "verified",
+        });
+        const reopened = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+        assertEquals(reopened.overall.settled, false);
+        assertEquals(reopened.plan.status, "draft");
+        await recordPlanEvent({
+            cwd: projectRoot,
+            planName: "receipt",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        await recordPlanEvent({
+            cwd: projectRoot,
+            planName: "receipt",
+            event: "readiness_passed",
+            currentStatus: "approved",
+        });
+        await recordPlanEvent({
+            cwd: projectRoot,
+            planName: "receipt",
+            event: "execution_started",
+            currentStatus: "ready_for_work",
+            details: { nonGitInPlace: true },
+        });
+        const execution = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+        assertEquals(execution.plan.status, "in_progress");
+        assertEquals(execution.overall.settled, false);
+        const { findPlanById } = await import("../../plan-store.js");
+        assertEquals((await findPlanById(projectRoot, "receipt-id")).attrs.publicationReceipt ?? null, null);
+    } finally {
+        await fsRm(projectRoot, { recursive: true, force: true });
+    }
+});
+
+test("raw verified status without publication proof stays unconfirmed and unsettled", async () => {
+    const projectRoot = await publicationFixture.checkout();
+    try {
+        const commit = await git(projectRoot, ["rev-parse", "HEAD"]);
+        await savePlan(projectRoot, "unconfirmed", "# Unconfirmed", {
+            planId: "unconfirmed-id",
+            status: "verified",
+            targetBranch: "main",
+            deliveryEvidence: {
+                version: 1,
+                mode: "worktree_merge",
+                executionCommit: commit,
+                targetBranch: "main",
+                targetHeadBeforeMerge: commit,
+            },
+        });
+        const progress = await loadOwnerPlanProgress(makeStore(projectRoot), {
+            projectId: "project-1",
+            planId: "unconfirmed-id",
+        });
+        assertEquals(progress.overall.state, "delivering");
+        assertEquals(progress.plan.status, "reviewed");
+        assertEquals(
+            parsePlanFrontMatter(await fsReadFile(`${projectRoot}/docs/plans/unconfirmed.md`, "utf8")).attrs.status,
+            "verified",
+        );
+        assertEquals(progress.overall.settled, false);
+        assertStringIncludes(progress.overall.detail, "Publication is unconfirmed");
+        assertEquals(
+            progress.stages.some((item) => item.id === "completion" && item.state === "completed"),
+            false,
+        );
+    } finally {
+        await fsRm(projectRoot, { recursive: true, force: true });
     }
 });

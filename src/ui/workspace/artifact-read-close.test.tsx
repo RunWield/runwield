@@ -12,14 +12,19 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 
 // Run the real island, including its document viewer, with the same React as the test root.
 const bundle = await build({
-    entryPoints: [fromFileUrl(new URL("./react/ArtifactReadSurface.tsx", import.meta.url))],
+    stdin: {
+        contents:
+            'export { ArtifactReadSurface } from "./react/ArtifactReadSurface.tsx"; export { PlanHomeSurface } from "./react/PlanHomeSurface.tsx";',
+        resolveDir: fromFileUrl(new URL(".", import.meta.url)),
+        sourcefile: "reader-test-entry.tsx",
+    },
     bundle: true,
     write: false,
     format: "esm",
     banner: {
-        js: `import { createRequire } from "node:module"; const require = createRequire(${
-            JSON.stringify(import.meta.url)
-        });`,
+        js: `import { createRequire } from "node:module"; const require = createRequire(${JSON.stringify(
+            import.meta.url,
+        )});`,
     },
     jsx: "automatic",
     loader: { ".css": "empty", ".png": "dataurl" },
@@ -27,20 +32,20 @@ const bundle = await build({
         "@plannotator/ui": fromFileUrl(new URL("../../../third_party/plannotator/packages/ui", import.meta.url)),
         "@plannotator/core": fromFileUrl(new URL("../../../third_party/plannotator/packages/core", import.meta.url)),
     },
-    plugins: [{
-        name: "shared-react",
-        setup(builder) {
-            builder.onResolve(
-                { filter: /^react(?:-dom)?(?:\/.*)?$/ },
-                (args) => ({
-                    path: args.kind === "require-call"
-                        ? fromFileUrl(import.meta.resolve(args.path))
-                        : import.meta.resolve(args.path),
+    plugins: [
+        {
+            name: "shared-react",
+            setup(builder) {
+                builder.onResolve({ filter: /^react(?:-dom)?(?:\/.*)?$/ }, (args) => ({
+                    path:
+                        args.kind === "require-call"
+                            ? fromFileUrl(import.meta.resolve(args.path))
+                            : import.meta.resolve(args.path),
                     external: true,
-                }),
-            );
+                }));
+            },
         },
-    }],
+    ],
 });
 stop();
 
@@ -65,7 +70,7 @@ stop();
  * @param {(reader: ReaderBrowser) => Promise<void>} check
  * @param {number} exitStatus
  */
-async function withReader(payload, check, exitStatus = 200) {
+async function withReader(payload, check, exitStatus = 200, home = false) {
     await withProcessGlobalTestLock(async () => {
         const browser = new Window({ url: "http://localhost/review" });
         const names = [
@@ -118,16 +123,24 @@ async function withReader(payload, check, exitStatus = 200) {
                     }),
                 );
             };
-            const { ArtifactReadSurface } = await importTestBundle(bundle.outputFiles[0].text);
+            const { ArtifactReadSurface, PlanHomeSurface } = await importTestBundle(bundle.outputFiles[0].text);
             root = createRoot(container);
-            await act(() => root.render(<ArtifactReadSurface payload={payload} contentsInitiallyOpen={false} />));
+            await act(() =>
+                root.render(
+                    home ? (
+                        <PlanHomeSurface payload={payload} presentation="workspace" />
+                    ) : (
+                        <ArtifactReadSurface payload={payload} contentsInitiallyOpen={false} />
+                    ),
+                ),
+            );
             await check({
                 container,
                 requests,
                 closeAttempts: () => attempts,
                 async clickClose() {
-                    const button = Array.from(container.querySelectorAll("button")).find((node) =>
-                        node.textContent === "Close"
+                    const button = Array.from(container.querySelectorAll("button")).find(
+                        (node) => node.textContent === "Close",
                     );
                     assert(button, "The reader must offer a Close button");
                     await act(async () => {
@@ -164,7 +177,10 @@ test("linked reader Close leaves the document host running", async () => {
     await withReader(linkedDocument, async (reader) => {
         await reader.clickClose();
         await reader.waitForBlockedClose();
-        assertEquals(reader.requests.filter((request) => request.path.startsWith("/api/review/exit")), []);
+        assertEquals(
+            reader.requests.filter((request) => request.path.startsWith("/api/review/exit")),
+            [],
+        );
         assertEquals(reader.closeAttempts(), 1);
     });
 });
@@ -189,12 +205,14 @@ test("standalone reader Close still stops its read session", async () => {
     await withReader(standalone, async (reader) => {
         await reader.clickClose();
         await reader.waitForBlockedClose();
-        assertEquals(reader.requests, [{
-            path: "/api/review/exit?token=linked%2Ftoken%3F",
-            method: "POST",
-            token: standalone.token,
-            body: JSON.stringify({ reviewType: "plan" }),
-        }]);
+        assertEquals(reader.requests, [
+            {
+                path: "/api/review/exit?token=linked%2Ftoken%3F",
+                method: "POST",
+                token: standalone.token,
+                body: JSON.stringify({ reviewType: "plan" }),
+            },
+        ]);
         assertEquals(reader.closeAttempts(), 1);
         assertStringIncludes(reader.container.querySelector('[role="status"]')?.textContent, "read session has ended");
     });
@@ -202,15 +220,40 @@ test("standalone reader Close still stops its read session", async () => {
 
 test("standalone reader stays open when its read session cannot stop", async () => {
     const { launch: _launch, ...standalone } = linkedDocument;
-    await withReader(standalone, async (reader) => {
-        await reader.clickClose();
-        await reader.waitForBlockedClose();
-        assertEquals(reader.container.querySelector('[role="alert"]')?.textContent, "Read session could not stop.");
-        assertEquals(reader.container.querySelector('[role="status"]'), null);
-        assertEquals(reader.closeAttempts(), 0);
-        const closeButton = Array.from(reader.container.querySelectorAll("button")).find((node) =>
-            node.textContent === "Close"
-        );
-        assert(closeButton && !closeButton.disabled, "Close must remain available for retry");
-    }, 503);
+    await withReader(
+        standalone,
+        async (reader) => {
+            await reader.clickClose();
+            await reader.waitForBlockedClose();
+            assertEquals(reader.container.querySelector('[role="alert"]')?.textContent, "Read session could not stop.");
+            assertEquals(reader.container.querySelector('[role="status"]'), null);
+            assertEquals(reader.closeAttempts(), 0);
+            const closeButton = Array.from(reader.container.querySelectorAll("button")).find(
+                (node) => node.textContent === "Close",
+            );
+            assert(closeButton && !closeButton.disabled, "Close must remain available for retry");
+        },
+        503,
+    );
+});
+
+test("IDless Plan home shows pending workflow notice in the main document pane", async () => {
+    const message = "Workflow details pending. Load this Plan to prepare its workflow.";
+    await withReader(
+        {
+            markdown: "# Local notes\n\nReadable without an identity.",
+            title: "local-notes",
+            planName: "local-notes",
+            planId: "",
+            artifactOnly: true,
+            workflow: { degradedMessage: message },
+        },
+        async ({ container }) => {
+            assertStringIncludes(container.querySelector("main .rw-artifact-notices")?.textContent, message);
+            assertStringIncludes(container.querySelector("main")?.textContent, "Readable without an identity.");
+            assertEquals(container.querySelectorAll("main .rw-artifact-notices p").length, 1);
+        },
+        200,
+        true,
+    );
 });

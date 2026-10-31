@@ -119,17 +119,16 @@ async function assertRecoverable(fixture: Fixture, kind: string): Promise<void> 
     assertEquals(attempt.failure?.kind, kind);
     assert((await fsStat(fixture.worktree.path)).isDirectory());
     assert((await git(fixture.projectRoot, ["branch", "--list", fixture.worktree.branch])).trim());
-    assertExists(await findById(fixture.projectRoot, "attempt-1", { migrate: false }));
+    assertExists(await findById(fixture.projectRoot, "attempt-1"));
 }
 
 async function assertPublishedOnce(fixture: Fixture): Promise<void> {
-    const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"]))
-        .split(/\s+/)[0];
+    const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"])).split(/\s+/)[0];
     assertEquals(await git(fixture.projectRoot, ["show", `${remoteHead}:implementation.txt`]), fixture.planName);
     await git(fixture.projectRoot, ["fetch", "origin", "main"]);
     const messages = await git(fixture.projectRoot, ["log", "--all", "--format=%B"]);
     assertEquals(messages.split("RunWield-Publication-Attempt: attempt-1").length - 1, 1);
-    assertEquals(await findById(fixture.projectRoot, "attempt-1", { migrate: false }), null);
+    assertEquals(await findById(fixture.projectRoot, "attempt-1"), null);
 }
 
 async function writeRejectingHook(remoteRoot: string, message: string): Promise<string> {
@@ -174,8 +173,9 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
 
             assertEquals((await runDriver(fixture.configPath)).code, 0);
             await assertPublishedOnce(fixture);
-            const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"]))
-                .split(/\s+/)[0];
+            const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"])).split(
+                /\s+/,
+            )[0];
             assertEquals(await git(fixture.projectRoot, ["show", `${remoteHead}:AGENTS.md`]), "repository guidance");
             assertEquals(await git(fixture.projectRoot, ["show", `${remoteHead}:CLAUDE.md`]), "AGENTS.md");
             assertEquals(await git(fixture.projectRoot, ["show", `${remoteHead}:docs-link`]), "docs");
@@ -192,21 +192,19 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
         }
     });
 
-    for (
-        const rejection of [
-            {
-                name: "remote policy rejection",
-                message: "protected branch policy: pre-receive hook declined",
-                kind: "policy_violation",
-            },
-            {
-                name: "remote permission rejection",
-                message: "permission denied: you are not allowed to update this branch",
-                kind: "permission_denied",
-            },
-            { name: "target reference race", message: "stale info: target moved", kind: "target_reference_race" },
-        ]
-    ) {
+    for (const rejection of [
+        {
+            name: "remote policy rejection",
+            message: "protected branch policy: pre-receive hook declined",
+            kind: "policy_violation",
+        },
+        {
+            name: "remote permission rejection",
+            message: "permission denied: you are not allowed to update this branch",
+            kind: "permission_denied",
+        },
+        { name: "target reference race", message: "stale info: target moved", kind: "target_reference_race" },
+    ]) {
         await test.test(`${rejection.name} is durable and succeeds after the cause is removed`, async () => {
             const fixture = await makeFixture(rejection.kind);
             try {
@@ -237,8 +235,9 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
 
             assertEquals((await runDriver(fixture.configPath)).code, 0);
             await assertPublishedOnce(fixture);
-            const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"]))
-                .split(/\s+/)[0];
+            const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"])).split(
+                /\s+/,
+            )[0];
             await git(fixture.projectRoot, ["fetch", "origin", "main"]);
             await git(fixture.projectRoot, ["merge-base", "--is-ancestor", advancedTarget, remoteHead]);
             assertEquals(
@@ -288,8 +287,9 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             );
             assertEquals((await runDriver(fixture.configPath)).code, 0);
             await assertPublishedOnce(fixture);
-            const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"]))
-                .split(/\s+/)[0];
+            const remoteHead = (await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"])).split(
+                /\s+/,
+            )[0];
             await git(fixture.projectRoot, ["fetch", "origin", "main"]);
             await git(fixture.projectRoot, ["merge-base", "--is-ancestor", advancedTarget, remoteHead]);
             await git(fixture.projectRoot, ["merge-base", "--is-ancestor", executionCommit, remoteHead]);
@@ -298,7 +298,12 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
                 await git(fixture.projectRoot, ["show", `${remoteHead}:arrived-during-repair.txt`]),
                 "preserved",
             );
-            assertEquals(await fsStat(repairRoot).then(() => true).catch(() => false), false);
+            assertEquals(
+                await fsStat(repairRoot)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
         } finally {
             await dispose(fixture);
         }
@@ -343,7 +348,12 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
 
             assertEquals((await runDriver(fixture.configPath)).code, 1);
             assert((await fsStat(legacyRoot)).isDirectory());
-            assertEquals(await fsStat(internalRoot).then(() => true).catch(() => false), false);
+            assertEquals(
+                await fsStat(internalRoot)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
             await fsWriteFile(`${legacyRoot}/conflict.txt`, "resolved legacy\n");
             await git(legacyRoot, ["add", "conflict.txt"]);
             await git(legacyRoot, ["commit", "--no-edit"]);
@@ -364,14 +374,26 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             const retry = await runDriver(fixture.configPath);
             assertEquals(retry.code, 0, retry.stderr);
             await assertPublishedOnce(fixture);
-            assertEquals(
-                await git(fixture.projectRoot, ["show", "origin/main:conflict.txt"]),
-                "resolved legacy",
-            );
+            assertEquals(await git(fixture.projectRoot, ["show", "origin/main:conflict.txt"]), "resolved legacy");
             await git(fixture.projectRoot, ["merge-base", "--is-ancestor", executionCommit, "origin/main"]);
-            assertEquals(await fsStat(internalRoot).then(() => true).catch(() => false), false);
-            assertEquals(await fsStat(legacyRoot).then(() => true).catch(() => false), false);
-            assertEquals(await fsStat(legacyRegistryPath).then(() => true).catch(() => false), false);
+            assertEquals(
+                await fsStat(internalRoot)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+            assertEquals(
+                await fsStat(legacyRoot)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+            assertEquals(
+                await fsStat(legacyRegistryPath)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
         } finally {
             await dispose(fixture);
         }
@@ -386,7 +408,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             assertEquals(await fsReadFile(`${fixture.projectRoot}/README.md`, "utf8"), "unsaved user edit\n");
             await git(fixture.projectRoot, ["restore", "README.md"]);
             assertEquals((await runDriver(fixture.configPath)).code, 0);
-            assertEquals(await findById(fixture.projectRoot, "attempt-1", { migrate: false }), null);
+            assertEquals(await findById(fixture.projectRoot, "attempt-1"), null);
             assertEquals(await git(fixture.projectRoot, ["show", "main:implementation.txt"]), fixture.planName);
         } finally {
             await dispose(fixture);
@@ -394,42 +416,45 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
     });
 
     for (const mode of ["remote", "local"] as const) {
-        await test.test(`${mode} target rewrite after verification prevents cleanup until exact target is restored`, async () => {
-            const fixture = await makeFixture(`${mode}-rewrite`, mode === "remote");
-            try {
-                assertEquals((await runDriver(fixture.configPath, "verification_receipt")).code, 86);
-                const attempt = await loadPublicationAttempt(fixture.projectRoot, "attempt-1");
-                assertExists(attempt?.publishedCommit);
-                if (mode === "remote") {
-                    await git(fixture.projectRoot, ["fetch", "origin", "main"]);
-                    await git(fixture.projectRoot, [
-                        "push",
-                        "--force",
-                        "origin",
-                        `${fixture.initialTarget}:refs/heads/main`,
-                    ]);
-                } else {
-                    await git(fixture.projectRoot, ["reset", "--hard", fixture.initialTarget]);
+        await test.test(
+            `${mode} target rewrite after verification prevents cleanup until exact target is restored`,
+            async () => {
+                const fixture = await makeFixture(`${mode}-rewrite`, mode === "remote");
+                try {
+                    assertEquals((await runDriver(fixture.configPath, "verification_receipt")).code, 86);
+                    const attempt = await loadPublicationAttempt(fixture.projectRoot, "attempt-1");
+                    assertExists(attempt?.publishedCommit);
+                    if (mode === "remote") {
+                        await git(fixture.projectRoot, ["fetch", "origin", "main"]);
+                        await git(fixture.projectRoot, [
+                            "push",
+                            "--force",
+                            "origin",
+                            `${fixture.initialTarget}:refs/heads/main`,
+                        ]);
+                    } else {
+                        await git(fixture.projectRoot, ["reset", "--hard", fixture.initialTarget]);
+                    }
+                    assertEquals((await runDriver(fixture.configPath)).code, 1);
+                    assertExists(await findById(fixture.projectRoot, "attempt-1"));
+                    assert((await fsStat(fixture.worktree.path)).isDirectory());
+                    if (mode === "remote") {
+                        await git(fixture.projectRoot, [
+                            "push",
+                            "--force",
+                            "origin",
+                            `${attempt.publishedCommit}:refs/heads/main`,
+                        ]);
+                    } else {
+                        await git(fixture.projectRoot, ["reset", "--hard", attempt.publishedCommit]);
+                    }
+                    assertEquals((await runDriver(fixture.configPath)).code, 0);
+                    assertEquals(await findById(fixture.projectRoot, "attempt-1"), null);
+                } finally {
+                    await dispose(fixture);
                 }
-                assertEquals((await runDriver(fixture.configPath)).code, 1);
-                assertExists(await findById(fixture.projectRoot, "attempt-1", { migrate: false }));
-                assert((await fsStat(fixture.worktree.path)).isDirectory());
-                if (mode === "remote") {
-                    await git(fixture.projectRoot, [
-                        "push",
-                        "--force",
-                        "origin",
-                        `${attempt.publishedCommit}:refs/heads/main`,
-                    ]);
-                } else {
-                    await git(fixture.projectRoot, ["reset", "--hard", attempt.publishedCommit]);
-                }
-                assertEquals((await runDriver(fixture.configPath)).code, 0);
-                assertEquals(await findById(fixture.projectRoot, "attempt-1", { migrate: false }), null);
-            } finally {
-                await dispose(fixture);
-            }
-        });
+            },
+        );
     }
 
     await test.test("cleanup preserves a late user file and resumes after it is removed", async () => {
@@ -440,11 +465,11 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             await fsWriteFile(latePath, "do not delete me\n");
             assertEquals((await runDriver(fixture.configPath)).code, 1);
             assertEquals(await fsReadFile(latePath, "utf8"), "do not delete me\n");
-            assertExists(await findById(fixture.projectRoot, "attempt-1", { migrate: false }));
+            assertExists(await findById(fixture.projectRoot, "attempt-1"));
             assert((await fsStat(fixture.worktree.path)).isDirectory());
             await fsRm(latePath);
             assertEquals((await runDriver(fixture.configPath)).code, 0);
-            assertEquals(await findById(fixture.projectRoot, "attempt-1", { migrate: false }), null);
+            assertEquals(await findById(fixture.projectRoot, "attempt-1"), null);
         } finally {
             await dispose(fixture);
         }
@@ -469,9 +494,9 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
                 const remoteHead = await git(fixture.projectRoot, ["ls-remote", "origin", "refs/heads/main"]);
                 const graph = await git(fixture.projectRoot, ["log", "--all", "--graph", "--oneline", "--decorate"]);
                 throw new Error(
-                    `${settle.stderr || settle.stdout}\nattempt=${
-                        JSON.stringify(attempt)
-                    }\nbranch=${branchHead}\nremote=${remoteHead}\n${graph}`,
+                    `${settle.stderr || settle.stdout}\nattempt=${JSON.stringify(
+                        attempt,
+                    )}\nbranch=${branchHead}\nremote=${remoteHead}\n${graph}`,
                 );
             }
             await assertPublishedOnce(fixture);

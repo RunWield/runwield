@@ -1,3 +1,4 @@
+import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
 import { recoverWindowsRename } from "./shared/native-file-replace-windows.ts";
 import fs from "node:fs/promises";
 import { open as fsOpen } from "node:fs/promises";
@@ -41,9 +42,13 @@ import { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-fron
 import { normalizeTicketReferences } from "./shared/ticket-references.ts";
 import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
-import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
+import {
+    findTargetBranchPlansByParent,
+    loadTargetPlan,
+    TargetBranchSnapshotUnavailableError,
+} from "./shared/workflow/planning-worktree.ts";
 import { probeGitRepository } from "./shared/git.ts";
-import { renameRestoredPlanEntry } from "./shared/worktree-registry.js";
+import { prepareWorktreeRegistry, renameRestoredPlanEntry } from "./shared/worktree-registry.js";
 import { resolvePrimaryCheckoutRoot } from "./shared/primary-checkout.ts";
 import { writePlanDocumentAndController } from "./shared/workflow/state-transition.ts";
 import { escapeYamlDoubleQuoted } from "./shared/yaml-scalar.ts";
@@ -51,15 +56,19 @@ import { requestWorkspaceSearchRefresh } from "./shared/workspace-search-refresh
 import { pickControllerState, PLAN_RUNTIME_FIELDS, stripRuntimeFields } from "./shared/workflow/controller-state.ts";
 import {
     enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    ProjectRuntimeReadPendingError,
+    WORKFLOW_DETAILS_PENDING,
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
 } from "./shared/project-runtime-layout.ts";
 import {
+    assertControllerDocumentAvailable,
     bindControllerPlanIdentity,
     finishControllerPlanIdentity,
     inspectControllerView,
     listControllerDocumentWorktrees,
-    loadControllerView,
+    prepareControllerView,
     writeControllerState,
 } from "./shared/workflow/controller-registry.ts";
 import {
@@ -78,6 +87,7 @@ import {
 
 /** @typedef {import("./shared/epic-artifacts.ts").MoveEpicArtifactResult} MoveEpicArtifactResult */
 /** @typedef {import("./shared/plan-deviations.ts").PlanDeviation} PlanDeviation */
+/** @typedef {import("./shared/worktree-registry.js").WorktreeRegistryEntry} WorktreeRegistryEntry */
 
 export { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-front-matter.ts";
 
@@ -1152,6 +1162,14 @@ export function injectFrontMatter(markdown, overrides = {}) {
     return joinFrontMatterAndBody(formatFrontMatter(fm), body);
 }
 
+/** YAML can decode an unquoted timestamp as a Date. Keep creation age when serializing it again.
+ * @param {string | Date | undefined} value
+ * @returns {string}
+ */
+function normalizeCreatedAt(value) {
+    return value instanceof Date ? value.toISOString() : value || DEFAULT_FRONT_MATTER.createdAt;
+}
+
 /**
  * Parse front matter from a plan file. Returns defaults if missing.
  *
@@ -1218,7 +1236,7 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
                       ? null
                       : undefined,
             devServerHmr: attrs.devServerHmr === null ? null : normalizeOptionalBoolean(attrs.devServerHmr),
-            createdAt: attrs.createdAt || DEFAULT_FRONT_MATTER.createdAt,
+            createdAt: normalizeCreatedAt(attrs.createdAt),
             updatedAt: attrs.updatedAt,
             status: normalizePlanStatus(attrs.status),
             origin: attrs.origin || missingOrigin,
@@ -1325,7 +1343,7 @@ function planControllerLocation(filePath) {
 
 /** Directory that owns the selected document and its lock. @param {string} filePath */
 export function getPlanDocumentRoot(filePath) {
-    if (/^[a-f0-9]{40,64}:docs\/plans\//.test(filePath)) {
+    if (/^[^:]+:docs\/plans\//.test(filePath)) {
         throw new Error(`Published Plan snapshot is not a writable document path: ${filePath}`);
     }
     const location = planControllerLocation(filePath);
@@ -1333,51 +1351,103 @@ export function getPlanDocumentRoot(filePath) {
     return location.cwd;
 }
 
-/** @param {string} filePath @param {PlanFrontMatter} attrs */
-async function withControllerMetadata(filePath, attrs) {
-    const location = planControllerLocation(filePath);
-    if (!location) return { attrs, controllerRevision: 0 };
-    const view = await loadControllerView(location.cwd, { planId: attrs.planId, planName: location.planName }, attrs);
+/**
+ * Read availability is transport metadata, never Plan Front Matter.
+ * @typedef {Object} PlanReadAvailability
+ * @property {"ready" | "pending"} kind
+ * @property {string} [message]
+ */
+
+/** @returns {PlanReadAvailability} */
+function pendingPlanReadAvailability() {
+    return { kind: "pending", message: WORKFLOW_DETAILS_PENDING };
+}
+
+/** @param {PlanFrontMatter} attrs @param {import("./shared/workflow/controller-registry.ts").PendingControllerRepair[]} [pendingControllerRepairs] */
+function pendingControllerMetadata(attrs, pendingControllerRepairs = []) {
     return {
-        attrs: await effectivePlanLifecycleAttrs(
-            location.cwd,
-            attrs,
-            view.state,
-            attrs.status === "validated"
-                ? { planName: location.planName, markdown: await fsReadFile(filePath, "utf8") }
-                : undefined,
-        ),
-        controllerRevision: view.revision,
+        attrs: effectivePlanLifecycleAttrs(attrs, {}),
+        controllerRevision: 0,
+        readAvailability: pendingPlanReadAvailability(),
+        pendingControllerRepairs,
     };
 }
 
+/** @param {string} filePath @param {PlanFrontMatter} attrs */
+async function withControllerMetadata(filePath, attrs) {
+    const location = planControllerLocation(filePath);
+    if (!location) return pendingControllerMetadata(attrs);
+    try {
+        const view = await inspectControllerView(
+            location.cwd,
+            { planId: attrs.planId, planName: location.planName },
+            attrs,
+        );
+        if (!attrs.planId || view.pendingRepairs.length) return pendingControllerMetadata(attrs, view.pendingRepairs);
+        /** @type {PlanReadAvailability} */
+        const readAvailability = { kind: "ready" };
+        return {
+            attrs: effectivePlanLifecycleAttrs(attrs, view.state),
+            controllerRevision: view.revision,
+            readAvailability,
+            pendingControllerRepairs: view.pendingRepairs,
+        };
+    } catch (error) {
+        if (error instanceof ProjectRuntimeReadPendingError) return pendingControllerMetadata(attrs);
+        throw error;
+    }
+}
+
+/** Explicit write preparation must not use a pending read projection for guards.
+ * @param {string} filePath
+ * @param {PlanFrontMatter} attrs
+ */
+async function prepareControllerMetadata(filePath, attrs) {
+    const location = planControllerLocation(filePath);
+    if (!location) throw new Error(`Not a stored Plan path: ${filePath}`);
+    const view = await prepareControllerView(
+        location.cwd,
+        { planId: attrs.planId, planName: location.planName },
+        attrs,
+    );
+    return { attrs: effectivePlanLifecycleAttrs(attrs, view.state), controllerRevision: view.revision };
+}
+
+/** @param {string} filePath */
+async function preparePlanFileStrict(filePath) {
+    const parsed = await loadPlanFileStrict(filePath, true);
+    if (parsed.kind !== "loaded") return parsed;
+    return { ...parsed, ...(await prepareControllerMetadata(filePath, parsed.attrs)) };
+}
+
+/** @param {string} cwd @param {string} planName */
+async function prepareStoredPlan(cwd, planName) {
+    const plan = await loadPlan(cwd, planName);
+    if (!plan) return null;
+    return { ...plan, ...(await prepareControllerMetadata(plan.path, parsePlanFrontMatter(plan.markdown).attrs)) };
+}
+
 /**
- * One compatibility boundary for writable and read-only controller-backed reads.
- * @param {string} cwd
+ * Project only durable local controller evidence. Publication verification and
+ * receipt invalidation belong to the lifecycle owner, not readers.
  * @param {PlanFrontMatter} attrs
  * @param {import('./shared/workflow/controller-state.ts').WorkflowControllerState & import('./shared/workflow/controller-state.ts').WorkflowWorktreeContext} state
- * @param {{planName: string, markdown: string}} [document]
- * @returns {Promise<PlanFrontMatter>}
+ * @returns {PlanFrontMatter}
  */
-async function effectivePlanLifecycleAttrs(cwd, attrs, state, document) {
+function effectivePlanLifecycleAttrs(attrs, state) {
     const combined = { ...stripRuntimeFields(attrs), ...state };
-    // A remote delivery need not move the user's primary checkout. Its durable
-    // receipt supplies completion until that checkout catches up.
     if (
-        combined.publicationReceipt &&
+        hasApplicablePublicationReceipt(combined) &&
         !["on_hold", "user_verified", "closed_without_verification"].includes(combined.status)
     ) {
         combined.status = "verified";
     } else if (combined.status === "validated") {
-        const pendingAttempt = combined.worktreeId && !combined.verifiedAt;
-        const pendingEpic =
-            isProjectPlan(combined) && combined.targetBranch && combined.epicCompletionMode !== "done_enough";
-        let delivered = Boolean(combined.verifiedAt || combined.deliveryEvidence?.mode === "non_git_in_place");
-        if (!delivered && !pendingAttempt && !pendingEpic && combined.epicCompletionMode !== "done_enough") {
-            const { verifyRecordedPublication } = await import("./shared/workflow/validation-merge-verification.ts");
-            delivered = (await verifyRecordedPublication(cwd, combined, document).catch(() => ({ published: false })))
-                .published;
-        }
+        const delivered = Boolean(
+            combined.deliveryEvidence?.mode === "non_git_in_place" ||
+            (combined.verifiedAt &&
+                !combined.worktreeId &&
+                (!combined.publicationReceipt || hasApplicablePublicationReceipt(combined))),
+        );
         combined.status = delivered
             ? "verified"
             : isProjectPlan(combined) && combined.epicCompletionMode === "done_enough"
@@ -1847,30 +1917,87 @@ export async function withPlanCatalogLock(cwd, fn) {
  * @param {string} filePath
  */
 export async function inspectPlanFileStrict(filePath) {
-    const result = await loadPlanFileStrict(filePath, true);
-    if (result.kind !== "loaded" || !("attrs" in result)) return result;
-    const location = planControllerLocation(filePath);
-    if (!location) return { ...result, pendingControllerRepairs: [] };
-    const view = await inspectControllerView(
-        location.cwd,
-        { planId: result.attrs.planId, planName: location.planName },
-        result.attrs,
-    );
+    const result = await loadPlanFileStrict(filePath);
+    return result.kind === "loaded"
+        ? { ...result, pendingControllerRepairs: result.pendingControllerRepairs || [] }
+        : result;
+}
+
+/**
+ * @typedef {Object} PlanTextLoaded
+ * @property {"loaded"} kind
+ * @property {string} path
+ * @property {string} markdown
+ * @property {PlanFrontMatter} attrs
+ * @property {string} body
+ * @property {string} revision
+ * @property {string | undefined} frontMatterRevision
+ * @property {boolean} hasFrontMatter
+ * @property {number} controllerRevision
+ * @property {PlanReadAvailability} [readAvailability]
+ * @property {import("./shared/workflow/controller-registry.ts").PendingControllerRepair[]} [pendingControllerRepairs]
+ */
+/**
+ * @typedef {Object} PlanTextMalformed
+ * @property {"malformed"} kind
+ * @property {string} path
+ * @property {string} markdown
+ * @property {string} revision
+ * @property {PlanFrontMatterParseError} error
+ */
+
+/**
+ * Strictly parse document bytes without filesystem or runtime access.
+ * @param {string} markdown
+ * @param {string} filePath - Diagnostic source, including commit:path snapshots.
+ * @returns {Promise<PlanTextLoaded | PlanTextMalformed>}
+ */
+export async function parsePlanTextStrict(markdown, filePath) {
+    const revision = await getPlanRevisionForText(markdown);
+    let parsed;
+    try {
+        parsed = parsePlanFrontMatter(markdown);
+    } catch (error) {
+        return {
+            kind: "malformed",
+            path: filePath,
+            markdown,
+            revision,
+            error: new PlanFrontMatterParseError(filePath, error),
+        };
+    }
+    const frontMatterRevision = await getPlanFrontMatterRevisionForText(markdown);
+    rememberFrontMatterRevision(revision, frontMatterRevision);
     return {
-        ...result,
-        attrs: await effectivePlanLifecycleAttrs(location.cwd, result.attrs, view.state, {
-            planName: location.planName,
-            markdown: result.markdown,
-        }),
-        controllerRevision: view.revision,
-        pendingControllerRepairs: view.pendingRepairs,
+        kind: "loaded",
+        path: filePath,
+        markdown,
+        attrs: parsed.attrs,
+        body: parsed.body,
+        revision,
+        frontMatterRevision,
+        hasFrontMatter: hasFrontMatter(markdown),
+        controllerRevision: 0,
     };
+}
+
+/**
+ * Join strict document bytes with checked local controller evidence, without writes.
+ * @param {string} markdown
+ * @param {string} filePath
+ * @param {string} [controllerPath] - Local document location for a Git snapshot.
+ * @returns {Promise<PlanTextLoaded | PlanTextMalformed>}
+ */
+export async function inspectPlanTextStrict(markdown, filePath, controllerPath = filePath) {
+    const parsed = await parsePlanTextStrict(markdown, filePath);
+    if (parsed.kind !== "loaded") return parsed;
+    return { ...parsed, ...(await withControllerMetadata(controllerPath, parsed.attrs)) };
 }
 
 /**
  * @param {string} filePath
  * @param {boolean} [documentOnly]
- * @returns {Promise<{ kind: "loaded", path: string, markdown: string, attrs: PlanFrontMatter, controllerRevision: number, body: string, revision: string, frontMatterRevision: string|undefined, hasFrontMatter: boolean } | { kind: "not_found", path: string } | { kind: "malformed", path: string, markdown: string, error: PlanFrontMatterParseError, revision: string } | { kind: "not_file", path: string, message: string } | { kind: "unreadable", path: string, error: Error }>}
+ * @returns {Promise<PlanTextLoaded | PlanTextMalformed | { kind: "not_found", path: string } | { kind: "not_file", path: string, message: string } | { kind: "unreadable", path: string, error: Error }>}
  */
 export async function loadPlanFileStrict(filePath, documentOnly = false) {
     let stat;
@@ -1887,36 +2014,9 @@ export async function loadPlanFileStrict(filePath, documentOnly = false) {
     }
     try {
         const markdown = await fsReadFile(filePath, "utf8");
-        const revision = await getPlanRevisionForText(markdown);
-        let parsed;
-        try {
-            parsed = parsePlanFrontMatter(markdown);
-        } catch (error) {
-            return {
-                kind: "malformed",
-                path: filePath,
-                markdown,
-                revision,
-                error: new PlanFrontMatterParseError(filePath, error),
-            };
-        }
-        const { attrs, body } = parsed;
-        const frontMatterRevision = await getPlanFrontMatterRevisionForText(markdown);
-        rememberFrontMatterRevision(revision, frontMatterRevision);
-        // A Plan file with no Front Matter at all is not a broken Plan — it is a
-        // markdown file the user put in docs/plans/ that RunWield has not onboarded.
-        // Parsing yields defaults so reads never fail, but the distinction has to
-        // survive: only a deliberate onboarding may write metadata into it.
-        return {
-            kind: "loaded",
-            path: filePath,
-            markdown,
-            ...(documentOnly ? { attrs, controllerRevision: 0 } : await withControllerMetadata(filePath, attrs)),
-            body,
-            revision,
-            frontMatterRevision,
-            hasFrontMatter: hasFrontMatter(markdown),
-        };
+        return documentOnly
+            ? await parsePlanTextStrict(markdown, filePath)
+            : await inspectPlanTextStrict(markdown, filePath);
     } catch (error) {
         if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
         return { kind: "unreadable", path: filePath, error: error instanceof Error ? error : new Error(String(error)) };
@@ -2274,6 +2374,7 @@ export async function resolveChildPlanNames(cwd, epicPlanName, children) {
  * @returns {Promise<SavedChildFeaturePlan[]>}
  */
 export async function saveChildFeaturePlans(cwd, epicPlanName, children, options = {}) {
+    await prepareWorktreeRegistry(cwd);
     const { name: parentPlanName, segments: parentSegments } = canonicalizeStoredPlanName(epicPlanName);
     if (parentSegments.length !== 1) {
         throw new Error(`Parent Epic plan name must be a top-level plan: ${epicPlanName}`);
@@ -2307,7 +2408,7 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
         let action = /** @type {"created" | "updated"} */ ("created");
         /** @type {string | undefined} */
         let childExpectedRevision = options.expectedRevisions?.[name] || options.expectedRevision;
-        const existingChild = await loadPlanFileStrict(filePath);
+        const existingChild = await preparePlanFileStrict(filePath);
         if (existingChild.kind === "loaded") {
             assertSharedPlanWriteAllowed(existingChild.attrs, options);
             if (existingChild.attrs.status !== "draft") {
@@ -2434,13 +2535,14 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
  */
 export async function savePlan(cwd, planName, content, fmOverrides = {}, options = {}) {
     assertNotReservedEpicArtifactPlanName(planName);
+    await prepareWorktreeRegistry(cwd);
     return await withPlanCatalogLock(
         cwd,
         async () =>
             await withPlanLock(cwd, planName, async () => {
                 const dir = await ensurePlansDir(cwd);
                 const { filePath, segments } = getStoredPlanLocation(cwd, planName);
-                const existing = await loadPlanFileStrict(filePath);
+                const existing = await preparePlanFileStrict(filePath);
                 if (existing.kind === "loaded") assertSharedPlanWriteAllowed(existing.attrs, options);
                 else if (existing.kind === "malformed") {
                     assertPlanMarkdownWriteAllowed(existing.markdown, options);
@@ -2465,7 +2567,7 @@ export async function savePlan(cwd, planName, content, fmOverrides = {}, options
                 }
                 // Import once from the authoritative copy; an ordinary document save
                 // can never overwrite workflow state with an old in-memory snapshot.
-                const controller = await loadControllerView(
+                const controller = await prepareControllerView(
                     cwd,
                     { planName, planId: documentAttrs.planId },
                     documentAttrs,
@@ -2533,7 +2635,7 @@ export async function createPulledCollaborationPlan(cwd, options) {
  *
  * @param {string} cwd
  * @param {string} planName - Filename without .md
- * @returns {Promise<{ path: string, markdown: string, attrs: PlanFrontMatter, controllerRevision: number, body: string, revision: string, frontMatterRevision?: string, hasFrontMatter?: boolean } | null>}
+ * @returns {Promise<{ path: string, markdown: string, attrs: PlanFrontMatter, controllerRevision: number, readAvailability?: PlanReadAvailability, body: string, revision: string, frontMatterRevision?: string, hasFrontMatter?: boolean } | null>}
  */
 export async function loadPlan(cwd, planName) {
     if (isEpicArtifactPlanName(planName)) return null;
@@ -2545,6 +2647,7 @@ export async function loadPlan(cwd, planName) {
             markdown: result.markdown,
             attrs: result.attrs,
             controllerRevision: result.controllerRevision,
+            readAvailability: result.readAvailability,
             body: result.body,
             revision: result.revision,
             frontMatterRevision: result.frontMatterRevision,
@@ -2616,7 +2719,7 @@ export async function updatePlanStatus(cwd, planName, status, recoveryAttrs = {}
  */
 export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttrs = {}, options = {}) {
     return await withPlanLock(cwd, planName, async () => {
-        const result = await loadPlanStrict(cwd, planName);
+        const result = await preparePlanFileStrict(getStoredPlanPath(cwd, planName));
         if (result.kind === "not_found") throw new Error(`Plan not found: ${planName}`);
         if (result.kind === "malformed") throw result.error;
         if (result.kind !== "loaded") {
@@ -2669,7 +2772,7 @@ export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttr
             changesDocument ? mergeFrontMatterText(result.markdown, normalizedOverrides) : result.markdown,
         );
         if (withFm !== result.markdown) await writePlanMarkdownWithRevision(result.path, withFm, result.revision);
-        return (await withControllerMetadata(result.path, parsePlanFrontMatter(withFm).attrs)).attrs;
+        return (await prepareControllerMetadata(result.path, parsePlanFrontMatter(withFm).attrs)).attrs;
     });
 }
 
@@ -2688,7 +2791,7 @@ export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttr
 export async function updatePlanCollaborationMetadata(cwd, planName, updates, collaborationLockBypass, options = {}) {
     cwd = (await resolveWorkflowPlanLocation(cwd, planName)).documentRoot;
     return await withPlanLock(cwd, planName, async () => {
-        const plan = await loadPlan(cwd, planName);
+        const plan = await prepareStoredPlan(cwd, planName);
         if (!plan) throw new Error(`Plan not found: ${planName}`);
         const hasControlledBodyWrite = typeof options.body === "string";
         const nextBody = hasControlledBodyWrite ? /** @type {string} */ (options.body) : plan.body;
@@ -2735,7 +2838,7 @@ export async function updatePlanCollaborationMetadata(cwd, planName, updates, co
             expectedRevision: plan.revision,
             expectedControllerRevision: plan.controllerRevision,
         });
-        return (await withControllerMetadata(plan.path, parsePlanFrontMatter(planDocumentMarkdown(markdown)).attrs))
+        return (await prepareControllerMetadata(plan.path, parsePlanFrontMatter(planDocumentMarkdown(markdown)).attrs))
             .attrs;
     });
 }
@@ -2755,7 +2858,7 @@ export async function clearPlanCollaborationMetadata(cwd, planName, collaboratio
     }
     cwd = (await resolveWorkflowPlanLocation(cwd, planName)).documentRoot;
     return await withPlanLock(cwd, planName, async () => {
-        const plan = await loadPlan(cwd, planName);
+        const plan = await prepareStoredPlan(cwd, planName);
         if (!plan) throw new Error(`Plan not found: ${planName}`);
         assertSharedPlanWriteAllowed(plan.attrs, { collaborationLockBypass });
         const attrs = {
@@ -2774,7 +2877,7 @@ export async function clearPlanCollaborationMetadata(cwd, planName, collaboratio
             expectedRevision: plan.revision,
             expectedControllerRevision: plan.controllerRevision,
         });
-        return (await withControllerMetadata(plan.path, parsePlanFrontMatter(planDocumentMarkdown(markdown)).attrs))
+        return (await prepareControllerMetadata(plan.path, parsePlanFrontMatter(planDocumentMarkdown(markdown)).attrs))
             .attrs;
     });
 }
@@ -2787,6 +2890,7 @@ export async function clearPlanCollaborationMetadata(cwd, planName, collaboratio
  * @property {string} path - Absolute markdown path.
  * @property {string} planId - Durable resource identity.
  * @property {PlanFrontMatter} attrs - Parsed front matter including planId.
+ * @property {PlanReadAvailability} [readAvailability]
  * @property {string} [body] - Parsed markdown body when loaded by identity helpers.
  * @property {string} [markdown] - Full markdown when loaded by identity helpers.
  */
@@ -2802,7 +2906,7 @@ export async function clearPlanCollaborationMetadata(cwd, planName, collaboratio
 /**
  * @param {string} dir
  * @param {string[]} prefix
- * @param {Array<{ name: string, path: string, attrs: PlanFrontMatter }>} results
+ * @param {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} results
  * @param {PlanParseIssue[]} [parseIssues]
  * @param {boolean} [documentOnly] Read file metadata without entering runtime storage.
  * @returns {Promise<void>}
@@ -2849,13 +2953,14 @@ async function collectPlans(dir, prefix, results, parseIssues, documentOnly = fa
             try {
                 const { attrs } = parsePlanFrontMatter(markdown);
                 const current = documentOnly ? { attrs } : await withControllerMetadata(entryPath, attrs);
-                results.push({ name, path: entryPath, attrs: current.attrs });
+                results.push({ name, path: entryPath, ...current });
             } catch (error) {
                 if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
                 const wrapped = new PlanFrontMatterParseError(entryPath, error);
                 parseIssues?.push({ name, path: entryPath, message: formatErrorMessage(error), error: wrapped });
             }
         } catch (error) {
+            if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
             parseIssues?.push({ name, path: entryPath, message: formatErrorMessage(error), error });
         }
     }
@@ -2889,7 +2994,7 @@ export function comparePlansForList(a, b) {
  * List all saved plans in the project's plans directory in canonical UI order.
  *
  * @param {string} cwd
- * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
+ * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function listPlans(cwd) {
     return await listPlansWithTargetChildren(cwd, null);
@@ -2916,12 +3021,12 @@ function findCatalogPlanIndex(plans, name, planId) {
  *
  * @param {string} cwd
  * @param {string | null} onlyEpic
- * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
+ * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 async function listPlansWithTargetChildren(cwd, onlyEpic) {
     return await withProjectRuntimeReadScope(async () => {
         const dir = getPlansDir(cwd);
-        /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter }>} */
+        /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
         const results = [];
         /** @type {PlanParseIssue[]} */
         const parseIssues = [];
@@ -2930,6 +3035,13 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
         } catch (error) {
             if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
+        const access = await inspectProjectRuntimeReadAccess(cwd);
+        if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
+        if (access.kind === "pending") {
+            if (parseIssues.length) throw parseIssues[0].error;
+            return results.sort(comparePlansForList);
+        }
+        const unavailableTargets = new Map();
         for (const projectPlan of [...results]) {
             const targetBranch =
                 typeof projectPlan.attrs.targetBranch === "string" ? projectPlan.attrs.targetBranch.trim() : "";
@@ -2940,15 +3052,10 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (!repository.ok) throw new Error(repository.message);
             let targetChildren;
             try {
-                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name, {
-                    refresh: false,
-                });
+                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
             } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                if (
-                    message.includes("Target branch does not exist") ||
-                    message.includes("Could not refresh target branch")
-                ) {
+                if (error instanceof TargetBranchSnapshotUnavailableError) {
+                    unavailableTargets.set(projectPlan.name, `${WORKFLOW_DETAILS_PENDING} ${error.message}`);
                     continue;
                 }
                 throw error;
@@ -2966,7 +3073,8 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                         `Target Plan ${child.name} has a different Plan ID. Your files have not been changed.`,
                     );
                 }
-                const item = { name: child.name, path: child.path, attrs: child.attrs };
+                const metadata = await withControllerMetadata(getStoredPlanPath(cwd, child.name), child.attrs);
+                const item = { name: child.name, path: child.path, ...metadata };
                 if (index < 0) results.push(item);
                 else results[index] = item;
             }
@@ -2974,7 +3082,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
         const attempts = await listControllerDocumentWorktrees(cwd);
         for (const attempt of attempts) {
             if (attempts.filter((entry) => entry.planName === attempt.planName).length !== 1) continue;
-            const execution = await loadPlan(attempt.path, attempt.planName);
+            const execution = attempt.documentUnavailable ? null : await loadPlan(attempt.path, attempt.planName);
             if (!execution) {
                 // A missing or archived authority cannot expose a stale primary copy.
                 // Direct Plan loading owns the recovery error, not the project catalog.
@@ -2990,7 +3098,12 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 );
             }
             const index = findCatalogPlanIndex(results, attempt.planName, attempt.planId);
-            const item = { name: attempt.planName, path: execution.path, attrs: execution.attrs };
+            const item = {
+                name: attempt.planName,
+                path: execution.path,
+                attrs: execution.attrs,
+                readAvailability: execution.readAvailability,
+            };
             if (index < 0) results.push(item);
             else results[index] = item;
             const issueIndex = parseIssues.findIndex((issue) => issue.name === attempt.planName);
@@ -3001,6 +3114,10 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (issue.error instanceof Error) throw issue.error;
             throw new PlanFileIssueError(issue.path, "malformed", issue.message);
         }
+        for (const plan of results) {
+            const message = unavailableTargets.get(plan.name) || unavailableTargets.get(plan.attrs.parentPlan);
+            if (message) plan.readAvailability = { kind: "pending", message };
+        }
         return results.sort(comparePlansForList);
     });
 }
@@ -3010,10 +3127,10 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
  * storage, fetch Git refs, repair worktrees, or adopt external Markdown files.
  * Loading the selected Plan is a separate command phase.
  * @param {string} cwd
- * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
+ * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function listPlanDocuments(cwd) {
-    /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter }>} */
+    /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
     const plans = [];
     /** @type {PlanParseIssue[]} */
     const issues = [];
@@ -3067,6 +3184,7 @@ export function isRecoverableWorktreeStatus(worktreeStatus) {
  * @property {string} status
  * @property {string} summary
  * @property {string} [planId]
+ * @property {PlanReadAvailability} [readAvailability]
  */
 
 /**
@@ -3121,6 +3239,8 @@ async function fileExists(path) {
  * @returns {Promise<{ name: string, path: string, attrs: PlanFrontMatter, body: string, markdown: string }>}
  */
 async function resolveActivePlanNameOrId(cwd, planNameOrId) {
+    const { preparePlanWorkflow } = await import("./shared/workflow/plan-preparation.ts");
+    await preparePlanWorkflow(cwd, planNameOrId);
     // Archive and restore move documents; resolving a name must not start a planning attempt.
     const location = await resolveWorkflowPlanLocation(cwd, planNameOrId, { readOnly: true });
     const byName = location.plan;
@@ -3134,7 +3254,11 @@ async function resolveActivePlanNameOrId(cwd, planNameOrId) {
         if (isHiddenPlanName(name)) {
             throw new Error(`Use an active Plan name, not ${ARCHIVED_DIR_NAME}/...: ${planNameOrId}`);
         }
-        return { name, ...byName };
+        return {
+            name,
+            ...byName,
+            ...(await prepareControllerMetadata(byName.path, parsePlanFrontMatter(byName.markdown).attrs)),
+        };
     }
 
     const planId = normalizePlanId(planNameOrId);
@@ -3144,7 +3268,8 @@ async function resolveActivePlanNameOrId(cwd, planNameOrId) {
             throw new Error(`Duplicate planId values found for ${planId}; repair plan front matter before continuing.`);
         }
         if (matches.length === 1) {
-            const loaded = await loadPlan(getPlanDocumentRoot(matches[0].path), matches[0].name);
+            await preparePlanWorkflow(cwd, matches[0].name);
+            const loaded = await prepareStoredPlan(getPlanDocumentRoot(matches[0].path), matches[0].name);
             if (loaded) return { name: matches[0].name, ...loaded };
         }
     }
@@ -3303,8 +3428,11 @@ export async function archivePlansByStatus(cwd, status, options = {}) {
         throw new Error(`Unknown Plan status for bulk archive: ${status}`);
     }
 
+    await prepareWorktreeRegistry(cwd);
+    const { preparePlanWorkflow } = await import("./shared/workflow/plan-preparation.ts");
+    for (const plan of await listPlans(cwd)) await preparePlanWorkflow(cwd, plan.name);
     const plans = await listPlans(cwd);
-    /** @type {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter }>>} */
+    /** @type {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>} */
     const childrenByParent = new Map();
     for (const plan of plans) {
         if (!isChildFeaturePlan(plan)) continue;
@@ -3366,7 +3494,7 @@ export async function archivePlansByStatus(cwd, status, options = {}) {
  */
 export async function listArchivedPlans(cwd) {
     const dir = getArchivedPlansDir(cwd);
-    /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter }>} */
+    /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
     const results = [];
     /** @type {PlanParseIssue[]} */
     const parseIssues = [];
@@ -3375,13 +3503,31 @@ export async function listArchivedPlans(cwd) {
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    const attempts = await listControllerDocumentWorktrees(cwd);
+    /** @type {import("./shared/workflow/controller-registry.ts").ControllerDocumentWorktree[]} */
+    let attempts;
+    try {
+        attempts = await listControllerDocumentWorktrees(cwd);
+    } catch (error) {
+        if (!(error instanceof ProjectRuntimeReadPendingError)) throw error;
+        // Local documents already carry a pending notice; unknown workflow authority cannot replace them.
+        attempts = [];
+    }
     for (const attempt of attempts) {
         if (attempts.filter((entry) => entry.planName === attempt.planName).length !== 1) continue;
+        if (attempt.documentUnavailable) {
+            const index = results.findIndex((plan) => plan.name === attempt.planName);
+            if (index >= 0) results.splice(index, 1);
+            continue;
+        }
         const archived = await loadArchivedPlanByName(attempt.path, attempt.planName);
         if (!archived || (attempt.planId && archived.attrs.planId !== attempt.planId)) continue;
         const index = results.findIndex((plan) => plan.name === attempt.planName);
-        const item = { name: attempt.planName, path: archived.path, attrs: archived.attrs };
+        const item = {
+            name: attempt.planName,
+            path: archived.path,
+            attrs: archived.attrs,
+            readAvailability: archived.readAvailability,
+        };
         if (index < 0) results.push(item);
         else results[index] = item;
     }
@@ -3396,6 +3542,7 @@ export async function listArchivedPlans(cwd) {
             relativePath: projectRelativePath(cwd, plan.path),
             path: plan.path,
             attrs: plan.attrs,
+            readAvailability: plan.readAvailability,
             status: plan.attrs.status,
             summary: plan.attrs.summary || "",
             planId: plan.attrs.planId,
@@ -3475,9 +3622,19 @@ export async function deleteArchivedPlanUnit(cwd, archivedPlanName) {
 }
 
 /**
+ * @typedef {Object} ArchivedPlanDocument
+ * @property {string} name
+ * @property {string} path
+ * @property {string} markdown
+ * @property {PlanFrontMatter} attrs
+ * @property {string} body
+ * @property {PlanReadAvailability} [readAvailability]
+ */
+
+/**
  * @param {string} cwd
  * @param {string} archivedPlanName
- * @returns {Promise<{ name: string, path: string, markdown: string, attrs: PlanFrontMatter, body: string } | null>}
+ * @returns {Promise<ArchivedPlanDocument | null>}
  */
 async function loadArchivedPlanByName(cwd, archivedPlanName) {
     const { name, filePath } = getArchivedPlanLocation(cwd, archivedPlanName);
@@ -3492,8 +3649,16 @@ async function loadArchivedPlanByName(cwd, archivedPlanName) {
     try {
         const { attrs, body } = parsePlanFrontMatter(markdown);
         const current = await withControllerMetadata(filePath, attrs);
-        return { name, path: filePath, markdown, attrs: current.attrs, body };
+        return {
+            name,
+            path: filePath,
+            markdown,
+            attrs: current.attrs,
+            readAvailability: current.readAvailability,
+            body,
+        };
     } catch (error) {
+        if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
         throw new Error(`Malformed archived Plan ${projectRelativePath(cwd, filePath)}: ${formatErrorMessage(error)}`);
     }
 }
@@ -3502,12 +3667,19 @@ async function loadArchivedPlanByName(cwd, archivedPlanName) {
  * Load an archived Plan by archived name/path or durable planId.
  * @param {string} cwd
  * @param {string} archivedPlanNameOrId
- * @returns {Promise<{ name: string, path: string, markdown: string, attrs: PlanFrontMatter, body: string } | null>}
+ * @returns {Promise<ArchivedPlanDocument | null>}
  */
 export async function loadArchivedPlan(cwd, archivedPlanNameOrId) {
     const name = getArchivedPlanLocation(cwd, archivedPlanNameOrId).name;
-    const attempts = (await listControllerDocumentWorktrees(cwd)).filter((entry) => entry.planName === name);
+    let attempts;
+    try {
+        attempts = (await listControllerDocumentWorktrees(cwd)).filter((entry) => entry.planName === name);
+    } catch (error) {
+        if (!(error instanceof ProjectRuntimeReadPendingError)) throw error;
+        return await loadArchivedPlanByName(cwd, archivedPlanNameOrId);
+    }
     if (attempts.length === 1) {
+        assertControllerDocumentAvailable(attempts[0]);
         const archived = await loadArchivedPlanByName(attempts[0].path, name);
         if (archived && (!attempts[0].planId || archived.attrs.planId === attempts[0].planId)) return archived;
     }
@@ -3533,9 +3705,11 @@ export async function loadArchivedPlan(cwd, archivedPlanNameOrId) {
  * @returns {Promise<PlanFrontMatter>}
  */
 export async function updateArchivedPlanFrontMatter(cwd, archivedPlanNameOrId, updates) {
+    await prepareWorktreeRegistry(cwd);
     const plan = await loadArchivedPlan(cwd, archivedPlanNameOrId);
     if (!plan) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
-    const attrs = { ...plan.attrs, ...updates, updatedAt: updates.updatedAt ?? new Date().toISOString() };
+    const prepared = await prepareControllerMetadata(plan.path, parsePlanFrontMatter(plan.markdown).attrs);
+    const attrs = { ...prepared.attrs, ...updates, updatedAt: updates.updatedAt ?? new Date().toISOString() };
     const withFm = injectFrontMatter(plan.body, attrs);
     await writePlanMarkdownWithRevision(plan.path, withFm, await getPlanRevisionForText(plan.markdown));
     return parsePlanFrontMatter(withFm).attrs;
@@ -3549,6 +3723,7 @@ export async function updateArchivedPlanFrontMatter(cwd, archivedPlanNameOrId, u
  * @returns {Promise<{ name: string, fromPath: string, toPath: string, relativePath: string, attrs: PlanFrontMatter, artifacts?: Array<{ fileName: string, relativePath: string }> }>}
  */
 export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {}) {
+    await prepareWorktreeRegistry(cwd);
     const archived = await resolveArchivedPlanNameOrId(cwd, archivedPlanNameOrId);
     cwd = getPlanDocumentRoot(archived.path);
     const destination = getStoredPlanLocation(cwd, options.to || archived.name);
@@ -3559,6 +3734,7 @@ export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {
         throw new Error(`Active Plan already exists: ${projectRelativePath(cwd, destination.filePath)}`);
     }
 
+    await prepareControllerMetadata(archived.path, parsePlanFrontMatter(archived.markdown).attrs);
     const now = options.now || new Date().toISOString();
     const markdown = planDocumentMarkdown(
         mergeFrontMatterText(archived.markdown, {
@@ -3678,11 +3854,11 @@ export function isHiddenPlanName(name) {
 }
 
 /**
- * @param {Array<{ name: string, path: string, attrs: PlanFrontMatter }>} plans
- * @returns {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
+ * @param {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} plans
+ * @returns {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 function groupExistingPlanIds(plans) {
-    /** @type {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter }>>} */
+    /** @type {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>} */
     const byId = new Map();
     for (const plan of plans) {
         if (!plan.attrs.planId) continue;
@@ -3716,6 +3892,7 @@ function assertNoDuplicatePlanIds(byId) {
  * @property {string} body
  * @property {string} markdown
  * @property {string} revision
+ * @property {PlanReadAvailability} [readAvailability]
  */
 
 /**
@@ -3729,7 +3906,7 @@ function assertNoDuplicatePlanIds(byId) {
 async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
     const { name } = canonicalizeStoredPlanName(planName);
     return await withPlanLock(cwd, name, async () => {
-        const plan = await loadPlan(cwd, name);
+        const plan = await prepareStoredPlan(cwd, name);
         if (!plan) throw new Error(`Plan not found: ${planName}`);
         if (isHiddenPlanName(name)) {
             throw new Error(`Plan is archived or hidden and cannot be assigned a planId: ${name}`);
@@ -3737,6 +3914,7 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
 
         const attempts = await listControllerDocumentWorktrees(cwd);
         const registered = attempts.filter((attempt) => attempt.planName === name);
+        for (const entry of registered) assertControllerDocumentAvailable(entry);
         if (registered.length > 1) {
             throw new Error(
                 `Registered Plan ${name} has ambiguous document authority. Your files have not been changed.`,
@@ -3769,7 +3947,7 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
         }
         const reservedPlanIds = options.reservedPlanIds || new Set(byId.keys());
         // Registry IDs are already assigned identities, not just collision reservations.
-        // Read them even during explicit catalog backfills, which supply their own set.
+        // Reserve them even when their document is missing from the catalog.
         for (const attempt of attempts) {
             const id = normalizePlanId(attempt.planId);
             if (id) reservedPlanIds.add(id);
@@ -3878,7 +4056,7 @@ export async function onboardExternalPlan(cwd, planName, options = {}) {
     const now = options.now ? options.now() : new Date();
     return await withPlanCatalogLock(cwd, async () => {
         const resource = await withPlanLock(cwd, name, async () => {
-            const plan = await loadPlan(cwd, name);
+            const plan = await prepareStoredPlan(cwd, name);
             if (!plan) throw new Error(`Plan not found: ${planName}`);
             // Re-checked under the lock: another onboarding may have won the race, and
             // adopting twice would overwrite the identity the first one established.
@@ -3911,61 +4089,37 @@ export async function onboardExternalPlan(cwd, planName, options = {}) {
 }
 
 /**
- * List non-archived Plans as durable resources.
- *
- * Listing does not write. `backfillMissing` used to default to `true`, which
- * made every caller that merely read the catalog mint Plan IDs as a side
- * effect — including registry reads taken from inside a lifecycle transaction,
- * which rewrote Front Matter the transaction had already snapshotted and made
- * execution abort with "the Plan changed". Plan identity is assigned once, by
- * the creation and execution paths that call `ensurePlanIdentity` deliberately;
- * healing older Plans is `wld plans doctor --repair`'s job. Opt in explicitly.
- *
+ * List non-archived resources without assigning identities or preparing runtime.
  * @param {string} cwd
- * @param {{ backfillMissing?: boolean, idGenerator?: () => string }} [options]
  * @returns {Promise<PlanResource[]>}
  */
-export async function listPlanResources(cwd, options = {}) {
-    const backfillMissing = options.backfillMissing === true;
-    const read = async () => {
+export async function listPlanResources(cwd) {
+    return await withProjectRuntimeReadScope(async () => {
         const plans = await listPlans(cwd);
-        const byId = groupExistingPlanIds(plans);
-        assertNoDuplicatePlanIds(byId);
-        const reservedPlanIds = new Set(byId.keys());
-
+        assertNoDuplicatePlanIds(groupExistingPlanIds(plans));
         /** @type {PlanResource[]} */
         const resources = [];
         for (const plan of plans) {
-            if (plan.attrs.planId || !backfillMissing) {
-                const loaded = await loadPlanFileStrict(plan.path);
-                if (loaded.kind !== "loaded") continue;
-                resources.push({
-                    planName: plan.name,
-                    name: plan.name,
-                    relativePath: `${PLANS_DIR_NAME}/${plan.name}.md`,
-                    path: loaded.path,
-                    planId: loaded.attrs.planId || "",
-                    attrs: loaded.attrs,
-                    body: loaded.body,
-                    markdown: loaded.markdown,
-                    revision: loaded.revision,
-                });
-                continue;
-            }
-
-            const resource = await ensurePlanIdentityLocked(cwd, plan.name, {
-                idGenerator: options.idGenerator,
-                reservedPlanIds,
+            const snapshot = /^([a-f0-9]{40,64}):docs\/plans\//.exec(plan.path);
+            const loaded = snapshot
+                ? await loadTargetPlan(cwd, plan.name, snapshot[1])
+                : await loadPlanFileStrict(plan.path);
+            if (!loaded || loaded.kind !== "loaded") continue;
+            resources.push({
+                planName: plan.name,
+                name: plan.name,
+                relativePath: `${PLANS_DIR_NAME}/${plan.name}.md`,
+                path: plan.path,
+                planId: plan.attrs.planId || "",
+                attrs: plan.attrs,
+                body: loaded.body,
+                markdown: loaded.markdown,
+                revision: loaded.revision,
+                readAvailability: plan.readAvailability,
             });
-            reservedPlanIds.add(resource.planId);
-            resources.push(resource);
         }
-
         return resources;
-    };
-    // Dashboard/search reads must not serialize publication behind a full catalog
-    // scan. Only identity backfills mutate the catalog and need its writer lock.
-    return await withProjectRuntimeReadScope(() => (backfillMissing ? withPlanCatalogLock(cwd, read) : read()));
+    });
 }
 
 /**
@@ -3988,6 +4142,15 @@ function findPlanResourceMatchesById(resources, normalized) {
     return resources.filter((resource) => stripSequencePrefix(resource.planId) === normalized);
 }
 
+/** A missing durable ID is distinct from an unreadable or unsafe Plan catalog. */
+export class PlanNotFoundError extends Error {
+    /** @param {string} planId */
+    constructor(planId) {
+        super(`Plan not found for planId: ${planId}`);
+        this.name = "PlanNotFoundError";
+    }
+}
+
 /**
  * Find a non-archived Plan resource by durable planId.
  *
@@ -4003,7 +4166,7 @@ export async function findPlanById(cwd, planId) {
     if (matches.length > 1) {
         throw new Error(`Duplicate planId values found for ${normalized}; repair plan front matter before continuing.`);
     }
-    if (matches.length === 0) throw new Error(`Plan not found for planId: ${normalized}`);
+    if (matches.length === 0) throw new PlanNotFoundError(normalized);
     return matches[0];
 }
 
@@ -4049,6 +4212,7 @@ export async function findPlanEvidenceById(cwd, planId) {
             body: loaded.body,
             markdown: loaded.markdown,
             revision: loaded.revision,
+            readAvailability: loaded.readAvailability,
         };
     });
 }
@@ -4068,7 +4232,7 @@ export async function loadPlanBodyById(cwd, planId) {
     if (isProjectPlan(resource.attrs)) {
         throw new Error("Epic Plan bodies are not editable in the workspace body editor.");
     }
-    const markdown = await fsReadFile(resource.path, "utf8");
+    const markdown = resource.markdown;
     parsePlanFrontMatter(markdown);
     const { body } = splitPlanMarkdownBody(markdown);
     return {
@@ -4089,6 +4253,7 @@ export async function loadPlanBodyById(cwd, planId) {
  * @returns {Promise<PlanBodyResource>}
  */
 export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, options = {}) {
+    await prepareWorktreeRegistry(cwd);
     return await withPlanCatalogLock(cwd, async () => {
         const resource = await findPlanById(cwd, planId);
         return await withPlanLock(getPlanDocumentRoot(resource.path), resource.planName || resource.name, async () => {
@@ -4097,7 +4262,7 @@ export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, o
             if (isProjectPlan(resource.attrs)) {
                 throw new Error("Epic Plan bodies are not editable in the workspace body editor.");
             }
-            const result = await loadPlanFileStrict(resource.path);
+            const result = await preparePlanFileStrict(resource.path);
             if (result.kind === "malformed") throw result.error;
             if (result.kind !== "loaded") {
                 throw new PlanFileIssueError(
@@ -4139,7 +4304,7 @@ export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, o
  *
  * @param {string} cwd
  * @param {string} parentPlan
- * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
+ * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function findPlansByParent(cwd, parentPlan) {
     const { name } = canonicalizeStoredPlanName(parentPlan);
@@ -4333,7 +4498,7 @@ export function countChildPlanProgress(children) {
  *
  * @param {string} cwd
  * @param {string} arg - Plan name (e.g., "add-dark-mode" or "epic/feature1") or file path
- * @returns {Promise<{ path: string, markdown: string, attrs: PlanFrontMatter, body: string, revision: string, planName: string, hasFrontMatter?: boolean }>}
+ * @returns {Promise<{ path: string, markdown: string, attrs: PlanFrontMatter, body: string, revision: string, planName: string, hasFrontMatter?: boolean, readAvailability?: PlanReadAvailability }>}
  */
 export async function resolvePlan(cwd, arg) {
     try {

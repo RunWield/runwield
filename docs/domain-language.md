@@ -229,11 +229,16 @@ Runtime State. A Remote SSH connection can identify a remote checkout but does n
 State; future remote project work would keep that state with the remote checkout. _Avoid_: project settings, project
 config, all of `.wld/`
 
-**Project Runtime Entry**: The shared migration-or-verification operation that runs before normal Project Runtime State
-access. It can adopt eligible legacy state, confirm the selected and primary checkout layout, or refuse access with a
-retryable reason and safe paths. It is not Session activation, path resolution, Workspace registration, or a
-command-only check. Doctor inspection can report pending adoption without performing Project Runtime Entry. _Avoid_:
-startup, activation, registration, path getter
+**Project Runtime Entry**: Action-owned admission before Project Runtime State mutation locks or writes. It can adopt
+eligible legacy state, recover returning input, verify primary/selected checkout ownership, or refuse with a retryable
+reason and safe paths. Each action rechecks authority independently of earlier reads. It is not Session activation,
+path resolution, Workspace registration, or passive inspection. _Avoid_: startup, activation, registration, path getter,
+read access
+
+**Project Runtime Inspection**: Checked passive access to existing local runtime authority. It distinguishes fresh,
+ready, pending, and blocked evidence without writes, writer-lock probes, migration, or recovery. A fresh Project needs
+no runtime storage; adopted authority stays readable when legacy recovery input returns. Inspection reuse ends with
+its bounded operation and never satisfies Project Runtime Entry. _Avoid_: entry, adoption, initialization, lock test
 
 **Project Internal Root**: The `.wld/internal/` directory in the checkout that owns a Project Runtime State item. It is
 a path contract only; it does not mean migration or writer cutover is complete. _Avoid_: `.wld`, runtime directory when
@@ -362,7 +367,17 @@ execution, Workflow Validation, and delivery as their real events occur. It is n
 sample project, or a substitute for validation. _Avoid_: Onboarding workflow, training Plan, Workspace tutorial
 
 **Plan**: A markdown file in `docs/plans/` describing the implementation strategy for a user request. Its YAML front
-matter records classification, complexity, status, timestamps, and origin. _Avoid_: Blueprint, spec, design doc
+matter records classification, complexity, status, timestamps, and origin when present. Plain Markdown without identity
+or metadata is a valid local draft; browsing does not adopt it. _Avoid_: Blueprint, spec, design doc
+
+**External Plan Adoption**: Deliberate preparation of an external Markdown Plan through selected load or an owning
+write. It persists identity and applicable defaults while preserving the body, original age, and existing decisions.
+It is distinct from project runtime-layout adoption. _Avoid_: discovery, listing, indexing, pending read
+
+**Plan Read Availability**: Read-result metadata (`ready` or `pending`) carried separately from Plan Front Matter.
+Pending means required workflow authority or preparation is unavailable, not that the Plan has changed lifecycle state,
+failed, or been adopted. Safe local documents can remain browseable by name; pending facts cannot authorize actions or
+stand in for current search evidence. _Avoid_: pending Plan status, migration complete, adoption status, approval
 
 **Work Record**: A small repo-local markdown retrospective planning-memory artifact that distills what completed planned
 work actually produced. It holds only facts that stay true after later changes: the delivered outcome, recorded Plan
@@ -398,7 +413,7 @@ file-level code evidence when constructed from existing code. _Avoid_: Line refe
 **Plan Status**: The lifecycle state of a Plan: `draft`, `approved`, `ready_for_decomposition`,
 `ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified`, `user_verified`,
 `closed_without_verification`, or `on_hold`.
-_Avoid_: Phase, stage
+_Avoid_: Phase, stage, read availability
 
 **Plan Lifecycle**: The state machine that decides how Plan Events change Plan Status and recovery metadata; see
 `docs/plan-lifecycle.md`. _Avoid_: Status helper, plan status logic
@@ -407,9 +422,10 @@ _Avoid_: Phase, stage
 update
 
 **Plan Action Evidence Check**: The action-time reload of selected Plan status, Plan revision, and worktree registry
-evidence before a consequential Plan action runs under the Session Writer Lock. For a targeted Epic child, the selected
-Plan can be in a planning worktree before execution starts. _Avoid_: Plan ownership, durable Plan lock, separate
-ownership record
+evidence after required action-owned preparation and before a consequential Plan action runs under the Session Writer
+Lock. Earlier passive inspection and pending projections do not authorize the action. For a targeted Epic child, the
+selected Plan can be in a planning worktree before execution starts. _Avoid_: Plan ownership, durable Plan lock,
+separate ownership record, cached read approval
 
 **Approved Plan**: A Plan whose Review Loop ended in user approval but whose pre-execution preparation may still be
 unfinished. _Avoid_: Ready plan, executable plan
@@ -935,6 +951,12 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   personal mount** gives direct access to laptop personal files on the approved `sct` pilot, while the project’s `.wld`
   stays remote. The optional native Pi bridge proof is not an ordinary turn. Target remote Sessions add a separate
   guarded writer for saved history and local authenticated model execution.
+- **Project Runtime Inspection** reads checked existing authority; **Project Runtime Entry** admits deliberate
+  preparation and mutation. Path resolution and prior inspection do not substitute for entry.
+- **Plan Read Availability** describes available workflow evidence independently of **Plan Status** and **Plan
+  Lifecycle**. Pending inspection neither performs runtime adoption nor **External Plan Adoption**.
+- An ID-less **Plan** remains browseable by name on the **Plan Board**, but durable-ID search skips it without adoption.
+  Pending canonical authority withholds uncertain Plan facts from search while healthy Projects keep results.
 - A **Tutorial** explains one real **Planned Change** through normal **Plan Review** and **Workflow Validation**. It
   does not replace **Init** or own Plan lifecycle state.
 - One **Attached Workflow** governs one user request inside one **External Agent Host**.

@@ -7,7 +7,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { parsePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { inspectTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { inspectTargetBranchPlansByParent, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
 const smallCount = 2;
 const largeCount = 32;
@@ -98,8 +98,9 @@ for (const remote of [false, true]) {
                 if (remote) {
                     await git(repo, ["clone", "--bare", repo, origin]);
                     await git(repo, ["remote", "add", "origin", origin]);
-                    // Only the remote has the large catalog; local lookup would lose thirty children.
-                    await git(repo, ["branch", "-f", "large", "small"]);
+                    // Reads use already fetched evidence, even when the remote later becomes unavailable.
+                    await git(repo, ["fetch", "origin"]);
+                    await git(repo, ["remote", "set-url", "origin", `${repo}-unavailable.git`]);
                 }
                 await writeFile(join(repo, "README.md"), "staged user work\n");
                 await git(repo, ["add", "README.md"]);
@@ -112,7 +113,10 @@ for (const remote of [false, true]) {
                 );
                 for (const parent of [0, 1]) {
                     const large = await inspectWithProcessCount(repo, "origin/large", `epic-${parent}.md`);
-                    const ref = remote ? "refs/runwield/target" : "refs/heads/large";
+                    const ref = await git(repo, [
+                        "rev-parse",
+                        remote ? "refs/remotes/origin/large" : "refs/heads/large",
+                    ]);
                     const expected = Array.from({ length: largeCount }, (_, index) => index)
                         .filter((index) => index % 2 === parent)
                         .map((index) => ({
@@ -160,4 +164,98 @@ test("target inspection rejects a malformed full Unicode document instead of ret
     } finally {
         await rm(repo, { recursive: true, force: true });
     }
+});
+
+test("target inspection reports unavailable evidence without fetching remote-only branches", async () => {
+    const repo = await fixture.checkout();
+    const origin = `${repo}-origin.git`;
+    try {
+        await git(repo, ["clone", "--bare", repo, origin]);
+        await git(repo, ["remote", "add", "origin", origin]);
+        await git(repo, ["branch", "-D", "large"]);
+        const before = await projectSnapshot(repo);
+        await assertRejects(
+            () => inspectTargetBranchPlansByParent(repo, "large", "epic-0"),
+            TargetBranchSnapshotUnavailableError,
+            "Local target branch evidence is unavailable",
+        );
+        assertEquals(await projectSnapshot(repo), before);
+    } finally {
+        await rm(repo, { recursive: true, force: true });
+        await rm(origin, { recursive: true, force: true });
+    }
+});
+
+test("partial-clone passive object reads never fetch missing promised Plan blobs", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const source = await fixture.checkout();
+        const remote = `${source}-remote.git`;
+        const partial = `${source}-partial`;
+        const trace = `${source}-transport.log`;
+        const previous = process.env.GIT_TRACE;
+        try {
+            await git(source, ["clone", "--bare", source, remote]);
+            await git(remote, ["config", "uploadpack.allowFilter", "true"]);
+            await git(source, ["clone", "--filter=blob:none", "--no-checkout", `file://${remote}`, partial]);
+            const { captureForegroundProcess } = await import("../captured-process.ts");
+            const { findTargetBranchPlan, loadTargetPlan } = await import("./planning-worktree.ts");
+            const { readMissingExecutionPlan } = await import("./execution-worktree-rescue.ts");
+            const { readdir } = await import("node:fs/promises");
+            const commit = await git(partial, ["rev-parse", "HEAD"]);
+            const missing = await captureForegroundProcess("git", {
+                cwd: partial,
+                env: { GIT_NO_LAZY_FETCH: "1" },
+                args: ["cat-file", "-e", `${commit}:docs/plans/${childName(0)}.md`],
+            });
+            assertEquals(missing.success, false, "fixture must lack the promised Plan blob");
+            const { listPlans } = await import("../../plan-store.js");
+            await mkdir(join(partial, "docs/plans"), { recursive: true });
+            await writeFile(
+                join(partial, "docs/plans/epic.md"),
+                "---\nplanId: epic-id\nclassification: PROJECT\ntargetBranch: large\n---\n# Epic\n",
+            );
+            const packs = await readdir(join(partial, ".git/objects/pack"));
+            await writeFile(trace, "");
+            process.env.GIT_TRACE = trace;
+            await assertRejects(
+                () => inspectTargetBranchPlansByParent(partial, "small", "epic-0"),
+                TargetBranchSnapshotUnavailableError,
+            );
+            await assertRejects(
+                () => loadTargetPlan(partial, childName(0), commit),
+                TargetBranchSnapshotUnavailableError,
+            );
+            await assertRejects(
+                () => findTargetBranchPlan(partial, "large", childName(0)),
+                TargetBranchSnapshotUnavailableError,
+            );
+            await assertRejects(
+                () =>
+                    readMissingExecutionPlan(partial, {
+                        id: "missing",
+                        planId: "child-0",
+                        planName: childName(0),
+                        path: `${partial}-missing`,
+                        branch: "small",
+                        baseCommit: commit,
+                    }),
+                TargetBranchSnapshotUnavailableError,
+            );
+            const catalog = await listPlans(partial);
+            assertEquals(catalog.find((plan) => plan.name === "epic")?.readAvailability?.kind, "pending");
+            assertEquals(
+                catalog
+                    .find((plan) => plan.name === "epic")
+                    ?.readAvailability?.message?.includes("Local target branch evidence is unavailable"),
+                true,
+            );
+            assertEquals(await readdir(join(partial, ".git/objects/pack")), packs);
+            const transport = await readFile(trace, "utf8");
+            assertEquals(/fetch|upload-pack|fetch-pack|promisor-remote/.test(transport), false, transport);
+        } finally {
+            if (previous === undefined) delete process.env.GIT_TRACE;
+            else process.env.GIT_TRACE = previous;
+            for (const path of [source, remote, partial, trace]) await rm(path, { recursive: true, force: true });
+        }
+    });
 });

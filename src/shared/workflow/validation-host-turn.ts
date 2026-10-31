@@ -85,7 +85,6 @@ export async function continueHostTurnValidation(
     args: ContinueHostTurnValidationArgs,
 ): Promise<HostTurnValidationResult> {
     const source = await resolveWorkflowPlanLocation(args.projectRoot, args.planName, {
-        migrateRegistry: false,
         readOnly: true,
     });
     if (source.plan?.attrs.status === "verified" && source.plan.attrs.deliveryEvidence?.mode === "non_git_in_place") {
@@ -172,7 +171,6 @@ export async function continueHostTurnValidation(
     }
     if (result.kind === "verified") {
         const delivered = await resolveWorkflowPlanLocation(args.projectRoot, args.planName, {
-            migrateRegistry: false,
             readOnly: true,
         });
         return {
@@ -196,7 +194,7 @@ export async function continueHostTurnValidation(
 export async function reconcileConsumedHostResume(projectRoot: string, planName: string, resume: ValidationHostResume) {
     const { resolveWorkflowPlanLocation } = await import("./plan-location.ts");
     const { sameHostIdentity } = await import("./validation-host-contract.ts");
-    const source = await resolveWorkflowPlanLocation(projectRoot, planName, { migrateRegistry: false, readOnly: true });
+    const source = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     const checkpoint = source.plan?.attrs.validationCheckpoint;
     if (resume.kind === "recorder" && checkpoint?.hostRecorder) {
         const recorder = checkpoint.hostRecorder;

@@ -117,16 +117,13 @@ export async function handlePlanRecovery(
     // running it here made every recovery menu wait on unrelated Plans,
     // worktrees, journals, and branches.
     const recordedAttempt =
-        opts.recordedAttempt !== undefined
-            ? opts.recordedAttempt
-            : await resolveRecoveryWorktree(projectRoot, plan, { migrateRegistry: false });
+        opts.recordedAttempt !== undefined ? opts.recordedAttempt : await resolveRecoveryWorktree(projectRoot, plan);
     const missingCheckout = recordedAttempt?.path && !(await executionWorktreePathExists(recordedAttempt.path));
     try {
         // A lost checkout still needs the recovery menu. Do not recreate it or read the stale primary document.
         const { plan: refreshed } = missingCheckout
             ? { plan: null }
             : await resolveWorkflowPlanLocation(projectRoot, plan.planName, {
-                  migrateRegistry: false,
                   readOnly: true,
               });
         if (refreshed) {

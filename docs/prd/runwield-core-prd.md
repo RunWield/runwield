@@ -337,6 +337,19 @@ Listing, browsing, and inspecting it leave its bytes as they are. Deliberate `/l
 defaults and keeps the body and the file's original age. Loading an adopted Plan again keeps its lifecycle and
 decisions.
 
+**Requirement: Inspect Plans without preparing them.** Listing, indexing, browsing, body reads, and passive progress
+reads inspect existing local evidence. They do not change Plan or runtime files, reconcile ignore rules, assign IDs,
+fetch or clone Git data, change refs or worktrees, take writer locks, or schedule repair. Fresh Projects expose local
+documents without creating runtime storage. Ready reads retain registered document-worktree authority and locally
+available target snapshots; they do not replace current workflow facts with a stale primary copy. A registered
+document must belong to an attached Git worktree of the same Project before its bytes can supply authority.
+
+When adoption, controller preparation, or required local target evidence is missing, safe documents remain browseable
+with workflow details pending. Read availability is separate from Plan status and Front Matter. Unsafe or unreadable
+authority retains its specific diagnostic, not an authoritative empty result. Explicit save, selected or named
+`/load-plan`, and workflow actions perform required preparation and recheck authority before making decisions. See
+[Work protection](#work-protection) and [automatic recovery](#execution-validation-and-recovery).
+
 **Requirement: Generated Plans are easy to read.** Planner starts each section with its main point, keeps one idea per
 short paragraph, and uses lists for separate points. Implementation Steps and the Verification Plan stay exact. Planner
 can mark the few points a reader must not miss with a WARNING, NOTE, or TIP callout. Callouts are optional authoring
@@ -366,6 +379,16 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given a body edit during a metadata transition that fails, the latest body remains.
 - Given malformed lifecycle metadata, recovery repairs RunWield's own state and keeps the user's prose.
 - Given an adopted Plan, loading it again keeps its age, identity, and decisions.
+- Given a fresh Project, repeated listing and body reads show local documents without creating runtime storage or
+  changing `.gitignore`, Plan bytes, refs, or worktrees.
+- Given pending adoption or controller import, browsing shows safe documents and a workflow-details notice without
+  repair. A selected load prepares the Plan without requiring an earlier listing; a later read rechecks availability.
+- Given missing local target evidence, browsing reports pending workflow details rather than claiming no children or
+  fetching the target, including missing promised objects in a partial clone. Available target-only documents are read
+  directly from local Git objects without temporary files.
+- Given a registered document worktree, ready reads use its current document and controller facts; missing or unsafe
+  authority never authorizes fallback to stale primary workflow facts. An unattached directory or another repository
+  cannot authorize a document or action. Other healthy Plans remain available.
 - Given a new Plan from Planner, each section leads with its point, the key risk is easy to find, and every step and
   verification item is exact.
 - Given new child Plans, their filenames have no generated ordinal prefix; changing only `order` changes child menu
@@ -669,7 +692,17 @@ user-requested hold keeps the same work and its next step.
 registries, and Plan synchronization are RunWield's responsibility. RunWield diagnoses, reconciles, repairs, and
 continues automatically and out of the user's view. Detailed diagnostics stay available for deliberate support
 inspection. Automatic repair keeps user content, truthful validation, real permissions, and user decisions intact. It
-confirms the outcome of an uncertain external action before it repeats that action.
+confirms the outcome of an uncertain external action before it repeats that action. Repair belongs to the deliberate
+action or active workflow owner. Passive Plan inspection neither starts repair nor queues it for later; pending read
+availability does not abandon the workflow or require a separate Doctor ceremony.
+
+**Requirement: Separate saved delivery evidence from fresh publication proof.** Passive progress reads show applicable
+saved evidence without remote verification. A valid controller publication receipt can preserve established delivery
+after attempt cleanup. A receipt for another candidate, target, or live execution remains historical evidence, not
+current completion proof. Missing or inapplicable proof leaves publication unconfirmed; neither absence of an attempt nor
+a stale tracking ref proves completion. Reopening or a new execution invalidates prior completion evidence. Publication
+and recovery actions still obtain the fresh target proof required by
+[ADR-016](../adr/016-proof-bearing-publication-state-machine.md) before reporting new success or cleaning up work.
 
 **Requirement: Treat an unknown state as live.** Automatic repair keeps a lock, run, worktree, Session, or publication
 attempt when it cannot get a positive answer about that item. An empty, unreadable, timed-out, truncated, or unknown
@@ -688,6 +721,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 **Acceptance scenarios:**
 
+- Given passive progress reads and an unreachable upstream, no fetch or clone starts. Applicable saved completion
+  remains visible after attempt cleanup; absent or invalidated proof stays unconfirmed.
+- Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
+  availability cannot authorize execution, publication, or a lifecycle change.
 - Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
   other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
 - Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
@@ -2141,11 +2178,16 @@ project files, and verified cache. When the supervisor cannot confirm process ex
 
 **Scope and maturity:** Current baseline. Additional command and governance controls are open questions.
 
-**Requirement: Enter project runtime state safely.** Core enters project runtime state before normal project-local
-runtime reads, locks, or writes. RunWield 0.11 adopts eligible 0.10 state once, including unfinished publications and
-saved repairs. Unsafe layouts receive a retryable refusal with the reason and the safe paths, and all user work stays in
-place. Adoption is one-way; after it, use only the new version. Each entry sees newly tracked runtime paths, newly
-attached worktrees, and changed runtime files. See
+**Requirement: Enter project runtime state safely.** Passive Plan readers check runtime authority without migration,
+repair, writes, or writer-lock probes. Fresh Projects need no storage; unmigrated or interrupted authority leaves
+workflow details pending without combining old and new stores. Adopted authority remains readable when legacy recovery
+input returns. Path resolution alone is not permission to read runtime state.
+
+Deliberate actions enter runtime state before mutation locks or writes. RunWield 0.11 adopts eligible 0.10 state once,
+including unfinished publications and saved repairs. Unsafe layouts receive a retryable refusal with the reason and
+safe paths, and all user work stays in place. Adoption is one-way; after it, use only the new version. Each action entry
+rechecks changed runtime evidence independently of earlier reads. Nested inspection reuse ends with its operation;
+new requests see newly tracked runtime paths, attached worktrees, and changed files. See
 [ADR-017](../adr/017-project-runtime-state-under-wld-internal.md).
 
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
@@ -2181,7 +2223,14 @@ Open product questions:
   refs.
 - Given a long-running process, a newly staged secret or attached worktree is detected at the next entry.
 - Given a broad `.wld/` ignore rule, Core keeps it and reports what it hides.
-- Given eligible 0.10 state, `wld doctor` reports pending adoption read-only; Doctor repair adopts it once.
+- Given eligible 0.10 state, `wld plans doctor --check` reports pending adoption without writes or lock probes; Doctor repair
+  adopts it once.
+- Given an interrupted migration, passive inspection reports pending without joining partly moved stores or resuming
+  the journal. The owning action resumes guarded migration.
+- Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
+  Plan performs required recovery and preserves current decisions.
+- Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific
+  diagnostic rather than reporting an authoritative empty catalog.
 - Given unfinished 0.10 publication, adoption keeps the publication copies and repairs, and publication resumes.
 - Given an unsafe layout, Doctor keeps all named paths and explains the conflict.
 - Given files recreated by an older RunWield process, selecting a Plan reconciles them while current progress and

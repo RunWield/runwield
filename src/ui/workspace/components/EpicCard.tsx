@@ -1,3 +1,4 @@
+import type { PlanReadAvailability } from "../../../plan-store.js";
 import { detailHref } from "./PlanCard.tsx";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
@@ -33,6 +34,7 @@ export interface ProjectCardData {
     planName: string;
     status: string;
     attrs?: Pick<PlanFrontMatter, "type">;
+    readAvailability?: PlanReadAvailability;
     summary?: string;
     heldFromStatus?: string;
     heldAt?: string;
@@ -60,18 +62,31 @@ function holdMetadata(plan: ProjectCardData) {
 
 export function EpicCard({ epic, url, draggableCard = false }: ProjectCardProps) {
     const label = epic.attrs?.type === "sequence" ? "Sequence" : "Epic";
-    const progress: ProjectCardProgress = epic.childProgress ||
-        { verified: 0, userVerified: 0, total: 0, active: 0, remaining: 0, failed: 0, byStatus: {} };
+    const progress: ProjectCardProgress = epic.childProgress || {
+        verified: 0,
+        userVerified: 0,
+        total: 0,
+        active: 0,
+        remaining: 0,
+        failed: 0,
+        byStatus: {},
+    };
     const held = epic.childHealth?.held?.length || 0;
     const failed = epic.childHealth?.failed?.length || progress.failed || 0;
     const blocked = epic.childHealth?.blocked?.length || 0;
     const missing = epic.childHealth?.missingDependencies?.length || 0;
     const implemented = progress.byStatus?.implemented || 0;
     const href = detailHref(epic, url);
-    const allowedTargetStatuses =
-        (epic.actions?.dnd?.allowedTargetStatuses || epic.actions?.allowedManualTargetStatuses || [])
-            .join(" ");
-    const canDrag = draggableCard && Boolean(allowedTargetStatuses);
+    const allowedTargetStatuses = (
+        epic.actions?.dnd?.allowedTargetStatuses ||
+        epic.actions?.allowedManualTargetStatuses ||
+        []
+    ).join(" ");
+    const canDrag =
+        draggableCard &&
+        Boolean(epic.planId) &&
+        epic.readAvailability?.kind !== "pending" &&
+        Boolean(allowedTargetStatuses);
     return (
         <RunWieldCard
             className="epic-card clickable-card"
@@ -90,23 +105,21 @@ export function EpicCard({ epic, url, draggableCard = false }: ProjectCardProps)
                     <p className="card-kicker">{label}</p>
                     <span className="card-title">{epic.planName}</span>
                 </div>
-                {canDrag
-                    ? (
-                        <span className="drag-grip" aria-hidden="true" title="Drag to move status">
-                            ⋮⋮
-                        </span>
-                    )
-                    : null}
-            </div>
-            {canDrag
-                ? (
-                    <span id={`drag-help-${epic.planId}`} className="sr-only">
-                        Drag this {label} Card to an allowed status column:{" "}
-                        {allowedTargetStatuses.replaceAll(" ", ", ")}.
+                {canDrag ? (
+                    <span className="drag-grip" aria-hidden="true" title="Drag to move status">
+                        ⋮⋮
                     </span>
-                )
-                : null}
+                ) : null}
+            </div>
+            {canDrag ? (
+                <span id={`drag-help-${epic.planId}`} className="sr-only">
+                    Drag this {label} Card to an allowed status column: {allowedTargetStatuses.replaceAll(" ", ", ")}.
+                </span>
+            ) : null}
             <p>{epic.summary || `No ${label} summary provided.`}</p>
+            {epic.readAvailability?.kind === "pending" ? (
+                <p className="notice muted">{epic.readAvailability.message}</p>
+            ) : null}
             {epic.status === "on_hold" ? <p className="hold-summary">{holdMetadata(epic)}</p> : null}
             <div className="progress-meter" aria-label={`${label} child progress`}>
                 <span>

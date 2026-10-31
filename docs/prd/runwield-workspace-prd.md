@@ -189,6 +189,13 @@ ordering follow [Core Plan authoring](runwield-core-prd.md#plan-authoring-and-ex
 Front Matter `order`, not filenames. Status columns remain separate and preserve child order within each column.
 Top-level board and sidebar priorities and dashboard activity-date sorting remain unchanged.
 
+**Requirement: Browse without hidden Project changes.** Board and detail reads follow
+[Core passive Plan inspection](runwield-core-prd.md#plan-authoring-and-external-adoption). Safe local documents remain
+visible when workflow details are pending, including ID-less drafts through name-based navigation. The existing notice
+surfaces show read availability separately from lifecycle status; pending adds no board column and grants no lifecycle
+action or body-edit authority. Explicit saves, selected Plan loads, and workflow actions prepare and recheck required
+authority. Refresh checks availability again after preparation. Browsing does not start or schedule that work.
+
 **Requirement: A clean board layout.** The local board shows its W. logo and heading; the board embedded in a Project
 shows only the board. View tabs and search share the header row, with search after the tabs. Columns use separators,
 and an empty column shows one consistent empty message. Drag-and-drop feedback appears during the interaction.
@@ -202,6 +209,11 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 - When a Plan or Epic is renamed, its existing links resolve and child progress stays visible.
 - Given children with mixed legacy numbered and descriptive names, changing only their `order` fields changes child
   navigation order without changing their links or status columns.
+- Given an ID-less local draft or pending workflow preparation, repeated board and detail reads leave Project files,
+  ignore rules, locks, refs, and worktrees unchanged. The draft opens by name without identity assignment.
+- Given pending workflow details, the board and detail show a notice without a new lifecycle column or enabled
+  workflow controls. The detail notice remains visible in the document pane when the workflow sidebar is closed. A
+  deliberate selected load prepares the Plan; refresh clears the notice when evidence is ready.
 
 ### Shared Plan collaboration
 
@@ -282,6 +294,13 @@ successful retry replaces them. When a Project cannot be read, the Dashboard say
 to Project settings. Focus stays on a refreshed row, or moves to its section heading when the row is gone. The
 Dashboard refreshes automatically while visible.
 
+**Requirement: Observe workflow evidence without repair.** Dashboard and progress reads inspect checked local evidence
+without source writes, lock probes, fetch, clone, or queued repair. Pending Plan facts are not ready-action or completion
+signals. The Project diagnostic links to Plans for deliberate selection while healthy rows remain available. Progress
+shows a pending/degraded notice when workflow authority is unavailable. It displays applicable saved delivery evidence,
+not new remote proof; missing proof stays unconfirmed. Core owns
+[publication proof and automatic recovery](runwield-core-prd.md#execution-validation-and-recovery).
+
 **Acceptance scenarios:**
 
 - Given two Projects with blocked, ready, finished, and running work, the owner sees what needs attention without
@@ -295,6 +314,11 @@ Dashboard refreshes automatically while visible.
 - Given more than five items, the five newest appear; reversing the sort and expanding survive refresh.
 - Given a Project with thousands of archived Sessions, the Dashboard and sidebar open promptly and reflect newly
   completed work on refresh.
+- Given pending Plan facts in one Project, the Dashboard reports incomplete workflow information and links to Plans,
+  without treating those facts as actionable or hiding healthy Projects' rows. Progress shows the availability notice.
+- Given attempt cleanup and an applicable saved publication receipt, progress retains established delivery without
+  contacting the remote. Without applicable proof, it reports publication as unconfirmed, not completed or settled,
+  even if saved document metadata says verified. It performs no repair.
 
 ### Personal usage and outcomes
 
@@ -1002,6 +1026,13 @@ Before showing or opening a result, Workspace checks the Project and the current
 leaves other Projects' results and other Workspace views working. RunWield's own writes appear in search promptly, and
 external edits appear after a background scan. Search filters leave Project settings unchanged.
 
+**Requirement: Index knowledge without preparing its sources.** Search reads existing checked authority and follows
+[Core passive Plan inspection](runwield-core-prd.md#plan-authoring-and-external-adoption). It may update its own derived
+index and status, but not Plan or runtime sources. ID-less Plans stay out of durable-ID search without adoption.
+Pending canonical Plan authority prevents uncertain Plan facts from being indexed or returned as current evidence;
+a primary copy is not a fallback. The affected Project keeps a safe status message, and healthy Projects keep results.
+Each query reuses its catalog only within that query and checks current source eligibility before returning results.
+
 Work Record results show the summary, Project, source links, completion confidence, and notices, so the owner can tell
 RunWield verification from user attestation, closure without verification, and done-enough Epics. A completed PRD,
 old Plan, or Work Record is history; it is not proof that a current journey works. Record generation and confidence are
@@ -1016,6 +1047,10 @@ owned by [Core Work records](runwield-core-prd.md#work-records).
 - Given a document added during indexing, search finds it when its requested refresh completes.
 - When one Project cannot be indexed, healthy results and the failed Project's status stay visible.
 - Given a Plan without an ID, search skips it, leaves its file as it is, and returns the Project's other results.
+- Given pending canonical Plan authority, indexing and query-time source checks withhold uncertain Plan facts, show
+  the affected Project's status, and retain healthy Projects' results without migration, fetch, or repair scheduling.
+- Given repeated indexing and searches, only the search service's derived index and status may change; Plan bytes,
+  runtime sources, ignore rules, writer-lock paths, refs, and worktrees stay unchanged.
 - When the owner opens a Work Record, the shared reader shows current content and returns to Search.
 - When an Agent retrieves planning knowledge, it receives durable artifacts; Session entry text stays owner-only.
 

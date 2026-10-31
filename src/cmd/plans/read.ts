@@ -4,14 +4,22 @@
  */
 
 import { CLI_BIN, getCwd, PLANS_DIR_NAME } from "../../constants.js";
-import { findPlanById, listArchivedPlans, loadArchivedPlan, loadPlan } from "../../plan-store.js";
+import {
+    findPlanById,
+    listArchivedPlans,
+    loadArchivedPlan,
+    PlanNotFoundError,
+    type PlanReadAvailability,
+} from "../../plan-store.js";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
+import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
 
 interface ResolvedPlanReadArtifact {
     title: string;
     path: string;
     markdown: string;
+    readAvailability?: PlanReadAvailability;
 }
 
 async function openPlanReadSurface(
@@ -25,6 +33,10 @@ async function openPlanReadSurface(
         artifactKind: "plan",
         title: artifact.title,
         path: artifact.path,
+        notices:
+            artifact.readAvailability?.kind === "pending"
+                ? [artifact.readAvailability.message || "Workflow details pending."]
+                : [],
         browser: noOpen ? NO_OPEN_BROWSER_PORT : SYSTEM_BROWSER_PORT,
     });
     console.log(`[RunWield] Plan read-only view: ${server.url}`);
@@ -36,10 +48,7 @@ async function openPlanReadSurface(
     try {
         await server.waitForDecision();
     } finally {
-        await Promise.race([
-            Promise.resolve(server.stop()),
-            new Promise<void>((resolve) => setTimeout(resolve, 1000)),
-        ]);
+        await Promise.race([Promise.resolve(server.stop()), new Promise<void>((resolve) => setTimeout(resolve, 1000))]);
     }
 }
 
@@ -62,22 +71,30 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
     if (!target) throw new Error("Missing Plan name or id.");
     if (targets.length > 1) throw new Error(`Unexpected read argument: ${targets[1]}`);
 
-    const active = await loadPlan(getCwd(), target).catch(() => null);
+    const active = target.replaceAll("\\", "/").startsWith("archived/")
+        ? null
+        : (await resolveWorkflowPlanLocation(getCwd(), target, { readOnly: true })).plan;
     if (active && !target.replaceAll("\\", "/").startsWith("archived/")) {
         await openPlanReadSurface(
-            { title: target.replace(/\.md$/, ""), path: active.path, markdown: active.markdown },
+            {
+                title: target.replace(/\.md$/, ""),
+                path: active.path,
+                markdown: active.markdown,
+                readAvailability: active.readAvailability,
+            },
             { noOpen },
         );
         return;
     }
 
-    const archived = await loadArchivedPlan(getCwd(), target).catch(() => null);
+    const archived = await loadArchivedPlan(getCwd(), target);
     if (archived) {
         await openPlanReadSurface(
             {
                 title: `${PLANS_DIR_NAME}/archived/${archived.name}.md`,
                 path: archived.path,
                 markdown: archived.markdown,
+                readAvailability: archived.readAvailability,
             },
             { noOpen },
         );
@@ -96,6 +113,7 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
                     title: `${PLANS_DIR_NAME}/archived/${loaded.name}.md`,
                     path: loaded.path,
                     markdown: loaded.markdown,
+                    readAvailability: loaded.readAvailability,
                 },
                 { noOpen },
             );
@@ -106,12 +124,18 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
     try {
         const activeById = await findPlanById(getCwd(), target);
         await openPlanReadSurface(
-            { title: activeById.planName, path: activeById.path, markdown: activeById.markdown },
+            {
+                title: activeById.planName,
+                path: activeById.path,
+                markdown: activeById.markdown,
+                readAvailability: activeById.readAvailability,
+            },
             { noOpen },
         );
         return;
-    } catch {
-        // Continue to the user-facing not-found error.
+    } catch (error) {
+        if (!(error instanceof PlanNotFoundError)) throw error;
+        // Only ordinary absence may continue to the user-facing not-found error.
     }
 
     throw new Error(`Plan not found: ${target}`);

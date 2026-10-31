@@ -1,12 +1,20 @@
 import process from "node:process";
-import { rm as fsRm } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { getCwd } from "../../constants.js";
+import { join } from "node:path";
+import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
+import { getCwd, getRunWieldRuntimeDir } from "../../constants.js";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 type PlanSeedAttrs = NonNullable<Parameters<typeof savePlan>[3]>;
@@ -92,16 +100,18 @@ plansTest("plans reports an empty real Plan store", async () => {
 });
 
 plansTest("plans lists a standalone Planned Change from the fixture store", async ({ projectRoot }) => {
-    await seedPlans(projectRoot, [{
-        name: "standalone-feature",
-        attrs: {
-            status: "approved",
-            classification: "PLANNED_CHANGE",
-            complexity: "LOW",
-            summary: "Standalone slice",
-            affectedPaths: [],
+    await seedPlans(projectRoot, [
+        {
+            name: "standalone-feature",
+            attrs: {
+                status: "approved",
+                classification: "PLANNED_CHANGE",
+                complexity: "LOW",
+                summary: "Standalone slice",
+                affectedPaths: [],
+            },
         },
-    }]);
+    ]);
 
     const output = await captureOutput(() => runPlansCommand([]));
     assertStringIncludes(output.join("\n"), "Standalone plans:");
@@ -283,24 +293,35 @@ plansTest(
         const logs = await captureOutput(() => runPlansCommand([]));
         const onHoldIndex = logs.findIndex((message) => message.includes("On Hold:"));
         assertEquals(onHoldIndex >= 0, true);
-        assertEquals(logs.some((message) => message.includes("1 on hold")), true);
-        assertEquals(logs.slice(onHoldIndex).some((message) => message.includes("held-epic/01-child")), true);
-        assertEquals(logs.some((message) => message.includes("Reason: priority shifted")), true);
+        assertEquals(
+            logs.some((message) => message.includes("1 on hold")),
+            true,
+        );
+        assertEquals(
+            logs.slice(onHoldIndex).some((message) => message.includes("held-epic/01-child")),
+            true,
+        );
+        assertEquals(
+            logs.some((message) => message.includes("Reason: priority shifted")),
+            true,
+        );
     },
 );
 
 plansTest("plans archive executes the real archive transaction", async ({ projectRoot }) => {
-    await seedPlans(projectRoot, [{
-        name: "completed",
-        attrs: {
-            status: "verified",
-            classification: "PLANNED_CHANGE",
-            complexity: "LOW",
-            summary: "Completed",
-            affectedPaths: [],
-            planId: "completed-plan-id",
+    await seedPlans(projectRoot, [
+        {
+            name: "completed",
+            attrs: {
+                status: "verified",
+                classification: "PLANNED_CHANGE",
+                complexity: "LOW",
+                summary: "Completed",
+                affectedPaths: [],
+                planId: "completed-plan-id",
+            },
         },
-    }]);
+    ]);
 
     await captureOutput(() => runPlansCommand(["archive", "completed", "--reason", "shipped"]));
 
@@ -309,16 +330,18 @@ plansTest("plans archive executes the real archive transaction", async ({ projec
 });
 
 plansTest("plans read serves real fixture markdown through the artifact surface", async ({ projectRoot }) => {
-    await seedPlans(projectRoot, [{
-        name: "read-me",
-        attrs: {
-            status: "draft",
-            classification: "PLANNED_CHANGE",
-            complexity: "LOW",
-            summary: "Readable",
-            affectedPaths: [],
+    await seedPlans(projectRoot, [
+        {
+            name: "read-me",
+            attrs: {
+                status: "draft",
+                classification: "PLANNED_CHANGE",
+                complexity: "LOW",
+                summary: "Readable",
+                affectedPaths: [],
+            },
         },
-    }]);
+    ]);
 
     const html = await runReadAndClose(["read", "read-me", "--no-open"]);
     assertStringIncludes(html, "artifact-read");
@@ -352,3 +375,30 @@ plansTest("plans help uses the registered command help", async () => {
     assertStringIncludes(output.join("\n"), "Usage (plans):");
     assertStringIncludes(output.join("\n"), "wld plans archive");
 });
+
+plansTest(
+    "Plans list and read dispatch preserve pending sources and show the workflow notice",
+    async ({ projectRoot }) => {
+        await fsMkdir(join(projectRoot, "docs/plans"), { recursive: true });
+        const planPath = join(projectRoot, "docs/plans/pending.md");
+        const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Pending source\n";
+        await fsWriteFile(planPath, markdown);
+        await fsWriteFile(join(projectRoot, ".gitignore"), "user-owned-rule\n");
+        const legacy = join(getRunWieldRuntimeDir(projectRoot), "debug");
+        await fsMkdir(legacy, { recursive: true });
+        await fsWriteFile(join(legacy, "source.txt"), "Legacy input\n");
+        const output = (await captureOutput(() => runPlansCommand([]))).join("\n");
+        assertStringIncludes(output, "pending");
+        assertStringIncludes(output, "Workflow details pending. Load this Plan to prepare its workflow.");
+        assertStringIncludes(await runReadAndClose(["read", "--no-open", "pending"]), "Pending source");
+        assertEquals(await fsReadFile(planPath, "utf8"), markdown);
+        assertEquals(await fsReadFile(join(projectRoot, ".gitignore"), "utf8"), "user-owned-rule\n");
+        assertEquals(await fsReadFile(join(legacy, "source.txt"), "utf8"), "Legacy input\n");
+        assertEquals(
+            await fsStat(resolveProjectRuntimeLayout(projectRoot).primary.layoutMarkerPath)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
+    },
+);

@@ -8,6 +8,7 @@ import {
     mkdir as fsMkdir,
     readdir as fsReaddir,
     readFile as fsReadFile,
+    realpath as fsRealpath,
     rename as fsRename,
     rm as fsRm,
 } from "node:fs/promises";
@@ -17,6 +18,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
     enterProjectRuntime,
+    checkedProjectRuntimeLayout,
     invalidateProjectRuntimeReadScope,
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
@@ -162,17 +164,13 @@ export async function readControllerRecordAtPath(
 }
 
 export async function readControllerRecord(cwd: string, identity: WorkflowIdentity): Promise<ControllerRecord | null> {
-    await enterProjectRuntime(selectedRoot(cwd));
-    return await readControllerRecordAtPath(
-        resolveProjectRuntimeLayout(projectRoot(cwd)).primary.controllerPlansDir,
-        identity,
-    );
+    const layout = await checkedProjectRuntimeLayout(selectedRoot(cwd));
+    return await readControllerRecordAtPath(layout.primary.controllerPlansDir, identity);
 }
 
 /** Resolve retained delivery evidence when its primary Plan document is absent. */
 export async function findRecordingControllerByName(cwd: string, planName: string): Promise<ControllerRecord | null> {
-    await enterProjectRuntime(selectedRoot(cwd));
-    const directory = resolveProjectRuntimeLayout(projectRoot(cwd)).primary.controllerPlansDir;
+    const directory = (await checkedProjectRuntimeLayout(selectedRoot(cwd))).primary.controllerPlansDir;
     let match: ControllerRecord | null = null;
     try {
         for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
@@ -341,14 +339,84 @@ async function isRolledBackAnonymousCreation(cwd: string, entry: WorktreeRegistr
     }
     const head = await captureForegroundProcess("git", {
         cwd,
+        env: { GIT_NO_LAZY_FETCH: "1" },
         args: ["rev-parse", "--verify", `refs/heads/${entry.branch}`],
     });
     if (head.code !== 0 || new TextDecoder().decode(head.stdout).trim() !== entry.baseCommit) return false;
     const document = await captureForegroundProcess("git", {
         cwd,
+        env: { GIT_NO_LAZY_FETCH: "1" },
         args: ["show", `${entry.baseCommit}:docs/plans/${entry.planName}.md`],
     });
     return document.code === 0 && !parsePlanFrontMatter(new TextDecoder().decode(document.stdout)).attrs.planId;
+}
+
+export type ControllerDocumentWorktree = WorktreeRegistryEntry & { documentUnavailable?: string };
+
+export class RegisteredPlanDocumentUnavailableError extends Error {
+    readonly kind = "registered_plan_document_unavailable";
+    constructor(entry: ControllerDocumentWorktree) {
+        super(
+            `Registered Plan ${entry.planName} is unavailable at ${entry.path}: ${entry.documentUnavailable}. The primary copy will not be used.`,
+        );
+        this.name = "RegisteredPlanDocumentUnavailableError";
+    }
+}
+
+export function assertControllerDocumentAvailable(entry: ControllerDocumentWorktree): void {
+    if (entry.documentUnavailable) throw new RegisteredPlanDocumentUnavailableError(entry);
+}
+
+/** Validate registry authority against this project's attached worktrees before reading document bytes. */
+export async function inspectControllerDocumentWorktrees(
+    cwd: string,
+    entries: WorktreeRegistryEntry[],
+): Promise<ControllerDocumentWorktree[]> {
+    if (!entries.length) return [];
+    const output = await captureForegroundProcess("git", {
+        cwd: projectRoot(cwd),
+        env: { GIT_NO_LAZY_FETCH: "1" },
+        args: ["worktree", "list", "--porcelain", "-z"],
+    });
+    const attached = new Set<string>();
+    if (output.success) {
+        for (const field of new TextDecoder().decode(output.stdout).split("\0")) {
+            if (!field.startsWith("worktree ")) continue;
+            try {
+                attached.add(await fsRealpath(field.slice("worktree ".length)));
+            } catch {
+                /* Missing checkout. */
+            }
+        }
+    }
+    return await Promise.all(
+        entries.map(async (entry) => {
+            try {
+                // Check every document path component, not only the checkout root.
+                for (const planPath of [`${entry.planName}.md`, `archived/${entry.planName}.md`]) {
+                    let component = entry.path;
+                    for (const segment of ["", "docs", "plans", ...planPath.split("/")]) {
+                        if (segment) component = join(component, segment);
+                        const stat = await fsLstat(component).catch((error) => {
+                            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+                            throw error;
+                        });
+                        if (stat?.isSymbolicLink())
+                            return { ...entry, documentUnavailable: "the document path uses a symlink" };
+                    }
+                }
+                const canonical = await fsRealpath(entry.path);
+                return attached.has(canonical)
+                    ? entry
+                    : {
+                          ...entry,
+                          documentUnavailable: "the directory is not an attached Git worktree of this project",
+                      };
+            } catch (error) {
+                return { ...entry, documentUnavailable: error instanceof Error ? error.message : String(error) };
+            }
+        }),
+    );
 }
 
 /** Document candidates include reopened Plans, but never expose retired attempt IDs as live. */
@@ -369,7 +437,7 @@ export async function listControllerDocumentWorktrees(cwd: string) {
             live.push(entry);
             selected.add(entry.planName);
         }
-        return live;
+        return await inspectControllerDocumentWorktrees(cwd, live);
     });
 }
 
@@ -381,7 +449,7 @@ export async function inspectControllerView(
     identity: WorkflowIdentity,
     legacy: WorkflowControllerState & WorkflowWorktreeContext,
 ) {
-    const layout = resolveProjectRuntimeLayout(projectRoot(cwd));
+    const layout = await checkedProjectRuntimeLayout(cwd);
     const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
     const candidates = registry.readError
         ? []
@@ -412,17 +480,6 @@ export async function inspectControllerView(
         !record &&
         Boolean(mayImport && (Object.values(legacyState).some((value) => value != null) || legacy.worktreeId));
     if (importsLegacy) pendingRepairs.push("import_legacy_state");
-    const recovery =
-        importsLegacy && !attempt && legacy.worktreeId
-            ? {
-                  worktreeId: legacy.worktreeId,
-                  worktreePath: legacy.worktreePath,
-                  worktreeBranch: legacy.worktreeBranch,
-                  worktreeBaseBranch: legacy.worktreeBaseBranch,
-                  worktreeStatus: legacy.worktreeStatus,
-                  executionBaselineTree: legacy.executionBaselineTree,
-              }
-            : undefined;
     const worktree: WorkflowWorktreeContext =
         documentEntry && documentEntry.status !== "abandoned"
             ? {
@@ -430,6 +487,7 @@ export async function inspectControllerView(
                   worktreePath: documentEntry.path,
                   worktreeBranch: documentEntry.branch,
                   worktreeBaseBranch: documentEntry.baseBranch,
+                  worktreeBaseCommit: documentEntry.baseCommit,
                   worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
                   executionBaselineTree:
                       documentEntry.status === "planning"
@@ -440,10 +498,10 @@ export async function inspectControllerView(
               ? { worktreeStatus: "abandoned" }
               : lookup.kind === "uncertain"
                 ? {}
-                : record?.recovery || recovery || {};
+                : record?.recovery || {};
     return {
         state: {
-            ...(record?.state || (importsLegacy ? legacyState : {})),
+            ...(record?.state || {}),
             ...(attempt && attempt.status !== "abandoned" ? { executionMode: "worktree" as const } : {}),
             ...worktree,
         },
@@ -452,17 +510,16 @@ export async function inspectControllerView(
     };
 }
 
-export async function loadControllerView(
+export async function prepareControllerView(
     cwd: string,
     identity: WorkflowIdentity,
     legacy: WorkflowControllerState & WorkflowWorktreeContext,
 ) {
+    await enterProjectRuntime(cwd);
     return await withProjectRuntimeReadScope(async () => {
         const lookup = await inspectControllerWorktree(cwd, identity);
         const liveEntry = lookup.kind === "live" ? lookup.entry : null;
         const attempt = liveEntry?.status === "planning" ? null : liveEntry;
-        const documentEntry =
-            liveEntry?.status === "planning" ? null : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
         let record = await readControllerRecord(cwd, identity);
         if ((attempt || lookup.kind === "retired") && record?.recovery) {
             // Once the registry owns the attempt, old import hints are finished.
@@ -496,33 +553,6 @@ export async function loadControllerView(
                 });
             }
         }
-        const state = record?.state || {};
-        const worktree: WorkflowWorktreeContext =
-            documentEntry && documentEntry.status !== "abandoned"
-                ? {
-                      worktreeId: documentEntry.id,
-                      worktreePath: documentEntry.path,
-                      worktreeBranch: documentEntry.branch,
-                      worktreeBaseBranch: documentEntry.baseBranch,
-                      worktreeBaseCommit: documentEntry.baseCommit,
-                      worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
-                      executionBaselineTree:
-                          documentEntry.status === "planning"
-                              ? undefined
-                              : documentEntry.executionBaselineTree || documentEntry.baseTree,
-                  }
-                : lookup.kind === "retired"
-                  ? { worktreeStatus: "abandoned" }
-                  : lookup.kind === "uncertain"
-                    ? {}
-                    : record?.recovery || {};
-        return {
-            state: {
-                ...state,
-                ...(attempt && attempt.status !== "abandoned" ? { executionMode: "worktree" as const } : {}),
-                ...worktree,
-            },
-            revision: record?.revision || 0,
-        };
+        return await inspectControllerView(cwd, identity, legacy);
     });
 }

@@ -1,3 +1,4 @@
+import { preparePlanDependencies } from "../../shared/workflow/plan-preparation.ts";
 /**
  * @module cmd/load-plan/plan-epic-children
  * Reading an Epic's child Plans: counting, labelling, and gating on them.
@@ -266,6 +267,7 @@ export async function confirmChildFeatureDependencies(
     const dependencies = Array.isArray(plan.attrs.dependencies) ? plan.attrs.dependencies : [];
     if (dependencies.length === 0) return true;
 
+    await preparePlanDependencies(projectRoot, plan.attrs.parentPlan);
     const dependencyStates = await resolveSiblingChildPlanDependencies(
         projectRoot,
         plan.attrs.parentPlan,

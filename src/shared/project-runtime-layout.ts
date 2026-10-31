@@ -309,37 +309,122 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
     };
 }
 
-/** Inspect adoption with migration's exact preflight policy, without writes or locks. */
-export async function inspectProjectRuntimeLayout(
-    selectedCheckoutRoot: string,
-): Promise<ProjectRuntimeLayoutInspection> {
-    const layout = resolveProjectRuntimeLayout(selectedCheckoutRoot);
-    const primaryCheckoutRoot = await canonicalExistingRoot(layout.primary.checkoutRoot);
-    const earlySymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [layout.selected.checkoutRoot]);
-    if (earlySymlink.length > 0) {
-        return block(
-            "symlink",
-            earlySymlink,
-            "A runtime authority uses a symlink. Inspection stopped before reading it.",
-        );
+export interface ProjectRuntimeReadAccess {
+    kind: "ready" | "fresh" | "pending";
+    layout: ProjectRuntimeLayout;
+}
+
+export type ProjectRuntimeReadInspection = ProjectRuntimeReadAccess | ProjectRuntimeMigrationBlockedResult;
+
+export const WORKFLOW_DETAILS_PENDING = "Workflow details pending. Load this Plan to prepare its workflow.";
+
+export class ProjectRuntimeReadPendingError extends Error {
+    constructor() {
+        super(WORKFLOW_DETAILS_PENDING);
+        this.name = "ProjectRuntimeReadPendingError";
     }
+}
+
+/** Check local authority. Never enter migration, probe writer locks, or recover legacy input. */
+export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRuntimeReadInspection> {
+    const scope = runtimeEntryScope.getStore();
+    if (!scope?.active) return inspectProjectRuntimeReadAccessUncached(root);
+    const key = resolve(root);
+    const previous = scope.inspections.get(key);
+    if (previous) return previous;
+    const result = inspectProjectRuntimeReadAccessUncached(key);
+    scope.inspections.set(key, result);
+    void result.catch(() => scope.inspections.delete(key));
+    return result;
+}
+
+async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<ProjectRuntimeReadInspection> {
+    const layout = resolveProjectRuntimeLayout(root);
+    const primary = await canonicalExistingRoot(layout.primary.checkoutRoot);
+    const symlinks = await findSymlinkBlocker(layout, primary, [layout.selected.checkoutRoot]);
+    if (symlinks.length)
+        return block("symlink", symlinks, "A runtime authority uses a symlink. Inspection stopped before reading it.");
     const marker = await readLayoutMarker(layout);
     if (isBlocked(marker)) return marker;
-    const inspected = await preflight(layout, primaryCheckoutRoot, marker.marker);
-    if (isBlocked(inspected)) return inspected;
-    if (marker.marker && (await completeMarkerNeedsNoWork(layout, marker.marker, inspected))) {
+    const markerCheck = validateMarkerRoots(layout, primary, marker.marker);
+    if (markerCheck) return markerCheck;
+    const journal = await readJournal(layout.primary.layoutMigrationJournalPath);
+    if (isBlocked(journal)) return journal;
+    if (!marker.marker || journal.journal) {
+        // Partly moved stores are not independent authorities. Preflight checks security,
+        // but deliberately does not test whether an inode lock can be acquired.
+        const checked = await preflight(layout, primary, marker.marker, { passive: true });
+        if (isBlocked(checked)) return checked;
+        const fresh =
+            !marker.marker &&
+            !journal.journal &&
+            checked.operations.length === 0 &&
+            !(await lstatOrNull(layout.primary.layoutMigrationLockPath));
+        return { kind: fresh ? "fresh" : "pending", layout };
+    }
+    const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
+    if (
+        registry.readError ||
+        registry.integrityIssues.some((issue) =>
+            ["malformed_registry", "unsupported_schema_version"].includes(issue.kind),
+        )
+    ) {
+        return block(
+            "malformed_registry",
+            [layout.primary.worktreeRegistryPath],
+            registry.readError?.message || registry.integrityIssues[0].message,
+        );
+    }
+    const worktrees = await listGitWorktrees(primary);
+    if (isBlocked(worktrees)) return worktrees;
+    const selected = await resolveSelectedRoots(primary, layout.selected.checkoutRoot, [], worktrees.worktrees);
+    if (isBlocked(selected)) return selected;
+    const selectedSymlinks = await findSymlinkBlocker(layout, primary, selected.roots);
+    if (selectedSymlinks.length) return block("symlink", selectedSymlinks, "A runtime authority uses a symlink.");
+    const tracked = await findTrackedRuntimePaths(primary, selected.roots);
+    if (isBlocked(tracked)) return tracked;
+    if (tracked.secretPaths.length)
+        return block("tracked_secret", tracked.secretPaths, "A project collaboration secret is tracked by Git.");
+    if (tracked.runtimePaths.length)
+        return block("tracked_runtime", tracked.runtimePaths, "RunWield runtime paths are tracked or staged by Git.");
+    const unadoptedOperations = await buildOperations(
+        primary,
+        selected.roots.filter((selectedRoot) => !marker.marker!.adoptedSelectedCheckoutRoots.includes(selectedRoot)),
+        [],
+        marker.marker,
+    );
+    const pending =
+        unadoptedOperations.some((operation) => operation.action === "rename") ||
+        Boolean(await lstatOrNull(layout.primary.layoutMigrationLockPath));
+    return { kind: pending ? "pending" : "ready", layout };
+}
+
+/** Exact-path readers use this check; path resolution alone grants no access. */
+export async function checkedProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayout> {
+    const access = await inspectProjectRuntimeReadAccess(root);
+    if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
+    if (access.kind === "pending") throw new ProjectRuntimeReadPendingError();
+    return access.layout;
+}
+
+/** Doctor inspection shares passive security checks, not mutation admission. */
+export async function inspectProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayoutInspection> {
+    const access = await inspectProjectRuntimeReadAccess(root);
+    if (access.kind === "blocked") return access;
+    const marker = await readLayoutMarker(access.layout);
+    if (isBlocked(marker)) return marker;
+    if (access.kind === "ready" && marker.marker)
         return {
             kind: "adopted",
-            layout,
+            layout: access.layout,
             adoptedSelectedCheckoutRoots: marker.marker.adoptedSelectedCheckoutRoots,
         };
-    }
-    return { kind: "pending", layout, selectedCheckoutRoots: inspected.selectedCheckoutRoots };
+    return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
 }
 
 interface RuntimeReadScope {
     active: boolean;
-    layouts: Map<string, Promise<ProjectRuntimeLayout>>;
+    inspections: Map<string, Promise<ProjectRuntimeReadInspection>>;
     /** Symlinks under each authority root, walked once per read like each checkout's entry. */
     symlinkWalks: Map<string, Promise<string[]>>;
 }
@@ -352,14 +437,14 @@ const reportedGitignoreWarnings = new Map<string, Set<string>>();
 /** Verify each checkout once during a bounded read; retain no result across refreshes. */
 export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Promise<T> {
     if (runtimeEntryScope.getStore()?.active) return await read();
-    const scope: RuntimeReadScope = { active: true, layouts: new Map(), symlinkWalks: new Map() };
+    const scope: RuntimeReadScope = { active: true, inspections: new Map(), symlinkWalks: new Map() };
     try {
         return await runtimeEntryScope.run(scope, read);
     } finally {
         // Async descendants can outlive the read that created them. They must
         // not retain its validation results after that read has settled.
         scope.active = false;
-        scope.layouts.clear();
+        scope.inspections.clear();
         scope.symlinkWalks.clear();
     }
 }
@@ -367,22 +452,13 @@ export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Pr
 /** Writes inside a grouped read must revalidate and invalidate surrounding reads. */
 export function invalidateProjectRuntimeReadScope(): void {
     const scope = runtimeEntryScope.getStore();
-    scope?.layouts.clear();
+    scope?.inspections.clear();
     scope?.symlinkWalks.clear();
 }
 
 export function enterProjectRuntime(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
-    const scope = runtimeEntryScope.getStore();
-    if (!scope?.active) return enterProjectRuntimeUncached(selectedCheckoutRoot);
-    const root = resolve(selectedCheckoutRoot);
-    const pending = scope.layouts.get(root);
-    if (pending) return pending;
-    const result = enterProjectRuntimeUncached(root);
-    scope.layouts.set(root, result);
-    void result.catch(() => {
-        if (scope.layouts.get(root) === result) scope.layouts.delete(root);
-    });
-    return result;
+    invalidateProjectRuntimeReadScope();
+    return enterProjectRuntimeUncached(selectedCheckoutRoot).finally(invalidateProjectRuntimeReadScope);
 }
 
 async function enterProjectRuntimeUncached(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
@@ -628,7 +704,7 @@ async function preflight(
     layout: ProjectRuntimeLayout,
     primaryCheckoutRoot: string,
     marker: LayoutMarker | null,
-    options: { legacyRegistryLockHeld?: boolean } = {},
+    options: { legacyRegistryLockHeld?: boolean; passive?: boolean } = {},
 ): Promise<MigrationPreflight | ProjectRuntimeMigrationBlockedResult> {
     const markerCheck = validateMarkerRoots(layout, primaryCheckoutRoot, marker);
     if (isBlocked(markerCheck)) return markerCheck;
@@ -1294,7 +1370,7 @@ async function currentConflictsInRoot(
 async function inspectLegacyLocks(
     primaryCheckoutRoot: string,
     selectedRoots: string[],
-    options: { legacyRegistryLockHeld?: boolean; migrationLockPath?: string } = {},
+    options: { legacyRegistryLockHeld?: boolean; migrationLockPath?: string; passive?: boolean } = {},
 ): Promise<LegacyLockStatus> {
     const active: string[] = [];
     const retire: MigrationRetireOperation[] = [];
@@ -1332,7 +1408,7 @@ async function inspectLegacyLocks(
 
     for (const lockPath of await listFiles(join(legacyRuntimeBase(primaryCheckoutRoot), "controller"))) {
         if (!lockPath.endsWith(".lock")) continue;
-        if (!(await canTakeControllerLock(lockPath))) active.push(lockPath);
+        if (!options.passive && !(await canTakeControllerLock(lockPath))) active.push(lockPath);
     }
     return { active, retire };
 }

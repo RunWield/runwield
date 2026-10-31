@@ -1,3 +1,4 @@
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import process from "node:process";
 import {
     mkdir as fsMkdir,
@@ -9,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
@@ -313,6 +314,8 @@ test("legacy writer returning after migration does not block current controller 
             const bytes = JSON.stringify(record);
             await fsMkdir(directory, { recursive: true });
             await fsWriteFile(path, bytes);
+            await assertRejects(() => readControllerRecord(root, identity), Error, "Workflow details pending");
+            await enterProjectRuntime(root);
             assertEquals(await readControllerRecord(root, identity), record);
 
             // Simulate an old binary flushing its still-current record after the

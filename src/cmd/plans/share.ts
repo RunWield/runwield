@@ -1,3 +1,5 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 /**
  * @module cmd/plans/share
  * Publish an active saved Plan as a remote-canonical Shared Space.
@@ -29,7 +31,6 @@ import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/coll
 import { getDefaultPlanServerUrl } from "../../shared/settings.js";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansShareArgs {
     planServer?: string;
@@ -194,9 +195,10 @@ export interface SharedPlanReviewLink {
 
 export async function sharePlanForReview(shareOptions: SharePlanForReviewOptions): Promise<SharedPlanReviewLink> {
     const cwd = shareOptions.cwd || getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const target = shareOptions.target;
     const selected = await resolveActivePlan(cwd, target);
+    await preparePlanWorkflow(cwd, selected.planName || selected.name);
     const location = await resolveWorkflowPlanLocation(cwd, selected.planName || selected.name);
     const resource = await ensurePlanIdentity(location.documentRoot, selected.planName || selected.name);
     const args = {
@@ -408,7 +410,7 @@ export async function runPlansShareCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const shared = await sharePlanForReview({
         target: args.target as string,
         cwd,

@@ -16,7 +16,7 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
 import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.js";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { loadControllerView, writeControllerState } from "./controller-registry.ts";
+import { inspectControllerView, writeControllerState } from "./controller-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
@@ -121,7 +121,7 @@ test("planning worktree starts from the target branch and is not execution", asy
     assertEquals(entries.length, 1);
     assertEquals(entries[0].status, "planning");
 
-    const view = await loadControllerView(repo, { planName: "epic/01-child", planId: "plan-child-01" }, {});
+    const view = await inspectControllerView(repo, { planName: "epic/01-child", planId: "plan-child-01" }, {});
     assertEquals(view.state.documentWorktreeId, result.entry.id);
     assertEquals(view.state.worktreeId, undefined);
     assertEquals(view.state.worktreePath, undefined);
@@ -294,7 +294,7 @@ test("a missing established document is not replaced by the source after retirem
     await assertRejects(
         () => resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true }),
         Error,
-        "The registered Plan is missing or has a different identity",
+        "The primary copy will not be used",
     );
 });
 
@@ -1206,7 +1206,7 @@ test("target checkout lists and loads an untracked child from the same document"
         },
         "# Local child\n\nLOCAL UNSAVED BODY\n",
     );
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     assertEquals(children.find((child) => child.name === "epic/99-local")?.attrs.order, 0);
     const selected = await resolveWorkflowPlanLocation(repo, "epic/99-local", { loadFromTarget: true, readOnly: true });
     assertStringIncludes(selected.plan?.markdown || "", "LOCAL UNSAVED BODY");
@@ -1223,7 +1223,7 @@ test("target checkout order edits beat a known older remote snapshot", async () 
     const path = join(repo, "docs/plans/epic/01-child.md");
     await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("---\n", "---\norder: 7\n"));
     const refs = await git(repo, ["show-ref"]);
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     assertEquals(children[0].attrs.order, 7);
     const selected = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true, readOnly: true });
     assertEquals(selected.plan?.attrs.order, 7);
@@ -1244,7 +1244,7 @@ test("other branch untracked children and edits do not leak into target discover
         },
         "# Unrelated\n",
     );
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     assertEquals(
         children.map((child) => child.name),
         ["epic/01-child"],
@@ -1273,7 +1273,7 @@ test("registered child order status and body stay consistent between catalog and
             .replace("TARGET PLAN BODY", "OWNED BODY"),
     );
     await git(repo, ["switch", "epic-target"]);
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     const selected = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true, readOnly: true });
     assertEquals(children[0].attrs.order, 4);
     assertEquals(children[0].attrs.status, "approved");
@@ -1289,7 +1289,7 @@ test("target checkout deletion cannot restore a saved planning child in the pick
     });
     await git(repo, ["switch", "epic-target"]);
     await fsRm(join(repo, "docs/plans/epic/01-child.md"));
-    assertEquals(await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false }), []);
+    assertEquals(await findTargetBranchPlansByParent(repo, "epic-target", "epic"), []);
 });
 
 test("off-target reads retain remote snapshot authority without changing refs", async () => {
@@ -1303,7 +1303,7 @@ test("off-target reads retain remote snapshot authority without changing refs", 
     await git(repo, ["reset", "--hard", "HEAD~1"]);
     await git(repo, ["switch", "main"]);
     const refs = await git(repo, ["show-ref"]);
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     const selected = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true, readOnly: true });
     assertEquals(children[0].attrs.order, 9);
     assertEquals(selected.plan?.attrs.order, 9);
@@ -1320,7 +1320,7 @@ test("local target identity mismatch cannot be hidden by a registered document",
     const path = join(repo, "docs/plans/epic/01-child.md");
     await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("plan-child-01", "different-identity"));
     await assertRejects(
-        () => findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false }),
+        () => findTargetBranchPlansByParent(repo, "epic-target", "epic"),
         Error,
         "does not match the target Plan ID",
     );

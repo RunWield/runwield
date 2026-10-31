@@ -1,4 +1,6 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import { prepareWorktreeRegistry } from "../worktree-registry.js";
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import {
     prepareExecutionSetup,
     readExecutionSetup,
@@ -220,7 +222,6 @@ async function materializeEpicPlanFamily(projectRoot, executionCwd, planName, pl
 }
 
 interface ExecutionPreparationLocationOptions {
-    migrateRegistry?: boolean;
     readOnly?: boolean;
 }
 
@@ -230,9 +231,10 @@ export async function reconcileExecutionPreparationLocation(
     planName: string,
     options: ExecutionPreparationLocationOptions = {},
 ) {
+    await prepareWorktreeRegistry(projectRoot);
     const records = await listTransitionRecoveryRecords(projectRoot);
     const source = await loadPlan(projectRoot, planName).catch(() => null);
-    const entries = await listWorktreeRegistryEntries(projectRoot, { migrate: false });
+    const entries = await listWorktreeRegistryEntries(projectRoot);
     // Only an interrupted first preparation can use the approved source when its
     // selected worktree has no document yet. A worker's later deletion cannot.
     const unmaterialized =
@@ -279,6 +281,7 @@ export async function reconcileExecutionPreparationLocation(
             };
         }
     }
+    await preparePlanWorkflow(projectRoot, planName);
     return await resolveWorkflowPlanLocation(projectRoot, planName, options);
 }
 

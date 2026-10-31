@@ -18,7 +18,7 @@ import {
     ProjectRuntimeEntryRefusedError,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { listEntries } from "./worktree-registry.js";
+import { listEntries, prepareWorktreeRegistry } from "./worktree-registry.js";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# runtime entry\n" });
 
@@ -32,11 +32,11 @@ test("Project Runtime Entry adopts legacy registry before normal registry reads"
             await fsMkdir(dirname(legacyPath), { recursive: true });
             await fsWriteFile(
                 legacyPath,
-                `${
-                    JSON.stringify(
-                        {
-                            version: 2,
-                            entries: [{
+                `${JSON.stringify(
+                    {
+                        version: 2,
+                        entries: [
+                            {
                                 id: "entry-1",
                                 planName: "demo-plan",
                                 planId: "plan-demo",
@@ -48,21 +48,25 @@ test("Project Runtime Entry adopts legacy registry before normal registry reads"
                                 status: "active",
                                 createdAt: "2026-01-01T00:00:00.000Z",
                                 updatedAt: "2026-01-01T00:00:00.000Z",
-                            }],
-                        },
-                        null,
-                        2,
-                    )
-                }\n`,
+                            },
+                        ],
+                    },
+                    null,
+                    2,
+                )}\n`,
             );
 
-            const entries = await listEntries(projectRoot, { migrate: false });
+            await assertRejects(() => listEntries(projectRoot), Error, "Workflow details pending");
+            const entries = await prepareWorktreeRegistry(projectRoot);
             const layout = resolveProjectRuntimeLayout(projectRoot);
             const markerBefore = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
             await enterProjectRuntime(projectRoot);
             const markerAfter = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
 
-            assertEquals(entries.map((entry) => entry.id), ["entry-1"]);
+            assertEquals(
+                entries.map((entry) => entry.id),
+                ["entry-1"],
+            );
             assertEquals(markerAfter, markerBefore);
             await rejects(() => fsLstat(legacyPath), { code: "ENOENT" });
         } finally {
@@ -156,10 +160,7 @@ test("Project Runtime Entry refusal stops direct normal registry access", async 
             await fsMkdir(dirname(legacyPath), { recursive: true });
             await fsWriteFile(legacyPath, "null\n");
 
-            const refusal = await assertRejects(
-                () => listEntries(projectRoot, { migrate: false }),
-                ProjectRuntimeEntryRefusedError,
-            );
+            const refusal = await assertRejects(() => listEntries(projectRoot), ProjectRuntimeEntryRefusedError);
             const layout = resolveProjectRuntimeLayout(projectRoot);
 
             assertEquals(refusal.reason, "malformed_registry");

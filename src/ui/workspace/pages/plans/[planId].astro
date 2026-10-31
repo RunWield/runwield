@@ -10,7 +10,7 @@ const editIntent = Astro.url.searchParams.get("edit") === "body";
 let plan = null;
 let error = null;
 try {
-    plan = await loadCanonicalWorkspaceDetail(workspaceCwd, planId);
+    plan = await loadCanonicalWorkspaceDetail(workspaceCwd, planId, { documentName: planId === "document" ? Astro.url.searchParams.get("name") || undefined : undefined });
 } catch (caught) {
     error = await serializeCanonicalPlanError(caught);
     Astro.response.status = error.error.includes("not found") || error.error.includes("Plan not found") ? 404 : 409;

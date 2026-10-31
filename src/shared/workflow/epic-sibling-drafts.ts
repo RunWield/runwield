@@ -29,7 +29,7 @@ import type { PlanFrontMatter } from "../../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../epic-artifacts.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { buildPlanEventUpdates } from "./plan-lifecycle.js";
-import { listControllerDocumentWorktrees } from "./controller-registry.ts";
+import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controller-registry.ts";
 
 /** Sibling statuses Planner may still reshape. */
 const RESHAPEABLE_STATUSES = new Set(["draft", "approved", "ready_for_work"]);
@@ -146,6 +146,7 @@ export async function prepareEditedSiblingPlans(
         // Reading old Plans can normalize their metadata without changing scope.
         if (incoming === base) continue;
         const authority = registered.find((entry) => entry.planName === siblingName);
+        if (authority) assertControllerDocumentAvailable(authority);
         const authorityRoot = authority?.path || worktreePath;
         const synchronized = await withPlanCatalogLock(authorityRoot, () =>
             withPlanLock(authorityRoot, siblingName, async () => {

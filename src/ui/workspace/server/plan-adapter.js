@@ -36,7 +36,7 @@ import {
 import { executePlanAction, loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { PLAN_LIFECYCLE_ACTIONS } from "../constants.ts";
 
-/** @typedef {{ reviewOnly?: boolean }} WorkspacePlanDetailOptions */
+/** @typedef {{ reviewOnly?: boolean, documentName?: string }} WorkspacePlanDetailOptions */
 
 export const ACTIVE_STATUSES = ACTIVE_PLAN_STATUSES;
 export const CLOSED_STATUSES = CLOSED_PLAN_STATUSES;
@@ -287,6 +287,7 @@ export function serializePlanSummary(resource) {
     attrs.planId = resource.planId;
     return {
         planId: resource.planId,
+        readAvailability: resource.readAvailability || { kind: "ready" },
         revision: resource.revision || "",
         planName: resource.planName || resource.name,
         name: resource.planName || resource.name,
@@ -294,7 +295,7 @@ export function serializePlanSummary(resource) {
         relativePath: resource.relativePath,
         status,
         statusLabel: statusOption(status).label,
-        actions: lifecycleActionsForAttrs(attrs),
+        actions: resource.readAvailability?.kind === "pending" ? null : lifecycleActionsForAttrs(attrs),
         classification: attrs.classification || "PLANNED_CHANGE",
         title: attrs.title || resource.planName || resource.name,
         summary: attrs.summary || "",
@@ -596,10 +597,19 @@ export async function loadPlanDetail(cwd, planId) {
  * @param {WorkspacePlanDetailOptions} [options]
  */
 export async function loadWorkspaceDetail(cwd, planId, options = {}) {
+    if (options.documentName) {
+        const resource = (await listPlanResources(cwd)).find(
+            (candidate) => !candidate.planId && candidate.planName === options.documentName,
+        );
+        if (!resource) throw new Error("Plan document not found.");
+        const { assertReadablePlanResource } = await import("./project-artifacts.ts");
+        await assertReadablePlanResource(cwd, resource);
+        return serializePlanDetail({ ...resource, capabilities: { bodyEditing: false } });
+    }
     // Review needs one document, not board dependencies, lifecycle controls, or catalog writes.
     const baseResource = options.reviewOnly ? await findPlanEvidenceById(cwd, planId) : await findPlanById(cwd, planId);
-    const { assertAuthorizedPlanPath } = await import("./project-artifacts.ts");
-    await assertAuthorizedPlanPath(cwd, baseResource.path, baseResource.planName);
+    const { assertReadablePlanResource } = await import("./project-artifacts.ts");
+    await assertReadablePlanResource(cwd, baseResource);
     if (options.reviewOnly) return { ...serializePlanDetail(baseResource), path: baseResource.path };
     const resource = isProjectPlan(baseResource.attrs) ? baseResource : await loadPlanBodyById(cwd, planId);
     const summaries = await loadPlanSummaries(cwd);
@@ -607,7 +617,12 @@ export async function loadWorkspaceDetail(cwd, planId, options = {}) {
         {
             ...resource,
             workspaceKey: await sha256Hex(cwd),
-            capabilities: { bodyEditing: !isProjectPlan(resource.attrs) },
+            capabilities: {
+                bodyEditing:
+                    resource.readAvailability?.kind !== "pending" &&
+                    !/^[a-f0-9]{40,64}:/.test(resource.path) &&
+                    !isProjectPlan(resource.attrs),
+            },
         },
         summaries,
     );

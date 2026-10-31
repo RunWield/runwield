@@ -1,8 +1,10 @@
+import type { PlanReadAvailability } from "../../../plan-store.js";
 import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 export interface PlanLinkTarget {
     planId: string;
+    planName?: string;
 }
 
 export interface PlanCardDragActions {
@@ -20,6 +22,7 @@ export interface PlanCardData extends PlanLinkTarget {
     hierarchyRole?: string;
     complexity?: string;
     summary?: string;
+    readAvailability?: PlanReadAvailability;
     heldFromStatus?: string;
     heldAt?: string;
     holdReason?: string;
@@ -66,6 +69,7 @@ export function workspaceHref(path: string, url: URL | string) {
 }
 
 export function detailHref(plan: PlanLinkTarget, url: URL | string) {
+    if (!plan.planId) return workspaceHref(`/plans/document?name=${encodeURIComponent(plan.planName || "")}`, url);
     return workspaceHref(`/plans/${encodeURIComponent(plan.planId)}`, url);
 }
 
@@ -99,10 +103,16 @@ export function ComplexityLabel({ complexity }: ComplexityLabelProps) {
 export function PlanCard({ plan, url, compact = false, roleLabel = "Plan", draggableCard = false }: PlanCardProps) {
     const isChildCard = plan.hierarchyRole === "child" || plan.hierarchyRole === "orphan-child";
     const href = detailHref(plan, url);
-    const allowedTargetStatuses =
-        (plan.actions?.dnd?.allowedTargetStatuses || plan.actions?.allowedManualTargetStatuses || [])
-            .join(" ");
-    const canDrag = draggableCard && Boolean(allowedTargetStatuses);
+    const allowedTargetStatuses = (
+        plan.actions?.dnd?.allowedTargetStatuses ||
+        plan.actions?.allowedManualTargetStatuses ||
+        []
+    ).join(" ");
+    const canDrag =
+        draggableCard &&
+        Boolean(plan.planId) &&
+        plan.readAvailability?.kind !== "pending" &&
+        Boolean(allowedTargetStatuses);
     return (
         <RunWieldCard
             className={compact ? "compact clickable-card" : "clickable-card"}
@@ -124,34 +134,33 @@ export function PlanCard({ plan, url, compact = false, roleLabel = "Plan", dragg
                     </p>
                     <span className="card-title">{plan.planName}</span>
                 </div>
-                {canDrag
-                    ? (
-                        <span className="drag-grip" aria-hidden="true" title="Drag to move status">
-                            ⋮⋮
-                        </span>
-                    )
-                    : null}
-            </div>
-            {canDrag
-                ? (
-                    <span id={`drag-help-${plan.planId}`} className="sr-only">
-                        Drag this Plan Card to an allowed status column: {allowedTargetStatuses.replaceAll(" ", ", ")}.
+                {canDrag ? (
+                    <span className="drag-grip" aria-hidden="true" title="Drag to move status">
+                        ⋮⋮
                     </span>
-                )
-                : null}
+                ) : null}
+            </div>
+            {canDrag ? (
+                <span id={`drag-help-${plan.planId}`} className="sr-only">
+                    Drag this Plan Card to an allowed status column: {allowedTargetStatuses.replaceAll(" ", ", ")}.
+                </span>
+            ) : null}
             <p>{plan.summary || "No summary provided."}</p>
+            {plan.readAvailability?.kind === "pending" ? (
+                <p className="notice muted">{plan.readAvailability.message}</p>
+            ) : null}
             {plan.status === "on_hold" ? <p className="hold-summary">{holdMetadata(plan)}</p> : null}
             <div className="badge-row">
                 {plan.blockedByDependencies ? <span className="badge warning">Blocked by dependency</span> : null}
-                {plan.unverifiedDependencyCount
-                    ? <span className="badge warning">{plan.unverifiedDependencyCount} unverified dependency</span>
-                    : null}
-                {plan.missingDependencyCount
-                    ? <span className="badge danger">{plan.missingDependencyCount} missing dependency</span>
-                    : null}
-                {plan.hierarchyRole === "orphan-child"
-                    ? <span className="badge warning">Missing parent Epic</span>
-                    : null}
+                {plan.unverifiedDependencyCount ? (
+                    <span className="badge warning">{plan.unverifiedDependencyCount} unverified dependency</span>
+                ) : null}
+                {plan.missingDependencyCount ? (
+                    <span className="badge danger">{plan.missingDependencyCount} missing dependency</span>
+                ) : null}
+                {plan.hierarchyRole === "orphan-child" ? (
+                    <span className="badge warning">Missing parent Epic</span>
+                ) : null}
                 {isChildCard && plan.status === "on_hold" ? <span className="badge muted">Child on hold</span> : null}
                 {isChildCard && plan.status === "failed" ? <span className="badge danger">Failed child</span> : null}
             </div>

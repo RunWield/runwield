@@ -1,3 +1,4 @@
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 import process from "node:process";
 import {
     confirmMissingManagedProjectDirectory,
@@ -176,6 +177,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         const startupProjectRoot = getCwd();
         if (!(await confirmProjectDirectory(startupProjectRoot))) return;
         if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(startupProjectRoot)))) return;
+        await prepareWorktreeRegistry(startupProjectRoot);
         const discovered = await discoverPlanDocumentRoot(startupProjectRoot, planArg);
         if (
             !(await (discovered.missingExecutionCheckout
@@ -187,9 +189,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         if (!discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path))) return;
         let startupPlan = startupResolved.plan;
         if (!startupPlan.attrs.planId) {
-            const location = await resolveWorkflowPlanLocation(startupProjectRoot, startupPlan.planName, {
-                migrateRegistry: false,
-            });
+            const location = await resolveWorkflowPlanLocation(startupProjectRoot, startupPlan.planName, {});
             if (!(await confirmProjectDirectory(location.documentRoot))) return;
             const identified = await ensurePlanIdentity(location.documentRoot, startupPlan.planName);
             startupPlan = { ...startupPlan, attrs: identified.attrs };
@@ -273,6 +273,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
+        await prepareWorktreeRegistry(projectRoot);
         const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
         if (
             discovered &&
@@ -357,7 +358,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 "RunWield",
             );
         }
-        const recordedAttempt = await resolveRecoveryWorktree(projectRoot, plan, { migrateRegistry: false });
+        const recordedAttempt = await resolveRecoveryWorktree(projectRoot, plan);
         let cleanupPending = isPublicationCleanupPending(recordedAttempt?.publication);
         if (recordedAttempt?.path && !cleanupPending) {
             const executionPlan = await loadPlan(recordedAttempt.path, plan.planName).catch(() => null);
@@ -376,7 +377,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         // Plan with a durable identity, so the rest of this flow has something to
         // record lifecycle state on.
         if (plan.hasFrontMatter === false) {
-            const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { migrateRegistry: false });
+            const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
             const adopted = await onboardExternalPlan(location.documentRoot, plan.planName);
             if (adopted.onboarded) {
                 plan.attrs = adopted.resource.attrs;
@@ -392,7 +393,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             }
         }
         if (!plan.attrs.planId && !needsSessionPlanningWorktree(plan.attrs)) {
-            const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { migrateRegistry: false });
+            const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
             const identified = await ensurePlanIdentity(location.documentRoot, plan.planName);
             plan.attrs = identified.attrs;
             plan.markdown = identified.markdown;

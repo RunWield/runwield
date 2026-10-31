@@ -13,7 +13,7 @@ import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-rec
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
 import {
-    assertAuthorizedPlanPath,
+    assertReadablePlanResource,
     assertContainedProjectPath,
     domainLanguagePaths,
     readSafeProjectMarkdown,
@@ -111,11 +111,12 @@ class SearchReaderError extends Error {
     /** @param {string} reader @param {unknown} cause */
     constructor(reader, cause) {
         const causeMessage = cause instanceof Error ? cause.message : "";
-        const repairMessage = /without durable identity|duplicate durable identities|duplicate planId values/i.test(
-            causeMessage,
-        )
-            ? ` ${causeMessage}`
-            : "";
+        const repairMessage =
+            /workflow details pending|without durable identity|duplicate durable identities|duplicate planId values/i.test(
+                causeMessage,
+            )
+                ? ` ${causeMessage}`
+                : "";
         super(`${reader} indexing failed.${repairMessage}`);
         this.name = "SearchReaderError";
         this.reader = reader;
@@ -123,7 +124,7 @@ class SearchReaderError extends Error {
     }
 }
 
-/** @param {string} reader @param {() => Promise<SearchDocument[]>} read */
+/** @template Result @param {string} reader @param {() => Promise<Result>} read */
 async function readSearchDocuments(reader, read) {
     try {
         return await read();
@@ -144,10 +145,11 @@ async function scanProjectDocuments(root) {
                 if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
             const found = [];
-            const plans = await listPlanResources(root, { backfillMissing: false });
+            const plans = await listPlanResources(root);
             for (const plan of plans) {
-                await assertAuthorizedPlanPath(root, plan.path, plan.planName);
                 if (!plan.planId) continue;
+                if (plan.readAvailability?.kind === "pending") throw new Error(plan.readAvailability.message);
+                await assertReadablePlanResource(root, plan);
                 const facts = markdownFacts(plan.markdown);
                 found.push({
                     projectId: "",
@@ -404,11 +406,13 @@ async function hydrateCandidate(root, row, store, catalogs) {
     }
     if (row.content_type === "plan") {
         const plans = await cachedCatalog(catalogs, `${row.project_id}:plan`, () =>
-            listPlanResources(root, { backfillMissing: false }),
+            readSearchDocuments("Plan reader", () => listPlanResources(root)),
         );
         const plan = plans.find((candidate) => candidate.planId === row.source_id);
         if (!plan) throw new Error("Plan not found.");
-        await assertAuthorizedPlanPath(root, plan.path, plan.planName);
+        if (plan.readAvailability?.kind === "pending")
+            throw new SearchReaderError("Plan reader", new Error(plan.readAvailability.message));
+        await readSearchDocuments("Plan reader", () => assertReadablePlanResource(root, plan));
         const facts = markdownFacts(plan.markdown);
         return {
             ...row,
@@ -687,7 +691,14 @@ export function createWorkspaceSearchService(options) {
                     updatedAt: candidate.updatedAt,
                     ...metadata,
                 });
-            } catch {
+            } catch (error) {
+                if (error instanceof SearchReaderError) {
+                    projectStates.set(String(row.project_id), {
+                        state: "failed",
+                        reader: error.reader,
+                        message: error.message,
+                    });
+                }
                 // Canonical evidence changed or disappeared. A stale candidate never reaches the browser.
             }
         }

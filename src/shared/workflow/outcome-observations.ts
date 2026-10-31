@@ -65,7 +65,7 @@ export async function recordWorkflowOutcome(cwd: string, observation: WorkflowOu
                 store.close();
             }
         } else if (!planId && observation.attemptId) {
-            const entry = await findById(cwd, observation.attemptId, { migrate: false });
+            const entry = await findById(cwd, observation.attemptId);
             if (entry && Date.parse(entry.createdAt) <= Date.parse(ts) && (!planName || entry.planName === planName)) {
                 planId = entry.planId;
             }

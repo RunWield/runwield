@@ -131,7 +131,8 @@ test("legacy feedback Plans appear in Draft with no Feedback board column", asyn
             draft?.cards.map((card: WorkspacePlanCard) => card.planName),
             ["legacy"],
         );
-        assertEquals(board.plans[0].actions.allowedManualTargetStatuses, ["approved", "ready_for_work"]);
+        assertEquals(board.plans[0].readAvailability.kind, "pending");
+        assertEquals(board.plans[0].actions, null);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
