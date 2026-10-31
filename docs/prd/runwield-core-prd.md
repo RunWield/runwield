@@ -348,13 +348,15 @@ stays light, terminal animations pause during human input, and the decision cont
 
 **Requirement: The user owns the Plan body.** Users edit Plan prose with any tool, at any time, in any style. RunWield
 owns the lifecycle metadata and keeps the user's current body intact through metadata repair, failed transitions, and
-rollback. Saving content protects edits made since that content was opened. Changes to the intended work follow normal
+rollback. A document save retains its assigned Plan identity and durable workflow decisions. Saving content protects edits made since that content was opened. Changes to the intended work follow normal
 Plan review.
 
 **Requirement: External Markdown Plans are first-class.** A plain Markdown file in `docs/plans/` is a valid draft.
 Listing, browsing, and inspecting it leave its bytes as they are. Deliberate `/load-plan` adoption adds identity and
 defaults and keeps the body and the file's original age. Loading an adopted Plan again keeps its lifecycle and
-decisions.
+decisions. Deliberate review, validation, and lifecycle actions prepare identity and controller state before capturing
+review revisions, claiming checkpoints, or checking completion. Validation repairs provable execution identity before
+selecting the actionable document.
 
 **Requirement: Inspect Plans without preparing them.** Listing, indexing, browsing, body reads, and passive progress
 reads inspect existing local evidence. They do not change Plan or runtime files, reconcile ignore rules, assign IDs,
@@ -398,6 +400,9 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given a body edit during a metadata transition that fails, the latest body remains.
 - Given malformed lifecycle metadata, recovery repairs RunWield's own state and keeps the user's prose.
 - Given an adopted Plan, loading it again keeps its age, identity, and decisions.
+- Given pending workflow details, a deliberate review or validation action prepares them automatically before using
+  revisions or checkpoints; passive reads remain side-effect-free. A later prose save retains the prepared identity
+  and Code Review policy.
 - Given a fresh Project, repeated listing and body reads show local documents without creating runtime storage or
   changing `.gitignore`, Plan bytes, refs, or worktrees.
 - Given pending adoption or controller import, browsing shows safe documents and a workflow-details notice without

@@ -29,7 +29,15 @@ export function confirmRemoteHost(
     baseDir = getRunWieldSessionsBaseDir(),
 ): ResolvedRemoteTarget {
     const root = remoteProjectRoot(target);
-    const projects = listProjectsFromDisk(baseDir).filter((project) => project.remote?.root === root);
+    const projects = listProjectsFromDisk(baseDir)
+        .filter((project) => project.remote?.root === root)
+        .sort(
+            (left, right) =>
+                left.createdAt.localeCompare(right.createdAt) ||
+                (left.remote?.targetLabel || left.projectId).localeCompare(
+                    right.remote?.targetLabel || right.projectId,
+                ),
+        );
     if (projects.some((project) => sameRemoteHost(project.remote!.host, target.host))) return target;
     const accepted = projects.find((project) =>
         project.remote!.acceptedHosts?.some((host) => sameRemoteHost(host, target.host)),

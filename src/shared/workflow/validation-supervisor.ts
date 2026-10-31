@@ -1,5 +1,12 @@
+import { preparePlanController } from "./plan-preparation.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
-import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
+import {
+    ensurePlanIdentity,
+    loadPlan,
+    resolvePlanExecutionPolicy,
+    StalePlanWriteError,
+    updatePlanFrontMatter,
+} from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
@@ -100,7 +107,10 @@ async function validationPlanCwd(args: RunValidationAttemptArgs): Promise<string
 
 async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimResult> {
     const projectRoot = args.projectRoot;
+    await preparePlanController(projectRoot, args.planName);
     const planCwd = await validationPlanCwd(args);
+    const selected = await loadPlan(planCwd, args.planName);
+    if (selected && !selected.attrs.planId) await ensurePlanIdentity(planCwd, args.planName);
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(planCwd, args.planName);
         if (!plan) throw new ValidationStateError("plan_missing");

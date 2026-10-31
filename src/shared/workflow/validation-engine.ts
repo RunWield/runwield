@@ -11,9 +11,15 @@
  * imports — they are RunWield's own machinery, never ports.
  */
 
-import { canonicalPlanStatus, getDeclaredPlanStatus, loadPlan, PlanFrontMatterParseError } from "../../plan-store.js";
+import {
+    ensurePlanIdentity,
+    canonicalPlanStatus,
+    getDeclaredPlanStatus,
+    loadPlan,
+    PlanFrontMatterParseError,
+} from "../../plan-store.js";
 import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.js";
-import { getProjectRoot } from "./validation-context.ts";
+import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
 import { validationPhaseForStatus } from "./validation-checkpoint.ts";
 import { validationPhasePauseMessage, validationUserMessage } from "./validation-user-messages.ts";
@@ -31,6 +37,7 @@ import {
     CANDIDATE_REVALIDATION_MESSAGE,
 } from "./publication-revalidation.ts";
 
+import { preparePlanController } from "./plan-preparation.ts";
 import { validateHostReviewerResume } from "./validation-host-state.ts";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
@@ -44,6 +51,36 @@ type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
  */
 export async function runValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
     args.session.assertLive();
+    // Admit controller reads without selecting through stale cached Session
+    // paths or rejecting legacy IDs before execution-context recovery owns them.
+    let documentRoot: string;
+    try {
+        documentRoot = await preparePlanController(getProjectRoot(args), args.planName);
+        let selected = await loadPlan(documentRoot, args.planName);
+        const candidate = args.executionContext || args.session.getActiveWorkflow();
+        if (
+            !selected ||
+            (candidate?.executionMode === "worktree" &&
+                candidate.executionCwd &&
+                candidate.executionCwd !== documentRoot)
+        ) {
+            // An execution directory is only a hint until Git recovery verifies
+            // it, even when the primary checkout still has an older Plan.
+            const recovered = await resolvePhaseContext(args);
+            if (recovered.kind === "blocked") return recovered.result;
+            documentRoot = await preparePlanController(recovered.context.executionCwd, args.planName);
+            selected = await loadPlan(documentRoot, args.planName);
+        }
+        if (selected && !selected.attrs.planId) await ensurePlanIdentity(documentRoot, args.planName);
+    } catch (error) {
+        if (!(error instanceof PlanFrontMatterParseError)) throw error;
+        return canonicalOperationalResult(args, getProjectRoot(args), {
+            source: "policy",
+            kind: "lifecycle_invariant",
+            operation: "validation_state",
+            message: error.message,
+        });
+    }
     await validateHostReviewerResume(args);
     // Let an answer reach the existing diff-bound check before resetting its wait.
     const answeringDecision = args.hostTurn?.resume?.kind === "decision" && !args.hostTurn.consumed;
@@ -51,7 +88,7 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
         !answeringDecision && (await prepareReviewedCandidateRevalidation(getProjectRoot(args), args.planName));
     const recoveryPath = await preparePublicationRevalidation(getProjectRoot(args), args.planName);
     const revalidating = candidateChanged || Boolean(recoveryPath);
-    const canonicalPlan = await loadCanonicalValidationPlan(args);
+    const canonicalPlan = await loadCanonicalValidationPlan(args, documentRoot);
     if (canonicalPlan.kind === "blocked") return canonicalPlan.result;
     const canonicalArgs: ValidationLoopArgs = {
         ...args,
@@ -182,7 +219,10 @@ function canonicalOperationalResult(
     };
 }
 
-export async function loadCanonicalValidationPlan(args: ValidationLoopArgs): Promise<
+export async function loadCanonicalValidationPlan(
+    args: ValidationLoopArgs,
+    documentRoot: string,
+): Promise<
     | {
           kind: "ok";
           status: "implemented" | "validated_ci" | "reviewed" | "validated";
@@ -194,7 +234,7 @@ export async function loadCanonicalValidationPlan(args: ValidationLoopArgs): Pro
     const projectRoot = getProjectRoot(args);
     let plan;
     try {
-        plan = await loadPlan(validationPlanCwd(args, projectRoot), args.planName);
+        plan = await loadPlan(documentRoot, args.planName);
     } catch (error) {
         if (!(error instanceof PlanFrontMatterParseError)) throw error;
         return {

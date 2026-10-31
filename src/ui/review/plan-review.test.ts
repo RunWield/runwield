@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { fileURLToPath } from "node:url";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { getCwd } from "../../constants.js";
@@ -37,6 +38,7 @@ async function makePlanFile(): Promise<PlanReviewFixture> {
         summary: "Do the thing",
         affectedPaths: [],
     });
+    await preparePlanWorkflow(dir, "plan");
     return { dir, planPath: getStoredPlanPath(dir, "plan") };
 }
 

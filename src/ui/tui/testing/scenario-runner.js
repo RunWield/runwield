@@ -57,6 +57,7 @@ import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
 import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.js";
+import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
 
 /**
  * Scenario waits poll and return the moment the condition holds, so this budget
@@ -2568,9 +2569,12 @@ async function runComposedTuiScenario(scenario, options) {
                             );
                         }
                         const localPlan = await loadPlan(getCwd(), planName).catch(() => null);
-                        const registry = await (
-                            await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        const registry = await readScenarioRegistryForPoll(getCwd());
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
@@ -2687,9 +2691,12 @@ async function runComposedTuiScenario(scenario, options) {
                                 )}; latest=${latestStatus || "missing"}`,
                             );
                         }
-                        const registry = await (
-                            await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        const registry = await readScenarioRegistryForPoll(getCwd());
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         latestStatus = entry ? String(entry.status || "") : "absent";
                         await terminal.flush();

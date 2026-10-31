@@ -8,7 +8,10 @@ import { loadPlanSummaries } from "./plan-adapter.js";
 import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
-import { withProjectRuntimeReadScope } from "../../../shared/project-runtime-layout.ts";
+import {
+    ProjectRuntimeEntryRefusedError,
+    withProjectRuntimeReadScope,
+} from "../../../shared/project-runtime-layout.ts";
 
 type DashboardCategory = "needs-you" | "ready" | "in-progress" | "recently-finished";
 
@@ -563,7 +566,10 @@ async function projectPayload(
             }
         } catch (error) {
             diagnostics.push({
-                source: "plans-reader",
+                source:
+                    error instanceof ProjectRuntimeEntryRefusedError && error.reason === "malformed_registry"
+                        ? "registry-reader"
+                        : "plans-reader",
                 message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
                 repairHref: settingsHref(project.projectId),
                 repairLabel: "Open Project settings",

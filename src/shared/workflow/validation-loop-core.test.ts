@@ -6,6 +6,7 @@ import {
     chmod as fsChmod,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
+    realpath as fsRealpath,
     rm as fsRm,
     utimes as fsUtimes,
     writeFile as fsWriteFile,
@@ -16,7 +17,7 @@ import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.js";
-import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -610,4 +611,90 @@ test("runValidationLoop starts at implemented and records only the mechanical pa
     assertEquals(plan?.attrs.status, "implemented");
     assertEquals(plan?.attrs.validationPhase, "semantic");
     assertEquals(plan?.attrs.validationCiAttempts, 0);
+});
+
+test("validation returns a lifecycle invariant when controller preparation reads malformed YAML", async () => {
+    const projectRoot = await makeValidationProjectRoot("p", { classification: "FEATURE", status: "implemented" });
+    const hostedSession = attachRecorder(new HostedSession({ id: "malformed-validation", cwd: projectRoot }), makeUi());
+    const malformed = "---\nstatus: [implemented\n---\n# Broken Plan\n";
+    try {
+        await fsWriteFile(join(projectRoot, "docs/plans/p.md"), malformed);
+        const result = await runValidationPhase({
+            hostedSession,
+            planName: "p",
+            planContent: "# Stale cached Plan",
+            triageMeta: { classification: "FEATURE", status: "implemented" },
+            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            localCI: { run: () => Promise.reject(new Error("Malformed Plans must not run CI")) },
+        });
+        assertEquals(result.kind, "failed");
+        assertEquals(result.recovery?.code, "policy/lifecycle_invariant");
+        assertEquals(await fsReadFile(join(projectRoot, "docs/plans/p.md"), "utf8"), malformed);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(projectRoot, { recursive: true });
+    }
+});
+
+test("validation recovers an unregistered execution checkout before selecting a stale primary Plan", async () => {
+    const projectRoot = await footerExecutionRepo.checkout();
+    const parent = await fsMkdtemp(join(tmpdir(), "validation-unregistered-"));
+    const executionCwd = join(parent, "execution");
+    const hostedSession = attachRecorder(new HostedSession({ id: "recover-validation", cwd: projectRoot }), makeUi());
+    try {
+        await ensurePlanIdentity(projectRoot, "footer-plan");
+        const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
+        const branch = "runwield/worktree/footer-plan-recovered";
+        await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
+        const executionPlan = await loadPlan(executionCwd, "footer-plan");
+        await savePlan(
+            executionCwd,
+            "footer-plan",
+            "# Implemented execution Plan\n",
+            {
+                planId: "recovered-validation-plan",
+                classification: "FEATURE",
+                status: "implemented",
+            },
+            { expectedRevision: executionPlan?.revision },
+        );
+        const primaryBefore = await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8");
+        let ciCwd = "";
+        const result = await runValidationPhase({
+            hostedSession,
+            planName: "footer-plan",
+            planContent: "# Cached Plan",
+            triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+            executionContext: {
+                planName: "footer-plan",
+                triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+                projectRoot,
+                executionMode: "worktree",
+                executionCwd,
+                executionAgent: "engineer",
+                worktreeId: "recovered-validation-attempt",
+                worktreeBranch: branch,
+                worktreeBaseBranch: "main",
+                baselineTree,
+            },
+            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            localCI: {
+                run: ({ cwd }) => {
+                    ciCwd = cwd;
+                    return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                },
+            },
+        });
+        assertEquals(ciCwd, await fsRealpath(executionCwd));
+        assertEquals(result.kind, "paused");
+        assertEquals(result.continueValidation, true);
+        const recovered = await loadPlan(executionCwd, "footer-plan");
+        assertEquals(recovered?.attrs.validationPhase, "semantic");
+        assertEquals(recovered?.attrs.worktreeId, "recovered-validation-attempt");
+        assertEquals(await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8"), primaryBefore);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(parent, { recursive: true });
+    }
 });

@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -400,6 +401,7 @@ for (const reportedFix of [false, true]) {
             /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
             let conversation;
             let ciRuns = 0;
+            await preparePlanWorkflow(projectRoot, "p");
             const initialPlan = await loadPlan(projectRoot, "p");
             const reviewedAt = initialPlan?.attrs.humanReviewedAt;
             const decision = initialPlan?.attrs.humanReviewDecision;
@@ -499,6 +501,7 @@ async function makeConversationReview(nonGitInPlace = false) {
 
 test("a Code Review edit followed by a revert is reply-only", async () => {
     const { projectRoot, hostedSession, sourcePath, triageMeta } = await makeConversationReview();
+    await preparePlanWorkflow(projectRoot, "p");
     const initialPlan = await loadPlan(projectRoot, "p");
     const initialEvidence = await readDeliveryEvidence(projectRoot, "p", "in-place");
     const source = await fsReadFile(sourcePath, "utf8");
@@ -611,6 +614,7 @@ test("a Code Review edit with a plain-text blocker invalidates review but pauses
 for (const throws of [false, true]) {
     test(`a Code Review turn with ${throws ? "a failed agent" : "no agent answer"} rearms review with an error without CI`, async () => {
         const { projectRoot, hostedSession, triageMeta } = await makeConversationReview();
+        await preparePlanWorkflow(projectRoot, "p");
         const initialPlan = await loadPlan(projectRoot, "p");
         const initialEvidence = await readDeliveryEvidence(projectRoot, "p", "in-place");
         let rounds = 0;

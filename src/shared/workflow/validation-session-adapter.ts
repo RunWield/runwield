@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type HostedSession } from "../session/hosted-session.js";
@@ -458,6 +459,7 @@ async function acceptedRepairOutcome(
 async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string): Promise<void> {
     const workflow = hostedSession.getActiveExecutionWorkflow();
     if (!workflow?.planName) return;
+    await preparePlanWorkflow(cwd, workflow.planName);
     const plan = await loadPlan(cwd, workflow.planName);
     if (!plan) return;
     const prior = plan.attrs.validationCheckpoint;
