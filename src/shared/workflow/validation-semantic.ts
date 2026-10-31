@@ -638,7 +638,10 @@ export async function runReviewerRound(
         args.hostTurn && savedHostReview?.semanticRound === state.semanticRound
             ? savedHostReview.correctionCount + 1
             : 1;
+    let correctionAttempt = initialAttempt - 1;
     for (let attempt = initialAttempt; !latestOutcome; attempt++) {
+        correctionAttempt++;
+        const unreadBytes = inspection.unread().reduce((total, span) => total + span.end - span.start, 0);
         if (attempt > 1) {
             emitStatus(
                 args,
@@ -671,6 +674,7 @@ export async function runReviewerRound(
                 userRequest: config.prompt,
                 cwd: context.executionCwd,
                 reviewerMode: reviewMode,
+                round: state.semanticRound,
                 controllerRequestId,
                 review: config.review,
                 ledger: state.reviewLedger,
@@ -766,7 +770,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure: sessionOutcome.failure,
                     attempt: sessionOutcome.failure.recoveryClass === "transient" ? operationalAttempt : attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });
@@ -828,6 +832,10 @@ export async function runReviewerRound(
             const outcome = sessionOutcome.reviewOutcome;
             const unaccounted = unaccountedOpenItems(state.reviewLedger, outcome?.findings);
             if (!outcome) {
+                // New coverage is review work, not a repeated protocol error. The
+                // controller request still enforces its cumulative model-turn limit.
+                const remainingBytes = inspection.unread().reduce((total, span) => total + span.end - span.start, 0);
+                if (!args.hostTurn && remainingBytes < unreadBytes) correctionAttempt = 1;
                 const correction =
                     inspection.feedback() ||
                     (unaccounted.length
@@ -847,7 +855,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure,
                     attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });
@@ -889,7 +897,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure,
                     attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });
@@ -936,7 +944,7 @@ export async function runReviewerRound(
                 const decision = decideValidationRecovery({
                     failure,
                     attempt,
-                    correctionAttempt: attempt,
+                    correctionAttempt,
                     policy: readValidationRetryPolicy(context.projectRoot),
                     nextPhase: "semantic",
                 });

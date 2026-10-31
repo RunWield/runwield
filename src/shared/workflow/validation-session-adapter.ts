@@ -97,6 +97,14 @@ export const SYSTEM_SEMANTIC_REVIEW_PORT: SemanticReviewPort = Object.freeze({
     runIsolatedAgentSession,
 });
 
+type PendingReviewSession = {
+    key: string;
+    manager: SessionManager;
+    inspection: ReviewInspection;
+};
+// Model history is context, not workflow authority. Only an unchanged candidate
+// in the same durable validation generation and round may reuse it.
+const pendingReviewSessions = new WeakMap<HostedSession, PendingReviewSession>();
 const pendingRepairManagers = new WeakMap<HostedSession, Map<string, SessionManager>>();
 type RepairSession = { manager: SessionManager; cwd: string; agentName: string; planName?: string };
 const lastRepairSessions = new WeakMap<HostedSession, RepairSession>();
@@ -238,17 +246,42 @@ async function runIsolatedRequest(
     reviewerManagers: WeakMap<ReviewInspection, SessionManager>,
 ): Promise<IsolatedAgentSessionOutcome> {
     if (request.kind === "reviewer") {
+        const workflow = hostedSession.getActiveExecutionWorkflow();
+        const key =
+            workflow?.validationGeneration && request.round !== undefined
+                ? JSON.stringify([
+                      workflow.planName,
+                      workflow.validationGeneration,
+                      request.round,
+                      request.reviewerMode,
+                      request.cwd,
+                      request.review.fullDiff,
+                      request.review.repairDiff,
+                      request.ledger,
+                  ])
+                : "";
+        const previous = pendingReviewSessions.get(hostedSession);
+        const resumed = Boolean(key && previous?.key === key && previous.inspection !== request.review.inspection);
         let manager = reviewerManagers.get(request.review.inspection);
-        if (!manager) {
-            manager = SessionManager.inMemory(request.cwd);
-            reviewerManagers.set(request.review.inspection, manager);
+        if (key && previous?.key === key) {
+            manager = previous.manager;
+            if (resumed) {
+                for (const span of previous.inspection.recorded()) {
+                    request.review.inspection.record(span.scope, span.path, span.start, span.end);
+                }
+            }
         }
+        if (!manager) manager = SessionManager.inMemory(request.cwd);
+        reviewerManagers.set(request.review.inspection, manager);
+        if (key) pendingReviewSessions.set(hostedSession, { key, manager, inspection: request.review.inspection });
         const result = await runValidationAgentUntilEvent(
             isolatedSessions,
             {
                 hostedSession,
                 agentName: request.agentName,
-                userRequest: request.userRequest,
+                userRequest: resumed
+                    ? `Continue the pending review. Keep prior findings and diff reads. Do not restart.\n${request.review.inspection.feedback() || "Finish the review and call review_complete."}`
+                    : request.userRequest,
                 cwd: request.cwd,
                 // The Epic integration gate runs its own reviewer, with its own prompt and tool ceiling.
                 subAgentDefinition:
@@ -276,6 +309,7 @@ async function runIsolatedRequest(
             reviewEvent?.kind === "review_complete"
                 ? (reviewEvent.payload as import("./workflow-tool-events.ts").ReviewCompleteEventPayload)
                 : null;
+        if (reviewOutcome && key) pendingReviewSessions.delete(hostedSession);
         const providerFailure = reviewOutcome ? undefined : readReviewerProviderFailure(messages);
         if (providerFailure) {
             if (diffEvent) settleWorkflowToolEvent(hostedSession, diffEvent);
@@ -291,7 +325,7 @@ async function runIsolatedRequest(
             kind: "reviewer",
             outcome: "completed",
             reviewOutcome,
-            usedDiffTool: Boolean(diffEvent),
+            usedDiffTool: Boolean(diffEvent) || request.review.inspection.recorded().length > 0,
             trustedOpaqueMcpReview: Boolean(
                 reviewEvent?.owningSession &&
                 "kind" in reviewEvent.owningSession &&

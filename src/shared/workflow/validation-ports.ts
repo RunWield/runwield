@@ -206,6 +206,8 @@ export type IsolatedAgentSessionRequest =
           userRequest: string;
           cwd: string;
           reviewerMode: ReviewerRoundMode;
+          /** Review round within the durable validation generation. */
+          round?: number;
           review: ValidationReviewData;
           ledger: ReviewLedger;
           /** Identity reused for retries of one unfinished review. */
