@@ -11,7 +11,7 @@ import {
     finalizePlanImplementation,
     resolveExecutionOwner,
     runSlicerAgent,
-} from "../workflow/workflow.js";
+} from "../workflow/workflow.ts";
 import { dispatchPostTriage } from "../workflow/orchestrator.ts";
 import { systemLocalCIPort } from "../workflow/validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
@@ -53,7 +53,7 @@ type HostedSession = import("./hosted-session.js").HostedSession;
 type ImageAttachment = import("./types.js").ImageAttachment;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
-type PlanExecutionResult = import("../workflow/workflow.js").PlanExecutionResult;
+type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
 type WorkflowMetric = Parameters<typeof recordWorkflowMetric>[0];
 
 interface AgentHandlerCompleteResult {

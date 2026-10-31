@@ -51,7 +51,7 @@ import {
     resolveExecutionOwner,
     runPlanningAgent,
     runSlicerAgent,
-} from "./workflow.js";
+} from "./workflow.ts";
 import { runMechanicalValidation, shouldRunWorkflowValidation, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
 import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import type { LocalCIPort } from "./validation-local-ci.ts";
