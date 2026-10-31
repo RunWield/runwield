@@ -68,8 +68,9 @@ async function writeTerminal(bytes: Uint8Array): Promise<void> {
     });
 }
 
-async function stopOwnedSsh(child: NativeProcess, settled: () => boolean): Promise<void> {
-    if (settled()) return;
+async function stopOwnedSsh(child: NativeProcess, settled: () => boolean): Promise<boolean> {
+    if (settled()) return false;
+    let forced = false;
     const graceful = await Promise.race([
         child.status.then(() => true),
         new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000)),
@@ -79,15 +80,18 @@ async function stopOwnedSsh(child: NativeProcess, settled: () => boolean): Promi
         // independent health and terminal-closure monitoring.
         try {
             process.kill(-child.pid, "SIGKILL");
+            forced = true;
         } catch {
             try {
                 child.kill("SIGKILL");
+                forced = true;
             } catch {
                 /* Exited. */
             }
         }
     }
     await child.status;
+    return forced;
 }
 
 // This fixed program accepts private data only through SSH stdin. Its remote
@@ -435,12 +439,19 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         while (!exited && !interrupted && !service.status().shutdown) {
             await Promise.race([status, new Promise((resolve) => setTimeout(resolve, 1_000))]);
         }
+        const connectionStatus = service.status();
+        if (!exited && !interrupted && connectionStatus.shutdown && !connectionStatus.remoteCleanupConfirmed) {
+            console.error("Remote connection lost. Closing this connection.");
+        }
         service.requestShutdown();
-        await stopOwnedSsh(ssh, () => exited);
+        const forced = await stopOwnedSsh(ssh, () => exited);
         await terminalOutput;
         const result = await status;
         const errors = await stderr;
-        if (!result.success && !interrupted) {
+        // OpenSSH can retain half-open browser forwards after its remote command exits.
+        // Only our own SIGKILL after authenticated cleanup is a normal forwarder close.
+        const closedForwards = forced && result.code === 137 && service.status().remoteCleanupConfirmed;
+        if (!result.success && !interrupted && !closedForwards) {
             throw new Error(`Remote connection ended: ${errors.trim() || result.code}`);
         }
         if (service.status().shutdown && !exited) throw new Error("Remote control lost; termination uncertain");

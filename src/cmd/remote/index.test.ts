@@ -34,12 +34,19 @@ interface CliResult {
     stderr: string;
 }
 
+interface OpenStdinCliResult extends CliResult {
+    lossNoticeObservedAt: number | null;
+    completedAt: number;
+}
+
+const lossNotice = "Remote connection lost. Closing this connection.";
+
 interface RemoteFixture {
     local: string;
     remote: string;
     sshLog: string;
     run: (args: string[], proof?: string) => Promise<CliResult>;
-    runWithOpenStdin: () => Promise<CliResult>;
+    runWithOpenStdin: () => Promise<OpenStdinCliResult>;
 }
 
 /** Real CLI with disposable homes: POSIX runs remote Python; Windows uses a native SSH protocol boundary. */
@@ -108,7 +115,43 @@ if (args[0] === "-tt") {
         if (line !== "terminal-input") throw new Error("Unexpected terminal input");
         // Let the launcher start its next read, without delivering EOF to it.
         await new Promise(resolve => setTimeout(resolve, 100));
-        process.stdout.write("REMOTE_EXIT_AFTER_INPUT\\n", () => process.exit(0));
+        const modeFile = process.env.SSH_LOG + ".mode";
+        const mode = existsSync(modeFile) ? readFileSync(modeFile, "utf8").trim() : "default";
+        if (mode === "health-loss-delayed-exit") {
+            const header = JSON.parse(readFileSync(process.env.SSH_LOG + ".header", "utf8"));
+            const response = await fetch("http://127.0.0.1:" + header.port + "/health", {
+                method: "POST", headers: { Authorization: "Bearer " + header.credential },
+            });
+            if (!response.ok || (await response.json()).shutdown) throw new Error("Initial health reply failed");
+            // Stop health traffic. Independently simulate SSH transport failure after
+            // the real service has had time to detect three missed health periods.
+            process.on("SIGTERM", () => {
+                process.stdout.write("REMOTE_TRANSPORT_TERMINATING\\n");
+                setTimeout(() => process.exit(143), 1500);
+            });
+            setTimeout(() => process.kill(process.pid, "SIGTERM"), 21000);
+            setInterval(() => {}, 1000);
+        } else if (mode === "hold-without-shutdown") {
+            process.stdout.write("REMOTE_NO_CLEANUP_RECEIPT\\n");
+            setInterval(() => {}, 1000);
+        } else if (mode === "shutdown-hold" || mode === "shutdown-exit-42") {
+            const header = JSON.parse(readFileSync(process.env.SSH_LOG + ".header", "utf8"));
+            const response = await fetch("http://127.0.0.1:" + header.port + "/shutdown", {
+                method: "POST", headers: { Authorization: "Bearer " + header.credential },
+            });
+            const receipt = await response.json();
+            if (!response.ok || receipt.shutdown !== true) throw new Error("Cleanup acknowledgement failed");
+            writeFileSync(process.env.SSH_LOG + ".shutdown", "acknowledged");
+            if (mode === "shutdown-exit-42") {
+                process.stdout.write("REMOTE_CLEANUP_CONFIRMED\\n", () => process.exit(42));
+            } else {
+                // Open review forwards can outlive the completed remote client session.
+                process.stdout.write("REMOTE_CLEANUP_CONFIRMED\\n");
+                setInterval(() => {}, 1000);
+            }
+        } else {
+            process.stdout.write("REMOTE_EXIT_AFTER_INPUT\\n", () => process.exit(0));
+        }
         break;
     }
 } else {
@@ -274,6 +317,7 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                 });
                 let stdout = "";
                 let stderr = "";
+                let lossNoticeObservedAt: number | null = null;
                 let sent = false;
                 child.stdout.setEncoding("utf8");
                 child.stderr.setEncoding("utf8");
@@ -286,14 +330,25 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                 });
                 child.stderr.on("data", (chunk: string) => {
                     stderr += chunk;
+                    if (lossNoticeObservedAt === null && stderr.includes(lossNotice)) {
+                        lossNoticeObservedAt = performance.now();
+                    }
                 });
                 child.stdin.on("error", () => {});
                 let timer: ReturnType<typeof setTimeout> | undefined;
                 try {
                     const result = await Promise.race([
-                        new Promise<CliResult>((resolve, reject) => {
+                        new Promise<OpenStdinCliResult>((resolve, reject) => {
                             child.once("error", reject);
-                            child.once("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
+                            child.once("close", (code) =>
+                                resolve({
+                                    code: code ?? -1,
+                                    stdout,
+                                    stderr,
+                                    lossNoticeObservedAt,
+                                    completedAt: performance.now(),
+                                }),
+                            );
                         }),
                         new Promise<never>((_, reject) => {
                             timer = setTimeout(
@@ -305,7 +360,6 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                             );
                         }),
                     ]);
-                    assertEquals(result.code, 0, result.stderr + "\n" + result.stdout);
                     assertEquals(sent, true, "the terminal input pump must run before SSH exits");
                     assertEquals(child.stdin.writableEnded, false, "parent must not supply stdin EOF");
                     return result;
@@ -511,6 +565,59 @@ test("remote CLI exits after authenticated SSH closes while terminal stdin remai
         assertEquals((args.at(-1) ?? "").endsWith(` ${match[2]}`), true);
         const header = JSON.parse(await fsReadFile(sshLog + ".header", "utf8"));
         assertEquals(header.reviewPort, port);
+    }, true);
+});
+
+test("remote CLI succeeds after confirmed cleanup when owned SSH review forwards stay open", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "shutdown-hold");
+        const result = await runWithOpenStdin();
+        assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        assertEquals(await fsReadFile(sshLog + ".shutdown", "utf8"), "acknowledged");
+        assertStringIncludes(result.stdout, "REMOTE_CLEANUP_CONFIRMED");
+        assertEquals(result.code, 0, result.stderr + "\n" + result.stdout);
+        assertEquals(result.stderr.includes(lossNotice), false, result.stderr);
+    }, true);
+});
+
+test("remote CLI reports health loss before slow SSH teardown completes", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "health-loss-delayed-exit");
+        const result = await runWithOpenStdin();
+        assertEquals(result.code, 1, result.stderr);
+        assertStringIncludes(result.stdout, "REMOTE_TRANSPORT_TERMINATING");
+        assertStringIncludes(result.stderr, "Remote connection ended: 143");
+        assertStringIncludes(result.stderr, lossNotice);
+        if (result.lossNoticeObservedAt === null) throw new Error("No health-loss notice was observed");
+        const pendingMs = result.completedAt - result.lossNoticeObservedAt;
+        assertEquals(
+            pendingMs >= 1000,
+            true,
+            `Health-loss notice must precede completion by at least 1s; got ${pendingMs}ms`,
+        );
+    }, true);
+});
+
+test("remote CLI still fails when SSH exits 42 after confirmed cleanup", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "shutdown-exit-42");
+        const result = await runWithOpenStdin();
+        assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        assertEquals(await fsReadFile(sshLog + ".shutdown", "utf8"), "acknowledged");
+        assertStringIncludes(result.stdout, "REMOTE_CLEANUP_CONFIRMED");
+        assertEquals(result.code, 1, result.stderr + "\n" + result.stdout);
+        assertStringIncludes(result.stderr, "Remote connection ended: 42");
+    }, true);
+});
+
+test("remote CLI fails when SSH forwards remain open without a remote cleanup receipt", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "hold-without-shutdown");
+        const result = await runWithOpenStdin();
+        assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        assertStringIncludes(result.stdout, "REMOTE_NO_CLEANUP_RECEIPT");
+        assertEquals(result.code, 1, result.stderr + "\n" + result.stdout);
+        assertStringIncludes(result.stderr, "Remote connection ended: 137");
     }, true);
 });
 

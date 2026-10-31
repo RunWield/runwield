@@ -46,8 +46,8 @@ A local Deno 2.9.7/macOS ARM64 check proved only that an asynchronous Worker can
 ordering, interrupted-save recovery, and the effect of synchronous network waits on terminal responsiveness.
 
 This proof informs **Preserve local history** and **Preserve work and report uncertainty** in the proposal's
-[Local memories and saved Sessions](../prd/remote-ssh-prd.md#local-memories-and-saved-sessions) and
-[Disconnect and recovery](../prd/remote-ssh-prd.md#disconnect-and-recovery) capabilities. Lasting owners are Core's
+[Local memories and saved Sessions](../prd/runwield-core-prd.md#session-continuity) and
+[Disconnect and recovery](../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) capabilities. Lasting owners are Core's
 [Session continuity](../prd/runwield-core-prd.md#session-continuity) and
 [execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery). No product
 requirement, glossary definition, or architectural decision is changed or marked delivered by this proof. Ordinary local

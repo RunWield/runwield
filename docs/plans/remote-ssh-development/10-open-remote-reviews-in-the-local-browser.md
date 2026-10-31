@@ -81,14 +81,14 @@ remote: supervisor (supervisor.ts)        # new: creates the private socket dire
 
 ### PRD capabilities
 
-- [Remote workflows and local review](../../prd/remote-ssh-prd.md#remote-workflows-and-local-review): the **target
+- [Remote workflows and local review](../../prd/runwield-core-prd.md#remote-connection): the **target
   requirement "Review remote work locally"** and its acceptance scenario (review opens in the laptop browser, shows
   remote content, decisions reach the same Session, browser close and reopen do not cancel the wait). This child
   delivers both.
 - [Plan Review](../../prd/runwield-core-prd.md#plan-review) and
   [execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery): review
   semantics survive unchanged.
-- [Disconnect and recovery](../../prd/remote-ssh-prd.md#disconnect-and-recovery): SSH loss already stops the remote view
+- [Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery): SSH loss already stops the remote view
   and its review host (child08). The forward ends with the SSH process.
 
 Out of scope: hosted Workspace registration, remote ACP clients (so ACP browser questions do not change), CLI-only

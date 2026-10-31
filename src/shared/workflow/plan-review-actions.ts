@@ -240,6 +240,7 @@ export async function applySharedPlanReviewDecision({
     let reviewedPlan = typeof decision.plan === "string" ? decision.plan : planWithFrontMatter;
     if (approved) reviewedPlan = resolvePlanQuestions(reviewedPlan, decision.questionAnswers);
     const canonicalReviewOverrides = {
+        planId: originalAttrs.planId,
         classification: canonicalClassification,
         type: originalAttrs.type,
         ...(trustedWorkKind ? { workKind: trustedWorkKind } : {}),

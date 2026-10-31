@@ -91,6 +91,7 @@ export interface StartInteractiveSessionOptions {
     terminal?: TerminalPairPort;
     skipModelWelcome?: boolean;
     startupIntent?: "onboard";
+    startupNotice?: string;
     configureUiAPI?: (uiAPI: UiAPI) => void;
     onLifecycleReady?: (handle: InteractiveLifecycleHandle) => void;
 }
@@ -158,13 +159,15 @@ export async function startInteractiveSession(
     initialUserRequest: string | null,
     options: StartInteractiveSessionOptions,
 ): Promise<UiAPI> {
-    if (!(await confirmProjectDirectory())) throw new DirectoryStartupCanceled("Project startup canceled");
+    if (!(await confirmProjectDirectory(getCwd(), false, options.startupNotice))) {
+        throw new DirectoryStartupCanceled("Project startup canceled");
+    }
     let suppressAutomaticProjectOffers = inspectProjectDirectory(getCwd()).classified;
     const chatBuiltinSlashNames = new Set<string>();
     for (const command of getSlashCommandDefinitions()) chatBuiltinSlashNames.add(command.name);
     const sessionStartMode = options.sessionStartMode || "new";
     const shouldDeferManagedActivation = sessionStartMode === "new";
-    if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(getCwd())))) {
+    if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(getCwd()), false, options.startupNotice))) {
         throw new DirectoryStartupCanceled("Project startup canceled");
     }
     const continuation =
@@ -449,6 +452,7 @@ export async function startInteractiveSession(
         const explicitStartupAvailability = explicitOnboardingStartup
             ? getSelectedDefaultModelAvailability(runtimeSnapshot().cwd)
             : null;
+        if (options.startupNotice) uiAPI.appendSystemMessage(options.startupNotice);
         const modelWelcomeResult = options.skipModelWelcome
             ? { shown: false, suppressBootBanner: false, noModel: false, setupCompleted: false }
             : explicitOnboardingStartup

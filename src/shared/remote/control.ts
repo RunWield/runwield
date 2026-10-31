@@ -87,6 +87,8 @@ export interface RemoteControlStatus {
     connected: boolean;
     ready: boolean;
     shutdown: boolean;
+    /** Authenticated peer cleanup, not a laptop stop request. */
+    remoteCleanupConfirmed: boolean;
     closed: boolean;
 }
 
@@ -140,6 +142,7 @@ export function startRemoteControlService(
     let connected = false;
     let ready = false;
     let shutdown = false;
+    let remoteCleanupConfirmed = false;
     let closed = false;
     let closing: Promise<void> | undefined;
     let seenSinceCheck = false;
@@ -378,6 +381,7 @@ export function startRemoteControlService(
                 return Response.json({ shutdown });
             }
             if (request.method === "POST" && path === "/shutdown") {
+                remoteCleanupConfirmed = true;
                 shutdown = true;
                 ready = false;
                 stopModels();
@@ -470,7 +474,7 @@ export function startRemoteControlService(
     return {
         port: address.port,
         credential,
-        status: () => ({ connected, ready, shutdown, closed }),
+        status: () => ({ connected, ready, shutdown, remoteCleanupConfirmed, closed }),
         registerSessionOperation(operation) {
             const owner = getRemoteSessionOwner(operation);
             if (shutdown || closed || sessionOwners.has(operation)) {

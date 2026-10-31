@@ -133,7 +133,6 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         // the shared interaction outcome helpers from this module.
         const { loadPlanFileStrict } = await import("../../plan-store.js");
         const { loadPlanActionEvidence } = await import("../workflow/plan-actions.ts");
-        const { resolvePrimaryCheckoutRoot } = await import("../primary-checkout.ts");
         const source = await loadPlanFileStrict(request._meta.planPath);
         if (source.kind !== "loaded") {
             throw new Error("The Plan could not be opened for review. Your files have not been changed.");
@@ -146,7 +145,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         if (typeof planId !== "string" || source.attrs.planId !== planId) {
             throw new Error("The Plan identity changed before review. Reload the Plan and review again.");
         }
-        const evidence = await loadPlanActionEvidence(resolvePrimaryCheckoutRoot(hostedSession.cwd), planId);
+        const evidence = await loadPlanActionEvidence(hostedSession.cwd, planId);
         if (evidence.kind !== "success") throw new Error(evidence.message);
         if (evidence.evidence.revision !== source.revision) {
             throw new Error("The Plan changed before review. Reload the Plan and review again.");

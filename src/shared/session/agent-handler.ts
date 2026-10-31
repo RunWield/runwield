@@ -43,6 +43,7 @@ import {
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { AGENTS } from "../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
+import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
@@ -56,6 +57,7 @@ type WorkflowMetric = Parameters<typeof recordWorkflowMetric>[0];
 interface AgentHandlerCompleteResult {
     kind: "complete";
     validationResult?: WorkflowValidationResult;
+    executionToStart?: import("./runtime/workflow-options.ts").RuntimeExecutePlanOptions;
 }
 
 type AgentHandlerTurnResult = AgentHandlerCompleteResult;
@@ -88,8 +90,7 @@ function canCompleteActiveExecutionWorkflow(agentName: string, workflow: ActiveE
  */
 function isMissingPrimaryPlanError(error: Error | string, planName: string): boolean {
     const reason = error instanceof Error ? error.message : String(error);
-    return reason === `Plan not found: ${planName}` ||
-        reason === `Plan not found in primary checkout: ${planName}`;
+    return reason === `Plan not found: ${planName}` || reason === `Plan not found in primary checkout: ${planName}`;
 }
 
 function refreshedQuickFixWorkflow(workflow: ActiveExecutionWorkflow): ActiveExecutionWorkflow {
@@ -110,8 +111,7 @@ function refreshedQuickFixWorkflow(workflow: ActiveExecutionWorkflow): ActiveExe
  */
 async function requestMissingPrimaryPlanRetry(hostedSession: HostedSession, planName: string): Promise<boolean> {
     const planPath = `docs/plans/${planName}.md`;
-    const message =
-        `The Plan file "${planPath}" is missing from the main checkout. Restore it in the main checkout, then come back and pick Retry.`;
+    const message = `The Plan file "${planPath}" is missing from the main checkout. Restore it in the main checkout, then come back and pick Retry.`;
     emitSystemStatus(hostedSession, message, { level: "warning", header: "RunWield" });
     const response = await requestHostedSessionInteraction(
         hostedSession,
@@ -224,6 +224,9 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                     localCI: systemLocalCIPort,
                     signal,
                 });
+                if (validationResult?.kind === "approved_execution") {
+                    return { kind: "complete", executionToStart: validationResult.executionToStart };
+                }
                 if (validationResult) return { kind: "complete", validationResult };
                 return { kind: "complete" };
             } finally {
@@ -238,7 +241,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
         // If plan_written publishes an accepted event, dispatch from that event.
         // Tool-result transcript messages are display and audit data only.
         const planEvent = rootWorkflowEvent?.kind === "plan_written" ? rootWorkflowEvent : null;
-        const outcome = planEvent?.kind === "plan_written" ? planEvent.payload as PlanWrittenEventPayload : null;
+        const outcome = planEvent?.kind === "plan_written" ? (planEvent.payload as PlanWrittenEventPayload) : null;
         const planningDecision = decidePostPlanning(outcome, {
             planningAgentName: agentName,
             fallbackTriageMeta: {},
@@ -248,11 +251,12 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 category: "planning",
                 event: "decision",
                 agentName,
-                planName: typeof planningDecision.payload.planName === "string"
-                    ? planningDecision.payload.planName
-                    : undefined,
+                planName:
+                    typeof planningDecision.payload.planName === "string"
+                        ? planningDecision.payload.planName
+                        : undefined,
                 details: summarizeWorkflowDecision(planningDecision),
-            })
+            }),
         );
         if (planEvent) {
             try {
@@ -267,16 +271,16 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
             signal.throwIfAborted();
         }
         if (planningDecision.kind === "start_slicer") {
-            const planName = typeof planningDecision.payload.planName === "string"
-                ? planningDecision.payload.planName
-                : "";
+            const planName =
+                typeof planningDecision.payload.planName === "string" ? planningDecision.payload.planName : "";
             const triageMeta = (planningDecision.payload.triageMeta || {}) as TriageMeta;
-            const reviewFeedback = typeof planningDecision.payload.reviewFeedback === "string"
-                ? planningDecision.payload.reviewFeedback
-                : undefined;
-            const reviewImages = (Array.isArray(planningDecision.payload.reviewImages)
-                ? planningDecision.payload.reviewImages
-                : undefined) as ImageAttachment[] | undefined;
+            const reviewFeedback =
+                typeof planningDecision.payload.reviewFeedback === "string"
+                    ? planningDecision.payload.reviewFeedback
+                    : undefined;
+            const reviewImages = (
+                Array.isArray(planningDecision.payload.reviewImages) ? planningDecision.payload.reviewImages : undefined
+            ) as ImageAttachment[] | undefined;
             signal?.throwIfAborted();
             const slicerResult = await runDuringWorkflowTransition(() =>
                 runSlicerAgent({
@@ -286,7 +290,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                     reviewImages,
                     hostedSession,
                     sessionManager,
-                })
+                }),
             );
             completeWorkflowTransition();
             await recordWorkflowMetricImpl({
@@ -312,25 +316,44 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                     category: "planning",
                     event: "active_agent_transition",
                     agentName,
-                    planName: typeof planningDecision.payload.planName === "string"
-                        ? planningDecision.payload.planName
-                        : undefined,
+                    planName:
+                        typeof planningDecision.payload.planName === "string"
+                            ? planningDecision.payload.planName
+                            : undefined,
                     details: { transition: "execute_plan", decisionKind: planningDecision.kind },
-                })
+                }),
             );
-            const planName = typeof planningDecision.payload.planName === "string"
-                ? planningDecision.payload.planName
-                : "";
+            const planName =
+                typeof planningDecision.payload.planName === "string" ? planningDecision.payload.planName : "";
             const triageMeta = (planningDecision.payload.triageMeta || {}) as TriageMeta;
-            const reviewFeedback = typeof planningDecision.payload.reviewFeedback === "string"
-                ? planningDecision.payload.reviewFeedback
-                : undefined;
-            const reviewImages = (Array.isArray(planningDecision.payload.reviewImages)
-                ? planningDecision.payload.reviewImages
-                : undefined) as ImageAttachment[] | undefined;
+            const reviewFeedback =
+                typeof planningDecision.payload.reviewFeedback === "string"
+                    ? planningDecision.payload.reviewFeedback
+                    : undefined;
+            const reviewImages = (
+                Array.isArray(planningDecision.payload.reviewImages) ? planningDecision.payload.reviewImages : undefined
+            ) as ImageAttachment[] | undefined;
             if (signal?.aborted) {
                 completeWorkflowTransition();
                 signal.throwIfAborted();
+            }
+            if (hostedSession.getManagedMetadata?.()) {
+                return await runDuringWorkflowTransition(async (): Promise<AgentHandlerTurnResult> => {
+                    const evidence = await loadPlanActionEvidence(projectRoot, triageMeta.planId || "");
+                    signal?.throwIfAborted();
+                    if (evidence.kind !== "success") throw new Error(evidence.message);
+                    completeWorkflowTransition();
+                    return {
+                        kind: "complete",
+                        executionToStart: {
+                            planName,
+                            triageMeta,
+                            reviewFeedback,
+                            reviewImages,
+                            approvalEvidence: evidence.evidence,
+                        },
+                    };
+                });
             }
             let executionResult: PlanExecutionResult;
             try {
@@ -350,9 +373,10 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 );
                 emitSystemStatus(
                     hostedSession,
-                    `Plan execution failed: ${reason}. ${
-                        getAgentDisplayName(executionOwner, projectRoot)
-                    } may need manual intervention.`,
+                    `Plan execution failed: ${reason}. ${getAgentDisplayName(
+                        executionOwner,
+                        projectRoot,
+                    )} may need manual intervention.`,
                     { level: "error", header: "RunWield" },
                 );
                 await switchActiveAgent(hostedSession, { agentName: executionOwner });
@@ -381,9 +405,11 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
 
             const activeWorkflowAfterExecution = hostedSession.getActiveExecutionWorkflow();
             const executionCanceledBeforeStart = executionResult?.canceled && !activeWorkflowAfterExecution;
-            const executionOwner = executionCanceledBeforeStart ? agentName : resolvePlanExecutionRuntimeAgent(
-                activeWorkflowAfterExecution?.executionAgent || resolveExecutionOwner(triageMeta),
-            );
+            const executionOwner = executionCanceledBeforeStart
+                ? agentName
+                : resolvePlanExecutionRuntimeAgent(
+                      activeWorkflowAfterExecution?.executionAgent || resolveExecutionOwner(triageMeta),
+                  );
             const executionDecision = decidePostExecution(executionResult, {
                 planName,
                 triageMeta,
@@ -433,9 +459,10 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                     requestAgentStoppedAttention();
                     return { kind: "complete" };
                 }
-                const nextAgentName = typeof executionDecision.payload.agentName === "string"
-                    ? executionDecision.payload.agentName
-                    : AGENTS.ENGINEER;
+                const nextAgentName =
+                    typeof executionDecision.payload.agentName === "string"
+                        ? executionDecision.payload.agentName
+                        : AGENTS.ENGINEER;
                 await recordWorkflowMetricImpl({
                     category: "execution",
                     event: "active_agent_transition",
@@ -519,13 +546,16 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
 
             if (workflow?.triageMeta?.classification === "QUICK_FIX") {
                 hostedSession.clearActiveExecutionWorkflow();
-                await runMechanicalValidation({
-                    hostedSession,
-                    sessionManager,
-                    cwd: workflow.executionCwd || projectRoot,
-                    manualQaName: workflow.manualQaName,
-                    manualQaContext: workflow.manualQaContext,
-                }, systemLocalCIPort);
+                await runMechanicalValidation(
+                    {
+                        hostedSession,
+                        sessionManager,
+                        cwd: workflow.executionCwd || projectRoot,
+                        manualQaName: workflow.manualQaName,
+                        manualQaContext: workflow.manualQaContext,
+                    },
+                    systemLocalCIPort,
+                );
                 acknowledgeCompletion();
                 hostedSession.setActiveExecutionWorkflow(refreshedQuickFixWorkflow(workflow));
                 requestAgentStoppedAttention();

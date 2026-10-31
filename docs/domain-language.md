@@ -119,24 +119,24 @@ Plan status, Session status, ownership reason
 **Session Name**: The persisted short human label for a Session, initially derived from Router Triage for fresh user
 requests. It is distinct from the terminal window or tab title. _Avoid_: Tab title, conversation name
 
-**Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
-remote Linux host. It prepares a matching runtime, mounts laptop personal files, and opens the normal remote TUI for
-conversation turns with Agents, core project tools, and laptop models. It can create and continue a saved Session whose
-history stays on the laptop; the first submitted message creates history, not connection alone. Personal MCP servers
-run on the laptop through native transport forwarding while project servers run remotely. MCP roots and paths are not
-rewritten, and connection cleanup stops every live descendant process, including detached work and adopted orphans,
-without replaying uncertain effects. `wld remote sessions` reads that history offline in the normal renderer without a
-composer and with a reconnect footer. Connected `/resume`
-continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
-journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
-provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
-remain stable through history and reconnect. Remote Memory uses the laptop service. Delivery workflows run remotely
-with laptop-owned Session records and segment rollover; reconnect checks remote evidence without automatic replay.
-Reviews stay on the remote review host; the laptop opens them through one loopback forward set up in the main SSH
-connection at startup to the private remote `review.sock`. Plan and Code Review keep the same URL through conversation,
-revision, and approval. Explanation-only turns do not refresh reviewed content. Built-in Guided Review runs in memory
-with remote files and the laptop model, without a saved remote Session. An explicit custom guide command remains a
-remote subprocess. Production-provider and platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended worker, remote Session type
+**Remote SSH connection**: Connected-only Core execution started with `wld remote` in an existing directory on a remote
+Linux host. It prepares a matching runtime and personal mount, runs the normal TUI, Agents, project tools, and delivery
+workflows remotely, and uses laptop models, Memory, and authoritative Session saves. The first submitted message creates
+history, not connection alone. Personal MCP servers run on the laptop; project servers run remotely. Roots and paths are
+not rewritten. Connection cleanup stops owned descendants, including detached processes and adopted orphans, within
+[Core’s cleanup limits](prd/runwield-core-prd.md#remote-connection), without replaying uncertain effects.
+`wld remote sessions` reads laptop history offline without a composer or writer lock. Connected `/resume` continues only
+this target’s Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide them. macOS Ctrl+V reads current laptop
+clipboard image bytes; saved attachment references survive reconnect. Reviews use one laptop-loopback forward in the
+main SSH connection to the private remote `review.sock`; project assets stay remote. Plan and Code Review retain their
+URL through conversation, revision, and approval. Built-in Guided Review runs in memory with remote files and the laptop
+model; an explicit custom guide command remains a remote subprocess.
+
+The qualified live matrix is macOS arm64 laptop → Fedora Server x64 (`sct`), Pi `openai-codex/gpt-5.6-luna`. Linux ARM64
+remote runtimes use the synthetic-provider release gate. Other glibc distributions are untested; Windows laptops and CLI
+backends are unsupported. This is a tested matrix, not proof of universal recovery maturity. See
+[Core Remote connection](prd/runwield-core-prd.md#remote-connection). _Avoid_: Personal Workspace, unattended worker,
+remote Session type
 
 **Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
 canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
@@ -162,9 +162,9 @@ Sharing a collection shares memories, never Sessions. _Avoid_: Project relink, S
 **Remote personal mount**: A connection-owned SSHFS view of the laptop’s full `~/.wld` at a fresh private remote path.
 Personal file edits through it change laptop files directly, not a copied resource tree. The remote project’s `.wld`
 stays on the server. The path is private for normal use, but standard SFTP permits broad laptop-account access by the
-trusted remote host; this is not a sandbox and does not grant Session writer authority. Direct bidirectional Skill file
-access was verified on the approved Linux `sct` pilot. The later compiled conversation journey also verified laptop
-history and connected resume with an authenticated synthetic provider; other hosts retain separate qualification.
+trusted remote host; this is not a sandbox and does not grant Session writer authority. Supported extra mounts are the
+agents root and installed package roots, not arbitrary personal roots. The
+[Core qualified matrix](prd/runwield-core-prd.md#remote-connection) bounds support; this term is not a proof record.
 _Avoid_: Resource sync, copied profile, confined mount
 
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
@@ -870,11 +870,11 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 ## Relationships
 
-- A **Remote SSH connection** uses Core to display a remote TUI for an existing directory; the connection itself is not
-  a saved **Session** and does not yet start ordinary project execution or open **Project Runtime State**. Its **Remote
-  personal mount** gives direct access to laptop personal files on the approved `sct` pilot, while the project’s `.wld`
-  stays remote. The optional native Pi bridge proof is not an ordinary turn. Target remote Sessions add a separate
-  guarded writer for saved history and local authenticated model execution.
+- A **Remote SSH connection** uses Core for ordinary remote project execution, delivery workflows, and review. The
+  connection alone is not a saved **Session**. A **Remote personal mount** gives direct access to laptop personal files
+  while project `.wld` and **Project Runtime State** stay remote. The laptop is the authoritative Session writer under
+  its native **Session Writer Lock**; the mount is not writer authority. Saved context and lineage continue after
+  reconnect without automatic replay of uncertain effects.
 - A **Tutorial** explains one real **Planned Change** through normal **Plan Review** and **Workflow Validation**. It
   does not replace **Init** or own Plan lifecycle state.
 - One **Attached Workflow** governs one user request inside one **External Agent Host**.

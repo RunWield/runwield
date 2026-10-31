@@ -416,7 +416,7 @@ ${outcome.feedback || ""}`,
         const approved = await findPlanEvidenceById(session.cwd, outcome.triageMeta?.planId || planId);
         const evidence = await loadPlanActionEvidence(session.cwd, approved.planId);
         if (evidence.kind !== "success") throw new Error(evidence.message);
-        const result = await this.executePlan(sessionId, {
+        const result = await this.executeApprovedPlan(sessionId, {
             planName: approved.planName,
             triageMeta: approved.attrs,
             approvalEvidence: evidence.evidence,
@@ -424,12 +424,16 @@ ${outcome.feedback || ""}`,
             reviewImages: outcome.images,
         });
         if (result.error) throw new Error(result.error);
-        if (!result.executionComplete) return result;
+        return result;
+    }
+
+    async executeApprovedPlan(sessionId: string, options: RuntimeExecutePlanOptions): Promise<RuntimeValidationResult> {
+        const result = await this.executePlan(sessionId, options);
+        if (result.error || !result.executionComplete) return result;
         return (
             (await this.runValidation(sessionId, {
-                planName: approved.planName,
-                planContent: approved.markdown,
-                triageMeta: approved.attrs,
+                planName: options.planName,
+                triageMeta: options.triageMeta,
                 executionContext: result.executionContext,
                 trigger: "execution_completion",
             })) || result

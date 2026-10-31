@@ -229,6 +229,8 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
     if (resumed?.managed?.syncState?.status === "active_elsewhere") {
         notice = buildConversationRestoredMessage(resumed.managed.syncState.owningSurfaceKind);
     }
+    const progress = resumed?.workflowContext?.validationProgress;
+    if (progress?.outcome === "paused" && progress.message) notice += `\n${progress.message}`;
     uiAPI.appendSystemMessage(notice);
     setTerminalTitleForName(resumed?.name);
 }

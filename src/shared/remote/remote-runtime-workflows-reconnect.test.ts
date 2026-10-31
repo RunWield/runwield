@@ -100,11 +100,15 @@ for (const evidenceAvailable of [true, false]) {
                 evidenceAvailable ? "verified" : "paused",
                 JSON.stringify(loaded),
             );
-            if (!evidenceAvailable)
+            if (!evidenceAvailable) {
+                const uncertainty = loaded.workflowContext?.validationProgress?.message;
+                assert(uncertainty, JSON.stringify(loaded));
+                assert(uncertainty.includes("uncertain"), JSON.stringify(loaded));
                 assert(
-                    loaded.workflowContext?.validationProgress?.message?.includes("uncertain"),
-                    JSON.stringify(loaded),
+                    loaded.notices?.some((notice) => notice.includes(uncertainty)),
+                    "The restored conversation must show the full uncertain publication result",
                 );
+            }
             assertEquals(await ciRuns(f), ci, "Reconnect cannot replay CI");
             assertEquals(f.modelRequests.length, models, "Reconnect cannot replay review, repair, or Recorder");
             assertEquals(await git(upstream, ["show-ref"]), refs);
@@ -194,7 +198,13 @@ test("transport loss during active validation resumes with uncertainty, without 
         const loaded = await resumed.read();
         assertEquals(loaded.ok, true, loaded.error);
         assertEquals(loaded.workflowContext?.validationProgress?.outcome, "paused", JSON.stringify(loaded));
-        assert(loaded.workflowContext?.validationProgress?.message?.includes("uncertain"));
+        const uncertainty = loaded.workflowContext?.validationProgress?.message;
+        assert(uncertainty);
+        assert(uncertainty.includes("uncertain"));
+        assert(
+            loaded.notices?.some((notice) => notice.includes(uncertainty)),
+            "The restored conversation must show the full interrupted validation result",
+        );
         assertEquals(await ciRuns(f), 1);
         assertEquals(f.modelRequests.length, models);
         assertEquals(await git(upstream, ["show-ref"]), refs);

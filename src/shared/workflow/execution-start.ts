@@ -243,8 +243,8 @@ export async function startActiveExecutionWorkflow({
     if (!hostedSession) throw new Error("startActiveExecutionWorkflow: hostedSession is required");
     hostedSession.getManagedOperationCapability?.()?.assertLive();
     const projectRoot = resolvePrimaryCheckoutRoot(hostedSession.cwd);
-    await prepareSessionPlanningWorktree(projectRoot, planName);
-    const sourceLocation = await resolveWorkflowPlanLocation(projectRoot, planName);
+    await prepareSessionPlanningWorktree(hostedSession.cwd, planName);
+    const sourceLocation = await resolveWorkflowPlanLocation(hostedSession.cwd, planName);
     if (sourceLocation.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${planName} before executing it.`);
     }

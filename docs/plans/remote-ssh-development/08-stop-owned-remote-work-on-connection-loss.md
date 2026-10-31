@@ -52,7 +52,7 @@ supervisor (SSH command, Linux)
   groups are orphaned and keep running. Git calls with no abort signal are not stopped even on a clean shutdown.
 
 This child delivers the process part of the Remote SSH PRD
-[Disconnect and recovery](../../prd/remote-ssh-prd.md#disconnect-and-recovery) capability:
+[Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) capability:
 
 - **Do not continue unattended**, and its scenarios: "an active Agent and a long-running owned subprocess both stop on
   normal exit" and "abrupt loss stops owned work without a final client message; unrelated processes remain running".

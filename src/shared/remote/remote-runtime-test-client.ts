@@ -19,6 +19,7 @@ import { RemoteSessionControl, type RemoteSessionControlConnection } from "./ses
 import { SessionHost } from "../session/session-host.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
+import { RuntimeEventTypes } from "../session/session-runtime-events.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.js";
@@ -57,6 +58,7 @@ export interface RuntimeClientCommand {
     kind:
         | "background-wait"
         | "workflow-plan"
+        | "workflow-plan-start"
         | "workflow-execute"
         | "workflow-validate"
         | "local-recovery"
@@ -91,6 +93,7 @@ export interface RuntimeClientCommand {
         | "snapshots"
         | "image-preflight-turn";
     text?: string;
+    agentName?: string;
     planId?: string;
     candidate?: import("../session/plan-session-lookup.ts").PlanAssociatedSession;
     tutorial?: import("../session/tutorial-context-session.ts").TutorialContextUpdate;
@@ -137,6 +140,8 @@ export interface RuntimeClientReport {
     piSessionId?: string;
     result?: Awaited<ReturnType<SessionRuntime["runValidation"]>>;
     reviewUrl?: string;
+    isAgentTransitioning?: boolean;
+    turnEndResults?: string[];
     publicationPhase?: string | null;
     priorValidationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
     validationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
@@ -162,6 +167,7 @@ const runtime = new SessionRuntime({
     ownerInstanceId: crypto.randomUUID(),
 });
 let sessionId = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+let workflowTurnEndResults: string[] = [];
 const report = (kind: string, ok?: boolean, error?: string) => {
     const snapshot = runtime.getSessionSnapshot(sessionId);
     console.log(
@@ -179,6 +185,11 @@ const report = (kind: string, ok?: boolean, error?: string) => {
             piSessionId: snapshot?.sessionManagerId,
             planAssociations: snapshot?.planAssociations,
             canReopen: snapshot?.workflowContext?.canReopenPlanReview,
+            isAgentTransitioning:
+                kind === "workflow-plan" || kind === "cancel"
+                    ? host.requireSession(sessionId).isAgentTransitioning()
+                    : undefined,
+            turnEndResults: workflowTurnEndResults,
         }),
     );
 };
@@ -259,7 +270,7 @@ try {
                     ? await reconcileStoredPublication(input.cwd, attempt, { apply: false })
                     : null;
                 console.log(JSON.stringify({ kind: command.kind, publicationPhase: recovered?.phase || null }));
-            } else if (command.kind === "workflow-plan") {
+            } else if (command.kind === "workflow-plan" || command.kind === "workflow-plan-start") {
                 runtime.setInteractionAdapter(sessionId, {
                     supportsInteraction: (type) => type === "plan_review",
                     requestInteraction: (request, signal) =>
@@ -272,14 +283,35 @@ try {
                 });
                 const tool = createPlanWrittenTool({
                     hostedSession: host.requireSession(sessionId),
-                    agentName: "remote-runtime",
+                    agentName: command.agentName || "remote-runtime",
                 });
-                const result = await runtime.promptUserTurn(sessionId, {
-                    initialRequest: command.text || "Write and review the delivery Plan.",
-                    agentName: "remote-runtime",
-                    customTools: [tool],
+                workflowTurnEndResults = [];
+                const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
+                    // Serialize during delivery: later cleanup can mutate the result object.
+                    if (event.type === RuntimeEventTypes.TURN_END && event.result) {
+                        workflowTurnEndResults.push(JSON.stringify(event.result));
+                    }
                 });
-                report(command.kind, result.ok, result.error);
+                const planning = runtime
+                    .promptUserTurn(sessionId, {
+                        initialRequest: command.text || "Write and review the delivery Plan.",
+                        agentName: command.agentName || "remote-runtime",
+                        customTools: [tool],
+                    })
+                    .finally(unsubscribe);
+                if (command.kind === "workflow-plan-start") {
+                    // Test-process input only, not a product or release protocol.
+                    pending.push(
+                        planning.then(
+                            (result) => report("workflow-plan", result.ok, result.error),
+                            (error: Error) => report("workflow-plan", false, String(error)),
+                        ),
+                    );
+                    report("workflow-plan-started", true);
+                } else {
+                    const result = await planning;
+                    report(command.kind, result.ok, result.error);
+                }
             } else if (command.kind === "workflow-execute" || command.kind === "workflow-validate") {
                 runtime.setInteractionAdapter(sessionId, {
                     requestInteraction: (request) => {
