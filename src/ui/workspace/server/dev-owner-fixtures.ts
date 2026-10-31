@@ -148,11 +148,92 @@ export function devOwnerSessionPage(page = 0, pageSize = 30, archived = false) {
     };
 }
 
-export function devOwnerSidebar() {
+export const DEV_PLAN_CATALOG_VARIANTS = ["mixed", "corrected", "deleted", "all-malformed", "project-failure"] as const;
+export type DevPlanCatalogVariant = (typeof DEV_PLAN_CATALOG_VARIANTS)[number];
+
+/** A request-local fixture selection; it never changes a real Plan or cached detail. */
+export function devPlanCatalogVariant(cookie: string | null): DevPlanCatalogVariant | null {
+    const value = /(?:^|;\s*)rw-dev-plan-catalog=([^;]+)/.exec(cookie || "")?.[1];
+    return DEV_PLAN_CATALOG_VARIANTS.find((variant) => variant === value) || null;
+}
+
+export function devPlanCatalog(variant: DevPlanCatalogVariant) {
+    const healthy = {
+        name: "healthy-navigation-fixture",
+        planName: "healthy-navigation-fixture",
+        planId: "healthy-navigation-fixture",
+        status: "draft",
+        classification: "PLANNED_CHANGE",
+        hierarchyRole: "top-level",
+        summary: "Illustrative healthy Plan for parse-warning checks.",
+        attrs: { status: "draft", classification: "PLANNED_CHANGE" },
+    };
+    const diagnostics = [
+        {
+            name: "broken-without-id",
+            kind: "malformed",
+            message: "bad indentation of a mapping entry (5:16)\naffectedPaths: - src/example.ts",
+        },
+        {
+            name: "a-very-long-document-name-that-must-not-widen-the-navigation-sidebar-or-hide-its-warning-button",
+            kind: "malformed",
+            message:
+                "bad indentation of a mapping entry (12:7)\nHTML-like text is not markup: <img src=x onerror=alert(1)>\n" +
+                "A long parser explanation must wrap within the viewport. ".repeat(14),
+        },
+    ];
+    return {
+        plans:
+            variant === "all-malformed" || variant === "project-failure"
+                ? []
+                : variant === "corrected"
+                  ? [
+                        healthy,
+                        {
+                            ...healthy,
+                            name: "broken-without-id",
+                            planName: "broken-without-id",
+                            planId: "corrected-fixture",
+                        },
+                        {
+                            ...healthy,
+                            name: diagnostics[1].name,
+                            planName: diagnostics[1].name,
+                            planId: "corrected-long-fixture",
+                        },
+                    ]
+                  : [healthy],
+        diagnostics: variant === "mixed" || variant === "all-malformed" ? diagnostics : [],
+    };
+}
+
+export function devOwnerSidebar(variant: DevPlanCatalogVariant | null = null) {
+    const catalog = variant ? devPlanCatalog(variant) : null;
     return {
         projects: [
             {
                 ...DEV_OWNER_PROJECT,
+                ...(catalog
+                    ? {
+                          plans: catalog.plans.map((plan) => ({
+                              planId: plan.planId,
+                              title: plan.planName,
+                              status: plan.status,
+                          })),
+                          planDiagnostics: catalog.diagnostics,
+                          plansError: variant === "project-failure",
+                          diagnostics:
+                              variant === "project-failure"
+                                  ? [
+                                        {
+                                            kind: "plans",
+                                            message: "Plans could not be loaded. Open Project settings.",
+                                            repairHref: "/projects/dev-project/settings",
+                                        },
+                                    ]
+                                  : [],
+                      }
+                    : {}),
                 sessions: devOwnerSessionPage(0, 5).sessions,
                 hasMoreSessions: devOwnerSessionPage(0, 5).hasNext,
             },

@@ -4,7 +4,7 @@ import type { PlanReadAvailability } from "../../../plan-store.js";
 import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.js";
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
-import { loadPlanSummaries } from "./plan-adapter.js";
+import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.js";
 import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
@@ -93,7 +93,15 @@ type SidebarPlan = {
     hasMoreSessions: boolean;
 };
 
+type SidebarPlanDiagnostic = {
+    name: string;
+    kind: "malformed" | "not_file" | "unreadable";
+    message: string;
+    planId?: string;
+};
+
 type SidebarProject = OwnerProjectView & {
+    planDiagnostics?: SidebarPlanDiagnostic[];
     plans: SidebarPlan[];
     sessions: SessionSummary[];
     hasMorePlans: boolean;
@@ -916,6 +924,7 @@ export async function loadOwnerSidebar(
                         store.getProjectHealth(record.projectId),
                     ) as SidebarProject;
                     const diagnostics: Diagnostic[] = [];
+                    let planDiagnostics: SidebarPlanDiagnostic[] = [];
                     let root = "";
                     try {
                         root = requireOwnerProjectRoot(store, record.projectId);
@@ -932,7 +941,9 @@ export async function loadOwnerSidebar(
                     const plansRead = (async (): Promise<OwnerPlan[]> => {
                         if (!root) return [];
                         try {
-                            const plans = (await loadPlanSummaries(root)) as OwnerPlan[];
+                            const catalog = await loadPlanSummaryCatalog(root);
+                            const plans = catalog.plans as OwnerPlan[];
+                            planDiagnostics = catalog.diagnostics;
                             const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");
                             if (pending)
                                 diagnostics.push({
@@ -1051,6 +1062,7 @@ export async function loadOwnerSidebar(
                         sessions: standalone.slice(0, 5),
                         hasMoreSessions: hasMoreSessions || standalone.length > 5,
                         diagnostics,
+                        planDiagnostics,
                     };
                 }
             }),

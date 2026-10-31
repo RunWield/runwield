@@ -903,6 +903,28 @@ long explanatory text. Put detailed explanations in nearby body copy, metadata, 
 Use notices for local outcomes and important contextual messages. A notice may be success, muted, warning, or danger,
 but the message should explain the consequence in plain language.
 
+### Document parse warnings
+
+Use a compact document-name link and an independent `.rw-icon-button.rw-warning-control` beside it. The link opens the
+Project Plan Board; the warning button does not navigate or imply a lifecycle status. Use a 16px outlined warning SVG,
+`--rw-warning`, and the existing focus ring. Names truncate within the sidebar; keep the button visible and use a 44px
+touch target on phones.
+
+The Workspace shell opens `.rw-warning-tooltip` in a body portal on hover, keyboard focus, or touch activation. Give the
+button an accessible name and associate its explanation with `aria-describedby`. Escape, blur, outside activation,
+sidebar refresh, or navigation dismisses it. Hovering the tooltip keeps it readable. Bound and wrap multiline text within
+the viewport; a tall explanation scrolls inside the tooltip. Treat all diagnostic content as text, never HTML.
+
+Board warnings use `.notice.rw-document-warnings`: one named list of unreadable documents beside healthy content,
+without invented status badges, repair actions, or a whole-page failure. Project-wide load failures keep their existing
+error presentation.
+
+Development checks can select `mixed`, `corrected`, `deleted`, `all-malformed`, or `project-failure` with the dev-only
+`rw-dev-plan-catalog` cookie. The owner sidebar API and `/projects/dev-project/plans` read the same request-local fixture.
+Set the cookie, then dispatch `runwield:session-updated` for the normal sidebar refresh, or reload to refresh the Board.
+Clear the cookie to restore the normal development catalog. These illustrative responses do not change Plan files or
+prove live filesystem recovery; real owner API tests cover that boundary.
+
 ## Workspace search
 
 The global Search action uses the compact rectangular control language and stays in the Workspace header. `Cmd+K` or

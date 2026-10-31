@@ -44,6 +44,7 @@ import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 import {
     findTargetBranchPlansByParent,
+    readTargetBranchPlanCatalogByParent,
     loadTargetPlan,
     TargetBranchSnapshotUnavailableError,
 } from "./shared/workflow/planning-worktree.ts";
@@ -2896,6 +2897,34 @@ export async function clearPlanCollaborationMetadata(cwd, planName, collaboratio
  */
 
 /**
+ * Display-only document failure. Paths are internal and must not reach browser payloads.
+ * @typedef {Object} PlanDocumentDiagnostic
+ * @property {string} name
+ * @property {string} path
+ * @property {"malformed" | "not_file" | "unreadable"} kind
+ * @property {string} message
+ * @property {string} [planId] Trusted registry identity only.
+ */
+
+/**
+ * @param {PlanParseIssue} issue
+ * @returns {PlanDocumentDiagnostic}
+ */
+function documentDiagnostic(issue) {
+    return {
+        name: issue.name,
+        path: issue.path,
+        kind:
+            issue.error instanceof PlanFrontMatterParseError
+                ? "malformed"
+                : issue.error instanceof PlanFileIssueError && issue.error.kind === "not_file"
+                  ? "not_file"
+                  : "unreadable",
+        message: issue.message,
+    };
+}
+
+/**
  * @typedef {Object} PlanParseIssue
  * @property {string} name
  * @property {string} path
@@ -3024,12 +3053,23 @@ function findCatalogPlanIndex(plans, name, planId) {
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 async function listPlansWithTargetChildren(cwd, onlyEpic) {
+    return (await readPlansWithTargetChildren(cwd, onlyEpic, false)).plans;
+}
+
+/**
+ * @param {string} cwd
+ * @param {string | null} onlyEpic
+ * @param {boolean} display
+ */
+async function readPlansWithTargetChildren(cwd, onlyEpic, display) {
     return await withProjectRuntimeReadScope(async () => {
         const dir = getPlansDir(cwd);
         /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
         const results = [];
         /** @type {PlanParseIssue[]} */
         const parseIssues = [];
+        /** @type {Map<string, PlanDocumentDiagnostic>} */
+        const diagnostics = new Map();
         try {
             await collectPlans(dir, [], results, parseIssues);
         } catch (error) {
@@ -3038,8 +3078,8 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
         const access = await inspectProjectRuntimeReadAccess(cwd);
         if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
         if (access.kind === "pending") {
-            if (parseIssues.length) throw parseIssues[0].error;
-            return results.sort(comparePlansForList);
+            if (!display && parseIssues.length) throw parseIssues[0].error;
+            return { plans: results.sort(comparePlansForList), diagnostics: parseIssues.map(documentDiagnostic) };
         }
         const unavailableTargets = new Map();
         for (const projectPlan of [...results]) {
@@ -3052,7 +3092,15 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (!repository.ok) throw new Error(repository.message);
             let targetChildren;
             try {
-                targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
+                if (display) {
+                    const catalog = await readTargetBranchPlanCatalogByParent(cwd, targetBranch, projectPlan.name);
+                    targetChildren = catalog.plans;
+                    for (const diagnostic of catalog.diagnostics) {
+                        diagnostics.set(diagnostic.name, diagnostic);
+                        const index = findCatalogPlanIndex(results, diagnostic.name, diagnostic.planId);
+                        if (index >= 0) results.splice(index, 1);
+                    }
+                } else targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
             } catch (error) {
                 if (error instanceof TargetBranchSnapshotUnavailableError) {
                     unavailableTargets.set(projectPlan.name, `${WORKFLOW_DETAILS_PENDING} ${error.message}`);
@@ -3073,6 +3121,12 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                         `Target Plan ${child.name} has a different Plan ID. Your files have not been changed.`,
                     );
                 }
+                if (display) {
+                    diagnostics.delete(child.name);
+                    for (let i = parseIssues.length - 1; i >= 0; i--) {
+                        if (parseIssues[i].name === child.name) parseIssues.splice(i, 1);
+                    }
+                }
                 const metadata = await withControllerMetadata(getStoredPlanPath(cwd, child.name), child.attrs);
                 const item = { name: child.name, path: child.path, ...metadata };
                 if (index < 0) results.push(item);
@@ -3082,7 +3136,26 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
         const attempts = await listControllerDocumentWorktrees(cwd);
         for (const attempt of attempts) {
             if (attempts.filter((entry) => entry.planName === attempt.planName).length !== 1) continue;
-            const execution = attempt.documentUnavailable ? null : await loadPlan(attempt.path, attempt.planName);
+            let execution;
+            try {
+                execution = attempt.documentUnavailable ? null : await loadPlan(attempt.path, attempt.planName);
+            } catch (error) {
+                if (!display || !(error instanceof PlanFrontMatterParseError)) throw error;
+                const index = findCatalogPlanIndex(results, attempt.planName, attempt.planId);
+                if (index >= 0) results.splice(index, 1);
+                for (let i = parseIssues.length - 1; i >= 0; i--) {
+                    if (parseIssues[i].name === attempt.planName) parseIssues.splice(i, 1);
+                }
+                diagnostics.set(attempt.planName, {
+                    name: attempt.planName,
+                    path: error.path,
+                    kind: "malformed",
+                    message: error.cause instanceof Error ? error.cause.message : error.message,
+                    ...(attempt.planId ? { planId: attempt.planId } : {}),
+                });
+                continue;
+            }
+            if (display) diagnostics.delete(attempt.planName);
             if (!execution) {
                 // A missing or archived authority cannot expose a stale primary copy.
                 // Direct Plan loading owns the recovery error, not the project catalog.
@@ -3109,7 +3182,7 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             const issueIndex = parseIssues.findIndex((issue) => issue.name === attempt.planName);
             if (issueIndex >= 0) parseIssues.splice(issueIndex, 1);
         }
-        if (parseIssues.length > 0) {
+        if (!display && parseIssues.length > 0) {
             const issue = parseIssues[0];
             if (issue.error instanceof Error) throw issue.error;
             throw new PlanFileIssueError(issue.path, "malformed", issue.message);
@@ -3118,7 +3191,10 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             const message = unavailableTargets.get(plan.name) || unavailableTargets.get(plan.attrs.parentPlan);
             if (message) plan.readAvailability = { kind: "pending", message };
         }
-        return results.sort(comparePlansForList);
+        for (const issue of parseIssues) {
+            if (!diagnostics.has(issue.name)) diagnostics.set(issue.name, documentDiagnostic(issue));
+        }
+        return { plans: results.sort(comparePlansForList), diagnostics: [...diagnostics.values()] };
     });
 }
 
@@ -4094,17 +4170,63 @@ export async function onboardExternalPlan(cwd, planName, options = {}) {
  * @returns {Promise<PlanResource[]>}
  */
 export async function listPlanResources(cwd) {
+    return (await readPlanResources(cwd, false)).resources;
+}
+
+/**
+ * Read a partial display catalog. This result never authorizes actions or identity writes.
+ * @param {string} cwd
+ * @returns {Promise<{ resources: PlanResource[], diagnostics: PlanDocumentDiagnostic[] }>}
+ */
+export async function readPlanResourceCatalog(cwd) {
+    return await readPlanResources(cwd, true);
+}
+
+/**
+ * @param {string} cwd
+ * @param {boolean} display
+ */
+async function readPlanResources(cwd, display) {
     return await withProjectRuntimeReadScope(async () => {
-        const plans = await listPlans(cwd);
+        const { plans, diagnostics } = await readPlansWithTargetChildren(cwd, null, display);
         assertNoDuplicatePlanIds(groupExistingPlanIds(plans));
         /** @type {PlanResource[]} */
         const resources = [];
         for (const plan of plans) {
             const snapshot = /^([a-f0-9]{40,64}):docs\/plans\//.exec(plan.path);
-            const loaded = snapshot
-                ? await loadTargetPlan(cwd, plan.name, snapshot[1])
-                : await loadPlanFileStrict(plan.path);
-            if (!loaded || loaded.kind !== "loaded") continue;
+            let loaded;
+            try {
+                loaded = snapshot
+                    ? await loadTargetPlan(cwd, plan.name, snapshot[1])
+                    : await loadPlanFileStrict(plan.path);
+            } catch (error) {
+                if (!display || !(error instanceof PlanFrontMatterParseError)) throw error;
+                diagnostics.push({
+                    name: plan.name,
+                    path: plan.path,
+                    kind: "malformed",
+                    message: error.cause instanceof Error ? error.cause.message : error.message,
+                });
+                continue;
+            }
+            if (!loaded || loaded.kind !== "loaded") {
+                if (display && loaded && loaded.kind !== "not_found") {
+                    diagnostics.push({
+                        name: plan.name,
+                        path: plan.path,
+                        kind: loaded.kind,
+                        message:
+                            loaded.kind === "malformed"
+                                ? loaded.error.cause instanceof Error
+                                    ? loaded.error.cause.message
+                                    : loaded.error.message
+                                : loaded.kind === "unreadable"
+                                  ? loaded.error.message
+                                  : loaded.message,
+                    });
+                }
+                continue;
+            }
             resources.push({
                 planName: plan.name,
                 name: plan.name,
@@ -4118,7 +4240,7 @@ export async function listPlanResources(cwd) {
                 readAvailability: plan.readAvailability,
             });
         }
-        return resources;
+        return { resources, diagnostics };
     });
 }
 
