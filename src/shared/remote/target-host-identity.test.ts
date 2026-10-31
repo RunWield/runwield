@@ -122,3 +122,14 @@ test("failed or invalid effective SSH configuration cannot establish identity", 
         await assertRejects(() => resolveRemoteTarget("bad-port", null, ssh), Error, "Invalid SSH host configuration");
     });
 });
+
+test("failed host verification keeps SSH diagnostics when the request pipe closes early", async () => {
+    await withSsh(async (ssh) => {
+        // Exceed the pipe buffer so SSH's early exit also rejects the request write.
+        await assertRejects(
+            () => resolveRemoteTarget("failed", "x".repeat(1024 * 1024), ssh),
+            Error,
+            "Host key verification failed",
+        );
+    });
+});

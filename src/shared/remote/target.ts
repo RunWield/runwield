@@ -168,17 +168,27 @@ export async function resolveRemoteTarget(
         stdout: "piped",
         stderr: "piped",
     });
-    const writer = result.stdin.getWriter();
-    try {
-        await writer.write(new TextEncoder().encode(JSON.stringify({ path }) + "\n"));
-    } finally {
-        await writer.close();
-    }
-    const [status, stdout, stderr] = await Promise.all([
+    const input = (async () => {
+        const writer = result.stdin.getWriter();
+        try {
+            await writer.write(new TextEncoder().encode(JSON.stringify({ path }) + "\n"));
+            await writer.close();
+        } finally {
+            writer.releaseLock();
+        }
+    })();
+    // SSH may reject the host before reading our request. Drain both pipes and
+    // collect its exit status even when stdin closes, so its diagnostic wins.
+    const [inputError, status, stdout, stderr] = await Promise.all([
+        input.then(
+            () => null,
+            (error: Error) => error,
+        ),
         result.status,
         new Response(result.stdout).text(),
         new Response(result.stderr).text(),
     ]);
+    if (status.success && inputError) throw inputError;
     let response: RemoteTargetResponse;
     try {
         response = JSON.parse(stdout.trim());

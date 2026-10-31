@@ -43,7 +43,7 @@ export interface NativeSpawnOptions {
     windowsRawArguments?: boolean;
 }
 interface BunInputSink {
-    write(chunk: Uint8Array): number;
+    write(chunk: Uint8Array): number | Promise<number>;
     flush(wait: true): Promise<number>;
     end(): number | Promise<number>;
 }
@@ -99,7 +99,7 @@ export function spawnNativeProcess(command: string, options: NativeSpawnOptions)
     // backpressure for interactive protocol writers and large stdin payloads.
     const stdin = new WritableStream<Uint8Array>({
         async write(chunk) {
-            child.stdin.write(chunk);
+            await child.stdin.write(chunk);
             await child.stdin.flush(true);
         },
         async close() {

@@ -1614,7 +1614,8 @@ input stops startup without saving an answer. A different user, root, or address
 asks and never reuses history. If OpenSSH reports a host certificate but no stable host key fingerprint, the fingerprint
 is `null`; exact matching then uses hostname, user, port, and that `null` value. Two `null` fingerprints do not prove a
 shared key. A change between `null` and a known fingerprint at the same address requires confirmation. OpenSSH host
-verification still applies.
+verification still applies. A failed SSH handshake cannot establish identity; its diagnostic remains visible even if
+SSH closes the resolver request pipe before reading it.
 
 The root is remote `primaryRoot`, then `gitRoot`, then `cwd` when the preceding value is absent. A worktree shares its
 primary checkout's project identity; each Session stores execution cwd separately. Neither temporary personal mount
@@ -1632,6 +1633,8 @@ existing collection binding.
 - Given a changed key at the same hostname and port, the question shows both fingerprints. No keeps history separate,
   and a later connection with that identity does not ask again.
 - Given a different user or root, no confirmation appears and history stays separate, even with a matching host key.
+- Given a host-verification failure before SSH reads the resolver request, startup rejects with the SSH diagnostic,
+  not a request-pipe error, and establishes no host identity.
 - Given a remote worktree, its history belongs to the primary checkout's project while tools use its own execution cwd.
 - Given a certificate connection without a reported stable fingerprint, an exact hostname, user, port, and `null`
   fingerprint match reuses its host identity. A different hostname cannot match on `null` fingerprints alone; a change
