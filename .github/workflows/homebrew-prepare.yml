@@ -8,10 +8,9 @@ on:
                 required: false
                 type: string
             mnemoteca_tag:
-                description: Stable Mnemoteca tag.
-                required: true
+                description: Stable Mnemoteca tag. Leave empty to refresh only RunWield.
+                required: false
                 type: string
-                default: v0.3.3
             test_only:
                 description: Mark output as test-only.
                 required: true
@@ -36,23 +35,32 @@ jobs:
             - name: Install frozen dependencies
               run: bun run install:locked
 
+            - name: Checkout current tap for a single-package refresh
+              if: inputs.wld_tag == '' || inputs.mnemoteca_tag == ''
+              uses: actions/checkout@v5
+              with:
+                  repository: RunWield/homebrew-tap
+                  path: homebrew-tap
+                  persist-credentials: false
+
             - name: Render Homebrew tap artifact
               env:
                   WLD_TAG: ${{ inputs.wld_tag }}
                   MNEMOTECA_TAG: ${{ inputs.mnemoteca_tag }}
                   TEST_ONLY: ${{ inputs.test_only }}
               run: |
-                  args=(--mnemoteca-tag "$MNEMOTECA_TAG" --output homebrew-tap)
+                  args=(--output homebrew-tap)
+                  if [[ -n "$MNEMOTECA_TAG" ]]; then args+=(--mnemoteca-tag "$MNEMOTECA_TAG"); fi
                   if [[ -n "$WLD_TAG" ]]; then args+=(--wld-tag "$WLD_TAG"); fi
                   if [[ "$TEST_ONLY" == "true" ]]; then args+=(--test-only); fi
                   bun run package:homebrew "${args[@]}"
-                  tar -czf "runwield-homebrew-tap-${MNEMOTECA_TAG}.tar.gz" -C homebrew-tap .
-                  shasum -a 256 "runwield-homebrew-tap-${MNEMOTECA_TAG}.tar.gz" > "runwield-homebrew-tap-${MNEMOTECA_TAG}.tar.gz.sha256"
+                  tar -czf "runwield-homebrew-tap-${WLD_TAG:-$MNEMOTECA_TAG}.tar.gz" -C homebrew-tap Formula README.md runwield-homebrew-package.json
+                  shasum -a 256 "runwield-homebrew-tap-${WLD_TAG:-$MNEMOTECA_TAG}.tar.gz" > "runwield-homebrew-tap-${WLD_TAG:-$MNEMOTECA_TAG}.tar.gz.sha256"
 
             - name: Upload Homebrew tap artifact
               uses: actions/upload-artifact@v5
               with:
-                  name: runwield-homebrew-tap-${{ inputs.mnemoteca_tag }}
+                  name: runwield-homebrew-tap-${{ inputs.wld_tag || inputs.mnemoteca_tag }}
                   path: |
-                      runwield-homebrew-tap-${{ inputs.mnemoteca_tag }}.tar.gz
-                      runwield-homebrew-tap-${{ inputs.mnemoteca_tag }}.tar.gz.sha256
+                      runwield-homebrew-tap-${{ inputs.wld_tag || inputs.mnemoteca_tag }}.tar.gz
+                      runwield-homebrew-tap-${{ inputs.wld_tag || inputs.mnemoteca_tag }}.tar.gz.sha256

@@ -115,7 +115,7 @@ test("Stable releases validate on macOS before publishing the Homebrew tap", asy
     const job = workflow.slice(jobStart);
     const dependencyTapIndex = job.indexOf("brew tap 1broseidon/tap");
     const checkIndex = job.indexOf("bun run package:homebrew:check --tap homebrew-tap");
-    const pushIndex = job.indexOf("git push origin HEAD:main");
+    const pushIndex = job.indexOf("bun scripts/publish-homebrew.ts");
 
     assertEquals(jobStart >= 0, true);
     assertStringIncludes(job, "runs-on: macos-15");
@@ -294,4 +294,44 @@ test("Stable policy owns docs artifacts, branch deployment, and CI integration r
         assertStringIncludes(policy, phrase);
     assertEquals(policy.includes("gh workflow run docs.yml --ref main"), false);
     assertEquals(policy.includes("merge and branch cleanup are separate operator steps"), false);
+});
+
+test("Homebrew release jobs qualify existing dependency snapshots without selecting Mnemoteca", async () => {
+    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
+    for (const name of ["homebrew-check", "homebrew-package"]) {
+        const job = workflow.slice(workflow.indexOf(`    ${name}:`)).split(/\n {4}[a-z][a-z-]+:/)[0];
+        assertEquals(job.includes("--mnemoteca-tag"), false);
+        const checkout = job.indexOf("repository: RunWield/homebrew-tap");
+        const render = job.indexOf("bun run package:homebrew ");
+        const check = job.indexOf("bun run package:homebrew:check");
+        assertEquals(checkout >= 0 && render > checkout && check > render, true);
+        if (name === "homebrew-package") {
+            const archive = job.indexOf("tar -czf");
+            const publish = job.indexOf("bun scripts/publish-homebrew.ts");
+            assertEquals(archive > check && publish > archive, true);
+        }
+    }
+    const publication = workflow.slice(
+        workflow.indexOf("    homebrew-package:"),
+        workflow.indexOf("    publish-docs:"),
+    );
+    assertStringIncludes(publication, 'echo "sha=$(git -C homebrew-tap-publish rev-parse HEAD)"');
+    assertStringIncludes(publication, "TAP_BASE: ${{ steps.tap-base.outputs.sha }}");
+    assertStringIncludes(
+        publication,
+        'bun scripts/publish-homebrew.ts homebrew-tap-publish homebrew-tap "$TAP_BASE" "$RELEASE_TAG"',
+    );
+    assertEquals(publication.includes("cp homebrew-tap/Formula/mnemoteca.rb"), false);
+    assertEquals(publication.includes("cp homebrew-tap/README.md"), false);
+    assertEquals(publication.indexOf("path: homebrew-tap-publish") < publication.indexOf("Render Homebrew tap"), true);
+});
+
+test("manual Homebrew preparation selects packages explicitly and excludes checkout metadata", async () => {
+    const workflow = await fsReadFile(".github/workflows/homebrew-prepare.yml", "utf8");
+    assertEquals(workflow.includes("default: v0.3.3"), false);
+    assertStringIncludes(workflow, "repository: RunWield/homebrew-tap");
+    assertStringIncludes(workflow, "persist-credentials: false");
+    assertStringIncludes(workflow, "args=(--output homebrew-tap)");
+    assertStringIncludes(workflow, "-C homebrew-tap Formula README.md runwield-homebrew-package.json");
+    assertEquals(workflow.includes("-C homebrew-tap ."), false);
 });

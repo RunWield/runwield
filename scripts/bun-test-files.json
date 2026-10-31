@@ -40,6 +40,7 @@
     "scripts/integrate-release-branch.test.ts",
     "scripts/package-homebrew-check.test.ts",
     "scripts/package-homebrew.test.ts",
+    "scripts/publish-homebrew.test.ts",
     "scripts/package-windows.test.ts",
     "scripts/package-winget.test.ts",
     "scripts/pre-commit-hook.test.ts",

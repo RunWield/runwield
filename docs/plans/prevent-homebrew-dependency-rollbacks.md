@@ -14,15 +14,21 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
 tickets:
     - url: "https://github.com/RunWield/runwield/issues/466"
+planDeviations:
+    - id: "call_5486b940fa7b433b94f6336312b3617b|fc_071eb6d2c8adffb9016ae54636c61881939259c1a9287f6e0d"
+      supersededRequirement: "Implementation Step 8 requires the verified public Mnemoteca v0.3.4 repair to be published directly to tap main after the preventive fix is active. The Verification Plan requires disposable macOS qualification of Stable and Candidate packages and confirmation of the public repair's remote commit before completion."
+      replacementRequirement: "Finish and verify the preventive source fix in this Session, prepare the narrow Mnemoteca v0.3.4 repair with verified release checksums and GitHub asset digests, and call task_completed with a self-contained handoff for another Session. That Session must confirm the preventive workflow is active, perform the pending disposable macOS Stable and Candidate qualification, publish the verified tap repair directly with an ordinary push, and confirm the remote commit and unchanged wld package. Public publication and its native qualification are not completion requirements for this source-fix Session."
+      reason: "The user directed this Session to finish the fix and hand off publication to another Session in the task_completed report."
+      approvedAt: "2026-10-31T01:54:32.414Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-30"
 origin: "internal"
 userVerifiedAt: null
-routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "in_progress"
+routingIntent: "PLANNED_CHANGE"
+status: "implemented"
 ---
 
 # Prevent Homebrew Dependency Rollbacks
