@@ -1202,7 +1202,11 @@ Review patches use one fixed format, independent of user Git settings for prefix
 complete diff of every changed file; round two also verifies earlier findings. Round three onward reads the complete
 repair diff and assesses every open issue. An approval or rejection with unread parts returns those parts and the
 instructions to read them, in the same review. A non-empty patch with no readable file headers stops the review with a
-clear reason before a Reviewer runs; it does not count as an empty change and cannot receive approval.
+clear reason before a Reviewer runs; it does not count as an empty change and cannot receive approval. Reading new
+required diff bytes does not spend the repeated protocol-error allowance; the cumulative model-turn limit still applies.
+For a paused validation checkpoint, `continue`, `resume`, or `retry` resumes validation before calling Engineer. In a
+live Session, an unchanged candidate keeps its Reviewer conversation and read receipts in the same validation generation
+and round. A changed candidate starts a fresh review context. An unfinished Engineer repair remains with Engineer.
 
 **Requirement: Distinguish repair claims from confirmed fixes.** Issue states are `new`, `fix claimed`,
 `fix confirmed`, and `fix rejected`. Each finding keeps its identity across rounds, with open and resolved items
@@ -1238,6 +1242,10 @@ post-validation context, once. Review quality is judged by useful convergence an
   Reviewer approval is recorded.
 - Given an unread diff chunk, a verdict attempt returns its path and read command; the review continues and completes
   after every required chunk is read.
+- Given a Reviewer that reads new required diff chunks between plain-text replies, review continues past the protocol
+  correction limit without accepting a verdict before coverage is complete.
+- Given paused AI review in a live Session, `continue` reaches Reviewer with prior context and read receipts, not an
+  Engineer turn. A changed candidate does not reuse those receipts.
 - Given a round-one rejection, round two checks the whole implementation and earlier findings; later rounds check open
   issues and repair regressions, including in a fresh process.
 - Given an incomplete fix, review records `fix rejected` with a reason under the same issue; a later confirmed fix

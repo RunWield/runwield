@@ -22,6 +22,10 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 validatedCommit: "9d2a42ad5947fd8f5a4ea78c0118a6225b699eaa"
 status: "verified"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states.md"
 ---
 
 # Core Export Coordination and Delivery States

@@ -29,6 +29,9 @@ workRecord:
     recordId: "64b330de-7010-49a0-a1e6-28abda2f37d1"
     path: "docs/work-records/2026-10-30-personal-usage-reporting-and-optional-langfuse-export.md"
     lastAttemptAt: "2026-10-30T02:47:46.609Z"
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export.md"
 ---
 
 # Reliable Usage, Workspace Dashboard, and Langfuse Export

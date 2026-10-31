@@ -24,6 +24,10 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "13620c491749f7b18b12267fd051e2ec1833a323"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/01-core-measurement-history-and-default-on-recording.md"
 ---
 
 # Core Measurement History and Durable Recording

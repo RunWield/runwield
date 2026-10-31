@@ -26,6 +26,9 @@ workRecord:
     recordId: "b4ee683d-de4d-4f5f-8f91-b3513e1970c4"
     path: "docs/work-records/2026-10-06-validated-laptop-owned-remote-save-proof.md"
     lastAttemptAt: "2026-10-06T12:19:00.047Z"
+archivedAt: "2026-10-30T03:46:41.102Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-session-save-proof.md"
 ---
 
 # Prove Laptop-Owned Remote Session Saves

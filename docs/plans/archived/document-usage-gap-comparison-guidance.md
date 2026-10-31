@@ -19,6 +19,10 @@ workRecord:
     path: "docs/work-records/2026-10-24-clarified-usage-gaps-versus-zero-activity.md"
     lastAttemptAt: "2026-10-24T20:19:07.689Z"
 status: "verified"
+
+archivedAt: "2026-10-30T03:48:54.560Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/document-usage-gap-comparison-guidance.md"
 ---
 
 # Document Usage Gap Comparison Guidance

@@ -41,6 +41,10 @@ userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 validatedCommit: "cd7d6aaca7b0f0958e1543c32ab3b18726ddd352"
 status: "verified"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/10-end-to-end-usage-and-export-acceptance.md"
 ---
 
 # End-to-End Usage and Export Acceptance

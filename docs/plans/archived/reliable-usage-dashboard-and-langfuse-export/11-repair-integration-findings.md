@@ -33,6 +33,10 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "Metrics Epic Review Fixes"
 validatedCommit: "7c4c4f2db949c04440332fdb166166ba12b013c0"
 status: "verified"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/11-repair-integration-findings.md"
 ---
 
 # Repair integration findings

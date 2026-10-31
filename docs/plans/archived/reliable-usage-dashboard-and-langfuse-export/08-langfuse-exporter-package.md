@@ -32,6 +32,10 @@ userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 validatedCommit: "34f411af3b2b7d1ad31b75b8b96b4fca66a7e68f"
 status: "verified"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package.md"
 ---
 
 # Langfuse Exporter Package

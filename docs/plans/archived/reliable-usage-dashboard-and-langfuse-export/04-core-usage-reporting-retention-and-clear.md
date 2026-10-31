@@ -21,6 +21,10 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "86219401563ceffe74954bad1a4009fd738b7158"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/04-core-usage-reporting-retention-and-clear.md"
 ---
 
 # Core Usage Reporting, Retention, and Clear

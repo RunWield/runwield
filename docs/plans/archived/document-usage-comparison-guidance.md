@@ -19,6 +19,10 @@ workRecord:
     path: "docs/work-records/2026-10-24-usage-report-comparison-guidance-for-paired-devices.md"
     lastAttemptAt: "2026-10-24T18:29:04.941Z"
 status: "verified"
+
+archivedAt: "2026-10-30T03:48:40.985Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/document-usage-comparison-guidance.md"
 ---
 
 # Document Usage report comparison guidance for paired devices

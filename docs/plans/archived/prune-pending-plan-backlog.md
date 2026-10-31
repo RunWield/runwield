@@ -35,6 +35,9 @@ workRecord:
     path: "docs/work-records/2026-10-27-plan-backlog-cleanup.md"
     lastAttemptAt: "2026-10-27T00:18:01.094Z"
 status: "verified"
+archivedAt: "2026-10-30T03:46:55.935Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/prune-pending-plan-backlog.md"
 ---
 
 # Prune the Pending Plan Backlog

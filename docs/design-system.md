@@ -451,6 +451,14 @@ Use the `.session-context-*` classes and `--rw-*` semantic tokens for the tab ra
 links. The sidebar is a flat adjacent pane with dividers, not a stack of floating cards. At narrow browser widths it
 overlays the conversation below the shared header without changing its information model.
 
+**Sidebar toggle icon**
+
+Use `RunWieldPanelIcon` for sidebar open and close controls on all browser surfaces. The icon is a rounded panel outline
+with a vertical divider on the sidebar edge: left for navigation, Contents, and files; right for context, Workflow, and
+annotations. Keep the same icon in both states. Do not use directional arrows. `RunWieldPanelToggle` supplies this icon
+with state labels and ARIA attributes. The imperative Workspace shell uses the same paths from
+`src/ui/design-system/panel-icon.ts`. Keep the current control sizes, semantic colors, and focus styles.
+
 **Sidebar motion**
 
 Workspace navigation, Session context, review Contents/files and annotations, and artifact Contents share a short

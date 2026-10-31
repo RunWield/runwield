@@ -32,6 +32,10 @@ userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 status: "validated"
 validatedCommit: "e9672012744c7d12c4ec4e7a13a2054b2e95d196"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/02-real-model-usage-across-backends-and-auxiliary-calls.md"
 ---
 
 # Real Model Usage Across Backends and Auxiliary Calls

@@ -37,6 +37,10 @@ userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 validatedCommit: "f26093a3792e0e70814f2c57eea2a09cced9fe20"
 status: "verified"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/09-workspace-export-settings-and-delivery-status.md"
 ---
 
 # Workspace Export Settings and Delivery Status

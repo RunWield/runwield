@@ -28,6 +28,9 @@ workRecord:
     path: "docs/work-records/2026-10-27-plan-ordering-independent-of-filenames.md"
     lastAttemptAt: "2026-10-27T21:58:49.371Z"
 status: "verified"
+archivedAt: "2026-10-30T03:47:08.470Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/plan-order-independent-of-filenames.md"
 ---
 
 # Plan Order Independent of Filenames

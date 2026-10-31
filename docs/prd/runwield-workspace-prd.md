@@ -464,7 +464,8 @@ Projects load first, and each Project's recent Sessions load independently of Pl
 Dashboard. Pending and failed reads keep New Session and existing navigation available and are labeled as pending or
 failed. **Show more** loads the next five recent Sessions that are not already nested under a visible Plan; a failed
 request can be retried without duplicate rows. A Project's Plan Board item stays active across its Plan Board, Closed,
-and On Hold views.
+and On Hold views. In browser tabs and installed apps, the navigation sidebar has no visible scrollbars. Long titles
+stay within its width, and vertical scrolling and keyboard navigation keep all items reachable.
 
 **Requirement: Consistent headers and menus.** The hamburger menu left of the Workspace logo holds browser notification
 permission with its current state and a link to the public documentation. The Workspace brand, main title, and Session
@@ -493,6 +494,8 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   it was.
 - From a Session or its review, the logo returns to the last Session with the sidebar intact.
 - With many saved Sessions, the sidebar shows its recent names promptly and Show more stays available.
+- In a browser tab or installed app, a long nested Session title does not cause horizontal sidebar overflow. A list
+  taller than the window scrolls with wheel, touch, and keyboard input without visible sidebar scrollbars.
 - In the installed mobile app, Dashboard and Session headers expose the navigation opener on initial render; opening
   it shows the Workspace menu, logo, and navigation while Project data is still loading. Packaged browser dependencies
   must work without access to the source checkout.

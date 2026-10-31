@@ -32,6 +32,10 @@ userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 validatedCommit: "061801f43001903ead918ae905c0b5818a580a8e"
 status: "verified"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind.md"
 ---
 
 # Package Executable Approval and Metrics-Exporter Kind

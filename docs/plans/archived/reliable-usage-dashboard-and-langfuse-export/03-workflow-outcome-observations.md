@@ -23,6 +23,10 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "de5c375392ee3a750256319ad3575ed6354ea3f0"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/03-workflow-outcome-observations.md"
 ---
 
 # Workflow Outcome Observations

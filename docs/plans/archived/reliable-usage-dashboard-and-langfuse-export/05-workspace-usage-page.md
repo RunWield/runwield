@@ -28,6 +28,10 @@ targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "b89551273312b4f1ac8b5d0c72db118f4075ed13"
+
+archivedAt: "2026-10-30T03:46:23.660Z"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/reliable-usage-dashboard-and-langfuse-export/05-workspace-usage-page.md"
 ---
 
 # Workspace Usage Page
