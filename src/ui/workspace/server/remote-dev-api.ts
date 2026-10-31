@@ -1,4 +1,5 @@
-// @ts-nocheck: tiny Astro-dev-only router mirrors the server wrapper route shape.
+import type { APIContext } from "astro";
+import type { RemoteWorkspaceAdapter } from "./remote-adapter.js";
 import process from "node:process";
 import { DEFAULT_REMOTE_MAX_REQUEST_BYTES, registerRemoteApiRoutes } from "../routes/remote-api.js";
 import { openRemoteWorkspaceAdapter } from "./remote-adapter.js";
@@ -9,8 +10,39 @@ const REMOTE_DEV_APP_KEY = Symbol.for("runwield.workspace.remote-dev-app");
 const REMOTE_DEV_DB_PATH_KEY = Symbol.for("runwield.workspace.remote-dev-db-path");
 const REMOTE_DEV_CONFIG_KEY = Symbol.for("runwield.workspace.remote-dev-config");
 
-/** @type {import("astro").APIRoute} */
-export async function handleRemoteSpaceApi(context) {
+type RemoteRouteParams = Record<string, string>;
+interface RemoteDevRouterOptions {
+    maxRequestBytes?: number;
+}
+interface RemoteDevRouteState extends RemoteDevRouterOptions {
+    collaboration: RemoteWorkspaceAdapter;
+}
+interface RemoteDevRouteContext {
+    req: Request;
+    request: Request;
+    url: URL;
+    params: RemoteRouteParams | null;
+    state: RemoteDevRouteState;
+}
+type RemoteDevRouteHandler = (context: RemoteDevRouteContext) => Response | Promise<Response>;
+type RemoteDevRequestHandler = (request: Request) => Promise<Response>;
+interface RemoteDevRoute {
+    method: string;
+    pattern: string;
+    handler: RemoteDevRouteHandler;
+}
+interface RemoteDevApp {
+    handler: RemoteDevRequestHandler;
+    adapter: RemoteWorkspaceAdapter;
+}
+interface RemoteDevCache {
+    [REMOTE_DEV_APP_KEY]?: RemoteDevApp;
+    [REMOTE_DEV_DB_PATH_KEY]?: string;
+    [REMOTE_DEV_CONFIG_KEY]?: string;
+}
+type RemoteDevRuntime = typeof globalThis & RemoteDevCache;
+
+export async function handleRemoteSpaceApi(context: APIContext) {
     if (
         !isRemoteDevelopmentModeEnabled({
             isDevelopment: isAstroDevelopmentMode(),
@@ -24,14 +56,15 @@ export async function handleRemoteSpaceApi(context) {
 }
 
 function getRemoteDevApp() {
-    const runtime = /** @type {any} */ (globalThis);
-    const dbPath = process.env["RUNWIELD_REMOTE_DB_PATH"] || process.env["RUNWIELD_WORKSPACE_REMOTE_DB_PATH"] ||
-        undefined;
+    const runtime: RemoteDevRuntime = globalThis;
+    const dbPath =
+        process.env["RUNWIELD_REMOTE_DB_PATH"] || process.env["RUNWIELD_WORKSPACE_REMOTE_DB_PATH"] || undefined;
     const maxRequestBytes = parseMaxRequestBytes(process.env["RUNWIELD_REMOTE_MAX_REQUEST_BYTES"]);
     const retentionDays = parseRetentionDays(process.env["RUNWIELD_REMOTE_RETENTION_DAYS"]);
     const configKey = JSON.stringify({ dbPath, maxRequestBytes, retentionDays });
     if (
-        !runtime[REMOTE_DEV_APP_KEY] || runtime[REMOTE_DEV_DB_PATH_KEY] !== dbPath ||
+        !runtime[REMOTE_DEV_APP_KEY] ||
+        runtime[REMOTE_DEV_DB_PATH_KEY] !== dbPath ||
         runtime[REMOTE_DEV_CONFIG_KEY] !== configKey
     ) {
         runtime[REMOTE_DEV_APP_KEY]?.adapter?.close?.();
@@ -46,17 +79,17 @@ function getRemoteDevApp() {
     return runtime[REMOTE_DEV_APP_KEY].handler;
 }
 
-/** @param {import("./remote-adapter.js").RemoteWorkspaceAdapter} adapter @param {{ maxRequestBytes?: number }} [options] */
-function createRemoteDevRouter(adapter, options = {}) {
-    const routes = [];
-    const add = (method, pattern, handler) => routes.push({ method, pattern, handler });
+function createRemoteDevRouter(adapter: RemoteWorkspaceAdapter, options: RemoteDevRouterOptions = {}) {
+    const routes: RemoteDevRoute[] = [];
+    const add = (method: string, pattern: string, handler: RemoteDevRouteHandler) =>
+        routes.push({ method, pattern, handler });
     const app = {
-        get: (pattern, handler) => add("GET", pattern, handler),
-        post: (pattern, handler) => add("POST", pattern, handler),
-        handler: () => async (request) => {
+        get: (pattern: string, handler: RemoteDevRouteHandler) => add("GET", pattern, handler),
+        post: (pattern: string, handler: RemoteDevRouteHandler) => add("POST", pattern, handler),
+        handler: () => async (request: Request) => {
             const url = new URL(request.url);
-            const route = routes.find((candidate) =>
-                candidate.method === request.method && matchRoute(candidate.pattern, url.pathname)
+            const route = routes.find(
+                (candidate) => candidate.method === request.method && matchRoute(candidate.pattern, url.pathname),
             );
             if (!route) return Response.json({ error: "Not found" }, { status: 404 });
             return await route.handler({
@@ -72,12 +105,11 @@ function createRemoteDevRouter(adapter, options = {}) {
     return app;
 }
 
-/** @param {string} pattern @param {string} pathname */
-function matchRoute(pattern, pathname) {
+function matchRoute(pattern: string, pathname: string) {
     const patternParts = pattern.split("/").filter(Boolean);
     const pathParts = pathname.split("/").filter(Boolean);
     if (patternParts.length !== pathParts.length) return null;
-    const params = {};
+    const params: RemoteRouteParams = {};
     for (let index = 0; index < patternParts.length; index += 1) {
         const patternPart = patternParts[index];
         const pathPart = pathParts[index];
@@ -87,8 +119,7 @@ function matchRoute(pattern, pathname) {
     return params;
 }
 
-/** @param {string | undefined} value */
-function parseMaxRequestBytes(value) {
+function parseMaxRequestBytes(value: string | undefined) {
     if (value === undefined || value.trim() === "") return DEFAULT_REMOTE_MAX_REQUEST_BYTES;
     const bytes = Number(value);
     if (!Number.isSafeInteger(bytes) || bytes < 1024 || bytes > 100 * 1024 * 1024) {
@@ -97,8 +128,7 @@ function parseMaxRequestBytes(value) {
     return bytes;
 }
 
-/** @param {string | undefined} value */
-function parseRetentionDays(value) {
+function parseRetentionDays(value: string | undefined) {
     if (value === undefined || value.trim() === "" || value.trim() === "0") return undefined;
     const days = Number(value);
     if (!Number.isSafeInteger(days) || days < 1 || days > 3650) {
