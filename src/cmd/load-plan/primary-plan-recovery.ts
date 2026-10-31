@@ -1,3 +1,5 @@
+import { executionWorktreePathExists } from "../../shared/workflow/execution-worktree-rescue.ts";
+import { listControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
 import {
@@ -174,6 +176,18 @@ export interface PlanDocumentTarget {
 
 /** Select document authority without recovery, status repair, or activation. */
 export async function discoverPlanDocumentRoot(projectRoot: string, planArg: string): Promise<PlanDocumentTarget> {
+    // Directory consent precedes authority validation or repair. This is only a
+    // guard target: resolving the workflow below must still reject foreign trees.
+    const normalized = await normalizePlanArgument(projectRoot, planArg);
+    const registered = (await listControllerDocumentWorktrees(projectRoot)).filter(
+        (entry) => entry.planName === normalized || entry.planId === planArg,
+    );
+    if (registered.length === 1)
+        return {
+            path: registered[0].path,
+            missingExecutionCheckout: !(await executionWorktreePathExists(registered[0].path)),
+        };
+
     if (isPlanIdArgument(planArg)) {
         const plan = await findPlanEvidenceById(projectRoot, planArg);
         return { path: resolve(plan.path, ...plan.relativePath.split("/").map(() => "..")) };

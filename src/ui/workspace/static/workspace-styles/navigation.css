@@ -458,3 +458,17 @@
     margin-bottom: 0.4rem;
     margin-top: 0.4rem;
 }
+
+.workspace-sidebar-plan-warning {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.workspace-sidebar-plan-warning > a {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

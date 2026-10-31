@@ -1,7 +1,17 @@
 /** Adapter-neutral, lossless export of one committed Session. */
-import type { SessionArtifactReference, ManifestPlanAssociation } from "./file-session-store-types.ts";
+import type {
+    SessionArtifactReference,
+    ManifestPlanAssociation,
+    FileSessionManifest,
+} from "./file-session-store-types.ts";
 import type { SessionRuntimeEvent } from "./session-runtime-events.js";
-import type { TranscriptEntry, VerifiedTranscriptSegment } from "./session-transcript-manifest.ts";
+import {
+    readVerifiedTranscriptSegments,
+    projectSegmentReplayEvents,
+    type TranscriptEntry,
+    type VerifiedTranscriptSegment,
+} from "./session-transcript-manifest.ts";
+import { summarizeProjectedEntries } from "./session-transcript-projection.js";
 
 export type SessionExportSegment = {
     ordinal: number;
@@ -65,5 +75,42 @@ export function buildSessionExportDocument(options: BuildSessionExportDocumentOp
             current,
             entries,
         })),
+    };
+}
+
+/** Pin all committed evidence before returning a file-free complete snapshot. */
+export async function readCommittedSessionExport(
+    manifest: FileSessionManifest,
+    sessionId: string,
+): Promise<SessionExport> {
+    if (!manifest.generation) throw new Error("Committed generation is unavailable.");
+    const options = {
+        cwd: manifest.transcriptCwd,
+        runwieldSessionId: manifest.runwieldSessionId,
+        runtimeSessionId: sessionId,
+        generation: manifest.generation,
+        segments: manifest.segments,
+    };
+    const verified = await readVerifiedTranscriptSegments(options);
+    // Older manifests keep the Session Name only in committed Pi session_info entries.
+    const committedName = summarizeProjectedEntries(verified.flatMap((segment) => segment.entries)).name;
+    return {
+        document: buildSessionExportDocument({
+            session: {
+                runwieldSessionId: manifest.runwieldSessionId,
+                name: manifest.displayName || committedName || null,
+                cwd: manifest.transcriptCwd,
+                createdAt: manifest.createdAt,
+                updatedAt: manifest.updatedAt,
+            },
+            segments: verified,
+            artifacts: manifest.artifacts || [],
+            planAssociations: (manifest.planAssociations || []).filter(
+                (association) => association.committedGeneration !== null,
+            ),
+        }),
+        timeline: projectSegmentReplayEvents(verified, options).map(
+            (event) => ({ ...event, sessionId }) as SessionExportTimelineEvent,
+        ),
     };
 }

@@ -108,6 +108,7 @@ export class RuntimeLifecycle {
             return this.closeSessionAfterActiveOperation(hostedSession.id);
         }
         if (hostedSession) this.queues.clearQueuedMessagesInternal(hostedSession, "session_closed");
+        await this.services.remotePersistence?.discard(id);
         let closed = false;
         try {
             closed = await this.services.sessionHost.disposeSession(id);
@@ -221,6 +222,14 @@ export class RuntimeLifecycle {
     }
 
     async materializeDeferredManagedShell(hostedSession: import(".././hosted-session.js").HostedSession) {
+        if (this.services.remotePersistence) {
+            const pending = this.pendingManagedCreationProjects.get(hostedSession.id);
+            if (!pending) return hostedSession.getManagedMetadata();
+            await enterGitProjectRuntime(hostedSession.cwd);
+            const managed = await this.services.remotePersistence.create(hostedSession, pending.name);
+            this.pendingManagedCreationProjects.delete(hostedSession.id);
+            return managed;
+        }
         const prepared = await this.prepareDeferredManagedCreation(hostedSession);
         if (!prepared) return hostedSession.getManagedMetadata?.() || null;
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
@@ -271,28 +280,27 @@ export class RuntimeLifecycle {
         return await resolveCreatedRootSessionPath(cwd, sessionManager);
     }
 
-    adoptManagedSession(
-        options: {
-            session: import("../../owner-coordination/sessions.js").CatalogedSession;
-            generation?: number | null;
-            acknowledgedEventId?: string | null;
-            hostedSessionId?: string | null;
-            name?: string | null;
-            activeAgent?: string | null;
-            model?: string | null;
-            provider?: string | null;
-            thinkingLevel?: string | null;
-            workflowContext?: import(".././workflow-context-session.js").WorkflowContext | null;
-            tutorialContext?: import("../tutorial-context-session.ts").TutorialContext | null;
-        },
-    ) {
+    adoptManagedSession(options: {
+        session: import("../../owner-coordination/sessions.js").CatalogedSession;
+        generation?: number | null;
+        acknowledgedEventId?: string | null;
+        hostedSessionId?: string | null;
+        name?: string | null;
+        activeAgent?: string | null;
+        model?: string | null;
+        provider?: string | null;
+        thinkingLevel?: string | null;
+        workflowContext?: import(".././workflow-context-session.js").WorkflowContext | null;
+        tutorialContext?: import("../tutorial-context-session.ts").TutorialContext | null;
+    }) {
         const cataloged = options?.session;
         if (!cataloged) throw new Error("SessionRuntime.adoptManagedSession requires a cataloged Session");
         const currentSegment = this.services.sessionStore?.getCurrentSessionSegment(cataloged.runwieldSessionId);
         const hostedSession = this.services.sessionHost.createSession({
-            id: typeof options.hostedSessionId === "string" && options.hostedSessionId
-                ? options.hostedSessionId
-                : crypto.randomUUID(),
+            id:
+                typeof options.hostedSessionId === "string" && options.hostedSessionId
+                    ? options.hostedSessionId
+                    : crypto.randomUUID(),
             cwd: currentSegment?.transcriptCwd || cataloged.transcriptCwd,
             sessionManager: null,
             managed: {
@@ -329,20 +337,19 @@ export class RuntimeLifecycle {
         return { sessionId: hostedSession.id, cwd: hostedSession.cwd, runwieldSessionId: cataloged.runwieldSessionId };
     }
 
-    async createInteractiveSession(
-        options: {
-            cwd: string;
-            mode?: "new" | "continue";
-            resumeSessionId?: string;
-            deferManagedActivationUntilAgentReady?: boolean;
-        },
-    ) {
+    async createInteractiveSession(options: {
+        cwd: string;
+        mode?: "new" | "continue";
+        resumeSessionId?: string;
+        deferManagedActivationUntilAgentReady?: boolean;
+    }) {
         if (!options?.cwd || !isAbsolute(options.cwd)) {
             throw new Error("SessionRuntime.createInteractiveSession requires an absolute cwd");
         }
         const ownerCoordinationStore = this.services.sessionStore;
         const deferManagedCreation = Boolean(
-            (options.mode || "new") === "new" && options.deferManagedActivationUntilAgentReady,
+            (options.mode || "new") === "new" &&
+            (options.deferManagedActivationUntilAgentReady || this.services.remotePersistence),
         );
         if (!deferManagedCreation) await enterGitProjectRuntime(options.cwd);
         if (!ownerCoordinationStore && !deferManagedCreation) {
@@ -362,10 +369,8 @@ export class RuntimeLifecycle {
             }
             let selectedSession = null;
             if (options.resumeSessionId) {
-                const cataloged = ownerCoordinationStore?.getSessionById(
-                    options.resumeSessionId,
-                    managedProject?.projectId,
-                ) || null;
+                const cataloged =
+                    ownerCoordinationStore?.getSessionById(options.resumeSessionId, managedProject?.projectId) || null;
                 if (cataloged && cataloged.projectId === managedProject?.projectId) {
                     selectedSession = {
                         id: cataloged.piSessionId,
@@ -380,7 +385,8 @@ export class RuntimeLifecycle {
                         ownerCoordinationStore,
                     });
                     if (
-                        located.kind === "managed" && located.session &&
+                        located.kind === "managed" &&
+                        located.session &&
                         located.session.projectId === managedProject?.projectId
                     ) {
                         selectedSession = {
@@ -391,14 +397,15 @@ export class RuntimeLifecycle {
                     }
                 }
             } else {
-                const persistedSessions = classified.kind === "managed"
-                    ? (await listCatalogSafeRootSessionLocators(options.cwd)).locators.map((locator) => ({
-                        id: locator.piSessionId,
-                        path: locator.sessionPath,
-                        cwd: locator.headerCwd,
-                        modified: locator.headerTimestamp || undefined,
-                    }))
-                    : await listPersistedRootSessions(options.cwd);
+                const persistedSessions =
+                    classified.kind === "managed"
+                        ? (await listCatalogSafeRootSessionLocators(options.cwd)).locators.map((locator) => ({
+                              id: locator.piSessionId,
+                              path: locator.sessionPath,
+                              cwd: locator.headerCwd,
+                              modified: locator.headerTimestamp || undefined,
+                          }))
+                        : await listPersistedRootSessions(options.cwd);
                 selectedSession = persistedSessions[0] || null;
             }
             if (options.resumeSessionId && !selectedSession) {
@@ -474,25 +481,25 @@ export class RuntimeLifecycle {
             cwd: options.cwd,
             managed: managedSession
                 ? {
-                    runwieldSessionId: managedSession.runwieldSessionId,
-                    projectId: managedSession.projectId,
-                    piSessionId: managedSession.piSessionId,
-                    transcriptPath: managedSession.transcriptPath,
-                    currentSegmentId: managedCurrentSegmentId,
-                    generation: null,
-                    acknowledgedGeneration: null,
-                    acknowledgedEventId: null,
-                    name: managedSession.displayName,
-                    activeAgent: null,
-                    workflowContext: null,
-                    tutorialContext: null,
-                    syncState: {
-                        type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
-                        status: "syncing",
-                        localGeneration: null,
-                        latestGeneration: null,
-                    },
-                }
+                      runwieldSessionId: managedSession.runwieldSessionId,
+                      projectId: managedSession.projectId,
+                      piSessionId: managedSession.piSessionId,
+                      transcriptPath: managedSession.transcriptPath,
+                      currentSegmentId: managedCurrentSegmentId,
+                      generation: null,
+                      acknowledgedGeneration: null,
+                      acknowledgedEventId: null,
+                      name: managedSession.displayName,
+                      activeAgent: null,
+                      workflowContext: null,
+                      tutorialContext: null,
+                      syncState: {
+                          type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
+                          status: "syncing",
+                          localGeneration: null,
+                          latestGeneration: null,
+                      },
+                  }
                 : null,
         });
         if (managedProof) this.managedOperations.setPendingCreationProof(hostedSession.id, managedProof);
@@ -561,7 +568,8 @@ export class RuntimeLifecycle {
             throw new Error("SessionRuntime.createPromptReadySession requires an absolute cwd");
         }
         const agentName = options.agentName || AGENTS.ROUTER;
-        const deferPersistence = options.deferPersistenceUntilFirstMessage === true;
+        const deferPersistence =
+            options.deferPersistenceUntilFirstMessage === true || Boolean(this.services.remotePersistence);
         const created = await this.createInteractiveSession({
             cwd: options.cwd,
             mode: "new",

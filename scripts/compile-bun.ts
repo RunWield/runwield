@@ -214,6 +214,7 @@ export async function compileBun(
             entrypoints: [
                 entry,
                 join(ROOT, "src/utils/image-resize-worker.ts"),
+                join(ROOT, "src/shared/remote/session-save-worker.ts"),
                 join(ROOT, "src/shared/workflow/metrics-exporter-worker.ts"),
             ],
             root: ROOT,

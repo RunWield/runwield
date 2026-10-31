@@ -1,4 +1,3 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module tools/see-image
  * Vision fallback Custom Tool for text-only primary models.
@@ -10,7 +9,7 @@ import type { AgentToolResult, SessionManager } from "@earendil-works/pi-coding-
 import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
 import { getModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../shared/models/model-registry.ts";
 import { remotePersonalResourcesActive } from "../shared/remote/personal-resources.ts";
-import { resolveImageRef, resolveVisionFallbackModel } from "../shared/session/image-attachments.ts";
+import { readImageRef, resolveVisionFallbackModel } from "../shared/session/image-attachments.ts";
 import { RuntimeUsageTotals } from "../shared/session/runtime-usage-totals.ts";
 import type { ExecutionOutcome, ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
 
@@ -99,7 +98,7 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
         parameters: PARAMETERS,
         async execute(_toolCallId, params, signal, _onUpdate, _ctx): Promise<SeeImageResult> {
             try {
-                const resolved = await resolveImageRef(params.imageRef, {
+                const image = await readImageRef(params.imageRef, {
                     cwd: opts.cwd,
                     sessionManager: opts.sessionManager,
                 });
@@ -117,10 +116,6 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                     );
                 }
 
-                const bytes = await fsReadFile(resolved.path);
-                let binary = "";
-                for (const byte of bytes) binary += String.fromCharCode(byte);
-                const base64 = btoa(binary);
                 const question = params.question?.trim() || DEFAULT_SEE_IMAGE_PROMPT;
 
                 const context: Context = {
@@ -129,7 +124,7 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                             role: "user",
                             content: [
                                 { type: "text", text: question },
-                                { type: "image", data: base64, mimeType: resolved.mimeType },
+                                { type: "image", data: image.base64, mimeType: image.mimeType },
                             ],
                             timestamp: Date.now(),
                         },

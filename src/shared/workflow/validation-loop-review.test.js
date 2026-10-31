@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store.js";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { getHomeDir } from "../../constants.js";
 import { join } from "node:path";
 import { setCustomSetting } from "../settings.js";
@@ -49,6 +50,8 @@ async function makeValidatedCiRun(attrs = {}) {
     await git(projectRoot, ["init", "-b", "main"]);
     await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Test"]);
+    await enterProjectRuntime(projectRoot);
+    await ensurePlanIdentity(projectRoot, "p");
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "validation baseline"]);
     const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);

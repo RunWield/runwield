@@ -161,8 +161,8 @@ test("a closing review keeps input hidden while a follow-up prompt is active", a
 
 for (const type of ["plan_review", "code_review"] as const) {
     for (const approved of [true, false]) {
-        test(`${type} hides the input and restores the draft after ${approved ? "approval" : "cancellation"}`, async () => {
-            await withRuntimeCommandFixture("hidden-review-input-", async ({ projectRoot }) => {
+        test(`${type} keeps the editor and draft available through ${approved ? "approval" : "cancellation"}`, async () => {
+            await withRuntimeCommandFixture("visible-review-input-", async ({ projectRoot }) => {
                 const harness = makeHarness(projectRoot);
                 const controller = new AbortController();
                 const scripted = createScriptedReviewBrowser("decision", { approved: true, approvalAction: "later" });
@@ -200,8 +200,8 @@ for (const type of ["plan_review", "code_review"] as const) {
                                 diffText: "diff --git a/a b/a\n",
                                 onSurfaceReady: () => {
                                     surfaceReady = true;
-                                    assertEquals(harness.container.children.includes(harness.editor), false);
-                                    assertEquals(harness.editor.disableSubmit, true);
+                                    assertEquals(harness.container.children.includes(harness.editor), true);
+                                    assertEquals(harness.editor.disableSubmit, false);
                                     assertEquals(harness.validationPanel.children.length === 0, type === "code_review");
                                     harness.uiAPI.updateValidationReport?.("reviewer", {
                                         agentName: "Reviewer",

@@ -210,24 +210,60 @@ Plan status, Session status, ownership reason
 **Session Name**: The persisted short human label for a Session, initially derived from Router Triage for fresh user
 requests. It is distinct from the terminal window or tab title. _Avoid_: Tab title, conversation name
 
-**Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
-remote Linux host. The current connection prepares a matching runtime, mounts laptop personal files on the approved
-Linux `sct` pilot, and opens a dormant remote TUI. An optional bounded native Pi bridge proof is not an ordinary user
-turn; the normal connection does not create or resume a saved Session. Guarded Session history and remote project
-workflows remain target behavior. _Avoid_: Personal Workspace, unattended worker, remote Session type
+**Remote SSH connection**: Connected-only Core execution started with `wld remote` in an existing directory on a remote
+Linux host. It prepares a matching runtime and personal mount, runs the normal TUI, Agents, project tools, and delivery
+workflows remotely, and uses laptop models, Memory, and authoritative Session saves. The first submitted message creates
+history, not connection alone. Personal MCP servers run on the laptop; project servers run remotely. Roots and paths are
+not rewritten. Connection cleanup stops owned descendants, including detached processes and adopted orphans, within
+[Core’s cleanup limits](prd/runwield-core-prd.md#remote-connection), without replaying uncertain effects.
+`wld remote sessions` reads laptop history offline without a composer or writer lock. Connected `/resume` continues only
+this target’s Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide them. macOS Ctrl+V reads current laptop
+clipboard image bytes; saved attachment references survive reconnect. Reviews use one laptop-loopback forward in the
+main SSH connection to the private remote `review.sock`; project assets stay remote. Plan and Code Review retain their
+URL through conversation, revision, and approval. Built-in Guided Review runs in memory with remote files and the laptop
+model; an explicit custom guide command remains a remote subprocess.
+
+The qualified live matrix is macOS arm64 laptop → Fedora Server x64 (`sct`), Pi `openai-codex/gpt-5.6-luna`. Linux ARM64
+remote runtimes use the synthetic-provider release gate. Other glibc distributions are untested; Windows laptops and CLI
+backends are unsupported. This is a tested matrix, not proof of universal recovery maturity. See
+[Core Remote connection](prd/runwield-core-prd.md#remote-connection). _Avoid_: Personal Workspace, unattended worker,
+remote Session type
+
+**Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
+canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
+fingerprint; the SSH alias is only a display label. A certificate connection without a reported stable fingerprint uses
+`null`, with exact hostname, user, and port matching. With the same root and user, a matching non-null key but changed
+address, or a matching address but changed key, asks once whether it is the same server. Yes uses the saved project's
+identity; No keeps a separate target. Both answers are retained. An unconfirmed identity difference never reuses history.
+Two `null` fingerprints do not prove a shared key. The root is remote `primaryRoot`, or `gitRoot`, or `cwd` when the
+preceding value is absent. A worktree shares its primary checkout's project identity while the Session keeps execution
+cwd separately. Laptop paths and temporary mount paths are not remote project identity. A confirmed host also uses the
+saved project's Memory key; local-project Memory sharing remains a separate choice. _Avoid_: SSH alias identity, mount
+root, local checkout path
+
+**Remote Memory key**: The normalized resolved SSH hostname, user, port, and canonical remote primary project root. It
+excludes the host key and temporary mount paths. A confirmed host uses the saved project's key. A worktree uses its
+primary root. _Avoid_: Session identity, SSH alias
+
+**Remote Memory binding**: A saved laptop choice that maps a Remote Memory key to one Mnemoteca collection. The normal
+collection is `<folder>@<hostname>-<hash>`. An exact folder-name match to a saved local Session project asks whether it
+is the same project. Yes shares that local collection; No keeps the normal remote collection. Both answers are retained.
+Sharing a collection shares memories, never Sessions. _Avoid_: Project relink, Session merge
 
 **Remote personal mount**: A connection-owned SSHFS view of the laptop’s full `~/.wld` at a fresh private remote path.
 Personal file edits through it change laptop files directly, not a copied resource tree. The remote project’s `.wld`
 stays on the server. The path is private for normal use, but standard SFTP permits broad laptop-account access by the
-trusted remote host; this is not a sandbox. This mount is not the guarded operation-scoped Session writer mount. Direct
-bidirectional Skill file access was verified on the approved Linux `sct` pilot before the connection-only view. This
-does not qualify other hosts or saved Sessions. _Avoid_: Resource sync, copied profile, confined mount
+trusted remote host; this is not a sandbox and does not grant Session writer authority. Supported extra mounts are the
+agents root and installed package roots, not arbitrary personal roots. The
+[Core qualified matrix](prd/runwield-core-prd.md#remote-connection) bounds support; this term is not a proof record.
+_Avoid_: Resource sync, copied profile, confined mount
 
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
 `.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
-Runtime State. A Remote SSH connection can identify a remote checkout but does not enter or create its Project Runtime
-State; future remote project work would keep that state with the remote checkout. _Avoid_: project settings, project
-config, all of `.wld/`
+Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
+state stays with the remote checkout, not with laptop personal history. Delivery workflows use that remote state;
+artifacts, Plan Associations, review references, and Session segments are saved by the laptop owner.
+_Avoid_: project settings, project config, all of `.wld/`
 
 **Project Runtime Entry**: Action-owned admission before Project Runtime State mutation locks or writes. It can adopt
 eligible legacy state, recover returning input, verify primary/selected checkout ownership, or refuse with a retryable
@@ -848,6 +884,9 @@ web search, local docs grep, package install lookup
 
 **MCP Server Configuration**: A trusted server declaration in `~/.wld/mcp.json`, project `.wld/mcp.json`, or an ACP
 Session request. RunWield starts stdio MCP servers from this configuration and exposes their tools to root Agents only.
+In a Remote SSH connection, personal servers run on the laptop with home cwd; project servers run remotely with the
+Session execution cwd. Project replacement/disable rules select entries before startup. One remote Pi integration
+handles both origins through native transports; Memory collection sharing does not map files or change cwd.
 _Avoid_: settings key, Custom Tool definition
 
 **MCP Tool**: A tool discovered from a trusted MCP server. Pi gives it a stable `mcp__<server>__<tool>` name and keeps
@@ -907,11 +946,14 @@ project truth or permission. _Avoid_: Critical memory, pinned memory, shared mem
 
 **Global Memory**: A Memory stored in the cross-project collection. _Avoid_: Shared memory, universal memory
 
-**Sleep**: A maintenance workflow that exports, analyzes, and improves the Mnemoteca collection. _Avoid_: Memory
-cleanup, memory maintenance
+**Trusted Branch**: A configured repository branch whose reviewed Team Memories may become active local Mnemoteca
+context. _Avoid_: Main branch, safe branch
 
-**Project Name**: The basename of the working directory used as the Mnemoteca collection identifier. _Avoid_:
-Collection, namespace
+**Sleep**: A local maintenance workflow that exports, analyzes, and improves the Mnemoteca collection. Remote `/sleep`
+reports that it is not available and starts no maintenance. _Avoid_: Memory cleanup, memory maintenance
+
+**Project Name**: For local Memory, the main checkout’s folder name, or the cwd folder name outside Git, with `global`
+reserved and mapped to `default`. Remote Memory uses its bound collection. _Avoid_: Collection, namespace
 
 **Cymbal**: The external code indexing and search system exposed to agents as codebase tools. _Avoid_: Search layer,
 indexer
@@ -946,11 +988,11 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 ## Relationships
 
-- A **Remote SSH connection** uses Core to display a remote TUI for an existing directory; the connection itself is not
-  a saved **Session** and does not yet start ordinary project execution or open **Project Runtime State**. Its **Remote
-  personal mount** gives direct access to laptop personal files on the approved `sct` pilot, while the project’s `.wld`
-  stays remote. The optional native Pi bridge proof is not an ordinary turn. Target remote Sessions add a separate
-  guarded writer for saved history and local authenticated model execution.
+- A **Remote SSH connection** uses Core for ordinary remote project execution, delivery workflows, and review. The
+  connection alone is not a saved **Session**. A **Remote personal mount** gives direct access to laptop personal files
+  while project `.wld` and **Project Runtime State** stay remote. The laptop is the authoritative Session writer under
+  its native **Session Writer Lock**; the mount is not writer authority. Saved context and lineage continue after
+  reconnect without automatic replay of uncertain effects.
 - **Project Runtime Inspection** reads checked existing authority; **Project Runtime Entry** admits deliberate
   preparation and mutation. Path resolution and prior inspection do not substitute for entry.
 - **Plan Read Availability** describes available workflow evidence independently of **Plan Status** and **Plan

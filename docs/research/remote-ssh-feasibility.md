@@ -7,7 +7,7 @@ Last checked: 2026-09-20 EDT
 Can `wld remote host[:folder]` run an interactive TUI against remote files while personal settings, credentials,
 memories, and Session history stay on the user's local machine?
 
-This check supports the [Remote SSH proposal](../prd/remote-ssh-prd.md). It inspected source, selected tests, and
+This check supports the [Core Remote connection requirements](../prd/runwield-core-prd.md#remote-connection). It inspected source, selected tests, and
 first-party documentation. On 2026-09-20, a later throwaway prototype also ran the Pi model path over SSH. Findings
 establish feasibility, not delivered remote support.
 

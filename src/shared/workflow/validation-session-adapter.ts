@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type HostedSession } from "../session/hosted-session.js";
@@ -369,6 +370,7 @@ async function runIsolatedRequest(
         : getPendingRepairManager(hostedSession, request.cwd, request.userRequest);
     if (!request.conversationTurn) await prepareRepairInvocation(hostedSession, request.cwd);
     // An automatic repair is fresh non-generated work, not a continuation of the completed task.
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     hostedSession.backgroundTasks.resumeDelivery();
     const { event, messages } = await runValidationAgentUntilEvent(
         isolatedSessions,
@@ -439,6 +441,7 @@ async function acceptedRepairOutcome(
     const payload = event.payload as import("./workflow-tool-events.ts").TaskCompletedEventPayload;
     const workflow = event.workflow;
     if (kind === "validation" && workflow?.validationRepairGeneration && workflow.executionCwd) {
+        hostedSession.getManagedOperationCapability?.()?.assertLive();
         await recordValidationRepairCompletion({
             projectRoot: workflow.executionCwd,
             planName: workflow.planName,
@@ -456,6 +459,7 @@ async function acceptedRepairOutcome(
 async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string): Promise<void> {
     const workflow = hostedSession.getActiveExecutionWorkflow();
     if (!workflow?.planName) return;
+    await preparePlanWorkflow(cwd, workflow.planName);
     const plan = await loadPlan(cwd, workflow.planName);
     if (!plan) return;
     const prior = plan.attrs.validationCheckpoint;
@@ -486,6 +490,7 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
         reviewState,
         lastSettledOperationId: prior?.lastSettledOperationId,
     });
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     await updatePlanFrontMatter(cwd, workflow.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
         expectedRevision: plan.revision,
         expectedControllerRevision: plan.controllerRevision,
@@ -516,6 +521,7 @@ export function createValidationSessionPort(
     const isolatedSessions = semanticReviewPort || SYSTEM_SEMANTIC_REVIEW_PORT;
     const reviewerManagers = new WeakMap<ReviewInspection, SessionManager>();
     return {
+        assertLive: () => hostedSession.getManagedOperationCapability?.()?.assertLive(),
         cwd: hostedSession.cwd,
         get metricsSession() {
             return hostedSession.getManagedMetadata();
@@ -548,10 +554,15 @@ export function createValidationSessionPort(
                     },
                 };
             }
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             emitRunWieldSystemStatus(hostedSession, message, level, progress as RuntimeValidationProgress | undefined);
+            // Footer persistence can catch a save error. Do not return control to phase writes after it.
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
         },
         emitAssistantMessage: (agentName, text, options) => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             emitAssistantMessage(hostedSession, agentName, text, options);
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
         },
         requestInteraction: (request) =>
             requestHostedSessionInteraction(
@@ -563,6 +574,7 @@ export function createValidationSessionPort(
         registerActiveInteraction: (id, abortController) => hostedSession.addActiveInteraction(id, { abortController }),
         unregisterActiveInteraction: (id) => hostedSession.removeActiveInteraction(id),
         runIndependentRepairTurn: async ({ kind, userRequest, cwd }) => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             const agentName = SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER;
             const repairManager = getPendingRepairManager(hostedSession, cwd, userRequest);
             if (kind === "validation") {
@@ -575,6 +587,7 @@ export function createValidationSessionPort(
                     hostedSession.setActiveExecutionWorkflow({ ...workflow, validationRepairGeneration: undefined });
                 }
             }
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             hostedSession.backgroundTasks.resumeDelivery();
             const { event } = await runValidationAgentUntilEvent(
                 isolatedSessions,
@@ -603,6 +616,7 @@ export function createValidationSessionPort(
             return completion;
         },
         continueLastRepairTurn: async (userRequest) => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             let repair = lastRepairSessions.get(hostedSession);
             const workflow = hostedSession.getActiveExecutionWorkflow();
             if (repair && repair.planName !== workflow?.planName) repair = undefined;
@@ -632,6 +646,7 @@ export function createValidationSessionPort(
                 lastRepairSessions.set(hostedSession, repair);
             }
             await prepareRepairInvocation(hostedSession, repair.cwd);
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             hostedSession.backgroundTasks.resumeDelivery();
             const { event } = await runValidationAgentUntilEvent(
                 isolatedSessions,
@@ -651,6 +666,7 @@ export function createValidationSessionPort(
         runIsolatedAgentSession: async <K extends IsolatedAgentSessionRequest["kind"]>(
             request: Extract<IsolatedAgentSessionRequest, { kind: K }>,
         ): Promise<Extract<IsolatedAgentSessionOutcome, { kind: K }>> => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             try {
                 const outcome = await runIsolatedRequest(hostedSession, isolatedSessions, request, reviewerManagers);
                 return outcome as Extract<IsolatedAgentSessionOutcome, { kind: K }>;

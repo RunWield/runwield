@@ -1,14 +1,29 @@
-import { basename, dirname, isAbsolute, join, normalize } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
+import { requestRemoteMemory } from "../../shared/remote/memory-bridge.ts";
+import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
 export interface MnemotecaToolHost {
     cwd: string;
+    boundCollection?: string;
     exec: HelperBinaryExec;
 }
 
-interface MemoryParams {
+interface MemoryExportHeader {
+    version: number;
+    collection: string;
+    doc_count: number;
+}
+interface MemoryExportDocument {
+    original_document_id: number;
+}
+
+export interface MemoryParams {
     action: "recall" | "store" | "delete";
     query?: string;
     content?: string;
@@ -60,17 +75,16 @@ export const memoryToolDef = defineTool({
         "Set core=true only for critical, always-relevant context. Keep core memories lean.",
     ],
     parameters: Type.Object({
-        action: Type.Union([
-            Type.Literal("recall"),
-            Type.Literal("store"),
-            Type.Literal("delete"),
-        ], { description: "Memory action" }),
+        action: Type.Union([Type.Literal("recall"), Type.Literal("store"), Type.Literal("delete")], {
+            description: "Memory action",
+        }),
         query: Type.Optional(Type.String({ description: "Semantic search query; required for action=recall" })),
         content: Type.Optional(Type.String({ description: "Concise memory to store; required for action=store" })),
-        scope: Type.Optional(Type.Union([
-            Type.Literal("project"),
-            Type.Literal("global"),
-        ], { description: "Memory scope. Defaults to project for store. Required for delete." })),
+        scope: Type.Optional(
+            Type.Union([Type.Literal("project"), Type.Literal("global")], {
+                description: "Memory scope. Defaults to project for store. Required for delete.",
+            }),
+        ),
         core: Type.Optional(
             Type.Boolean({ description: "If true, this memory is always injected into context. Use sparingly." }),
         ),
@@ -81,33 +95,13 @@ export const memoryToolDef = defineTool({
     },
 });
 
-export function normalizedProjectCollectionName(rawName: string): string {
-    return rawName === "global" ? "default" : (rawName || "default");
-}
-
-export async function resolveProjectCollectionName(host: MnemotecaToolHost): Promise<string> {
-    const cwd = host.cwd;
-    const fallback = normalizedProjectCollectionName(basename(cwd));
-    try {
-        const result = await host.exec("git", ["rev-parse", "--git-common-dir"], { cwd });
-        if (result.code !== 0) return fallback;
-        const commonDir = result.stdout.trim().split(/\r?\n/).at(-1) || "";
-        if (!commonDir) return fallback;
-        const absoluteCommonDir = normalize(isAbsolute(commonDir) ? commonDir : join(cwd, commonDir));
-        if (basename(absoluteCommonDir) !== ".git") return fallback;
-        return normalizedProjectCollectionName(basename(dirname(absoluteCommonDir)));
-    } catch {
-        return fallback;
-    }
-}
-
 export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] {
     let collectionName: string | null = null;
     let initPromise: Promise<void> | null = null;
 
     async function projectName(): Promise<string> {
         if (collectionName) return collectionName;
-        collectionName = await resolveProjectCollectionName(host);
+        collectionName = await resolveMemoryCollection(host);
         return collectionName;
     }
 
@@ -117,7 +111,9 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
             if (result.code !== 0) {
                 const errMsg = result.stderr.trim() || `mnemoteca ${args[0]} failed (exit ${result.code})`;
                 if (
-                    result.code === 127 || errMsg.includes("not found") || errMsg.includes("ENOENT") ||
+                    result.code === 127 ||
+                    errMsg.includes("not found") ||
+                    errMsg.includes("ENOENT") ||
                     errMsg.includes("No such file")
                 ) {
                     return MISSING_BINARY_MSG;
@@ -136,7 +132,9 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
 
     async function ensureProjectInitialized(signal?: AbortSignal): Promise<string> {
         const name = await projectName();
-        initPromise ??= mnemoteca(["init", "--name", name], signal).then(() => undefined).catch(() => undefined);
+        initPromise ??= mnemoteca(["init", "--name", name], signal)
+            .then(() => undefined)
+            .catch(() => undefined);
         await initPromise;
         return name;
     }
@@ -189,25 +187,33 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
         return sections.join("\n\n");
     }
 
-    function memoryIdPattern(id: number): RegExp {
-        return new RegExp(`(^|[^0-9])${id}([^0-9]|$)`);
-    }
-
     async function scopedIdPresence(
         scope: "project" | "global",
         name: string,
         id: number,
         signal?: AbortSignal,
     ): Promise<ScopePresenceResult> {
-        const args = scope === "global"
-            ? ["list", "--global", "--format", "plain", "--limit", "100000"]
-            : ["list", "--name", name, "--format", "plain", "--limit", "100000"];
+        const directory = await mkdtemp(join(tmpdir(), "wld-memory-scope-"));
+        const output = join(directory, "memories.jsonl");
+        const args = scope === "global" ? ["export", "--global"] : ["export", "--name", name];
         try {
-            const text = await mnemoteca(args, signal);
+            const text = await mnemoteca([...args, "--no-embeddings", "--output", output], signal);
             if (text.trim() === MISSING_BINARY_MSG) return { status: "failure", message: MISSING_BINARY_MSG };
-            return { status: "success", present: memoryIdPattern(id).test(text) };
+            const [first, ...lines] = (await readFile(output, "utf8")).trimEnd().split("\n");
+            const header: MemoryExportHeader = JSON.parse(first);
+            const documents: MemoryExportDocument[] = lines.map((line) => JSON.parse(line));
+            if (
+                header.version !== 1 ||
+                header.collection !== (scope === "global" ? "global" : name) ||
+                header.doc_count !== documents.length ||
+                documents.some((document) => !Number.isSafeInteger(document.original_document_id))
+            )
+                throw new Error("Invalid scoped Memory export");
+            return { status: "success", present: documents.some((document) => document.original_document_id === id) };
         } catch (error) {
             return { status: "failure", message: error instanceof Error ? error.message : String(error) };
+        } finally {
+            await rm(directory, { recursive: true, force: true });
         }
     }
 
@@ -288,6 +294,7 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
             ...memoryToolDef,
             async execute(_id, params, signal) {
                 const typed = params as MemoryParams;
+                if (remotePersonalResourcesActive()) return await requestRemoteMemory(typed, signal);
                 if (typed.action === "recall") return await recall(typed, signal);
                 if (typed.action === "store") return await store(typed, signal);
                 if (typed.action === "delete") return await deleteMemory(typed, signal);

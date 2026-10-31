@@ -1,3 +1,4 @@
+import { discoverPlanDocumentRoot } from "../load-plan/primary-plan-recovery.ts";
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 /**
  * @module cmd/plans/archive
@@ -27,12 +28,12 @@ import {
 } from "../../ui/tui/directory-warning.ts";
 
 async function confirmArchivePlanRoot(cwd: string, name: string): Promise<void> {
-    await preparePlanWorkflow(cwd, name);
-    const location = await resolveWorkflowPlanLocation(cwd, name, { readOnly: true });
-    const confirmed = location.missingExecutionCheckout
-        ? await confirmMissingManagedProjectDirectory(location.documentRoot)
-        : await confirmProjectDirectory(location.documentRoot);
+    const target = await discoverPlanDocumentRoot(cwd, name);
+    const confirmed = target.missingExecutionCheckout
+        ? await confirmMissingManagedProjectDirectory(target.path)
+        : await confirmProjectDirectory(target.path);
     if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
+    await preparePlanWorkflow(cwd, name);
 }
 
 type PlanEntry = Awaited<ReturnType<typeof listPlans>>[number];

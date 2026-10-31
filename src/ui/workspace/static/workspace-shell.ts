@@ -411,6 +411,7 @@ function normalizeProject(project) {
         sessionsLoading: project?.sessionsLoading === true,
         sessionsError: project?.sessionsError === true,
         diagnostics: Array.isArray(project?.diagnostics) ? project.diagnostics : [],
+        planDiagnostics: Array.isArray(project?.planDiagnostics) ? project.planDiagnostics : [],
         hasMorePlans: Boolean(project?.hasMorePlans),
         plans: Array.isArray(project?.plans) ? project.plans.filter((plan) => plan?.planId) : [],
         hasMoreSessions: Boolean(project?.hasMoreSessions),
@@ -611,10 +612,118 @@ function reconcilePlanSessionRows(container, projectId, plan, current) {
     }
 }
 
+let dismissPlanWarning = () => {};
+let warningSequence = 0;
+
+function makePlanWarningRow(projectId, diagnostic) {
+    const row = document.createElement("div");
+    row.className = "workspace-sidebar-plan-warning";
+    row.dataset.sidebarPlanWarning = diagnostic.name;
+    const link = createAnchor("workspace-sidebar-plan", plansHref(projectId), diagnostic.name);
+    link.title = diagnostic.name;
+    const name = document.createElement("span");
+    name.textContent = diagnostic.name;
+    link.replaceChildren(name);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rw-icon-button rw-warning-control";
+    button.dataset.planWarningControl = "";
+    button.setAttribute("aria-label", `Plan warning: ${diagnostic.name}`);
+    button.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18.5A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.5L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg>`;
+    let tooltip = null;
+    let pinned = false;
+    let hideTimer = null;
+    const hide = () => {
+        clearTimeout(hideTimer);
+        tooltip?.remove();
+        tooltip = null;
+        pinned = false;
+        button.removeAttribute("aria-describedby");
+        document.removeEventListener("keydown", onKey);
+        document.removeEventListener("pointerdown", onOutside);
+        document.removeEventListener("scroll", onScroll, true);
+        globalThis.removeEventListener?.("resize", hide);
+    };
+    const onScroll = (event) => {
+        if (!tooltip?.contains(event.target)) hide();
+    };
+    const onKey = (event) => {
+        if (event.key === "Escape") hide();
+    };
+    const onOutside = (event) => {
+        if (event.target !== button && !button.contains(event.target) && !tooltip?.contains(event.target)) hide();
+    };
+    const show = () => {
+        clearTimeout(hideTimer);
+        if (tooltip) return;
+        dismissPlanWarning();
+        dismissPlanWarning = hide;
+        tooltip = document.createElement("div");
+        tooltip.className = "rw-warning-tooltip";
+        tooltip.id = `plan-warning-${++warningSequence}`;
+        tooltip.setAttribute("role", "tooltip");
+        tooltip.textContent = diagnostic.message;
+        document.body.append(tooltip);
+        button.setAttribute("aria-describedby", tooltip.id);
+        const anchor = button.getBoundingClientRect();
+        const width = globalThis.innerWidth || document.documentElement.clientWidth;
+        const height = globalThis.innerHeight || document.documentElement.clientHeight;
+        tooltip.style.maxWidth = `min(28rem, ${Math.max(0, width - 16)}px)`;
+        tooltip.style.maxHeight = `${Math.max(0, height - 16)}px`;
+        const box = tooltip.getBoundingClientRect();
+        const left = Math.max(8, Math.min(anchor.left, width - box.width - 8));
+        const below = anchor.bottom + 6;
+        const top = below + box.height <= height - 8 ? below : Math.max(8, anchor.top - box.height - 6);
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${Math.min(top, Math.max(8, height - box.height - 8))}px`;
+        tooltip.addEventListener("click", (event) => event.stopPropagation());
+        tooltip.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+        tooltip.addEventListener("mouseleave", (event) => {
+            if (!pinned && event.relatedTarget !== button && document.activeElement !== button) {
+                hideTimer = setTimeout(hide, 120);
+            }
+        });
+        document.addEventListener("keydown", onKey);
+        document.addEventListener("pointerdown", onOutside);
+        document.addEventListener("scroll", onScroll, true);
+        globalThis.addEventListener?.("resize", hide);
+    };
+    button.addEventListener("mouseenter", show);
+    button.addEventListener("focus", show);
+    button.addEventListener("mouseleave", (event) => {
+        if (!pinned && event.relatedTarget !== tooltip && document.activeElement !== button) {
+            hideTimer = setTimeout(hide, 120);
+        }
+    });
+    button.addEventListener("blur", hide);
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (pinned) hide();
+        else {
+            show();
+            pinned = true;
+        }
+    });
+    row.append(link, button);
+    return row;
+}
+
 function reconcilePlanRows(container, project, current) {
     const plans = Array.isArray(project.plans) ? project.plans : [];
     const expanded = readExpandedSet(EXPANDED_PLANS_KEY).has(project.projectId);
     const visible = expanded ? plans : plans.slice(0, 5);
+    const activeWarning = container.contains(document.activeElement)
+        ? document.activeElement?.closest?.("[data-sidebar-plan-warning]")
+        : null;
+    const activeWarningName = activeWarning?.getAttribute("data-sidebar-plan-warning");
+    const activeWarningControl = document.activeElement?.getAttribute?.("data-plan-warning-control") != null;
+    const restoreWarningFocus = () => {
+        if (activeWarningName == null) return;
+        const row = container.querySelector(`[data-sidebar-plan-warning="${CSS.escape(activeWarningName)}"]`);
+        const target = activeWarningControl ? row?.querySelector("[data-plan-warning-control]") : row?.children[0];
+        target?.focus({ preventScroll: true });
+    };
     const activePlanKey = document.activeElement?.getAttribute?.("data-sidebar-plan") || "";
     const activeSessionKey = document.activeElement?.getAttribute?.("data-sidebar-session") || "";
     const activeMorePlansKey = document.activeElement?.getAttribute?.("data-show-more-plans") || "";
@@ -632,7 +741,14 @@ function reconcilePlanRows(container, project, current) {
     byId.forEach((node, planId) => {
         if (!wanted.has(planId)) node.remove();
     });
+    container.querySelectorAll("[data-sidebar-plan-warning]").forEach((node) => node.remove());
     if (!project.enabled) return;
+    const warnings = project.planDiagnostics || [];
+    for (const diagnostic of warnings) container.append(makePlanWarningRow(project.projectId, diagnostic));
+    if (!plans.length && warnings.length) {
+        restoreWarningFocus();
+        return;
+    }
     if (!plans.length) {
         container.append(
             makeEmpty(
@@ -652,6 +768,7 @@ function reconcilePlanRows(container, project, current) {
         node.className = fresh.className;
         container.append(node);
     }
+    container.querySelectorAll("[data-sidebar-plan-warning]").forEach((node) => container.append(node));
     if (plans.length > visible.length) {
         const button = document.createElement("button");
         button.type = "button";
@@ -660,6 +777,7 @@ function reconcilePlanRows(container, project, current) {
         button.textContent = `Show ${plans.length - visible.length} more Plans...`;
         container.append(button);
     }
+    restoreWarningFocus();
     const focusSelectors = activeSessionKey
         ? [`[data-sidebar-session="${CSS.escape(activeSessionKey)}"]`]
         : activePlanKey
@@ -792,11 +910,14 @@ function reconcileProjects(list, payload, current) {
     for (const project of ordered) {
         const node = byId.get(project.projectId) || makeProjectElement(project, current);
         updateProjectElement(node, project, current);
+        const focused = node.contains(document.activeElement) ? document.activeElement : null;
         list.append(node);
+        focused?.focus({ preventScroll: true });
     }
 }
 
 export function renderSidebar(payload, current) {
+    dismissPlanWarning();
     const sidebar = document.querySelector("[data-workspace-sidebar]");
     if (!sidebar) return;
     latestSidebarPayload = payload;
@@ -1061,6 +1182,7 @@ export function installWorkspaceShellBrowser() {
     workspaceShellBrowserInstalled = true;
     let sidebarScrollTop = 0;
     document.addEventListener("astro:before-swap", () => {
+        dismissPlanWarning();
         sidebarScrollTop = document.querySelector("[data-workspace-sidebar]")?.scrollTop || 0;
     });
     document.addEventListener("astro:after-swap", () => {

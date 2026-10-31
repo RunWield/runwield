@@ -467,6 +467,7 @@ export async function runMechanicalValidation(
     reason?: string;
 }> {
     if (!hostedSession) throw new Error("runMechanicalValidation: hostedSession is required");
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     const projectRoot = hostedSession?.cwd || cwd;
     if (!projectRoot) throw new Error("runMechanicalValidation: hostedSession or cwd is required");
     const metricProjectRoot = projectRoot;
@@ -528,6 +529,7 @@ export async function runMechanicalValidation(
             "info",
             progress,
         );
+        hostedSession.getManagedOperationCapability?.()?.assertLive();
         const ciOperationId = crypto.randomUUID();
         const ciResult = await localCI.run({ hostedSession, cwd: validationCwd });
 
@@ -675,6 +677,7 @@ export async function runMechanicalValidation(
             true,
             progress,
         );
+        hostedSession.getManagedOperationCapability?.()?.assertLive();
         const roundId = crypto.randomUUID();
         const completed = await runCompletionGatedRepair({
             agentName: AGENTS.ENGINEER,

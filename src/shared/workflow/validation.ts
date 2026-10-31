@@ -135,8 +135,10 @@ export function createEngineValidationArgs(args: ValidationLoopArgs): EngineVali
         executionContext: args.executionContext,
         git: args.git,
         localCI: {
-            run: ({ cwd }) =>
-                args.localCI.run({ hostedSession: args.hostedSession, cwd, settingsPolicy: "exact-project" }),
+            run: ({ cwd }) => {
+                session.assertLive();
+                return args.localCI.run({ hostedSession: args.hostedSession, cwd, settingsPolicy: "exact-project" });
+            },
         },
         workRecordMnemotecaPort: args.workRecordMnemotecaPort,
         supportsSemanticRepairHandoff: args.supportsSemanticRepairHandoff,

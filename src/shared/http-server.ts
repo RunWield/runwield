@@ -2,7 +2,8 @@
 import { versions } from "node:process";
 
 export interface HttpAddress {
-    transport: "tcp" | "udp";
+    transport: "tcp" | "udp" | "unix";
+    path?: string;
     hostname: string;
     port: number;
 }
@@ -15,8 +16,9 @@ export interface HttpServer {
     [Symbol.asyncDispose](): PromiseLike<void>;
 }
 export interface HttpServerOptions {
-    hostname: string;
-    port: number;
+    hostname?: string;
+    port?: number;
+    unix?: string;
     signal?: AbortSignal;
     automaticCompression?: boolean;
     onListen?(address: HttpAddress): void;
@@ -31,8 +33,9 @@ interface BunHttpServer {
     unref(): void;
 }
 interface BunHttpOptions {
-    hostname: string;
-    port: number;
+    hostname?: string;
+    port?: number;
+    unix?: string;
     idleTimeout: number;
     fetch: HttpHandler;
     error?(error: Error): Response | Promise<Response>;
@@ -86,8 +89,7 @@ export function serveHttp(options: HttpServerOptions, handler: HttpHandler): Htt
     if (!versions.bun) throw new Error("HTTP serving requires Bun");
     const bun = Reflect.get(globalThis, "Bun") as BunHttpRuntime;
     const server = bun.serve({
-        hostname: options.hostname,
-        port: options.port,
+        ...(options.unix ? { unix: options.unix } : { hostname: options.hostname, port: options.port }),
         // Workspace has long-running streams; client/owner lifecycles cancel
         // them explicitly, rather than Bun's short default idle timeout.
         idleTimeout: 0,
@@ -124,7 +126,9 @@ export function serveHttp(options: HttpServerOptions, handler: HttpHandler): Htt
     function abort() {
         void stop(true).catch(() => {});
     }
-    const addr: HttpAddress = { transport: "tcp", hostname: server.hostname, port: server.port };
+    const addr: HttpAddress = options.unix
+        ? { transport: "unix", path: options.unix, hostname: "", port: 0 }
+        : { transport: "tcp", hostname: server.hostname, port: server.port };
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
     queueMicrotask(() => options.onListen?.(addr));

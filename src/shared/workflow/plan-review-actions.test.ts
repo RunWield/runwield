@@ -17,7 +17,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision, reviewSourceStillMatches } from "./plan-review-actions.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { listEntries, updateEntry } from "../worktree-registry.js";
@@ -536,4 +536,36 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
             }
         });
     }
+}
+
+for (const reviewText of [
+    "# Plan\n\nUpdated request.\n",
+    "---\nplanId: other-plan\n---\n# Plan\n\nUpdated request.\n",
+]) {
+    test(`Plan review preserves identity when submitted text ${reviewText.startsWith("---") ? "changes" : "omits"} it`, async () => {
+        const fixture = await makePlanFile({ planId: "review-plan-id" });
+        try {
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: fixture.planPath,
+                planWithFrontMatter: fixture.markdown,
+                planRevision: fixture.revision,
+                originalAttrs: fixture.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: {
+                    approved: true,
+                    approvalAction: "run",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                    plan: reviewText,
+                },
+            });
+            assertEquals(result.approved, true);
+            assertEquals(result.planAttrs?.planId, "review-plan-id");
+            assertEquals((await loadPlan(fixture.dir, "plan"))?.attrs.planId, "review-plan-id");
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
+    });
 }

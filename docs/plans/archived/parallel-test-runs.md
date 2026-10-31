@@ -152,43 +152,43 @@ Existing functions, modules, or patterns to reuse:
 ## Verification Plan
 
 - Automated targeted regressions:
-  - `deno task test src/shared/session/session-catalog.test.js src/shared/session/__tests__/session-tools-policy.test.js src/acp/server.test.js`
-  - Expected: all affected tests pass in one parallel invocation; bundled source paths are used; no repository-local
-    Agent Definition, prompt, or Skill fixture is created, removed, or restored.
+    - `deno task test src/shared/session/session-catalog.test.js src/shared/session/__tests__/session-tools-policy.test.js src/acp/server.test.js`
+    - Expected: all affected tests pass in one parallel invocation; bundled source paths are used; no repository-local
+      Agent Definition, prompt, or Skill fixture is created, removed, or restored.
 - Automated Workspace subset:
-  - `deno task workspace:test`
-  - Expected: Workspace test modules pass under native parallel scheduling.
+    - `deno task workspace:test`
+    - Expected: Workspace test modules pass under native parallel scheduling.
 - Automated concurrency controls:
-  - `DENO_JOBS=1 deno task test`
-  - `DENO_JOBS=2 deno task test`
-  - Expected: both runs pass with the same discovered test count as the default task; no command or task rewrite is
-    needed to alter concurrency.
+    - `DENO_JOBS=1 deno task test`
+    - `DENO_JOBS=2 deno task test`
+    - Expected: both runs pass with the same discovered test count as the default task; no command or task rewrite is
+      needed to alter concurrency.
 - Automated ordering/race stress:
-  - `for seed in 101 202 303 404 505; do deno task test --shuffle=$seed || exit 1; done`
-  - Expected: all five parallel shuffled runs pass without intermittent missing bundled resources, override leakage,
-    source-file writes, fixed-port conflicts, or cleanup failures.
+    - `for seed in 101 202 303 404 505; do deno task test --shuffle=$seed || exit 1; done`
+    - Expected: all five parallel shuffled runs pass without intermittent missing bundled resources, override leakage,
+      source-file writes, fixed-port conflicts, or cleanup failures.
 - Controlled Snip failure diagnostic:
-  - create a temporary `*.test.js` containing one named test that throws an error with a unique marker, run it through
-    `snip run -- deno test -A --parallel <temporary-test>`, capture the expected nonzero result, and remove the fixture.
-  - Expected: filtered output retains the failing file/test name and unique error marker; a parallel failure remains
-    actionable rather than collapsing to a generic failure.
+    - create a temporary `*.test.js` containing one named test that throws an error with a unique marker, run it through
+      `snip run -- deno test -A --parallel <temporary-test>`, capture the expected nonzero result, and remove the fixture.
+    - Expected: filtered output retains the failing file/test name and unique error marker; a parallel failure remains
+      actionable rather than collapsing to a generic failure.
 - Performance comparison after one warm-up run, using three timed runs for each candidate:
-  - serial baseline: `/usr/bin/time -p deno test -A`
-  - two workers: `DENO_JOBS=2 /usr/bin/time -p deno test -A --parallel`
-  - four workers: `DENO_JOBS=4 /usr/bin/time -p deno test -A --parallel`
-  - CPU default: `/usr/bin/time -p deno test -A --parallel`
-  - Expected: the default parallel task has a lower median wall-clock duration than the serial baseline. Report both the
-    before/after medians and worker setting; do not infer speedup from a single run.
+    - serial baseline: `/usr/bin/time -p deno test -A`
+    - two workers: `DENO_JOBS=2 /usr/bin/time -p deno test -A --parallel`
+    - four workers: `DENO_JOBS=4 /usr/bin/time -p deno test -A --parallel`
+    - CPU default: `/usr/bin/time -p deno test -A --parallel`
+    - Expected: the default parallel task has a lower median wall-clock duration than the serial baseline. Report both the
+      before/after medians and worker setting; do not infer speedup from a single run.
 - Standalone resource smoke and full gate:
-  - `deno task release:check`
-  - `deno task ci`
-  - Expected: the compiled resource probe materializes and reads a representative workflow prompt and Skill beneath its
-    isolated HOME; check, Workspace check, lint, parallel tests, the normal binary review smoke, and the new standalone
-    resource smoke all pass.
+    - `deno task release:check`
+    - `deno task ci`
+    - Expected: the compiled resource probe materializes and reads a representative workflow prompt and Skill beneath its
+      isolated HOME; check, Workspace check, lint, parallel tests, the normal binary review smoke, and the new standalone
+      resource smoke all pass.
 - Repository-state check:
-  - compare `git status --short` and `git diff -- .wld src/shared/version.js` before and after repeated raw test runs.
-  - Expected: test workers do not alter Project-local `.wld` state or rewrite `src/shared/version.js`; only intentional
-    implementation and documentation changes remain.
+    - compare `git status --short` and `git diff -- .wld src/shared/version.js` before and after repeated raw test runs.
+    - Expected: test workers do not alter Project-local `.wld` state or rewrite `src/shared/version.js`; only intentional
+      implementation and documentation changes remain.
 
 ## Edge Cases & Considerations
 

@@ -259,3 +259,42 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
         }
     });
 });
+
+for (const primary of [true, false]) {
+    test(`${primary ? "primary" : "cached remote"} target excludes malformed archives before parsing`, async () => {
+        const repo = await fixture.checkout();
+        try {
+            await mkdir(join(repo, "docs/plans/archived"), { recursive: true });
+            await writeFile(
+                join(repo, "docs/plans/archived/broken.md"),
+                "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken archive\n",
+            );
+            await git(repo, ["add", "."]);
+            await mkdir(join(repo, "docs/plans/epic-0"), { recursive: true });
+            await writeFile(join(repo, "docs/plans/epic-0/manual-qa.md"), "---\naffectedPaths: - not-a-plan\n---\n");
+            await writeFile(
+                join(repo, "docs/plans/epic-0/integration-report.md"),
+                "---\naffectedPaths: - not-a-plan\n---\n",
+            );
+            await git(repo, ["add", "."]);
+            await git(repo, ["commit", "-m", "historical malformed archive"]);
+            if (!primary) {
+                await git(repo, ["update-ref", "refs/remotes/origin/small", "HEAD"]);
+                await git(repo, ["switch", "main"]);
+            }
+            const { findTargetBranchPlansByParent } = await import("./planning-worktree.ts");
+            const children = await findTargetBranchPlansByParent(repo, "small", "epic-0");
+            assertEquals(
+                children.map((child) => child.name),
+                [childName(0)],
+            );
+            const inspected = await inspectTargetBranchPlansByParent(repo, "small", "epic-0");
+            assertEquals(
+                inspected.map((child) => child.name),
+                [childName(0)],
+            );
+        } finally {
+            await rm(repo, { recursive: true, force: true });
+        }
+    });
+}

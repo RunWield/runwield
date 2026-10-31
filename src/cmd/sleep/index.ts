@@ -7,8 +7,10 @@ import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:f
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.js";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
+import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { COMMAND_NAMES } from "../registry.js";
@@ -55,14 +57,7 @@ export async function exportMnemotecaCollection(
     port: Pick<MnemotecaPort, "run">,
 ): Promise<void> {
     await fsMkdir(dirname(outputPath), { recursive: true });
-    const result = await port.run([
-        "export",
-        "--name",
-        collectionName,
-        "--no-embeddings",
-        "--output",
-        outputPath,
-    ]);
+    const result = await port.run(["export", "--name", collectionName, "--no-embeddings", "--output", outputPath]);
     if (!result.success) {
         const stderr = new TextDecoder().decode(result.stderr).trim();
         throw new Error(stderr || `mnemoteca export failed with exit code ${result.code}`);
@@ -95,6 +90,13 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
         return;
     }
 
+    if (remotePersonalResourcesActive()) {
+        const message = "[RunWield] /sleep is not available in remote Sessions yet.";
+        if (options.uiAPI) options.uiAPI.appendSystemMessage(message);
+        else console.log(message);
+        return;
+    }
+
     if (!options.uiAPI) {
         await options.sessionPort.startInteractiveSession("/sleep", {
             initialAgentName: AGENTS.ENGINEER,
@@ -118,14 +120,10 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
     await mnemoteca.ensureAvailable();
 
     const cwd = snapshot.cwd;
-    const rawCollectionName = basename(cwd) || "default";
-    const collectionName = rawCollectionName === "global" ? "default" : rawCollectionName;
+    const collectionName = await resolveMemoryCollection({ cwd });
     const artifactDir = resolve(sessionRuntime.getSessionMemoryBackupDir(runtimeSessionId));
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupPath = join(
-        artifactDir,
-        `${collectionName}.sleep-backup-${timestamp}-${crypto.randomUUID()}.jsonl`,
-    );
+    const backupPath = join(artifactDir, `${collectionName}.sleep-backup-${timestamp}-${crypto.randomUUID()}.jsonl`);
 
     await exportMnemotecaCollection(collectionName, backupPath, mnemoteca);
     options.uiAPI.appendSystemMessage(`[RunWield] Memory backup created before sleep mode: ${backupPath}`);
@@ -137,6 +135,9 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
         "",
         "## Run-specific artifact context",
         "",
+        `- Memory collection: ${collectionName}. Use --name ${JSON.stringify(
+            collectionName,
+        )} for every mnemoteca command.`,
         `- Immutable pre-maintenance backup: ${backupPath}`,
         `- Session artifact directory: ${artifactDir}`,
         "- Do not modify or overwrite the pre-maintenance backup.",

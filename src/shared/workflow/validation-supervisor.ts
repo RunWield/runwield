@@ -1,5 +1,12 @@
+import { preparePlanController } from "./plan-preparation.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
-import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
+import {
+    ensurePlanIdentity,
+    loadPlan,
+    resolvePlanExecutionPolicy,
+    StalePlanWriteError,
+    updatePlanFrontMatter,
+} from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
@@ -100,7 +107,10 @@ async function validationPlanCwd(args: RunValidationAttemptArgs): Promise<string
 
 async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimResult> {
     const projectRoot = args.projectRoot;
+    await preparePlanController(projectRoot, args.planName);
     const planCwd = await validationPlanCwd(args);
+    const selected = await loadPlan(planCwd, args.planName);
+    if (selected && !selected.attrs.planId) await ensurePlanIdentity(planCwd, args.planName);
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(planCwd, args.planName);
         if (!plan) throw new ValidationStateError("plan_missing");
@@ -146,6 +156,8 @@ async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimRes
             reviewState: compatible ? prior.reviewState : undefined,
         });
         try {
+            if (args.runtime.kind === "core")
+                args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
             await updatePlanFrontMatter(planCwd, args.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
                 expectedRevision: plan.revision,
                 expectedControllerRevision: plan.controllerRevision,
@@ -211,6 +223,8 @@ async function settleValidation(
                       reviewState: current.reviewState,
                   });
         try {
+            if (args.runtime.kind === "core")
+                args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
             await updatePlanFrontMatter(planCwd, args.planName, { validationCheckpoint }, plan.attrs, {
                 expectedRevision: plan.revision,
                 expectedControllerRevision: plan.controllerRevision,
@@ -435,6 +449,7 @@ async function continueValidationAttempt(
     args: RunValidationAttemptArgs,
     retry: number,
 ): Promise<WorkflowValidationResult> {
+    if (args.runtime.kind === "core") args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
     let claim: ValidationAttemptClaim | undefined;
     try {
         const projectRoot = args.projectRoot;
@@ -501,6 +516,8 @@ async function continueValidationAttempt(
         }
         // Repair provable RunWield bookkeeping before it can block validation. Doctor
         // never resets working changes or removes an unmerged worktree.
+        if (args.runtime.kind === "core")
+            args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
         await runPlansDoctor(projectRoot, true);
         const claimed = await claimValidation(args);
         if (claimed.kind === "active") {
@@ -640,6 +657,8 @@ async function continueValidationAttempt(
         await settleValidation(args, claim.checkpoint, result, claim.planCwd);
         return result;
     } catch (error) {
+        if (args.runtime.kind === "core")
+            args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
         if (error instanceof ValidationHostShutdown) throw error;
         const failure = error instanceof Error ? error : new Error(String(error));
         if (error instanceof ValidationAlreadyRunningError) {

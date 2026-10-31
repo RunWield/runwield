@@ -23,6 +23,7 @@ async function fixture() {
         "scripts",
         "third_party/plannotator/packages",
         "brand",
+        "packaging/remote",
         "dist/workspace-runtime",
         "node_modules/@earendil-works/pi-coding-agent/dist/utils",
     ]) {
@@ -37,6 +38,7 @@ async function fixture() {
         "config.schema.json",
         "image-resize-worker.js",
         "src/cli.ts",
+        "packaging/remote/tested-dependencies.json",
         "src/shared/version.js",
         "scripts/compile-bun.ts",
         "dist/workspace-runtime/server.mjs",
@@ -77,6 +79,7 @@ test("common identity includes lock, compiler version/options and explicit npm r
         assertNotEquals(await computeBuildIdentity(root, "bun:1.4.3", ["--minify"]), first);
         for (const file of [
             "bun.lock",
+            "packaging/remote/tested-dependencies.json",
             "package.json",
             "bunfig.toml",
             "tsconfig.json",

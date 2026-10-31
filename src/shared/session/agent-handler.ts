@@ -11,7 +11,7 @@ import {
     finalizePlanImplementation,
     resolveExecutionOwner,
     runSlicerAgent,
-} from "../workflow/workflow.js";
+} from "../workflow/workflow.ts";
 import { dispatchPostTriage } from "../workflow/orchestrator.ts";
 import { systemLocalCIPort } from "../workflow/validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
@@ -43,6 +43,7 @@ import {
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { AGENTS } from "../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
+import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -52,12 +53,13 @@ type HostedSession = import("./hosted-session.js").HostedSession;
 type ImageAttachment = import("./types.js").ImageAttachment;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
-type PlanExecutionResult = import("../workflow/workflow.js").PlanExecutionResult;
+type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
 type WorkflowMetric = Parameters<typeof recordWorkflowMetric>[0];
 
 interface AgentHandlerCompleteResult {
     kind: "complete";
     validationResult?: WorkflowValidationResult;
+    executionToStart?: import("./runtime/workflow-options.ts").RuntimeExecutePlanOptions;
 }
 
 type AgentHandlerTurnResult = AgentHandlerCompleteResult;
@@ -262,6 +264,9 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                     localCI: systemLocalCIPort,
                     signal,
                 });
+                if (validationResult?.kind === "approved_execution") {
+                    return { kind: "complete", executionToStart: validationResult.executionToStart };
+                }
                 if (validationResult) return { kind: "complete", validationResult };
                 return { kind: "complete" };
             } finally {
@@ -371,6 +376,24 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
             if (signal?.aborted) {
                 completeWorkflowTransition();
                 signal.throwIfAborted();
+            }
+            if (hostedSession.getManagedMetadata?.()) {
+                return await runDuringWorkflowTransition(async (): Promise<AgentHandlerTurnResult> => {
+                    const evidence = await loadPlanActionEvidence(projectRoot, triageMeta.planId || "");
+                    signal?.throwIfAborted();
+                    if (evidence.kind !== "success") throw new Error(evidence.message);
+                    completeWorkflowTransition();
+                    return {
+                        kind: "complete",
+                        executionToStart: {
+                            planName,
+                            triageMeta,
+                            reviewFeedback,
+                            reviewImages,
+                            approvalEvidence: evidence.evidence,
+                        },
+                    };
+                });
             }
             let executionResult: PlanExecutionResult;
             try {

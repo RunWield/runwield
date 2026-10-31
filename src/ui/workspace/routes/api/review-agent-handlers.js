@@ -42,6 +42,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
 
 /**
  * @typedef {Object} ReviewAgentState
+ * @property {boolean} stopped
  * @property {string} token
  * @property {string} cwd
  * @property {Record<string, unknown>} reviewPayload
@@ -51,6 +52,31 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
  * @property {(prompt: string, signal: AbortSignal, cwd: string, progress?: { onUsage?: (usage: GuideUsageTotals) => void }) => Promise<{ stdout: string, stderr?: string, provider: string, model?: string, thinkingLevel?: string, usage?: GuideUsageTotals, cost?: GuideCostTotals }>} runGuideCommand
  */
 
+/** @typedef {ReviewAgentState["runGuideCommand"]} GuideRunner */
+
+/**
+ * @typedef {Object} GuideRunnerSelection
+ * @property {GuideRunner} runner
+ */
+
+/** @type {GuideRunnerSelection | null} */
+let configuredGuideRunner = null;
+
+/** Select the process runner before the review host starts. @param {GuideRunner} runner */
+export function configureGuideRunner(runner) {
+    if (configuredGuideRunner) throw new Error("Guided Review runner is already configured");
+    const selection = { runner };
+    configuredGuideRunner = selection;
+    return () => {
+        if (configuredGuideRunner === selection) configuredGuideRunner = null;
+    };
+}
+
+/** @returns {GuideRunner} */
+export function getGuideRunner() {
+    return configuredGuideRunner?.runner || runWldJobCommand;
+}
+
 /**
  * @param {{ token: string, cwd: string, reviewPayload: Record<string, unknown>, runGuideCommand: ReviewAgentState["runGuideCommand"] }} options
  * @returns {ReviewAgentState}
@@ -58,6 +84,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
 export function createReviewAgentState(options) {
     return {
         ...options,
+        stopped: false,
         jobs: new Map(),
         streams: new Set(),
         widgets: createReviewWidgetStore(),
@@ -67,7 +94,16 @@ export function createReviewAgentState(options) {
 
 /** @param {ReviewAgentState} state */
 export async function cleanupReviewAgentState(state) {
+    state.stopped = true;
     for (const entry of state.jobs.values()) entry.abortController.abort("review server stopped");
+    for (const controller of state.streams) {
+        try {
+            controller.close();
+        } catch {
+            // The client may already have closed its stream.
+        }
+    }
+    state.streams.clear();
     await Promise.allSettled([...state.jobs.values()].map((entry) => entry.done));
     await state.widgets.cleanup();
 }
@@ -79,6 +115,7 @@ export async function cleanupReviewAgentState(state) {
  * @returns {Promise<Response | null>}
  */
 export async function reviewAgentApi(request, url, state) {
+    if (state.stopped) return new Response("Review stopped.", { status: 503, ...noStore() });
     if (request.method === "GET" && url.pathname === "/api/agents/capabilities") {
         if (state.reviewPayload.agentTurnOwner === "host") {
             return Response.json({ mode: "review", available: false, providers: [] }, noStore());
@@ -128,6 +165,7 @@ export async function reviewAgentApi(request, url, state) {
             return Response.json({ error: "Claude Code owns agent turns for this review." }, { status: 403 });
         }
         const body = await request.json().catch(() => ({}));
+        if (state.stopped) return new Response("Review stopped.", { status: 503, ...noStore() });
         if (
             !body ||
             typeof body !== "object" ||

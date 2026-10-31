@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
+import { startReviewWorkspaceServer } from "../workspace/server.js";
 import { DocumentLinkHost } from "./document-link-host.ts";
 import { reviewImageApi, reviewImageUploadApi } from "../workspace/routes/api/review-image-handlers.ts";
 
@@ -82,25 +83,24 @@ test("document host returns plain-text fallback for missing, malformed, non-Mark
         await write(root, "README.md", "# Read me");
         await write(root, "text.txt", "secret");
         await mkdir(join(root, "directory.md"));
-        for (
-            const path of [
-                "",
-                "missing.md",
-                "text.txt",
-                "directory.md",
-                "README.md/child.md",
-                "%ZZ.md",
-                "#section",
-                "../outside.md",
-                "docs/../README.md",
-                "%2e%2e/outside.md",
-                `${root}/README.md`,
-                "bad\0.md",
-                "C:\\secret.md",
-                "file:README.md",
-                "https://example.com/README.md",
-            ]
-        ) assertEquals(host.resolve(path), null, path);
+        for (const path of [
+            "",
+            "missing.md",
+            "text.txt",
+            "directory.md",
+            "README.md/child.md",
+            "%ZZ.md",
+            "#section",
+            "../outside.md",
+            "docs/../README.md",
+            "%2e%2e/outside.md",
+            `${root}/README.md`,
+            "bad\0.md",
+            "C:\\secret.md",
+            "file:README.md",
+            "https://example.com/README.md",
+        ])
+            assertEquals(host.resolve(path), null, path);
         // Invalid resolutions do not prevent the first valid lazy launch.
         assertEquals((await readPage(resolved(host, "README.md"))).title, "Read me");
     });
@@ -402,5 +402,59 @@ test("unstarted and invalid-root hosts can be disposed safely", async () => {
         assertEquals(host.resolve("README.md"), null);
         await host.dispose();
         await host.dispose();
+    });
+});
+
+test("document reader shares the review origin and disposal revokes only its own links", async () => {
+    await withProject(async (root, host) => {
+        const review = startReviewWorkspaceServer({
+            cwd: root,
+            token: "shared-review",
+            reviewPayload: { plan: "# Review" },
+            reviewType: "plan",
+        });
+        try {
+            await write(root, "README.md", "# Document");
+            const link = resolved(host, "README.md");
+            assertEquals(new URL(link).origin, review.url);
+            await readPage(link);
+            host.rebind(root);
+            await expectStatus(link, 401);
+            const current = resolved(host, "README.md");
+            assertEquals(new URL(current).origin, review.url);
+            await readPage(current);
+            await host.dispose();
+            await expectStatus(current, 401);
+            const response = await fetch(`${review.url}/review/plan?token=shared-review`);
+            assertEquals(response.status, 200);
+            await response.text();
+        } finally {
+            await review.stop();
+        }
+    });
+});
+
+test("invalid reader rebinding does not block public assets for a later review", async () => {
+    await withProject(async (root, host) => {
+        await write(root, "README.md", "# Reader");
+        await readPage(resolved(host, "README.md"));
+        host.rebind(join(root, "missing-project"));
+        assertEquals(host.resolve("README.md"), null);
+        const review = startReviewWorkspaceServer({
+            cwd: root,
+            token: "after-invalid-reader",
+            reviewPayload: { plan: "# Review" },
+            reviewType: "plan",
+        });
+        try {
+            await expectStatus(new URL("/tokens.css", review.url), 200);
+            const page = await fetch(`${review.url}/review/plan?token=after-invalid-reader`);
+            assertEquals(page.status, 200);
+            assertStringIncludes(await page.text(), "# Review");
+            await host.dispose();
+            await expectStatus(new URL("/tokens.css", review.url), 200);
+        } finally {
+            await review.stop();
+        }
     });
 });

@@ -307,6 +307,8 @@ export type ValidationLocalCIPort = {
  * Agent sessions, display names, and post-verification handoffs all arrive here.
  */
 export type ValidationSessionPort = {
+    /** Refuse new effects after the active operation can no longer save its results. */
+    assertLive(): void;
     /** The session's working directory. */
     readonly cwd: string;
     readonly metricsSession?: import("./outcome-observations.ts").OutcomeSession | null;

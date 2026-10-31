@@ -22,6 +22,7 @@ export interface RuntimeSteeringResult {
 export interface SessionRuntimeComposition {
     sessionHost: SessionHost;
     sessionStore: FileSessionStore | null;
+    remoteSessionControl?: import("../../remote/session-control-client.ts").RemoteSessionControl;
     ownsSessionStore?: boolean;
     ownerProcessKind: OwnerProcessKind;
     ownerInstanceId: string;
@@ -29,6 +30,7 @@ export interface SessionRuntimeComposition {
 
 export interface CreateSessionRuntimeOptions {
     sessionStore?: FileSessionStore | null;
+    remoteSessionControl?: import("../../remote/session-control-client.ts").RemoteSessionControl;
     ownerProcessKind?: OwnerProcessKind;
     ownerInstanceId?: string;
 }
@@ -93,6 +95,30 @@ export interface PromptSessionOptions {
     planName?: string;
     planContent?: string;
     triageMeta?: Partial<import("../../../plan-store.js").PlanFrontMatter>;
+}
+
+export interface PromptSessionResult {
+    ok: boolean;
+    turns: number;
+    error?: string;
+    replacementSessionId?: string;
+    templateNewSession?: boolean;
+    _validationResult?: import("./workflow-options.ts").RuntimeValidationResult | null;
+    _executionToStart?: import("./workflow-options.ts").RuntimeExecutePlanOptions;
+    namedInvocation?: {
+        kind: string;
+        name: string;
+        expansionDigest: string;
+        profile: import("../named-invocation.ts").NamedInvocationPayload["profile"];
+        messageCount: number;
+    };
+}
+
+export interface UserPromptResult extends PromptSessionResult {
+    managed: boolean;
+    submittedRequest: string;
+    restoreDraft: boolean;
+    historyText?: string;
 }
 
 export interface LoadSessionOptions {
@@ -192,3 +218,8 @@ export interface ActiveSessionInfoCacheEntry {
 }
 
 export type ActiveSessionInfoCache = WeakMap<MinimalSessionManagerLike, ActiveSessionInfoCacheEntry>;
+
+export interface TaskTranscriptEntry {
+    type?: string;
+    message?: { role?: string; content?: string | Array<{ type: string; text?: string }> };
+}

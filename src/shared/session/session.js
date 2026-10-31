@@ -8,6 +8,9 @@ import { env } from "node:process";
  * Shared helpers for loading agent definitions and running agent invocations.
  */
 
+import { requestRemoteMemory } from "../remote/memory-bridge.ts";
+import { resolveMemoryCollection } from "../memory-collection.ts";
+
 import {
     createAgentSession,
     createBashToolDefinition,
@@ -25,6 +28,7 @@ import {
 import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
+import { getRemoteSessionSaveBridge } from "./root-session.js";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
 import { createSingleEditToolDefinition } from "../../tools/edit.js";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.js";
@@ -142,6 +146,24 @@ import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-
 /** @returns {string | null} */
 function homePromptsDir() {
     return join(personalGlobalRoot(), "prompts");
+}
+
+/** Pi provider hooks cannot execute across the remote model transport. */
+const REMOTE_PROVIDER_EXTENSION_OPTIONS = new Map([
+    ["before_provider_request", "onPayload"],
+    ["before_provider_headers", "transformHeaders"],
+    ["after_provider_response", "onResponse"],
+    ["provider_stream_event", "onProviderStreamEvent"],
+]);
+
+/** @param {import('@earendil-works/pi-coding-agent').AgentSession} session */
+function assertRemoteProviderExtensionsSupported(session) {
+    if (!remotePersonalResourcesActive()) return;
+    for (const [event, option] of REMOTE_PROVIDER_EXTENSION_OPTIONS) {
+        if (session.hasExtensionHandlers(event)) {
+            throw new Error(`Unsupported remote model option: ${option} (extension event: ${event})`);
+        }
+    }
 }
 
 const UNSUPPORTED_TEMPERATURE_RE =
@@ -1691,13 +1713,21 @@ export async function assembleFinalSystemPromptWithContextProjection(
     let memories = "";
     if (hasMemoriesPlaceholder) {
         try {
-            const output = await captureForegroundProcess("mnemoteca", {
-                args: ["list", "-t", "core", "-f", "plain"],
-                cwd,
-            });
-            if (output.code === 0) {
-                memories = new TextDecoder().decode(output.stdout).trim();
-                if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
+            if (remotePersonalResourcesActive()) {
+                const result = await requestRemoteMemory({ action: "list-core" });
+                memories = result.content
+                    .map((item) => item.text)
+                    .join("\n")
+                    .trim();
+            } else {
+                const output = await captureForegroundProcess("mnemoteca", {
+                    args: ["list", "--name", await resolveMemoryCollection({ cwd }), "-t", "core", "-f", "plain"],
+                    cwd,
+                });
+                if (output.code === 0) {
+                    memories = new TextDecoder().decode(output.stdout).trim();
+                    if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
+                }
             }
         } catch {
             memories = "";
@@ -2025,10 +2055,16 @@ export async function buildAgentSession({
     const targetHostedSession = hostedSession ? requireHostedSession(hostedSession, "buildAgentSession") : null;
     const sessionCwd = cwd || targetHostedSession?.cwd;
     if (!sessionCwd) throw new Error("buildAgentSession: cwd or hostedSession cwd is required");
-    if (remotePersonalResourcesActive()) {
-        throw new Error("Remote managed agent sessions are not approved; use bounded model integration only");
+    if (
+        remotePersonalResourcesActive() &&
+        (sessionManager?.isPersisted() ||
+            (targetHostedSession &&
+                sessionManager === targetHostedSession.getRootSessionManager() &&
+                !getRemoteSessionSaveBridge(sessionManager)))
+    ) {
+        throw new Error("Remote managed agent sessions require an in-memory manager and a bridged hosted root");
     }
-    await ensureMnemotecaBinary();
+    if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
     await ensureCymbalBinary();
     const agentDef = subAgentDefinition
         ? await loadSubAgentDefinition(subAgentDefinition.id, subAgentDefinition.options)
@@ -2254,11 +2290,17 @@ export async function buildAgentSession({
         visionFallbackModelRef &&
         !finalCustomTools.find((t) => t.name === "see_image")
     ) {
+        const remoteFallback = remotePersonalResourcesActive()
+            ? await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, sessionCwd)
+            : undefined;
         finalCustomTools.push(
             createSeeImageTool({
                 cwd: sessionCwd,
                 sessionManager: effectiveSessionManager,
-                completeSimpleFn: completeSimple,
+                remoteModel: remoteFallback?.model,
+                completeSimpleFn: remoteFallback
+                    ? (model, context, options) => modelRuntime.streamSimple(model, context, options).result()
+                    : completeSimple,
                 onModelStart: async () => {
                     const activeRecorder = executionMetricsForSession.get(session);
                     const recorder =
@@ -2389,6 +2431,15 @@ export async function buildAgentSession({
         sessionManager: effectiveSessionManager,
         ...(resolvedModel ? { model: resolvedModel } : {}),
     });
+    // noExtensions only disables discovery: explicit factories and package paths still load.
+    // Keep core/tool lifecycle extensions, but reject provider callbacks before Pi can discard them.
+    try {
+        assertRemoteProviderExtensionsSupported(session);
+    } catch (error) {
+        session.dispose();
+        mcpRootBinding?.dispose();
+        throw error;
+    }
     if (mcpRootBinding) {
         const dispose = session.dispose.bind(session);
         session.dispose = () => {
@@ -2405,8 +2456,11 @@ export async function buildAgentSession({
 
     const agent = session.agent;
     const providerStream = agent.streamFunction;
-    agent.streamFunction = (model, context, options) =>
-        normalizeProviderStream(providerStream, model, context, options);
+    agent.streamFunction = (model, context, options) => {
+        // Extensions can register new handlers during lifecycle events after construction.
+        assertRemoteProviderExtensionsSupported(session);
+        return normalizeProviderStream(providerStream, model, context, options);
+    };
 
     const configuredTemperature = agentName ? getConfiguredAgentTemperature(agentName, sessionCwd) : undefined;
     const temperatureSource =
@@ -2484,6 +2538,7 @@ export async function buildAgentSession({
         },
         sessionCwd,
     );
+    getRemoteSessionSaveBridge(effectiveSessionManager)?.bindAgentSession(session);
     return {
         session,
         agentDef,

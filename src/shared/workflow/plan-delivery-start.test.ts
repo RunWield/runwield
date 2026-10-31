@@ -8,7 +8,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { setCustomSetting } from "../settings.js";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 
 const repo = defineCommittedGitFixture();

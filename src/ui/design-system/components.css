@@ -2490,3 +2490,49 @@ button.danger-action:disabled {
         min-height: 44px;
     }
 }
+
+/* Named document warnings: an independent compact control and a viewport portal. */
+.rw-warning-control,
+.rw-warning-control:hover:not(:disabled),
+.rw-warning-control:focus-visible:not(:disabled) {
+    color: var(--rw-warning);
+}
+
+.rw-warning-tooltip {
+    position: fixed;
+    z-index: 200;
+    width: max-content;
+    max-width: min(28rem, calc(100vw - 1rem));
+    overflow: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    padding: var(--rw-space-card);
+    border: 1px solid var(--rw-border-strong);
+    border-radius: var(--rw-radius-control);
+    background: var(--rw-surface-raised);
+    color: var(--rw-text);
+    font-family: var(--rw-font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.rw-document-warnings {
+    margin-block: var(--rw-space-panel);
+    overflow-wrap: anywhere;
+}
+
+.rw-document-warnings h2 {
+    color: var(--rw-warning);
+    font-size: 1rem;
+}
+
+.rw-document-warnings p {
+    white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+    .rw-warning-control {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}

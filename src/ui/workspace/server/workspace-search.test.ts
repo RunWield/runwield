@@ -25,7 +25,6 @@ import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js"
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
-import { getRunWieldRuntimeDir } from "../../../constants.js";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.js";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import {

@@ -104,13 +104,11 @@ async function runUnknownAgentChild(): Promise<CapturedProcessOutput> {
     const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-agent-unknown-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
-    await Promise.all([
-        fsMkdir(homeDir, { recursive: true }),
-        fsMkdir(projectRoot, { recursive: true }),
-    ]);
+    await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
     const moduleUrl = import.meta.resolve("./index.ts");
     const configPath = fromFileUrl(new URL("../../../deno.json", import.meta.url));
-    const source = `import { runAgentsCommand } from ${JSON.stringify(moduleUrl)};\n` +
+    const source =
+        `import { runAgentsCommand } from ${JSON.stringify(moduleUrl)};\n` +
         `await runAgentsCommand(["not-a-real-agent"], { sessionPort: { startInteractiveSession: () => Promise.reject(new Error("unexpected session")) } });\n`;
     try {
         return await captureForegroundProcess(process.execPath, {
@@ -295,8 +293,9 @@ test("agent chooser switches the real Runtime session to a fixture definition", 
 test("the agent CLI listing hides workflow-only Plan executors", async () => {
     await withRuntimeCommandFixture("agent-list-workflow-only-", async ({ projectRoot }) => {
         process.chdir(projectRoot);
-        const listing = (await captureLogs(() => runAgentsCommand([], { sessionPort: UNEXPECTED_SESSION_PORT })))
-            .join("\n");
+        const listing = (await captureLogs(() => runAgentsCommand([], { sessionPort: UNEXPECTED_SESSION_PORT }))).join(
+            "\n",
+        );
 
         assertStringIncludes(listing, "engineer");
         assertEquals(listing.includes("plan-engineer"), false);
@@ -310,9 +309,11 @@ test("naming a workflow-only Agent explains what activates it instead of switchi
         // Recorder is workflow-only too, and it activates when a Plan completes
         // rather than when one executes — so the message must not name execution.
         for (const agentName of ["plan-engineer", "frontend-engineer", "recorder"]) {
-            const logs = (await captureLogs(() =>
-                runAgentsCommand([agentName, "do", "the", "work"], { sessionPort: UNEXPECTED_SESSION_PORT })
-            )).join("\n");
+            const logs = (
+                await captureLogs(() =>
+                    runAgentsCommand([agentName, "do", "the", "work"], { sessionPort: UNEXPECTED_SESSION_PORT }),
+                )
+            ).join("\n");
 
             // An unexpected session port would have thrown, so no switch happened.
             assertStringIncludes(logs, "activated by RunWield as part of a workflow, not by hand");

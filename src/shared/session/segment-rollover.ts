@@ -3,10 +3,16 @@
  * Transactional Session Transcript Segment Rollover orchestration.
  */
 
+import { REMOTE_SESSION_IDENTITY_ENTRY } from "../remote/session-protocol.ts";
 import type { ManagedSessionMetadata } from "./hosted-session.js";
+import type { FileActivationProof } from "./file-session-store-types.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
-import { recordPendingSegmentContinuation, recordSegmentLineageEvidence } from "./workflow-context-session.js";
+import {
+    recordNormalizedWorkflowContext,
+    recordPendingSegmentContinuation,
+    recordSegmentLineageEvidence,
+} from "./workflow-context-session.js";
 import { appendExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { recordTutorialContext } from "./tutorial-context-session.ts";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
@@ -41,10 +47,15 @@ type RollSessionTranscriptSegmentOptions = {
     expectedGeneration?: number | null;
     lineageGroupKey?: string | null;
     operationId?: string;
+    /** A laptop remote owner can retain its current native lock across the handoff. */
+    activeProof?: FileActivationProof;
+    successorSessionDir?: string;
+    retainActivation?: boolean;
     now?: () => string;
 };
 
 export type SegmentRolloverResult = {
+    successorProof?: FileActivationProof;
     runwieldSessionId: string;
     projectId: string;
     predecessorSegmentId: string;
@@ -73,27 +84,40 @@ async function disposeManager(manager: { dispose?: () => void | Promise<void> } 
 export async function rollSessionTranscriptSegment(
     options: RollSessionTranscriptSegmentOptions,
 ): Promise<SegmentRolloverResult> {
-    const managed = options.hostedSession.getManagedMetadata();
-    if (!managed) throw new Error("Session metadata is required for transcript rollover");
-    const predecessor = options.ownerCoordinationStore.listSessionTranscriptSegments(managed.runwieldSessionId)
-        .find((segment) => segment.segmentId === managed.currentSegmentId);
-    if (!predecessor) throw new Error("The current Session transcript segment is unavailable");
-
-    const transcriptCwd = options.transcriptCwd || options.hostedSession.cwd;
-    const tutorialContext = options.hostedSession.getTutorialContext();
-    const workflow = options.hostedSession.getActiveExecutionWorkflow();
-
-    let proof = options.ownerCoordinationStore.acquireSessionActivation({
-        runwieldSessionId: managed.runwieldSessionId,
-        projectId: managed.projectId,
-        ownerInstanceId: options.ownerInstanceId,
-        ownerProcessKind: options.ownerProcessKind,
-        operationId: options.operationId,
-        expectedGeneration: options.expectedGeneration ?? managed.generation,
-        expectedCurrentSegmentId: predecessor.segmentId,
-        phase: "preparing",
-    });
+    let proof = options.activeProof;
     try {
+        const managed = options.hostedSession.getManagedMetadata();
+        if (!managed) throw new Error("Session metadata is required for transcript rollover");
+        const predecessor = options.ownerCoordinationStore
+            .listSessionTranscriptSegments(managed.runwieldSessionId)
+            .find((segment) => segment.segmentId === managed.currentSegmentId);
+        if (!predecessor) throw new Error("The current Session transcript segment is unavailable");
+
+        const transcriptCwd = options.transcriptCwd || options.hostedSession.cwd;
+        const tutorialContext = options.hostedSession.getTutorialContext();
+        const workflow = options.hostedSession.getActiveExecutionWorkflow();
+
+        if (options.activeProof) {
+            if (
+                options.activeProof.runwieldSessionId !== managed.runwieldSessionId ||
+                options.activeProof.projectId !== managed.projectId ||
+                options.activeProof.expectedCurrentSegmentId !== predecessor.segmentId ||
+                !["preparing", "hydrated"].includes(options.activeProof.phase)
+            ) {
+                throw new Error("Rollover writer identity was rejected");
+            }
+            options.ownerCoordinationStore.readActiveSessionTranscript(options.activeProof);
+        }
+        proof ??= options.ownerCoordinationStore.acquireSessionActivation({
+            runwieldSessionId: managed.runwieldSessionId,
+            projectId: managed.projectId,
+            ownerInstanceId: options.ownerInstanceId,
+            ownerProcessKind: options.ownerProcessKind,
+            operationId: options.operationId,
+            expectedGeneration: options.expectedGeneration ?? managed.generation,
+            expectedCurrentSegmentId: predecessor.segmentId,
+            phase: "preparing",
+        });
         await disposeManager(options.hostedSession.getRootSessionManager());
         options.hostedSession.dehydrateManagedSession();
         await syncTranscriptFileAndParent(predecessor.transcriptPath);
@@ -102,15 +126,26 @@ export async function rollSessionTranscriptSegment(
             transcriptCwd: predecessor.transcriptCwd,
         });
 
-        proof = options.ownerCoordinationStore.changeSessionActivationPhase(proof, "hydrated");
+        if (proof.phase === "preparing") {
+            proof = options.ownerCoordinationStore.changeSessionActivationPhase(proof, "hydrated");
+        }
         proof = options.ownerCoordinationStore.changeSessionActivationPhase(proof, "checkpointing");
-        const successorManager = await createRootSessionManager("new", transcriptCwd);
+        const successorManager = await createRootSessionManager("new", transcriptCwd, options.successorSessionDir);
         const successorPiSessionId = successorManager.getSessionId();
         const successorTranscriptPath = await resolveCreatedRootSessionPath(
             transcriptCwd,
             successorManager,
+            options.successorSessionDir,
         );
         const successorSegmentId = crypto.randomUUID();
+        if (options.successorSessionDir) {
+            recordNormalizedWorkflowContext(successorManager, managed.workflowContext);
+            successorManager.appendCustomEntry(REMOTE_SESSION_IDENTITY_ENTRY, {
+                projectId: managed.projectId,
+                currentSegmentId: successorSegmentId,
+                piSessionId: successorPiSessionId,
+            });
+        }
         recordSegmentLineageEvidence(successorManager, {
             segmentId: successorSegmentId,
             runwieldSessionId: managed.runwieldSessionId,
@@ -134,8 +169,9 @@ export async function rollSessionTranscriptSegment(
             transcriptPath: successorTranscriptPath,
             transcriptCwd,
         });
-        const generation = (managed.generation ?? -1) + 1;
+        const generation = (proof.expectedGeneration ?? -1) + 1;
         const committed = options.ownerCoordinationStore.commitSegmentRolloverAndPublish(proof, {
+            retainActivation: options.retainActivation,
             predecessorSegmentId: predecessor.segmentId,
             predecessorEvidence,
             successor: {
@@ -176,6 +212,7 @@ export async function rollSessionTranscriptSegment(
             });
         }
         return {
+            ...(committed.successorProof ? { successorProof: committed.successorProof } : {}),
             runwieldSessionId: managed.runwieldSessionId,
             projectId: managed.projectId,
             predecessorSegmentId: predecessor.segmentId,
@@ -187,9 +224,11 @@ export async function rollSessionTranscriptSegment(
         };
     } catch (error) {
         try {
-            options.ownerCoordinationStore.markSessionUncertain(proof, {
-                reason: error instanceof Error ? error.message : String(error),
-            });
+            if (proof) {
+                options.ownerCoordinationStore.markSessionUncertain(proof, {
+                    reason: error instanceof Error ? error.message : String(error),
+                });
+            }
         } catch {
             // If the activation was already released or never acquired, preserve the original failure.
         }

@@ -32,6 +32,7 @@ import {
 
 interface ReleaseState {
     cancelled: boolean;
+    qualificationOnly: string;
     kind: string;
     published: string;
     ciResult: string;
@@ -51,6 +52,7 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
     const values: Record<string, string | boolean> = {
         "!cancelled()": !state.cancelled,
         "needs.metadata.outputs.kind": state.kind,
+        "needs.metadata.outputs.qualification_only": state.qualificationOnly,
         "needs.metadata.outputs.published": state.published,
         "needs.ci.result": state.ciResult,
         "needs.golden.result": state.goldenResult,
@@ -73,6 +75,7 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
 
 const successfulRelease: ReleaseState = {
     cancelled: false,
+    qualificationOnly: "false",
     kind: "stable",
     published: "false",
     ciResult: "success",
@@ -128,8 +131,8 @@ test("fresh and existing releases traverse the actual qualification conditions",
     assertStringIncludes(jobBlock(workflow, "golden-shards"), "needs: metadata");
     for (const gate of ["ci", "golden"]) {
         const aggregate = jobBlock(workflow, gate);
-        assertStringIncludes(aggregate, `needs: ${gate}-shards`);
-        assertStringIncludes(aggregate, "if: always()");
+        assertStringIncludes(aggregate, `needs: [metadata, ${gate}-shards]`);
+        assertStringIncludes(aggregate, "always() && needs.metadata.outputs.qualification_only != 'true'");
         assertStringIncludes(aggregate, "test '${{ needs." + gate + "-shards.result }}' = 'success'");
     }
     assertStringIncludes(release, "needs.ci.result == 'success'");
@@ -160,6 +163,18 @@ test("fresh and existing releases traverse the actual qualification conditions",
         false,
     );
     assertEquals(evaluateReleaseCondition(jobCondition(release), { ...successfulRelease, cancelled: true }), false);
+});
+
+test("qualification conditions block every publication job even with successful Stable metadata", async () => {
+    const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8");
+    const state = { ...successfulRelease, qualificationOnly: "true" };
+    for (const name of ["release", "homebrew-package", "publish-docs", "integrate-release-branch", "docs-artifact"]) {
+        assertEquals(evaluateReleaseCondition(jobCondition(jobBlock(workflow, name)), state), false, name);
+    }
+    const candidate = { ...state, kind: "candidate", docsResult: "skipped" };
+    for (const name of ["build", "assets", "native-package-check"]) {
+        assertEquals(evaluateReleaseCondition(jobCondition(jobBlock(workflow, name)), candidate), true, name);
+    }
 });
 
 test("published recovery prepares its bundle without rebuilding or uploading immutable docs assets", async () => {
@@ -636,6 +651,7 @@ esac
             RELEASE_TAG: "v0.12.0-rc.1",
             PRODUCT_SHA: "55cc60ec1cf5a96eeb41c9fddd12459200101aab",
             RECOVERY: "true",
+            QUALIFICATION_ONLY: "false",
         };
         for (const [recovery, sha, legacy] of [
             ["true", base.PRODUCT_SHA, "true"],
@@ -650,6 +666,15 @@ esac
                 `sha=${sha}\nbun_version=1.4.3\nlegacy_containers=${legacy}\n`,
             );
         }
+        const qualification = await runShell(command, {
+            ...base,
+            QUALIFICATION_ONLY: "true",
+            GITHUB_SHA: base.PRODUCT_SHA,
+            FETCH_EXIT: "42",
+            RESOLVE_EXIT: "42",
+        });
+        assert(qualification.success, decoder.decode(qualification.stderr));
+        assertStringIncludes(await fsReadFile(output, "utf8"), "legacy_containers=false\n");
         for (const failure of ["FETCH_EXIT", "RESOLVE_EXIT", "PIN_EXIT"]) {
             const result = await runShell(command, { ...base, [failure]: "42" });
             assertEquals(result.success, false, `${failure} must stop the release`);

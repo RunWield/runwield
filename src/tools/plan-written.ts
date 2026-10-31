@@ -432,11 +432,14 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
             }
 
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             try {
                 hostedSession?.setWorkflowPlanName?.(planName);
             } catch (_e) {
                 // Footer-context persistence is fail-open and must not block Plan review.
             }
+
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
 
             let effectiveMeta = await resolveTriageMeta(triageMeta, planName, reviewCwd);
             let sequenceDocuments: SequenceReviewDocument[] | undefined;
@@ -462,6 +465,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             } catch (_e) {
                 // Workflow-context persistence is fail-open and must not block Plan review.
             }
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
             // Resolve policy before anything is persisted, so a Plan rejected for repair
             // still has the Front Matter it arrived with.
             const policy = resolvePlanExecutionPolicy(effectiveMeta);
@@ -514,7 +518,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             const appendPlanAssociationFailure = (text: string) =>
                 planAssociationFailure ? `${text}\n\n${planAssociationFailure}` : text;
             try {
-                const identified = await ensurePlanIdentity(reviewCwd, planName);
+                const identified = await ensurePlanIdentity(reviewCwd, planName, { onboardExternal: true });
                 const identifiedAttrs: TriageMeta = { ...identified.attrs };
                 if (identifiedAttrs.workKind === undefined || identifiedAttrs.workKind === null) {
                     delete identifiedAttrs.workKind;
@@ -606,10 +610,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 }
             }
 
-            const initialReviewEvidence = await loadPlanActionEvidence(
-                location.registryRoot,
-                String(effectiveMeta.planId || ""),
-            );
+            const initialReviewEvidence = await loadPlanActionEvidence(reviewCwd, String(effectiveMeta.planId || ""));
             const canonicalReviewEvidence =
                 initialReviewEvidence.kind === "success" ? initialReviewEvidence.evidence : null;
             const currentReviewPlan = await fsReadFile(planPath, "utf8");

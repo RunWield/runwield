@@ -675,6 +675,7 @@ test("OpenCode adapter preserves cancellation and rejects unsupported controls b
 
 interface RecordedCodexRequest {
     method: string;
+    pid: number;
     params?: {
         model?: string;
         modelProvider?: string;

@@ -28,7 +28,7 @@ let error = boardError || null;
 if (!board && !error) {
     try {
         board = context === "workspace"
-            ? await loadOwnerProjectBoard(projectId)
+            ? await loadOwnerProjectBoard(projectId, Astro.request.headers.get("cookie"))
             : await loadCanonicalBoard(workspaceCwd);
     } catch (caught) {
         const serialized = await serializeCanonicalPlanError(caught);

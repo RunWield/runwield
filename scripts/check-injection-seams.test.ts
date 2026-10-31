@@ -54,6 +54,19 @@ test("collectSeamNames reads member access and destructured bags", () => {
     ]);
 });
 
+test("positional defaults ignore literal text but still detect template expression code", () => {
+    assertEquals(
+        collectSeamNames(
+            [
+                "const script = `subprocess.run(args, check=True)`;",
+                'const message = "run(check=DefaultCheck)";',
+                "const interpolated = `result: ${((runTurn = defaultRunTurn) => runTurn())()}`;",
+            ].join("\n"),
+        ),
+        ["runTurn"],
+    );
+});
+
 test("machinery seam patterns match wildcards in the middle of transaction names", () => {
     assertEquals(isMachinerySeam("runImplementationCheckpointTransition"), true);
     assertEquals(isMachinerySeam("runTransition"), true);

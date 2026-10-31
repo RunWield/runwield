@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { parse as parseJsonc } from "../jsonc.ts";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getCwd, getHomeDir } from "../../constants.js";
+import { assertRemoteMountPrerequisites, parseOsRelease, REMOTE_PYTHON_REQUIRED } from "./host-prerequisites.ts";
 
 export interface LaptopPackageRoot {
     source: string;
@@ -360,16 +361,21 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
     }
     const homeStat = await fsLstat(home);
     if (!homeStat.isDirectory() || homeStat.isSymbolicLink()) throw new Error("Remote home must be a real directory");
+    const available = new Set<string>();
     for (const command of ["sshfs", "fusermount3", "python3"]) {
         const result = await captureForegroundProcess("sh", {
             cwd: getCwd(),
             args: ["-c", 'command -v "$1" >/dev/null', "--", command],
         });
-        if (result.code !== 0) throw new Error(`Remote mount requires ${command}`);
+        if (result.code === 0) available.add(command);
     }
-    if (!(await fsStat("/dev/fuse").catch(() => null))?.isCharacterDevice()) {
-        throw new Error("Remote mount requires an accessible /dev/fuse");
-    }
+    if (!available.has("python3")) throw new Error(REMOTE_PYTHON_REQUIRED);
+    assertRemoteMountPrerequisites({
+        ...parseOsRelease(await fsReadFile("/etc/os-release", "utf8").catch(() => "")),
+        sshfs: available.has("sshfs"),
+        fusermount3: available.has("fusermount3"),
+        fuseDevice: (await fsStat("/dev/fuse").catch(() => null))?.isCharacterDevice() === true,
+    });
     await fsReadFile("/proc/self/mountinfo", "utf8").catch(() => {
         throw new Error("Remote mount requires /proc/self/mountinfo for safe cleanup");
     });

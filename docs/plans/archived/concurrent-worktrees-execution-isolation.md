@@ -7,7 +7,7 @@ affectedPaths:
     - "src/constants.js"
     - "src/shared/session/session.js"
     - "src/shared/session/session-state.js"
-    - "src/shared/workflow/workflow.js"
+    - "src/shared/workflow/workflow.ts"
     - "src/shared/workflow/project-executor.js"
     - "src/shared/workflow/validation.js"
     - "src/shared/workflow/plan-lifecycle.js"
@@ -96,7 +96,7 @@ few ADR details discovered during review.
    `executionCwd` parameter. Tool construction and `createAgentSession({ cwd })` must use that value for execution.
    Project configuration lookup can still use the primary `CWD`.
 
-3. **`src/shared/workflow/workflow.js`** - `executePlan()` currently loads plans and records lifecycle events in `CWD`,
+3. **`src/shared/workflow/workflow.ts`** - `executePlan()` currently loads plans and records lifecycle events in `CWD`,
    then runs single-engineer or PROJECT execution in `CWD`. It should create/reuse a worktree, capture the baseline
    inside that worktree, store worktree context in session state, and pass `executionCwd` to all execution and
    validation calls.
@@ -190,7 +190,7 @@ few ADR details discovered during review.
     failure fields.
   - On abandon/review reset: set `worktreeStatus: "abandoned"` and optionally clear path/branch/id after removal.
 
-- **`src/shared/workflow/workflow.js`**
+- **`src/shared/workflow/workflow.ts`**
   - Create or resume a worktree before recording `execution_started`.
   - Load the plan from primary `CWD`; pass plan body to agents rather than relying on the worktree's plan copy.
   - Capture `executionBaselineTree` inside `executionCwd`.
@@ -358,8 +358,8 @@ few ADR details discovered during review.
 
 | Task | Assignee   | Dependencies | Write Scope                                                                                                                                                                                                                       | Description                                                                                                                                          |
 | ---- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | engineer   | none         | src/constants.js, src/plan-store.js, src/shared/session, src/shared/workflow/workflow.js, src/shared/workflow/project-executor.js, src/shared/workflow/plan-lifecycle.js, src/shared/worktree.js, src/shared/worktree-registry.js | Establish isolated execution worktrees end-to-end so plan implementation agents run in an execution cwd and primary checkout files remain untouched. |
-| 2    | engineer   | 1            | src/shared/workflow/validation.js, src/shared/workflow/workflow.js, src/shared/workflow/plan-lifecycle.js, src/shared/worktree.js, src/shared/worktree-registry.js, src/plan-store.js                                             | Run Workflow Validation inside the execution worktree and merge the worktree branch back only after validation passes.                               |
+| 1    | engineer   | none         | src/constants.js, src/plan-store.js, src/shared/session, src/shared/workflow/workflow.ts, src/shared/workflow/project-executor.js, src/shared/workflow/plan-lifecycle.js, src/shared/worktree.js, src/shared/worktree-registry.js | Establish isolated execution worktrees end-to-end so plan implementation agents run in an execution cwd and primary checkout files remain untouched. |
+| 2    | engineer   | 1            | src/shared/workflow/validation.js, src/shared/workflow/workflow.ts, src/shared/workflow/plan-lifecycle.js, src/shared/worktree.js, src/shared/worktree-registry.js, src/plan-store.js                                             | Run Workflow Validation inside the execution worktree and merge the worktree branch back only after validation passes.                               |
 | 3    | engineer   | 1, 2         | src/cmd/load-plan/index.js, src/cmd/plans/index.js, src/shared/session/session-state.js, src/shared/worktree.js, src/shared/worktree-registry.js                                                                                  | Add worktree-aware plan recovery and plan-list visibility for inspect, continue, reset, merge, abandon, and stale-state cases.                       |
 | 4    | doc-writer | 1, 2, 3      | docs/plan-lifecycle.md, docs/adr/005-concurrent-worktree-isolation.md                                                                                                                                                             | Document the final worktree lifecycle, validation-before-merge behavior, and recovery semantics.                                                     |
 | 5    | tester     | 1, 2, 3, 4   | none                                                                                                                                                                                                                              | Integration Point: run `deno run ci` and report any cross-slice failures explicitly.                                                                 |

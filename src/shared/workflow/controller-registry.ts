@@ -480,25 +480,29 @@ export async function inspectControllerView(
         !record &&
         Boolean(mayImport && (Object.values(legacyState).some((value) => value != null) || legacy.worktreeId));
     if (importsLegacy) pendingRepairs.push("import_legacy_state");
-    const worktree: WorkflowWorktreeContext =
-        documentEntry && documentEntry.status !== "abandoned"
-            ? {
-                  worktreeId: documentEntry.id,
-                  worktreePath: documentEntry.path,
-                  worktreeBranch: documentEntry.branch,
-                  worktreeBaseBranch: documentEntry.baseBranch,
-                  worktreeBaseCommit: documentEntry.baseCommit,
-                  worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
-                  executionBaselineTree:
-                      documentEntry.status === "planning"
-                          ? undefined
-                          : documentEntry.executionBaselineTree || documentEntry.baseTree,
-              }
-            : lookup.kind === "retired"
-              ? { worktreeStatus: "abandoned" }
-              : lookup.kind === "uncertain"
-                ? {}
-                : record?.recovery || {};
+    const publicationConfirmed =
+        documentEntry?.publication &&
+        ["publication_verified", "cleanup_complete"].includes(documentEntry.publication.phase);
+    const worktree: WorkflowWorktreeContext = publicationConfirmed
+        ? {}
+        : documentEntry && documentEntry.status !== "abandoned"
+          ? {
+                worktreeId: documentEntry.id,
+                worktreePath: documentEntry.path,
+                worktreeBranch: documentEntry.branch,
+                worktreeBaseBranch: documentEntry.baseBranch,
+                worktreeBaseCommit: documentEntry.baseCommit,
+                worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
+                executionBaselineTree:
+                    documentEntry.status === "planning"
+                        ? undefined
+                        : documentEntry.executionBaselineTree || documentEntry.baseTree,
+            }
+          : lookup.kind === "retired"
+            ? { worktreeStatus: "abandoned" }
+            : lookup.kind === "uncertain"
+              ? {}
+              : record?.recovery || {};
     return {
         state: {
             ...(record?.state || {}),
@@ -506,6 +510,14 @@ export async function inspectControllerView(
             ...worktree,
         },
         revision: record?.revision || 0,
+        publicationConfirmed: Boolean(
+            attempt?.publication &&
+            isPublicationCleanupPending(attempt.publication) &&
+            attempt.publication.publishedCommit &&
+            record?.state.publicationReceipt?.publishedCommit === attempt.publication.publishedCommit &&
+            record.state.publicationReceipt.validatedCommit === attempt.publication.validatedCommit &&
+            record.state.publicationReceipt.targetBranch === attempt.publication.targetBranch,
+        ),
         pendingRepairs,
     };
 }

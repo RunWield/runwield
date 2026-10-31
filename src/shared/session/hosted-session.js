@@ -129,6 +129,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {number | null} [acknowledgedGeneration]
  * @property {string | null} [acknowledgedEventId]
  * @property {number | null} [acknowledgedEventOrdinal]
+ * @property {import("../remote/session-protocol.ts").RemoteSessionRecords} [remoteRecords]
  * @property {Object} [committedSummary]
  * @property {{ type: "managed_sync_state_changed", status: import('./session-runtime-events.js').RuntimeManagedSyncStatus, localGeneration: number | null, latestGeneration: number | null, owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown", message?: string } | null} [syncState]
  * @property {string | null} name
@@ -248,6 +249,8 @@ export class HostedSession {
         this.interactionAdapter = options.interactionAdapter || null;
         /** @type {Map<string, ActiveInteractionRecord>} */
         this.activeInteractions = new Map();
+        // Browser review lifetime spans the gaps between interaction requests, including repair and CI.
+        this.liveCodeReviewUrl = "";
         /** @type {DisposableLike | null} */
         this.rootAgentSession = null;
         /** @type {string | null} */
@@ -528,6 +531,7 @@ export class HostedSession {
         this.rootSessionManager = null;
         this.interactionAdapter?.cancelAll?.();
         this.activeInteractions.clear();
+        this.liveCodeReviewUrl = "";
         this.rootAgentSession = null;
         this.rootAgentName = null;
         this.agentInfoStack = [];
@@ -645,7 +649,17 @@ export class HostedSession {
         return new Map(this.activeInteractions);
     }
 
+    /** @param {string} url */
+    setLiveCodeReviewUrl(url) {
+        this.liveCodeReviewUrl = url;
+    }
+
+    getLiveCodeReviewUrl() {
+        return this.liveCodeReviewUrl;
+    }
+
     cancelActiveInteractions() {
+        this.liveCodeReviewUrl = "";
         const canceled = this.activeInteractions.size > 0;
         for (const record of this.activeInteractions.values()) {
             record.abortController?.abort();
@@ -1217,6 +1231,7 @@ export class HostedSession {
         this.assertActive();
         if (this.rootSessionManager) this.#assertManagedWritableCapability(this.managedOperationCapability);
         clearPairCheckpoint(this, "workflow_cleared");
+        this.liveCodeReviewUrl = "";
         this.activeExecutionWorkflow = null;
         recordExecutionWorkflowSnapshot(this);
         this.pendingTaskCompletion = null;
@@ -1274,6 +1289,7 @@ export class HostedSession {
         this.delegatedWriterActive = false;
         this.projectStateContext = "";
         this.workflowContext = null;
+        this.liveCodeReviewUrl = "";
         this.activeExecutionWorkflow = null;
         this.pendingTaskCompletion = null;
         this.activeTurnId = null;

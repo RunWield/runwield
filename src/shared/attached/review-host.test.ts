@@ -76,7 +76,7 @@ test("the production decision route acknowledges only a committed Attached outco
             const revisionUrl = new URL(`/api/review/revision${url.search}`, url);
             assertEquals((await (await fetch(revisionUrl)).json()).revision, 0);
             const unauthorized = await fetch(new URL("/api/review/revision", url));
-            assertEquals(unauthorized.status, 404);
+            assertEquals(unauthorized.status, 401);
             await unauthorized.text();
             const conversation = await fetch(new URL(`/api/review/conversation${url.search}`, url));
             assertEquals(conversation.status, 200);

@@ -46,16 +46,16 @@ test("review remains open after failed push and completes when the existing comm
                             const url = new URL(link);
                             const read = async () =>
                                 await (await fetch(new URL(`/api/review/conversation${url.search}`, url))).json();
-                            const post = async (endpoint: string) => {
+                            const post = async (endpoint: string, reviewRevision: number) => {
                                 const response = await fetch(new URL(`/api/review/${endpoint}${url.search}`, url), {
                                     method: "POST",
                                     headers: { "content-type": "application/json" },
-                                    body: JSON.stringify({ reviewAction: "approve_commit" }),
+                                    body: JSON.stringify({ reviewAction: "approve_commit", reviewRevision }),
                                 });
-                                await response.text();
+                                assertEquals(response.status, 200, await response.text());
                             };
                             const before = await read();
-                            await post("feedback");
+                            await post("feedback", before.reviewRevision);
                             let retried = false;
                             const deadline = Date.now() + 30_000;
                             while (Date.now() < deadline) {
@@ -65,12 +65,12 @@ test("review remains open after failed push and completes when the existing comm
                                     return;
                                 }
                                 if (next.revision > before.revision && !retried) {
-                                    await post("feedback");
+                                    await post("feedback", next.reviewRevision);
                                     retried = true;
                                 } else if (next.revision > before.revision + 1) break;
                                 await new Promise((resolve) => setTimeout(resolve, 20));
                             }
-                            await post("exit");
+                            await post("exit", (await read()).reviewRevision);
                         })();
                         browserRun.catch(() => {});
                         return Promise.resolve(true);

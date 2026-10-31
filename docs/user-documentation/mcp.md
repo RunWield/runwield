@@ -28,12 +28,12 @@ Both files are JSONC and should use mode `0600` on POSIX systems.
         "project-tools": {
             "command": "my-mcp-server",
             "args": ["--stdio"],
-            "env": { "TOKEN": "secret-value" }
+            "env": { "TOKEN": "secret-value" },
         },
         "disabled-global-server": {
-            "enabled": false
-        }
-    }
+            "enabled": false,
+        },
+    },
 }
 ```
 
@@ -59,6 +59,31 @@ RunWield uses Pi's
   don't.
 - **Failures:** if a server can't start, RunWield shows a warning with secrets removed, and the Session keeps working.
 
+## Remote SSH Sessions
+
+Personal servers from laptop `~/.wld/mcp.json` run on the laptop. Project servers from the remote project's
+`.wld/mcp.json` run remotely, with the Session execution directory. Project replacement and disable rules apply before
+a personal process starts. The server user's personal file is not used. Root Agents get both sets of tools through
+one Pi integration; helper and isolated review Agents do not inherit them.
+
+Personal servers start in **laptop home**, not the directory where you ran `wld remote`. Relative executables such as
+`./scripts/mcp-server` and relative file arguments must work from home. A server can therefore read or write
+home-relative files instead of project files. Use project configuration for servers that need remote project files.
+For deliberate laptop checkout access, use absolute arguments or other settings supported by that server.
+
+Home is a starting directory, **not a sandbox**. A personal server has the laptop account's normal access. Sharing a
+Memory collection with a local project does not select its checkout; the files, branches, and uncommitted changes can
+differ. MCP roots still name the remote project, even when that path does not exist on the laptop. RunWield does not
+rewrite paths, copy files, or map checkouts. Large output files created by Pi stay in the remote runtime.
+
+`/mcp` shows `laptop` or `remote` and the actual connection status. Reconnect starts a fresh transport on the owning
+machine and rereads personal configuration there. `/reload` rebuilds the effective configuration. Session disposal or
+connection loss closes owned processes; another Session's servers stay separate. Uncertain calls and failed protocol
+sends are never replayed automatically.
+
+Cancellation sends the native MCP cancellation notification. A cooperative server can stop pending work; a server that
+ignores it can finish an accepted action. Cancellation and disconnect cannot undo completed file or network effects.
+
 ## Checking servers
 
 ```text
@@ -73,7 +98,7 @@ warnings hide.
 
 MCP servers are programs you choose to run. They can run commands and receive the `env` values you configure. A server
 gets a minimal environment plus its own `env`, not all of RunWield's credentials. RunWield hides secrets in its own
-warnings, but it can't control what a server writes to its own logs.
+warnings, but server tool results, resources, and logs can contain secrets. Forwarding does not filter arbitrary server output.
 
 MCP tools don't say reliably whether they only read data or also change it, so treat every configured server as able to
 change things.

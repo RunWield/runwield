@@ -54,9 +54,11 @@ test("an interrupted provider response retries the same request and completes", 
             await session.prompt("Keep this request");
             assertEquals(requests.length, 2);
             assertEquals(
-                session.sessionManager.getBranch().flatMap((entry) =>
-                    entry.type === "custom" && entry.customType === "runwield.loop_guard_turn" ? [entry.data] : [],
-                ),
+                session.sessionManager
+                    .getBranch()
+                    .flatMap((entry) =>
+                        entry.type === "custom" && entry.customType === "runwield.loop_guard_turn" ? [entry.data] : [],
+                    ),
                 [
                     { version: 1, requestId: "synthetic-provider-retry", turnCount: 1 },
                     { version: 1, requestId: "synthetic-provider-retry", turnCount: 2 },
@@ -71,7 +73,10 @@ test("an interrupted provider response retries the same request and completes", 
             const transcript = await fsReadFile(file, "utf8");
             assertStringIncludes(transcript, "Network error: Unexpected EOF");
             assertStringIncludes(transcript, "Recovered answer");
-            const entries = transcript.trim().split("\n").map((line) => JSON.parse(line));
+            const entries = transcript
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line));
             const replay = createReplayEvents("eof-then-success", entries);
             const second = createReplayEvents("eof-then-success", entries);
             assertEquals(replay, second);
@@ -81,7 +86,10 @@ test("an interrupted provider response retries the same request and completes", 
                 replay.filter((event) => event.type === "assistant_text_delta").at(-1)?.delta,
                 "Recovered answer",
             );
-            assertEquals(replay.some((event) => /retrying|currently stopped/i.test(event.message || "")), false);
+            assertEquals(
+                replay.some((event) => /retrying|currently stopped/i.test(event.message || "")),
+                false,
+            );
         } finally {
             unsubscribe();
             guard.dispose();
@@ -94,13 +102,15 @@ test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests"
     await withRuntimeCommandFixture("provider-default-backoff-", async (fixture) => {
         /** @type {number[]} */
         const starts = [];
-        fixture.setModelResponseFactories(Array.from({ length: 4 }, () => () => {
-            starts.push(Date.now());
-            return fauxAssistantMessage(fauxText("interrupted"), {
-                stopReason: "error",
-                errorMessage: "Unexpected EOF",
-            });
-        }));
+        fixture.setModelResponseFactories(
+            Array.from({ length: 4 }, () => () => {
+                starts.push(Date.now());
+                return fauxAssistantMessage(fauxText("interrupted"), {
+                    stopReason: "error",
+                    errorMessage: "Unexpected EOF",
+                });
+            }),
+        );
         const { session } = await buildAgentSession({ agentName: "guide", cwd: fixture.projectRoot, toolNames: [] });
         /** @type {number[]} */
         const schedules = [];
@@ -114,7 +124,10 @@ test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests"
             await session.prompt("Exhaust provider retries");
             assertEquals(starts.length, 4);
             assertEquals(schedules, [2000, 4000, 8000]);
-            assertEquals(endings.map((event) => [event.attempt, event.success]), [[3, false]]);
+            assertEquals(
+                endings.map((event) => [event.attempt, event.success]),
+                [[3, false]],
+            );
             for (let index = 1; index < starts.length; index++) {
                 assertEquals(starts[index] - starts[index - 1] >= schedules[index - 1], true);
             }
@@ -132,13 +145,15 @@ test("disabled and zero retry budgets leave an EOF as one provider request", asy
             settings.retry = retry;
             await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
             let calls = 0;
-            fixture.setModelResponseFactories([() => {
-                calls++;
-                return fauxAssistantMessage(fauxText("partial"), {
-                    stopReason: "error",
-                    errorMessage: "Unexpected EOF",
-                });
-            }]);
+            fixture.setModelResponseFactories([
+                () => {
+                    calls++;
+                    return fauxAssistantMessage(fauxText("partial"), {
+                        stopReason: "error",
+                        errorMessage: "Unexpected EOF",
+                    });
+                },
+            ]);
             const { session } = await buildAgentSession({
                 agentName: "guide",
                 cwd: fixture.projectRoot,
@@ -333,7 +348,10 @@ test("Pi summary retry recovers from EOF without a second policy", async () => {
         try {
             await session.compact();
             assertEquals(calls, 2);
-            assertEquals(scheduled.map((event) => [event.attempt, event.maxAttempts, event.delayMs]), [[1, 1, 1]]);
+            assertEquals(
+                scheduled.map((event) => [event.attempt, event.maxAttempts, event.delayMs]),
+                [[1, 1, 1]],
+            );
             assertEquals(
                 notices.some((event) => event.message?.includes("Retrying summary in 0.001 seconds (1 of 1)")),
                 true,
@@ -387,8 +405,8 @@ test("isolated Pi Session recovers EOF without repeating the user request", asyn
             assertEquals(temperatures, [0.3, 0.3]);
             assertStringIncludes(JSON.stringify(requests[1].messages), "Keep isolated request");
             assertEquals(
-                requests[1].messages.some((message) =>
-                    message.role === "assistant" && JSON.stringify(message.content).includes("incomplete")
+                requests[1].messages.some(
+                    (message) => message.role === "assistant" && JSON.stringify(message.content).includes("incomplete"),
                 ),
                 false,
             );
@@ -930,7 +948,11 @@ test("the model-turn budget survives a Session reopen for the same request", asy
 
         const stoppedSessionPath = reopenedManager.getSessionFile();
         if (!stoppedSessionPath) throw new Error("Missing stopped synthetic session transcript");
-        const stoppedManager = SessionManager.open(stoppedSessionPath, join(fixture.homeDir, "sessions"), fixture.projectRoot);
+        const stoppedManager = SessionManager.open(
+            stoppedSessionPath,
+            join(fixture.homeDir, "sessions"),
+            fixture.projectRoot,
+        );
         const requestsBeforeStoppedReplay = requests;
         fixture.setModelResponseFactories([
             () => {

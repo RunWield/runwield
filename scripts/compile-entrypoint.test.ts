@@ -6,6 +6,7 @@ import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executa
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { compileBun } from "./compile-bun.ts";
 import { captureScriptProcess } from "./script-process.ts";
+import { customEntry, makeControlFixture } from "../src/shared/remote/session-save-test-fixture.ts";
 
 test("diagnostic entrypoints compile with the real embedded runtime payload", async () => {
     await mkdir(".ci-cache", { recursive: true });
@@ -43,6 +44,47 @@ console.log(JSON.stringify({ marker: "real-diagnostic-entry", logo: readFileSync
         });
     } finally {
         await removeExecutableFixtureDirectory(root);
+    }
+});
+
+test("relocated production CLI saves a remote Session without source files or an event-loop turn", async () => {
+    const fixture = await makeControlFixture();
+    const binary = join(fixture.root, process.platform === "win32" ? "wld.exe" : "wld");
+    try {
+        await fixture.ready();
+        await compileBun(binary);
+        const contents = customEntry();
+        // On macOS also deny access to checkout source and dependencies. Other hosts
+        // still run from a separate project with no runtime files beside the binary.
+        const sandbox = `(version 1)(allow default)(deny file-read* (subpath ${JSON.stringify(resolve("."))}))`;
+        const output = await captureScriptProcess(process.platform === "darwin" ? "/usr/bin/sandbox-exec" : binary, {
+            args: [
+                ...(process.platform === "darwin" ? ["-p", sandbox, binary] : []),
+                "package-smoke",
+                "remote-session-save",
+            ],
+            cwd: fixture.remoteProject,
+            env: { HOME: fixture.home, USERPROFILE: fixture.home, WLD_INTERNAL_PACKAGE_CHECK: "1" },
+            input: JSON.stringify({
+                connection: {
+                    baseUrl: fixture.baseUrl,
+                    credential: fixture.control.credential,
+                    operation: fixture.owner.operation,
+                    timeoutMs: 1000,
+                },
+                contents,
+            }),
+            signal: AbortSignal.timeout(15_000),
+        });
+        assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
+        assertEquals(new TextDecoder().decode(output.stdout).includes("Packaged remote Session save passed."), true);
+        assertEquals(fixture.owner.inspect().contents, fixture.initial + contents);
+        assertEquals(
+            fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).generation?.generation,
+            0,
+        );
+    } finally {
+        await fixture.close();
     }
 });
 

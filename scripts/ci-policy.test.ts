@@ -217,7 +217,11 @@ test("release and PR require all source and Golden shards without cancelling sib
             assertStringIncludes(body, "actions/upload-artifact@v5");
             assertStringIncludes(body, "path: .ci-cache/");
             const gate = job.replace("-shards", "");
-            assertStringIncludes(workflow, `    ${gate}:\n        if: always()\n        needs: ${job}`);
+            const aggregate =
+                workflowName === "release"
+                    ? `    ${gate}:\n        if: \${{ always() && needs.metadata.outputs.qualification_only != 'true' }}\n        needs: [metadata, ${job}]`
+                    : `    ${gate}:\n        if: always()\n        needs: ${job}`;
+            assertStringIncludes(workflow, aggregate);
             assertStringIncludes(workflow, "run: test '$" + `{{ needs.${job}.result }}' = 'success'`);
         }
     }

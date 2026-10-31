@@ -7,17 +7,20 @@ import { assertEquals, assertRejects, assertThrows } from "../testing/assertions
 import { getCwd } from "../constants.js";
 import { denoHelperBinaryExec } from "./helper-binary-exec.ts";
 
-test("helper execution preserves literal arguments, both output streams and exit status", {
-    skip: platform === "win32",
-}, async () => {
-    const result = await denoHelperBinaryExec("sh", [
-        "-c",
-        'printf "%s" "$1"; printf error >&2; exit 7',
-        "fixture",
-        "$(touch BAD); literal",
-    ], { cwd: getCwd() });
-    assertEquals(result, { code: 7, stdout: "$(touch BAD); literal", stderr: "error" });
-});
+test(
+    "helper execution preserves literal arguments, both output streams and exit status",
+    {
+        skip: platform === "win32",
+    },
+    async () => {
+        const result = await denoHelperBinaryExec(
+            "sh",
+            ["-c", 'printf "%s" "$1"; printf error >&2; exit 7', "fixture", "$(touch BAD); literal"],
+            { cwd: getCwd() },
+        );
+        assertEquals(result, { code: 7, stdout: "$(touch BAD); literal", stderr: "error" });
+    },
+);
 
 test("missing helper executable returns the established command-not-found result", async () => {
     const command = `missing-helper-${crypto.randomUUID()}`;
@@ -32,13 +35,16 @@ test("helper cancellation rejects after the running process is stopped", { skip:
     const cwd = await mkdtemp(join(tmpdir(), "helper-cancel-"));
     const abort = new AbortController();
     const started = join(cwd, "started");
-    const pending = denoHelperBinaryExec("sh", ["-c", "echo $$ > started; sleep 30"], {
+    const pending = denoHelperBinaryExec("/bin/sh", ["-c", "echo $$ > started; exec sleep 30"], {
         cwd,
         signal: abort.signal,
     });
     let pid = 0;
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-    const settled = pending.then((result) => ({ result }), (error: Error) => ({ error }));
+    const settled = pending.then(
+        (result) => ({ result }),
+        (error: Error) => ({ error }),
+    );
     try {
         const deadline = Date.now() + 5_000;
         while (Date.now() < deadline) {
@@ -68,7 +74,9 @@ test("helper cancellation rejects after the running process is stopped", { skip:
         if (pid > 0) {
             try {
                 kill(-pid, "SIGKILL");
-            } catch { /* Owned group already gone. */ }
+            } catch {
+                /* Owned group already gone. */
+            }
         }
         await settled;
         await rm(cwd, { recursive: true });

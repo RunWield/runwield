@@ -1,3 +1,4 @@
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
 import { setCustomSetting } from "../../shared/settings.js";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
@@ -9,7 +10,6 @@ import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 import { createValidationSessionPort } from "../../shared/workflow/validation-session-adapter.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
-import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 
 test("publication shows Base and default working text without an active Agent", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
@@ -17,6 +17,7 @@ test("publication shows Base and default working text without an active Agent", 
         const tui = new TuiAltScreen(terminal);
         session.resetAgentInfoStack("Validation Repair Engineer", "", "", "reviewer-feedback-engineer");
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -59,11 +60,12 @@ test("publication shows Base and default working text without an active Agent", 
 });
 
 test("live TUI reserves mascot space and pauses for questions without covering input", async () => {
-    await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
+    await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
         const tui = new TuiAltScreen(terminal);
-        session.resetAgentInfoStack("Operator", "", "", "operator");
+        assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,
@@ -91,11 +93,11 @@ test("live TUI reserves mascot space and pauses for questions without covering i
             view.uiAPI.abortActivePrompt();
             await question;
             view.uiAPI.setBusy?.(false);
-            session.resetAgentInfoStack("Recorder", "", "", "recorder");
+            assertEquals((await runtime.switchAgent(sessionId, { agentName: "recorder" })).ok, true);
             tui.renderNow(true);
             await terminal.flush();
             assert(!terminal.getScreenText().includes("██   ██"));
-            session.resetAgentInfoStack("Operator", "", "", "operator");
+            assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
             terminal.resize(60, 16);
             tui.renderNow(true);
             await terminal.flush();
@@ -110,11 +112,12 @@ test("live TUI reserves mascot space and pauses for questions without covering i
 });
 
 test("disabling a live TUI mascot removes rail and compact face without losing input", async () => {
-    await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
+    await withSessionViewFixture(async ({ runtime, sessionId, projectRoot }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
         const tui = new TuiAltScreen(terminal);
-        session.resetAgentInfoStack("Operator", "", "", "operator");
+        assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             suppressStartupHeader: true,

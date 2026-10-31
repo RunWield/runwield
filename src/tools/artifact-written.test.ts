@@ -20,13 +20,7 @@ async function executeArtifactTool(
     tool: ReturnType<typeof createArtifactWrittenTool>,
     params: { path: string; kind: "prd" | "adr"; title?: string },
 ): Promise<ToolResult> {
-    return await tool.execute(
-        "call-1",
-        params,
-        new AbortController().signal,
-        () => {},
-        {} as never,
-    ) as ToolResult;
+    return (await tool.execute("call-1", params, new AbortController().signal, () => {}, {} as never)) as ToolResult;
 }
 
 test("artifact_written registers a canonical Project-relative Markdown reference", async () => {
@@ -40,19 +34,8 @@ test("artifact_written registers a canonical Project-relative Markdown reference
             runtimeSessionId: "artifact-session",
             runwieldSessionId: "umbrella-session",
             operationId: "operation-1",
-            proof: {
-                runwieldSessionId: "umbrella-session",
-                projectId: "project-1",
-                ownerInstanceId: "owner-1",
-                ownerProcessKind: "test",
-                operationId: "operation-1",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 0,
-            },
             settled: false,
             assertLive() {},
-            updateProof() {},
             settle() {},
             registerArtifact(options) {
                 registered.push(options);
@@ -68,20 +51,22 @@ test("artifact_written registers a canonical Project-relative Markdown reference
             },
         });
 
-        const result = await executeArtifactTool(
-            createArtifactWrittenTool({ hostedSession, agentName: "Ideator" }),
-            { path: "docs/prd/sidebar.md", kind: "prd" },
-        );
+        const result = await executeArtifactTool(createArtifactWrittenTool({ hostedSession, agentName: "Ideator" }), {
+            path: "docs/prd/sidebar.md",
+            kind: "prd",
+        });
 
         assertEquals(result.isError, undefined);
         assertEquals(result.details.outcome, "registered");
         assertEquals(result.details.artifact?.title, "Session Sidebar");
-        assertEquals(registered, [{
-            kind: "prd",
-            path: "docs/prd/sidebar.md",
-            title: "Session Sidebar",
-            registeredBy: "Ideator",
-        }]);
+        assertEquals(registered, [
+            {
+                kind: "prd",
+                path: "docs/prd/sidebar.md",
+                title: "Session Sidebar",
+                registeredBy: "Ideator",
+            },
+        ]);
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -96,29 +81,18 @@ test("artifact_written rejects a kind whose file is outside its canonical direct
             runtimeSessionId: "artifact-session",
             runwieldSessionId: "umbrella-session",
             operationId: "operation-1",
-            proof: {
-                runwieldSessionId: "umbrella-session",
-                projectId: "project-1",
-                ownerInstanceId: "owner-1",
-                ownerProcessKind: "test",
-                operationId: "operation-1",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 0,
-            },
             settled: false,
             assertLive() {},
-            updateProof() {},
             settle() {},
             registerArtifact() {
                 throw new Error("must not register");
             },
         });
 
-        const result = await executeArtifactTool(
-            createArtifactWrittenTool({ hostedSession, agentName: "Ideator" }),
-            { path: "sidebar.md", kind: "prd" },
-        );
+        const result = await executeArtifactTool(createArtifactWrittenTool({ hostedSession, agentName: "Ideator" }), {
+            path: "sidebar.md",
+            kind: "prd",
+        });
 
         assertEquals(result.isError, undefined);
         assertEquals(result.details.outcome, "rejected");
@@ -159,19 +133,8 @@ test("artifact_written offers PRD review and returns feedback for an in-session 
             runtimeSessionId: "artifact-session",
             runwieldSessionId: "umbrella-session",
             operationId: "operation-1",
-            proof: {
-                runwieldSessionId: "umbrella-session",
-                projectId: "project-1",
-                ownerInstanceId: "owner-1",
-                ownerProcessKind: "test",
-                operationId: "operation-1",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 0,
-            },
             settled: false,
             assertLive() {},
-            updateProof() {},
             settle() {},
             registerArtifact(options) {
                 return {
@@ -186,10 +149,10 @@ test("artifact_written offers PRD review and returns feedback for an in-session 
             },
         });
 
-        const result = await executeArtifactTool(
-            createArtifactWrittenTool({ hostedSession, agentName: "Ideator" }),
-            { path: "docs/prd/sidebar.md", kind: "prd" },
-        );
+        const result = await executeArtifactTool(createArtifactWrittenTool({ hostedSession, agentName: "Ideator" }), {
+            path: "docs/prd/sidebar.md",
+            kind: "prd",
+        });
 
         assertEquals(requests, ["select", "artifact_review"]);
         assertEquals(result.details.outcome, "feedback");

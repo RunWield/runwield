@@ -48,7 +48,7 @@ export async function createInteractiveTuiComposition(
     try {
         if (options.terminal) {
             const terminalPair = options.terminal as Terminal;
-            initTUIWithPair({ terminal: terminalPair, tui: new RunWieldTui(terminalPair) });
+            initTUIWithPair({ terminal: terminalPair, tui: new RunWieldTui(terminalPair, options.browser) });
         }
         uiAPI = await startInteractiveSession(initialUserRequest, {
             ...options,
@@ -93,14 +93,14 @@ export async function createInteractiveTuiComposition(
             let previousScreen = "";
             while (performance.now() - startedAt < timeoutMs) {
                 const snapshot = runtime?.getSessionSnapshot(sessionId || "");
-                const screen = terminal && "getScreenText" in terminal
-                    ? (terminal as ScreenTextTerminal).getScreenText()
-                    : "";
-                const terminalStarted = terminal && "started" in terminal
-                    ? (terminal as StartedTerminal).started
-                    : true;
+                const screen =
+                    terminal && "getScreenText" in terminal ? (terminal as ScreenTextTerminal).getScreenText() : "";
+                const terminalStarted =
+                    terminal && "started" in terminal ? (terminal as StartedTerminal).started : true;
                 if (
-                    terminalStarted && !snapshot?.busy && !lifecycleHandle?.isProcessingSubmission() &&
+                    terminalStarted &&
+                    !snapshot?.busy &&
+                    !lifecycleHandle?.isProcessingSubmission() &&
                     screen === previousScreen
                 ) {
                     stableSamples += 1;

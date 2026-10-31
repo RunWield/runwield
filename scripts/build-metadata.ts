@@ -17,6 +17,7 @@ const INPUTS = [
     "scripts",
     "third_party/plannotator/packages",
     "brand",
+    "packaging/remote/tested-dependencies.json",
     "dist/workspace-runtime",
     "package.json",
     "bun.lock",

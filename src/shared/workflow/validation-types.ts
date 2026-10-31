@@ -74,6 +74,7 @@ export interface CodeReviewConversationEvent {
 }
 
 export interface CodeReviewConversation {
+    error?: string;
     id: string;
     agentLabel: string;
     revision: number;

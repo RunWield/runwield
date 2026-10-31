@@ -11,6 +11,7 @@ provenance:
     sourcePlans:
         - "fd55996c-a04a-45b8-bc67-b24df82af0e2"
 ---
+
 # AI-drafted annotations in Standalone Code Review
 
 ## Summary

@@ -16,6 +16,13 @@ import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../plan-store.js";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
+import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
+import { makeManagedSessionFixture } from "../testing/managed-session-fixture.ts";
+import { inspectWorktreeRegistry } from "../shared/worktree-registry.js";
+import { existsSync } from "node:fs";
+import { WORKTREE_REGISTRY_FILE } from "../constants.js";
+
+const LINKED_REVIEW_GIT = defineCommittedGitFixture();
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
 
@@ -210,6 +217,114 @@ test("plan_written returns a conversation outcome and the reply-or-revise rule w
             assertEquals((await loadPlan(projectRoot, "target"))?.attrs.status, "ready_for_work");
         } finally {
             await session.dispose();
+        }
+    });
+});
+
+test("plan_written reviews a Plan that exists only in an unregistered linked checkout", async () => {
+    await withRuntimeCommandFixture("plan-written-linked-", async ({ homeDir, alternateRoot }) => {
+        const primary = await LINKED_REVIEW_GIT.checkout();
+        const linked = join(alternateRoot, "linked");
+        await git(primary, ["worktree", "add", "-b", "linked-review", linked]);
+        const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot: linked });
+        const handle = fixture.openRuntime("test", "linked-review-writer");
+        try {
+            await savePlan(linked, "linked-only", "# Linked only\n\nReview the selected checkout.\n", {
+                planId: "linked-only-id",
+                classification: "PLANNED_CHANGE",
+                status: "approved",
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+                affectedPaths: [],
+            });
+            const plan = await loadPlan(linked, "linked-only");
+            if (!plan) throw new Error("Linked Plan missing");
+            assertEquals(existsSync(join(primary, "docs", "plans")), false);
+            assertEquals((await inspectWorktreeRegistry(linked)).entries, []);
+            const primaryHead = await git(primary, ["rev-parse", "HEAD"]);
+            const primaryStatus = await git(primary, ["status", "--porcelain"]);
+            let reviewed = false;
+            handle.runtime.setInteractionAdapter(handle.adoptedSessionId, {
+                requestInteraction: (request) => {
+                    if (request.type !== "plan_review") return { outcome: "canceled" };
+                    assertEquals(request._meta?.planId, "linked-only-id");
+                    assertEquals(request._meta?.planPath, plan.path);
+                    assertEquals(request._meta?.expectedRevision, plan.revision);
+                    assertEquals(request._meta?.reviewedSource, {
+                        planName: "linked-only",
+                        path: plan.path,
+                        markdown: plan.markdown,
+                        revision: plan.revision,
+                        attrs: plan.attrs,
+                    });
+                    assertEquals(request._meta?.expectedWorktree, { kind: "none" });
+                    reviewed = true;
+                    return {
+                        outcome: "accepted",
+                        _meta: { approved: true, approvalAction: "later", revision: plan.revision },
+                    };
+                },
+            });
+            const result = await handle.runtime.reviewSavedPlan(handle.adoptedSessionId, "linked-only-id");
+            assertEquals(reviewed, true, JSON.stringify(result));
+            assertEquals(result.kind, "saved");
+            assertEquals(
+                handle.runtime.getSessionSnapshot(handle.adoptedSessionId)?.workflowContext?.canReopenPlanReview,
+                true,
+            );
+            const reference = fixture.store.getLastPlanReview(
+                fixture.session.runwieldSessionId,
+                fixture.project.projectId,
+            );
+            assertEquals(reference?.planId, "linked-only-id");
+            assertEquals(reference?.planName, "linked-only");
+            assertEquals(reference?.planningAgentName, "planner");
+            assertEquals((await loadPlan(linked, "linked-only"))?.attrs.status, "ready_for_work");
+            assertEquals(existsSync(join(primary, "docs", "plans")), false);
+            assertEquals(await git(primary, ["rev-parse", "HEAD"]), primaryHead);
+            assertEquals(await git(primary, ["status", "--porcelain"]), primaryStatus);
+            assertEquals((await inspectWorktreeRegistry(primary)).entries, []);
+            assertEquals((await inspectWorktreeRegistry(linked)).entries, []);
+            const layout = resolveProjectRuntimeLayout(linked);
+            assertEquals(
+                layout.primary.worktreeRegistryPath,
+                resolveProjectRuntimeLayout(primary).primary.worktreeRegistryPath,
+            );
+            assertEquals(existsSync(join(layout.selected.internalRoot, WORKTREE_REGISTRY_FILE)), false);
+        } finally {
+            await handle.close();
+            await fixture.cleanup();
+            await fsRm(primary, { recursive: true, force: true });
+        }
+    });
+});
+
+test("submitting plain Plan text assigns identity before review", async () => {
+    await withRuntimeCommandFixture("plain-plan-review-", async ({ projectRoot }) => {
+        await fsMkdir(join(projectRoot, "docs/plans"), { recursive: true });
+        await fsWriteFile(join(projectRoot, "docs/plans/plain.md"), "# Plain Plan\n\nImplement the change.\n");
+        const session = new HostedSession({ id: "plain-plan-review", cwd: projectRoot });
+        let reviewed = false;
+        session.setInteractionAdapter({
+            requestInteraction: async (request) => {
+                assertEquals(request.type, "plan_review");
+                const plan = await loadPlan(projectRoot, "plain");
+                assertEquals(Boolean(plan?.attrs.planId), true);
+                reviewed = true;
+                return { outcome: "canceled" };
+            },
+        });
+        try {
+            await createPlanWrittenTool({ hostedSession: session }).execute(
+                "submit-plain",
+                { planName: "plain" },
+                undefined,
+                undefined,
+                EXTENSION_CONTEXT,
+            );
+            assertEquals(reviewed, true);
+        } finally {
+            session.dispose();
         }
     });
 });

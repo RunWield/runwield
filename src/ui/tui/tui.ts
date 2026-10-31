@@ -32,7 +32,9 @@ export class RunWieldTui extends TuiAltScreen {
                             sessionId: decodeURIComponent(link.hostname),
                             artifactId: decodeURIComponent(link.pathname.slice(1)),
                         });
-                    } catch { /* Ignore malformed internal links. */ }
+                    } catch {
+                        /* Ignore malformed internal links. */
+                    }
                     return;
                 }
                 void browser.open(url);
@@ -72,8 +74,8 @@ const crashGuards = createTuiCrashGuards({
 });
 
 /** Initialize the TUI singleton if it is not already running. */
-export function initTUI(): TUI {
-    return tuiManager.initTUI();
+export function initTUI(browser?: BrowserPort): TUI {
+    return tuiManager.initTUI(browser);
 }
 
 /** Install an explicit Terminal/TUI pair for deterministic composition tests. */

@@ -1,3 +1,4 @@
+import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 /**
  * @module ui/tui/terminal-auth-setup
  * Setup-only terminal authentication flow for ACP Terminal Auth and `wld login`.
@@ -25,6 +26,7 @@ export async function runTerminalAuthSetup(argv: string[] = []): Promise<Termina
     let view: ChatView | null = null;
     try {
         view = await createChatView({
+            browser: SYSTEM_BROWSER_PORT,
             documentLinks: null,
             tui,
             sessionRuntime: null,

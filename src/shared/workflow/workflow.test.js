@@ -26,7 +26,7 @@ import {
     readLatestPlanOutcome,
     runPlanningAgent,
     startActiveExecutionWorkflow,
-} from "./workflow.js";
+} from "./workflow.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan, savePlan } from "../../plan-store.js";

@@ -2,7 +2,7 @@ import process from "node:process";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { readStreamInto } from "../socket-listener.ts";
 /* Private entry points run before ordinary CLI initialization. This module must
- * not import the command registry, browser, settings or project runtime. */
+ * not eagerly import the command registry, browser, settings or project runtime. */
 
 const MAX_VIEW_HEADER_BYTES = 16 * 1024;
 
@@ -67,18 +67,108 @@ export async function runRemotePreflight(): Promise<void> {
     );
 }
 
-/** Read the complete view configuration before starting ProcessTerminal. */
+export interface RemoteInteractiveConfig {
+    view: import("../../ui/tui/remote-connection-view.ts").RemoteConnectionViewConfig;
+    connection: import("./session-control-client.ts").RemoteSessionControlConnection;
+    resources: import("./personal-resources.ts").RemotePersonalResources;
+    cwd: string;
+    memoryCollection: string;
+    review: import("../../ui/workspace/server/review-host.ts").RemoteReviewHostConfig;
+}
+
+/** Admit private bootstrap data before importing the ordinary TUI composition. */
+export async function parseRemoteInteractiveConfig(header: string): Promise<RemoteInteractiveConfig> {
+    const config: RemoteInteractiveConfig = JSON.parse(header);
+    const { parseRemoteConnectionViewConfig } = await import("../../ui/tui/remote-connection-view.ts");
+    parseRemoteConnectionViewConfig(JSON.stringify(config.view ?? config));
+    if (
+        typeof config.memoryCollection !== "string" ||
+        !config.memoryCollection ||
+        config.memoryCollection.includes("\0") ||
+        !config.connection ||
+        !Number.isInteger(config.connection.port) ||
+        config.connection.port < 1 ||
+        config.connection.port > 65535 ||
+        !/^[a-f0-9]{64}$/.test(config.connection.credential) ||
+        typeof config.cwd !== "string" ||
+        !config.cwd.startsWith("/") ||
+        config.cwd.includes("\0") ||
+        config.cwd !== config.view.cwd ||
+        !config.resources ||
+        typeof config.resources.globalRoot !== "string" ||
+        !config.resources.globalRoot.startsWith("/")
+    )
+        throw new Error("Invalid remote interactive configuration");
+    const { validateRemoteReviewHostConfig } = await import("../../ui/workspace/server/review-host.ts");
+    validateRemoteReviewHostConfig(config.review);
+    return config;
+}
+
+/** Start the normal remote TUI, then stay alive until its process lifetime ends. */
 export async function runRemoteView(): Promise<void> {
-    const header = await readPrivateHeader();
-    const { parseRemoteConnectionViewConfig, showRemoteConnectionView } =
-        await import("../../ui/tui/remote-connection-view.ts");
-    const config = parseRemoteConnectionViewConfig(header);
-    const { initRunWieldTheme } = await import("../../ui/theme/theme.js");
-    initRunWieldTheme(); // Embedded theme only; no settings lookup or profile initialization.
-    const { initTUI, stopTUI } = await import("../../ui/tui/tui.ts");
+    const config = await parseRemoteInteractiveConfig(await readPrivateHeader());
+    const { configureRemotePersonalResources } = await import("./personal-resources.ts");
+    configureRemotePersonalResources(config.resources);
+    const { configureRemoteSettingsConnection } = await import("./settings-bridge.ts");
+    configureRemoteSettingsConnection(config.connection);
+    const { configureRemoteMcpConnection } = await import("./mcp-bridge.ts");
+    const clearMcp = configureRemoteMcpConnection(config.connection);
+    const { configureRemoteMemoryConnection } = await import("./memory-bridge.ts");
+    const clearMemory = configureRemoteMemoryConnection({ ...config.connection, collection: config.memoryCollection });
+    const { configureRemoteClipboardConnection } = await import("../../ui/tui/clipboard.ts");
+    const clearClipboard = configureRemoteClipboardConnection(config.connection);
+    const { configureRemoteReviewHost } = await import("../../ui/workspace/server/review-host.ts");
+    const clearReviewHost = configureRemoteReviewHost(config.review);
+    let clearGuideRunner: (() => void) | undefined;
+    let clearModels: (() => void) | undefined;
+    let stopTUI: (() => void) | undefined;
+    let lifecycle: import("../../ui/tui/chat-session.ts").InteractiveLifecycleHandle | undefined;
+    let end = () => {};
+    const lifetime = new Promise<void>((resolve) => (end = resolve));
+    const signals = ["SIGTERM", "SIGHUP"] as const;
     try {
-        await showRemoteConnectionView(initTUI(), config);
+        const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
+        clearModels = await configureRemoteModelConnection(config.connection);
+        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.js");
+        const { runRemoteGuideCommand } = await import("./guide-runner.ts");
+        clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
+        const tuiModule = await import("../../ui/tui/tui.ts");
+        stopTUI = tuiModule.stopTUI;
+        for (const signal of signals) process.on(signal, end);
+        process.chdir(config.cwd);
+        const { RemoteSessionControl } = await import("./session-control-client.ts");
+        const { createRemoteBrowserPort } = await import("./browser-bridge.ts");
+        const { startInteractiveSession } = await import("../../ui/tui/chat-session.ts");
+        const { inspectProjectDirectory } = await import("../project-directory.ts");
+        const browser = createRemoteBrowserPort(config.connection);
+        // The supervisor pipes terminal input. Open the TUI before directory consent needs it.
+        if (inspectProjectDirectory(config.cwd).classified) tuiModule.initTUI(browser);
+        const { formatRemoteConnectionDetails } = await import("../../ui/tui/remote-connection-view.ts");
+        await startInteractiveSession(null, {
+            remoteSessionControl: new RemoteSessionControl(config.connection),
+            startupNotice: formatRemoteConnectionDetails(config.view),
+            browser,
+            onLifecycleReady: (handle) => (lifecycle = handle),
+        });
+        // entry dispatch exits after return. Startup completion is not TUI exit.
+        await lifetime;
     } finally {
-        stopTUI();
+        for (const signal of signals) process.off(signal, end);
+        try {
+            await lifecycle?.dispose();
+        } finally {
+            try {
+                await clearMcp();
+                clearClipboard();
+                clearGuideRunner?.();
+                clearReviewHost();
+                clearMemory();
+                clearModels?.();
+                stopTUI?.();
+            } finally {
+                const { disposeRemoteBackgroundTaskLogs } = await import("./background-task-logs.ts");
+                disposeRemoteBackgroundTaskLogs();
+            }
+        }
     }
 }

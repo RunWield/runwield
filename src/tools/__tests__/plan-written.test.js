@@ -1,3 +1,4 @@
+import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -28,12 +29,13 @@ import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review
  * @param {"run" | "decompose" | "later"} [options.approvalAction]
  * @param {string} [options.parentPlan]
  * @param {boolean} [options.exists]
+ * @param {string} [options.cwd]
  */
 async function makeHarness(options = {}) {
     const events = /** @type {any[]} */ ([]);
     const interactionRequests = /** @type {any[]} */ ([]);
     const reviewResponses = [...(options.reviewResponses || [])];
-    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const cwd = options.cwd || (await fsMkdtemp(join(tmpdir(), "portable-fixture-")));
     await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
     if (options.exists !== false) {
         // `approved` because that is where a Plan actually is when this tool records
@@ -445,8 +447,11 @@ test("plan_written reopens review when recovery confirmation is accepted", async
 });
 
 test("plan_written opens the active workflow Plan instead of the stale primary copy", async () => {
-    const { tool, cwd, interactionRequests } = await makeHarness({ classification: "PLANNED_CHANGE" });
+    const fixture = defineCommittedGitFixture({ "README.md": "# Plan Review\n" });
+    const root = await fixture.checkout();
+    const { tool, cwd, interactionRequests } = await makeHarness({ classification: "PLANNED_CHANGE", cwd: root });
     const executionDir = join(cwd, "active-worktree");
+    await git(cwd, ["worktree", "add", "-b", "worktree/runtime-boundary", executionDir]);
     await fsMkdir(join(executionDir, "docs", "plans"), { recursive: true });
     await fsWriteFile(
         getStoredPlanPath(cwd, "runtime-boundary"),
@@ -482,8 +487,8 @@ Live execution copy.
         planId: "runtime-boundary-id",
         baseBranch: "main",
         baseRef: "refs/heads/main",
-        baseCommit: "base-commit",
-        baseTree: "base-tree",
+        baseCommit: await git(cwd, ["rev-parse", "HEAD"]),
+        baseTree: await git(cwd, ["rev-parse", "HEAD^{tree}"]),
         branch: "worktree/runtime-boundary",
         path: executionDir,
         status: "active",

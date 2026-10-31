@@ -41,7 +41,7 @@ export function createSessionSnapshotWindow(
             const now = Date.now();
             if (hasCached && now - cachedAt < ttlMs) return cached;
             cached = runtime.getSessionSnapshot(getSessionId());
-            cachedAt = now;
+            cachedAt = Date.now();
             hasCached = true;
             return cached;
         },

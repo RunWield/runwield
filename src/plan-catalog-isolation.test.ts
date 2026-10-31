@@ -1,10 +1,10 @@
 import { test } from "node:test";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
 import { ensurePlanIdentity, listPlans, savePlan } from "./plan-store.js";
 import { addEntry, listEntries } from "./shared/worktree-registry.js";
-import { defineCommittedGitFixture } from "./shared/git-test-fixture.ts";
+import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Plan catalog isolation\n" });
@@ -12,7 +12,7 @@ const fixture = defineCommittedGitFixture({ "README.md": "# Plan catalog isolati
 async function missingExecutionPlan() {
     const cwd = await fixture.checkout();
     const path = join(cwd, "execution");
-    await mkdir(path);
+    await git(cwd, ["worktree", "add", "-b", "worktree/broken", path]);
     await savePlan(cwd, "broken", "# Primary copy\n", { planId: "broken-id", status: "in_progress" });
     await savePlan(cwd, "healthy", "# Healthy\n", { planId: "healthy-id", status: "implemented" });
     await addEntry(cwd, {

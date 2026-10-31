@@ -73,6 +73,7 @@ for (const legacy of [false, true]) {
             const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
             const tui = new TuiAltScreen(terminal);
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 suppressStartupHeader: true,

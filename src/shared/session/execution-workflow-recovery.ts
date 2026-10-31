@@ -19,16 +19,28 @@ interface LifecycleEntry {
 }
 
 /** Restore only while the caller holds the managed Session writer lock. */
-export async function restoreExecutionWorkflow(session: HostedSession): Promise<void> {
+interface RestoreExecutionWorkflowOptions {
+    persist?: boolean;
+}
+
+export async function restoreExecutionWorkflow(
+    session: HostedSession,
+    options: RestoreExecutionWorkflowOptions = {},
+): Promise<void> {
     const manager = session.getRootSessionManager();
     const snapshot = readExecutionWorkflowSnapshot(manager);
     if (snapshot) {
         const workflow = snapshot.workflow;
         if (workflow?.executionCwd) {
-            const executionCwd = await fsRealpath(workflow.executionCwd);
-            // Keep the current root spelling when it already names this checkout.
-            // A reloaded root has its canonical spelling; do not restore a stale alias.
-            if ((await fsRealpath(session.cwd)) === executionCwd) workflow.executionCwd = session.cwd;
+            try {
+                const executionCwd = await fsRealpath(workflow.executionCwd);
+                // Keep the current root spelling when it already names this checkout.
+                if ((await fsRealpath(session.cwd)) === executionCwd) workflow.executionCwd = session.cwd;
+            } catch (error) {
+                // Publication cleanup may remove the checkout before the Session saves its terminal state.
+                // Retain the snapshot so recovery can inspect publication evidence without replaying it.
+                if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+            }
         }
         session.restoreActiveExecutionWorkflow(workflow, null);
         return;
@@ -130,5 +142,8 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
         return;
     }
     // Do not hide a failure to persist RunWield-owned state as missing evidence.
-    if (recoveredWorkflow) session.setActiveExecutionWorkflow(recoveredWorkflow);
+    if (recoveredWorkflow) {
+        if (options.persist === false) session.restoreActiveExecutionWorkflow(recoveredWorkflow, null);
+        else session.setActiveExecutionWorkflow(recoveredWorkflow);
+    }
 }

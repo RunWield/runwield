@@ -18,6 +18,22 @@ a conversation. Pi owns connection discovery, tool definitions and names, result
 reconnection, and shutdown. RunWield supplies approved configuration and a stdio transport factory that retains its
 minimal inherited environment.
 
+Remote SSH keeps this one integration on the remote Session. Project servers use remote stdio; effective personal
+servers use an authenticated, connection-scoped native MCP transport to laptop stdio processes. The laptop resolves
+currently enabled personal names from its own configuration; remote requests cannot supply executables or environment.
+The relay carries protocol messages, not another tool inventory or result API. A laptop integration host was rejected
+because it would duplicate discovery, naming, resource tools, and updates across origins.
+
+Personal processes start in laptop home. The owner chose this stable cwd instead of the launch folder or an inferred
+checkout. Relative commands and file arguments resolve there; home is not a sandbox. Shared Memory identifies a
+collection, not a filesystem mapping. Remote roots and tool paths stay unchanged. Project-file servers belong in
+project configuration and run remotely.
+
+Transport lifetimes have fresh connection-scoped IDs, ordered sends, close tombstones, and bounded messages and queues.
+Failed sends and broken streams end the lifetime; they are never retried or replayed. Pi reconnect starts a fresh
+transport for later work. Shutdown revokes pending starts and awaits owned processes. Native cancellation can stop a
+cooperative server, but does not roll back accepted external effects.
+
 Root Pi sessions register Pi's original tool definitions through an extension binding, including subsequent tool-list
 updates. External CLI backends expose current definitions through their existing per-turn bridge. Agent disposal
 releases the root binding; owning Session disposal awaits Pi's shutdown hook before disposing the host. An explicitly

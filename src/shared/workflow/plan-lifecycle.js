@@ -1089,6 +1089,7 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                 typeof preflightPlan.attrs.parentPlan === "string"
                     ? preflightPlan.attrs.parentPlan
                     : "";
+            if (parentPlanName) await preparePlanWorkflow(cwd, parentPlanName);
             const siblings = parentPlanName ? await prepareCompletionSiblings(cwd, parentPlanName) : [];
             const siblingPaths = new Map(siblings.map((child) => [child.name, child.path]));
             /** @type {import('./state-transition.ts').TransitionResource[]} */
@@ -1266,6 +1267,7 @@ export async function stageValidationPassedInExecutionWorktree({
     planName,
     details = {},
 }) {
+    await preparePlanWorkflow(executionCwd, planName);
     const planPath = `docs/plans/${planName}.md`;
     const executionPlan = await loadPlan(executionCwd, planName);
     if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);

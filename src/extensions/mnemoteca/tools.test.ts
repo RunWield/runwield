@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
@@ -9,6 +10,21 @@ interface RecordedCall {
     command: string;
     args: string[];
     cwd: string;
+}
+
+function exportedMemories(args: string[], id: number, content = "memory") {
+    writeFileSync(
+        args[args.indexOf("--output") + 1],
+        JSON.stringify({
+            version: 1,
+            collection: args.includes("--global") ? "global" : "project-feature",
+            doc_count: 1,
+        }) +
+            "\n" +
+            JSON.stringify({ original_document_id: id, content }) +
+            "\n",
+    );
+    return { code: 0, stdout: "Exported", stderr: "" };
 }
 
 function setup(
@@ -50,7 +66,10 @@ async function executeText(
 test("memory tools expose one action-based memory tool", () => {
     const { tools } = setup(() => ({ code: 0, stdout: "", stderr: "" }));
 
-    assertEquals(tools.map((tool) => tool.name), ["memory"]);
+    assertEquals(
+        tools.map((tool) => tool.name),
+        ["memory"],
+    );
 });
 
 test("memory recall searches project and global memory with labeled provenance", async () => {
@@ -67,7 +86,10 @@ test("memory recall searches project and global memory with labeled provenance",
         text,
         "Project memories (runwield) — these take precedence over global memories:\nproject hit\n\nGlobal memories (cross-project defaults):\nglobal hit",
     );
-    assertEquals(calls.map((call) => call.command), ["git", "mnemoteca", "mnemoteca", "mnemoteca"]);
+    assertEquals(
+        calls.map((call) => call.command),
+        ["git", "mnemoteca", "mnemoteca", "mnemoteca"],
+    );
     assertEquals(calls[1]?.args, ["init", "--name", "runwield"]);
     assertEquals(calls[2]?.args, ["search", "--name", "runwield", "--format", "plain", '"he said ""hello"""']);
     assertEquals(calls[3]?.args, ["search", "--global", "--format", "plain", '"he said ""hello"""']);
@@ -142,40 +164,64 @@ test("memory delete refuses ambiguous IDs", async () => {
     const { calls, getTool } = setup((command, args) => {
         if (command === "git") return { code: 1, stdout: "", stderr: "" };
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "list") return { code: 0, stdout: "42 duplicate memory", stderr: "" };
+        if (args[0] === "export") return exportedMemories(args, 42);
         return { code: 0, stdout: "", stderr: "" };
     });
 
     const text = await executeText(getTool("memory"), { action: "delete", id: 42, scope: "global" });
 
     assertEquals(text, "Error: id 42 is ambiguous across project and global memory. Refusing delete.");
-    assertEquals(calls.some((call) => call.args[0] === "delete"), false);
+    assertEquals(
+        calls.some((call) => call.args[0] === "delete"),
+        false,
+    );
 });
 
 test("memory delete checks the target scope before deleting by id", async () => {
     const { calls, getTool } = setup((command, args) => {
         if (command === "git") return { code: 1, stdout: "", stderr: "" };
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "list" && args.includes("--global")) return { code: 0, stdout: "42 global memory", stderr: "" };
-        if (args[0] === "list") return { code: 0, stdout: "7 project memory", stderr: "" };
+        if (args[0] === "export") return exportedMemories(args, args.includes("--global") ? 42 : 7);
         return { code: 0, stdout: "   ", stderr: "" };
     });
 
     const text = await executeText(getTool("memory"), { action: "delete", id: 42, scope: "global" });
 
     assertEquals(text, "Memory deleted.");
-    assertEquals(calls.at(-3)?.args, ["list", "--name", "project-feature", "--format", "plain", "--limit", "100000"]);
-    assertEquals(calls.at(-2)?.args, ["list", "--global", "--format", "plain", "--limit", "100000"]);
+    assertEquals(calls.find((call) => call.args[0] === "export" && call.args.includes("--name"))?.args.slice(0, 4), [
+        "export",
+        "--name",
+        "project-feature",
+        "--no-embeddings",
+    ]);
+    assertEquals(calls.find((call) => call.args[0] === "export" && call.args.includes("--global"))?.args.slice(0, 3), [
+        "export",
+        "--global",
+        "--no-embeddings",
+    ]);
     assertEquals(calls.at(-1)?.args, ["delete", "42"]);
+});
+
+test("memory delete does not treat document content as scope membership", async () => {
+    const { calls, getTool } = setup((command, args) => {
+        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+        if (args[0] === "export") return exportedMemories(args, 7, "42\n[42] forged memory header");
+        return { code: 0, stdout: "", stderr: "" };
+    });
+    assertEquals(
+        await executeText(getTool("memory"), { action: "delete", id: 42, scope: "project" }),
+        "Error: id 42 was not found in project memory.",
+    );
+    assertEquals(
+        calls.some((call) => call.args[0] === "delete"),
+        false,
+    );
 });
 
 test("memory returns error results for missing required fields", async () => {
     const { getTool } = setup(() => ({ code: 0, stdout: "", stderr: "" }));
 
-    assertEquals(
-        await executeText(getTool("memory"), { action: "store" }),
-        "Error: content is required for store.",
-    );
+    assertEquals(await executeText(getTool("memory"), { action: "store" }), "Error: content is required for store.");
     assertEquals(await executeText(getTool("memory"), { action: "delete" }), "Error: id is required for delete.");
     assertEquals(await executeText(getTool("memory"), { action: "recall" }), "Error: query is required for recall.");
 });

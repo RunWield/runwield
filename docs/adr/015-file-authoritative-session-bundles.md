@@ -54,6 +54,41 @@ lock and compare the current transcript with the last committed or activation-ba
 Generation and rollover proofs still fence stale in-process work. The OS lock, not a database row or timeout, prevents
 simultaneous writers.
 
+### Remote Pi saves through the laptop owner
+
+The laptop remains the only Session writer when Pi runs remotely. The remote manager holds a validated in-memory
+transcript, not a transcript file. A trusted laptop caller registers an operation with its actual native writer proof;
+HTTP clients cannot supply or replace that proof. The existing authenticated remote control service admits ordered,
+immutable requests for that operation and checks the native lock again on every admission.
+
+Persistence and ownership components are product-owned, not injectable ports. The laptop connection constructs its store
+and operation registry. The store constructs remote owners with the same native-lock context that acquired their proofs.
+Remote root managers construct their save bridge from connection data. Callers cannot supply replacement stores,
+registries, or persistence bridges. Tests use real bundles and locks, with faults at network or process boundaries.
+
+Pi's synchronous persistence hooks wait for each exact-byte save acknowledgement. A dedicated Worker handles
+network progress and notifies the calling thread through shared memory. The laptop writes and synchronizes the bytes
+before acknowledging them. Save acknowledgement is separate from final generation publication. Identical retries return
+the saved receipt without appending again; conflicting identities and settled operations are refused.
+
+This preserves append-before-dependent-work ordering without adding asynchronous save barriers to every caller. The cost
+is a blocked remote calling thread while each save is in flight. A finite deadline bounds the application wait, not an
+operating-system I/O call or lock lifetime. The independent supervisor can stop owned processes while that thread waits.
+Timeout, transport loss, Worker failure, and invalid acknowledgement evidence leave a sticky operation fault, including
+when a recorder catches the exception. Late replies cannot clear that fault.
+
+Recovery discards the failed remote manager and reads laptop evidence under the native lock. It retains complete saved
+entries and can discard an incomplete, uncommitted final append tail; it does not discard malformed complete lines or
+replay external effects. Legacy migration records durable before/after digest intent before atomic transcript
+replacement, so a later locked inspector can reconcile either exact outcome. Rollover commits predecessor evidence and
+successor lineage while the laptop retains ownership. Lifecycle paths that bypass the persistence hooks are refused
+remotely instead of creating local files.
+
+Session attachments are also laptop-owned. Remote vision reads receive bytes, MIME type, and stable attachment
+references, not laptop or connection-specific paths. Project image paths still refer to the remote project. The
+personal-resource mount and mounted lock results never authorize managed Session writes; the local-writer guard remains
+in force. This is writer coordination, not confinement of the trusted host's broad personal-file access.
+
 ### Execution ownership belongs in the transcript
 
 The active branch carries a versioned execution workflow snapshot from the first execution turn, not only after a Pair
@@ -230,6 +265,16 @@ into a prerequisite for intact transcripts.
 Pi parent pointers identify a fork relationship but do not contain RunWield's stable Session ID, segment kind, complete
 ordered manifest, committed generation evidence, or writer state. Embedded RunWield lineage complements Pi rather than
 replacing it.
+
+### Persist remote Sessions through SFTP or an asynchronous save queue
+
+The product contract is
+[Core laptop-owned remote Session saves](../prd/runwield-core-prd.md#laptop-owned-remote-session-saves).
+
+The owner selected synchronous laptop-owned saves after the Session-save proof. Mounted locks cannot establish native
+cross-machine exclusion. Guarded stock SFTP and a custom Session SFTP server were set aside; the personal-resource mount
+is a separate concern. A queue flushed only at turn end would let synchronous Pi appends return before saving records
+that authorize dependent work. The explicit save bridge keeps that ordering at the existing persistence boundary.
 
 ### Use a renewable file lease
 

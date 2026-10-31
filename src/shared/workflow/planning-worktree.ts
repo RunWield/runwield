@@ -1,3 +1,5 @@
+import { isEpicArtifactPlanName } from "../epic-artifacts.ts";
+import type { PlanDocumentDiagnostic } from "../../plan-store.js";
 import { resolvePublicationUpstream } from "../publication-target.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
@@ -6,6 +8,8 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     canonicalizeStoredPlanName,
     inspectPlanTextStrict,
+    isHiddenPlanName,
+    PlanFrontMatterParseError,
     getStoredPlanPath,
     loadPlan,
     mergeFrontMatterText,
@@ -184,7 +188,7 @@ export async function prepareTargetBranchPlansByParent(cwd: string, targetBranch
     const target = (await isPrimaryTargetCheckout(projectRoot, targetBranch))
         ? undefined
         : await prepareExistingTargetSnapshot(projectRoot, targetBranch);
-    return await readTargetBranchPlansByParent(projectRoot, targetBranch, parentPlanName, target);
+    return (await readTargetBranchPlansByParent(projectRoot, targetBranch, parentPlanName, target)).plans;
 }
 
 async function readTargetPlanMarkdown(projectRoot: string, planName: string, baseRef: string) {
@@ -295,11 +299,17 @@ export async function inspectTargetBranchPlansByParent(cwd: string, targetBranch
     return await readTargetChildren(projectRoot, target.baseRef, parentPlanName);
 }
 
+function isActivePlanPath(path: string): boolean {
+    if (!path.startsWith("docs/plans/") || !path.endsWith(".md")) return false;
+    const name = path.slice("docs/plans/".length, -3);
+    return !isHiddenPlanName(name) && !isEpicArtifactPlanName(name);
+}
+
 async function readTargetChildren(projectRoot: string, ref: string, parentPlanName: string) {
     const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", ref, "docs/plans"]);
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
     const children: Array<{ name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }> = [];
-    const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
+    const relativePaths = listed.split(/\r?\n/).filter(isActivePlanPath);
     const sources = await readTargetPlanMarkdowns(projectRoot, relativePaths, ref);
     for (const [relativePath, markdown] of sources) {
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
@@ -311,7 +321,12 @@ async function readTargetChildren(projectRoot: string, ref: string, parentPlanNa
 }
 
 export async function findTargetBranchPlansByParent(cwd: string, targetBranch: string, parentPlanName: string) {
-    return await readTargetBranchPlansByParent(cwd, targetBranch, parentPlanName);
+    return (await readTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)).plans;
+}
+
+/** Display discovery isolates document failures without inferring their parent membership. */
+export async function readTargetBranchPlanCatalogByParent(cwd: string, targetBranch: string, parentPlanName: string) {
+    return await readTargetBranchPlansByParent(cwd, targetBranch, parentPlanName, undefined, true);
 }
 
 async function readTargetBranchPlansByParent(
@@ -319,6 +334,7 @@ async function readTargetBranchPlansByParent(
     targetBranch: string,
     parentPlanName: string,
     preparedTarget?: Awaited<ReturnType<typeof resolveExistingTargetSnapshot>>,
+    display = false,
 ) {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     const localTarget = await isPrimaryTargetCheckout(projectRoot, targetBranch);
@@ -330,6 +346,7 @@ async function readTargetBranchPlansByParent(
         string,
         { name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }
     >();
+    const diagnostics = new Map<string, PlanDocumentDiagnostic>();
     const sources = new Map<string, string>();
     if (localTarget) {
         const listed = await runGit(projectRoot, [
@@ -341,21 +358,33 @@ async function readTargetBranchPlansByParent(
             "--",
             "docs/plans",
         ]);
-        for (const relativePath of new Set(listed.split("\0").filter((path) => path.endsWith(".md")))) {
+        for (const relativePath of new Set(listed.split("\0").filter(isActivePlanPath))) {
             if (await pathExists(join(projectRoot, relativePath))) {
                 sources.set(relativePath, await fsReadFile(join(projectRoot, relativePath), "utf8"));
             }
         }
     } else if (target) {
         const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", target.baseRef, "docs/plans"]);
-        const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
+        const relativePaths = listed.split(/\r?\n/).filter(isActivePlanPath);
         for (const [path, markdown] of await readTargetPlanMarkdowns(projectRoot, relativePaths, target.baseRef)) {
             sources.set(path, markdown);
         }
     }
     for (const [relativePath, markdown] of sources) {
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
-        const parsed = parsePlanFrontMatter(markdown);
+        let parsed;
+        try {
+            parsed = parsePlanFrontMatter(markdown);
+        } catch (error) {
+            if (!display) throw error;
+            diagnostics.set(planName, {
+                name: planName,
+                path: target ? `${target.baseRef}:${relativePath}` : join(projectRoot, relativePath),
+                kind: "malformed",
+                message: error instanceof Error ? error.message : String(error),
+            });
+            continue;
+        }
         if (parsed.attrs.parentPlan !== parentName) continue;
         children.set(planName, {
             name: planName,
@@ -365,9 +394,28 @@ async function readTargetBranchPlansByParent(
     }
     for (const entry of await listControllerDocumentWorktrees(projectRoot)) {
         if (entry.documentUnavailable) continue;
-        const plan = await loadPlan(entry.path, entry.planName);
-        if (!plan || plan.attrs.parentPlan !== parentName) continue;
         const targetPlan = children.get(entry.planName);
+        let plan;
+        try {
+            plan = await loadPlan(entry.path, entry.planName);
+        } catch (error) {
+            if (!display || !(error instanceof PlanFrontMatterParseError)) throw error;
+            children.delete(entry.planName);
+            diagnostics.set(entry.planName, {
+                name: entry.planName,
+                path: error.path,
+                kind: "malformed",
+                message: error.cause instanceof Error ? error.cause.message : error.message,
+                ...(entry.planId ? { planId: entry.planId } : {}),
+            });
+            continue;
+        }
+        if (!plan) continue;
+        diagnostics.delete(entry.planName);
+        if (plan.attrs.parentPlan !== parentName) {
+            if (display) children.delete(entry.planName);
+            continue;
+        }
         // The branch owns membership and names; a saved planning checkout cannot restore a removed child.
         if (!targetPlan && entry.status === "planning") continue;
         if (targetPlan?.attrs.planId && entry.planId && targetPlan.attrs.planId !== entry.planId) {
@@ -378,7 +426,7 @@ async function readTargetBranchPlansByParent(
         }
         children.set(entry.planName, { name: entry.planName, path: plan.path, attrs: plan.attrs });
     }
-    return [...children.values()];
+    return { plans: [...children.values()], diagnostics: [...diagnostics.values()] };
 }
 
 export async function preparePlanningWorktreeForPlan(

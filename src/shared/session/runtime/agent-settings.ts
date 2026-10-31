@@ -59,11 +59,9 @@ interface RuntimeThinkingResult {
     thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
 }
 
-type RuntimeCompactionResult =
-    & Awaited<
-        ReturnType<import("@earendil-works/pi-coding-agent").AgentSession["compact"]>
-    >
-    & { error?: undefined };
+type RuntimeCompactionResult = Awaited<
+    ReturnType<import("@earendil-works/pi-coding-agent").AgentSession["compact"]>
+> & { error?: undefined };
 
 type RuntimeEventsDependency = Pick<
     RuntimeEvents,
@@ -150,19 +148,32 @@ export class RuntimeAgentSettings {
             });
             return { ok: true, name: normalizedName };
         }
-        return await this.managedOperations.runManagedStandaloneMutation(sessionId, "rename", (session) => {
-            session.getRootSessionManager()?.appendSessionInfo?.(normalizedName);
-            this.events.emitSessionEvent(session.id, { type: RuntimeEventTypes.SESSION_RENAMED, name: normalizedName });
-            return { ok: true, name: normalizedName };
-        }, { activateAgent: false });
+        return await this.managedOperations.runManagedStandaloneMutation(
+            sessionId,
+            "rename",
+            (session) => {
+                session.getRootSessionManager()?.appendSessionInfo?.(normalizedName);
+                this.events.emitSessionEvent(session.id, {
+                    type: RuntimeEventTypes.SESSION_RENAMED,
+                    name: normalizedName,
+                });
+                return { ok: true, name: normalizedName };
+            },
+            { activateAgent: false },
+        );
     }
 
     async setSessionModel(sessionId: string, model: string, provider: string = "", userOverride: boolean = true) {
-        return await this.managedOperations.runManagedStandaloneMutation(sessionId, "set_model", (session) => {
-            session.setActiveModelState(model, provider, userOverride);
-            this.events.emitSessionEvent(session.id, { type: RuntimeEventTypes.MODEL_CHANGED, model, provider });
-            return { ok: true, model, provider };
-        }, { activateAgent: false });
+        return await this.managedOperations.runManagedStandaloneMutation(
+            sessionId,
+            "set_model",
+            (session) => {
+                session.setActiveModelState(model, provider, userOverride);
+                this.events.emitSessionEvent(session.id, { type: RuntimeEventTypes.MODEL_CHANGED, model, provider });
+                return { ok: true, model, provider };
+            },
+            { activateAgent: false },
+        );
     }
 
     async reconfigureSessionModel(
@@ -238,10 +249,15 @@ export class RuntimeAgentSettings {
     }
 
     async setProjectStateContext(sessionId: string, context: string) {
-        return await this.managedOperations.runManagedStandaloneMutation(sessionId, "workflow_operation", (session) => {
-            session.setProjectStateContext(context);
-            return { ok: true };
-        }, { activateAgent: false });
+        return await this.managedOperations.runManagedStandaloneMutation(
+            sessionId,
+            "workflow_operation",
+            (session) => {
+                session.setProjectStateContext(context);
+                return { ok: true };
+            },
+            { activateAgent: false },
+        );
     }
 
     async updateTutorialContext(
@@ -251,19 +267,24 @@ export class RuntimeAgentSettings {
         const session = this.services.sessionHost.getSession(sessionId);
         const managed = session?.getManagedMetadata?.() || null;
         if (!session || !managed) return { ok: false, error: "not_managed" };
-        if (!this.services.sessionStore) return { ok: false, error: "session_store_unavailable" };
-        const committedPlanAssociations = this.services.sessionStore.listSessionPlanAssociations(
-            managed.runwieldSessionId,
-            managed.projectId,
-        );
+        if (!this.services.sessionStore && !this.services.remotePersistence)
+            return { ok: false, error: "session_store_unavailable" };
         try {
             return await this.managedOperations.runManagedStandaloneMutation(
                 sessionId,
                 "workflow_operation",
-                (activeSession) => ({
-                    ok: true,
-                    tutorialContext: activeSession.updateTutorialContext(update, committedPlanAssociations),
-                }),
+                (activeSession) => {
+                    const committedPlanAssociations = this.services.remotePersistence
+                        ? this.services.remotePersistence.records(activeSession).planAssociations
+                        : this.services.sessionStore!.listSessionPlanAssociations(
+                              managed.runwieldSessionId,
+                              managed.projectId,
+                          );
+                    return {
+                        ok: true,
+                        tutorialContext: activeSession.updateTutorialContext(update, committedPlanAssociations),
+                    };
+                },
                 { activateAgent: false },
             );
         } catch (error) {
@@ -291,8 +312,8 @@ export class RuntimeAgentSettings {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.runIsolatedAgent: session not found");
         if (this.managedOperations.hasPendingCreationProof(sessionId) || this.lifecycle.hasPendingProject(sessionId)) {
-            const pendingAgent = session.getPendingManagedTurnIntent?.()?.agentName || session.getRootAgentName?.() ||
-                AGENTS.ROUTER;
+            const pendingAgent =
+                session.getPendingManagedTurnIntent?.()?.agentName || session.getRootAgentName?.() || AGENTS.ROUTER;
             const activated = await this.activateSessionAgent(session, { agentName: pendingAgent });
             if (!activated?.ok) return activated;
             return await this.runIsolatedAgent(sessionId, options);
@@ -314,7 +335,8 @@ export class RuntimeAgentSettings {
                         thinkingLevelOverride: options.thinkingLevelOverride,
                         temperatureOverride: options.temperatureOverride,
                         subAgentDefinition: options.subAgentDefinition,
-                    })),
+                    }),
+                ),
             { activateAgent: false },
         );
     }
@@ -323,17 +345,27 @@ export class RuntimeAgentSettings {
         sessionId: string,
         workflow: import("../hosted-session.js").ActiveExecutionWorkflow,
     ) {
-        return await this.managedOperations.runManagedStandaloneMutation(sessionId, "workflow_operation", (session) => {
-            session.setActiveExecutionWorkflow(workflow);
-            return { ok: true };
-        }, { activateAgent: false });
+        return await this.managedOperations.runManagedStandaloneMutation(
+            sessionId,
+            "workflow_operation",
+            (session) => {
+                session.setActiveExecutionWorkflow(workflow);
+                return { ok: true };
+            },
+            { activateAgent: false },
+        );
     }
 
     async clearActiveExecutionWorkflow(sessionId: string) {
-        return await this.managedOperations.runManagedStandaloneMutation(sessionId, "workflow_operation", (session) => {
-            session.clearActiveExecutionWorkflow();
-            return { ok: true };
-        }, { activateAgent: false });
+        return await this.managedOperations.runManagedStandaloneMutation(
+            sessionId,
+            "workflow_operation",
+            (session) => {
+                session.clearActiveExecutionWorkflow();
+                return { ok: true };
+            },
+            { activateAgent: false },
+        );
     }
 
     async setSessionAutoCompaction(sessionId: string, enabled: boolean): Promise<RuntimeMutationResult> {
@@ -367,9 +399,7 @@ export class RuntimeAgentSettings {
         sessionId: string,
     ): RuntimeThinkingResult | Promise<RuntimeThinkingResult | ManagedOperationFailure> {
         /** @param {import('.././hosted-session.js').HostedSession} session */
-        const run = (
-            session: import(".././hosted-session.js").HostedSession,
-        ): RuntimeThinkingResult => {
+        const run = (session: import(".././hosted-session.js").HostedSession): RuntimeThinkingResult => {
             const rootAgentSession = getRuntimeRootAgentSession(session);
             const levels: import("../hosted-session.js").ThinkingLevel[] = [
                 "off",
@@ -381,8 +411,8 @@ export class RuntimeAgentSettings {
                 "max",
             ];
             const currentLevel = session.getThinkingLevel();
-            const next = rootAgentSession?.cycleThinkingLevel?.() ??
-                levels[(levels.indexOf(currentLevel) + 1) % levels.length];
+            const next =
+                rootAgentSession?.cycleThinkingLevel?.() ?? levels[(levels.indexOf(currentLevel) + 1) % levels.length];
             if (next === undefined) {
                 this.events.emitSessionEvent(sessionId, {
                     type: RuntimeEventTypes.SYSTEM_STATUS,
@@ -402,12 +432,9 @@ export class RuntimeAgentSettings {
         if (!session) return { ok: false, error: "not_found", thinkingLevel: "off" };
         const managed = session.getManagedMetadata?.();
         if (managed && !session.getRootSessionManager?.()) {
-            return this.managedOperations.runManagedStandaloneMutation(
-                sessionId,
-                "set_thinking_level",
-                run,
-                { activateAgent: true },
-            );
+            return this.managedOperations.runManagedStandaloneMutation(sessionId, "set_thinking_level", run, {
+                activateAgent: true,
+            });
         }
         return run(session);
     }
@@ -428,9 +455,8 @@ export class RuntimeAgentSettings {
                 const previousCommandId = session.activeCommandInvocationId;
                 if (commandInvocationId) session.activeCommandInvocationId = commandInvocationId;
                 try {
-                    const compacted = await this.events.runBusyOperation(
-                        session.id,
-                        () => compact.call(rootAgentSession, instructions),
+                    const compacted = await this.events.runBusyOperation(session.id, () =>
+                        compact.call(rootAgentSession, instructions),
                     );
                     if (checkpoint) recordPairCheckpointSnapshot(session, checkpoint);
                     recordExecutionWorkflowSnapshot(session);
@@ -509,12 +535,9 @@ export class RuntimeAgentSettings {
             session.mergePendingManagedTurnIntent?.({ thinkingLevel });
         }
         if (managed && !session.getRootSessionManager?.()) {
-            return (this.managedOperations.runManagedStandaloneMutation(
-                sessionId,
-                "set_thinking_level",
-                run,
-                { activateAgent: false },
-            ));
+            return this.managedOperations.runManagedStandaloneMutation(sessionId, "set_thinking_level", run, {
+                activateAgent: false,
+            });
         }
         return run(session);
     }
@@ -558,7 +581,7 @@ export class RuntimeAgentSettings {
         if (session.isTurnActive()) throw new SessionTurnInProgressError(session.id);
         const started = await this.refreshMcpTools(session);
         if (started) await session.setMcpIntegration(started);
-        const notifications = await session.getMcpIntegration()?.runCommand(args) ?? [];
+        const notifications = (await session.getMcpIntegration()?.runCommand(args)) ?? [];
         return { ok: true, notifications };
     }
 
@@ -574,15 +597,15 @@ export class RuntimeAgentSettings {
             this.lifecycle.clearPendingProject(hostedSession.id);
             this.managedOperations.setPendingCreationProof(hostedSession.id, pendingCreation);
         }
-        const mcpIntegration = options.mcpRootTools ? null : await this.refreshMcpTools(
-            hostedSession,
-            options.mcpServers,
-            options.reloadMcpTools === true,
-        );
+        const mcpIntegration = options.mcpRootTools
+            ? null
+            : await this.refreshMcpTools(hostedSession, options.mcpServers, options.reloadMcpTools === true);
         const activationOptions = mcpIntegration
             ? { ...options, mcpRootTools: mcpIntegration.getTools(), mcpIntegration }
             : options;
         try {
+            const capability = options.managedOperationCapability || hostedSession.getManagedOperationCapability();
+            capability?.signal?.throwIfAborted();
             if (!pendingCreation) {
                 const result = await switchActiveAgent(hostedSession, activationOptions);
                 if (mcpIntegration) await hostedSession.setMcpIntegration(mcpIntegration);
@@ -655,6 +678,11 @@ export class RuntimeAgentSettings {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, error: "not_found" };
         if (session.isTurnActive()) throw new SessionTurnInProgressError(session.id);
+        if (this.services.remotePersistence && this.lifecycle.hasPendingProject(sessionId)) {
+            const selected = this.markPromptReadyAgent(sessionId, options);
+            if (selected.ok) await this.events.emitCommandCatalogChanged(sessionId, session);
+            return selected;
+        }
         if (this.managedOperations.hasPendingCreationProof(sessionId) || this.lifecycle.hasPendingProject(sessionId)) {
             if (this.managedOperations.hasOperation(sessionId)) {
                 return { ok: false, error: "managed_operation_in_progress" };

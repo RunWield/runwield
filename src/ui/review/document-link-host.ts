@@ -1,6 +1,6 @@
 /** Lazy, TUI-owned loopback reader for Project-relative Markdown mentions. */
 import { realpathSync, statSync } from "node:fs";
-import { type HttpServer, serveHttp } from "../../shared/http-server.ts";
+import { reviewHost, type ReviewHostRegistration } from "../workspace/server/review-host.ts";
 import { extname } from "node:path";
 import { PLAN_UI_TOKEN_QUERY } from "../../constants.js";
 import { createDocumentReadWorkspaceApp } from "../workspace/server.js";
@@ -12,7 +12,7 @@ export class DocumentLinkHost {
     #root: string | null = null;
     #token = "";
     #handler: DocumentRequestHandler | null = null;
-    #server: HttpServer | null = null;
+    #registration: ReviewHostRegistration | null = null;
     #disposed = false;
     #disposePromise: Promise<void> | null = null;
 
@@ -33,6 +33,32 @@ export class DocumentLinkHost {
         this.#handler = this.#root
             ? createDocumentReadWorkspaceApp({ cwd: this.#root, token: this.#token }).handler()
             : null;
+        if (this.#registration) {
+            const previous = this.#registration;
+            this.#registration = this.#root ? this.#register() : null;
+            void previous.release();
+        }
+    }
+
+    #register(): ReviewHostRegistration {
+        const handler = this.#handler;
+        return reviewHost.register(
+            this.#token,
+            (request) =>
+                handler
+                    ? handler(request)
+                    : new Response("Document token required.", {
+                          status: 401,
+                          headers: { "cache-control": "no-store" },
+                      }),
+            {
+                onError: () =>
+                    new Response("Unable to read document.", {
+                        status: 500,
+                        headers: { "cache-control": "no-store" },
+                    }),
+            },
+        );
     }
 
     /** Validate without starting a listener for missing or unsafe mentions. */
@@ -46,27 +72,8 @@ export class DocumentLinkHost {
             if (extname(filePath).toLowerCase() !== ".md") return null;
             const file = resolveWorkspaceFile(this.#root, filePath);
             if (!file || extname(file.absolutePath).toLowerCase() !== ".md") return null;
-            if (!this.#server) {
-                this.#server = serveHttp({
-                    hostname: "127.0.0.1",
-                    port: 0,
-                    onListen() {},
-                    onError: () =>
-                        new Response("Unable to read document.", {
-                            status: 500,
-                            headers: { "cache-control": "no-store" },
-                        }),
-                }, (request) => {
-                    if (this.#disposed || !this.#handler) {
-                        return new Response("Document token required.", {
-                            status: 401,
-                            headers: { "cache-control": "no-store" },
-                        });
-                    }
-                    return this.#handler(request);
-                });
-            }
-            const url = new URL(`http://127.0.0.1:${this.#server.addr.port}/review/plan`);
+            this.#registration ??= this.#register();
+            const url = new URL("/review/plan", this.#registration.origin);
             url.searchParams.set(PLAN_UI_TOKEN_QUERY, this.#token);
             url.searchParams.set("path", file.path);
             url.hash = fragment;
@@ -83,7 +90,7 @@ export class DocumentLinkHost {
         this.#handler = null;
         this.#root = null;
         this.#token = "";
-        this.#disposePromise ??= this.#server ? this.#server.shutdown() : Promise.resolve();
+        this.#disposePromise ??= this.#registration ? this.#registration.release() : Promise.resolve();
         await this.#disposePromise;
     }
 }

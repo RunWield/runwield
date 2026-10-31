@@ -6,6 +6,7 @@ import {
     type AssistantMessageEvent,
     type AssistantMessageEventStream,
     type Context,
+    cleanupSessionResources,
     createAssistantMessageEventStream,
     createProvider,
     InMemoryCredentialStore,
@@ -356,6 +357,7 @@ function failure(model: Model<Api>, reason: string, stopReason: "error" | "abort
 export class LocalModelBridge {
     private readonly active = new Map<string, AbortController>();
     private readonly completed = new Set<string>();
+    private readonly providerSessions = new Set<string>();
     private closed = false;
     constructor(private readonly runtime: ModelRuntime) {}
 
@@ -395,6 +397,8 @@ export class LocalModelBridge {
         this.closed = true;
         for (const controller of this.active.values()) controller.abort();
         this.active.clear();
+        for (const sessionId of this.providerSessions) cleanupSessionResources(sessionId);
+        this.providerSessions.clear();
     }
 
     stream(request: StreamRequest): Response {
@@ -409,6 +413,7 @@ export class LocalModelBridge {
         if (isExternalCliProvider(request.provider)) return new Response(null, { status: 404 });
         const model = this.runtime.getModel(request.provider, request.model);
         if (!model || !this.runtime.hasConfiguredAuth(request.provider)) return new Response(null, { status: 404 });
+        if (request.options.sessionId) this.providerSessions.add(request.options.sessionId);
         this.completed.add(request.id); // A retry must not issue a second paid request.
         const abort = new AbortController();
         this.active.set(request.id, abort);

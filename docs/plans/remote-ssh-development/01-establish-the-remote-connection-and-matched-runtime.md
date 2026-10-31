@@ -41,10 +41,10 @@ remote Session; later children add personal capabilities and Session persistence
 
 The [parent Epic](../remote-ssh-development.md) supplies the agreed architecture. This child starts delivery of:
 
-- [Remote connection and setup](../../prd/remote-ssh-prd.md#remote-connection-and-setup): **Open the requested remote
+- [Remote connection and setup](../../prd/runwield-core-prd.md#remote-connection): **Open the requested remote
   location** and **Prepare RunWield automatically**. Folder resolution and dormant terminal startup land here; Agent
   file/tool operations remain for later children.
-- [Disconnect and recovery](../../prd/remote-ssh-prd.md#disconnect-and-recovery): **Do not continue unattended** and
+- [Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery): **Do not continue unattended** and
   **Preserve work and report uncertainty**, limited here to connection-owned processes and setup resources.
 - Core [installation](../../prd/runwield-core-prd.md#installation-and-updates),
   [project context](../../prd/runwield-core-prd.md#project-context-and-initialization), and

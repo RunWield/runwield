@@ -1,3 +1,4 @@
+import { seedLaptopHelpers, writeRemoteHelperArtifacts } from "../../testing/remote-helper-fixture.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { basename, delimiter } from "node:path";
 import { spawn } from "node:child_process";
@@ -33,12 +34,19 @@ interface CliResult {
     stderr: string;
 }
 
+interface OpenStdinCliResult extends CliResult {
+    lossNoticeObservedAt: number | null;
+    completedAt: number;
+}
+
+const lossNotice = "Remote connection lost. Closing this connection.";
+
 interface RemoteFixture {
     local: string;
     remote: string;
     sshLog: string;
     run: (args: string[], proof?: string) => Promise<CliResult>;
-    runWithOpenStdin: () => Promise<CliResult>;
+    runWithOpenStdin: () => Promise<OpenStdinCliResult>;
 }
 
 /** Real CLI with disposable homes: POSIX runs remote Python; Windows uses a native SSH protocol boundary. */
@@ -76,11 +84,24 @@ async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>
             await fsWriteFile(
                 source,
                 `
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 const args = process.argv.slice(2);
 const readyFile = process.env.SSH_LOG + ".ready";
+if (args[0] === "-G") {
+    console.log("hostname remote.example\\nuser tester\\nport 22");
+    process.exit(0);
+}
+if (args[0] === "-v") {
+    if (args[1] !== "-o" || args[2] !== "ControlPath=none" || args[3] !== "-oFingerprintHash=sha256") process.exit(42);
+    args.splice(0, 4);
+    process.stderr.write("debug1: Server host key: ssh-ed25519 SHA256:fixture\\n");
+}
+
 if (args[0] === "-tt") {
+    const helpers = readFileSync(process.env.SSH_LOG + ".helpers", "utf8").trim().split("\\n").map(line => JSON.parse(line));
+    if (helpers.length !== 2 || helpers[0].files[0].name !== "cymbal" || helpers[1].files[0].name !== "ketch") throw new Error("Private helpers were not prepared");
+    writeFileSync(process.env.SSH_LOG, JSON.stringify(args));
     if (!args.includes("ExitOnForwardFailure=yes") || !args.includes("remote-alias")) process.exit(42);
     process.stdout.write("REMOTE_SUPERVISOR_READY:/tmp/wld-remote-fixture/control.sock\\n");
     const deadline = Date.now() + 15000;
@@ -94,7 +115,43 @@ if (args[0] === "-tt") {
         if (line !== "terminal-input") throw new Error("Unexpected terminal input");
         // Let the launcher start its next read, without delivering EOF to it.
         await new Promise(resolve => setTimeout(resolve, 100));
-        process.stdout.write("REMOTE_EXIT_AFTER_INPUT\\n", () => process.exit(0));
+        const modeFile = process.env.SSH_LOG + ".mode";
+        const mode = existsSync(modeFile) ? readFileSync(modeFile, "utf8").trim() : "default";
+        if (mode === "health-loss-delayed-exit") {
+            const header = JSON.parse(readFileSync(process.env.SSH_LOG + ".header", "utf8"));
+            const response = await fetch("http://127.0.0.1:" + header.port + "/health", {
+                method: "POST", headers: { Authorization: "Bearer " + header.credential },
+            });
+            if (!response.ok || (await response.json()).shutdown) throw new Error("Initial health reply failed");
+            // Stop health traffic. Independently simulate SSH transport failure after
+            // the real service has had time to detect three missed health periods.
+            process.on("SIGTERM", () => {
+                process.stdout.write("REMOTE_TRANSPORT_TERMINATING\\n");
+                setTimeout(() => process.exit(143), 1500);
+            });
+            setTimeout(() => process.kill(process.pid, "SIGTERM"), 21000);
+            setInterval(() => {}, 1000);
+        } else if (mode === "hold-without-shutdown") {
+            process.stdout.write("REMOTE_NO_CLEANUP_RECEIPT\\n");
+            setInterval(() => {}, 1000);
+        } else if (mode === "shutdown-hold" || mode === "shutdown-exit-42") {
+            const header = JSON.parse(readFileSync(process.env.SSH_LOG + ".header", "utf8"));
+            const response = await fetch("http://127.0.0.1:" + header.port + "/shutdown", {
+                method: "POST", headers: { Authorization: "Bearer " + header.credential },
+            });
+            const receipt = await response.json();
+            if (!response.ok || receipt.shutdown !== true) throw new Error("Cleanup acknowledgement failed");
+            writeFileSync(process.env.SSH_LOG + ".shutdown", "acknowledged");
+            if (mode === "shutdown-exit-42") {
+                process.stdout.write("REMOTE_CLEANUP_CONFIRMED\\n", () => process.exit(42));
+            } else {
+                // Open review forwards can outlive the completed remote client session.
+                process.stdout.write("REMOTE_CLEANUP_CONFIRMED\\n");
+                setInterval(() => {}, 1000);
+            }
+        } else {
+            process.stdout.write("REMOTE_EXIT_AFTER_INPUT\\n", () => process.exit(0));
+        }
         break;
     }
 } else {
@@ -103,12 +160,16 @@ if (args[0] === "-tt") {
     for await (const line of lines) {
         const request = JSON.parse(line);
         if ("path" in request) {
-            console.log(JSON.stringify({ ok: true, cwd: "/remote/home", home: "/remote/home", os: "Linux", arch: "x86_64", gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
+            console.log(JSON.stringify({ ok: true, cwd: "/remote/home", home: "/remote/home", os: "Linux", arch: "x86_64", sshfs: true, fusermount3: true, fuseDevice: true, gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
+        } else if (request.kind === "helper") {
+            appendFileSync(process.env.SSH_LOG + ".helpers", JSON.stringify(request) + "\\n");
+            console.log(JSON.stringify({ ok: true, reused: true, path: "/remote/home/.cache/runwield/" + request.cacheParts.join("/") + "/" + request.files[0].name }));
         } else if ("sha256" in request) {
             console.log(JSON.stringify({ ok: true, reused: true, path: "/remote/home/.cache/runwield/runtime/" + request.buildId + "/" + request.target + "/" + request.sha256 + "/wld" }));
         } else {
             if (request.socket !== "/tmp/wld-remote-fixture/control.sock") throw new Error("Wrong private socket");
             const header = request.header;
+            writeFileSync(process.env.SSH_LOG + ".header", JSON.stringify(header));
             for (const route of ["handshake", "readiness"]) {
                 const response = await fetch("http://127.0.0.1:" + header.port + "/" + route, {
                     method: "POST", headers: { Authorization: "Bearer " + header.credential },
@@ -133,6 +194,16 @@ import { writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 const args = process.argv.slice(2);
 writeFileSync(process.env.SSH_LOG, args.join("\\n") + "\\n");
+if (args[0] === "-G") {
+    console.log("hostname remote.example\\nuser tester\\nport 22");
+    process.exit(0);
+}
+if (args[0] === "-v") {
+    if (args[1] !== "-o" || args[2] !== "ControlPath=none" || args[3] !== "-oFingerprintHash=sha256") process.exit(42);
+    args.splice(0, 4);
+    process.stderr.write("debug1: Server host key: ssh-ed25519 SHA256:fixture\\n");
+}
+
 if (args.length !== 4 || args[0] !== "-T" || args[1] !== "--") process.exit(42);
 let input = "";
 for await (const chunk of process.stdin) input += chunk.toString();
@@ -141,7 +212,7 @@ const request = JSON.parse(input);
 let exists = false;
 try { exists = statSync(join(process.env.REMOTE_HOME, request.path || "")).isDirectory(); } catch {}
 if (!exists) { console.log(JSON.stringify({ ok: false, error: "Remote target is not an existing directory" })); process.exit(1); }
-console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || ""), home: "/remote/home", os: "Linux", arch: "x86_64", gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
+console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || ""), home: "/remote/home", os: "Linux", arch: "x86_64", sshfs: true, fusermount3: true, fuseDevice: true, gitRoot: null, gitDir: null, gitCommonDir: null, primaryRoot: null, isWorktree: false }));
 `,
             );
             await writeRuntimeExecutableFixture(join(bin, "ssh"), source);
@@ -150,13 +221,17 @@ console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || "
             // runs unchanged through the actual shell and Python interpreter.
             await fsWriteFile(
                 join(root, "sitecustomize.py"),
-                'import platform\nplatform.system = lambda: "Linux"\nplatform.machine = lambda: "x86_64"\n',
+                'import platform, shutil, os, stat\nplatform.system = lambda: "Linux"\nplatform.machine = lambda: "x86_64"\noriginal_which = shutil.which\nshutil.which = lambda name: "/usr/bin/" + name if name in ("sshfs", "fusermount3") else original_which(name)\noriginal_stat = os.stat\nos.stat = lambda path, *args, **kwargs: os.stat_result((stat.S_IFCHR, 0, 0, 0, 0, 0, 0, 0, 0, 0)) if path == "/dev/fuse" else original_stat(path, *args, **kwargs)\n',
             );
             await fsWriteFile(
                 join(bin, "ssh"),
                 `#!/bin/sh
 printf '%s\\n' "$@" > "$SSH_LOG"
+if [ "$1" = -G ]; then printf 'hostname remote.example\\nuser tester\\nport 22\\n'; exit 0; fi
+[ "$1" = -v ] && [ "$2" = -o ] && [ "$3" = ControlPath=none ] || exit 42
+shift 4
 [ "$1" = -T ] && [ "$2" = -- ] && [ "$#" = 4 ] || exit 42
+echo 'debug1: Server host key: ssh-ed25519 SHA256:fixture' >&2
 HOME="$REMOTE_HOME" PYTHONPATH="$REMOTE_PYTHONPATH" export HOME PYTHONPATH
 tee "$SSH_LOG.json" | /bin/sh -c "$4"
 `,
@@ -174,7 +249,15 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
         const version = join(root, "version.js");
         await fsWriteFile(version, 'export const VERSION = "development";\n');
         const preload = join(root, "build-boundary.ts");
+        const helperArtifacts = connected ? await writeRemoteHelperArtifacts(join(root, "helper-artifacts")) : null;
+        if (helperArtifacts) await seedLaptopHelpers(join(root, "helper-artifacts"), local, helperArtifacts.pins);
         const replacements = {
+            ...(helperArtifacts
+                ? {
+                      [fromFileUrl(new URL("../../../packaging/remote/tested-dependencies.json", import.meta.url))]:
+                          helperArtifacts.manifestPath,
+                  }
+                : {}),
             [fromFileUrl(new URL("../../shared/build-identity.js", import.meta.url))]: identity,
             [fromFileUrl(new URL("../../shared/version.js", import.meta.url))]: version,
         };
@@ -185,7 +268,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 const replacements = ${JSON.stringify(replacements)};
 plugin({ name: "fixture-build-boundary", setup(build) {
-    build.onResolve({ filter: /(?:build-identity|version)\\.js$/ }, ({ path, importer }) => {
+    build.onResolve({ filter: /(?:build-identity|version)\\.js$|tested-dependencies\\.json$/ }, ({ path, importer }) => {
         const target = resolve(dirname(importer), path);
         const replacement = replacements[target];
         if (replacement) return { path: replacement };
@@ -234,6 +317,7 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                 });
                 let stdout = "";
                 let stderr = "";
+                let lossNoticeObservedAt: number | null = null;
                 let sent = false;
                 child.stdout.setEncoding("utf8");
                 child.stderr.setEncoding("utf8");
@@ -246,14 +330,25 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                 });
                 child.stderr.on("data", (chunk: string) => {
                     stderr += chunk;
+                    if (lossNoticeObservedAt === null && stderr.includes(lossNotice)) {
+                        lossNoticeObservedAt = performance.now();
+                    }
                 });
                 child.stdin.on("error", () => {});
                 let timer: ReturnType<typeof setTimeout> | undefined;
                 try {
                     const result = await Promise.race([
-                        new Promise<CliResult>((resolve, reject) => {
+                        new Promise<OpenStdinCliResult>((resolve, reject) => {
                             child.once("error", reject);
-                            child.once("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
+                            child.once("close", (code) =>
+                                resolve({
+                                    code: code ?? -1,
+                                    stdout,
+                                    stderr,
+                                    lossNoticeObservedAt,
+                                    completedAt: performance.now(),
+                                }),
+                            );
                         }),
                         new Promise<never>((_, reject) => {
                             timer = setTimeout(
@@ -265,7 +360,6 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                             );
                         }),
                     ]);
-                    assertEquals(result.code, 0, result.stderr + "\n" + result.stdout);
                     assertEquals(sent, true, "the terminal input pump must run before SSH exits");
                     assertEquals(child.stdin.writableEnded, false, "parent must not supply stdin EOF");
                     return result;
@@ -309,8 +403,9 @@ test("remote CLI help and invalid arity do not contact SSH", async () => {
         assertEquals(help.code, 0);
         assertStringIncludes(help.stdout, "Usage: wld remote <ssh-host>");
         const missing = await run([]);
-        assertEquals(missing.code, 1);
-        assertStringIncludes(missing.stderr, "Usage: wld remote <ssh-host>");
+        assertEquals(missing.code, 0);
+        assertStringIncludes(missing.stdout, "wld remote sessions");
+        assertStringIncludes(help.stdout, "wld remote sessions");
         const excess = await run(["alias", "other"]);
         assertEquals(excess.code, 1);
         assertEquals(await exists(sshLog), false);
@@ -320,21 +415,27 @@ test("remote CLI help and invalid arity do not contact SSH", async () => {
 test("source remote help works without a generated identity and connection explains the build step", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
-        for (const path of ["src/cmd/remote", "src/shared/remote", "scripts"]) {
+        for (const path of ["src/cmd/remote", "src/shared/remote", "scripts", "packaging/remote"]) {
             await fsMkdir(join(root, path), { recursive: true });
         }
         for (const path of [
             "src/cmd/remote/index.ts",
             "src/shared/foreground-process.ts",
+            "src/shared/http-server.ts",
             "src/shared/linux-process-group.ts",
             "src/shared/captured-process.ts",
+            "src/shared/native-file-lock.ts",
+            "src/shared/native-file-lock-windows.ts",
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
             "src/shared/jsonc.ts",
             "src/shared/remote/runtime.js",
             "src/shared/remote/target.ts",
+            "src/shared/remote/host-prerequisites.ts",
             "src/shared/remote/control.ts",
             "src/shared/remote/release-artifact.ts",
+            "src/shared/remote/helpers.ts",
+            "packaging/remote/tested-dependencies.json",
             "src/shared/remote/sftp-mount.ts",
             "src/shared/remote/model-proof-config.ts",
             "src/constants.js",
@@ -400,7 +501,15 @@ test("remote CLI resolves a host home without initializing a local project and r
         assertEquals(result.code, 1);
         assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
         assertStringIncludes(result.stderr, "bun run compile --target x86_64-unknown-linux-gnu");
-        assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 3), ["-T", "--", "remote-alias"]);
+        assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 7), [
+            "-v",
+            "-o",
+            "ControlPath=none",
+            "-oFingerprintHash=sha256",
+            "-T",
+            "--",
+            "remote-alias",
+        ]);
         assertEquals(await exists(join(local, ".wld")), false);
         assertEquals(await exists(join(local, ".git")), false);
         assertEquals(await exists(join(remote, ".cache")), false);
@@ -443,5 +552,89 @@ test("remote CLI exits after authenticated SSH closes while terminal stdin remai
         assertEquals(result.code, 0, result.stderr);
         assertStringIncludes(result.stdout, "REMOTE_EXIT_AFTER_INPUT");
         assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        const args: string[] = JSON.parse(await fsReadFile(sshLog, "utf8"));
+        assertEquals(args.filter((arg) => arg === "-L").length, 1);
+        const forward = args[args.indexOf("-L") + 1];
+        const match = /^127\.0\.0\.1:([1-9]\d*):(\/tmp\/wld-remote-[a-f0-9]{32})\/review\.sock$/.exec(forward);
+        assertEquals(match !== null, true, forward);
+        if (!match) throw new Error("Missing loopback review forward");
+        const port = Number(match[1]);
+        assertEquals(port <= 65535, true);
+        assertEquals(Buffer.byteLength(`${match[2]}/review.sock`) < 100, true);
+        assertStringIncludes(args.at(-1) ?? "", `--remote-supervisor `);
+        assertEquals((args.at(-1) ?? "").endsWith(` ${match[2]}`), true);
+        const header = JSON.parse(await fsReadFile(sshLog + ".header", "utf8"));
+        assertEquals(header.reviewPort, port);
     }, true);
+});
+
+test("remote CLI succeeds after confirmed cleanup when owned SSH review forwards stay open", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "shutdown-hold");
+        const result = await runWithOpenStdin();
+        assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        assertEquals(await fsReadFile(sshLog + ".shutdown", "utf8"), "acknowledged");
+        assertStringIncludes(result.stdout, "REMOTE_CLEANUP_CONFIRMED");
+        assertEquals(result.code, 0, result.stderr + "\n" + result.stdout);
+        assertEquals(result.stderr.includes(lossNotice), false, result.stderr);
+    }, true);
+});
+
+test("remote CLI reports health loss before slow SSH teardown completes", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "health-loss-delayed-exit");
+        const result = await runWithOpenStdin();
+        assertEquals(result.code, 1, result.stderr);
+        assertStringIncludes(result.stdout, "REMOTE_TRANSPORT_TERMINATING");
+        assertStringIncludes(result.stderr, "Remote connection ended: 143");
+        assertStringIncludes(result.stderr, lossNotice);
+        if (result.lossNoticeObservedAt === null) throw new Error("No health-loss notice was observed");
+        const pendingMs = result.completedAt - result.lossNoticeObservedAt;
+        assertEquals(
+            pendingMs >= 1000,
+            true,
+            `Health-loss notice must precede completion by at least 1s; got ${pendingMs}ms`,
+        );
+    }, true);
+});
+
+test("remote CLI still fails when SSH exits 42 after confirmed cleanup", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "shutdown-exit-42");
+        const result = await runWithOpenStdin();
+        assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        assertEquals(await fsReadFile(sshLog + ".shutdown", "utf8"), "acknowledged");
+        assertStringIncludes(result.stdout, "REMOTE_CLEANUP_CONFIRMED");
+        assertEquals(result.code, 1, result.stderr + "\n" + result.stdout);
+        assertStringIncludes(result.stderr, "Remote connection ended: 42");
+    }, true);
+});
+
+test("remote CLI fails when SSH forwards remain open without a remote cleanup receipt", async () => {
+    await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
+        await fsWriteFile(sshLog + ".mode", "hold-without-shutdown");
+        const result = await runWithOpenStdin();
+        assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
+        assertStringIncludes(result.stdout, "REMOTE_NO_CLEANUP_RECEIPT");
+        assertEquals(result.code, 1, result.stderr + "\n" + result.stdout);
+        assertStringIncludes(result.stderr, "Remote connection ended: 137");
+    }, true);
+});
+
+test("remote sessions reads empty laptop history before identity, proof, or SSH setup", async () => {
+    await withRemoteFixture(async ({ run, local, sshLog }) => {
+        const result = await run(["sessions"], "malformed-proof-must-not-be-read");
+        assertEquals(result.code, 0, result.stderr);
+        assertStringIncludes(result.stdout, "No saved remote Sessions.");
+        assertEquals(await exists(sshLog), false);
+        assertEquals(await exists(join(local, ".wld")), false);
+    });
+});
+
+test("a host alias named sessions remains reachable with a colon", async () => {
+    await withRemoteFixture(async ({ run, sshLog }) => {
+        const result = await run(["sessions:"]);
+        assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
+        assertStringIncludes(await fsReadFile(sshLog, "utf8"), "sessions");
+    });
 });

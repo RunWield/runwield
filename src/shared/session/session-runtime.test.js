@@ -598,16 +598,6 @@ test("SessionRuntime keeps dormant managed image persistence read-only but allow
                 runtimeSessionId: session.id,
                 runwieldSessionId: "rw-managed-image",
                 operationId: "op-managed-image",
-                proof: {
-                    runwieldSessionId: "rw-managed-image",
-                    projectId: "project-managed-image",
-                    ownerInstanceId: "owner-managed-image",
-                    ownerProcessKind: "test",
-                    operationId: "op-managed-image",
-                    fence: 1,
-                    phase: "hydrated",
-                    expectedGeneration: 1,
-                },
                 settled: false,
                 registerArtifact: () => ({
                     artifactId: "artifact-managed-image",
@@ -618,7 +608,6 @@ test("SessionRuntime keeps dormant managed image persistence read-only but allow
                     registeredBy: "test",
                     sourceSegmentId: null,
                 }),
-                updateProof: () => {},
                 assertLive: () => {},
                 settle: () => {},
             };
@@ -3515,16 +3504,6 @@ function createScriptedManagedTurn(sessionHost) {
         runtimeSessionId: hostedSession.id,
         runwieldSessionId: "direct-turn",
         operationId: "direct-turn-operation",
-        proof: {
-            runwieldSessionId: "direct-turn",
-            projectId: "direct-turn-project",
-            ownerInstanceId: "direct-turn-owner",
-            ownerProcessKind: "test",
-            operationId: "direct-turn-operation",
-            fence: 1,
-            phase: "turning",
-            expectedGeneration: 0,
-        },
         settled: false,
         registerArtifact: () => ({
             artifactId: "direct-turn-artifact",
@@ -3535,7 +3514,6 @@ function createScriptedManagedTurn(sessionHost) {
             registeredBy: "test",
             sourceSegmentId: null,
         }),
-        updateProof: () => {},
         assertLive: () => {},
         settle: () => {},
     };
@@ -4328,9 +4306,7 @@ test("SessionRuntime loadSession returns opaque metadata and preserves recorded 
         ],
     );
     assertEquals(
-        result.replayEvents
-            .filter((event) => event.type === RuntimeEventTypes.SYSTEM_STATUS)
-            .map((event) => event.message),
+        result.replayEvents.flatMap((event) => (event.type === RuntimeEventTypes.SYSTEM_STATUS ? [event.message] : [])),
         ["Model changed: test/later", "Thinking level changed: medium"],
     );
     const modernToolEnd = /** @type {any} */ (

@@ -81,6 +81,7 @@ export interface TerminalPairPort {
     getScreenText?(): string;
 }
 export interface StartInteractiveSessionOptions {
+    remoteSessionControl?: import("../../shared/remote/session-control-client.ts").RemoteSessionControl;
     sessionStartMode?: "new" | "continue";
     resumeSessionId?: string;
     initialAgentName?: string;
@@ -91,6 +92,7 @@ export interface StartInteractiveSessionOptions {
     terminal?: TerminalPairPort;
     skipModelWelcome?: boolean;
     startupIntent?: "onboard";
+    startupNotice?: string;
     configureUiAPI?: (uiAPI: UiAPI) => void;
     onLifecycleReady?: (handle: InteractiveLifecycleHandle) => void;
 }
@@ -158,17 +160,21 @@ export async function startInteractiveSession(
     initialUserRequest: string | null,
     options: StartInteractiveSessionOptions,
 ): Promise<UiAPI> {
-    if (!(await confirmProjectDirectory())) throw new DirectoryStartupCanceled("Project startup canceled");
+    if (!(await confirmProjectDirectory(getCwd(), false, options.startupNotice))) {
+        throw new DirectoryStartupCanceled("Project startup canceled");
+    }
     let suppressAutomaticProjectOffers = inspectProjectDirectory(getCwd()).classified;
     const chatBuiltinSlashNames = new Set<string>();
     for (const command of getSlashCommandDefinitions()) chatBuiltinSlashNames.add(command.name);
     const sessionStartMode = options.sessionStartMode || "new";
     const shouldDeferManagedActivation = sessionStartMode === "new";
-    if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(getCwd())))) {
+    if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(getCwd()), false, options.startupNotice))) {
         throw new DirectoryStartupCanceled("Project startup canceled");
     }
     const continuation =
-        sessionStartMode === "continue" ? await resolveSessionContinuation(getCwd(), options.resumeSessionId) : null;
+        !options.remoteSessionControl && sessionStartMode === "continue"
+            ? await resolveSessionContinuation(getCwd(), options.resumeSessionId)
+            : null;
     if (continuation) {
         for (const root of [continuation.cwd, resolvePrimaryCheckoutRoot(continuation.cwd)]) {
             const confirmed = continuation.managed
@@ -180,8 +186,12 @@ export async function startInteractiveSession(
             ).classified;
         }
     }
-    const sessionStore = shouldDeferManagedActivation ? null : openFileSessionStore();
-    const sessionRuntime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
+    const sessionStore = options.remoteSessionControl || shouldDeferManagedActivation ? null : openFileSessionStore();
+    const sessionRuntime = createSessionRuntime({
+        sessionStore,
+        remoteSessionControl: options.remoteSessionControl,
+        ownerProcessKind: "tui",
+    });
     const disposables: Array<() => void | Promise<void>> = [startMetricsExportScheduler()];
     let uiAPIForDispose: UiAPI | null = null;
     let lifecycleDisposed = false;
@@ -253,10 +263,11 @@ export async function startInteractiveSession(
             sessionStartedEmptyProjectDirectory ? EMPTY_PROJECT_DIRECTORY_PROMPT_NOTE : "",
         );
         const initialAgentInternalName = options.initialAgentName || AGENTS.ROUTER;
-        const tui = initTUI();
+        const tui = initTUI(options.browser);
         setTerminalTitleForName(runtimeSnapshot().name);
         const suppressStartupHeader = options.sessionStartMode === "continue";
         const view = await createChatView({
+            browser: options.browser,
             documentLinks,
             tui,
             sessionRuntime,
@@ -355,7 +366,7 @@ export async function startInteractiveSession(
         view.requestRender();
         if (!options.skipModelWelcome) {
             await listAvailableAgents(runtimeSnapshot().cwd);
-            await ensureMnemotecaBinary();
+            if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
             await ensureCymbalBinary();
             await ensureKetchBinary();
         }
@@ -408,7 +419,11 @@ export async function startInteractiveSession(
                 browser: options.browser,
                 notifyRunWieldEvent: notifyRunWieldEventQuietly,
                 onSessionReplaced: ({ newSessionId }) => replaceRuntimeSession(newSessionId, { oldRetired: true }),
-                onSessionComplete: (completedSessionId, workRecordFailed, workRecordPlanName) =>
+                onSessionComplete: (
+                    completedSessionId: string,
+                    workRecordFailed?: boolean,
+                    workRecordPlanName?: string,
+                ) =>
                     inputControllerForPause?.offerSessionCompletion(
                         completedSessionId,
                         workRecordFailed,
@@ -438,6 +453,7 @@ export async function startInteractiveSession(
         const explicitStartupAvailability = explicitOnboardingStartup
             ? getSelectedDefaultModelAvailability(runtimeSnapshot().cwd)
             : null;
+        if (options.startupNotice) uiAPI.appendSystemMessage(options.startupNotice);
         const modelWelcomeResult = options.skipModelWelcome
             ? { shown: false, suppressBootBanner: false, noModel: false, setupCompleted: false }
             : explicitOnboardingStartup
