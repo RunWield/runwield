@@ -9,7 +9,15 @@ Show any returned `compatibility` notice to the user before continuing. On `unsu
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
 Core owns host and version compatibility.
 
-1. Call MCP `status` with the known `workflowId`, or `{}` for the most recent open workflow. Status is compact by default.
+1. First call MCP `status` with `{ workflowId, inspectOnly: true }` when the workflow ID is known, or
+   `{ inspectOnly: true }` to inspect the most recent open workflow in this repository without advancing it.
+   Show `workflow.plan.planName` (or `workflow.requestSummary` before a Plan exists), the current step from
+   `workflow.nextAction`, and the originating host from `workflow.originHost` before continuing. If no workflow exists,
+   report that result and stop; do not activate a new request. If the user requested only inspection, stop after this
+   summary. The explicit resume authorizes continuing a workflow started in Codex without another host-switch
+   confirmation. Preserve its Plan, action, revision, and execution directory; do not import the other host's transcript.
+   Only after showing this summary, call ordinary `status` with that `workflowId` to continue. Do not fetch role
+   instructions, start checks, or dispatch a worker before the summary. Status is compact by default.
 2. For `plan_ready`, immediately call `start_execution`. For `plan_saved`, this user command also starts execution:
    call `start_execution`. For either action, use a new operation ID, the current workflow ID and revision,
    and `payload: {}`. For `consent`, ask the disclosure question in plain text and resubmit `start_execution` with

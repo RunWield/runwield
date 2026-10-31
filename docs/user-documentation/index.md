@@ -33,6 +33,8 @@ fix the failing parser test
 - [Workspace](workspace.md) — use RunWield in a browser or on your phone.
 - [Connect for Claude Code](connect-claude-code.md) — keep the conversation and model calls in Claude Code, with Core
   workflow gates. Core needs no model credentials for Connect; this FEATURE Preview has its own tested scope.
+- [Connect for Codex](connect-codex.md) — use `$runwield:run` in the desktop app or CLI. The adapter is available for
+  FEATURE Preview qualification; complete live workflows on these surfaces remain unqualified.
 
 ## Use RunWield
 

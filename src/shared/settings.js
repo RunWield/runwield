@@ -17,6 +17,11 @@ import {
 export const PLAN_SERVER_URL_SETTING_KEY = "planServerUrl";
 export const ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY = "onboardingTutorialOfferHandled";
 
+/**
+ * @typedef {Object} CustomSettingReadOptions
+ * @property {boolean} [strict] Report unreadable or malformed settings instead of treating them as absent.
+ */
+
 /** @type {Map<string, string>} */
 const projectSettingsRootMemo = new Map();
 
@@ -43,6 +48,7 @@ export function isMascotEnabled(projectRoot) {
 
 const RUNWIELD_CUSTOM_SETTING_KEYS = [
     "agents",
+    "connect",
     "activeModelPreset",
     "modelPresets",
     "visionFallback",
@@ -180,13 +186,15 @@ function ensureSettingsFileForLock(path) {
 
 /**
  * @param {string} path
+ * @param {boolean} [strict]
  * @returns {string | undefined}
  */
-function readSettingsContent(path) {
+function readSettingsContent(path, strict = false) {
     try {
         const raw = readFileSync(path, "utf8");
         return stripJsoncComments(raw);
-    } catch (_e) {
+    } catch (error) {
+        if (strict && !(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         return undefined;
     }
 }
@@ -301,9 +309,10 @@ class RunWieldSettingsStorage {
      * Read settings file content, stripping JSONC comments/trailing commas
      * so callers (Pi's SettingsManager, custom setters) receive valid JSON.
      * @param {"global" | "project"} scope
+     * @param {boolean} [strict]
      * @returns {string | undefined}
      */
-    #readSettings(scope) {
+    #readSettings(scope, strict = false) {
         const path = this.#resolvePath(scope);
         if (scope === "global" && !remotePersonalResourcesActive()) {
             migratePiSettingsOnce({ runwieldPath: path });
@@ -311,7 +320,7 @@ class RunWieldSettingsStorage {
         if (scope === "global" && remotePersonalResourcesActive()) {
             assertPersonalResourcePathSync(path, "global settings");
         }
-        const content = readSettingsContent(path);
+        const content = readSettingsContent(path, strict);
         if (scope === "global" && remotePersonalResourcesActive()) {
             // The reader treats a failed file read as absent; detect detach
             // during that read before returning an empty or cached snapshot.
@@ -337,11 +346,12 @@ class RunWieldSettingsStorage {
      * synchronous: SettingsManager calls this without awaiting.
      * @param {"global" | "project"} scope
      * @param {(content: string | undefined) => string | undefined} callback
+     * @param {CustomSettingReadOptions} [options]
      */
-    withLock(scope, callback) {
+    withLock(scope, callback, options = {}) {
         const path = this.#resolvePath(scope);
 
-        const content = this.#readSettings(scope);
+        const content = this.#readSettings(scope, options.strict);
         let newContent = callback(content);
         if (newContent !== undefined) {
             newContent = preserveRunWieldCustomSettingsForWrite(content, newContent);
@@ -568,24 +578,32 @@ export function preserveRunWieldCustomSettingsForWrite(previousContent, nextCont
  * @param {string} key
  * @param {"global" | "project"} scope
  * @param {string} [projectRoot]
+ * @param {CustomSettingReadOptions} [options]
  * @returns {any}
  */
-export function getCustomSetting(key, scope = "project", projectRoot = getCwd()) {
+export function getCustomSetting(key, scope = "project", projectRoot = getCwd(), options = {}) {
     const storage = getSettingsStorage(projectRoot);
     let result = undefined;
 
-    storage.withLock(scope, (content) => {
-        if (content) {
-            try {
-                const parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
-                result = parsed[key];
-            } catch (_e) {
-                /* ignore */
+    storage.withLock(
+        scope,
+        (content) => {
+            if (content !== undefined) {
+                try {
+                    const parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
+                    if (options.strict && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) {
+                        throw new SyntaxError("Settings must be a JSONC object.");
+                    }
+                    result = parsed[key];
+                } catch (error) {
+                    if (options.strict) throw error;
+                }
             }
-        }
 
-        return undefined; // Return undefined to signify no file changes
-    });
+            return undefined; // Return undefined to signify no file changes
+        },
+        options,
+    );
 
     return result;
 }

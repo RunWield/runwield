@@ -1,0 +1,105 @@
+{
+    "schemaVersion": 1,
+    "outcome": "pass",
+    "scope": "source-skill",
+    "surface": "desktop-runtime",
+    "hostVersion": "0.164.0-alpha.11.1",
+    "permissions": "full-access-in-disposable-world",
+    "testDate": "2026-10-29T21:03:49.981Z",
+    "source": {
+        "commit": "a2ff2ef734760506e914938875279e3f959dacc3",
+        "dirty": false,
+        "digest": "6cb23082c7ed342e3216d5986d9e19f080aa58877c67ba72636cf319b388f697"
+    },
+    "adapterVersion": "0.1.0",
+    "adapterContract": 1,
+    "blockedPrerequisite": null,
+    "checks": [
+        {
+            "id": "ordinary-request",
+            "outcome": "pass",
+            "detail": "A real Codex turn completed without explicitly invoking RunWield."
+        },
+        {
+            "id": "skill-planning",
+            "outcome": "pass",
+            "detail": "The packaged skill reached a Core-hosted Plan review through real Codex MCP calls."
+        },
+        {
+            "id": "skill-restoration",
+            "outcome": "pass",
+            "detail": "A fresh Codex process restored the pending browser review."
+        },
+        {
+            "id": "plan-review-chat",
+            "outcome": "pass",
+            "detail": "Codex answered the queued browser review question through Core."
+        },
+        {
+            "id": "implementation",
+            "outcome": "pass",
+            "detail": "Codex submitted completed work through Core's task completion operation."
+        },
+        {
+            "id": "ci-process-loss",
+            "outcome": "pass",
+            "detail": "Host shutdown cancelled the observed CI process before restoration."
+        },
+        {
+            "id": "validation-recovery",
+            "outcome": "pass",
+            "detail": "Core recovered interrupted validation and reached its Code Review gate."
+        },
+        {
+            "id": "publication",
+            "outcome": "pass",
+            "detail": "Core returned its delivered action after browser Code Review approval."
+        },
+        {
+            "id": "native-mcp-identity",
+            "outcome": "pass",
+            "detail": "The real Codex MCP handshake matches the executable version."
+        },
+        {
+            "id": "independent-host-review",
+            "outcome": "pass",
+            "detail": "Native spawn identities prove fresh workers directly fetched instructions and complete candidate-bound diff bytes."
+        },
+        {
+            "id": "execution-isolation",
+            "outcome": "pass",
+            "detail": "Implementation must stay in Core's checkout; invoking source bytes, branch, HEAD, and protected Git status must remain unchanged."
+        },
+        {
+            "id": "bounded-validation-runs",
+            "outcome": "pass",
+            "detail": "The fixture expects one cancelled check, one restored check, and one check after the forced repair."
+        },
+        {
+            "id": "invoking-checkout-preserved",
+            "outcome": "pass",
+            "detail": "Delivery preserves invoking source and Git state, allowing only the current Plan, .wld/internal/ lifecycle files, and the exact Core .gitignore setup block."
+        },
+        {
+            "id": "publication-work-record",
+            "outcome": "pass",
+            "detail": "The closed delivered workflow must have a publication receipt and the published verified Work Record."
+        },
+        {
+            "id": "published-repair",
+            "outcome": "pass",
+            "detail": "The published commit must contain the exact marker required by the independent fixture review."
+        },
+        {
+            "id": "privacy",
+            "outcome": "pass",
+            "detail": "Ordinary transcript sentinels are checked against durable artifacts and Git history."
+        }
+    ],
+    "limitations": [
+        "Existing-auth ephemeral Codex app-server with explicit packaged skill path and package MCP configuration; installed discovery is qualified separately.",
+        "No desktop UI claim. No tested-version entry until full independent review and recovery evidence is qualified.",
+        "Full access is restricted by the acceptance instructions to disposable repositories; Core receives no host provider credentials."
+    ],
+    "proposedMatrixEntry": null
+}

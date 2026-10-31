@@ -60,7 +60,7 @@ The findings fall into five problems:
 
 ### Product ownership
 
-The Core PRD capability [Usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export)
+The Core PRD capability [Usage measurement and export](../../../prd/runwield-core-prd.md#usage-measurement-and-export)
 owns every requirement here. This repair changes these named requirements:
 
 - **Changed — "Collection epochs reflect observed boundaries, not inferred disabled durations."** Today Core observes

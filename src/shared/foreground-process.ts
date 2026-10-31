@@ -225,7 +225,7 @@ function terminateProcessTree(child: NativeProcess): void {
         return;
     }
     if (platform === "darwin") {
-        void stopAndKillMacProcessGroup(child);
+        stopAndKillMacProcessGroup(child);
     } else {
         killProcessGroup(child);
     }
@@ -243,35 +243,36 @@ function killProcessGroup(child: NativeProcess): void {
     }
 }
 
-/** Stop forks before killing the group; Darwin can miss a child still being created during killpg. */
-async function stopAndKillMacProcessGroup(child: NativeProcess): Promise<void> {
-    const deadline = Date.now() + 1_000;
+/**
+ * Stop forks before killing the group; Darwin can miss a child still being created during killpg.
+ * The bounded cleanup owns a separate group because an external host can force-kill the
+ * runtime before an async process probe returns. Its watchdog and probes die with it.
+ */
+function stopAndKillMacProcessGroup(child: NativeProcess): void {
     try {
-        while (Date.now() < deadline) {
-            kill(-child.pid, "SIGSTOP");
-            const output = await new Promise<string>((resolve, reject) => {
-                const probe = spawn("/bin/ps", ["-axo", "pgid=,state="], {
-                    cwd: "/",
-                    stdio: ["ignore", "pipe", "ignore"],
-                    timeout: 1_000,
-                    killSignal: "SIGKILL",
-                });
-                let text = "";
-                probe.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-                    text += chunk;
-                });
-                probe.once("error", reject);
-                probe.once("close", (code) => (code === 0 ? resolve(text) : reject(new Error("Process probe failed"))));
-            });
-            const members = output
-                .split("\n")
-                .map((line) => line.trim().split(/\s+/))
-                .filter(([group]) => Number(group) === child.pid);
-            if (members.length && members.every(([, state]) => /^[TZ]/.test(state || ""))) break;
-        }
+        const cleaner = spawn(
+            "/bin/sh",
+            [
+                "-c",
+                `group="$1"
+trap 'kill -KILL -- "-$group" 2>/dev/null; kill -KILL -- "-$$" 2>/dev/null' EXIT
+trap 'exit 0' HUP INT TERM
+(/bin/sleep 1; kill -KILL -- "-$group" 2>/dev/null; kill -KILL -- "-$$" 2>/dev/null) &
+while kill -STOP -- "-$group" 2>/dev/null; do
+    if /bin/ps -axo pgid=,state= | /usr/bin/awk -v group="$group" '
+        $1 == group && $2 !~ /^[TZ]/ { running = 1 }
+        END { exit running ? 1 : 0 }
+    '; then break; fi
+done`,
+                "runwield-process-cleanup",
+                String(child.pid),
+            ],
+            { cwd: "/", stdio: "ignore", detached: true },
+        );
+        cleaner.once("error", () => killProcessGroup(child));
+        cleaner.unref();
     } catch {
-        // A failed probe must not leave the owned command suspended.
-    } finally {
+        // Failure to launch cleanup must not leave the owned command running.
         killProcessGroup(child);
     }
 }

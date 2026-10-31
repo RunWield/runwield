@@ -48,9 +48,9 @@ The current sources conflict:
 
 Owning requirements:
 
-- [Core: Plan authoring and external adoption](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption): extend **Generated Plans are easy to read** with descriptive filenames and stable names when work is reordered. Preserve external Markdown adoption and read-only browsing.
-- [Core: Epic decomposition and hold](../prd/runwield-core-prd.md#epic-decomposition-and-hold): preserve the requirement that the picker uses explicit `order`, never filename prefixes. Extend scenarios to unnumbered and mixed legacy/new children.
-- [Workspace: Local Plan management](../prd/runwield-workspace-prd.md#local-plan-management): reference Core ordering for child navigation and ordered lists. Preserve stage columns, filters, links, and lifecycle actions.
+- [Core: Plan authoring and external adoption](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption): extend **Generated Plans are easy to read** with descriptive filenames and stable names when work is reordered. Preserve external Markdown adoption and read-only browsing.
+- [Core: Epic decomposition and hold](../../prd/runwield-core-prd.md#epic-decomposition-and-hold): preserve the requirement that the picker uses explicit `order`, never filename prefixes. Extend scenarios to unnumbered and mixed legacy/new children.
+- [Workspace: Local Plan management](../../prd/runwield-workspace-prd.md#local-plan-management): reference Core ordering for child navigation and ordered lists. Preserve stage columns, filters, links, and lifecycle actions.
 
 ## Objective
 

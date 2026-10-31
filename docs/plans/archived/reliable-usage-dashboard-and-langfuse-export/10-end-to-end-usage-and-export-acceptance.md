@@ -64,13 +64,13 @@ This child does three things:
 
 Owning PRD capabilities:
 
-- Core [Usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export) — gains one
+- Core [Usage measurement and export](../../../prd/runwield-core-prd.md#usage-measurement-and-export) — gains one
   requirement change: partial cost is not exported as a native total.
-- Workspace [Personal usage and outcomes](../../prd/runwield-workspace-prd.md#personal-usage-and-outcomes) — the
+- Workspace [Personal usage and outcomes](../../../prd/runwield-workspace-prd.md#personal-usage-and-outcomes) — the
   existing requirement "The Report remains readable after a clear" becomes true while a clear is pending.
-- Root [capability ownership map](../../prd/runwield.md) — links checked, no new ownership.
-- Core [Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
-  [Models and providers](../../prd/runwield-core-prd.md#models-and-providers) stay authoritative for delivery
+- Root [capability ownership map](../../../prd/runwield.md) — links checked, no new ownership.
+- Core [Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
+  [Models and providers](../../../prd/runwield-core-prd.md#models-and-providers) stay authoritative for delivery
   conclusions and backend visibility. This child changes neither.
 
 ### What discovery found

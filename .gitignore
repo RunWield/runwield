@@ -19,6 +19,11 @@ videos/
 .astro/
 src/ui/workspace/.astro/
 .agents/
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
 .claude/skills/
 .styleseed/
 STYLESEED.md

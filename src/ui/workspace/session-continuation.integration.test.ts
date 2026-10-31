@@ -1,4 +1,9 @@
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { createServer as createHttpServer } from "node:http";
+import { createServer as createSocketServer } from "node:net";
+import { setImmediate as nextEventLoop } from "node:timers/promises";
+import { install as installClock } from "@sinonjs/fake-timers";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
 // @ts-nocheck: Workspace service is JavaScript and returns projected event records.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
@@ -22,7 +27,8 @@ import {
 } from "./routes/owner-session-api.js";
 import { associatedPlanSession } from "./routes/owner-api.js";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS, getHomeDir } from "../../constants.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { lockPath, manifestPath } from "../../shared/session/file-session-storage.ts";
@@ -90,7 +96,9 @@ test("Workspace Session names prefer saved renames and fall back to the first us
                 { type: "session", id: "pi-1", name: "Real Session Name", timestamp: "2026-01-01T00:00:00.000Z" },
                 { type: "message", message: { role: "user", content: "first message text" } },
                 { type: "session_info", name: "Renamed Session" },
-            ].map((entry) => JSON.stringify(entry)).join("\n"),
+            ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n"),
         );
         await fsWriteFile(
             fallbackPath,
@@ -100,7 +108,9 @@ test("Workspace Session names prefer saved renames and fall back to the first us
                     type: "message",
                     message: { role: "user", content: [{ type: "text", text: "fallback first message" }] },
                 },
-            ].map((entry) => JSON.stringify(entry)).join("\n"),
+            ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n"),
         );
 
         assertEquals(await readSessionName(namedPath), "Renamed Session");
@@ -144,14 +154,20 @@ test("Workspace hides only unnamed empty Sessions and paginates the visible list
     const store = fixture.openStore();
     const service = new WorkspaceSessionContinuationService({ store });
     try {
-        for (const [index, name, content] of [[1, "", ""], [2, "Named empty", ""], [3, "", "Hello"]]) {
+        for (const [index, name, content] of [
+            [1, "", ""],
+            [2, "Named empty", ""],
+            [3, "", "Hello"],
+        ]) {
             const transcriptPath = `${fixture.sessionDir}/2026-01-0${index + 1}T00-00-00-000Z_list-${index}.jsonl`;
-            const entries = [{
-                type: "session",
-                id: `list-${index}`,
-                cwd: fixture.projectRoot,
-                timestamp: `2026-01-0${index + 1}T00:00:00.000Z`,
-            }];
+            const entries = [
+                {
+                    type: "session",
+                    id: `list-${index}`,
+                    cwd: fixture.projectRoot,
+                    timestamp: `2026-01-0${index + 1}T00:00:00.000Z`,
+                },
+            ];
             if (name) entries.push({ type: "session_info", name });
             if (content) entries.push({ type: "message", message: { role: "user", content } });
             await fsWriteFile(transcriptPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
@@ -171,7 +187,10 @@ test("Workspace hides only unnamed empty Sessions and paginates the visible list
         };
         try {
             const recent = await service.listSessions(fixture.project.projectId, { pageSize: 1, includeTotal: false });
-            assertEquals(recent.sessions.map((session) => session.displayName), ["Hello"]);
+            assertEquals(
+                recent.sessions.map((session) => session.displayName),
+                ["Hello"],
+            );
             assertEquals(recent.hasNext, true);
             assertEquals(recent.total, null);
             assertEquals(transcriptsRead.length, 2);
@@ -185,7 +204,10 @@ test("Workspace hides only unnamed empty Sessions and paginates the visible list
             const navigation = await response.json();
             assertEquals(navigation.total, null);
             assertEquals(navigation.hasNext, true);
-            assertEquals(navigation.sessions.map((session) => session.displayName), ["Hello"]);
+            assertEquals(
+                navigation.sessions.map((session) => session.displayName),
+                ["Hello"],
+            );
             assert(transcriptsRead.length <= 2);
         } finally {
             fs.readFile = readFile;
@@ -256,7 +278,7 @@ test("Workspace snapshots deliver Agent-stop browser notifications once through 
         });
 
         let streamed = null;
-        const unsubscribe = service.subscribeOperation("operation-full", (snapshot) => streamed = snapshot);
+        const unsubscribe = service.subscribeOperation("operation-full", (snapshot) => (streamed = snapshot));
         unsubscribe();
         assertEquals(streamed.events.length, 1000);
         assertEquals(streamed.events.at(-1), getSnapshot.events.at(-1));
@@ -420,8 +442,9 @@ test("Workspace continuation publishes once and a TUI observer resumes from the 
                 assertEquals(completed.runwieldSessionId, fixture.session.runwieldSessionId);
                 assertEquals(fixture.modelRequests.length, 1);
 
-                const observedGeneration =
-                    tuiObserver.inspectSessionActivation(fixture.session.runwieldSessionId).generation;
+                const observedGeneration = tuiObserver.inspectSessionActivation(
+                    fixture.session.runwieldSessionId,
+                ).generation;
                 const resumed = await service.timeline(fixture.session.runwieldSessionId, {
                     projectId: fixture.project.projectId,
                     cursorEventId: initialTimeline.nextCursor,
@@ -439,7 +462,10 @@ test("Workspace continuation publishes once and a TUI observer resumes from the 
 
                 assertEquals(observedGeneration?.generation, 1);
                 assertEquals(resumed.generation, 1);
-                assertEquals(resumed.events.some((event) => JSON.stringify(event).includes("Workspace turn.")), true);
+                assertEquals(
+                    resumed.events.some((event) => JSON.stringify(event).includes("Workspace turn.")),
+                    true,
+                );
             } finally {
                 service.close();
                 workspaceStore.close();
@@ -497,13 +523,15 @@ test("Workspace Session options and timeline expose supported Agy model facts", 
                             backendModel: "gemini-3.8-flash-high",
                         },
                     },
-                ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+                ]
+                    .map((entry) => JSON.stringify(entry))
+                    .join("\n") + "\n",
                 { flag: "a" },
             );
             workspaceStore.publishGenerationAndRelease(proof, {
                 generation: 1,
                 currentSegmentId: activation.generation?.currentSegmentId ?? null,
-                ...await readTranscriptEvidence(fixture.transcriptPath),
+                ...(await readTranscriptEvidence(fixture.transcriptPath)),
             });
 
             const timeline = await service.timeline(fixture.session.runwieldSessionId, {
@@ -531,101 +559,105 @@ test("Workspace Session options and timeline expose supported Agy model facts", 
 });
 
 test("Workspace Agent defaults follow presets and manual choices expire on an Agent change", async () => {
-    await withRuntimeCommandFixture("workspace-agent-defaults-", async ({ homeDir, projectRoot, setModelResponse }) => {
-        const modelsPath = `${homeDir}/.wld/models.json`;
-        const modelConfiguration = JSON.parse(await fsReadFile(modelsPath, "utf8"));
-        for (const model of modelConfiguration.providers["runtime-command-fixture"].models) model.reasoning = true;
-        await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
-        const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
-        const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
-        try {
-            await setCustomSetting(
-                "agents",
-                {
-                    ideator: { model: "runtime-command-fixture/fixture-model", thinkingLevel: "low" },
-                    guide: { model: "runtime-command-fixture/alternate-model", thinkingLevel: "medium" },
-                },
-                "project",
-                projectRoot,
-            );
-            await setCustomSetting(
-                "modelPresets",
-                {
-                    chosen: {
-                        agents: {
-                            ideator: { model: "runtime-command-fixture/alternate-model", thinkingLevel: "high" },
+    await withRuntimeCommandFixture(
+        "workspace-agent-defaults-",
+        async ({ homeDir, projectRoot, setModelResponse }) => {
+            const modelsPath = `${homeDir}/.wld/models.json`;
+            const modelConfiguration = JSON.parse(await fsReadFile(modelsPath, "utf8"));
+            for (const model of modelConfiguration.providers["runtime-command-fixture"].models) model.reasoning = true;
+            await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
+            const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
+            const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
+            try {
+                await setCustomSetting(
+                    "agents",
+                    {
+                        ideator: { model: "runtime-command-fixture/fixture-model", thinkingLevel: "low" },
+                        guide: { model: "runtime-command-fixture/alternate-model", thinkingLevel: "medium" },
+                    },
+                    "project",
+                    projectRoot,
+                );
+                await setCustomSetting(
+                    "modelPresets",
+                    {
+                        chosen: {
+                            agents: {
+                                ideator: { model: "runtime-command-fixture/alternate-model", thinkingLevel: "high" },
+                            },
                         },
                     },
-                },
-                "project",
-                projectRoot,
-            );
-            await setCustomSetting("activeModelPreset", "chosen", "project", projectRoot);
-            const options = await service.listSessionOptions(fixture.project.projectId);
-            assert(options.agents.some((agent) => agent.name === AGENTS.ROUTER));
-            assertEquals(options.agents.find((agent) => agent.name === AGENTS.IDEATOR).defaults, {
-                model: "alternate-model",
-                provider: "runtime-command-fixture",
-                thinkingLevel: "high",
-            });
-            assertEquals(options.agents.find((agent) => agent.name === AGENTS.GUIDE).defaults, {
-                model: "alternate-model",
-                provider: "runtime-command-fixture",
-                thinkingLevel: "medium",
-            });
-            assert(options.commands.some((command) => command.name === "agent"));
-            assert(options.commands.some((command) => command.name.startsWith("skill:")));
-            setModelResponse("Ready.");
-            const created = await service.createSession({
-                projectId: fixture.project.projectId,
-                requestId: "agent-defaults",
-                text: "Start here.",
-                agentName: AGENTS.IDEATOR,
-            });
-            const completed = await waitForOperation(service, created.operationId);
-            assertEquals(completed.status, "completed", JSON.stringify(completed));
-            const readTimeline = () =>
-                service.timeline(completed.runwieldSessionId, { projectId: fixture.project.projectId });
-            let timeline = await readTimeline();
-            assertEquals(timeline.snapshot.model, "alternate-model");
-            assertEquals(timeline.snapshot.thinkingLevel, "high");
-            await service.configureSession({
-                projectId: fixture.project.projectId,
-                runwieldSessionId: completed.runwieldSessionId,
-                expectedGeneration: timeline.generation,
-                provider: "runtime-command-fixture",
-                model: "fixture-model",
-                thinkingLevel: "low",
-            });
-            timeline = await readTimeline();
-            const continuation = await service.startContinuation({
-                projectId: fixture.project.projectId,
-                runwieldSessionId: completed.runwieldSessionId,
-                expectedGeneration: timeline.generation,
-                requestId: "manual-follow-up",
-                text: "Continue here.",
-            });
-            assertEquals((await waitForOperation(service, continuation.operationId)).status, "completed");
-            timeline = await readTimeline();
-            assertEquals(timeline.snapshot.model, "fixture-model");
-            assertEquals(timeline.snapshot.thinkingLevel, "low");
-            await service.configureSession({
-                projectId: fixture.project.projectId,
-                runwieldSessionId: completed.runwieldSessionId,
-                expectedGeneration: timeline.generation,
-                agentName: AGENTS.GUIDE,
-            });
-            timeline = await readTimeline();
-            assertEquals(timeline.snapshot.activeAgent, AGENTS.GUIDE);
-            assertEquals(timeline.snapshot.model, "alternate-model");
-            assertEquals(timeline.snapshot.thinkingLevel, "medium");
-        } finally {
-            await service.runtime.closeAllSessionsWhenIdle();
-            service.close();
-            service.store.close();
-            await fixture.cleanup();
-        }
-    }, { additionalModels: [{ id: "alternate-model", name: "Alternate" }] });
+                    "project",
+                    projectRoot,
+                );
+                await setCustomSetting("activeModelPreset", "chosen", "project", projectRoot);
+                const options = await service.listSessionOptions(fixture.project.projectId);
+                assert(options.agents.some((agent) => agent.name === AGENTS.ROUTER));
+                assertEquals(options.agents.find((agent) => agent.name === AGENTS.IDEATOR).defaults, {
+                    model: "alternate-model",
+                    provider: "runtime-command-fixture",
+                    thinkingLevel: "high",
+                });
+                assertEquals(options.agents.find((agent) => agent.name === AGENTS.GUIDE).defaults, {
+                    model: "alternate-model",
+                    provider: "runtime-command-fixture",
+                    thinkingLevel: "medium",
+                });
+                assert(options.commands.some((command) => command.name === "agent"));
+                assert(options.commands.some((command) => command.name.startsWith("skill:")));
+                setModelResponse("Ready.");
+                const created = await service.createSession({
+                    projectId: fixture.project.projectId,
+                    requestId: "agent-defaults",
+                    text: "Start here.",
+                    agentName: AGENTS.IDEATOR,
+                });
+                const completed = await waitForOperation(service, created.operationId);
+                assertEquals(completed.status, "completed", JSON.stringify(completed));
+                const readTimeline = () =>
+                    service.timeline(completed.runwieldSessionId, { projectId: fixture.project.projectId });
+                let timeline = await readTimeline();
+                assertEquals(timeline.snapshot.model, "alternate-model");
+                assertEquals(timeline.snapshot.thinkingLevel, "high");
+                await service.configureSession({
+                    projectId: fixture.project.projectId,
+                    runwieldSessionId: completed.runwieldSessionId,
+                    expectedGeneration: timeline.generation,
+                    provider: "runtime-command-fixture",
+                    model: "fixture-model",
+                    thinkingLevel: "low",
+                });
+                timeline = await readTimeline();
+                const continuation = await service.startContinuation({
+                    projectId: fixture.project.projectId,
+                    runwieldSessionId: completed.runwieldSessionId,
+                    expectedGeneration: timeline.generation,
+                    requestId: "manual-follow-up",
+                    text: "Continue here.",
+                });
+                assertEquals((await waitForOperation(service, continuation.operationId)).status, "completed");
+                timeline = await readTimeline();
+                assertEquals(timeline.snapshot.model, "fixture-model");
+                assertEquals(timeline.snapshot.thinkingLevel, "low");
+                await service.configureSession({
+                    projectId: fixture.project.projectId,
+                    runwieldSessionId: completed.runwieldSessionId,
+                    expectedGeneration: timeline.generation,
+                    agentName: AGENTS.GUIDE,
+                });
+                timeline = await readTimeline();
+                assertEquals(timeline.snapshot.activeAgent, AGENTS.GUIDE);
+                assertEquals(timeline.snapshot.model, "alternate-model");
+                assertEquals(timeline.snapshot.thinkingLevel, "medium");
+            } finally {
+                await service.runtime.closeAllSessionsWhenIdle();
+                service.close();
+                service.store.close();
+                await fixture.cleanup();
+            }
+        },
+        { additionalModels: [{ id: "alternate-model", name: "Alternate" }] },
+    );
 });
 
 test("Workspace configuration stages Agent changes during a local active operation", async () => {
@@ -777,7 +809,9 @@ test("Workspace answers a live question in a separate TUI process", async () => 
             if (!finished) {
                 try {
                     child.kill();
-                } catch { /* already stopped */ }
+                } catch {
+                    /* already stopped */
+                }
                 await outputPromise;
             }
             await service.runtime.closeAllSessionsWhenIdle();
@@ -822,9 +856,9 @@ test("long Workspace history stays sendable and an open TUI continues the new co
                 proof = fixture.store.changeSessionActivationPhase(proof, "checkpointing");
                 fixture.store.publishGenerationAndRelease(proof, {
                     generation: 1,
-                    currentSegmentId:
-                        fixture.store.getCurrentSessionSegment(fixture.session.runwieldSessionId).segmentId,
-                    ...await readTranscriptEvidence(fixture.transcriptPath),
+                    currentSegmentId: fixture.store.getCurrentSessionSegment(fixture.session.runwieldSessionId)
+                        .segmentId,
+                    ...(await readTranscriptEvidence(fixture.transcriptPath)),
                 });
                 tui = fixture.openRuntime("tui", "idle-tui");
                 const latest = await service.timeline(fixture.session.runwieldSessionId, {
@@ -890,13 +924,16 @@ test("Workspace steering reaches the running Agent once and appears in the conve
             });
             let modelStarted = false;
             try {
-                setModelResponseFactories([async (context) => {
-                    if (!modelStarted) {
-                        modelStarted = true;
-                        await held;
-                    }
-                    return fixture.recordedModelResponse("Starting your work.")(context);
-                }, fixture.recordedModelResponse("Responding to your direction.")]);
+                setModelResponseFactories([
+                    async (context) => {
+                        if (!modelStarted) {
+                            modelStarted = true;
+                            await held;
+                        }
+                        return fixture.recordedModelResponse("Starting your work.")(context);
+                    },
+                    fixture.recordedModelResponse("Responding to your direction."),
+                ]);
                 const started = await service.startContinuation({
                     projectId: fixture.project.projectId,
                     runwieldSessionId: fixture.session.runwieldSessionId,
@@ -916,7 +953,10 @@ test("Workspace steering reaches the running Agent once and appears in the conve
                     images: [],
                 };
                 const results = await Promise.all([service.steerOperation(request), service.steerOperation(request)]);
-                assertEquals(results.map((result) => result.queued), [true, true]);
+                assertEquals(
+                    results.map((result) => result.queued),
+                    [true, true],
+                );
                 const live = await service.liveSession(fixture.project.projectId, fixture.session.runwieldSessionId);
                 assertEquals(live.operation.queuedMessages.filter((message) => message.delivery === "steer").length, 1);
                 release();
@@ -1156,15 +1196,18 @@ test("Workspace receives the final stop from TUI and ACP turns after steering, w
                 const notifications = [];
                 service.subscribeNotifications((event) => notifications.push(event));
                 let release = () => {};
-                const held = new Promise((resolve) => release = resolve);
+                const held = new Promise((resolve) => (release = resolve));
                 let modelStarted = false;
                 let turn;
                 try {
-                    setModelResponseFactories([async (context) => {
-                        modelStarted = true;
-                        await held;
-                        return fixture.recordedModelResponse("First answer.")(context);
-                    }, fixture.recordedModelResponse("Steering accepted.")]);
+                    setModelResponseFactories([
+                        async (context) => {
+                            modelStarted = true;
+                            await held;
+                            return fixture.recordedModelResponse("First answer.")(context);
+                        },
+                        fixture.recordedModelResponse("Steering accepted."),
+                    ]);
                     const adopted = runtime.adoptManagedSession({ session: fixture.session, generation: 0 });
                     turn = runtime.promptUserTurn(adopted.sessionId, {
                         initialRequest: "Start from the original surface.",
@@ -1318,8 +1361,9 @@ test("Workspace image rejection returns 422 before accepting new or resumed turn
                     model: "gemini-3.8-flash",
                     provider: "agy-cli",
                 });
-                body.expectedGeneration =
-                    service.store.inspectSessionActivation(params.runwieldSessionId).generation.generation;
+                body.expectedGeneration = service.store.inspectSessionActivation(
+                    params.runwieldSessionId,
+                ).generation.generation;
                 const beforeRejection = await readTranscriptEvidence(saved.transcriptPath);
                 await setCustomSetting(
                     "agents",
@@ -1354,8 +1398,9 @@ test("Workspace image rejection returns 422 before accepting new or resumed turn
                     model: "fixture-model",
                     provider: "runtime-command-fixture",
                 });
-                body.expectedGeneration =
-                    service.store.inspectSessionActivation(params.runwieldSessionId).generation.generation;
+                body.expectedGeneration = service.store.inspectSessionActivation(
+                    params.runwieldSessionId,
+                ).generation.generation;
                 setModelResponseFactory(fixture.recordedModelResponse("Image received."));
                 const accepted = await ownerSessionContinuationStartApi({ state, params, req: request() });
                 assertEquals(accepted.status, 202, await accepted.clone().text());
@@ -1384,11 +1429,14 @@ test("sidebar expansion reads only five unseen matching Session names plus looka
         for (let i = 1; i <= 20; i++) {
             const timestamp = `2026-09-${String(i).padStart(2, "0")}T00:00:00.000Z`;
             const transcriptPath = `${fixture.sessionDir}/${timestamp.replace(/[:.]/g, "-")}_expand-${i}.jsonl`;
-            const entries = [{ type: "session", id: `expand-${i}`, cwd: fixture.projectRoot, timestamp }, {
-                type: "session_info",
-                id: `name-${i}`,
-                name: `Recent ${i}`,
-            }];
+            const entries = [
+                { type: "session", id: `expand-${i}`, cwd: fixture.projectRoot, timestamp },
+                {
+                    type: "session_info",
+                    id: `name-${i}`,
+                    name: `Recent ${i}`,
+                },
+            ];
             await fsWriteFile(transcriptPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
             const session = await store.ensureSessionCatalogRecord({
                 projectId: fixture.project.projectId,
@@ -1437,7 +1485,7 @@ test("sidebar expansion reads only five unseen matching Session names plus looka
                 store.publishGenerationAndRelease(proof, {
                     generation: 0,
                     currentSegmentId: segmentId,
-                    ...await readTranscriptEvidence(transcriptPath),
+                    ...(await readTranscriptEvidence(transcriptPath)),
                 });
             }
         }
@@ -1460,17 +1508,17 @@ test("sidebar expansion reads only five unseen matching Session names plus looka
         });
         assertEquals(response.status, 200);
         const result = await response.json();
-        assertEquals(result.sessions.map((session) => session.displayName), [
-            "Recent 14",
-            "Recent 13",
-            "Recent 12",
-            "Recent 11",
-            "Recent 10",
-        ]);
+        assertEquals(
+            result.sessions.map((session) => session.displayName),
+            ["Recent 14", "Recent 13", "Recent 12", "Recent 11", "Recent 10"],
+        );
         assertEquals(result.hasNext, true);
         assertEquals(result.total, null);
         assertEquals(reads.length, 6);
-        assertEquals(reads.some((path) => path.endsWith("expand-15.jsonl")), false);
+        assertEquals(
+            reads.some((path) => path.endsWith("expand-15.jsonl")),
+            false,
+        );
     } finally {
         fs.readFile = readFile;
         service.close();
@@ -1559,10 +1607,12 @@ test("Workspace archive API persists across restart and filters before paginatio
         assertEquals((await service.listSessions(fixture.project.projectId)).total, 1);
         assertEquals((await service.listSessions(fixture.project.projectId, { archiveState: "all" })).total, 4);
         assertEquals(
-            (await ownerProjectSessionsApi({
-                ...archiveRouteContext(service, fixture),
-                url: new URL("http://localhost/sessions?archiveState=invalid"),
-            })).status,
+            (
+                await ownerProjectSessionsApi({
+                    ...archiveRouteContext(service, fixture),
+                    url: new URL("http://localhost/sessions?archiveState=invalid"),
+                })
+            ).status,
             400,
         );
         assertEquals((await ownerSessionUnarchiveApi(archiveRouteContext(service, fixture))).status, 200);
@@ -1716,9 +1766,17 @@ test("Workspace archive stops a remote surface through the live connection", asy
                 release = resolve;
             });
             let started = false;
+            let canceled = false;
             try {
-                setModelResponseFactory(async (context) => {
+                setModelResponseFactory(async (context, options) => {
                     started = true;
+                    options.signal.addEventListener(
+                        "abort",
+                        () => {
+                            canceled = true;
+                        },
+                        { once: true },
+                    );
                     await held;
                     return fixture.recordedModelResponse("Remote work.")(context);
                 });
@@ -1732,7 +1790,10 @@ test("Workspace archive stops a remote surface through the live connection", asy
                 assertEquals((await ownerSessionArchiveApi(archiveRouteContext(service, fixture))).status, 409);
                 assertEquals(service.operations.size, 0);
                 const pending = ownerSessionArchiveApi(archiveRouteContext(service, fixture, { confirmed: true }));
-                await new Promise((resolve) => setTimeout(resolve, 50));
+                for (let index = 0; index < 400 && !canceled; index++) {
+                    await new Promise((resolve) => setTimeout(resolve, 10));
+                }
+                assert(canceled, "The remote provider must receive cancellation before its held response is released.");
                 assertEquals(service.store.getSessionById(fixture.session.runwieldSessionId).archivedAt, null);
                 release();
                 assertEquals((await pending).status, 200);
@@ -1752,6 +1813,146 @@ test("Workspace archive stops a remote surface through the live connection", asy
         },
     );
 });
+
+for (const boundary of ["snapshot", "cancel"]) {
+    for (const settlement of [
+        "idle",
+        "checkpointing",
+        "active",
+        "uncertain",
+        "replacement",
+        "replaced-after-checkpoint",
+    ]) {
+        test(`Workspace confirmed archive reconciles ${settlement} after remote ${boundary} disappears`, async () => {
+            await withProcessGlobalTestLock(async () => {
+                const fixture = await makeManagedSessionFixture();
+                const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
+                const entered = Promise.withResolvers();
+                const reply = Promise.withResolvers();
+                const operationId = crypto.randomUUID();
+                const key = createHash("sha256")
+                    .update(`${getHomeDir()}:${fixture.session.runwieldSessionId}:${operationId}`)
+                    .digest("hex")
+                    .slice(0, 40);
+                const path =
+                    process.platform === "win32" ? `\\\\.\\pipe\\runwield-${key}` : `/tmp/runwield-${key}.sock`;
+                // Gate the external owner's real transport while the real Session store changes authority.
+                const http = createHttpServer(async (request, response) => {
+                    response.setHeader("content-type", "application/json");
+                    if (boundary === "cancel" && request.method === "GET") {
+                        response.end(
+                            JSON.stringify({ operationId, events: [], queuedMessages: [], interaction: null }),
+                        );
+                        return;
+                    }
+                    entered.resolve();
+                    await reply.promise;
+                    response.statusCode = 409;
+                    response.end(JSON.stringify({ error: "The turn has finished." }));
+                });
+                const socket = createSocketServer((connection) => http.emit("connection", connection));
+                let proof = fixture.store.acquireSessionActivation({
+                    projectId: fixture.project.projectId,
+                    runwieldSessionId: fixture.session.runwieldSessionId,
+                    ownerInstanceId: "archive-race-owner",
+                    ownerProcessKind: "tui",
+                    operationId,
+                    expectedGeneration: 0,
+                    phase: "turning",
+                });
+                let held = true;
+                let clock;
+                try {
+                    await new Promise((resolve, reject) => {
+                        socket.once("error", reject);
+                        socket.listen(path, resolve);
+                    });
+                    const pending = ownerSessionArchiveApi(archiveRouteContext(service, fixture, { confirmed: true }));
+                    await entered.promise;
+                    assertEquals(service.store.getSessionById(fixture.session.runwieldSessionId).archivedAt, null);
+                    if (settlement === "idle") {
+                        fixture.store.releaseUnchangedActivation(proof);
+                        held = false;
+                    } else if (settlement === "checkpointing" || settlement === "replaced-after-checkpoint") {
+                        proof = fixture.store.changeSessionActivationPhase(proof, "checkpointing");
+                        // The clock boundary exposes the existing settlement wait without a wall-clock race.
+                        clock = installClock({ toFake: ["setTimeout", "clearTimeout"], shouldClearNativeTimers: true });
+                    } else if (settlement === "uncertain") {
+                        fixture.store.markSessionUncertain(proof, { reason: "Uncertain external completion" });
+                        held = false;
+                    } else if (settlement === "replacement") {
+                        fixture.store.releaseUnchangedActivation(proof);
+                        proof = fixture.store.acquireSessionActivation({
+                            projectId: fixture.project.projectId,
+                            runwieldSessionId: fixture.session.runwieldSessionId,
+                            ownerInstanceId: "replacement-owner",
+                            ownerProcessKind: "tui",
+                            operationId: "replacement-operation",
+                            expectedGeneration: 0,
+                            phase: "checkpointing",
+                        });
+                    }
+                    let responded = false;
+                    pending.then(() => {
+                        responded = true;
+                    });
+                    reply.resolve();
+                    if (clock) {
+                        const deadline = Date.now() + 3000;
+                        while (!responded && clock.countTimers() === 0 && Date.now() < deadline) await nextEventLoop();
+                        assert(
+                            !responded && clock.countTimers() > 0,
+                            "Archive must wait for proven checkpoint settlement.",
+                        );
+                        assertEquals(service.store.getSessionById(fixture.session.runwieldSessionId).archivedAt, null);
+                        fixture.store.releaseUnchangedActivation(proof);
+                        held = false;
+                        if (settlement === "replaced-after-checkpoint") {
+                            const replacement = fixture.store.acquireSessionActivation({
+                                projectId: fixture.project.projectId,
+                                runwieldSessionId: fixture.session.runwieldSessionId,
+                                ownerInstanceId: "replacement-owner",
+                                ownerProcessKind: "tui",
+                                expectedGeneration: 0,
+                            });
+                            fixture.store.releaseUnchangedActivation(replacement);
+                        }
+                        await clock.tickAsync(25);
+                    }
+                    const response = await pending;
+                    const success = settlement === "idle" || settlement === "checkpointing";
+                    assertEquals(response.status, success ? 200 : 409, await response.clone().text());
+                    assertEquals(
+                        Boolean(service.store.getSessionById(fixture.session.runwieldSessionId).archivedAt),
+                        success,
+                    );
+                    if (!success) {
+                        const activation = service.store.inspectSessionActivation(
+                            fixture.session.runwieldSessionId,
+                        ).activation;
+                        assertEquals(
+                            activation.state,
+                            settlement === "uncertain"
+                                ? "uncertain"
+                                : settlement === "replaced-after-checkpoint"
+                                  ? "idle"
+                                  : "active",
+                        );
+                        if (settlement === "replacement") assertEquals(activation.operationId, "replacement-operation");
+                    }
+                } finally {
+                    reply.resolve();
+                    clock?.uninstall();
+                    if (held) fixture.store.releaseUnchangedActivation(proof);
+                    await new Promise((resolve) => socket.close(resolve));
+                    service.close();
+                    service.store.close();
+                    await fixture.cleanup();
+                }
+            });
+        });
+    }
+}
 
 test("Workspace Plan-filtered Session API explicitly includes archived associations", async () => {
     const fixture = await makeManagedSessionFixture();
@@ -1779,7 +1980,7 @@ test("Workspace Plan-filtered Session API explicitly includes archived associati
         fixture.store.publishGenerationAndRelease(proof, {
             generation: 1,
             currentSegmentId: segmentId,
-            ...await readTranscriptEvidence(fixture.transcriptPath),
+            ...(await readTranscriptEvidence(fixture.transcriptPath)),
         });
         assertEquals((await ownerSessionArchiveApi(archiveRouteContext(service, fixture))).status, 200);
         for (const includeTotal of [true, false]) {

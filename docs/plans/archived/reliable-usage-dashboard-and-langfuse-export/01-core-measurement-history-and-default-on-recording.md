@@ -18,8 +18,7 @@ createdAt: "2026-09-21T19:28:54.550Z"
 origin: "internal"
 parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 1
-dependencies:
-    []
+dependencies: []
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 userVerifiedAt: null
 status: "validated"
@@ -71,7 +70,7 @@ the metrics.
 
 Owning PRD: this change extends the existing **Local workflow metrics** capability
 (`docs/prd/runwield-core-prd.md#usage-measurement-and-export`) with durability, boundary, and gap-honesty requirements.
-[Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) stays
+[Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) stays
 authoritative for delivery conclusions; measurement reports outcomes and never creates a third one.
 
 ## Objective

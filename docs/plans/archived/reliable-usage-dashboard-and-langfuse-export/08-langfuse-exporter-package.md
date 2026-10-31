@@ -242,7 +242,7 @@ Core measurement corrections (land before the exporter mapping depends on them):
 - `src/shared/session/backends/agy-cli/execution-session.ts` records `inputCacheBasis: "excludes_cache"`. A test built
   from `agy-1.2.12-tool-stream.jsonl` asserts the stored row's basis, `inputTokens: 19529`, and
   `cacheReadTokens:
-  16511`.
+16511`.
 - `model_usage` rows carry `startedAt` and `endedAt` (ISO time or `null`) in `ModelUsageObservation`, the `model_usage`
   field list in `metrics.js`, and the `model_usage` export fields in `metrics-export-record.ts`.
 - CLI turn rows on both CLI backends get `startedAt` from the recorder's turn start and `endedAt` from the time the
@@ -369,7 +369,7 @@ Recorded at the owner's request. Implementation Steps and approval state are unc
   metadata keys. Both deliberately weakened implementations failed these checks; production code was restored.
 - Fresh focused check:
   `deno run -A scripts/run-tests.js packages/langfuse-exporter
-  src/shared/workflow/metrics-export-record.test.ts`
+src/shared/workflow/metrics-export-record.test.ts`
   passed 195 tests. The repair and follow-up add 33 tests. No tests were deleted. The duplicate-pages test was rewritten
   to cover identical immutable readback versions; the unavailable-usage test was rewritten to distinguish an empty
   native representation from a vendor-invented bucket. Their protected behaviors remain covered, including conflicting

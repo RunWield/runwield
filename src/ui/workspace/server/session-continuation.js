@@ -1130,11 +1130,35 @@ export class WorkspaceSessionContinuationService {
             if (options.confirmed !== true) {
                 throw new Error("This Session is busy. Confirm to stop its work and archive it.");
             }
-            const live = await this.liveSession(options.projectId, options.runwieldSessionId);
-            if (!live.operation) throw new Error("No running turn to stop. Refresh and try again.");
-            const canceled = await this.cancelOperation({ operationId: live.operation.operationId });
-            if (!canceled?.ok) throw new Error("Could not stop this Session. Try again.");
+            try {
+                const live = await this.liveSession(options.projectId, options.runwieldSessionId);
+                if (!live.operation) throw new Error("No running turn to stop. Refresh and try again.");
+                const current = this.store.inspectSessionActivation(options.runwieldSessionId).activation;
+                if (
+                    current?.fence !== inspected.activation.fence ||
+                    current?.operationId !== inspected.activation.operationId
+                ) {
+                    throw new Error("This Session started different work. Refresh and confirm again.");
+                }
+                const canceled = await this.cancelOperation({ operationId: live.operation.operationId });
+                if (!canceled?.ok) throw new Error("Could not stop this Session. Try again.");
+            } catch (error) {
+                const current = this.store.inspectSessionActivation(options.runwieldSessionId).activation;
+                const finishing =
+                    current?.state === "active" &&
+                    current.phase === "checkpointing" &&
+                    current.operationId === inspected.activation.operationId;
+                // A disappearing live connection is not proof of settlement. Only the same writer's
+                // durable idle/checkpointing state permits continuing this confirmed archive.
+                if (current?.fence !== inspected.activation.fence || (current?.state !== "idle" && !finishing)) {
+                    throw error;
+                }
+            }
             await waitForSessionActivationSettlement(this.store, options.runwieldSessionId);
+            const settled = this.store.inspectSessionActivation(options.runwieldSessionId).activation;
+            if (settled?.state !== "idle" || settled.fence !== inspected.activation.fence) {
+                throw new Error("This Session changed before it could be archived. Refresh and try again.");
+            }
         }
         const archived = this.store.archiveSession(options.runwieldSessionId, options.projectId);
         return { runwieldSessionId: archived.runwieldSessionId, archivedAt: archived.archivedAt };

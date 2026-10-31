@@ -21,10 +21,65 @@ import {
 const BUNDLED_PLANNER_TEXT = "You are the Planner — the Planned Change planning specialist";
 const BUNDLED_ROUTER_TEXT = "Your ONLY job is to identify the Routing Intent and call `triage_report`.";
 
+test("Codex roles use current host tools and worker language without copied Claude instructions", async () => {
+    await withProject(async (root) => {
+        for (const role of [
+            "router",
+            "planner",
+            "engineer",
+            "frontend-engineer",
+            "reviewer",
+            "reviewer-feedback-engineer",
+            "recorder",
+        ] as const) {
+            const text = await resolveAttachedRoleInstructions(root, role, "codex");
+            assertStringIncludes(text, "Codex");
+            assertEquals(text.includes("Claude-hosted"), false);
+            assertEquals(text.includes("Claude subagent"), false);
+            assertEquals(text.includes("RunWield in Claude Code"), false);
+            assertEquals(text.includes("{{"), false);
+            if (role !== "reviewer") assertStringIncludes(text, "`exec_command`");
+            else {
+                assertStringIncludes(text, "RunWield MCP review_diff directly");
+                assertEquals(text.includes("## Skills"), false);
+            }
+        }
+        const result = await runOperation("activate", root, {
+            ...activateInput(),
+            evidence: { ...EVIDENCE, host: "codex", hostVersion: "0.164.0-alpha.11.1" },
+        });
+        assert(result.ok && result.instructions);
+        assertStringIncludes(result.instructions.text, "RunWield in Codex");
+        assertStringIncludes(result.instructions.text, "Codex makes every model call");
+    });
+});
+
 async function writeProjectPlanner(projectRoot: string, body: string): Promise<void> {
     await fsMkdir(join(projectRoot, ".wld", "agents"), { recursive: true });
     await fsWriteFile(join(projectRoot, ".wld", "agents", "planner.md"), `---\npromptOverride: true\n---\n\n${body}\n`);
 }
+
+test("Codex planning workers return structured outcomes and leave lifecycle submission with the coordinator", async () => {
+    await withProject(async (root) => {
+        for (const role of ["router", "planner"] as const) {
+            const text = await resolveAttachedRoleInstructions(root, role, "codex");
+            const worker = text.split("## Attached planning worker")[1];
+            assert(worker);
+            assertStringIncludes(worker, "Fetch your own current get_instructions and context");
+            assertStringIncludes(worker, "return context.projectSetup paths to the coordinator");
+            assertStringIncludes(worker, "structured triage_report outcome");
+            assertStringIncludes(worker, "return planName");
+            assertStringIncludes(worker, "Make no lifecycle calls");
+            assertStringIncludes(worker, "The coordinator submits your result");
+            assertEquals(
+                (await resolveAttachedRoleInstructions(root, role, "claude-code")).includes(
+                    "## Attached planning worker",
+                ),
+                false,
+            );
+        }
+    });
+});
 
 test("activate returns the Router instructions with the pending Triage action", async () => {
     await withProject(async (projectRoot) => {

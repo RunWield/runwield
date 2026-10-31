@@ -13,6 +13,7 @@ import {
     normalizeImplementationReport,
 } from "../workflow/implementation-report.ts";
 import type { CompatibilityAssessment } from "./compatibility.ts";
+import type { CodexRoleDispatch } from "./codex-role-settings.ts";
 import type { ActiveExecutionWorkflow } from "../session/hosted-session.js";
 import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.js";
 import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
@@ -160,6 +161,7 @@ export interface StatusEnvelope {
     evidence?: HostEvidence;
     projectRoot: string;
     workflowId?: string;
+    inspectOnly?: boolean;
 }
 
 export type AttachedWorkflowState =
@@ -221,8 +223,16 @@ export interface AttachedReviewRound {
 }
 
 /** The RunWield roles a host plays in Attached Mode. */
-export type AttachedHostRole =
-    "router" | "planner" | "engineer" | "frontend-engineer" | "reviewer" | "reviewer-feedback-engineer" | "recorder";
+export const ATTACHED_HOST_ROLES = [
+    "router",
+    "planner",
+    "engineer",
+    "frontend-engineer",
+    "reviewer",
+    "reviewer-feedback-engineer",
+    "recorder",
+] as const;
+export type AttachedHostRole = (typeof ATTACHED_HOST_ROLES)[number];
 
 export interface PendingHostAction {
     actionId: string;
@@ -233,7 +243,7 @@ export interface PendingHostAction {
     imagePaths?: string[];
 }
 
-export type AttachedNextAction =
+export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
     | ({ kind: "plan"; projectSetup: string[] } & PendingHostAction)
     | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
@@ -285,7 +295,8 @@ export type AttachedNextAction =
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
           workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
       }
-    | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string };
+    | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
+) & { dispatch?: CodexRoleDispatch };
 
 /** The Plan a workflow submitted. The workflow references the Plan; it does not own it. */
 export interface AttachedPlanReference {
@@ -298,6 +309,7 @@ export interface AttachedRoleInstructions {
     role: AttachedHostRole;
     contractVersion: string;
     text: string;
+    dispatch?: CodexRoleDispatch;
 }
 
 export type AttachedWorkflowClosure =
@@ -317,6 +329,10 @@ export interface ProjectMovedRecovery {
 
 export interface AttachedWorkflowView {
     workflowId: string;
+    /** Activation host; projected from the record, including for legacy operation replays. */
+    originHost?: string;
+    /** Bounded preview of the explicitly activated request, never host conversation history. */
+    requestSummary?: string;
     revision: number;
     state: AttachedWorkflowState;
     nextAction: AttachedNextAction;
@@ -583,11 +599,15 @@ export function parseReviewReplyInput(projectRoot: string, input: AttachedJsonVa
 
 export function parseStatusInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): StatusEnvelope => {
-        const object = readObject(input, "", ["workflowId", "evidence"]);
+        const object = readObject(input, "", ["workflowId", "evidence", "inspectOnly"]);
+        if (object.inspectOnly !== undefined && typeof object.inspectOnly !== "boolean") {
+            reject("invalid_input", "inspectOnly", "inspectOnly must be a boolean.");
+        }
         return {
             projectRoot,
             ...(object.workflowId !== undefined && { workflowId: readIdentifier(object, "workflowId", "workflowId") }),
             ...(object.evidence !== undefined && { evidence: readEvidence(object) }),
+            ...(typeof object.inspectOnly === "boolean" && { inspectOnly: object.inspectOnly }),
         };
     });
 }
@@ -757,12 +777,12 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
     {
         name: "status",
         description:
-            "Read workflow state and recovery. MCP returns compact status by default and supports bounded waits for revision changes. Omit workflowId to restore the most recent open workflow.",
+            "Read workflow state and recovery. Use inspectOnly to show the saved workflow before continuing it, without reconciliation, validation, publication, or review hosting. Omit workflowId to select the most recent open workflow.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: [],
-            properties: { workflowId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA },
+            properties: { workflowId: IDENTIFIER_SCHEMA, evidence: EVIDENCE_SCHEMA, inspectOnly: { type: "boolean" } },
         },
     },
     {
@@ -1101,7 +1121,7 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
 ATTACHED_OPERATIONS.push({
     name: "work_record_completed",
     description:
-        "Submit the Claude Recorder worker's sections. Core validates and saves them, then continues publication. An invalid submission gets one retry.",
+        "Submit the host Recorder worker's sections. Core validates and saves them, then continues publication. An invalid submission gets one retry.",
     inputSchema: workflowOperationSchema(["actionId", "title", "summary"], {
         actionId: IDENTIFIER_SCHEMA,
         title: { type: "string", minLength: 1 },

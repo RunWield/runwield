@@ -1,0 +1,22 @@
+{
+    "name": "runwield",
+    "version": "0.1.0",
+    "description": "RunWield Connect for Codex Preview: plan, review, implement, validate, and deliver one FEATURE request.",
+    "author": {
+        "name": "RunWield",
+        "url": "https://runwield.dev"
+    },
+    "homepage": "https://runwield.dev",
+    "repository": "https://github.com/runwield/runwield",
+    "license": "MIT",
+    "keywords": ["planning", "code-review", "workflows"],
+    "skills": "./skills/",
+    "mcpServers": "./.mcp.json",
+    "interface": {
+        "displayName": "RunWield Connect",
+        "shortDescription": "Planning and verification inside Codex",
+        "longDescription": "Explicitly run one request through RunWield planning, browser review, isolated implementation, validation, and delivery. Requires compatible local RunWield Core on PATH. Codex owns every model call.",
+        "developerName": "RunWield",
+        "category": "Developer Tools"
+    }
+}

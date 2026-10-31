@@ -84,7 +84,7 @@ are old snapshots, and the Epic merge replaces them:
 | `guided-validation-repair`                                                                                                                  | Mostly shipped as Engineer follow-up and the Code Review conversation. It depends on the deprecated Plan Workflow Lease. `TODO.md` already marks it done.                                        |
 | `offer-semantic-review-intervention`                                                                                                        | The round-limit user choice and the Code Review conversation cover most of it. Not a priority.                                                                                                   |
 | `deep-semantic-source-modules`                                                                                                              | A move of about 600 files written for the Deno layout. The Plans it depends on no longer exist.                                                                                                  |
-| `plan-packages-and-independent-validation` (Epic and 7 children), `plan-package-frontend-experience-planning`                               | The [Plan Store PRD](../prd/plan-store-prd.md) replaces the in-repo package layout. The build-state copy rule, Slicer journeys, the prototype skill, and the bounded review rounds have shipped. |
+| `plan-packages-and-independent-validation` (Epic and 7 children), `plan-package-frontend-experience-planning`                               | The [Plan Store PRD](../../prd/plan-store-prd.md) replaces the in-repo package layout. The build-state copy rule, Slicer journeys, the prototype skill, and the bounded review rounds have shipped. |
 
 **Kept.** These stay as they are, apart from the reference repairs listed below:
 
@@ -226,7 +226,7 @@ Left out on purpose:
   the board. No line in it links to or names a file under `forge-change-request-delivery/`.
 - `docs/plans/epic-branch-publication-workflow.md` names no deleted Plan. Where it named Plan Packages as a prerequisite
   or sibling, it now says those Plans were removed on 2026-10-26 and that the
-  [Plan Store PRD](../prd/plan-store-prd.md) owns the Plan storage direction. Its other content is unchanged.
+  [Plan Store PRD](../../prd/plan-store-prd.md) owns the Plan storage direction. Its other content is unchanged.
 - `docs/plans/isolate-planning-and-reuse-worktrees.md` has no link to `plan-packages-and-independent-validation.md`.
   The sentence names the removed Plan as plain text. Its other content is unchanged.
 - `docs/plans/finish-injection-seam-ownership-enforcement.md` has no `deep-semantic-source-modules` entry in

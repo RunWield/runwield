@@ -23,6 +23,7 @@ completion and basic validation.
 Project settings override global settings. For ordinary Pi-backed settings, nested objects are shallow-merged and arrays
 replace the global value. For RunWield custom object keys such as `agents` and `modelPresets`, RunWield merges the
 top-level object keys only, so a project `agents.router` object replaces the global `agents.router` object.
+`connect.codex.roles` instead resolves each role's model and thinking level independently, as described below.
 
 If `~/.wld/settings.json` does not exist, RunWield imports `~/.pi/agent/settings.json` once. After that, RunWield only
 reads and writes `~/.wld/settings.json`.
@@ -106,6 +107,34 @@ used by later invocations.
     "workflowMetrics": { "enabled": true },
 }
 ```
+
+## Codex Connect Role Preferences
+
+`connect.codex.roles` maps `router`, `planner`, `engineer`, `frontend-engineer`, `reviewer`,
+`reviewer-feedback-engineer`, and `recorder` to optional `model` and `thinkingLevel` strings. These configure Codex's
+native worker spawn controls (`model` and `reasoning_effort`), independently of Core's Agent overrides and presets.
+
+```jsonc
+{
+    "connect": {
+        "codex": {
+            "roles": {
+                "planner": { "thinkingLevel": "high" },
+                "reviewer": { "model": "inherit", "thinkingLevel": "inherit" },
+            },
+        },
+    },
+}
+```
+
+Each field uses the project value, then the personal value, then `inherit`. Explicit `inherit` stops lookup and omits
+that native override; deleting a project field reveals its personal value. Linked execution worktrees use the primary
+checkout's project settings. Both files are re-read at the next dispatch, including in a new process or resumed chat.
+
+Use Codex-native model IDs and effort strings supported by the selected model and client. A model-only override can
+use that model's default effort. Empty values, invalid types, and unrecognized roles or fields produce diagnostics;
+host rejection leaves the action resumable without changing the saved preference. See the
+[Codex guide](connect-codex.md#choose-a-model-and-thinking-level-per-role) for worker behavior and compatibility limits.
 
 ## Usage
 

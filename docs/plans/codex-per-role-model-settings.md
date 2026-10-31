@@ -16,9 +16,9 @@ collaborationRecommendation: "autonomous"
 createdAt: "2026-10-30"
 origin: "internal"
 targetBranch: "epic/connect-codex"
-status: "ready_for_work"
 userVerifiedAt: null
 deliveryBranch: "epic/connect-codex"
+status: "reviewed"
 ---
 
 # Persistent Codex Model and Thinking Settings per Role

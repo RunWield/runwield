@@ -43,7 +43,7 @@ export default defineConfig({
                             "aria-label": "RunWield.dev (external link)",
                         },
                     },
-                    { label: "Start", items: ["quickstart", "workspace", "connect-claude-code"] },
+                    { label: "Start", items: ["quickstart", "workspace", "connect-claude-code", "connect-codex"] },
                     {
                         label: "Use RunWield",
                         items: ["usage", "workflows", "sessions", "collaboration"],

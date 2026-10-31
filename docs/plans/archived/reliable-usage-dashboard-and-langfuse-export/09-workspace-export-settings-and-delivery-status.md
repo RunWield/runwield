@@ -70,13 +70,13 @@ src/shared/settings.js (workflowMetrics)    ->  effective recording state
 
 ### Owning requirements
 
-- [Personal usage and outcomes](../../prd/runwield-workspace-prd.md#personal-usage-and-outcomes) — **change** "The page
+- [Personal usage and outcomes](../../../prd/runwield-workspace-prd.md#personal-usage-and-outcomes) — **change** "The page
   does not show a raw event list, recording controls, Settings controls, or export controls." **Add** requirements and
   scenarios for recording state, export settings, delivery status, clear, and revoke.
-- [Core usage measurement and export](../../prd/runwield-core-prd.md#usage-measurement-and-export) — **change** the
+- [Core usage measurement and export](../../../prd/runwield-core-prd.md#usage-measurement-and-export) — **change** the
   maturity note "browser export controls remain target behavior" and the line "Core functions manage Export grants" to
   name the Workspace settings surface. Core rules stay authoritative; Workspace links to them.
-- [Project access and navigation](../../prd/runwield-workspace-prd.md#project-access-and-navigation) — **preserve**: only
+- [Project access and navigation](../../../prd/runwield-workspace-prd.md#project-access-and-navigation) — **preserve**: only
   registered, enabled Projects are accessible, and removing a Project changes Workspace access only.
 
 ### Decisions carried from the Epic and siblings

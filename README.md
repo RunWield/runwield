@@ -79,10 +79,16 @@ credentials or RunWield account. After the Preview is published to the default b
 /plugin install runwield@runwield
 ```
 
-Until then, use the local marketplace install in the [Connect guide](docs/user-documentation/connect-claude-code.md).
-The guide lists tested versions, evidence limits, recovery commands, and how to disable or uninstall. Connect is not
-stable support and claims no other host. Unlike Core's Session flow below, Connect suggests manual checks in Claude
-rather than saving a Manual QA checklist.
+Until then, use the local marketplace install in the [Claude guide](docs/user-documentation/connect-claude-code.md).
+
+[RunWield Connect for Codex](docs/user-documentation/connect-codex.md) provides one explicit `$runwield:run` skill for
+starting or resuming work in the desktop app and CLI. The native package is available for FEATURE Preview qualification;
+neither surface has a qualified complete workflow yet. The guide distinguishes package probes, live execution, and
+desktop evidence, with source-checkout installation instructions until publication.
+
+Both adapters use Core's workflow and can continue the same local repository's saved work across hosts without importing
+conversation history. Their guides list evidence limits, recovery, and plugin management. Unlike Core's Session flow
+below, Connect suggests manual checks in the host conversation rather than saving a Manual QA checklist.
 
 ## The problem
 

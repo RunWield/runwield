@@ -43,7 +43,7 @@ hosts.
 Keep this document as current product guidance. Fold lasting requirements from completed feature PRDs here;
 implementation steps belong in Plans, architectural choices in ADRs, and delivery evidence in Work Records.
 
-Last updated: 2026-09-11
+Last updated: 2026-10-29
 
 ## Objective
 
@@ -106,7 +106,7 @@ RunWield Connect primarily serves:
 
 - existing Claude Code users who want stronger planning, review, verification, recovery, and project memory without
   replacing Claude Code;
-- existing Codex users with the same need after the Claude integration proves the shared contract;
+- existing Codex desktop and CLI users who want the same workflow through their host's native skill and plugin UI;
 - teams evaluating RunWield who want to begin within familiar tools before using Core directly or adopting Workspace;
 - users who prefer to remain permanently on Connect and accept host-specific UX or enforcement limitations while keeping
   RunWield's verification semantics intact.
@@ -146,10 +146,15 @@ Core-owned adapter-contract and host-version preflight, and ordinary Plan submis
 marketplace from a local checkout. The [Claude guide](../user-documentation/connect-claude-code.md) gives the commands
 and tested scope. The [acceptance evidence](#preview-acceptance) identifies the source snapshot and permissions used.
 
+The Codex package exposes one explicit `$runwield:run` Skill for new work and continuation in the desktop app and CLI.
+Its native repository marketplace bundles the Skill and local MCP configuration, with a one-hour tool timeout and
+installed adapter metadata. It requires compatible Core on `PATH` and the host's own model access. Installing the
+package does not establish complete workflow acceptance; Codex's desktop and CLI evidence must be qualified separately.
+
 `wld attached activate` binds one host request to one Attached Workflow Record. Current Router instructions are
 available explicitly by action ID. `triage_report` hands a FEATURE request to the Planner; `plan_written` assigns the
 Plan ID and Triage front matter. The Plan stays an ordinary draft that Core can open and execute. Claude starts the
-plugin MCP server and lists its tools when the plugin loads; before a tool call, Core inspects no prompt or repository
+plugin MCP server and lists its tools when the plugin loads; Codex does the same. Before a tool call, Core inspects no prompt or repository
 and writes no workflow state.
 
 **Requirement: Keep CLI and MCP operations equivalent.**
@@ -171,6 +176,21 @@ and MCP. Invalid read arguments return an `invalid_input` rejection through eith
 - The host returns to ordinary behavior after the workflow reaches an outcome.
 - Existing RunWield closure and recovery choices govern an active workflow; Connect does not introduce a separate
   partially governed lifecycle.
+
+**Requirement: Offer one explicit Codex entrypoint for starting and continuing work.**
+
+`$runwield:run <request>` starts a new request; `$runwield:run resume` restores the most recent open workflow in the repository.
+The Skill uses the user's intent and asks only when new work versus continuation is ambiguous. Native Skill policy
+disables implicit invocation. Resume uses durable status, does not require an internal workflow ID for ordinary use,
+and never silently activates new work when no workflow is found. Approve for Later stops the current run; a later
+explicit resume or implementation request can start that saved Plan.
+
+**Requirement: Make cross-host continuation recognizable.**
+
+Before continuing in Codex, show the Plan name, current step, and originating host. Before planning, identify the saved
+request instead. A workflow started in Claude Code may continue in Codex using its existing action, revision, Plan,
+and execution directory. The explicit resume authorizes this handoff without a second host-switch confirmation. Fetch
+canonical artifacts and current role instructions; do not import another host's transcript or restart its workflow.
 
 The user installs the first-party RunWield Connect plugin through the External Agent Host's normal extension mechanism.
 Installation must establish or obtain compatible local RunWield Core dependencies without requiring separate model
@@ -215,13 +235,24 @@ Initialization is optional and may occur before or after the first Attached Work
   unrelated conversations and later ordinary prompts remain unaffected.
 - When the user disables or uninstalls the adapter, ordinary host behavior returns and canonical project artifacts
   remain intact.
+- Given the Codex plugin installed, ordinary prompts do not implicitly invoke its Skill. Explicit `$runwield:run` new-work
+  requests activate only their named request; the package adds no hooks or permission changes.
+- Given an open workflow and a fresh Codex conversation, `$runwield:run resume` finds it through repository-scoped status,
+  shows its Plan or request, current step, and originating host, then continues the saved action. Missing conversation
+  context does not create a replacement workflow.
+- Given a workflow originating in Claude Code, an explicit Codex resume preserves the Plan and pending worktree/action
+  identity while Codex performs subsequent model calls. The user sees the handoff before the next worker is dispatched.
+- Given no open workflow, a Codex resume reports that result and does not call `activate`. Given ambiguous start/resume
+  intent, the Skill asks a concise question before changing workflow state.
 
 <a id="host-owned-model-execution"></a>
 
 ### Host-owned reasoning
 
 **Scope and maturity:** Implemented for the Claude FEATURE journey with the source and permissions scope recorded in
-[Preview Acceptance](#preview-acceptance). This remains a requirement for every later Connect adapter.
+[Preview Acceptance](#preview-acceptance). The shared coordinator also adapts runtime roles and native file tools for
+Codex; this shared boundary is not evidence of a completed live Codex journey. Every adapter retains host-owned model
+calls, fresh worker instructions, and direct independent-review inspection.
 
 **Requirement: Use the external host for every model call.**
 
@@ -233,7 +264,8 @@ Initialization is optional and may occur before or after the first Attached Work
   substitute a RunWield-owned Agent Session.
 - Each role response whose Core prompt uses Skills includes the effective Skill catalog with names, descriptions,
   and read paths. The catalog resolves project, home, external, and bundled Skills at run time. The independent
-  reviewer receives no Skills. The Connect plugin ships no Skill files.
+  reviewer receives no Skills. Claude's plugin ships no Skill files. Codex's host-native entrypoint Skills carry workflow
+  guidance without copying role definitions or the effective role Skill catalog.
 
 **Acceptance scenarios:**
 
@@ -243,6 +275,39 @@ Initialization is optional and may occur before or after the first Attached Work
   than the bundled version. Independent reviewer instructions contain no Skill catalog.
 - When an isolated worker is needed, the adapter uses a host-owned worker or discloses the limitation; it does not
   substitute a hidden RunWield model session or ask for separate model credentials.
+
+**Requirement: Persist independent Codex role preferences with native inheritance.**
+
+Users can save model and thinking-level preferences for Router, Planner, Engineer, Frontend Engineer, independent
+reviewer, review-feedback Engineer, and Recorder in personal or project settings. Each field resolves project,
+personal, then native inheritance. Explicit inheritance resets that field for the selected scope. Core's model
+presets remain separate. The current calling host owns application and capability validation; a preference never
+grants permissions, starts a Core model Session, or bypasses a workflow gate.
+
+Preferences apply at the next role dispatch, including after restart or cross-host resume, without restarting a
+running worker. Compact action metadata supplies preferences without exposing independent reviewer instructions to
+the coordinator. Explicit Router and initial Planner overrides use fresh host workers; required fresh review,
+implementation, repair, feedback-planning, and recording contexts remain independent. Workers return outcomes to the
+coordinator for lifecycle submission.
+
+**Scope and maturity:** Source settings resolution, action metadata, and Codex dispatch guidance implement this
+contract. Native model/effort availability and accepted spawn controls depend on the client. These changes do not
+extend the [Codex qualification evidence](#codex-acceptance) or claim an unobserved live model selection.
+
+**Acceptance scenarios: Codex role preferences.**
+
+- Given saved personal preferences, a new chat or process resumes the same workflow with those preferences on the
+  next dispatch. Each of the seven roles receives its own values.
+- Given a personal model and a project thinking level, the worker receives both. Given project `model: "inherit"`,
+  the model spawn argument is omitted while the separately resolved effort remains. Removing that project field
+  reveals the personal value. With no overrides, Codex's native defaults apply.
+- Given an explicit model without an effort override, Codex resolves the effort natively, which can mean the chosen
+  model's default rather than the parent's effort.
+- Given a Claude-origin workflow resumed in Codex, Codex preferences apply while action and Plan identity remain
+  unchanged. A Claude caller does not receive Codex preferences.
+- Given a malformed preference or an unavailable host model, effort, or spawn control, the user receives an actionable
+  diagnostic and the current action stays resumable. No silent substitution, second workflow, or false usage claim
+  occurs. Updating a setting affects the next dispatch.
 
 <a id="runwield-owned-workflow-truth"></a>
 <a id="one-verification-meaning"></a>
@@ -600,6 +665,11 @@ questions, implementation actions, and accepted results. No always-running servi
 delivery actions use shared Core recovery, with automated fresh-process checks and headed MCP review restore.
 [Preview Acceptance](#preview-acceptance) owns the integrated evidence and release boundary.
 
+The Codex adapter uses the same saved actions and recovery authority. Its one explicit `$runwield:run` skill selects
+start or resume from the user's intent; a resume first presents the latest open local workflow's Plan and current step.
+[Cross-host continuation](#compatibility-and-honest-availability) owns the required originating-host disclosure and
+artifact-based handoff. Shared runtime tests do not qualify either Codex surface's complete live journey.
+
 **Requirement: Start with necessary setup and preserve work after interruption.**
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
@@ -618,7 +688,7 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 - A persistent local service may be added later for performance or cross-client continuity, but it is not part of the
   acquisition prerequisite.
 
-- Closing Claude stops running Core checks. The next resume runs interrupted checks again without recording a failure
+- Closing the host stops running Core checks. The next resume runs interrupted checks again without recording a failure
   for the stopped run.
 - Process loss must preserve Plans, implementation work, completed results, and useful recovery evidence.
 - RunWield must distinguish safe continuation from uncertain external side effects.
@@ -640,6 +710,7 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 - When host or Core processes stop, saved Plans and work remain available for useful continuation or explicit retry.
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.
+  Codex uses its single RunWield skill for the saved step instead of requiring separate commands or an internal ID.
 - **Saved planning context:** Given process loss before Triage or planning completes, `/runwield:plan-review` restores
   the pending action. `get_instructions` returns the saved explicit request and, for the Planner, the saved Triage
   outcome. A new conversation does not need the old conversation's text.
@@ -662,19 +733,31 @@ delivery actions use shared Core recovery, with automated fresh-process checks a
 
 ### Compatibility and honest availability
 
-**Scope and maturity:** Implemented for Claude Code through the Core-owned
-[Compatibility Matrix](../../src/shared/attached/compatibility.ts) and
-[host guide](../user-documentation/connect-claude-code.md). The matrix lists only versions with passing saved live
-results; [Preview Acceptance](#preview-acceptance) records their evidence limits. Other hosts and stable support remain
-targets.
+**Scope and maturity:** The Core-owned [Compatibility Matrix](../../src/shared/attached/compatibility.ts) recognizes
+Claude Code and Codex. Claude's tested entries and [host guide](../user-documentation/connect-claude-code.md) retain the
+source and permission limits in [Preview Acceptance](#preview-acceptance). Codex has no tested-version entries yet;
+recognized versions continue with an explicit untested notice. Protocol probes do not qualify a complete desktop or CLI
+workflow. Other hosts and stable support remain targets.
 
-Core checks every evidence-carrying operation before dispatch. A host other than Claude Code rejects with
-`unsupported_host`. An incompatible adapter contract or host below the tested floor also rejects without changing the
-workflow, Plan, or worktree. Newer or unreported host versions continue with a visible notice, not a tested-support
-claim. Current-action instruction, artifact, and pending-chat reads require current host evidence and reject under
-these same rules without returning work content. Claude's MCP server supplies evidence on every operation. Status
-remains readable with a stale adapter for recovery, reports the current assessment when evidence is supplied, and does
-not continue validation for a rejected host.
+Core checks every evidence-carrying operation before dispatch. Unrecognized hosts reject with `unsupported_host`.
+An incompatible adapter contract or host below its tested floor also rejects without changing the workflow, Plan, or
+worktree. Newer or unreported host versions continue with a visible notice, not a tested-support claim. Prerelease
+versions remain distinct from stable versions. Current-action instruction, artifact, and pending-chat reads require
+current host evidence and reject under these same rules without returning work content.
+
+Both adapters use the shared MCP carrier. It derives host identity from recognized MCP initialization names. Claude
+supplies its installed manifest path; Codex supplies bounded version and contract arguments in its installed MCP launch
+configuration. Package checks keep those arguments synchronized with its manifest. A launch option or model-supplied
+evidence cannot make an unrelated client a supported host. Status remains readable with a stale adapter for recovery, reports the current assessment when evidence
+is supplied, and does not continue validation for a rejected host. Fresh role instructions and browser labels identify
+the coordinating host; the adapter does not persist copied prompts or start a Core model session.
+
+A user may resume a Claude-started workflow in Codex or a Codex-started workflow in Claude. The host shows the Plan name
+(or saved request before a Plan exists), current step, and originating host before continuing; it does not ask for a
+second approval merely because the host changed. An initial `status` inspection returns that summary without
+reconciliation, validation, publication, or review hosting; normal status continues only after disclosure. Compact status
+projects the activation host and a request preview of at most 160 characters from the existing record.
+Original evidence remains intact, current operations record the caller, and revision/action guards apply unchanged.
 
 **Requirement: Disclose tested host support and limitations.**
 
@@ -714,8 +797,14 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 **Acceptance scenarios:**
 
-- Given a non-Claude host with a tested version number and supported adapter contract, activation rejects with
-  `unsupported_host` before changing any workflow, Plan, or worktree. Status remains readable for recovery.
+- Given an unrecognized host with a tested version number and supported adapter contract, activation rejects with
+  `unsupported_host` before changing any workflow, Plan, or worktree. Selecting the Codex adapter or supplying claimed
+  Codex evidence in tool arguments does not bypass the host check. Status remains readable for recovery.
+- Given a recognized Codex prerelease without saved live acceptance, activation discloses untested support and never
+  reports that the version or its desktop/CLI journey is tested.
+- Given an open workflow from either supported host, the other host restores its same identity, Plan and pending action,
+  shows the handoff summary, and continues with current-host instructions. Stale outcomes remain rejected, and a host
+  change neither creates a new workflow nor resets approval.
 - Given a saved action and a rejected current host or adapter, instruction, artifact, and pending-chat reads return
   the compatibility rejection and no work content. Status returns the current assessment without continuing validation
   or changing the workflow revision.
@@ -736,7 +825,11 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 - RunWield Connect is a supported destination for users who never adopt another RunWield surface.
 - Connect journeys stay in the External Agent Host and its browser review surface. They must not require users to
-  operate the `wld` CLI or TUI. The Claude Preview restores review through `/runwield:plan-review` and host tools.
+  operate the `wld` CLI or TUI. Claude restores review through `/runwield:plan-review` and host tools; Codex uses the
+  explicitly invoked RunWield skill. Compatible local Core on PATH is the shared installation prerequisite.
+- Each host guide documents native installation, activation, continuation, updates, disabling and removal. It separates
+  source-checkout use from published marketplace and released binary availability. Codex desktop and CLI qualification
+  remain separate; success in one does not establish the other.
 - Primary product outcomes are successful verified work, retained use, and trustworthy recovery.
 - Movement to direct Core use or Workspace is a secondary organic outcome.
 - Product-family messaging may explain genuine integration and collaboration advantages but must not reserve feasible
@@ -746,6 +839,9 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 
 - Given a user who stays permanently in their external host, when an applicable workflow is supported, they receive its
   full feasible behavior without being forced into Workspace or direct Core use.
+- Given a Codex desktop or CLI user, when they follow the [Codex guide](../user-documentation/connect-codex.md), they
+  can identify the native entrypoint, local Core prerequisite, current qualification limits, and recovery path without
+  adopting Core's Session interface or configuring another model provider.
 - When adoption is evaluated, successful verified work, recovery, and retained use matter directly; conversion is not
   manufactured by removing feasible features.
 
@@ -803,11 +899,13 @@ RunWield Connect for Claude Code becomes stable only when:
 
 ### Stage 3: Additional External Agent Hosts
 
-Add adapters sequentially:
+Codex has a native package for desktop and CLI using the shared host-aware coordinator. Both surfaces remain available
+for qualification, with no complete live workflow in the Compatibility Matrix. The
+[Codex guide](../user-documentation/connect-codex.md) distinguishes implemented behavior, observed package/protocol
+behavior, and unproven user journeys. This does not make the package available on a published branch or released Core
+binary before that publication occurs.
 
-1. Codex
-2. OpenCode
-3. Pi
+OpenCode and Pi remain later adapter targets, in that order.
 
 Each adapter begins with a capability-disclosed Preview and reaches stable status only after meeting the same applicable
 product semantics. Later adapters must reuse the host-neutral Core contract rather than copy the Claude implementation.
@@ -841,6 +939,36 @@ targets.
   explicit retry safely in black-box tests.
 - Disabling the Connect plugin leaves canonical Plans, Work Records, and recovery evidence intact while restoring
   ordinary host behavior.
+
+### Codex acceptance
+
+The Codex adapter must qualify its own host behavior. Claude evidence does not qualify Codex. The acceptance runner
+separates native installed-package protocol checks from real ephemeral host skill execution with explicit package configuration.
+Neither scope alone proves the desktop UI journey or permits a tested-version compatibility entry.
+
+Observed evidence is saved for Codex `0.164.0-alpha.11.1` at source `a2ff2ef73`: the
+[installed protocol summary](../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-installed-protocol.json)
+and [source-skill summary](../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-source-skill.json) both pass
+their stated scopes. The live run uses explicit package configuration and full access in disposable repositories.
+Installed complete-workflow, desktop UI, default-permissions and stable-version qualification remain open.
+
+- Native qualification must observe the actual MCP client identity and version, installed tool discovery, stale-action
+  and transcript rejection, and restoration after process loss and plugin reinstallation in disposable repositories.
+- Live qualification must observe Codex-owned model calls, execution in Core's checkout, real validation and recovery,
+  direct independent reviewer reads, repairs, browser decisions, publication and Work Records. Parent reads and worker
+  prose cannot substitute for fresh-context, candidate-bound review evidence.
+- Worktree isolation preserves invoking source bytes, branch, HEAD and protected Git status through delivery. Only the
+  current Plan, Core lifecycle files and `.gitignore` setup may change in the invoking checkout.
+- The live runner correlates worker threads with native spawn events. It records spawn settings, identifiers
+  and diff-byte receipts, while discarding raw conversation content and disabling inherited MCP servers for the run.
+- Saved summaries identify the exact source digest, adapter, host surface, permissions and remaining gaps. Missing
+  authentication, incomplete provenance and unavailable desktop evidence remain explicitly unproven. Raw conversation
+  text and credentials do not belong in committed summaries or Core artifacts.
+
+**Acceptance scenarios:** A protocol-only passing result cannot qualify a complete Codex version. A missing executable
+or absent/rejected host authentication produces blocked, unproven evidence without storing account details or raw errors.
+A completed parent review or inherited-context worker without independently observed fresh worker reads fails qualification.
+A private transcript sentinel found in durable artifacts fails qualification even when the workflow delivered.
 
 ### Stable Product Outcomes
 

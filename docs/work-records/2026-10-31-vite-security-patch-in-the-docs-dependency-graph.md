@@ -13,6 +13,7 @@ provenance:
     sourcePlans:
         - "70735c5a-511a-4dd9-a01c-a248a4f0d002"
 ---
+
 # Vite security patch in the docs dependency graph
 
 ## Summary
