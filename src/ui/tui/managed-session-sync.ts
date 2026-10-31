@@ -3,39 +3,45 @@
  * Idle read-only synchronization loop for dormant managed Sessions.
  */
 
+import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+
+type NativeTimerHandle = ReturnType<typeof setTimeout>;
+type TimerCallback = () => void;
+
+export interface ManagedSessionTimer<TimerHandle> {
+    set(callback: TimerCallback, delayMs: number): TimerHandle;
+    clear(timer: TimerHandle): void;
+}
+
+export interface ManagedSessionSyncControllerOptions<TimerHandle = NativeTimerHandle> {
+    runtime: SessionRuntime;
+    getSessionId: () => string | null;
+    timer: ManagedSessionTimer<TimerHandle>;
+    pollIntervalMs?: number;
+    retryDelayMs?: number;
+    isPaused?: () => boolean;
+    onError?: (error: unknown) => void;
+}
+
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 const TRANSIENT_RETRY_MS = 250;
 
 export const SYSTEM_MANAGED_SESSION_TIMER = Object.freeze({
-    set: (/** @type {() => void} */ callback, /** @type {number} */ delayMs) => setTimeout(callback, delayMs),
-    clear: (/** @type {unknown} */ timer) => clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (timer)),
+    set: (callback: TimerCallback, delayMs: number) => setTimeout(callback, delayMs),
+    clear: (timer: NativeTimerHandle) => clearTimeout(timer),
 });
 
-/**
- * @typedef {Object} ManagedSessionSyncControllerOptions
- * @property {import('../../shared/session/session-runtime.ts').SessionRuntime} runtime
- * @property {() => string | null} getSessionId
- * @property {{ set: (callback: () => void, delayMs: number) => unknown, clear: (timer: unknown) => void }} timer
- * @property {number} [pollIntervalMs]
- * @property {number} [retryDelayMs]
- * @property {() => boolean} [isPaused]
- * @property {(error: unknown) => void} [onError]
- */
-
-/**
- * @param {ManagedSessionSyncControllerOptions} options
- */
-export function createManagedSessionSyncController(options) {
+export function createManagedSessionSyncController<TimerHandle>(
+    options: ManagedSessionSyncControllerOptions<TimerHandle>,
+) {
     const { timer: timerPort } = options;
     const pollIntervalMs = Math.max(100, options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS);
     const retryDelayMs = Math.max(50, options.retryDelayMs || TRANSIENT_RETRY_MS);
     let disposed = false;
     let paused = false;
     let inFlight = false;
-    /** @type {Promise<void> | null} */
-    let inFlightPromise = null;
-    /** @type {unknown} */
-    let timer = null;
+    let inFlightPromise: Promise<void> | null = null;
+    let timer: TimerHandle | null = null;
 
     function clearScheduled() {
         if (timer === null) return;
@@ -43,8 +49,7 @@ export function createManagedSessionSyncController(options) {
         timer = null;
     }
 
-    /** @param {number} delayMs */
-    function schedule(delayMs) {
+    function schedule(delayMs: number) {
         if (disposed || paused) return;
         clearScheduled();
         timer = timerPort.set(() => {

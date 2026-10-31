@@ -18,7 +18,7 @@ import { setTerminalTitleForName } from "./terminal-title.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
 import { notifyRunWieldEventQuietly } from "./system-notifications.ts";
-import { createManagedSessionSyncController, SYSTEM_MANAGED_SESSION_TIMER } from "./managed-session-sync.js";
+import { createManagedSessionSyncController, SYSTEM_MANAGED_SESSION_TIMER } from "./managed-session-sync.ts";
 import { ensureCymbalBinary, ensureKetchBinary, ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import {
