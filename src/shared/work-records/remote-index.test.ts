@@ -10,7 +10,7 @@ import { configureRemotePersonalResources } from "../remote/personal-resources.t
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { writeWorkRecord } from "./store.js";
 import { rebuildWorkRecordIndex, runMnemotecaWorkRecordCommand, syncWorkRecordToIndex } from "./index-adapter.ts";
-import { searchWorkRecords } from "./search.js";
+import { searchWorkRecords } from "./search.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaCommandOptions } from "./mnemoteca-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
