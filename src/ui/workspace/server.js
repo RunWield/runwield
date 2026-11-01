@@ -111,7 +111,7 @@ import {
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/owner-projects.ts";
 import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
+import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.ts";
 import { workspacePwaResponse } from "./server/workspace-pwa.ts";
 import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
 import { reviewHost } from "./server/review-host.ts";
