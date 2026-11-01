@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -100,15 +102,16 @@ test("PLANNED_CHANGE CI repair continues after Engineer calls task_completed", a
 test("validation repair runs independently and returns structured completion", async () => {
     await withRuntimeCommandFixture(
         "validation-adapter-repair-completion-",
-        async ({ setModelResponseFactory }) => {
-            const projectRoot = await makeValidationProjectRoot("p", {
-                classification: "PLANNED_CHANGE",
-                status: "implemented",
-                humanReviewMode: "none",
-            });
+        async ({ setModelResponseFactory, projectRoot }) => {
+            // A repair can be the first workflow operation on a legacy Plan.
+            await mkdir(join(projectRoot, "docs/plans"), { recursive: true });
+            await writeFile(
+                join(projectRoot, "docs/plans/p.md"),
+                "---\nclassification: PLANNED_CHANGE\nstatus: implemented\nhumanReviewMode: none\n---\n# Repair\n",
+            );
             const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             setModelResponseFactory(() =>
-                fauxAssistantMessage(fauxToolCall("task_completed", { message: "- Repair complete." }))
+                fauxAssistantMessage(fauxToolCall("task_completed", { message: "- Repair complete." })),
             );
             hostedSession.setActiveExecutionWorkflow({
                 planName: "p",
@@ -132,6 +135,10 @@ test("validation repair runs independently and returns structured completion", a
             assertEquals(outcome.completed, true);
             assertEquals(outcome.report, "- Repair complete.");
             assertEquals(hostedSession.getRootAgentSession(), null);
+            assertEquals(
+                typeof (await loadPlan(projectRoot, "p"))?.attrs.validationCheckpoint?.repairGeneration,
+                "string",
+            );
             hostedSession.dispose();
         },
     );

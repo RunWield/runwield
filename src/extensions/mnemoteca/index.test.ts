@@ -5,35 +5,72 @@ import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
 import { match as assertMatch } from "node:assert/strict";
 import { basename } from "node:path";
 import mnemotecaExtension from "./index.ts";
+import type {
+    ExtensionContext,
+    ExtensionToolContext,
+    SessionStartEvent,
+    ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { MemoryParams, memoryToolDef } from "./tools.ts";
+import type { HelperBinaryExec, HelperBinaryExecOptions, HelperBinaryExecResult } from "../helper-binary-exec.ts";
 
-/**
- * @param {(command: string, args: string[], opts: { cwd: string }) => Promise<{code: number, stdout: string, stderr: string}> | {code: number, stdout: string, stderr: string}} execImpl
- */
-function setup(execImpl) {
-    /** @type {Map<string, (event: object, ctx: object) => unknown>} */
-    const handlers = new Map();
-    /** @type {Array<any>} */
-    const tools = [];
-    /** @type {Array<{command: string, args: string[], opts: { cwd: string }}>} */
-    const calls = [];
+type FixtureExec = (...args: Parameters<HelperBinaryExec>) => HelperBinaryExecResult | Promise<HelperBinaryExecResult>;
+type RegisteredHandler = (...args: never[]) => void;
+type SessionStartHandler = (event: SessionStartEvent, context: ExtensionContext) => void | Promise<void>;
+type FixtureToolContext = Partial<ExtensionToolContext>;
 
-    const pi = /** @type {import('@earendil-works/pi-coding-agent').ExtensionAPI} */ ({
-        on(event, handler) {
-            handlers.set(event, /** @type {(event: object, ctx: object) => unknown} */ (handler));
+interface ExecCall {
+    command: string;
+    args: string[];
+    opts: HelperBinaryExecOptions;
+}
+
+interface FixtureToolResult extends AgentToolResult<MemoryParams> {
+    callMessage?: string;
+}
+
+type FixtureToolExecutor = (
+    id: string,
+    params: MemoryParams,
+    signal: AbortSignal,
+    onUpdate: () => void,
+    context: FixtureToolContext,
+) => Promise<FixtureToolResult>;
+
+interface RegisteredTool extends Omit<ToolDefinition<typeof memoryToolDef.parameters, MemoryParams>, "execute"> {
+    execute: FixtureToolExecutor;
+}
+
+interface FixtureExtensionAPI {
+    on(event: "session_start", handler: SessionStartHandler): void;
+    registerTool(tool: RegisteredTool): void;
+    exec: HelperBinaryExec;
+}
+
+type FixtureExtensionRegistration = (host: FixtureExtensionAPI) => void;
+
+function setup(execImpl: FixtureExec) {
+    const handlers = new Map<string, RegisteredHandler>();
+    const tools: RegisteredTool[] = [];
+    const calls: ExecCall[] = [];
+
+    const pi: FixtureExtensionAPI = {
+        on(event: "session_start", handler: SessionStartHandler) {
+            handlers.set(event, handler);
         },
-        registerTool(tool) {
+        registerTool(tool: RegisteredTool) {
             tools.push(tool);
         },
-        async exec(/** @type {string} */ command, /** @type {string[]} */ args, /** @type {{ cwd: string }} */ opts) {
+        async exec(command: string, args: string[], opts: HelperBinaryExecOptions) {
             calls.push({ command, args, opts });
             return await execImpl(command, args, opts);
         },
-    });
+    };
 
-    mnemotecaExtension(pi);
+    (mnemotecaExtension as FixtureExtensionRegistration)(pi);
 
-    /** @param {string} name */
-    const getTool = (name) => {
+    const getTool = (name: string) => {
         const tool = tools.find((registeredTool) => registeredTool.name === name);
         if (!tool) throw new Error(`Tool not found in test setup: ${name}`);
         return tool;
@@ -42,22 +79,12 @@ function setup(execImpl) {
     return { handlers, tools, calls, getTool };
 }
 
-/**
- * @param {{ execute: unknown }} tool
- * @param {object} params
- */
-async function executeTool(tool, params) {
-    const execute =
-        /** @type {(id: string, params: object, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<{ content: Array<{ type: string, text?: string }>, details: unknown, callMessage?: string }>} */ (
-            tool.execute
-        );
+async function executeTool(tool: RegisteredTool, params: MemoryParams) {
+    const execute = tool.execute;
     return await execute("tool-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-/**
- * @param {{ content: Array<{ type: string, text?: string }> }} result
- */
-function firstText(result) {
+function firstText(result: Pick<FixtureToolResult, "content">) {
     const first = result.content[0];
     assertEquals(first?.type, "text");
     if (!first || first.type !== "text") throw new Error("Expected text content.");
@@ -86,7 +113,7 @@ test("memory recall searches both scopes and escapes quotes", async () => {
     });
     const tool = getTool("memory");
 
-    const params = { action: "recall", query: 'he said "hello"' };
+    const params: MemoryParams = { action: "recall", query: 'he said "hello"' };
     const result = await executeTool(tool, params);
 
     assertEquals(result.details, params);
@@ -120,7 +147,7 @@ test("memory stores project memory with optional core tag", async () => {
     const { getTool, calls } = setup(() => Promise.resolve({ code: 0, stdout: "stored", stderr: "" }));
     const tool = getTool("memory");
 
-    const params = { action: "store", content: "Use deno task ci", core: true };
+    const params: MemoryParams = { action: "store", content: "Use deno task ci", core: true };
     const result = await executeTool(tool, params);
 
     assertEquals(result.details, params);
@@ -133,7 +160,12 @@ test("memory initializes global storage then adds memory", async () => {
     const { getTool, calls } = setup(() => Promise.resolve({ code: 0, stdout: "ok", stderr: "" }));
     const tool = getTool("memory");
 
-    const params = { action: "store", scope: "global", content: "Prefer concise commit messages", core: true };
+    const params: MemoryParams = {
+        action: "store",
+        scope: "global",
+        content: "Prefer concise commit messages",
+        core: true,
+    };
     const result = await executeTool(tool, params);
 
     assertEquals(result.details, params);
@@ -165,7 +197,7 @@ test("memory delete checks the requested scope before deleting by id", async () 
     });
     const tool = getTool("memory");
 
-    const params = { action: "delete", id: 42, scope: "global" };
+    const params: MemoryParams = { action: "delete", id: 42, scope: "global" };
     const result = await executeTool(tool, params);
 
     assertEquals(result.details, params);

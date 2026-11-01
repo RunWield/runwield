@@ -1163,7 +1163,8 @@ test("doctor uses committed validation stamps without controller records and ign
         assertEquals(
             report.issues
                 .filter((issue) => issue.kind === "publication_inspection_error")
-                .map((issue) => issue.planName),
+                .map((issue) => issue.planName)
+                .sort(),
             ["published", "unpublished"],
         );
         assertEquals(
@@ -1271,10 +1272,7 @@ test("doctor leaves publication unconfirmed while the publication owner proves r
         });
         const unpublishedReport = await runPlansDoctor(cwd, false);
         const uncertain = unpublishedReport.issues.filter((issue) => issue.kind === "publication_inspection_error");
-        assertEquals(
-            uncertain.map((issue) => issue.planName),
-            ["published", "unpublished"],
-        );
+        assertEquals(uncertain.map((issue) => issue.planName).sort(), ["published", "unpublished"]);
         assertEquals(
             (
                 await verifyRecordedPublication(cwd, {

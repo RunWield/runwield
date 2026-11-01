@@ -2630,9 +2630,12 @@ async function runComposedTuiScenario(scenario, options) {
                                 )}; latest=${latestStatus || "unreadable"}`,
                             );
                         }
-                        const registry = await (
-                            await import("../../../shared/worktree-registry.js")
-                        ).inspectWorktreeRegistry(getCwd());
+                        const registry = await readScenarioRegistryForPoll(getCwd());
+                        if (!registry) {
+                            await terminal.flush();
+                            await new Promise((resolve) => setTimeout(resolve, 20));
+                            continue;
+                        }
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
