@@ -212,7 +212,7 @@
     "src/extensions/cymbal/tools.test.ts",
     "src/extensions/helper-binary-exec.test.ts",
     "src/extensions/ketch/tools.test.ts",
-    "src/extensions/mnemoteca/index.test.js",
+    "src/extensions/mnemoteca/index.test.ts",
     "src/extensions/mnemoteca/tools.test.ts",
     "src/extensions/re-anchor/index.test.ts",
     "src/extensions/snip/index.test.ts",
