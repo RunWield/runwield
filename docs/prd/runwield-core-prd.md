@@ -2233,6 +2233,8 @@ Open product questions:
   the journal. The owning action resumes guarded migration.
 - Given adoption completed by another writer during entry, Core rechecks authority under the migration lock before
   refusing a conflict; valid current locks remain intact, and genuine authority conflicts still block entry.
+- Given adoption completes during passive inspection, Core rechecks changed marker evidence without writes or lock
+  probes; valid current locks remain intact, and unmatched authorities still produce a conflict.
 - Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific

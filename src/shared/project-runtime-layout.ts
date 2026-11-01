@@ -354,7 +354,19 @@ async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<Pr
         // Partly moved stores are not independent authorities. Preflight checks security,
         // but deliberately does not test whether an inode lock can be acquired.
         const checked = await preflight(layout, primary, marker.marker, { passive: true });
-        if (isBlocked(checked)) return checked;
+        if (isBlocked(checked)) {
+            // A writer can commit adoption and start using its authorities after
+            // our marker read. Refresh changed evidence without taking a write lock.
+            if (checked.reason === "authority_conflict") {
+                const current = await readLayoutMarker(layout);
+                if (isBlocked(current)) return current;
+                if (current.marker && JSON.stringify(current.marker) !== JSON.stringify(marker.marker)) {
+                    runtimeEntryScope.getStore()?.symlinkWalks.clear();
+                    return inspectProjectRuntimeReadAccessUncached(root);
+                }
+            }
+            return checked;
+        }
         const fresh =
             !marker.marker &&
             !journal.journal &&

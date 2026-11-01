@@ -36,11 +36,13 @@ import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
     enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    type ProjectRuntimeReadInspection,
     migrateLegacyProjectRuntimeState,
     type ProjectRuntimeMigrationResult,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { inspectWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.js";
+import { inspectWorktreeRegistry, prepareWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.js";
 import {
     advancePublicationAttempt,
     createPublicationAttempt,
@@ -84,6 +86,83 @@ test("runtime entry refreshes authority after another writer completes adoption"
             await fsRm(binDir, { recursive: true, force: true });
         }
     });
+});
+
+for (const adoption of ["fresh", "selected"] as const) {
+    test(`passive runtime access refreshes evidence after ${adoption} adoption completes`, async () => {
+        await withProcessGlobalTestLock(async () => {
+            const project = await makeMigrationProject();
+            const root = adoption === "fresh" ? project.primaryRoot : project.selectedRoot;
+            const layout = resolveProjectRuntimeLayout(root);
+            const binDir = await fsMkdtemp(join(tmpdir(), "runwield-runtime-passive-adoption-bin-"));
+            const ready = join(binDir, "ready");
+            const release = join(binDir, "release");
+            const originalPath = process.env["PATH"] || "";
+            let child: NativeProcess | undefined;
+            try {
+                if (adoption === "selected") {
+                    assertEquals((await migrateLegacyProjectRuntimeState(project.primaryRoot)).kind, "ready");
+                    // Pause a reader after it sees the primary-only marker and an
+                    // unfinished selected-checkout adoption journal.
+                    await writeText(
+                        layout.primary.layoutMigrationJournalPath,
+                        JSON.stringify({
+                            version: 1,
+                            primaryCheckoutRoot: project.primaryRoot,
+                            selectedCheckoutRoots: [project.primaryRoot, project.selectedRoot].sort(),
+                            operations: [],
+                            updatedAt: new Date().toISOString(),
+                        }),
+                    );
+                }
+                await writeGitWrapper(binDir, originalPath, { pauseListReady: ready, pauseListRelease: release });
+                process.env["PATH"] = `${binDir}${delimiter}${originalPath}`;
+                child = spawnDriver("inspect", root);
+                const deadline = performance.now() + 10_000;
+                while (!(await fsLstat(ready).catch(() => null))) {
+                    if (performance.now() > deadline) throw new Error("Inspection did not reach the Git barrier.");
+                    await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
+                }
+                await prepareWorktreeRegistry(root);
+                const planLock = join(layout.selected.planLocksDir, "concurrent.lock");
+                await writeText(planLock, "current writer lock");
+                const before = await snapshotTree(layout.primary.internalRoot);
+                const selectedBefore = await snapshotTree(layout.selected.internalRoot);
+                await fsWriteFile(release, "release");
+                const result: ProjectRuntimeReadInspection = JSON.parse(await readChildStdout(child));
+                assertEquals(result.kind, "ready", JSON.stringify(result));
+                assertEquals(await fsReadFile(planLock, "utf8"), "current writer lock");
+                assertEquals(await snapshotTree(layout.primary.internalRoot), before);
+                assertEquals(await snapshotTree(layout.selected.internalRoot), selectedBefore);
+                await assertMissing(layout.primary.layoutMigrationLockPath);
+                await assertMissing(layout.primary.layoutMigrationJournalPath);
+            } finally {
+                await fsWriteFile(release, "release");
+                if (child) await child.status;
+                process.env["PATH"] = originalPath;
+                await project.cleanup();
+                await fsRm(binDir, { recursive: true, force: true });
+            }
+        });
+    });
+}
+
+test("passive runtime access keeps unmatched current authorities blocked", async () => {
+    const root = await fixture.checkout({ prefix: "runwield-runtime-passive-conflict-" });
+    try {
+        const layout = resolveProjectRuntimeLayout(root);
+        await writeText(join(layout.selected.planLocksDir, "conflict.lock"), "unmatched authority");
+        const before = await snapshotTree(layout.primary.internalRoot);
+        const result = await inspectProjectRuntimeReadAccess(root);
+        assertEquals(result.kind, "blocked");
+        if (result.kind !== "blocked") throw new Error("Expected an authority conflict.");
+        assertEquals(result.reason, "authority_conflict");
+        assertEquals(result.paths, [layout.selected.planLocksDir]);
+        assertEquals(await snapshotTree(layout.primary.internalRoot), before);
+        await assertMissing(layout.primary.layoutMarkerPath);
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+    }
 });
 
 test("project runtime layout resolves normal primary and selected internal roots", async () => {
