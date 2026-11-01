@@ -146,7 +146,7 @@
         "quikdown": "1.2.21",
         "react": "19.3.1",
         "react-dom": "19.3.1",
-        "react-test-renderer": "19.2.7",
+        "react-test-renderer": "19.3.1",
         "strip-ansi": "7.2.0",
         "tailwind-merge": "3.7.0",
         "tailwindcss": "4.3.3",
