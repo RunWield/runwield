@@ -1,4 +1,5 @@
 ---
+planId: "cd3a9537-e591-401e-bc68-f0bf464e2881"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -12,17 +13,14 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
 createdAt: "2026-11-01"
 origin: "internal"
 parentPlan: "external-plan-store"
 order: 1
 dependencies: []
 targetBranch: "epic/external-plan-store"
-status: "draft"
-planId: "cd3a9537-e591-401e-bc68-f0bf464e2881"
+userVerifiedAt: null
+status: "in_progress"
 ---
 
 # Establish Stable Project Identity
