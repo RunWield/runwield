@@ -9,7 +9,6 @@
     "src/shared/collaboration/client.js",
     "src/shared/collaboration/protocol.js",
     "src/shared/collaboration/secrets.js",
-    "src/shared/extensions/wld-extension-manifest.js",
     "src/shared/owner-coordination/database.js",
     "src/shared/owner-coordination/pairing.js",
     "src/shared/owner-coordination/projects.js",

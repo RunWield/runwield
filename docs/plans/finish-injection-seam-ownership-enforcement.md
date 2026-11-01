@@ -11,7 +11,7 @@ affectedPaths:
     - "scripts/external-capability-ports.json"
     - "src/shared/git-port.ts"
     - "src/shared/package-resources.ts"
-    - "src/shared/extensions/wld-extension-manifest.js"
+    - "src/shared/extensions/wld-extension-manifest.ts"
     - "src/shared/workflow/execution-start.ts"
     - "src/cmd/load-plan/plan-recovery-flow.ts"
     - "src/cmd/auth/index.ts"
@@ -197,7 +197,7 @@ grows, or the Verification Plan no longer proves the objective.
   — remove replaceable Session startup and mixed command ports while preserving every CLI and slash-command route.
 - `src/ui/theme/theme-discovery.ts` and `src/ui/tui/{boot-banner,chat-session,system-notifications}.ts` — retain only
   cohesive package/host capabilities; remove optional or dead test controls.
-- `src/shared/package-resources.ts` and `src/shared/extensions/wld-extension-manifest.js` — use canonical settings,
+- `src/shared/package-resources.ts` and `src/shared/extensions/wld-extension-manifest.ts` — use canonical settings,
   `getCwd()`, and sandboxed environment state.
 - `src/shared/workflow/validation.ts`, `validation-session-adapter.ts`, `validation-ports.ts`, `validation-types.ts`,
   `validation-engine.ts`, and phase modules — replace the mixed Session port with the nominal Runtime context and narrow
