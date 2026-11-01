@@ -1,7 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
-import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.js";
+import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.ts";
 import { emitAssistantMessage } from "../shared/session/session-runtime-events.js";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 
