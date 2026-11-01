@@ -2,7 +2,7 @@
 import LoadingSurface from "../../../../../components/LoadingSurface.astro";
 import ReviewLayout from "../../../../../layouts/ReviewLayout.astro";
 import { ArtifactReadSurface } from "../../../../../react/ArtifactReadSurface.tsx";
-import { loadOwnerProjectArtifact } from "../../../../../server/astro-owner-data.js";
+import { loadOwnerProjectArtifact } from "../../../../../server/astro-owner-data.ts";
 
 const projectId = Astro.params.projectId ?? "";
 const artifactType = Astro.params.artifactType ?? "";
