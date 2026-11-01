@@ -197,6 +197,7 @@ test("ACP Load Plan at a registered home root keeps protocol behavior without a 
         const messages: string[] = [];
         try {
             // ACP bypasses terminal consent, not attached-worktree validation.
+            // Replace the attached-worktree pointer before creating independent home authority.
             rmSync(join(homeDir, ".git"), { force: true });
             await git(homeDir, ["init", "-b", "main"]);
             await git(homeDir, [
