@@ -1,27 +1,24 @@
 import process from "node:process";
-import { Key, matchesKey } from "@earendil-works/pi-tui";
+import { Key, matchesKey, TuiAltScreen } from "@earendil-works/pi-tui";
 import { initRunWieldTheme } from "../theme/theme.js";
 import { PromptSelectBlock } from "./blocks.js";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import {
     ProjectIdentityEntryRequired,
+    admitProjectIdentity,
     type ProjectCloneChoice,
     type ProjectIdentityPending,
 } from "../../shared/project-identity.ts";
 
-/** Real startup adapter: no input means a typed pending choice, never a declined link. */
-export async function enterProjectWithIdentityChoice(root: string): Promise<boolean> {
+/** Interactive action admission leaves runtime preparation to the action's existing owner. */
+export async function admitProjectWithIdentityChoice(root: string): Promise<boolean> {
     let choice: ProjectCloneChoice | undefined;
     for (;;) {
-        try {
-            await enterProjectRuntime(root, { choice });
-            return true;
-        } catch (error) {
-            if (!(error instanceof ProjectIdentityEntryRequired) || error.result.kind !== "pending") throw error;
-            choice = await chooseProject(error.result);
-            if (choice.kind === "cancel") return false;
-        }
+        const result = await admitProjectIdentity(root, { choice });
+        if (result.kind === "existing") return true;
+        if (result.kind !== "pending") throw new ProjectIdentityEntryRequired(result);
+        choice = await chooseProject(result);
+        if (choice.kind === "cancel") return false;
     }
 }
 async function chooseProject(pending: ProjectIdentityPending): Promise<ProjectCloneChoice> {
@@ -35,6 +32,7 @@ async function chooseProject(pending: ProjectIdentityPending): Promise<ProjectCl
     if (!existingTui && !process.stdin.isTTY) throw new ProjectIdentityEntryRequired(pending);
     initRunWieldTheme();
     const tui = initTUI();
+    const previousFocus = tui instanceof TuiAltScreen ? tui.getFocusedComponent() : null;
     const block = new PromptSelectBlock(
         "This clone matches known Projects. Link it to a Project or keep it separate?",
         [
@@ -79,6 +77,9 @@ async function chooseProject(pending: ProjectIdentityPending): Promise<ProjectCl
         removeListener?.();
         tui.removeChild(block);
         if (!existingTui) stopTUI();
-        else tui.requestRender();
+        else {
+            tui.setFocus(previousFocus);
+            tui.requestRender();
+        }
     }
 }

@@ -3,6 +3,8 @@
  * List and manage saved Plans.
  */
 
+import { DirectoryStartupCanceled } from "../../ui/tui/directory-warning.ts";
+import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.js";
 import { countChildPlanProgress, groupPlanHierarchy, listPlans } from "../../plan-store.js";
@@ -26,7 +28,11 @@ function isHelp(argv: string[]): boolean {
 }
 
 async function enterUnlessHelp(argv: string[]): Promise<void> {
-    if (!isHelp(argv)) await enterProjectRuntime(getCwd());
+    if (!isHelp(argv)) {
+        if (!(await admitProjectWithIdentityChoice(getCwd())))
+            throw new DirectoryStartupCanceled("Project startup canceled");
+        await enterProjectRuntime(getCwd());
+    }
 }
 
 function formatChildProgress(children: PlanEntry[]): string {

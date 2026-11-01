@@ -202,11 +202,14 @@ test("worktree registry list reads do not overwrite malformed top-level registri
 
 test("linked checkout registry operations share the primary internal store, lock, and migration report", async () => {
     await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env["HOME"];
+        const identityHome = await fsMkdtemp(join(tmpdir(), "runwield-identity-home-"));
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const root = await gitFixture.checkout({ prefix: "runwield-registry-primary-" });
         const linkedParent = await fsMkdtemp(join(tmpdir(), "runwield-registry-linked-parent-"));
         const linked = join(linkedParent, "linked");
         try {
+            process.env["HOME"] = identityHome;
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(root, ["worktree", "add", "-b", "linked-registry", linked]);
             await addEntry(root, entry({ id: "shared", planId: "plan-shared" }));
@@ -271,6 +274,9 @@ test("linked checkout registry operations share the primary internal store, lock
                 "ENOENT",
             );
         } finally {
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(identityHome, { recursive: true }).catch(() => {});
             if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
             else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(linkedParent, { recursive: true }).catch(() => {});

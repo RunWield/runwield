@@ -8,7 +8,11 @@ import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CLI_BIN } from "../../constants.js";
 import { pickControllerState, type WorkflowControllerState, WORKTREE_CONTEXT_FIELDS } from "./controller-state.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    resolveProjectRuntimeLayout,
+} from "../project-runtime-layout.ts";
 import {
     controllerStatesEqual,
     restoreOwnControllerWrite,
@@ -1366,11 +1370,17 @@ export async function writePlanDocumentAndController(opts: PlanDocumentUpdate) {
 
 /** Return unresolved transition journal records for diagnostics. */
 export async function listTransitionRecoveryRecords(projectRoot: string, options: { diagnostic?: boolean } = {}) {
-    const dir = options.diagnostic
-        ? getTransitionJournalDir(projectRoot)
-        : await enteredTransitionJournalDir(projectRoot);
     /** @type {Array<Record<string, unknown>>} */
     const records = [];
+    let dir = getTransitionJournalDir(projectRoot);
+    if (!options.diagnostic) {
+        const access = await inspectProjectRuntimeReadAccess(projectRoot);
+        // Adopt legacy journals when needed; reading an adopted store never admits identity or writes.
+        dir =
+            access.kind === "ready" || access.kind === "fresh"
+                ? access.layout.selected.transitionJournalsDir
+                : await enteredTransitionJournalDir(projectRoot);
+    }
     try {
         for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
             if (!entry.isFile() || !entry.name.endsWith(".json")) continue;

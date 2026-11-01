@@ -134,11 +134,46 @@ function git(cwd: string, args: string[], absent = false): string | null {
     if (absent && result.status === 1) return null;
     throw new Error(`Cannot read Project Git identity: ${result.stderr.trim() || result.status}`);
 }
-function config(cwd: string, file: string, key: string): string | null {
-    if (!regularFile(file)) return null;
-    const value = git(cwd, ["config", "--file", file, "--no-includes", "--get-all", key], true);
-    if (value?.includes("\n")) throw new Error(`Multiple values for identity key ${key} in ${file}`);
-    return value;
+interface GitIdentityConfig {
+    projectId: string | null;
+    repositoryId: string | null;
+    remote: string | null;
+}
+function identityConfig(cwd: string, file: string): GitIdentityConfig {
+    if (!regularFile(file)) throw new Error(`Missing Project Git config: ${file}`);
+    const output = git(
+        cwd,
+        [
+            "config",
+            "--file",
+            file,
+            "--no-includes",
+            "--null",
+            "--get-regexp",
+            "^(runwield\\.(projectid|repositoryid)|remote\\.origin\\.url)$",
+        ],
+        true,
+    );
+    const values = new Map<string, string[]>();
+    for (const entry of output?.split("\0") ?? []) {
+        if (!entry) continue;
+        const delimiter = entry.indexOf("\n");
+        const key = delimiter < 0 ? entry : entry.slice(0, delimiter);
+        const value = delimiter < 0 ? "" : entry.slice(delimiter + 1).trim();
+        const matches = values.get(key) ?? [];
+        matches.push(value);
+        values.set(key, matches);
+    }
+    for (const key of ["runwield.projectid", "runwield.repositoryid"]) {
+        const matches = values.get(key) ?? [];
+        if (matches.length > 1 || matches[0]?.includes("\n"))
+            throw new Error(`Multiple values for identity key ${key} in ${file}`);
+    }
+    return {
+        projectId: values.get("runwield.projectid")?.[0] ?? null,
+        repositoryId: values.get("runwield.repositoryid")?.[0] ?? null,
+        remote: values.get("remote.origin.url")?.at(-1) ?? null,
+    };
 }
 function markerAt(path: string): IdentityMarker | null {
     if (!regularFile(path)) return null;
@@ -160,11 +195,20 @@ function evidence(path: string): IdentityEvidence {
     const cwd = realpathSync(path);
     if (!lstatSync(cwd).isDirectory()) throw new Error("Project root must be a directory");
     // A non-repository exit is distinguished from other Git failures by filesystem evidence.
-    const probe = spawnSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], { encoding: "utf8", timeout: 10000 });
+    const probe = spawnSync("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--git-common-dir", "--git-dir"], {
+        encoding: "utf8",
+        timeout: 10000,
+    });
     if (probe.error) throw probe.error;
     if (probe.status !== 0 && !probe.stderr.includes("not a git repository"))
         throw new Error(`Cannot inspect Project Git directory: ${probe.stderr}`);
-    let root = probe.status === 0 ? realpathSync(probe.stdout.trim()) : cwd;
+    const directories = probe.stdout.trim().split("\n");
+    // Newlines in a checkout path make the combined response ambiguous; ask each path separately then.
+    const combined = probe.status === 0 && directories.length === 3;
+    let root =
+        probe.status === 0
+            ? realpathSync(combined ? directories[0] : git(cwd, ["rev-parse", "--show-toplevel"])!)
+            : cwd;
     if (probe.status !== 0) {
         for (let ancestor = cwd; ; ancestor = dirname(ancestor)) {
             if (regularFile(join(ancestor, ".wld-project.json"))) {
@@ -185,11 +229,10 @@ function evidence(path: string): IdentityEvidence {
             checkoutId: marker?.checkoutId ?? null,
             remote: null,
         };
-    const common = realpathSync(resolve(cwd, git(cwd, ["rev-parse", "--git-common-dir"])!));
-    const admin = realpathSync(resolve(cwd, git(cwd, ["rev-parse", "--git-dir"])!));
+    const common = realpathSync(resolve(cwd, combined ? directories[1] : git(cwd, ["rev-parse", "--git-common-dir"])!));
+    const admin = realpathSync(resolve(cwd, combined ? directories[2] : git(cwd, ["rev-parse", "--git-dir"])!));
     const file = join(common, "config");
-    const projectId = config(cwd, file, "runwield.projectId");
-    const repositoryId = config(cwd, file, "runwield.repositoryId");
+    const { projectId, repositoryId, remote } = identityConfig(cwd, file);
     const checkoutPath = join(admin, "runwield-checkout-id");
     const checkoutId = regularFile(checkoutPath)
         ? requireId(readFileSync(checkoutPath, "utf8").trim(), "checkout ID")
@@ -213,7 +256,7 @@ function evidence(path: string): IdentityEvidence {
         projectId: projectId ?? marker?.projectId ?? null,
         repositoryId: repositoryId ?? marker?.repositoryId ?? null,
         checkoutId: checkoutId ?? marker?.checkoutId ?? null,
-        remote: git(cwd, ["config", "--file", file, "--no-includes", "--get", "remote.origin.url"], true),
+        remote,
     };
 }
 export function projectLaunchContext(): ProjectLaunchContext {
@@ -370,6 +413,16 @@ export async function admitProjectIdentity(
         await lock.lock(true);
         try {
             e = evidence(path);
+            if (
+                e.projectId &&
+                ((options.choice?.kind === "link" && options.choice.projectId !== e.projectId) ||
+                    (options.choice?.kind === "new" &&
+                        options.choice.candidates.some((candidate) => candidate.projectId === e.projectId)))
+            )
+                return {
+                    kind: "invalid",
+                    message: `Clone choice conflicts with the committed Project ${e.projectId}; identity was preserved`,
+                };
             const currentCandidates = e.projectId ? [] : candidatesFor(e, context);
             if (!e.projectId && currentCandidates.length && !options.choice)
                 return { kind: "pending", candidates: currentCandidates };

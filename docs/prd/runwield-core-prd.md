@@ -1629,7 +1629,10 @@ and overrides remain unchanged. Identity admission never stages an identity file
 A fresh clone's remote only suggests known Projects. The user selects one Project or creates a separate Project;
 acceptance and decline are remembered on that repository. Cancellation saves no answer. Unavailable interaction returns
 a pending choice, and changed candidate evidence requires a fresh choice. Passive lookup never creates identity, home
-records, or locks. Interrupted entry retains committed Git identity and repairs missing home metadata on retry.
+records, or locks. Directory consent alone does not admit identity or prepare runtime state. An empty TUI defers
+admission until submitted work; a supplied startup request or continuation admits identity while runtime preparation
+stays with its existing action owner. Interrupted entry retains committed Git identity and repairs missing home metadata
+on retry.
 
 **Requirement: Explicit owner context.** Ordinary `wld`, including manual SSH, uses the execution account regardless of
 SSH environment variables. Verified managed-remote activation can supply a different personal owner while retaining the
@@ -1640,10 +1643,15 @@ remote personal store. Managed-remote store operations remain target scope.
 
 - Given a Project entered from a new process, linked checkout, subdirectory, or moved folder, it retains its Project ID;
   linked checkouts share the repository binding and have distinct checkout bindings.
+- Given a fresh or matching clone, CLI Plan listing, body reads, archive listing, and Doctor `--check` preserve
+  Project identity, Git configuration, runtime evidence, and ignore rules without asking for a clone-link choice.
+  Doctor repair and submitted work admit identity and can present the remembered clone-link choice.
 - Given simultaneous first entry, both processes converge on the same committed identity. Missing home metadata is
   repaired without replacing the Git ID; corrupt evidence remains visible and unchanged.
 - Given a matching fresh clone, no identity is selected until the user chooses. Linking shares only Project identity;
   declining creates a separate Project. Reopening either clone does not ask again.
+- Given two pending prompts for one clone, if one commits a Project before the other submits a conflicting choice,
+  the later choice reports the conflict and preserves the committed identity. Repeating the winning choice reuses it.
 - Given a non-Git folder that is moved and initialized with Git, entry preserves its ID and settings and removes only
   its valid identity marker. Conflicting or malformed evidence is preserved.
 - Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership

@@ -20,7 +20,7 @@ order: 1
 dependencies: []
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Establish Stable Project Identity

@@ -1,7 +1,8 @@
 import { test } from "node:test";
+import process from "node:process";
 import { deepEqual, equal, notEqual, ok, match } from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile, readdir, lstat } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile, readdir, lstat, realpath } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
@@ -14,6 +15,29 @@ import {
 } from "./project-identity.ts";
 
 const fixture = defineCommittedGitFixture();
+async function assertStoredBinding(home: string, identity: ProjectIdentity, roots: string[], checkouts = [identity]) {
+    const canonicalRoots = await Promise.all(roots.map((root) => realpath(root)));
+    deepEqual(
+        JSON.parse(await readFile(join(home, ".wld", "projects", identity.projectId, "project.wld.json"), "utf8")),
+        {
+            version: 1,
+            projectId: identity.projectId,
+            displayName: basename(canonicalRoots[0]),
+            personalOwner: identity.personalOwner,
+            repositories: [
+                {
+                    repositoryId: identity.repositoryId,
+                    remote: null,
+                    decision: "new",
+                    checkouts: checkouts.map((checkout, index) => ({
+                        checkoutId: checkout.checkoutId,
+                        root: canonicalRoots[index],
+                    })),
+                },
+            ],
+        },
+    );
+}
 function admitted(result: ProjectIdentityAdmission): ProjectIdentity {
     equal(result.kind, "existing", JSON.stringify(result));
     if (result.kind !== "existing") throw new Error("Identity not admitted");
@@ -67,6 +91,24 @@ test("identity inspection leaves fresh, admitted and malformed project and home 
     }
 });
 
+test("pending clone inspection leaves home, project and Git names, bytes and modification times untouched", async () => {
+    const f = await environment();
+    try {
+        const one = join(f.home, "one");
+        const two = join(f.home, "two");
+        for (const root of [one, two]) await git(f.root, ["clone", f.root, root]);
+        admitted(await admitProjectIdentity(one, { context: f.context }));
+        const before = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
+        const pending = inspectProjectIdentity(two, { context: f.context });
+        equal(pending.kind, "pending");
+        if (pending.kind !== "pending") throw new Error("Expected pending clone");
+        equal(pending.candidates.length, 1);
+        deepEqual([...(await snapshot(f.home)), ...(await snapshot(f.root))], before);
+    } finally {
+        await f.close();
+    }
+});
+
 test("linked worktrees and subdirectories share Project and repository IDs with distinct checkout IDs", async () => {
     const f = await environment();
     const linked = `${f.root}-linked`;
@@ -79,6 +121,7 @@ test("linked worktrees and subdirectories share Project and repository IDs with 
         equal(second.repositoryId, first.repositoryId);
         notEqual(second.checkoutId, first.checkoutId);
         equal(admitted(inspectProjectIdentity(linked, { context: f.context })).checkoutId, second.checkoutId);
+        await assertStoredBinding(f.home, first, [f.root, linked], [first, second]);
     } finally {
         await rm(linked, { recursive: true, force: true });
         await f.close();
@@ -128,13 +171,14 @@ test("independent same-basename repositories receive separate opaque identities"
 test("only the common Git config own identity is authoritative, excluding included and worktree values", async () => {
     const f = await environment();
     try {
+        await git(f.root, ["config", "preserve.setting", "keep-me"]);
         const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        equal(await git(f.root, ["config", "preserve.setting"]), "keep-me");
         const included = join(f.home, "included");
         await writeFile(included, `[runwield]\nprojectId = ${randomUUID()}\n`);
         await git(f.root, ["config", "include.path", included]);
         await git(f.root, ["config", "extensions.worktreeConfig", "true"]);
         await git(f.root, ["config", "--worktree", "runwield.projectId", randomUUID()]);
-        await git(f.root, ["config", "preserve.setting", "keep-me"]);
         equal(admitted(await admitProjectIdentity(f.root, { context: f.context })).projectId, first.projectId);
         equal(await git(f.root, ["config", "preserve.setting"]), "keep-me");
     } finally {
@@ -202,7 +246,8 @@ test("committed Git identity repairs missing home metadata without minting repla
         const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
         await rm(join(f.home, ".wld"), { recursive: true });
         deepEqual(admitted(await admitProjectIdentity(f.root, { context: f.context })), first);
-        ok(await readFile(join(f.home, ".wld", "projects", first.projectId, "project.wld.json"), "utf8"));
+        await assertStoredBinding(f.home, first, [f.root]);
+        deepEqual(await readdir(join(f.home, ".wld", "projects")), [first.projectId]);
     } finally {
         await f.close();
     }
@@ -237,3 +282,40 @@ test("explicit managed owner keeps execution home separate and does not write a 
         await f.close();
     }
 });
+
+for (const key of ["runwield.projectId", "runwield.repositoryId"]) {
+    test(`duplicate ${key} values refuse admission without changing identity evidence`, async () => {
+        const f = await environment();
+        try {
+            const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+            const value = key === "runwield.projectId" ? first.projectId : first.repositoryId;
+            await git(f.root, ["config", "--add", key, value]);
+            const before = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
+            equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "invalid");
+            equal((await admitProjectIdentity(f.root, { context: f.context })).kind, "invalid");
+            deepEqual([...(await snapshot(f.home)), ...(await snapshot(f.root))], before);
+        } finally {
+            await f.close();
+        }
+    });
+}
+
+test(
+    "identity admission preserves Git directory paths containing a newline",
+    { skip: process.platform === "win32" ? "Windows filenames cannot contain newlines" : false },
+    async () => {
+        const f = await environment();
+        const moved = `${f.root}-line\nbreak`;
+        try {
+            const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+            await rename(f.root, moved);
+            const next = admitted(await admitProjectIdentity(moved, { context: f.context }));
+            equal(next.projectId, first.projectId);
+            equal(next.checkoutId, first.checkoutId);
+            equal(next.checkoutRoot, await realpath(moved));
+        } finally {
+            await rm(moved, { recursive: true, force: true });
+            await f.close();
+        }
+    },
+);

@@ -1,3 +1,4 @@
+import { admitProjectWithIdentityChoice } from "./project-identity-entry.ts";
 import { handleBashCommand } from "./bash-interceptor.ts";
 import { endBlink } from "./boot-logo.ts";
 import { disposeKeybindings, installKeybindings } from "./keybindings.ts";
@@ -280,6 +281,10 @@ export function createChatInputController(options: ChatInputControllerOptions): 
     ): Promise<void> {
         const thisGen = generationGuard.bump();
         try {
+            if (!(await admitProjectWithIdentityChoice(options.getProjectRoot()))) {
+                restoreQueuedItemToEditor({ text: userRequest, images: savedImages });
+                return;
+            }
             await options.managedSyncController.pause();
             const result = await runtime.promptUserTurn(options.getSessionId(), {
                 initialRequest: userRequest,
