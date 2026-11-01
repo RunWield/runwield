@@ -31,7 +31,7 @@ import { findPlansByParent, loadPlan, parsePlanFrontMatter } from "../../../plan
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { submitPlanForReview } from "../../review/plan-review.ts";
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
-import { createFauxMessageForTurn, GoldenScenarioActor } from "./scenario-actor.js";
+import { createFauxMessageForTurn, GoldenScenarioActor } from "./scenario-actor.ts";
 import {
     createGoldenIsolatedEnvironment,
     GOLDEN_FAUX_API,
@@ -239,7 +239,7 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
  * @property {string} name
  * @property {{ columns?: number, rows?: number }} [terminal]
  * @property {Array<Object>} [actions]
- * @property {Array<import('./scenario-actor.js').GoldenScriptTurn>} [script]
+ * @property {Array<import('./scenario-actor.ts').GoldenScriptTurn>} [script]
  * @property {Array<{ interactionType: string, decision?: string }>} [interactions]
  * @property {Array<import('./scripted-review-surface.js').ScriptedRuntimeInteraction>} [scriptedInteractions]
  * @property {string[]} [interactiveSelectPrompts] Prompt fragments driven by real terminal input even with other scripted interactions.
