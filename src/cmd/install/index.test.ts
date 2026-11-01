@@ -22,7 +22,7 @@ import {
     resolveApprovedMetricsExporters,
 } from "../../shared/extensions/metrics-exporter.ts";
 import { runRemoveCommand } from "../remove/index.ts";
-import { resolveInstalledWldExtensionResources } from "../../shared/extensions/wld-extension-manifest.js";
+import { resolveInstalledWldExtensionResources } from "../../shared/extensions/wld-extension-manifest.ts";
 import {
     resolveConfiguredUserPackageSource,
     resolveInstalledPackagePromptResources,
