@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
@@ -299,26 +299,63 @@ test("timeout settles provider work before returning and a new project can compl
         const first = await materializeFixture(fixture, "A");
         let calls = 0;
         let settled = false;
+        const timeoutMs = 300;
+        const providerEntered = Promise.withResolvers<void>();
+        const providerAborted = Promise.withResolvers<void>();
+        const releaseProvider = Promise.withResolvers<void>();
+        const realSetTimeout = globalThis.setTimeout;
+        // Advance only the review deadline, and only after setup reaches the provider.
+        // Other timers keep running so real Session setup and disposal can finish.
+        const deadlineClock = mock.method(globalThis, "setTimeout", (...args: Parameters<typeof setTimeout>) => {
+            const [callback, delay, ...callbackArgs] = args;
+            if (delay === timeoutMs) {
+                return realSetTimeout(() => {
+                    void providerEntered.promise.then(() => callback(...callbackArgs));
+                }, 0);
+            }
+            return realSetTimeout(...args);
+        });
         runtime.setModelResponseFactory(async (_context, options) => {
             calls += 1;
+            providerEntered.resolve();
             await new Promise<void>((resolve) => {
                 if (options?.signal?.aborted) resolve();
                 else options?.signal?.addEventListener("abort", () => resolve(), { once: true });
             });
+            // Abort notification alone is not settlement: hold provider cleanup open.
+            providerAborted.resolve();
+            await releaseProvider.promise;
             settled = true;
             return fauxAssistantMessage(fauxText("Canceled review"));
         });
+        let returned = false;
+        const review = runFixtureReview(first, fixture, { timeoutMs }).then((result) => {
+            returned = true;
+            return result;
+        });
         try {
-            const result = await runFixtureReview(first, fixture, { timeoutMs: 300 });
+            await Promise.race([
+                providerAborted.promise,
+                review.then(() => assert.fail("Review returned before the provider was aborted")),
+            ]);
+            await new Promise<void>((resolve) => realSetTimeout(resolve, 0));
+            assert.equal(returned, false, "Review must wait for provider cleanup after abort");
+            releaseProvider.resolve();
+            const result = await review;
             assert.equal(result.kind, "timeout");
             assert.equal(result.outcome, undefined);
             assert.equal(settled, true);
             assert.equal(calls, 1);
-            assert.ok(result.elapsedMs >= 300);
             await new Promise((resolve) => setTimeout(resolve, 40));
             assert.equal(calls, 1);
         } finally {
-            await first.cleanup();
+            releaseProvider.resolve();
+            try {
+                await review;
+            } finally {
+                deadlineClock.mock.restore();
+                await first.cleanup();
+            }
         }
         const second = await materializeFixture(fixture, "B");
         runtime.setModelResponseFactories(approveSteps(second));
