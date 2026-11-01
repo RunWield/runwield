@@ -30,8 +30,8 @@ import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderSt
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getRemoteSessionSaveBridge } from "./root-session.js";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
-import { createSingleEditToolDefinition } from "../../tools/edit.js";
-import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.js";
+import { createSingleEditToolDefinition } from "../../tools/edit.ts";
+import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.ts";
 import { wrapPlanSafeFileTool } from "../../tools/plan-safe-file-tools.ts";
 import { createRunWieldGrepToolDefinition } from "../../tools/grep.js";
 import { createRunWieldReadToolDefinition } from "../../tools/read.js";
