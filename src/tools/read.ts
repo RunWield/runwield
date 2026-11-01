@@ -6,7 +6,7 @@ import { open as fsOpen, readFile as fsReadFile } from "node:fs/promises";
  * binary/control-byte text does not get projected into terminal output.
  */
 
-import { createReadToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createReadToolDefinition, type ReadToolDetails } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Buffer } from "node:buffer";
 import { isAbsolute, resolve as resolvePath } from "node:path";
@@ -14,20 +14,36 @@ import { mimeTypeForImagePath } from "../shared/session/image-attachments.ts";
 
 const BINARY_DISPLAY_SAMPLE_BYTES = 8192;
 const BINARY_DISPLAY_SUPPRESSED_DETAIL = "binary_display_suppressed";
-const binaryDisplayResults = new WeakSet();
+const binaryDisplayResults = new WeakSet<ToolResult>();
 
-/**
- * @typedef {{ type?: string, text?: string, data?: string, mimeType?: string }} ToolContentPart
- * @typedef {{ base64: string, mimeType: string }} DisplayImage
- * @typedef {{ content?: ToolContentPart[], details?: Record<string, unknown> }} ToolResult
- * @typedef {{ path?: string, file_path?: string }} ReadToolArgs
- */
+export interface ToolContentPart {
+    type?: string;
+    text?: string;
+    data?: string;
+    mimeType?: string;
+}
 
-/**
- * @param {string} text
- * @returns {boolean}
- */
-function containsUnsafeDisplayText(text) {
+export interface DisplayImage {
+    base64: string;
+    mimeType: string;
+}
+
+interface ToolResultDetails extends ReadToolDetails {
+    runwieldDisplay?: string;
+    runwieldDisplayImages?: DisplayImage[];
+}
+
+interface ToolResult {
+    content?: ToolContentPart[];
+    details?: ToolResultDetails;
+}
+
+export interface ReadToolArgs {
+    path?: string;
+    file_path?: string;
+}
+
+function containsUnsafeDisplayText(text: string): boolean {
     for (const char of text) {
         const code = char.charCodeAt(0);
         if (code < 32 && code !== 9 && code !== 10 && code !== 13) return true;
@@ -36,28 +52,16 @@ function containsUnsafeDisplayText(text) {
     return false;
 }
 
-/**
- * @param {unknown} result
- * @returns {ToolContentPart[]}
- */
-function getResultContent(result) {
-    const content = /** @type {ToolResult | undefined} */ (result)?.content;
+function getResultContent(result: unknown): ToolContentPart[] {
+    const content = (result as ToolResult | undefined)?.content;
     return Array.isArray(content) ? content : [];
 }
 
-/**
- * @param {unknown} result
- * @returns {boolean}
- */
-function resultHasImageContent(result) {
+function resultHasImageContent(result: unknown): boolean {
     return getResultContent(result).some((part) => part?.type === "image");
 }
 
-/**
- * @param {unknown} result
- * @returns {boolean}
- */
-function resultLooksUnsafeForDisplay(result) {
+function resultLooksUnsafeForDisplay(result: unknown): boolean {
     for (const part of getResultContent(result)) {
         if (part?.type === "text" && typeof part.text === "string" && containsUnsafeDisplayText(part.text)) {
             return true;
@@ -66,21 +70,13 @@ function resultLooksUnsafeForDisplay(result) {
     return false;
 }
 
-/**
- * @param {unknown} result
- * @returns {boolean}
- */
-function resultHasBinaryDisplaySuppression(result) {
-    return /** @type {ToolResult | undefined} */ (result)?.details?.runwieldDisplay ===
-        BINARY_DISPLAY_SUPPRESSED_DETAIL;
+function resultHasBinaryDisplaySuppression(result: unknown): boolean {
+    return (result as ToolResult | undefined)?.details?.runwieldDisplay === BINARY_DISPLAY_SUPPRESSED_DETAIL;
 }
 
-/**
- * @param {unknown} result
- */
-function markBinaryDisplaySuppressed(result) {
+function markBinaryDisplaySuppressed(result: unknown) {
     if (typeof result !== "object" || result === null) return;
-    const toolResult = /** @type {ToolResult} */ (result);
+    const toolResult = result as ToolResult;
     toolResult.details = {
         ...(toolResult.details || {}),
         runwieldDisplay: BINARY_DISPLAY_SUPPRESSED_DETAIL,
@@ -88,11 +84,7 @@ function markBinaryDisplaySuppressed(result) {
     binaryDisplayResults.add(result);
 }
 
-/**
- * @param {Uint8Array} bytes
- * @returns {boolean}
- */
-function bytesLookBinaryForDisplay(bytes) {
+function bytesLookBinaryForDisplay(bytes: Uint8Array): boolean {
     if (bytes.length === 0) return false;
     for (const byte of bytes) {
         if (byte === 0) return true;
@@ -108,11 +100,7 @@ function bytesLookBinaryForDisplay(bytes) {
     }
 }
 
-/**
- * @param {string} absolutePath
- * @returns {Promise<Uint8Array>}
- */
-async function readDisplaySampleBytes(absolutePath) {
+async function readDisplaySampleBytes(absolutePath: string): Promise<Uint8Array> {
     const file = await fsOpen(absolutePath, "r");
     try {
         const buffer = new Uint8Array(BINARY_DISPLAY_SAMPLE_BYTES);
@@ -123,39 +111,21 @@ async function readDisplaySampleBytes(absolutePath) {
     }
 }
 
-/**
- * @param {unknown} args
- * @returns {string | undefined}
- */
-function readToolPath(args) {
-    const readArgs = /** @type {ReadToolArgs | undefined} */ (args);
+function readToolPath(args: unknown): string | undefined {
+    const readArgs = args as ReadToolArgs | undefined;
     return readArgs?.path ?? readArgs?.file_path;
 }
 
-/**
- * @param {string} path
- * @returns {string}
- */
-function normalizeReadToolPath(path) {
+function normalizeReadToolPath(path: string): string {
     return path.startsWith("@") ? path.slice(1) : path;
 }
 
-/**
- * @param {string} cwd
- * @param {string} path
- * @returns {string}
- */
-function resolveReadToolPath(cwd, path) {
+function resolveReadToolPath(cwd: string, path: string): string {
     const normalizedPath = normalizeReadToolPath(path);
     return isAbsolute(normalizedPath) ? normalizedPath : resolvePath(cwd, normalizedPath);
 }
 
-/**
- * @param {string} cwd
- * @param {unknown} args
- * @returns {Promise<boolean>}
- */
-async function fileLooksBinaryForDisplay(cwd, args) {
+async function fileLooksBinaryForDisplay(cwd: string, args: unknown): Promise<boolean> {
     const path = readToolPath(args);
     if (typeof path !== "string" || path.length === 0) return false;
 
@@ -167,12 +137,7 @@ async function fileLooksBinaryForDisplay(cwd, args) {
     }
 }
 
-/**
- * @param {string} cwd
- * @param {unknown} args
- * @returns {Promise<DisplayImage | null>}
- */
-async function readDisplayImage(cwd, args) {
+async function readDisplayImage(cwd: string, args: unknown): Promise<DisplayImage | null> {
     const path = readToolPath(args);
     if (typeof path !== "string" || path.length === 0) return null;
 
@@ -185,13 +150,9 @@ async function readDisplayImage(cwd, args) {
     }
 }
 
-/**
- * @param {unknown} result
- * @param {DisplayImage} image
- */
-function attachImageContent(result, image) {
+function attachImageContent(result: unknown, image: DisplayImage) {
     if (typeof result !== "object" || result === null) return;
-    const toolResult = /** @type {ToolResult} */ (result);
+    const toolResult = result as ToolResult;
     toolResult.details = {
         ...(toolResult.details || {}),
         runwieldDisplayImages: [image],
@@ -202,18 +163,13 @@ function attachImageContent(result, image) {
     }
 }
 
-/**
- * @param {string} cwd
- * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>}
- */
-export function createRunWieldReadToolDefinition(cwd) {
+export function createRunWieldReadToolDefinition(cwd: string) {
     const original = createReadToolDefinition(cwd);
-    const originalExecute = /** @type {any} */ (original.execute);
-    const originalRenderResult = /** @type {any} */ (original.renderResult);
-    const tool = /** @type {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} */ (original);
+    const originalExecute = original.execute;
+    const originalRenderResult = original.renderResult;
+    const tool = original;
 
-    tool.description =
-        `${original.description} Suppresses binary/control-byte text in terminal rendering while preserving the tool result.`;
+    tool.description = `${original.description} Suppresses binary/control-byte text in terminal rendering while preserving the tool result.`;
     tool.promptGuidelines = [
         ...(original.promptGuidelines || []),
         "Use read for files you need to inspect; terminal rendering may hide binary/control-byte output.",
@@ -223,18 +179,19 @@ export function createRunWieldReadToolDefinition(cwd) {
         const displayImage = !resultHasImageContent(result) ? await readDisplayImage(cwd, args) : null;
         if (displayImage) attachImageContent(result, displayImage);
         if (
-            !displayImage && !resultHasImageContent(result) &&
-            (resultLooksUnsafeForDisplay(result) || await fileLooksBinaryForDisplay(cwd, args))
+            !displayImage &&
+            !resultHasImageContent(result) &&
+            (resultLooksUnsafeForDisplay(result) || (await fileLooksBinaryForDisplay(cwd, args)))
         ) {
             markBinaryDisplaySuppressed(result);
         }
         return result;
     };
     tool.renderResult = (result, _options, _theme, context) => {
-        const text =
-            /** @type {Text} */ (context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0));
+        const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
         if (
-            resultHasBinaryDisplaySuppression(result) || binaryDisplayResults.has(result) ||
+            resultHasBinaryDisplaySuppression(result) ||
+            binaryDisplayResults.has(result) ||
             (!resultHasImageContent(result) && resultLooksUnsafeForDisplay(result))
         ) {
             text.setText("");

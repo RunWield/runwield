@@ -34,7 +34,7 @@ import { createSingleEditToolDefinition } from "../../tools/edit.ts";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.ts";
 import { wrapPlanSafeFileTool } from "../../tools/plan-safe-file-tools.ts";
 import { createRunWieldGrepToolDefinition } from "../../tools/grep.js";
-import { createRunWieldReadToolDefinition } from "../../tools/read.js";
+import { createRunWieldReadToolDefinition } from "../../tools/read.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { intersectBashAllowedCommands } from "../bash-command-policy.ts";
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";

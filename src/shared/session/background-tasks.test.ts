@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { BackgroundTasks } from "./background-tasks.ts";
-import { createRunWieldReadToolDefinition } from "../../tools/read.js";
+import { createRunWieldReadToolDefinition } from "../../tools/read.ts";
 
 async function fixture() {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));

@@ -46,7 +46,6 @@
     "src/shared/worktree-registry.js",
     "src/shared/worktree.js",
     "src/tools/grep.js",
-    "src/tools/read.js",
     "src/ui/design-system/components/Dialog.jsx",
     "src/ui/design-system/sidebar-motion.js",
     "src/ui/theme/theme.js",
