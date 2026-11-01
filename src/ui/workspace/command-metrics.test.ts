@@ -8,7 +8,7 @@ import {
     realpath as fsRealpath,
     rm as fsRm,
 } from "node:fs/promises";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";

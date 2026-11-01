@@ -2,7 +2,7 @@ import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { getWorkflowMetricsFilePath } from "../../../shared/workflow/metrics.js";
 import { loadOwnerUsageReport } from "./owner-usage.ts";
 import { devUsageSettings } from "./dev-usage-settings-fixture.ts";

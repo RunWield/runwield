@@ -3,7 +3,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { loadOwnerDashboard, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
 
 test("Dashboard with no registered Projects completes all four empty sections", async () => {

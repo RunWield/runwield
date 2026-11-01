@@ -3,7 +3,7 @@ import { mkdtemp as fsMkdtemp, realpath as fsRealpath, writeFile as fsWriteFile,
 import { join } from "node:path";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { listOwnerProjects } from "../../ui/workspace/server/owner-projects.ts";
 import { type RemoteHostIdentity, type RemoteTarget } from "../remote/target.ts";
 import { type FileSessionManifest } from "./file-session-store-types.ts";

@@ -10,7 +10,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { loadWorkspaceDetail } from "./server/plan-adapter.js";
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";

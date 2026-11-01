@@ -12,7 +12,7 @@ import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { parseWorkspaceServeArgs } from "./serve.ts";
 
 interface WorkspaceCommandFixture {

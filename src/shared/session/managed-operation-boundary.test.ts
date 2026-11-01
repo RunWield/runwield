@@ -3,7 +3,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 
 test("ManagedOperationCapability has no runtime constructor export", async () => {
