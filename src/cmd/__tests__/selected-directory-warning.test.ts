@@ -225,7 +225,7 @@ test("ACP Load Plan at a registered home root keeps protocol behavior without a 
                 branch: "acp",
                 baseBranch: "main",
                 baseRef: "main",
-                baseCommit: "fixture",
+                baseCommit: await git(projectRoot, ["rev-parse", "HEAD"]),
                 status: "planning",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -296,6 +296,7 @@ for (const allow of [false, true]) {
         await withRuntimeCommandFixture("doctor-selected-directory-", async ({ homeDir: home }) => {
             const project = await fixture.checkout();
             try {
+                await attachHomeWorktree(project, home, "selected");
                 mkdirSync(join(home, "docs/plans"), { recursive: true });
                 const path = join(home, "docs/plans/selected.md");
                 const text = "---\nstatus: draft\n---\n# Selected\n";

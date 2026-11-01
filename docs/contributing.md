@@ -117,9 +117,10 @@ bun run compile --target aarch64-unknown-linux-gnu --output bin/wld-linux-arm64 
 bun scripts/release-assets.ts development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
 ```
 
-Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never
-compiles on demand or substitutes a released binary. Released launchers instead obtain their exact VERSION-tagged
-archive. Both launcher types download pinned `cymbal` and `ketch` and MIT notices on first use, cache them under laptop
+Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. These local files take
+priority even if the checkout has an unpublished release tag. Their build identity, protocol, version, and checksums must
+match. A connection never compiles on demand. Without a local target file, a release-tagged launcher obtains its exact
+VERSION-tagged archive, not an older release. Both launcher types download pinned `cymbal` and `ketch` and MIT notices on first use, cache them under laptop
 `~/.cache/runwield/remote/`, and supply them privately on the server. The server needs no internet connection or system
 helper installation. A warm laptop cache supports offline reconnect and an empty server cache.
 

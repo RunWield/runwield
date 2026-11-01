@@ -157,8 +157,19 @@ test("Workspace Resume continues a paused validation repair in its existing work
                 const payload: ResumeResponse = await response.json();
                 assertEquals(response.status, 202, JSON.stringify(payload));
                 assertExists(payload.operationId);
-                for (let i = 0; i < 500 && service.getOperation(payload.operationId).status === "running"; i++) {
-                    await new Promise((resolve) => setTimeout(resolve, 20));
+                const settled = Promise.withResolvers<void>();
+                const timeout = setTimeout(
+                    () => settled.reject(new Error(JSON.stringify(service.getOperation(payload.operationId)))),
+                    60_000,
+                );
+                const unsubscribe = service.subscribeOperationChanges(payload.operationId, (status) => {
+                    if (status !== "running" && status !== "accepted") settled.resolve();
+                });
+                try {
+                    await settled.promise;
+                } finally {
+                    clearTimeout(timeout);
+                    unsubscribe();
                 }
                 assertEquals(
                     service.getOperation(payload.operationId).status,

@@ -22,7 +22,7 @@ const TERMINAL_BELL_BYTES = new Uint8Array([7]);
 const TEXT_ENCODER = new TextEncoder();
 
 type NotificationActivationMode = "tab" | "app" | "none";
-export type NativeNotificationProtocol = "osc99" | "osc777" | "osc9" | "unsupported";
+export type NativeNotificationProtocol = "osc99" | "osc777" | "osc9";
 
 export interface NotificationSettings extends CommonNotificationPolicy {
     activation: NotificationActivationMode;
@@ -66,7 +66,7 @@ export interface NotificationResult {
     eventName: string;
     title: string;
     message: string;
-    protocol: NativeNotificationProtocol;
+    protocol: NativeNotificationProtocol | "none";
     terminal: TerminalIdentity;
     terminalBellEmitted: boolean;
     oscEmitted: boolean;
@@ -111,7 +111,7 @@ export function createSystemNotificationNotifier(port: SystemNotificationPort): 
             eventName,
             title: initialTitle,
             message: initialMessage,
-            protocol: "unsupported",
+            protocol: "none",
             terminal: initialTerminal,
             terminalBellEmitted: false,
             oscEmitted: false,
@@ -143,12 +143,12 @@ export function createSystemNotificationNotifier(port: SystemNotificationPort): 
         const message = buildNotificationMessage(eventName, terminal);
         const protocol = selectNativeNotificationProtocol(terminal);
         const terminalBellEmitted = settings.terminalBell ? emitTerminalBell(port) : false;
-        const oscEmitted = protocol === "unsupported" ? false : emitNativeNotification(protocol, title, message, port);
+        const oscEmitted = emitNativeNotification(protocol, title, message, port);
 
         return {
             ...baseResult,
             sent: oscEmitted,
-            reason: oscEmitted ? "sent" : protocol === "unsupported" ? "unsupported" : "write_failed",
+            reason: oscEmitted ? "sent" : "write_failed",
             title,
             message,
             protocol,
@@ -197,9 +197,8 @@ export function detectTerminalIdentity(sessionLabel: string, process: TerminalPr
 
 export function selectNativeNotificationProtocol(terminal: TerminalIdentity): NativeNotificationProtocol {
     if (isKitty(terminal)) return "osc99";
-    if (isWezTerm(terminal) || isGhostty(terminal)) return "osc777";
     if (isITerm(terminal)) return "osc9";
-    return "unsupported";
+    return "osc777";
 }
 
 export function shouldSuppressAttentionNotification(
@@ -213,7 +212,7 @@ export function buildNativeNotificationSequence(
     protocol: NativeNotificationProtocol,
     title: string,
     message: string,
-): string | null {
+): string {
     if (protocol === "osc99") {
         const titleSequence = `\x1b]99;i=runwield:d=0:e=1:o=unfocused:p=title;${base64(title)}\x1b\\`;
         const bodySequence = `\x1b]99;i=runwield:d=1:e=1:o=unfocused:p=body;${base64(message)}\x1b\\`;
@@ -222,10 +221,7 @@ export function buildNativeNotificationSequence(
     if (protocol === "osc777") {
         return `\x1b]777;notify;${sanitizeOscField(title)};${sanitizeOscField(message)}\x07`;
     }
-    if (protocol === "osc9") {
-        return `\x1b]9;${sanitizeOscField(`${title}: ${message}`)}\x07`;
-    }
-    return null;
+    return `\x1b]9;${sanitizeOscField(`${title}: ${message}`)}\x07`;
 }
 
 function emitNativeNotification(
@@ -235,7 +231,6 @@ function emitNativeNotification(
     terminal: Pick<SystemNotificationPort, "writeTerminal">,
 ): boolean {
     const sequence = buildNativeNotificationSequence(protocol, title, message);
-    if (!sequence) return false;
     try {
         terminal.writeTerminal(TEXT_ENCODER.encode(sequence));
         return true;
@@ -295,10 +290,6 @@ function isITerm(terminal: TerminalIdentity): boolean {
     return terminal.termProgram === "iTerm.app" || terminal.termProgram === "iTerm2" || !!terminal.itermSessionId;
 }
 
-function isWezTerm(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "WezTerm" || !!terminal.weztermPane;
-}
-
 function isKitty(terminal: TerminalIdentity): boolean {
     return (
         terminal.termProgram === "kitty" ||
@@ -306,11 +297,5 @@ function isKitty(terminal: TerminalIdentity): boolean {
         terminal.term === "xterm-kitty" ||
         !!terminal.kittyListenOn ||
         !!terminal.kittyWindowId
-    );
-}
-
-function isGhostty(terminal: TerminalIdentity): boolean {
-    return (
-        terminal.termProgram === "ghostty" || terminal.termProgram === "Ghostty" || terminal.term === "xterm-ghostty"
     );
 }

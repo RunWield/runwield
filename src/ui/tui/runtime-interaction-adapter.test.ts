@@ -59,6 +59,7 @@ test("TUI Plan review resumes progress after feedback and review failures", asyn
     const adapter = createAdapter(makeUi(null, { busyValues }), { browser: scripted.browser });
     try {
         await savePlan(cwd, "plan", "# Plan\n\nDo the work.\n", {
+            planId: "tui-review-plan",
             classification: "PLANNED_CHANGE",
             status: "draft",
         });

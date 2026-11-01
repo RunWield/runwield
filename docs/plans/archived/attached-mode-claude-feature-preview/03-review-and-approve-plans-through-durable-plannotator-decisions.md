@@ -29,6 +29,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "170c4dfa0008f5589ed55efd2b129279217fd228"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/03-review-and-approve-plans-through-durable-plannotator-decisions.md"
 ---
 
 # Review and approve Plans through durable Plannotator decisions
@@ -41,21 +44,21 @@ no pending action. Nothing opens a review.
 Core review today is process-local: the Session runtime opens the Plannotator browser surface and waits on an in-process
 promise (`waitForDecision`); the browser POST resolves that promise; only then does `applySharedPlanReviewDecision`
 record the canonical `review_feedback` / `review_approved` Plan Events. If the waiting process dies, the decision is
-lost. [ADR-014](../../adr/014-attached-workflow-coordination-boundary.md) already names the fix: durable pending-review
+lost. [ADR-014](../../../adr/014-attached-workflow-coordination-boundary.md) already names the fix: durable pending-review
 decisions plus status polling, never the promise alone.
 
 Owning capabilities:
 
-- [Connect: Shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes)
+- [Connect: Shared Plan and verification outcomes](../../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes)
   — browser Feedback returns to the same attached planning flow; approval is recorded through Core; structured outcomes,
   not chat prose.
-- [Connect: First-class Connect use](../../prd/runwield-connect-prd.md#first-class-connect-use) — the user stays in
+- [Connect: First-class Connect use](../../../prd/runwield-connect-prd.md#first-class-connect-use) — the user stays in
   Claude Code. No Connect journey may require the `wld` CLI or TUI (user-confirmed decision; the CLI subcommands stay
   internal development carriers).
-- [Connect: Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) —
+- [Connect: Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) —
   review-process loss is recoverable; a closed browser tab or a dead MCP server is not abandonment.
-- [Core: Plan review](../../prd/runwield-core-prd.md#plan-review) and
-  [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle) keep approval and readiness authority unchanged.
+- [Core: Plan review](../../../prd/runwield-core-prd.md#plan-review) and
+  [Plan lifecycle](../../../prd/runwield-core-prd.md#plan-lifecycle) keep approval and readiness authority unchanged.
 
 ## Objective
 

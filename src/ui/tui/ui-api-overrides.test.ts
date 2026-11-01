@@ -173,6 +173,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                 let surfaceReady = false;
                 try {
                     await savePlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
+                        planId: "tui-input-review-plan",
                         classification: "PLANNED_CHANGE",
                         status: "draft",
                     });

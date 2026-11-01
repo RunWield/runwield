@@ -37,6 +37,9 @@ userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
 status: "validated"
 validatedCommit: "d107e5f81c0ebafaa2898512870e25dd1431f35d"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/02-plan-one-feature-request-inside-claude-code.md"
 ---
 
 # Plan one FEATURE request inside Claude Code
@@ -55,16 +58,16 @@ the Plan lands in `docs/plans/` with a Plan ID. Browser review is child 03.
 
 Owning capabilities:
 
-- [Explicit per-request activation](../../prd/runwield-connect-prd.md#explicit-per-request-activation) — the plugin
+- [Explicit per-request activation](../../../prd/runwield-connect-prd.md#explicit-per-request-activation) — the plugin
   delivers activation steps 1, 3, and 4 inside Claude Code. Host preflight (step 2) is limited to the contract-version
   check below.
-- [Host-owned reasoning](../../prd/runwield-connect-prd.md#host-owned-reasoning) — Claude makes every model call.
-- [Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability) —
+- [Host-owned reasoning](../../../prd/runwield-connect-prd.md#host-owned-reasoning) — Claude makes every model call.
+- [Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability) —
   role boundaries are instructions, not enforcement.
-- [Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) — the first
+- [Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) — the first
   repository write is Plan submission, and the user sees the setup changes first.
 
-Core keeps [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle) authority.
+Core keeps [Plan lifecycle](../../../prd/runwield-core-prd.md#plan-lifecycle) authority.
 
 ### Decisions from planning
 

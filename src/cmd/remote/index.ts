@@ -3,7 +3,7 @@ import { serveHttp } from "../../shared/http-server.ts";
 import { getCwd } from "../../constants.js";
 import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
 import { readableStdin } from "../../shared/stdin-stream.ts";
-import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /* CLI-only remote connection. SSH supplies authentication, host verification and
  * terminal transport. Saved remote Sessions remain on the laptop. */
 import { dirname, join } from "node:path";
@@ -23,7 +23,7 @@ export const REMOTE_USAGE =
     "Personal resources and saved Session history stay on the laptop.\n" +
     "Use sessions to read saved remote history offline; connect to the target and use /resume to continue.\n" +
     "A host alias named sessions is reachable as sessions: or sessions:<remote-directory>.\n" +
-    "Released launchers use their exact VERSION-tagged GNU/Linux asset; development builds require a matching local artifact.";
+    "Use a matching local Linux artifact when present; otherwise released launchers use their exact VERSION-tagged GNU/Linux asset.";
 
 export function parseRemoteDestination(value: string): { host: string; path: string | null } {
     if (!value || value.startsWith("-") || value.includes("\0")) {
@@ -245,20 +245,30 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         assertRemoteHostReady(target);
         triple = linuxTarget(target);
         const suffix = triple === "x86_64-unknown-linux-gnu" ? "linux-x64" : "linux-arm64";
-        // Released launchers never substitute a development or latest asset.
-        const release = VERSION.startsWith("v")
-            ? await obtainReleaseRuntime(
-                  VERSION,
-                  suffix,
-                  {
-                      buildId: BUILD_ID,
-                      protocol: REMOTE_PROTOCOL_VERSION,
-                      version: VERSION,
-                  },
-                  setupAbort.signal,
-              )
-            : null;
-        const artifact = release?.artifact ?? join(dirname(process.execPath), `wld-${triple}`);
+        const localArtifact = join(dirname(process.execPath), `wld-${triple}`);
+        const hasLocalArtifact = await fsStat(localArtifact).then(
+            () => true,
+            (error: NodeJS.ErrnoException) => {
+                if (error.code === "ENOENT") return false;
+                throw error;
+            },
+        );
+        // Local bundles still pass the same build, protocol, version and checksum checks.
+        // Without one, download only the exact release, never latest or an older version.
+        const release =
+            !hasLocalArtifact && VERSION.startsWith("v")
+                ? await obtainReleaseRuntime(
+                      VERSION,
+                      suffix,
+                      {
+                          buildId: BUILD_ID,
+                          protocol: REMOTE_PROTOCOL_VERSION,
+                          version: VERSION,
+                      },
+                      setupAbort.signal,
+                  )
+                : null;
+        const artifact = release?.artifact ?? localArtifact;
         try {
             await verifyRemoteRuntimeArtifact(artifact, target);
             const helpers = await obtainRemoteHelpers(target, setupAbort.signal);

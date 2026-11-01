@@ -45,6 +45,9 @@ userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
 validatedCommit: "4f7ff53471f75303b7c2f122117fd120a324bcf0"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session.md"
 ---
 
 # Run Workflow Validation without a Core Session
@@ -79,10 +82,10 @@ marker (`mechanical` → `semantic`). A passed Semantic Review moves it to **`re
 `ai-repair`) through `recordDeliveryEvidence`.
 
 This child is a shared Core change with no change to Core Session behavior. It serves the target outcome in
-[Connect: Shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes)
+[Connect: Shared Plan and verification outcomes](../../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes)
 and keeps the requirements in
-[Core: Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
-[Core: Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair) unchanged. The Claude
+[Core: Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
+[Core: Semantic review and repair](../../../prd/runwield-core-prd.md#semantic-review-and-repair) unchanged. The Claude
 journey that uses it is child 05.
 
 Decisions from planning:

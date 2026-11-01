@@ -128,3 +128,33 @@ for (const path of ["Formula/mnemoteca.rb", "README.md", MANIFEST, "Formula/wld.
         }
     });
 }
+
+for (const change of ["shared checkout", "dirty checkout", "test-only", "wrong asset filename"]) {
+    test(`Homebrew publication rejects ${change} without publishing`, async () => {
+        const f = await setup();
+        try {
+            let message = "";
+            if (change === "shared checkout") {
+                f.checked = f.tap;
+                message = "separate disposable copy";
+            } else if (change === "dirty checkout") {
+                await writeFile(join(f.tap, "README.md"), "uncommitted owner changes\n");
+                message = "must be clean";
+            } else if (change === "test-only") {
+                await writeFile(
+                    join(f.checked, MANIFEST),
+                    JSON.stringify({ ...manifest("v0.3.4", f.tag), testOnly: true }),
+                );
+                message = "not a publishable package";
+            } else {
+                await writeFile(join(f.checked, "Formula/wld.rb"), formula(f.tag).replace("darwin-x64", "linux-x64"));
+                message = "requested Stable release assets";
+            }
+            await assertRejects(() => publishHomebrew(f), Error, message);
+            assertEquals(await git(f.remote, ["rev-parse", "main"]), f.base);
+            assertEquals(await git(f.tap, ["show", "HEAD:Formula/wld.rb"]), formula("v1.2.3").trim());
+        } finally {
+            await rm(f.root, { recursive: true });
+        }
+    });
+}

@@ -33,6 +33,7 @@ const gitFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\nwt-prior/\n
 async function makePlanFile(): Promise<PlanReviewFixture> {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-plan-review-"));
     await savePlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
+        planId: "review-plan",
         classification: "PLANNED_CHANGE",
         status: "draft",
         summary: "Do the thing",
@@ -85,11 +86,13 @@ test("grouped Sequence chat preserves intermediate-round intent with its decisio
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-sequence-chat-"));
     try {
         await savePlan(dir, "sequence", "# Sequence\n", {
+            planId: "review-sequence",
             classification: "PROJECT",
             type: "sequence",
             status: "draft",
         });
         await savePlan(dir, "sequence/child", "# Child\n", {
+            planId: "review-sequence-child",
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "sequence",

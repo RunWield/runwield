@@ -31,6 +31,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "e44042fc82b895e70eb4d44861645fe9fa05ec92"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/07-answer-review-chat-from-the-claude-session.md"
 ---
 
 # Answer review chat from the Claude session
@@ -74,10 +77,10 @@ Only the source of the reply changes.
 
 Owning PRD capabilities:
 
-- Connect [artifact privacy and records](../../prd/runwield-connect-prd.md#artifact-privacy-and-records) — no host
+- Connect [artifact privacy and records](../../../prd/runwield-connect-prd.md#artifact-privacy-and-records) — no host
   conversation in durable RunWield artifacts. Feedback and approval return as structured workflow outcomes, not chat
   prose.
-- Core [execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) — saved
+- Core [execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) — saved
   waits survive a process restart.
 
 ### Planning Decisions (2026-10-13)

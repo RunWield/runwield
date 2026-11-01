@@ -2,7 +2,7 @@
 
 This directory prepares macOS packages for `RunWield/homebrew-tap`. The installed tap identity remains `gandazgul/tap`.
 
-Refresh only RunWield in a copy of the current tap:
+Refresh only RunWield against the existing public tap dependency:
 
 ```bash
 git clone https://github.com/RunWield/homebrew-tap.git /tmp/runwield-tap
@@ -31,16 +31,27 @@ Its artifact includes package files only, not checkout metadata or credentials.
 Use `--test-only` for local URL overrides. Publishable output must use immutable GitHub release URLs and real license,
 homepage, and tested helper version metadata.
 
-Check the rendered tap on disposable macOS infrastructure before publication. The check installs and removes packages;
-do not run it against the owner's working Homebrew installation:
+The existing manifest and macOS dependency asset pair must be valid; publishable refresh rejects test-only bases.
+
+Check a disposable copy on disposable macOS infrastructure before publication. The check installs and removes packages,
+and stages and commits its input tree. Keep the publication checkout at the original snapshot revision; do not qualify
+on the owner's working Homebrew installation. Test the binary named in the formula, not a different local build:
 
 ```bash
-bun run package:homebrew:check --tap /tmp/runwield-tap
+mkdir /tmp/runwield-tap-check
+cp -R /tmp/runwield-tap/Formula /tmp/runwield-tap/README.md \
+  /tmp/runwield-tap/runwield-homebrew-package.json /tmp/runwield-tap-check/
 ```
 
-Use a RunWield Stable release that includes package-owner metadata. Test the binary named in the formula, not a different
-local build. Publication must use the same tap revision that passed qualification. If another writer advances the tap,
-start from a fresh snapshot and recheck. Never force-push a stale manifest. See [release recovery](../../docs/releasing.md#homebrew-tap-publication).
+```bash
+bun run package:homebrew:check --tap /tmp/runwield-tap-check
+```
+
+The checker also compares the installed Mnemoteca version with `mnemotecaTag`. Stable publication uses only the verified
+wld formula and wld-owned manifest fields from the checked base. A normal push rejects concurrent tap changes. Recovery
+starts with a fresh snapshot and repeats qualification; never copy stale metadata over an updated dependency or rerun an
+old workflow revision. See [release policy](../../docs/releasing.md#homebrew-tap-publication) for recovery and the separate
+public dependency repair. Source prevention does not establish that the public repair is complete.
 
 The generated `wld` formula depends on:
 

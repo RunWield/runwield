@@ -27,6 +27,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "d9eba56c57394f476de431e1118072b7a9a42104"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/04-implement-approved-plans-in-runwield-worktrees.md"
 ---
 
 # Implement approved Plans in RunWield worktrees
@@ -37,13 +40,13 @@ Child 03 delivers durable Plannotator review: approval applies the canonical `re
 Attached Workflow Record at `plan_ready` with the Plan at `ready_for_work`. The plugin currently tells Claude "execution
 handoff is a later Preview step." Nothing implements an approved Plan.
 
-The owning Connect capability is [Isolated implementation](../../prd/runwield-connect-prd.md#isolated-implementation):
+The owning Connect capability is [Isolated implementation](../../../prd/runwield-connect-prd.md#isolated-implementation):
 planned FEATURE execution stays isolated in a RunWield-owned worktree, the invoking host conversation supervises a
 host-native implementation worker in that worktree, all worker model calls come from the host, and no external host
 creates a competing worktree lifecycle. Recovery follows
-[Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery); every model call
-stays host-owned under [Host-owned reasoning](../../prd/runwield-connect-prd.md#host-owned-reasoning). Core keeps
-[execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) authority;
+[Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery); every model call
+stays host-owned under [Host-owned reasoning](../../../prd/runwield-connect-prd.md#host-owned-reasoning). Core keeps
+[execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) authority;
 validation and publication are children 05 and 06.
 
 Codebase evidence (verified this session):
@@ -187,9 +190,9 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/architecture-boundary.test.ts` (or a sibling attached boundary test following its pattern) — the
   import-graph rule that keeps preparation and completion policy in the shared wrappers.
 - `docs/prd/runwield-connect-prd.md` —
-  [Isolated implementation](../../prd/runwield-connect-prd.md#isolated-implementation) capability updated to the
+  [Isolated implementation](../../../prd/runwield-connect-prd.md#isolated-implementation) capability updated to the
   delivered tested behavior;
-  [Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) references
+  [Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) references
   extended to execution interruption.
 - `docs/prd/runwield-core-prd.md` — only if the shared extraction observably changes Core behavior (it must not).
 - `docs/domain-language.md` — the execution handoff term this change makes true (see Implementation Steps).
@@ -268,7 +271,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
     report; for a `consent` next action, ask the user the disclosure question in plain text and resubmit with the
     answer. A new `implement.md` command (`/runwield:implement`) restores an implementing workflow from `status` and
     re-dispatches the worker, and `plan-review.md`'s `plan_ready` branch points to `start_execution`.
-11. The owning PRD capability [Isolated implementation](../../prd/runwield-connect-prd.md#isolated-implementation)
+11. The owning PRD capability [Isolated implementation](../../../prd/runwield-connect-prd.md#isolated-implementation)
     describes the delivered tested behavior (automatic handoff after approval, RunWield-owned worktree, preserved
     invoking checkout with the disclosed `.gitignore` block, conversational non-Git consent with reduced-recovery
     disclosure, structured `task_completed` acceptance), keeping later-host adapters and any untested fallback as

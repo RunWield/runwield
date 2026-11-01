@@ -129,7 +129,7 @@ test("detectTerminalIdentity captures terminal environment without subprocess tt
     assertEquals(identity.pid, 42);
 });
 
-test("selectNativeNotificationProtocol maps supported terminal families conservatively", () => {
+test("selectNativeNotificationProtocol keeps terminal-specific protocols and defaults to OSC 777", () => {
     assertEquals(
         selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s", term: "xterm-kitty" }),
         "osc99",
@@ -152,9 +152,9 @@ test("selectNativeNotificationProtocol maps supported terminal families conserva
             terminalTitle: "W. s",
             termProgram: "Apple_Terminal",
         }),
-        "unsupported",
+        "osc777",
     );
-    assertEquals(selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s" }), "unsupported");
+    assertEquals(selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s" }), "osc777");
 });
 
 test("shouldSuppressAttentionNotification suppresses only known focused terminals by default", () => {
@@ -201,7 +201,19 @@ test("notifyRunWieldEvent never reaches notifications from a Golden TUI run", as
     assertEquals(terminal.writes, []);
 });
 
-test("notifyRunWieldEvent emits unsupported-terminal BEL fallback when enabled", async () => {
+test("notifyRunWieldEvent sends Warp a titled desktop notification", async () => {
+    const { notify, terminal } = makeNotificationFixture({
+        env: { TERM_PROGRAM: "WarpTerminal", TERM: "xterm-256color" },
+    });
+    const result = await notify("agentStopped", { sessionName: "Warp session" });
+
+    assertEquals(result.sent, true);
+    assertEquals(result.protocol, "osc777");
+    assertEquals(terminal.strings, ["\x07", buildNativeNotificationSequence("osc777", result.title, result.message)]);
+    assertStringIncludes(terminal.strings[1], "Warp session");
+});
+
+test("notifyRunWieldEvent tries native notification delivery for an unrecognized terminal", async () => {
     const { notify, terminal } = makeNotificationFixture({
         env: { TERM_PROGRAM: "Apple_Terminal" },
         pid: 0,
@@ -210,12 +222,12 @@ test("notifyRunWieldEvent emits unsupported-terminal BEL fallback when enabled",
         sessionName: "demo",
     });
 
-    assertEquals(result.sent, false);
-    assertEquals(result.reason, "unsupported");
-    assertEquals(result.protocol, "unsupported");
+    assertEquals(result.sent, true);
+    assertEquals(result.reason, "sent");
+    assertEquals(result.protocol, "osc777");
     assertEquals(result.terminal.pid, 0);
     assertEquals(result.terminalBellEmitted, true);
-    assertEquals(terminal.writes, [[7]]);
+    assertEquals(terminal.strings, ["\x07", buildNativeNotificationSequence("osc777", result.title, result.message)]);
 });
 
 test("notifyRunWieldEvent respects terminalBell false while preserving OSC delivery", async () => {

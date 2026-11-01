@@ -137,6 +137,7 @@ async function makePlannedReviewWorktree() {
     const projectRoot = await makeRepo();
     await setCustomSetting("codereview", "none", "project", projectRoot);
     await savePlan(projectRoot, "p", "# p\n\nvalidation fixture\n", {
+        planId: "test:p",
         classification: "FEATURE",
         status: "validated_ci",
         summary: "validation fixture",

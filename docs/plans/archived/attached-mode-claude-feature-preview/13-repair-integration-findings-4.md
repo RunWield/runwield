@@ -28,6 +28,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "72e323baf377cf43785c59aea46c1ee8b5ac6ee5"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/13-repair-integration-findings-4.md"
 ---
 
 # Repair integration findings 4
@@ -56,10 +59,10 @@ Planning sorted the findings:
 
 The fixes keep these requirements:
 
-- [Connect: Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
+- [Connect: Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
   "Saved Plans, work, review outcomes, and recovery evidence must allow useful continuation or explicit retry after
   process loss." "Accepted sections and decisions are not repeated."
-- [Connect: Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability):
+- [Connect: Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability):
   "Core checks every evidence-carrying operation before dispatch." An incompatible adapter or a host below the tested
   floor rejects. "Status remains readable with a stale adapter for recovery."
 - Epic Outcome Evidence, **Host waits survive Core exit**: duplicate and delayed outcomes cannot repeat effects.

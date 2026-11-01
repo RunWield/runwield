@@ -32,6 +32,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "bd04f5e478b48c1bb9ae7d2782a63cb22a75a496"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/10-repair-integration-findings.md"
 ---
 
 # Repair integration findings
@@ -48,18 +51,18 @@ Planning sorted the findings into three groups:
 | Finding                                        | Decision              | Reason                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | #1 Project checks fail                         | **Dismissed here**    | Environmental. The gate's temporary checkout had no `node_modules` and no initialized `third_party/plannotator` submodule ("Cannot find package 'typescript'", "Submodule is not initialized"). With dependencies installed, `bun run ci` passes on this branch (1318 s). The user fixes the gate separately.                                                       |
-| #2 No Planning Gate                            | **Dismissed**         | Owner decision: RunWield adds no hooks or tool restrictions in Connect, as in Core ([Connect: Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability), ADR-014). The gate reviewed main's old copy of the Epic, which still has the removed Planning Gate text. The user fixes that gate defect separately. |
-| #3 Unknown and untested host versions continue | **Dismissed**         | Intended behavior: "Newer or unreported host versions continue with a visible notice" ([Connect PRD](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability)). The user confirmed that no code change is needed.                                                                                                                                   |
+| #2 No Planning Gate                            | **Dismissed**         | Owner decision: RunWield adds no hooks or tool restrictions in Connect, as in Core ([Connect: Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability), ADR-014). The gate reviewed main's old copy of the Epic, which still has the removed Planning Gate text. The user fixes that gate defect separately. |
+| #3 Unknown and untested host versions continue | **Dismissed**         | Intended behavior: "Newer or unreported host versions continue with a visible notice" ([Connect PRD](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability)). The user confirmed that no code change is needed.                                                                                                                                   |
 | #4 Two workflows can implement the same Plan   | **Dismissed**         | Owner decision: an Attached Workflow Record references its Plan and does not own it. Nothing in Core stops one Plan from running in two places, and `execution-start.ts` reuses an active worktree in the same way. Leave it as is.                                                                                                                                 |
 | #5–#10                                         | **Fix in this child** | Real defects in the Epic's Attached code, described below.                                                                                                                                                                                                                                                                                                          |
 
 The fixes keep these PRD requirements:
 
-- [Workspace PRD](../../prd/runwield-workspace-prd.md) and `docs/domain-language.md`: **Approve for Later** makes the
+- [Workspace PRD](../../../prd/runwield-workspace-prd.md) and `docs/domain-language.md`: **Approve for Later** makes the
   Plan Ready For Work and starts no execution.
-- [Connect: Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
+- [Connect: Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
   activation and Triage write nothing to the repository; recovery repairs internal state without user machinery.
-- [Connect: Shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes):
+- [Connect: Shared Plan and verification outcomes](../../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes):
   review decisions check the current Plan; Attached delivery uses shared publication recovery and Claude-owned repair.
 - ADR-014: the CLI is the canonical boundary, and MCP is a thin adapter over the same operations.
 
@@ -268,7 +271,7 @@ behave correctly.
 
 ### Documentation
 
-- The [Connect PRD](../../prd/runwield-connect-prd.md) states, in the owning capabilities and acceptance scenarios:
+- The [Connect PRD](../../../prd/runwield-connect-prd.md) states, in the owning capabilities and acceptance scenarios:
     - Approve for Later leaves the Plan `ready_for_work` and starts nothing, and `/runwield:implement` starts it later
       (Shared Plan and verification outcomes).
     - A repairable publication conflict gets a fresh Claude repair worker in the publication root.

@@ -40,6 +40,7 @@ function setInteraction(hostedSession, requestInteraction) {
 test("human Code Review metadata uses the Plan heading as the review title", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-human-review-title-"));
     await savePlan(projectRoot, "filename-fallback", "# Readable Plan Title\n\nBody.", {
+        planId: "review-title",
         classification: "QUICK_FIX",
         status: "reviewed",
         humanReviewMode: "always",
@@ -74,6 +75,7 @@ test("human Code Review metadata uses the Plan heading as the review title", asy
 test("human Code Review metadata falls back to the Plan filename when no title heading exists", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-human-review-title-"));
     await savePlan(projectRoot, "filename-fallback", "## Ignored Section\n\n#\n", {
+        planId: "review-title",
         classification: "QUICK_FIX",
         status: "reviewed",
         humanReviewMode: "always",
@@ -378,6 +380,7 @@ for (const reportedFix of [false, true]) {
         async () => {
             const projectRoot = await conversationFixture.checkout();
             await savePlan(projectRoot, "p", "# p\n\nKeep the exported label.", {
+                planId: "review-conversation",
                 classification: "QUICK_FIX",
                 status: "reviewed",
                 humanReviewMode: "always",
@@ -468,6 +471,7 @@ for (const reportedFix of [false, true]) {
 async function makeConversationReview(nonGitInPlace = false) {
     /** @satisfies {import("./validation-types.ts").ValidationLoopArgs["triageMeta"]} */
     const triageMeta = {
+        planId: "review-conversation",
         classification: "QUICK_FIX",
         status: "reviewed",
         humanReviewMode: "always",

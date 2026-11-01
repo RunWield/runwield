@@ -42,6 +42,7 @@ interface OpenStdinCliResult extends CliResult {
 const lossNotice = "Remote connection lost. Closing this connection.";
 
 interface RemoteFixture {
+    artifact: string;
     local: string;
     remote: string;
     sshLog: string;
@@ -50,7 +51,11 @@ interface RemoteFixture {
 }
 
 /** Real CLI with disposable homes: POSIX runs remote Python; Windows uses a native SSH protocol boundary. */
-async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>, connected = false): Promise<void> {
+async function withRemoteFixture(
+    test: (fixture: RemoteFixture) => Promise<void>,
+    connected = false,
+    tagged = connected,
+): Promise<void> {
     const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "runwield-fixture-")));
     try {
         const local = join(root, "local");
@@ -75,7 +80,7 @@ async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>
                     protocol: 1,
                     buildId: "a".repeat(64),
                     target: "x86_64-unknown-linux-gnu",
-                    version: "development",
+                    version: "v1.2.3-rc.1",
                     sha256: createHash("sha256").update(bytes).digest("hex"),
                 }),
             );
@@ -247,7 +252,10 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
         );
         // A development launcher requires a local Linux artifact, regardless of the release build version.
         const version = join(root, "version.js");
-        await fsWriteFile(version, 'export const VERSION = "development";\n');
+        await fsWriteFile(
+            version,
+            `export const VERSION = ${JSON.stringify(tagged ? "v1.2.3-rc.1" : "development")};\n`,
+        );
         const preload = join(root, "build-boundary.ts");
         const helperArtifacts = connected ? await writeRemoteHelperArtifacts(join(root, "helper-artifacts")) : null;
         if (helperArtifacts) await seedLaptopHelpers(join(root, "helper-artifacts"), local, helperArtifacts.pins);
@@ -267,6 +275,10 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 const replacements = ${JSON.stringify(replacements)};
+const realFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => String(input).startsWith("https://github.com/gandazgul/runwield/releases/download/")
+    ? Promise.resolve(new Response("Unpublished release", { status: 404 }))
+    : realFetch(input, init);
 plugin({ name: "fixture-build-boundary", setup(build) {
     build.onResolve({ filter: /(?:build-identity|version)\\.js$|tested-dependencies\\.json$/ }, ({ path, importer }) => {
         const target = resolve(dirname(importer), path);
@@ -294,6 +306,7 @@ plugin({ name: "fixture-build-boundary", setup(build) {
             ...(proof === undefined ? {} : { WLD_REMOTE_MODEL_PROOF: proof }),
         });
         await test({
+            artifact: join(root, "wld-x86_64-unknown-linux-gnu"),
             local,
             remote,
             sshLog,
@@ -546,7 +559,7 @@ async function exists(path: string): Promise<boolean> {
     );
 }
 
-test("remote CLI exits after authenticated SSH closes while terminal stdin remains open", async () => {
+test("remote CLI uses a local bundle for an unpublished release and exits with terminal stdin open", async () => {
     await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
         const result = await runWithOpenStdin();
         assertEquals(result.code, 0, result.stderr);
@@ -637,4 +650,35 @@ test("a host alias named sessions remains reachable with a colon", async () => {
         assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
         assertStringIncludes(await fsReadFile(sshLog, "utf8"), "sessions");
     });
+});
+test("remote CLI without a local bundle downloads only its exact release tag", async () => {
+    await withRemoteFixture(
+        async ({ run }) => {
+            const result = await run(["remote-alias"]);
+            assertEquals(result.code, 1);
+            assertStringIncludes(result.stderr, "releases/download/v1.2.3-rc.1/wld-v1.2.3-rc.1-linux-x64.tar.gz");
+            assertStringIncludes(result.stderr, "HTTP 404");
+        },
+        false,
+        true,
+    );
+});
+
+test("remote CLI rejects a local release bundle with a different build identity", async () => {
+    await withRemoteFixture(async ({ run, artifact }) => {
+        const metadata = JSON.parse(await fsReadFile(`${artifact}.build.json`, "utf8"));
+        await fsWriteFile(`${artifact}.build.json`, JSON.stringify({ ...metadata, buildId: "b".repeat(64) }));
+        const result = await run(["remote-alias"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(result.stderr, "Remote artifact does not match launcher build");
+    }, true);
+});
+
+test("remote CLI rejects a local release bundle with changed executable bytes", async () => {
+    await withRemoteFixture(async ({ run, artifact }) => {
+        await fsWriteFile(artifact, "changed runtime");
+        const result = await run(["remote-alias"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(result.stderr, "checksum");
+    }, true);
 });

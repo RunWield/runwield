@@ -34,6 +34,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "587793ac598c510bce25701017e477041837bfbd"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/06-publish-validated-work-and-record-the-outcome.md"
 ---
 
 # Publish validated work and record the outcome
@@ -71,13 +74,13 @@ the local `mnemoteca` command (`src/shared/work-records/mnemoteca-port.ts`), cal
 
 Owning PRD capabilities:
 
-- Core [execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
-  [Work Records](../../prd/runwield-core-prd.md#work-records) — publication, Verified meaning, recording failure does
+- Core [execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
+  [Work Records](../../../prd/runwield-core-prd.md#work-records) — publication, Verified meaning, recording failure does
   not block publication.
-- Connect [artifact privacy and records](../../prd/runwield-connect-prd.md#artifact-privacy-and-records) — no raw host
+- Connect [artifact privacy and records](../../../prd/runwield-connect-prd.md#artifact-privacy-and-records) — no raw host
   transcript in RunWield storage. Connect also requires that feedback and approval return as structured workflow
   outcomes, not chat prose.
-- [ADR-016](../../adr/016-proof-bearing-publication-state-machine.md) — publication evidence and the state machine.
+- [ADR-016](../../../adr/016-proof-bearing-publication-state-machine.md) — publication evidence and the state machine.
 
 ### Planning Decisions (2026-10-13)
 

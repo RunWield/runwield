@@ -26,6 +26,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "243afd4d031a74c2790ca8116c3ab0155f316153"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/01-activate-and-resume-an-attached-workflow.md"
 ---
 
 # Activate and resume an Attached Workflow
@@ -33,20 +36,20 @@ validatedCommit: "243afd4d031a74c2790ca8116c3ab0155f316153"
 ## Context
 
 This is the first child of
-[RunWield Connect for Claude Code: FEATURE Preview](../attached-mode-claude-feature-preview.md). Claude owns
+[RunWield Connect for Claude Code: FEATURE Preview](../../attached-mode-claude-feature-preview.md). Claude owns
 conversations and model turns. RunWield needs a durable coordinator that does not create a HostedSession and does not
 import a host transcript.
 
 Owning PRD capabilities in `docs/prd/runwield-connect-prd.md`:
 
-- [Explicit per-request activation](../../prd/runwield-connect-prd.md#explicit-per-request-activation) — this child
+- [Explicit per-request activation](../../../prd/runwield-connect-prd.md#explicit-per-request-activation) — this child
   delivers steps 1, 3, and 4 of activation: identify the Project root, bind one request to one Attached Workflow, and
   supply the Triage role contract. Host preflight and plugin install stay with child 02.
-- [Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) — this child
+- [Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) — this child
   delivers "continuation after process loss" for activation and Triage. It writes nothing to the repository, so the
   "preview material repo-local changes" scenario first applies in child 02.
 
-[ADR-014](../../adr/014-attached-workflow-coordination-boundary.md) defines the coordinator as a sibling runtime to
+[ADR-014](../../../adr/014-attached-workflow-coordination-boundary.md) defines the coordinator as a sibling runtime to
 `SessionRuntime`. Planning, review, execution, validation, and publication are later children.
 
 Decisions from planning:

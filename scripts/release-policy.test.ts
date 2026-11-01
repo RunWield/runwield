@@ -329,6 +329,7 @@ test("Homebrew release jobs qualify existing dependency snapshots without select
 test("manual Homebrew preparation selects packages explicitly and excludes checkout metadata", async () => {
     const workflow = await fsReadFile(".github/workflows/homebrew-prepare.yml", "utf8");
     assertEquals(workflow.includes("default: v0.3.3"), false);
+    assertStringIncludes(workflow, 'test -n "$WLD_TAG$MNEMOTECA_TAG"');
     assertStringIncludes(workflow, "repository: RunWield/homebrew-tap");
     assertStringIncludes(workflow, "persist-credentials: false");
     assertStringIncludes(workflow, "args=(--output homebrew-tap)");

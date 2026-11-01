@@ -224,12 +224,14 @@ test(
         );
         assertStringIncludes(output.stdout, "formula test passed: gandazgul/tap/mnemoteca");
         assertStringIncludes(output.stdout, "formula test passed: gandazgul/tap/wld");
-        assertEquals(output.calls.slice(-6), [
+        assertEquals(output.calls.slice(-8), [
             "upgrade gandazgul/tap/mnemoteca gandazgul/tap/wld",
+            "list --versions gandazgul/tap/mnemoteca",
             "--prefix gandazgul/tap/wld",
             "uninstall gandazgul/tap/wld",
             "uninstall gandazgul/tap/mnemoteca",
             "install gandazgul/tap/wld",
+            "list --versions gandazgul/tap/mnemoteca",
             "--prefix gandazgul/tap/wld",
         ]);
     },

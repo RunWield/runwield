@@ -151,6 +151,13 @@ keep their labels and Work Record notices; other Markdown uses **Document**.
 **Requirement: Identify the Session in the terminal title.** Named Sessions use `W. <session title>` with no hyphen.
 Unnamed Sessions use `W.`. Session names are sanitized before display.
 
+**Requirement: Copy selected TUI text on macOS.** Selecting text in the fullscreen TUI copies it through the native
+clipboard command, shared with `/copy`. RunWield reports copy failure when the command fails. Copying does not depend
+on the terminal accepting OSC 52 clipboard writes.
+
+**Acceptance scenario:** Given selected TUI text on macOS, copying writes that text to the native clipboard. If the
+clipboard command fails, the TUI reports failure instead of “Copied!”.
+
 **Requirement: Keep the terminal responsive.**
 
 - Returning focus to the terminal or pressing Ctrl+L repaints the screen and keeps the draft, scroll position, active
@@ -2262,18 +2269,18 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
-**Scope and maturity:** Current Linux/macOS shell installation, public macOS Homebrew packages, and Candidate release
-baseline. Windows releases and checks, including WinGet manifest
-preparation and submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout changes during upgrades follow
-[Work protection](#work-protection).
+**Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
+provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and
+submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout
+changes during upgrades follow [Work protection](#work-protection).
 
 Remote runtime preparation follows the [qualified matrix and scope](#remote-connection).
 
 **Requirement: Install through a shell installer or a package manager.** Users install RunWield as a standalone binary
-with the shell installer or through the public `gandazgul/tap` macOS tap hosted at `RunWield/homebrew-tap`. The
-`Gandazgul.RunWield` WinGet package for Windows x64 remains paused. `wld update` and `wld upgrade` update shell installs and print the
-package-manager command for package-managed installs. Public docs mark package availability as pending until each
-listing is public.
+with the shell installer or through the public `gandazgul/tap/wld` macOS formula. The retained packaging capability
+includes the `Gandazgul.RunWield` WinGet package for Windows x64. `wld update` and `wld upgrade` update shell installs and print the
+package-manager command for package-managed installs. Public docs distinguish available packages from paused or pending
+listings.
 
 For a `wld remote` development bundle, build the launcher and Linux artifacts explicitly from the same unchanged
 checkout and compiler (Bun 1.4.3). A connection never compiles on demand or substitutes a released binary for
@@ -2300,10 +2307,12 @@ WinGet (retained packaging capability; publication and checks paused):
 - Stable manifests only. Automatic submission to `microsoft/winget-pkgs` is paused until the owner resumes it; while
   paused, releases prepare manifest artifacts.
 
-**Requirement: Preserve independently released Homebrew packages.** A RunWield release updates only its own formula
-and owned package metadata. It qualifies with the Mnemoteca version already in the tap and does not replace another
-package's formula, version, or metadata. A concurrent tap change blocks publication until a fresh snapshot passes
-qualification. Recovery preserves published product tags and asset bytes.
+**Requirement: Preserve independent Homebrew packages.** A RunWield release changes only its own formula and package
+metadata. It qualifies against the tap's existing Mnemoteca formula, verifies the installed dependency version against
+the manifest, and preserves independently owned formula bytes and manifest values. Publication uses the same tap base
+that passed qualification. A concurrent update rejects the ordinary push; recovery takes a fresh snapshot and repeats
+qualification without changing released asset bytes. Candidate checks use disposable copies and never update the Stable
+tap. Source prevention and a repair of previously published dependency metadata are separate outcomes.
 
 **Requirement: Honor the displayed Candidate update default.** For shell installs, `wld update --rc` and
 `wld upgrade --rc` accept Enter at `[Y/n]` as Yes, and `y` or `yes` in any case. Any other answer, including
@@ -2333,10 +2342,13 @@ or incorrect notice while recovery preserves already published bytes.
 - Given a loose Windows executable, `wld update` gives Windows package guidance.
 - Given missing helpers in a package install, RunWield tells the user to repair the package.
 - Given a new Homebrew install, Ketch comes from Homebrew Core.
-- Given a newer Mnemoteca formula in the tap than the local preparation inputs, a RunWield release preserves that formula,
-  version, and dependency metadata while updating wld.
-- Given a tap update after package qualification, stale publication is rejected; a fresh-snapshot retry preserves the
-  independent update and qualifies it before publishing wld.
+- Given a tap with an independently updated Mnemoteca package and stale or absent local dependency inputs, a RunWield
+  release updates only wld and its owned metadata; Mnemoteca and unrelated content remain unchanged.
+- Given an installed Mnemoteca version that differs from the qualified manifest, the package check fails.
+- Given a tap update after qualification, publication rejects the stale attempt without overwriting remote content.
+  A retry qualifies a fresh snapshot and preserves the independent update.
+- Given a source fix for dependency ownership, public repair remains pending until the separate verified tap change
+  reaches its remote branch.
 - Given a release while Windows publication is paused, it publishes only Linux/macOS assets, runs no Windows jobs,
   and prepares no WinGet manifests. Existing Windows releases remain unchanged.
 - Given an available Candidate, Enter or Yes starts the update; No or Ctrl-D cancels it.
@@ -2352,7 +2364,8 @@ or incorrect notice while recovery preserves already published bytes.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.
 - Given a native Windows package check, the packaged Agent creates a Git branch and the Dashboard stream completes.
 
-**Requirement: Prepare RunWield automatically.** Supply the remote runtime and helpers privately. Released launchers
+**Requirement: Prepare RunWield automatically.** Supply the remote runtime and helpers privately. A matching local Linux
+artifact beside the launcher takes priority, including for release-tagged launchers. Otherwise, released launchers
 obtain their exact VERSION-tagged Linux archive. Development launchers use `bin/remote-build/wld-launcher` with adjacent matching GNU target files and
 `.build.json` files. Both supply pinned `cymbal` and `ketch` binaries and MIT notices privately; no system helper
 installation or remote personal installer is required. Mnemoteca runs on the laptop.
@@ -2387,6 +2400,7 @@ The tested platform/provider matrix is defined in [Remote connection](#remote-co
 - Given a missing or mismatched artifact, incompatible executable, or missing remote prerequisite, connection fails with
   the cause rather than compiling, using another version, or starting a Session. A later attempt can repair an
   interrupted private staging file without overwriting a package-managed install.
+- Given an unpublished release tag and a matching local bundle, connection uses that bundle without a release download.
 - Given a damaged private helper at runtime startup, startup stops with reconnect guidance. Reconnect repairs it
   without a system installation.
 
@@ -2753,6 +2767,14 @@ of the latest accepted user input: a message, steering, a queued follow-up, or a
 reconnecting an observer, rejected input, and automated continuation keep the current destination. Workspace-originated
 turns always send an Agent-stop event at settlement. Delivery follows the destination's permission and notification
 settings. ACP reports turn completion through its protocol, and only the destination surface alerts.
+
+**Requirement: Attempt native terminal notifications.** For enabled attention events, the TUI uses Kitty OSC 99,
+iTerm2 OSC 9, or titled OSC 777 for all other terminals, including Warp and unidentified terminals. Focus suppression
+and the optional terminal bell apply to each protocol. Terminal and OS notification permissions still apply. A
+successful write confirms only that RunWield sent the request, not that a desktop alert appeared.
+
+**Acceptance scenario:** Given a Warp or unidentified TUI terminal that is not known to have focus, an enabled
+Agent-stop event sends an OSC 777 notification with the Session name, plus a bell when enabled.
 
 #### Bounded model and tool loops
 

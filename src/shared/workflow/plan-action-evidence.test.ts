@@ -1,4 +1,3 @@
-import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -6,10 +5,12 @@ import { join } from "node:path";
 import { dirname } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
+import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
+const fixture = defineCommittedGitFixture();
+
 async function makeProject(): Promise<{ root: string; revision: string }> {
-    const fixture = defineCommittedGitFixture({ "README.md": "# Plan actions\n" });
     const root = await fixture.checkout();
     await savePlan(root, "demo", "# Demo\n\nBody\n", {
         planId: "plan-demo",
@@ -68,7 +69,16 @@ test("rejects replaced worktree evidence before lifecycle mutation", async () =>
         },
         { expectedRevision: revision },
     );
-    const loaded = await loadPlan(root, "demo");
+    const executionRoot = await attachExecutionWorktree(root, "rw/demo-2");
+    await savePlan(executionRoot, "demo", "# Demo\n\nBody\n", {
+        planId: "plan-demo",
+        status: "on_hold",
+        heldFromStatus: "in_progress",
+        classification: "FEATURE",
+        executionMode: "worktree",
+        worktreeId: "attempt-two",
+    });
+    const loaded = await loadPlan(executionRoot, "demo");
     if (!loaded?.revision) throw new Error("fixture Plan was not reloaded");
     await writeRegistry(root, [
         {
@@ -77,9 +87,9 @@ test("rejects replaced worktree evidence before lifecycle mutation", async () =>
             planId: "plan-demo",
             baseBranch: "main",
             baseRef: "main",
-            baseCommit: "222",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
             branch: "rw/demo-2",
-            path: "redacted",
+            path: executionRoot,
             status: "active",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
@@ -98,7 +108,7 @@ test("rejects replaced worktree evidence before lifecycle mutation", async () =>
             branch: "rw/demo-1",
             baseBranch: "main",
             baseRef: "main",
-            baseCommit: "111",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
         },
         action: "resume_from_hold",
     });
@@ -129,6 +139,7 @@ test("applies a valid lifecycle action and returns new evidence", async () => {
 
 test("requires recovery when the registered execution Plan is missing", async () => {
     const { root, revision } = await makeProject();
+    const executionRoot = await attachExecutionWorktree(root, "rw/demo-1");
     await savePlan(
         root,
         "demo",
@@ -151,9 +162,9 @@ test("requires recovery when the registered execution Plan is missing", async ()
             planId: "plan-demo",
             baseBranch: "main",
             baseRef: "main",
-            baseCommit: "111",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
             branch: "rw/demo-1",
-            path: "redacted",
+            path: executionRoot,
             status: "completed",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
@@ -167,8 +178,7 @@ test("requires recovery when the registered execution Plan is missing", async ()
 
 test("registry owns mutable worktree facts while Plan validation state owns lifecycle", async () => {
     const { root, revision } = await makeProject();
-    const executionRoot = join(root, "execution");
-    await git(root, ["worktree", "add", "-b", "rw/demo-1", executionRoot]);
+    const executionRoot = await attachExecutionWorktree(root, "rw/demo-1");
     await savePlan(
         root,
         "demo",
@@ -209,7 +219,7 @@ test("registry owns mutable worktree facts while Plan validation state owns life
             planId: "plan-demo",
             baseBranch: "main",
             baseRef: "refs/heads/main",
-            baseCommit: "111",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
             branch: "rw/demo-1",
             path: executionRoot,
             status: "completed",
@@ -231,15 +241,14 @@ test("registry owns mutable worktree facts while Plan validation state owns life
             branch: "rw/demo-1",
             baseBranch: "main",
             baseRef: "refs/heads/main",
-            baseCommit: "111",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
         });
     }
 });
 
 test("live execution Plan owns action evidence when the primary copy is stale", async () => {
     const { root } = await makeProject();
-    const executionRoot = join(root, "execution");
-    await git(root, ["worktree", "add", "-b", "rw/demo-1", executionRoot]);
+    const executionRoot = await attachExecutionWorktree(root, "rw/demo-1");
     await savePlan(executionRoot, "demo", "# Demo\n\nImplemented\n", {
         planId: "plan-demo",
         status: "implemented",
@@ -258,7 +267,7 @@ test("live execution Plan owns action evidence when the primary copy is stale", 
             planId: "plan-demo",
             baseBranch: "main",
             baseRef: "refs/heads/main",
-            baseCommit: "111",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
             branch: "rw/demo-1",
             path: executionRoot,
             status: "completed",
@@ -291,6 +300,8 @@ test("rejects ambiguous registry integrity issues before lifecycle mutation", as
     const { root } = await makeProject();
     const evidence = await loadPlanActionEvidence(root, "plan-demo");
     if (evidence.kind !== "success") throw new Error(evidence.message);
+    const executionRoot = await attachExecutionWorktree(root, "rw/demo-1");
+    const otherRoot = await attachExecutionWorktree(root, "rw/other");
     await writeRegistry(root, [
         {
             id: "duplicate",
@@ -298,9 +309,9 @@ test("rejects ambiguous registry integrity issues before lifecycle mutation", as
             planId: "plan-demo",
             baseBranch: "main",
             baseRef: "main",
-            baseCommit: "111",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
             branch: "rw/demo-1",
-            path: "redacted",
+            path: executionRoot,
             status: "merged",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
@@ -311,9 +322,9 @@ test("rejects ambiguous registry integrity issues before lifecycle mutation", as
             planId: "plan-other",
             baseBranch: "main",
             baseRef: "main",
-            baseCommit: "222",
+            baseCommit: await git(root, ["rev-parse", "HEAD"]),
             branch: "rw/other",
-            path: "redacted",
+            path: otherRoot,
             status: "merged",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
@@ -332,3 +343,9 @@ test("rejects ambiguous registry integrity issues before lifecycle mutation", as
     const current = await loadPlan(root, "demo");
     assertEquals(current?.attrs.status, "draft");
 });
+
+async function attachExecutionWorktree(root: string, branch: string): Promise<string> {
+    const path = join(root, branch.replaceAll("/", "-"));
+    await git(root, ["worktree", "add", "-b", branch, path]);
+    return path;
+}

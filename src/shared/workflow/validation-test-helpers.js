@@ -195,6 +195,7 @@ export async function makeValidationProjectRoot(planName = "p", attrs = {}) {
         status: "in_progress",
         summary: "validation fixture",
         affectedPaths: [],
+        planId: crypto.randomUUID(),
         ...attrs,
     });
     await ensurePlanIdentity(root, planName);

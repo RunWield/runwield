@@ -19,6 +19,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "ac29444a01d6ed8383f0409caff864b878508ec2"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/14-repair-integration-findings-5.md"
 ---
 
 # Repair integration findings 5
@@ -36,8 +39,8 @@ Planning sorted the findings:
 | ----------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | #1 Project checks fail                          | **Dismissed**         | Environmental, as in children 10–13. The gate checkout `wld-epic-gate-QcmY6i` had no `node_modules` ("Cannot find package 'typescript'", "Cannot find module '@astrojs/check'", no `node_modules/astro/bin/astro.mjs`) and no initialized submodules ("Local submodule check failed. Initialize submodules…").    |
 | #2 No Planning Gate                             | **Dismissed**         | Owner decision (children 10–13): Connect adds no hooks or tool restrictions, as in Core. ADR-014 says "Do not add hooks or permission rules that restrict host tools". The Epic on this branch says "RunWield does not restrict Claude's tools during an Attached Workflow". The gate reads main's old Epic copy. |
-| #3 No generated Claude Skills or subagents      | **Dismissed**         | Owner decision (child 12 #8): role instructions are resolved at run time, and "The Connect plugin ships no Skill files" ([Connect PRD: Host-owned reasoning](../../prd/runwield-connect-prd.md#host-owned-reasoning), ADR-014). The Epic says "The adapter ships no generated Skills or copied role prompts".     |
-| #4 Untested or unreported host versions proceed | **Dismissed**         | Owner decision (child 10 #3): "Newer or unreported host versions continue with a visible notice" ([Connect PRD: Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability)). Versions below the tested floor and stale adapters are still refused.           |
+| #3 No generated Claude Skills or subagents      | **Dismissed**         | Owner decision (child 12 #8): role instructions are resolved at run time, and "The Connect plugin ships no Skill files" ([Connect PRD: Host-owned reasoning](../../../prd/runwield-connect-prd.md#host-owned-reasoning), ADR-014). The Epic says "The adapter ships no generated Skills or copied role prompts".     |
+| #4 Untested or unreported host versions proceed | **Dismissed**         | Owner decision (child 10 #3): "Newer or unreported host versions continue with a visible notice" ([Connect PRD: Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability)). Versions below the tested floor and stale adapters are still refused.           |
 | #5 Two Attached workflows share one worktree    | **Dismissed**         | Owner decision (child 10 #4, child 11 #3, child 12 #4, child 13 #3): an Attached Workflow Record references its Plan and does not own it. The Epic puts single-Plan ownership out of scope. `execution-start.ts` reuses an active worktree the same way for Core.                                                 |
 | #6 Approve & Run choice lost after a crash      | **Dismissed**         | Owner decision (this child): parity with Core. A Core Session also keeps the "Run" choice only in memory. After this crash the Plan is still ready, nothing runs without permission, and `/runwield:implement` starts it. The Connect PRD **Approval recovery** scenario documents this behavior.                 |
 | #7 Review passes a diff it cannot read          | **Dismissed here**    | Owner decision (this child): a Core defect. The diff format and the empty-coverage check are shared Core review code, and Core Sessions have the same gap. The owner fixes it separately.                                                                                                                         |
@@ -51,10 +54,10 @@ Planning sorted the findings:
 
 The fixes keep these requirements:
 
-- [Connect: Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
+- [Connect: Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
   "Saved Plans, work, review outcomes, and recovery evidence must allow useful continuation or explicit retry after
   process loss." "Accepted sections and decisions are not repeated."
-- [Connect: Artifact privacy and records](../../prd/runwield-connect-prd.md#artifact-privacy-and-records), **Bounded
+- [Connect: Artifact privacy and records](../../../prd/runwield-connect-prd.md#artifact-privacy-and-records), **Bounded
   invalid recording**: the second invalid Recorder submission records failure, publication continues, and the notice
   reports both outcomes.
 - Epic Outcome Evidence, **Host waits survive Core exit**: a repeated submission returns the recorded result without

@@ -23,6 +23,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "e04fdfeeebe18360dd2a271b994f9fa9246ccabb"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/05-validate-with-claude-owned-review-and-repair-workers.md"
 ---
 
 # Validate with Claude-owned review and repair workers
@@ -39,14 +42,14 @@ This child connects that entry point to Claude. It covers the Attached record, c
 
 Owning capabilities:
 
-- [Connect: Shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes)
+- [Connect: Shared Plan and verification outcomes](../../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes)
   — validation continuation becomes delivered for the Preview subset. Code review and publication remain targets.
-- [Connect: Host-owned reasoning](../../prd/runwield-connect-prd.md#host-owned-reasoning) — independent reviewer and
+- [Connect: Host-owned reasoning](../../../prd/runwield-connect-prd.md#host-owned-reasoning) — independent reviewer and
   repair workers are fresh Claude subagents.
-- [Connect: Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) — host
+- [Connect: Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery) — host
   or Core loss during validation.
-- Core [Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
-  [Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair) stay authoritative and
+- Core [Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) and
+  [Semantic review and repair](../../../prd/runwield-core-prd.md#semantic-review-and-repair) stay authoritative and
   unchanged.
 
 Decisions already made (child 05/05a planning session):

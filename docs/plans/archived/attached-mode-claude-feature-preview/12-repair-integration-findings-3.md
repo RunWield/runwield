@@ -32,6 +32,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "d4d7570dd8be264c47fc238a937f68133bc0d100"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/12-repair-integration-findings-3.md"
 ---
 
 # Repair integration findings 3
@@ -62,14 +65,14 @@ The fixes keep these requirements:
 
 - Epic Outcome Evidence, **Verified has one meaning**: `verified` only after Mechanical Validation, configured CI,
   independent Semantic Review, optional human review, and safeguarded merge-back.
-- [Core: Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair), **Bind saved human
+- [Core: Semantic review and repair](../../../prd/runwield-core-prd.md#semantic-review-and-repair), **Bind saved human
   approval to the current candidate** and its **Diff-bound approval** scenario.
-- [Connect: Shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes):
+- [Connect: Shared Plan and verification outcomes](../../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes):
   "Approve & Run authorizes immediate execution after readiness. Approve for Later stops at Ready For Work."
 - Epic **Claude owns process lifetime**: closing Claude stops the MCP server and its review endpoints.
-- [Connect: Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability):
+- [Connect: Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability):
   a host API list or a version number alone is not evidence of tested support.
-- [Connect: Host-owned reasoning](../../prd/runwield-connect-prd.md#host-owned-reasoning): "RunWield may inject its
+- [Connect: Host-owned reasoning](../../../prd/runwield-connect-prd.md#host-owned-reasoning): "RunWield may inject its
   Agent prompts and Skills." ADR-014: role instructions are resolved at run time; the plugin ships no generated Skills.
 
 ## Objective
@@ -340,14 +343,14 @@ added or redefined.
 
 ### Documentation
 
-- [Core PRD](../../prd/runwield-core-prd.md#semantic-review-and-repair), **Saved Attached Code Review** scenarios, gain
+- [Core PRD](../../../prd/runwield-core-prd.md#semantic-review-and-repair), **Saved Attached Code Review** scenarios, gain
   **Changed candidate re-verification**: given a reviewed candidate that changes before approval, the next validation
   run reruns Mechanical Validation, CI, and Semantic Review before a new Code Review. The **Bind saved human approval**
   requirement says this applies to Core and Attached. The Code Review "close and come back later" paragraph says changed
   code is validated again.
-- [Connect PRD](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability): a host other than Claude
+- [Connect PRD](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability): a host other than Claude
   Code rejects before dispatch with `unsupported_host`; an acceptance scenario says so.
-- [Connect PRD](../../prd/runwield-connect-prd.md#host-owned-reasoning) and ADR-014's run-time role instructions
+- [Connect PRD](../../../prd/runwield-connect-prd.md#host-owned-reasoning) and ADR-014's run-time role instructions
   paragraph: each role response (except the independent reviewer) carries the effective Skill catalog with paths,
   resolved from project, home, external, and bundled Skills; the plugin still ships no Skills.
 - `docs/user-documentation/connect-claude-code.md`: Skill overrides in `.wld/skills` apply to Claude roles; only Claude

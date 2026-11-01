@@ -26,6 +26,9 @@ targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 validatedCommit: "d43d7bdd626d4062d1623d537ddbfcc21a7aee51"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/11-repair-integration-findings-2.md"
 ---
 
 # Repair integration findings 2
@@ -54,12 +57,12 @@ Planning sorted the findings:
 
 The fixes keep these PRD requirements:
 
-- [Connect: Shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes):
+- [Connect: Shared Plan and verification outcomes](../../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes):
   "Browser Feedback becomes a `human_feedback` action for a fresh Claude repair worker" and "Only structured browser
   decisions approve or reject."
 - Connect, **Keep review chat temporary**: raw chat never persists past the round. Only Claude's short change summary
   is stored. This child extends that rule to Plan changes, which today store nothing.
-- [Connect: Lazy project setup and recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
+- [Connect: Lazy project setup and recovery](../../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery):
   "Closing Claude or the review page does not abandon delivery." Process loss keeps work resumable.
 - The Epic's coordination contract: "Repeated submission returns the recorded result without repeating effects."
 
@@ -288,7 +291,7 @@ term is added or redefined.
 
 ### Documentation
 
-- In the [Connect PRD](../../prd/runwield-connect-prd.md):
+- In the [Connect PRD](../../../prd/runwield-connect-prd.md):
     - **Keep review chat temporary:** a Plan change stores only Claude's short change summary on the pending Planner
       action until the revised Plan is submitted; it records no Feedback.
     - **Answer review chat:** the acceptance scenario says a Plan change survives a fresh process as the pending

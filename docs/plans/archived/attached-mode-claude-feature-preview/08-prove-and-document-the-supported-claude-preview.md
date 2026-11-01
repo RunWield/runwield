@@ -51,6 +51,9 @@ userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
 validatedCommit: "9783f680139f574ae5909efdb8027b9b1d578228"
 status: "verified"
+archivedAt: "2026-10-31T21:13:26.053Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/08-prove-and-document-the-supported-claude-preview.md"
 ---
 
 # Prove and document the supported Claude Preview
@@ -71,14 +74,14 @@ missing before RunWield Connect for Claude Code can be called a Preview:
 
 The owning requirements are in the Connect PRD:
 
-- [Explicit per-request activation](../../prd/runwield-connect-prd.md#explicit-per-request-activation) — install
+- [Explicit per-request activation](../../../prd/runwield-connect-prd.md#explicit-per-request-activation) — install
   flow and activation step 2 (host and Core preflight) are still target scope; disable and uninstall scenarios.
-- [Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability) —
+- [Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability) —
   tested versions, Preview label, host guide contents, README positioning.
-- [First-class Connect use](../../prd/runwield-connect-prd.md#first-class-connect-use) — the whole journey stays in
+- [First-class Connect use](../../../prd/runwield-connect-prd.md#first-class-connect-use) — the whole journey stays in
   Claude Code and the browser.
-- [End-to-End Preview Acceptance Journey](../../prd/runwield-connect-prd.md#end-to-end-preview-acceptance-journey) and
-  [Preview Acceptance](../../prd/runwield-connect-prd.md#preview-acceptance) — the 16 steps and success criteria.
+- [End-to-End Preview Acceptance Journey](../../../prd/runwield-connect-prd.md#end-to-end-preview-acceptance-journey) and
+  [Preview Acceptance](../../../prd/runwield-connect-prd.md#preview-acceptance) — the 16 steps and success criteria.
 - The Core PRD's Attached delivery maturity note (`docs/prd/runwield-core-prd.md`, near "Preview release and live
   integrated support remain **TARGET** until child 08").
 
