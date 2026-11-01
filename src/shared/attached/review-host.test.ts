@@ -279,9 +279,9 @@ async function withinFiveSeconds<T>(task: Promise<T>): Promise<T> {
     }
 }
 
-for (const pollOwnsOpening of [false, true]) {
+for (const pollCompletesFirst of [false, true]) {
     test(
-        pollOwnsOpening
+        pollCompletesFirst
             ? "a Plan poll keeps its original browser port when it opens code review"
             : "a Plan conversation poll can overlap code-review hosting and both servers close with the host",
         async () => {
@@ -289,17 +289,15 @@ for (const pollOwnsOpening of [false, true]) {
             const requests = new AbortController();
             const codeOpening = Promise.withResolvers<void>();
             const browserRelease = Promise.withResolvers<void>();
-            const browser = pollOwnsOpening
-                ? {
-                      async open(url: string): Promise<boolean> {
-                          if (new URL(url).pathname === "/review/code") {
-                              codeOpening.resolve();
-                              await browserRelease.promise;
-                          }
-                          return false;
-                      },
-                  }
-                : NO_OPEN_BROWSER_PORT;
+            const browser = {
+                async open(url: string): Promise<boolean> {
+                    if (new URL(url).pathname === "/review/code") {
+                        codeOpening.resolve();
+                        await browserRelease.promise;
+                    }
+                    return false;
+                },
+            };
             try {
                 // Keep the real implemented Plan and worktree intact while seeding the preceding browser round.
                 await savePlan(fixture.root, "previous-plan", "# Previous Plan\n\nImplement the value.\n", {
@@ -359,8 +357,14 @@ for (const pollOwnsOpening of [false, true]) {
                 });
                 // Cleanup can abort this request before the browser-boundary wait completes.
                 void polling.catch(() => undefined);
-                if (pollOwnsOpening) await withinFiveSeconds(codeOpening.promise);
-                const hosting = ensureReviewHosted(fixture.root, started.workflow, browser);
+                // Starting fetch does not prove the retiring server has accepted it. Wait until the
+                // poll opens code review, and hold the browser boundary while another caller joins.
+                await withinFiveSeconds(codeOpening.promise);
+                if (pollCompletesFirst) {
+                    browserRelease.resolve();
+                    assertEquals(await withinFiveSeconds(polling), 200);
+                }
+                const hosting = ensureReviewHosted(fixture.root, started.workflow, NO_OPEN_BROWSER_PORT);
                 browserRelease.resolve();
                 const [status, codeReview] = await withinFiveSeconds(Promise.all([polling, hosting]));
                 assertEquals(status, 200);
