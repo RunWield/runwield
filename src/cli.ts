@@ -208,6 +208,8 @@ async function main(): Promise<void> {
         const { resolvePrimaryCheckoutRoot } = await import("./shared/primary-checkout.ts");
         const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());
         if (primaryRoot !== getCwd() && !(await confirmProjectDirectory(primaryRoot, allowSystemDirectory))) return;
+        const { enterProjectWithIdentityChoice } = await import("./ui/tui/project-identity-entry.ts");
+        if (!(await enterProjectWithIdentityChoice(getCwd()))) return;
     }
 
     if (firstPositional === "ai-review") {

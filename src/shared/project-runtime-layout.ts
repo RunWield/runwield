@@ -1,3 +1,4 @@
+import { admitProjectIdentity, ProjectIdentityEntryRequired, type ProjectIdentityOptions } from "./project-identity.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import fsPromises from "node:fs/promises";
 import { open as fsOpen, rmdir as fsRmdir } from "node:fs/promises";
@@ -470,17 +471,29 @@ export function invalidateProjectRuntimeReadScope(): void {
     scope?.symlinkWalks.clear();
 }
 
-export function enterProjectRuntime(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
+export function enterProjectRuntime(
+    selectedCheckoutRoot: string,
+    identityOptions: ProjectIdentityOptions = {},
+): Promise<ProjectRuntimeLayout> {
     invalidateProjectRuntimeReadScope();
-    return enterProjectRuntimeUncached(selectedCheckoutRoot).finally(invalidateProjectRuntimeReadScope);
+    return enterProjectRuntimeUncached(selectedCheckoutRoot, identityOptions).finally(
+        invalidateProjectRuntimeReadScope,
+    );
 }
 
-async function enterProjectRuntimeUncached(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
+async function enterProjectRuntimeUncached(
+    selectedCheckoutRoot: string,
+    identityOptions: ProjectIdentityOptions,
+): Promise<ProjectRuntimeLayout> {
     const rootInfo = await fsLstat(selectedCheckoutRoot).catch((error) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
     if (rootInfo && !rootInfo.isDirectory()) throw new Error("Project root must be a directory");
+    if (rootInfo) {
+        const admission = await admitProjectIdentity(selectedCheckoutRoot, identityOptions);
+        if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
+    }
     const result = await migrateLegacyProjectRuntimeState(selectedCheckoutRoot);
     if (result.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(result);
     if (rootInfo) {
