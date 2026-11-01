@@ -4,14 +4,39 @@
  */
 
 import { emitAssistantMessage } from "./session-runtime-events.js";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { HostedSession } from "./hosted-session.js";
+
+interface TaskCompletedMessageFields {
+    message?: unknown;
+}
+
+export interface ManualQaChecklistMessage {
+    agentName: string;
+    text: string;
+    toolCallId?: string;
+}
+
+export interface ManualQaChecklist extends Omit<ManualQaChecklistMessage, "agentName"> {
+    agentName?: string;
+    name?: string;
+    classification?: string;
+}
+
+interface ManualQaChecklistData {
+    agentName?: unknown;
+    text?: unknown;
+    toolCallId?: string;
+}
+
+interface ManualQaChecklistEntry {
+    customType?: unknown;
+    data?: ManualQaChecklistData;
+}
 
 export const MANUAL_QA_CHECKLIST_CUSTOM_TYPE = "runwield.manual_qa_checklist";
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function extractTaskCompletedMessage(value) {
+export function extractTaskCompletedMessage(value: unknown): string {
     if (!value) return "";
     if (typeof value === "string") {
         try {
@@ -21,29 +46,26 @@ export function extractTaskCompletedMessage(value) {
         }
     }
     if (typeof value !== "object") return "";
-    const record = /** @type {{ message?: unknown }} */ (value);
+    const record: TaskCompletedMessageFields = value;
     return typeof record.message === "string" ? record.message : "";
 }
 
-/** @param {unknown} message @returns {string} */
-export function formatTaskCompletedMarkdown(message) {
+export function formatTaskCompletedMarkdown(message: unknown): string {
     const text = typeof message === "string" ? message.trim() : "";
     return text ? `**Task completed.**\n\n${text}` : "**Task completed.**";
 }
 
-/**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @param {string} agentName
- * @param {unknown} message
- * @param {string} [toolCallId]
- */
-export function emitTaskCompletedMessage(hostedSession, agentName, message, toolCallId) {
-    emitAssistantMessage(
-        hostedSession,
-        agentName || "RunWield",
-        formatTaskCompletedMarkdown(message),
-        { messageKind: "workflow", workflowMessage: "task_completed", toolCallId },
-    );
+export function emitTaskCompletedMessage(
+    hostedSession: HostedSession,
+    agentName: string,
+    message: unknown,
+    toolCallId?: string,
+) {
+    emitAssistantMessage(hostedSession, agentName || "RunWield", formatTaskCompletedMarkdown(message), {
+        messageKind: "workflow",
+        workflowMessage: "task_completed",
+        toolCallId,
+    });
 }
 
 /**
@@ -51,11 +73,11 @@ export function emitTaskCompletedMessage(hostedSession, agentName, message, tool
  * AgentSession. Transient sessions emit live Runtime events but do not write to
  * the root Pi transcript, so store the visible checklist as RunWield metadata
  * for `/resume` replay.
- *
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @param {{ agentName?: string, text: string, name?: string, classification?: string, toolCallId?: string }} checklist
  */
-export function recordManualQaChecklistMessage(sessionManager, checklist) {
+export function recordManualQaChecklistMessage(
+    sessionManager: SessionManager | undefined | null,
+    checklist: ManualQaChecklist,
+) {
     if (!sessionManager?.appendCustomEntry) return;
     const text = typeof checklist.text === "string" ? checklist.text.trim() : "";
     if (!text) return;
@@ -68,15 +90,11 @@ export function recordManualQaChecklistMessage(sessionManager, checklist) {
     });
 }
 
-/**
- * @param {unknown} entry
- * @returns {{ agentName: string, text: string, toolCallId?: string } | null}
- */
-export function readManualQaChecklistMessage(entry) {
+export function readManualQaChecklistMessage(entry: unknown): ManualQaChecklistMessage | null {
     if (!entry || typeof entry !== "object") return null;
-    const customType = /** @type {{ customType?: unknown }} */ (entry).customType;
+    const customType = (entry as ManualQaChecklistEntry).customType;
     if (customType !== MANUAL_QA_CHECKLIST_CUSTOM_TYPE) return null;
-    const data = /** @type {{ data?: { agentName?: unknown, text?: unknown, toolCallId?: string } }} */ (entry).data;
+    const data = (entry as ManualQaChecklistEntry).data;
     const text = typeof data?.text === "string" ? data.text.trim() : "";
     if (!text) return null;
     return {
@@ -86,14 +104,13 @@ export function readManualQaChecklistMessage(entry) {
     };
 }
 
-/**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @param {string} agentName
- * @param {unknown} message
- * @param {boolean} approved
- * @param {string} [toolCallId]
- */
-export function emitReviewResultMessage(hostedSession, agentName, message, approved, toolCallId) {
+export function emitReviewResultMessage(
+    hostedSession: HostedSession,
+    agentName: string,
+    message: unknown,
+    approved: boolean,
+    toolCallId?: string,
+) {
     const markdown = typeof message === "string" && message.trim() ? message.trim() : "Review complete.";
     emitAssistantMessage(hostedSession, agentName || "Reviewer", markdown, {
         messageKind: "review_result",

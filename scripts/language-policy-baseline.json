@@ -30,7 +30,6 @@
     "src/shared/session/session.js",
     "src/shared/session/types.js",
     "src/shared/session/workflow-context-session.js",
-    "src/shared/session/workflow-messages.js",
     "src/shared/settings.js",
     "src/shared/types.js",
     "src/shared/update-check.js",

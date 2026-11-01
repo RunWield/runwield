@@ -9,7 +9,7 @@ import { type Static, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
-import { emitReviewResultMessage } from "../shared/session/workflow-messages.js";
+import { emitReviewResultMessage } from "../shared/session/workflow-messages.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { ReviewLedger } from "../shared/workflow/review-ledger.ts";

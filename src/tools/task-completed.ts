@@ -18,7 +18,7 @@ import {
     readCurrentPairCheckpoint,
     recordPairCheckpointReport,
 } from "../shared/session/pair-checkpoint-session.ts";
-import { emitTaskCompletedMessage } from "../shared/session/workflow-messages.js";
+import { emitTaskCompletedMessage } from "../shared/session/workflow-messages.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
 import { resolveActiveWorkflowRuntimeAgent } from "../shared/workflow/execution-agent.ts";
 
