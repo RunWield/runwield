@@ -916,6 +916,22 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             continue;
         }
         for (const child of children) {
+            const archived = archivedPlans.find(
+                (plan) => plan.name === child.name && plan.attrs.planId && plan.attrs.planId === child.attrs.planId,
+            );
+            const activeCopy = identityDocuments.some((plan) => plan.attrs.planId === child.attrs.planId);
+            const liveAttempt = entries.some(
+                (entry) => entry.status !== "abandoned" && entry.planId === child.attrs.planId,
+            );
+            if (
+                archived &&
+                !activeCopy &&
+                !liveAttempt &&
+                !inspection.readError &&
+                inspection.integrityIssues.length === 0 &&
+                (await isCommittedArchive(projectRoot, `archived/${archived.name}`, archived.path).catch(() => false))
+            )
+                continue;
             const existing = identityDocuments.findIndex(
                 (plan) =>
                     plan.name === child.name || Boolean(child.attrs.planId && plan.attrs.planId === child.attrs.planId),

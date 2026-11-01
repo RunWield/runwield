@@ -729,8 +729,11 @@ availability does not abandon the workflow or require a separate Doctor ceremony
 
 **Requirement: Separate saved delivery evidence from fresh publication proof.** Passive progress reads show applicable
 saved evidence without remote verification. A valid controller publication receipt can preserve established delivery
-after attempt cleanup. A receipt for another candidate, target, or live execution remains historical evidence, not
-current completion proof. Missing or inapplicable proof leaves publication unconfirmed; neither absence of an attempt nor
+after attempt cleanup. Doctor uses the same controller evidence for Epic children read from cached target snapshots
+as it does for ordinary Plan files. Deleting a delivered Epic branch does not invalidate an applicable saved receipt. Cached target snapshots do not
+reactivate committed archived children that have no active document or unfinished attempt.
+A receipt for another candidate, target, or live execution remains historical evidence, not current completion proof.
+Missing or inapplicable proof leaves publication unconfirmed; neither absence of an attempt nor
 a stale tracking ref proves completion. Reopening or a new execution invalidates prior completion evidence. Publication
 and recovery actions still obtain the fresh target proof required by
 [ADR-016](../adr/016-proof-bearing-publication-state-machine.md) before reporting new success or cleaning up work.
@@ -769,6 +772,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 - Given passive progress reads and an unreachable upstream, no fetch or clone starts. Applicable saved completion
   remains visible after attempt cleanup; absent or invalidated proof stays unconfirmed.
+- Given an Epic child with an applicable controller receipt, Doctor accepts that saved delivery when it reads a cached
+  target snapshot and after the delivered target branch is deleted. Ordinary Plans follow the same receipt rules.
+- Given a committed archived child and an old active copy in a cached Epic target, Doctor does not report a duplicate
+  or request publication again. A real active document or unfinished attempt still requires inspection.
 - Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
   availability cannot authorize execution, publication, or a lifecycle change.
 - Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the

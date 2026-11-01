@@ -1602,3 +1602,125 @@ for (const conflict of ["candidate", "target", "live-attempt"]) {
         }
     });
 }
+
+for (const epicChild of [false, true]) {
+    test(`Doctor retains settled ${epicChild ? "Epic child" : "ordinary Plan"} receipts after target deletion`, async () => {
+        const cwd = await ancestryRepo.checkout();
+        try {
+            const targetBranch = "epic/delivered";
+            const commit = await git(cwd, ["rev-parse", "HEAD"]);
+            if (epicChild) {
+                await savePlan(cwd, "settled-epic", "# Epic\n", {
+                    planId: "settled-epic-id",
+                    classification: "PROJECT",
+                    status: "in_progress",
+                    targetBranch,
+                });
+            }
+            await savePlan(cwd, "settled", "# Settled\n", {
+                planId: "settled-id",
+                classification: "FEATURE",
+                status: "verified",
+                targetBranch,
+                ...(epicChild ? { parentPlan: "settled-epic" } : {}),
+            });
+            await git(cwd, ["add", "docs/plans"]);
+            await git(cwd, ["commit", "-m", "Delivered Plans"]);
+            await git(cwd, ["branch", targetBranch]);
+            await writeControllerState(
+                cwd,
+                { planName: "settled", planId: "settled-id" },
+                {
+                    publicationReceipt: {
+                        validatedCommit: commit,
+                        publishedCommit: await git(cwd, ["rev-parse", "HEAD"]),
+                        targetBranch,
+                    },
+                },
+            );
+            const assertSettled = async (repair: boolean) => {
+                const report = await runPlansDoctor(cwd, repair);
+                assertEquals(
+                    report.issues.filter(
+                        (issue) =>
+                            issue.planName === "settled" &&
+                            ["publication_inspection_error", "uncertain_publication"].includes(issue.kind),
+                    ),
+                    [],
+                );
+            };
+            await assertSettled(false);
+            await git(cwd, ["branch", "-D", targetBranch]);
+            await assertSettled(false);
+            await assertSettled(true);
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const source of ["snapshot", "active-copy", "live-attempt"]) {
+    test(`Doctor distinguishes archived target snapshots from ${source}`, async () => {
+        const cwd = await ancestryRepo.checkout();
+        try {
+            await savePlan(cwd, "retired-epic", "# Epic\n", {
+                planId: "retired-epic-id",
+                classification: "PROJECT",
+                status: "user_verified",
+                targetBranch: "epic/retired",
+            });
+            await savePlan(cwd, "retired-epic/child", "# Child\n", {
+                planId: "retired-child-id",
+                classification: "FEATURE",
+                parentPlan: "retired-epic",
+                status: "verified",
+                targetBranch: "epic/retired",
+            });
+            await git(cwd, ["add", "docs/plans"]);
+            await git(cwd, ["commit", "-m", "Complete Epic child"]);
+            await git(cwd, ["branch", "epic/retired"]);
+            await fsMkdir(join(cwd, "docs/plans/archived/retired-epic"), { recursive: true });
+            await git(cwd, ["mv", "docs/plans/retired-epic/child.md", "docs/plans/archived/retired-epic/child.md"]);
+            await git(cwd, ["commit", "-m", "Archive delivered child"]);
+            if (source === "active-copy") {
+                await fsMkdir(join(cwd, "docs/plans/retired-epic"), { recursive: true });
+                await fsWriteFile(
+                    join(cwd, "docs/plans/retired-epic/child.md"),
+                    await git(cwd, ["show", "epic/retired:docs/plans/retired-epic/child.md"]),
+                );
+            }
+            if (source === "live-attempt") {
+                const path = join(cwd, "execution");
+                await git(cwd, ["worktree", "add", "-b", "execution", path, "epic/retired"]);
+                await addEntry(cwd, {
+                    id: "retired-child-attempt",
+                    planId: "retired-child-id",
+                    planName: "retired-epic/child",
+                    path,
+                    branch: "execution",
+                    baseBranch: "epic/retired",
+                    baseRef: "epic/retired",
+                    baseCommit: await git(cwd, ["rev-parse", "epic/retired"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            const report = await runPlansDoctor(cwd, false);
+            assertEquals(
+                report.issues.some(
+                    (issue) => issue.kind === "duplicate_plan_id" && issue.planName === "retired-epic/child",
+                ),
+                source !== "snapshot",
+            );
+            if (source === "snapshot") {
+                assertEquals(
+                    report.issues.filter((issue) => issue.planName === "retired-epic/child"),
+                    [],
+                );
+            }
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}

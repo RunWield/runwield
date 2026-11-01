@@ -315,7 +315,10 @@ async function readTargetChildren(projectRoot: string, ref: string, parentPlanNa
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
         const parsed = parsePlanFrontMatter(markdown);
         if (parsed.attrs.parentPlan !== parentName) continue;
-        children.push({ name: planName, path: `${ref}:${relativePath}`, attrs: parsed.attrs });
+        const path = `${ref}:${relativePath}`;
+        const inspected = await inspectPlanTextStrict(markdown, path, getStoredPlanPath(projectRoot, planName));
+        if (inspected.kind === "malformed") throw inspected.error;
+        children.push({ name: planName, path, attrs: inspected.attrs });
     }
     return children;
 }
