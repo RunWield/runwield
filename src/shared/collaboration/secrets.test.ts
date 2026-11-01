@@ -111,10 +111,13 @@ test("secret stores read missing files as empty documents and write atomically",
 
 test("project secret writes from linked checkouts populate only the primary internal store", async () => {
     await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env["HOME"];
+        const identityHome = await fsMkdtemp(join(tmpdir(), "runwield-identity-home-"));
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const primaryCheckout = await gitFixture.checkout({ prefix: "runwield-secrets-write-primary-" });
         const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-secrets-write-linked-"));
         try {
+            process.env["HOME"] = identityHome;
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(primaryCheckout, [
                 "worktree",
@@ -149,6 +152,9 @@ test("project secret writes from linked checkouts populate only the primary inte
                 "ENOENT",
             );
         } finally {
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(identityHome, { recursive: true }).catch(() => {});
             if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
             else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
@@ -435,10 +441,13 @@ test("secret store rejects corrupt schema with redacted actionable errors", asyn
 
 test("ensureProjectSecretStoreIgnored protects the primary managed runtime block from linked checkouts", async () => {
     await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env["HOME"];
+        const identityHome = await fsMkdtemp(join(tmpdir(), "runwield-identity-home-"));
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const primaryCheckout = await gitFixture.checkout({ prefix: "runwield-gitignore-primary-" });
         const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-gitignore-linked-"));
         try {
+            process.env["HOME"] = identityHome;
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await fsWriteFile(join(primaryCheckout, ".gitignore"), "node_modules/\n");
             await git(primaryCheckout, [
@@ -480,6 +489,9 @@ test("ensureProjectSecretStoreIgnored protects the primary managed runtime block
                 await assertRejects(() => git(primaryCheckout, ["check-ignore", path]));
             }
         } finally {
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(identityHome, { recursive: true }).catch(() => {});
             if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
             else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(selectedCheckout, { recursive: true }).catch(() => {});

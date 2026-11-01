@@ -40,7 +40,11 @@ for (const command of ["init", "initialize", "plans", "wr", "guided-review", "re
             );
             assertEquals(
                 await readdir(join(home, ".wld"), { withFileTypes: true })
-                    .then((entries) => entries.some((entry) => entry.name === "sessions"))
+                    .then((entries) =>
+                        entries.some((entry) =>
+                            ["sessions", "projects", "project-identity-locks"].includes(entry.name),
+                        ),
+                    )
                     .catch((error) => {
                         if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
                         throw error;
