@@ -40,4 +40,6 @@ export {
     assertStateStringIncludes,
     assertStateValue,
     assertVisibleText,
-} from "./portfolio-assertions.js";
+} from "./portfolio-assertions.ts";
+
+export type { GoldenCoverageCallback } from "./portfolio-assertions.ts";

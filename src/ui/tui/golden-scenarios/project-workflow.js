@@ -5,7 +5,7 @@
 
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
-import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
+import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 /** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
 /** @typedef {{ status?: string, path?: string }} WorkRecordStatus */

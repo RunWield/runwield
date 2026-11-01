@@ -9,7 +9,7 @@ import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js
 
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
-import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
+import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 // The JavaScript runner exposes opaque evidence; retain the existing casts with named shapes.
 interface RecordedRoleInteraction {
