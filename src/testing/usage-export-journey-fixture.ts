@@ -11,7 +11,7 @@ import {
 import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import { assertEquals } from "./assertions.ts";
 import { writeRuntimeExecutableFixture } from "./runtime-executable-fixture.ts";
-import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { getModelRegistry } from "../shared/models/model-registry.ts";
 import { createRootSessionManager } from "../shared/session/root-session.js";
 import { ClaudeCliExecutionSession } from "../shared/session/backends/claude-cli/execution-session.ts";

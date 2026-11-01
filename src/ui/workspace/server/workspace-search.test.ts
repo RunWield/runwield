@@ -22,7 +22,7 @@ import { assertEquals, assertStringIncludes } from "../../../testing/assertions.
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
-import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.js";

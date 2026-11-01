@@ -164,7 +164,7 @@ const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
  * @typedef {Object} OwnerWorkspaceAppOptions
  * @property {"owner"} mode
  * @property {string} publicOrigin
- * @property {import("../../shared/owner-coordination/index.js").OwnerCoordinationStore} store
+ * @property {import("../../shared/owner-coordination/index.ts").OwnerCoordinationStore} store
  */
 
 /**
@@ -1432,7 +1432,7 @@ function assertWorkspaceServerTransportPolicy(options) {
 }
 
 /**
- * @param {{ mode?: "local" | "remote" | "owner", cwd?: string, host: string, port: number, token?: string, dbPath?: string, signal?: AbortSignal, maxRequestBytes?: number, retentionDays?: number, publicOrigin?: string, trustTlsTerminator?: boolean, store?: import("../../shared/owner-coordination/index.js").OwnerCoordinationStore }} options
+ * @param {{ mode?: "local" | "remote" | "owner", cwd?: string, host: string, port: number, token?: string, dbPath?: string, signal?: AbortSignal, maxRequestBytes?: number, retentionDays?: number, publicOrigin?: string, trustTlsTerminator?: boolean, store?: import("../../shared/owner-coordination/index.ts").OwnerCoordinationStore }} options
  */
 export function startWorkspaceServer(options) {
     assertWorkspaceServerTransportPolicy(options);

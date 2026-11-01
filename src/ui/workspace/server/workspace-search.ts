@@ -236,7 +236,7 @@ async function scanProjectDocuments(root) {
     return documents;
 }
 
-/** @param {import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore} store @param {string} projectId @param {string} root */
+/** @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store @param {string} projectId @param {string} root */
 async function scanSessionDocuments(store, projectId, root) {
     const documents = [];
     let page = 0;
@@ -467,7 +467,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
     };
 }
 
-/** @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
+/** @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
 export function createWorkspaceSearchService(options) {
     const dbPath =
         options.dbPath ||

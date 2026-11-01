@@ -35,7 +35,7 @@ async function withRemoteReview(changePlan, expectDecision) {
         });
         const serviceStore = fixture.openStore();
         const service = new WorkspaceSessionContinuationService({ store: serviceStore });
-        const storeUrl = new URL("../../shared/owner-coordination/index.js", import.meta.url).href;
+        const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
         const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
         const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};
