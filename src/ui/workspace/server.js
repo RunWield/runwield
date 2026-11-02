@@ -21,7 +21,7 @@ import {
     plansApi,
     workspaceApi,
 } from "./routes/api/handlers.ts";
-import { registerRemoteApiRoutes } from "./routes/remote-api.js";
+import { registerRemoteApiRoutes } from "./routes/remote-api.ts";
 import {
     registerReviewDecisionPromise,
     resolveReviewDecision,
