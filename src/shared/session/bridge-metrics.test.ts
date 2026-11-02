@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
@@ -42,13 +42,14 @@ test("authenticated bridge records admitted results and known-tool rejections in
             assertEquals((await client.callTool({ name: "read_fixture", arguments: {} })).isError, true);
             await recorder.settleExecution();
             // Recorder sequence, rather than asynchronous disk append order, defines execution order.
-            const records = (await readMetrics()).filter((row) => row.recorderId === recorder.recorderId)
+            const records = (await readMetrics())
+                .filter((row) => row.recorderId === recorder.recorderId)
                 .sort((a, b) => Number(a.seq) - Number(b.seq));
             assertEquals(records.filter((row) => row.event === "tool_call_started").length, 2);
-            assertEquals(records.filter((row) => row.event === "tool_call_finished").map((row) => row.outcome), [
-                "success",
-                "rejected",
-            ]);
+            assertEquals(
+                records.filter((row) => row.event === "tool_call_finished").map((row) => row.outcome),
+                ["success", "rejected"],
+            );
             assertEquals(records.find((row) => row.event === "execution_finished")?.callCount, 2);
             assertEquals(
                 records.find((row) => row.event === "tool_call_finished" && row.outcome === "success")?.resultBytes,

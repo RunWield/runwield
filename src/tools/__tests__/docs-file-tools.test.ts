@@ -11,7 +11,8 @@ import { match as assertMatch, doesNotMatch as assertNotMatch } from "node:asser
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { TextContent, TSchema } from "@earendil-works/pi-ai";
+import type { TextContent } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../docs-file-tools.ts";
 
 type DocsTool = ReturnType<typeof createWriteDocsToolDefinition | typeof createEditDocsToolDefinition>;

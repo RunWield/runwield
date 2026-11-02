@@ -1,16 +1,19 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { appendEpicManualQaSection } from "../shared/epic-artifacts.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 
-const TOOL_PARAMS = Type.Object({
-    checklistMarkdown: Type.String({
-        minLength: 1,
-        description:
-            "Markdown checklist starting with 'Manual verification steps for <child plan>' and 1 to 6 unchecked items.",
-    }),
-}, { additionalProperties: false });
+const TOOL_PARAMS = Type.Object(
+    {
+        checklistMarkdown: Type.String({
+            minLength: 1,
+            description:
+                "Markdown checklist starting with 'Manual verification steps for <child plan>' and 1 to 6 unchecked items.",
+        }),
+    },
+    { additionalProperties: false },
+);
 
 type QaChecklistGeneratedDetails = {
     outcome: "recorded" | "already_present" | "rejected";
@@ -31,6 +34,7 @@ export type QaChecklistGeneratedToolOptions = {
 export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedToolOptions) {
     const tool = defineTool<typeof TOOL_PARAMS, QaChecklistGeneratedDetails>({
         name: "qa_checklist_generated",
+        exposure: "model-only",
         label: "QA Checklist Generated",
         description:
             "Record this Epic child's Manual QA checklist in the Epic artifact. This tool is advisory only: failure never changes verification status.",
@@ -58,12 +62,15 @@ export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedTool
                     });
                 }
                 return {
-                    content: [{
-                        type: "text",
-                        text: result.status === "already_present"
-                            ? `Manual QA checklist already exists in ${result.relativePath}.`
-                            : `Manual QA checklist recorded in ${result.relativePath}.`,
-                    }],
+                    content: [
+                        {
+                            type: "text",
+                            text:
+                                result.status === "already_present"
+                                    ? `Manual QA checklist already exists in ${result.relativePath}.`
+                                    : `Manual QA checklist recorded in ${result.relativePath}.`,
+                        },
+                    ],
                     details,
                 };
             } catch (error) {

@@ -1,7 +1,7 @@
 /** Separate remote process: all Session, tool and save behavior is production code. */
 import { writeFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { createMnemotecaTools, type MemoryParams } from "../../extensions/mnemoteca/tools.ts";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { assembleFinalSystemPrompt } from "../session/session.js";

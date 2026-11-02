@@ -10,6 +10,7 @@ sharedPractice:
     - user-authority
     - work-record-retrieval
 tools:
+    - codemode
     - read
     - grep
     - find

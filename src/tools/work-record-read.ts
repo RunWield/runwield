@@ -1,15 +1,18 @@
 /** Agent Custom Tool for canonical Work Record reads by stable ID. */
 
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { formatWorkRecordReadResult, readWorkRecordById } from "../shared/work-records/index.ts";
 
 export const WORK_RECORD_READ_TOOL_NAME = "work_record_read";
 
-const PARAMETERS = Type.Object({
-    recordId: Type.String({ minLength: 1, description: "Stable Work Record recordId." }),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        recordId: Type.String({ minLength: 1, description: "Stable Work Record recordId." }),
+    },
+    { additionalProperties: false },
+);
 
 interface WorkRecordReadToolOptions {
     cwd: string;

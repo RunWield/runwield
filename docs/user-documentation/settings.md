@@ -1189,3 +1189,22 @@ RunWield and Pi migrate a few older key shapes while loading settings:
 - `websockets: true` becomes `transport: "websocket"`; `websockets: false` becomes `transport: "sse"`.
 - Old object-shaped `skills` settings become `enableSkillCommands` and/or a `skills` path array.
 - `retry.maxDelayMs` becomes `retry.provider.maxRetryDelayMs` when the provider field is not already set.
+
+## codemode
+
+Pi-backed Agents read `codemode` through the usual RunWield settings files; project fields override global fields.
+There is no separate codemode `.pi` configuration. Availability is controlled by the Agent's tool list, as described
+under [customization](customization.md#codemode).
+
+```jsonc
+{
+    "codemode": {
+        "mode": "on",
+        "inlineBudget": 3000,
+    },
+}
+```
+
+`mode: "on"` keeps ordinary tool declarations alongside codemode. `"only"` presents callable tools through codemode,
+while workflow decisions remain directly declared. `inlineBudget` is the nonnegative estimated-token budget for inline
+tool declarations; `0` relies on script discovery. Neither setting expands tool authority.

@@ -3,7 +3,7 @@
  * Confirmation tool for durable Plan requirement replacements.
  */
 
-import { type Static, Type } from "@earendil-works/pi-ai";
+import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.js";
@@ -91,6 +91,7 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
     if (!hostedSession) throw new Error("createPlanDeviationTool: hostedSession is required");
     return defineTool<typeof PARAMETERS, PlanDeviationDetails>({
         name: "record_plan_deviation",
+        exposure: "model-only",
         label: "Record Plan Deviation",
         description:
             "Ask the user to confirm an execution instruction that replaces an effective Plan requirement, then persist the confirmed replacement in the authoritative execution Plan.",

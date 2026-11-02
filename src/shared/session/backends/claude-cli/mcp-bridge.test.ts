@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
@@ -161,7 +161,8 @@ function resultText(result: { content: Array<{ type: string; text?: string }> })
 }
 
 function recordedMessages(context: BridgeTestContext): unknown[] {
-    return context.manager.getBranch()
+    return context.manager
+        .getBranch()
         .filter((entry) => entry.type === "message")
         .map((entry) => (entry as { message?: unknown }).message);
 }
@@ -206,9 +207,10 @@ test("workflow MCP bridge records canonical messages, provenance, and a rejected
         assertStringIncludes(resultText(rejected as never), "rejected");
 
         const messages = recordedMessages(context);
-        const toolCalls = messages.filter((msg) =>
-            (msg as { role?: string }).role === "assistant" &&
-            (msg as { content?: Array<{ type?: string }> }).content?.some((block) => block.type === "toolCall")
+        const toolCalls = messages.filter(
+            (msg) =>
+                (msg as { role?: string }).role === "assistant" &&
+                (msg as { content?: Array<{ type?: string }> }).content?.some((block) => block.type === "toolCall"),
         );
         const toolResults = messages.filter((msg) => (msg as { role?: string }).role === "toolResult");
         assertEquals(toolCalls.length, 1);
@@ -232,23 +234,20 @@ test("workflow MCP bridge emits live Runtime tool events for delegated plan_writ
         });
         assertEquals(result.isError, false);
 
-        const toolEvents = context.runtimeEvents.filter((event) =>
-            event.type === RuntimeEventTypes.TOOL_START ||
-            event.type === RuntimeEventTypes.TOOL_UPDATE ||
-            event.type === RuntimeEventTypes.TOOL_END
+        const toolEvents = context.runtimeEvents.filter(
+            (event) =>
+                event.type === RuntimeEventTypes.TOOL_START ||
+                event.type === RuntimeEventTypes.TOOL_UPDATE ||
+                event.type === RuntimeEventTypes.TOOL_END,
         );
-        assertEquals(toolEvents.map((event) => event.type), [
-            RuntimeEventTypes.TOOL_START,
-            RuntimeEventTypes.TOOL_UPDATE,
-            RuntimeEventTypes.TOOL_END,
-        ]);
+        assertEquals(
+            toolEvents.map((event) => event.type),
+            [RuntimeEventTypes.TOOL_START, RuntimeEventTypes.TOOL_UPDATE, RuntimeEventTypes.TOOL_END],
+        );
         assertEquals(toolEvents[0].toolName, "plan_written");
         assertEquals(toolEvents[0].title, "plan_written docs/plans/runtime-boundary.md");
         assertEquals(toolEvents[1].output, "plan pending for runtime-boundary");
-        assertEquals(
-            (toolEvents[1].details as Record<string, unknown> | null)?.reviewUrl,
-            "http://127.0.0.1/review",
-        );
+        assertEquals((toolEvents[1].details as Record<string, unknown> | null)?.reviewUrl, "http://127.0.0.1/review");
         assertEquals(toolEvents[2].output, "plan feedback for runtime-boundary");
     });
 });
@@ -265,20 +264,22 @@ test("workflow MCP bridge accepts a delegated result, stamps provenance, and ato
         assertEquals(tools.taskInvocations(), 1);
 
         const messages = recordedMessages(context);
-        const results = messages.filter((msg) =>
-            (msg as { role?: string }).role === "toolResult" &&
-            (msg as { toolName?: string }).toolName === "task_completed"
+        const results = messages.filter(
+            (msg) =>
+                (msg as { role?: string }).role === "toolResult" &&
+                (msg as { toolName?: string }).toolName === "task_completed",
         );
         assertEquals(results.length, 1);
         const details = (results[0] as { details?: Record<string, unknown> }).details;
         assertEquals(details?.outcome, "task_completed");
         assertEquals(details?.message, "all done");
         assertEquals(details?.provenance, CLAUDE_CLI_MCP_PROVENANCE);
-        const assistantMsg = messages.find((msg) =>
-            (msg as { role?: string }).role === "assistant" &&
-            (msg as { content?: Array<{ type?: string; name?: string }> }).content?.some(
-                (block) => block.type === "toolCall" && block.name === "task_completed",
-            )
+        const assistantMsg = messages.find(
+            (msg) =>
+                (msg as { role?: string }).role === "assistant" &&
+                (msg as { content?: Array<{ type?: string; name?: string }> }).content?.some(
+                    (block) => block.type === "toolCall" && block.name === "task_completed",
+                ),
         );
         assertEquals(assistantMsg !== undefined, true);
         assertEquals(context.mirrored.length, 2);
@@ -311,9 +312,10 @@ test("workflow MCP bridge serializes concurrent calls so only the first terminal
         assertEquals(secondResult.isError, true);
         // Serialization + gate: exactly one invocation reached the tool.
         assertEquals(tools.taskInvocations(), 1);
-        const results = recordedMessages(context).filter((msg) =>
-            (msg as { role?: string }).role === "toolResult" &&
-            (msg as { toolName?: string }).toolName === "task_completed"
+        const results = recordedMessages(context).filter(
+            (msg) =>
+                (msg as { role?: string }).role === "toolResult" &&
+                (msg as { toolName?: string }).toolName === "task_completed",
         );
         assertEquals(results.length, 2);
     });
@@ -364,7 +366,10 @@ test("RunWield MCP bridge lists capability aliases and exposes timeout config", 
     });
     await withBridge([capability], async (context) => {
         const listed = await context.client.listTools();
-        assertEquals(listed.tools.map((tool) => tool.name), ["memory_recall"]);
+        assertEquals(
+            listed.tools.map((tool) => tool.name),
+            ["memory_recall"],
+        );
         assertEquals(context.bridge.advertisedToolNames, ["memory_recall"]);
         const config = JSON.parse(context.bridge.config) as { mcpServers: { runwield: { timeout: number } } };
         assertEquals(config.mcpServers.runwield.timeout, 24 * 60 * 60 * 1000);
@@ -427,7 +432,10 @@ test("RunWield MCP bridge treats Pair reports as terminal lifecycle calls withou
     });
     await withBridge([checkpoint], async (context) => {
         const listed = await context.client.listTools();
-        assertEquals(listed.tools.map((tool) => tool.name), ["pair_checkpoint"]);
+        assertEquals(
+            listed.tools.map((tool) => tool.name),
+            ["pair_checkpoint"],
+        );
         await context.client.callTool({
             name: "pair_checkpoint",
             arguments: { action: "report", summary: "Ready." },
@@ -511,11 +519,12 @@ test("RunWield MCP bridge passes MCP request cancellation to a running bridged t
     });
     await withBridge([capability], async (context) => {
         const controller = new AbortController();
-        const pending = context.client.callTool(
-            { name: "memory_recall", arguments: { query: "plans" } },
-            undefined,
-            { signal: controller.signal, timeout: 5_000 },
-        ).catch((error) => error);
+        const pending = context.client
+            .callTool({ name: "memory_recall", arguments: { query: "plans" } }, undefined, {
+                signal: controller.signal,
+                timeout: 5_000,
+            })
+            .catch((error) => error);
         await startedPromise;
         controller.abort();
         await abortedPromise;

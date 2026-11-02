@@ -4,6 +4,7 @@
  */
 
 import process from "node:process";
+import { foregroundAnsi, parseColor } from "@earendil-works/pi-tui";
 import { Theme } from "@earendil-works/pi-coding-agent";
 
 export type ThemeInstance = Theme;
@@ -123,10 +124,27 @@ export function splitFgBgColors(colors: ThemeColors): ThemeColorMaps {
 export function createThemeFromJson(themeJson: ThemeJson, options: CreateThemeOptions = {}): ThemeInstance {
     const resolvedJson = resolveThemeVars(themeJson);
     const { fgColors, bgColors } = splitFgBgColors(resolvedJson.colors);
-    return new Theme(
-        fgColors as PiForegroundColors,
-        bgColors as PiBackgroundColors,
-        options.colorMode || detectColorMode(),
-        { name: themeJson.name },
-    );
+    // Pi 1.5 only accepts its own token names; RunWield owns these footer tokens.
+    const customAnsi = new Map<string, string>();
+    const mode = options.colorMode || detectColorMode();
+    for (const name of [
+        "routingQuickFix",
+        "routingFeature",
+        "routingEpic",
+        "complexityLow",
+        "complexityMedium",
+        "complexityHigh",
+    ]) {
+        if (fgColors[name] === undefined) continue;
+        customAnsi.set(name, fgColors[name] === "" ? "\x1b[39m" : foregroundAnsi(parseColor(fgColors[name]), mode));
+        delete fgColors[name];
+    }
+    const theme = new Theme(fgColors as PiForegroundColors, bgColors as PiBackgroundColors, mode, {
+        name: themeJson.name,
+    });
+    const fg = theme.fg.bind(theme);
+    const getFgAnsi = theme.getFgAnsi.bind(theme);
+    theme.fg = (name, text) => (customAnsi.has(name) ? `${customAnsi.get(name)}${text}\x1b[39m` : fg(name, text));
+    theme.getFgAnsi = (name) => customAnsi.get(name) ?? getFgAnsi(name);
+    return theme;
 }

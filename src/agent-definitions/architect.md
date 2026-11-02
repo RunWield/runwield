@@ -16,6 +16,7 @@ sharedPractice:
     - domain-design
     - planning-pending-changes
 tools:
+    - codemode
     - read
     - grep
     - find

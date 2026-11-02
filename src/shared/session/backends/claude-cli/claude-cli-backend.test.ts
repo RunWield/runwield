@@ -16,7 +16,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";

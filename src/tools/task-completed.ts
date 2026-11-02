@@ -5,7 +5,7 @@
  * active workflow.
  */
 
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
@@ -151,6 +151,7 @@ export function createTaskCompletedTool({
     const PARAMETERS = buildToolParams(agentName);
     return defineTool<typeof PARAMETERS, TaskCompletedDetails>({
         name: "task_completed",
+        exposure: "model-only",
         label: "Task Completed",
         description: buildToolDescription(),
         parameters: PARAMETERS,

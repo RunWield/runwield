@@ -13,6 +13,7 @@ sharedPractice:
     - engineering-practice
     - bounded-request
 tools:
+    - codemode
     - read
     - grep
     - find

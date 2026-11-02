@@ -116,7 +116,13 @@ export async function compileBun(
     const compileTarget =
         target || `bun-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
     const artifactTarget = bunArtifactTarget(compileTarget);
-    const bun: BunBuildRuntime = createRequire(import.meta.url)("bun");
+    const require = createRequire(import.meta.url);
+    const piRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
+    const piManifest = JSON.parse(await readFile(join(piRoot, "package.json"), "utf8"));
+    if (piManifest.version !== "1.5.0") {
+        throw new Error("Codemode asset adapter requires Pi 1.5.0; requalify before upgrading.");
+    }
+    const bun: BunBuildRuntime = require("bun");
     await mkdir(join(ROOT, ".ci-cache"), { recursive: true });
     const staging = await mkdtemp(join(ROOT, ".ci-cache", "bun-package-"));
     const outfile = resolve(output);
@@ -163,6 +169,23 @@ export async function compileBun(
                         )}; export const REMOTE_PROTOCOL_VERSION = ${REMOTE_PROTOCOL_VERSION};`,
                         loader: "js",
                     }));
+                    // Owner-approved build adapter: upstream exposes neither asset option publicly.
+                    // Keep upstream execution intact; only initialize its embedded WASM path.
+                    api.onLoad({ filter: /pi-coding-agent[\\/]dist[\\/]config\.js$/ }, async ({ path }) => {
+                        const source = await readFile(path, "utf8");
+                        if (
+                            !source.includes("export function setEmbeddedQuickJSWasmPath(path)") ||
+                            !source.includes('return "./src/extensions/codemode/worker.ts";')
+                        ) {
+                            throw new Error("Pi 1.5.0 codemode asset contract changed; requalify packaging.");
+                        }
+                        return {
+                            contents:
+                                source +
+                                '\nimport embeddedQuickJS from "quickjs-wasi/quickjs.wasm";\nsetEmbeddedQuickJSWasmPath(embeddedQuickJS);\n',
+                            loader: "js",
+                        };
+                    });
                     api.onLoad({ filter: /photon_rs\.js$/ }, async ({ path }) => {
                         const source = await readFile(path, "utf8");
                         const original = "require('path').join(__dirname, 'photon_rs_bg.wasm')";
@@ -214,6 +237,7 @@ export async function compileBun(
             entrypoints: [
                 entry,
                 join(ROOT, "src/utils/image-resize-worker.ts"),
+                join(ROOT, "src/extensions/codemode/worker.ts"),
                 join(ROOT, "src/shared/remote/session-save-worker.ts"),
                 join(ROOT, "src/shared/workflow/metrics-exporter-worker.ts"),
             ],
