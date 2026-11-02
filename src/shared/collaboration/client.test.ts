@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { createCollaborationClient } from "./client.js";
-import type { CollaborationApiError } from "./client.js";
+import { createCollaborationClient } from "./client.ts";
+import type { CollaborationApiError } from "./client.ts";
 
 type FetchHandler = (url: string, init: RequestInit) => Response | Promise<Response>;
 

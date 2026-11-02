@@ -2,7 +2,7 @@
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createCollaborationClient } from "../../../shared/collaboration/client.js";
+import { createCollaborationClient } from "../../../shared/collaboration/client.ts";
 import { decryptJsonPayload, encryptJsonPayload, importContentKey } from "../../../shared/collaboration/crypto.ts";
 import { normalizeEncryptedPlanPayload } from "../../../shared/collaboration/protocol.js";
 import { parseCollaborationUrl } from "../../../shared/collaboration/urls.ts";
