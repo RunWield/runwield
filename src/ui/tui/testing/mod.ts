@@ -10,7 +10,7 @@ export type {
     GoldenModelConfigOptions,
     GoldenModelDefinition,
 } from "./isolated-environment.ts";
-export { ScriptedReviewSurface } from "./scripted-review-surface.js";
+export { ScriptedReviewSurface } from "./scripted-review-surface.ts";
 export type {
     VirtualTerminalOptions,
     VirtualTerminalSize,
@@ -50,3 +50,17 @@ export type {
     GoldenTurnRequest,
     GoldenTurnResolver,
 } from "./scenario-actor.ts";
+
+export type {
+    ScriptedReviewDecision,
+    ScriptedReviewAnnotation,
+    ScriptedReviewImage,
+    ScriptedHumanReviewDecision,
+    ScriptedUserFix,
+    ScriptedRuntimeInteraction,
+    ScriptedSurfaceRequest,
+    ConsumedScriptedReview,
+    ConsumedScriptedHumanReview,
+    ConsumedScriptedInteraction,
+    ResolveExecutionCwd,
+} from "./scripted-review-surface.ts";
