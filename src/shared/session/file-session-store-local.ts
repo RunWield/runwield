@@ -1,3 +1,4 @@
+import { createInitialSessionManifest } from "./file-session-catalog-manifest.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { readFileSync, statSync } from "node:fs";
@@ -16,7 +17,6 @@ import {
     catalogLockPath,
     ensurePrivateDir,
     ensureProject,
-    FILE_SESSION_STORE_VERSION,
     FileSessionManifestCache,
     findProject,
     isoNow,
@@ -31,7 +31,7 @@ import {
     sessionProjectMatches,
     sessionDirForManifestPath,
     sessionDirForProject,
-    sessionDirForRoot,
+    sessionDirForCheckout,
 } from "./file-session-storage.ts";
 import type {
     CatalogedTranscriptLocator,
@@ -91,60 +91,8 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                     if (!lineageManifest) throw new Error("Session lineage exists without a recoverable manifest");
                     session = catalogedSession(lineageManifest.manifest);
                 } else {
-                    const timestamp = isoNow(locator.now || options.now);
-                    const runwieldSessionId = locator.idFactory ? locator.idFactory() : crypto.randomUUID();
-                    const segmentId = `${runwieldSessionId}-segment-0`;
-                    const segment: SessionTranscriptSegment = {
-                        segmentId,
-                        runwieldSessionId,
-                        projectId: project.projectId,
-                        piSessionId: safe.piSessionId,
-                        transcriptPath: safe.sessionPath,
-                        transcriptCwd: safe.headerCwd,
-                        ordinal: 0,
-                        kind: "planning",
-                        sealedAt: null,
-                        headerVersion: safe.headerVersion,
-                        headerTimestamp: safe.headerTimestamp,
-                        firstCatalogedAt: timestamp,
-                        lastCatalogedAt: timestamp,
-                        lineageParentSegmentId: null,
-                        lineageParentPiSessionId: null,
-                        lineageGroupKey: null,
-                        lineageRecordedAt: null,
-                        sealedByteLength: null,
-                        sealedDigestHex: null,
-                        sealedTerminalEntryId: null,
-                    };
-                    const manifest: FileSessionManifest = {
-                        version: FILE_SESSION_STORE_VERSION,
-                        runwieldSessionId,
-                        projectId: project.projectId,
-                        transcriptCwd: safe.headerCwd,
-                        displayName: null,
-                        source: locator.source || "catalog",
-                        createdAt: timestamp,
-                        updatedAt: timestamp,
-                        currentSegmentId: segmentId,
-                        fence: 0,
-                        activation: {
-                            state: "uninitialized",
-                            phase: null,
-                            ownerInstanceId: null,
-                            ownerProcessKind: null,
-                            operationId: null,
-                            expectedGeneration: null,
-                            expectedCurrentSegmentId: null,
-                            acquiredAt: null,
-                            blockedReason: null,
-                            baselineByteLength: null,
-                            baselineDigestHex: null,
-                        },
-                        generation: null,
-                        segments: [segment],
-                        artifacts: [],
-                    };
-                    manifests.write(manifest, manifestPath(sessionDir, runwieldSessionId));
+                    const manifest = createInitialSessionManifest(project.projectId, safe, locator, options.now);
+                    manifests.write(manifest, manifestPath(sessionDir, manifest.runwieldSessionId));
                     session = catalogedSession(manifest);
                 }
             }
@@ -361,7 +309,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         requireSessionProjectRoot(projectId) {
             const project = store.getProjectById(projectId);
             if (!project) throw new Error("Session project is unavailable");
-            const root = rootEvidence(project)[0]?.canonicalRoot ?? project.registeredRoot;
+            const root = rootEvidence(project)[0]?.enteredRoot ?? project.registeredRoot;
             const stat = statSync(root);
             if (!stat.isDirectory()) throw new Error("Session project root is unavailable");
             return root;
@@ -689,7 +637,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 cwd: locator.transcriptCwd,
                 sessionDir: project.remote
                     ? sessionDirForProject(baseDir, project)
-                    : sessionDirForRoot(baseDir, locator.transcriptCwd),
+                    : sessionDirForCheckout(baseDir, locator.transcriptCwd),
                 sessionPath: locator.transcriptPath,
             });
         },

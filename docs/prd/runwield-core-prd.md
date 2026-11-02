@@ -2662,6 +2662,8 @@ clone link, fresh processes discover the same local Sessions through their origi
 Project and Session IDs, segments, committed generations, Plan Associations, settings, and archive state remain intact.
 Continuation uses a verified current checkout for tools and historical cwd for transcript validation. An active execution
 or repair segment retains its existing execution binding until normal workflow recovery authorizes a change.
+Without a selected checkout, a planning segment keeps its recorded worktree cwd; its storage Project's root does not
+replace that cwd. A planning segment recorded at the Project root follows that root's verified move binding.
 
 Locator admission waits for existing Session writers to settle without replacing their native lock files. Conflicting
 Session identities and missing established stores remain unavailable rather than creating replacement history. Passive
@@ -2673,7 +2675,12 @@ retargeted aliases do not grant access. Moves without prior identity/root eviden
 - Given a saved Git or non-Git Session and admitted identity, moving the Project and entering it again lets a fresh
   process list and append to that same Session. Its prior transcript bytes and original bundle/lock remain unchanged.
 - Given separate histories in two clones, accepting their link exposes both original Sessions without merging IDs,
-  settings, writer ownership, or Git execution attempts. Declining keeps their histories separate.
+  settings, writer ownership, or Git execution attempts. Explicit Core-ID and Pi-ID resume use the accepted membership.
+  Declining keeps their histories separate.
+- Given a Session created between successive admitted moves, resume and adoption use the current checkout while
+  preserving its intermediate historical cwd, original storage path, and transcript bytes.
+- Given a planning segment recorded in a worktree but stored under the primary Project, adoption and repair rollover
+  retain the worktree cwd. Adopting a Project-root planning segment after a verified move uses the moved root.
 - Given an active writer during move admission, the binding waits without blocking the writer's own Project entry.
   After settlement, retry resolves the original bundle; aliases contend on its same native writer lock.
 - Given Workspace relinking, registration retains its ID and enabled/disabled/removed policy. Removing Workspace SQLite

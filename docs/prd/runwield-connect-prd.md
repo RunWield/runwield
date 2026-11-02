@@ -674,8 +674,9 @@ artifact-based handoff. Shared runtime tests do not qualify either Codex surface
 Workflow directories to stable identity. Status by ID, latest-open restore, current instructions, callbacks, and accepted
 next operations follow those verified bindings and retain the original record and lock path. Lookup changes no revision,
 request, pending action, or accepted-operation receipt. Historical request evidence remains historical; current checkout
-paths are resolved separately. A linked clone can discover a workflow but cannot take over another repository's execution
-attempt. Compatibility, consent, current-action, and revision checks continue to apply.
+paths are resolved separately. Planning and review may continue in an accepted linked clone; first execution binds to
+that clone's repository, independently of the request's origin. Other linked repositories can discover the workflow but
+cannot take over its execution attempt. Compatibility, consent, current-action, and revision checks continue to apply.
 
 **Move/link acceptance scenarios:**
 
@@ -683,6 +684,13 @@ attempt. Compatibility, consent, current-action, and revision checks continue to
   workflow and action IDs. Its next accepted operation advances the existing revision once; replay changes no bytes.
 - Given accepted linked clones, lookup reaches their bound histories. A declined clone or foreign workflow ID grants no
   mutation authority, and incompatible hosts retain their existing refusal.
+- Given a workflow created between successive admitted moves, restore and continuation retain its intermediate
+  historical root and original storage directory.
+- Given an unrelated directory reusing a moved Project's old root, status reports the location mismatch, latest-open
+  restore excludes the old workflow, and instructions and callbacks retain the foreign-Project refusal.
+- Given a workflow created in clone A and planned, reviewed, and first executed in accepted linked clone B, B can read
+  current instructions, complete the action, and replay accepted operations without changing historical request evidence.
+  A and other linked repositories cannot advance that execution attempt.
 - Given a retained execution attempt, another linked repository cannot silently become its execution checkout.
 
 **Requirement: Start with necessary setup and preserve work after interruption.**

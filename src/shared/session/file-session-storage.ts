@@ -87,6 +87,20 @@ export function sessionDirForRoot(baseDir: string, root: string): string {
     return join(baseDir, encodeCwdForSessionDir(canonicalRoot));
 }
 
+/** Current checkout writes and successor validation share the admitted storage selection. */
+export function sessionDirForCheckout(baseDir: string, root: string): string {
+    const binding = inspectProjectStorage(root).find((item) => dirname(item.sessionDirectory) === resolve(baseDir));
+    if (binding) return binding.sessionDirectory;
+    let canonicalRoot = resolve(root);
+    try {
+        canonicalRoot = realpathSync.native(canonicalRoot);
+    } catch {
+        // A removed execution checkout retains its historical absolute locator.
+    }
+    assertUnclaimedSessionRoot(canonicalRoot);
+    return sessionDirForRoot(baseDir, canonicalRoot);
+}
+
 export function sessionDirForManifestPath(path: string): string {
     return dirname(dirname(dirname(dirname(path))));
 }

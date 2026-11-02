@@ -1,19 +1,13 @@
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import {
-    mkdir as fsMkdir,
-    readFile as fsReadFile,
-    realpath as fsRealpath,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { AGENTS } from "../constants.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.js";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.js";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.js";
-import { encodeCwdForSessionDir } from "../shared/project-directory-key.ts";
+import { sessionDirForProject } from "../shared/session/file-session-storage.ts";
 import { createSessionRuntime } from "../shared/session/session-runtime.ts";
 
 export type ManagedSessionFixture = Awaited<ReturnType<typeof makeManagedSessionFixture>>;
@@ -73,14 +67,12 @@ export async function appendTranscriptEntry(transcriptPath: string, entryId: str
 }
 
 async function writeManagedTranscript(
-    sessionBaseDir: string,
+    sessionDir: string,
     root: string,
     piSessionId: string,
     assistantMessages: string[] = [],
     workflowContext?: WorkflowContext,
 ): Promise<string> {
-    const canonicalRoot = await fsRealpath(root);
-    const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalRoot));
     await fsMkdir(sessionDir, { recursive: true });
     const timestamp = "2026-01-01T00:00:00.000Z";
     const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
@@ -138,14 +130,13 @@ export async function makeManagedSessionFixture(options: ManagedSessionFixtureOp
     const dbPath = options.dbPath ?? join(home, ".wld", "owner-coordination.sqlite3");
     const sessionBaseDir = join(home, ".wld", "sessions");
     await fsMkdir(projectRoot, { recursive: true });
-    const canonicalProjectRoot = await fsRealpath(projectRoot);
-    const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
     const modelRequests: RecordedModelRequest[] = [];
     const store = openOwnerCoordinationStore({ dbPath, sessionBaseDir });
     const project = store.registerProject({ root: projectRoot, idFactory: idFactory("project"), now: () => "t0" });
+    const sessionDir = sessionDirForProject(sessionBaseDir, store.ensureRuntimeProject({ root: projectRoot }));
     const piSessionId = "pi-managed-fixture";
     const transcriptPath = await writeManagedTranscript(
-        sessionBaseDir,
+        sessionDir,
         projectRoot,
         piSessionId,
         options.assistantMessages,

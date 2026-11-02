@@ -620,6 +620,8 @@ async function loadForOperation(
 
 export async function activate(envelope: ActivateEnvelope): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
+    if (location.foreignStorageRoot)
+        return await rejected("activate", rejection("project_moved", "Workflow storage belongs to another Project."));
     const workflowId = workflowIdFor(
         location.bindings?.[0]?.attachedRoot ?? location.projectRoot,
         envelope.operationId,

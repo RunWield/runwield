@@ -91,6 +91,7 @@ interface RepositoryBinding {
 interface CheckoutBinding {
     checkoutId: string;
     root: string;
+    historicalRoots?: string[];
 }
 export interface ProjectStorageLocator {
     repositoryId: string;
@@ -101,6 +102,8 @@ export interface ProjectStorageLocator {
     sessionDirectory: string;
     attachedRoot: string;
     attachedDirectory: string;
+    /** Verified checkout locations, projected separately from the unchanged storage paths. */
+    historicalRoots?: string[];
 }
 interface ProjectRecord {
     version: 1;
@@ -335,6 +338,12 @@ function readRecord(path: string, id: string): ProjectRecord | null {
         for (const checkout of repository.checkouts) {
             requireId(checkout.checkoutId, "stored checkout ID");
             if (typeof checkout.root !== "string") throw new Error(`Invalid checkout binding: ${path}`);
+            if (
+                checkout.historicalRoots &&
+                (!Array.isArray(checkout.historicalRoots) ||
+                    checkout.historicalRoots.some((root) => typeof root !== "string" || !isAbsolute(root)))
+            )
+                throw new Error(`Invalid historical checkout binding: ${path}`);
         }
     }
     for (const locator of record.storageLocators ?? []) {
@@ -386,7 +395,25 @@ export function inspectProjectStorage(path: string, options: ProjectIdentityOpti
                 Number(b.checkoutId === e.checkoutId && b.repositoryId === e.repositoryId) -
                 Number(a.checkoutId === e.checkoutId && a.repositoryId === e.repositoryId),
         )
-        .map((locator) => ({ ...locator }));
+        .map((locator) => {
+            const checkout = record.repositories
+                .find((item) => item.repositoryId === locator.repositoryId)!
+                .checkouts.find((item) => item.checkoutId === locator.checkoutId)!;
+            return {
+                ...locator,
+                historicalRoots: [
+                    ...new Set([
+                        locator.root,
+                        locator.attachedRoot,
+                        checkout.root,
+                        ...(locator.repositoryId === e.repositoryId && locator.checkoutId === e.checkoutId
+                            ? [e.root]
+                            : []),
+                        ...(checkout.historicalRoots ?? []),
+                    ]),
+                ],
+            };
+        });
 }
 
 /** Current, verified checkout roots for a legacy Session ID; never infer membership from a remote or basename. */
@@ -460,35 +487,43 @@ export function establishProjectSessionStorage(root: string, sessionProjectId: s
     }
 }
 
-export function assertUnclaimedSessionRoot(root: string, options: ProjectIdentityOptions = {}): void {
+/** A path claimed by another admitted Project cannot authorize legacy storage access. */
+export function isProjectStorageRootClaimed(root: string, options: ProjectIdentityOptions = {}): boolean {
     const context = contextFor(options);
     try {
         realpathSync(root);
     } catch (error) {
-        if (error instanceof Error && missing(error)) return;
+        if (error instanceof Error && missing(error)) return false;
         throw error;
     }
-    if (context.personalOwner.kind !== "execution-account") return;
+    if (context.personalOwner.kind !== "execution-account") return false;
     const directory = checkIdentityDirectories(context.executionAccountHome, ".wld", "projects");
     let names: string[];
     try {
         names = readdirSync(directory);
     } catch (error) {
-        if (error instanceof Error && missing(error)) return;
+        if (error instanceof Error && missing(error)) return false;
         throw error;
     }
-    const current = inspectProjectIdentity(root);
-    const currentId = current.kind === "existing" ? current.identity.projectId : null;
+    const current = evidence(root);
     for (const id of names.filter((name) => uuid.test(name))) {
-        if (id === currentId) continue;
         const record = readRecord(recordPath(context.executionAccountHome, id), id);
+        // Git worktrees share repository authority before every checkout has been admitted.
+        if (id === current.projectId && record?.repositories.some((item) => item.repositoryId === current.repositoryId))
+            continue;
         if (
             record?.personalOwner.kind === context.personalOwner.kind &&
             record.personalOwner.identity === context.personalOwner.identity &&
-            record.storageLocators?.some((item) => item.root === root)
+            record.storageLocators?.some((item) => item.root === root || item.attachedRoot === root)
         )
-            throw new Error("Session storage belongs to another Project identity");
+            return true;
     }
+    return false;
+}
+
+export function assertUnclaimedSessionRoot(root: string, options: ProjectIdentityOptions = {}): void {
+    if (isProjectStorageRootClaimed(root, options))
+        throw new Error("Session storage belongs to another Project identity");
 }
 
 function storageLocator(e: IdentityEvidence, home: string, root: string): ProjectStorageLocator {
@@ -542,6 +577,9 @@ async function settleStorageLocators(locators: ProjectStorageLocator[]): Promise
             locators.flatMap((locator) =>
                 storage
                     .listManifests(locator.sessionDirectory, true)
+                    // A successor transcript carries its original Project's recovery descriptor.
+                    // It does not create another bundle or writer lock in this checkout's store.
+                    .filter((item) => item.manifest.projectId === locator.sessionProjectId)
                     .map((item) => storage.lockPath(locator.sessionDirectory, item.manifest.runwieldSessionId)),
             ),
         ),
@@ -741,10 +779,14 @@ export async function admitProjectIdentity(
                     if (regularFile(join(current.sessionDirectory, ".runwield", "project.json")))
                         additions.push(current);
                 }
-                const settledLocks =
-                    additions.length || previousCheckout?.root !== e.root
-                        ? await settleStorageLocators([...previousLocators, ...additions])
-                        : [];
+                // A new worktree does not change an existing checkout's binding. Its caller may
+                // already own that checkout's Session writer while preparing the worktree.
+                const affectedLocators = [
+                    ...additions,
+                    ...(previousCheckout && previousCheckout.root !== e.root ? ownLocators : []),
+                    ...(selected ? previousLocators : []),
+                ];
+                const settledLocks = await settleStorageLocators(affectedLocators);
                 const recordLock = openNativeFileLock(join(dirname(file), "identity.lock"));
                 try {
                     await recordLock.lock(true);
@@ -791,8 +833,13 @@ export async function admitProjectIdentity(
                     }
                     repository.remote = e.remote;
                     const checkout = repository.checkouts.find((item) => item.checkoutId === e.checkoutId);
-                    if (checkout) checkout.root = e.root;
-                    else repository.checkouts.push({ checkoutId: e.checkoutId, root: e.root });
+                    if (checkout) {
+                        if (checkout.root !== e.root)
+                            checkout.historicalRoots = [
+                                ...new Set([...(checkout.historicalRoots ?? []), checkout.root]),
+                            ];
+                        checkout.root = e.root;
+                    } else repository.checkouts.push({ checkoutId: e.checkoutId, root: e.root });
                     if (JSON.stringify(record) !== before || !regularFile(file)) writeJsonAtomically(file, record);
                 } finally {
                     recordLock.close();

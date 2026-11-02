@@ -12,7 +12,8 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath, openPersistedRootSession } from "./root-session.js";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 import { listRecentResumableSessions } from "./session-resume-list.ts";
-import { lockPath, manifestPath } from "./file-session-storage.ts";
+import { lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
+import { createSessionRuntime } from "./session-runtime.ts";
 
 const repository = defineCommittedGitFixture();
 const storeModule = new URL("./file-session-store.ts", import.meta.url).href;
@@ -36,17 +37,18 @@ async function withHome(body: (home: string) => Promise<void>) {
     });
 }
 
-async function seed(root: string, text = "Original history") {
+async function seed(root: string, text = "Original history", transcriptCwd = root) {
     const store = openFileSessionStore();
     const project = store.ensureRuntimeProject({ root });
-    const manager = await createRootSessionManager("new", root);
+    const sessionDir = transcriptCwd === root ? undefined : sessionDirForRoot(store.path, root);
+    const manager = await createRootSessionManager("new", transcriptCwd, sessionDir);
     manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text }] });
     manager.appendModelChange("anthropic", "preserved-model");
-    const path = await resolveCreatedRootSessionPath(root, manager);
+    const path = await resolveCreatedRootSessionPath(transcriptCwd, manager, sessionDir);
     const session = await store.ensureSessionCatalogRecord({
         projectId: project.projectId,
         piSessionId: manager.getSessionId(),
-        transcriptCwd: root,
+        transcriptCwd,
         transcriptPath: path,
     });
     const proof = store.acquireSessionActivation({
@@ -66,7 +68,7 @@ async function seed(root: string, text = "Original history") {
         segmentKind: "planning",
         recordedAt: new Date().toISOString(),
     });
-    const evidence = await captureTranscriptEvidence({ transcriptPath: path, transcriptCwd: root });
+    const evidence = await captureTranscriptEvidence({ transcriptPath: path, transcriptCwd });
     store.publishGenerationAndRelease(store.changeSessionActivationPhase(proof, "checkpointing"), {
         generation: 0,
         byteLength: evidence.byteLength,
@@ -226,6 +228,283 @@ test("accepted clones share both original stores while pending and declined clon
             store.close();
         } finally {
             await rm(source, { recursive: true, force: true });
+        }
+    });
+});
+
+test("explicit-ID interactive resume translates accepted linked Session membership and refuses a declined clone", async () => {
+    await withHome(async (home) => {
+        const source = await repository.checkout();
+        const one = join(home, "one"),
+            two = join(home, "two"),
+            declined = join(home, "declined");
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        try {
+            for (const root of [one, two, declined]) await git(source, ["clone", source, root]);
+            const first = await seed(one),
+                second = await seed(two);
+            const identity = await admitProjectIdentity(one);
+            ok(identity.kind === "existing");
+            const pending = await admitProjectIdentity(two);
+            ok(pending.kind === "pending");
+            equal(
+                (
+                    await admitProjectIdentity(two, {
+                        choice: {
+                            kind: "link",
+                            projectId: identity.identity.projectId,
+                            candidates: pending.candidates,
+                        },
+                    })
+                ).kind,
+                "existing",
+            );
+            const other = await admitProjectIdentity(declined);
+            ok(other.kind === "pending");
+            equal(
+                (await admitProjectIdentity(declined, { choice: { kind: "new", candidates: other.candidates } })).kind,
+                "existing",
+            );
+            for (const resumeSessionId of [first.session.runwieldSessionId, first.session.piSessionId]) {
+                const loaded = await runtime.createInteractiveSession({ cwd: two, mode: "continue", resumeSessionId });
+                equal(loaded.cwd, two);
+                equal(loaded.sessionManagerId, first.session.piSessionId);
+                equal((await runtime.renameSession(loaded.sessionId, "Linked explicit resume")).ok, true);
+                await runtime.closeSession(loaded.sessionId);
+                await rejects(
+                    () => runtime.createInteractiveSession({ cwd: declined, mode: "continue", resumeSessionId }),
+                    /No saved Session/,
+                );
+            }
+            equal(
+                store.getSessionById(first.session.runwieldSessionId, second.project.projectId)?.projectId,
+                first.project.projectId,
+            );
+            ok((await readFile(first.path, "utf8")).includes("Linked explicit resume"));
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await rm(source, { recursive: true, force: true });
+        }
+    });
+});
+
+test("Sessions created between successive moves resume and settle in the current checkout without moving storage", async () => {
+    await withHome(async () => {
+        const root = await realpath(await repository.checkout());
+        const middle = `${root}-middle`,
+            current = `${root}-current`;
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        try {
+            equal((await admitProjectIdentity(root)).kind, "existing");
+            const originalDirectory = inspectProjectStorage(root)[0].sessionDirectory;
+            await rename(root, middle);
+            equal((await admitProjectIdentity(middle)).kind, "existing");
+            const saved = await seed(middle);
+            equal(dirname(saved.path), originalDirectory);
+            const before = await readFile(saved.path);
+            await rename(middle, current);
+            equal((await admitProjectIdentity(current)).kind, "existing");
+            const loaded = await runtime.createInteractiveSession({
+                cwd: current,
+                mode: "continue",
+                resumeSessionId: saved.session.runwieldSessionId,
+            });
+            equal(loaded.cwd, current);
+            equal((await runtime.renameSession(loaded.sessionId, "After two moves")).ok, true);
+            const after = await readFile(saved.path);
+            ok(after.subarray(0, before.length).equals(before));
+            ok(after.toString().includes("After two moves"));
+            equal(store.getSessionById(saved.session.runwieldSessionId)?.transcriptCwd, middle);
+            equal(store.inspectSessionActivation(saved.session.runwieldSessionId).generation?.generation, 1);
+            await runtime.closeSession(loaded.sessionId);
+            const adopted = runtime.adoptManagedSession({
+                session: store.getSessionById(saved.session.runwieldSessionId)!,
+                generation: 1,
+            });
+            equal(adopted.cwd, current);
+            equal((await runtime.renameSession(adopted.sessionId, "Adopted after two moves")).ok, true);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            for (const path of [root, middle, current]) await rm(path, { recursive: true, force: true });
+        }
+    });
+});
+
+test("an active Session can admit a new worktree without waiting on its unchanged primary binding", async () => {
+    await withHome(async (home) => {
+        const root = await realpath(await repository.checkout());
+        const worktree = join(home, "planning-worktree");
+        const store = openFileSessionStore();
+        try {
+            const saved = await seed(root);
+            equal((await admitProjectIdentity(root)).kind, "existing");
+            await git(root, ["worktree", "add", "--detach", worktree]);
+            const proof = store.acquireSessionActivation({
+                runwieldSessionId: saved.session.runwieldSessionId,
+                projectId: saved.project.projectId,
+                ownerInstanceId: "planning-operation",
+                ownerProcessKind: "test",
+                expectedGeneration: 0,
+            });
+            const admission = admitProjectIdentity(worktree);
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                const result = await Promise.race([
+                    admission,
+                    new Promise<null>((resolve) => {
+                        timer = setTimeout(() => resolve(null), 1500);
+                    }),
+                ]);
+                ok(result, "Worktree admission waited for its own operation's primary Session lock");
+                equal(result.kind, "existing");
+                equal(store.inspectSessionActivation(saved.session.runwieldSessionId).activation?.state, "active");
+            } finally {
+                clearTimeout(timer);
+                store.releaseUnchangedActivation(proof);
+                await admission;
+            }
+            equal((await listRecentResumableSessions(worktree, store))[0]?.path, saved.path);
+        } finally {
+            store.close();
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
+
+test("admitting a repair worktree retains the predecessor bundle despite its successor recovery descriptor", async () => {
+    await withHome(async (home) => {
+        const root = await realpath(await repository.checkout());
+        const worktree = join(home, "repair-worktree");
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        try {
+            const saved = await seed(root);
+            equal((await admitProjectIdentity(root)).kind, "existing");
+            await git(root, ["worktree", "add", "--detach", worktree]);
+            const originalLock = lockPath(dirname(saved.path), saved.session.runwieldSessionId);
+            const inode = (await stat(originalLock)).ino;
+            const loaded = await runtime.loadSession({
+                cwd: root,
+                sessionId: saved.session.piSessionId,
+                sessionPath: saved.path,
+            });
+            await runtime.rollManagedSessionSegment(loaded.sessionId, {
+                kind: "semantic_repair",
+                transcriptCwd: worktree,
+                continuation: { mode: "repair" },
+            });
+            const successor = store.getCurrentSessionSegment(saved.session.runwieldSessionId)!;
+            ok(await stat(`${successor.transcriptPath}.runwield.json`));
+            equal((await admitProjectIdentity(worktree)).kind, "existing");
+            equal((await stat(originalLock)).ino, inode);
+            await rejects(stat(lockPath(dirname(successor.transcriptPath), saved.session.runwieldSessionId)), /ENOENT/);
+            equal(
+                store.readSessionManifest(saved.session.runwieldSessionId, saved.project.projectId)?.generation
+                    ?.generation,
+                1,
+            );
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
+
+test("adoption retains a planning worktree cwd when its Session is stored under the admitted primary Project", async () => {
+    await withHome(async (home) => {
+        const root = await realpath(await repository.checkout());
+        const worktree = join(home, "planning-worktree");
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        try {
+            await git(root, ["worktree", "add", "--detach", worktree]);
+            const saved = await seed(root, "Planning in a worktree", worktree);
+            equal((await admitProjectIdentity(root)).kind, "existing");
+            const adopted = runtime.adoptManagedSession({ session: saved.session, generation: 0 });
+            equal(adopted.cwd, worktree);
+            await runtime.rollManagedSessionSegment(adopted.sessionId, {
+                kind: "semantic_repair",
+                continuation: { mode: "repair" },
+            });
+            equal(store.getCurrentSessionSegment(saved.session.runwieldSessionId)?.transcriptCwd, worktree);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
+
+test("adoption resolves a moved planning Project without an explicitly selected cwd", async () => {
+    await withHome(async () => {
+        const root = await realpath(await repository.checkout());
+        const moved = `${root}-moved`;
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        try {
+            const saved = await seed(root);
+            equal((await admitProjectIdentity(root)).kind, "existing");
+            await rename(root, moved);
+            equal((await admitProjectIdentity(moved)).kind, "existing");
+            const adopted = runtime.adoptManagedSession({ session: saved.session, generation: 0 });
+            equal(adopted.cwd, moved);
+            equal((await runtime.renameSession(adopted.sessionId, "Adopted after move")).ok, true);
+            ok((await readFile(saved.path, "utf8")).includes("Adopted after move"));
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await rm(root, { recursive: true, force: true });
+            await rm(moved, { recursive: true, force: true });
+        }
+    });
+});
+
+test("a moved Session rolls its successor into the bound store and rejects a foreign transcript path", async () => {
+    await withHome(async () => {
+        const root = await realpath(await repository.checkout());
+        const moved = `${root}-moved`;
+        const foreign = await realpath(await repository.checkout());
+        const store = openFileSessionStore();
+        const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
+        try {
+            const saved = await seed(root);
+            equal((await admitProjectIdentity(root)).kind, "existing");
+            await rename(root, moved);
+            equal((await admitProjectIdentity(moved)).kind, "existing");
+            const loaded = await runtime.loadSession({
+                cwd: moved,
+                sessionId: saved.session.piSessionId,
+                sessionPath: saved.path,
+            });
+            await runtime.rollManagedSessionSegment(loaded.sessionId, {
+                kind: "execution",
+                transcriptCwd: moved,
+                continuation: { mode: "repair" },
+            });
+            const successor = store.getCurrentSessionSegment(saved.session.runwieldSessionId)!;
+            equal(dirname(successor.transcriptPath), dirname(saved.path));
+            equal(successor.transcriptCwd, moved);
+            const other = await seed(foreign);
+            await rejects(
+                store.validateSuccessorSegmentLocator({
+                    projectId: saved.project.projectId,
+                    piSessionId: other.session.piSessionId,
+                    transcriptPath: other.path,
+                    transcriptCwd: moved,
+                }),
+                /outside the RunWield session directory/,
+            );
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            await rm(root, { recursive: true, force: true });
+            await rm(moved, { recursive: true, force: true });
+            await rm(foreign, { recursive: true, force: true });
         }
     });
 });

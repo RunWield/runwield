@@ -37,6 +37,10 @@ The personal Core Project identity record binds verified legacy Session Project 
 and checkout evidence. Deliberate entry records old-root evidence before replacing the checkout root; explicit clone
 linking can associate several existing stores. Session manifests and transcripts keep their original IDs and historical
 cwd. Current tool execution resolves separately, and active worktree execution retains its existing recovery authority.
+Checkout bindings retain every admitted historical root separately from fixed storage directories, so records created
+between successive moves keep valid cwd evidence without relocating their bundles.
+Adoption without a selected checkout rebinds a Project-root planning segment through verified root evidence; a planning
+segment recorded in a different worktree retains that cwd. Storage membership alone cannot choose its execution checkout.
 
 This mapping is a locator, not a second transcript, generation, or activation authority. Bundles, descriptors, and native
 lock files stay at their original paths, including for new records in this storage generation. Copying bundles or rewriting

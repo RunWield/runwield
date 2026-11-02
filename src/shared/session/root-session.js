@@ -6,8 +6,8 @@
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
-import { assertUnclaimedSessionRoot, inspectProjectStorage } from "../project-identity.ts";
-import { sessionProjectMatches } from "./file-session-storage.ts";
+import { inspectProjectStorage } from "../project-identity.ts";
+import { sessionDirForCheckout, sessionProjectMatches } from "./file-session-storage.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 export { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
@@ -46,11 +46,7 @@ function canonicalizeCwd(cwd) {
  * @returns {string}
  */
 export function getRunWieldSessionDir(cwd) {
-    const baseDir = getRunWieldSessionsBaseDir();
-    const binding = inspectProjectStorage(cwd)[0];
-    if (binding) return binding.sessionDirectory;
-    assertUnclaimedSessionRoot(canonicalizeCwd(cwd));
-    return join(baseDir, encodeCwdForSessionDir(canonicalizeCwd(cwd)));
+    return sessionDirForCheckout(getRunWieldSessionsBaseDir(), cwd);
 }
 
 /**
@@ -468,11 +464,16 @@ export async function classifyRootSessionLocator(options) {
               .listSessionTranscriptSegments(catalogedByPath.runwieldSessionId)
               .find((segment) => resolve(segment.transcriptPath) === requestedSessionPath)
         : null;
-    const locatorSessionDir = isPathInside(requestedSessionPath, projectSessionDir)
-        ? projectSessionDir
-        : catalogedSegment
-          ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
-          : undefined;
+    const boundSessionDir = bindings.find((binding) =>
+        isPathInside(requestedSessionPath, binding.sessionDirectory),
+    )?.sessionDirectory;
+    const locatorSessionDir =
+        boundSessionDir ||
+        (isPathInside(requestedSessionPath, projectSessionDir)
+            ? projectSessionDir
+            : catalogedSegment
+              ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
+              : undefined);
     let locator;
     try {
         locator = await readCatalogSafeRootSessionLocator({
@@ -596,7 +597,7 @@ export async function resolvePersistedRootSession(options) {
         }
         if (
             canonicalizeCwd(locator.headerCwd) !== canonicalCwd &&
-            (!binding || resolve(locator.headerCwd) !== binding.root)
+            (!binding || !(binding.historicalRoots ?? [binding.root]).includes(resolve(locator.headerCwd)))
         ) {
             throw new Error(
                 usesManagedProjectSessionDir

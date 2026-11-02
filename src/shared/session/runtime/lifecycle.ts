@@ -1,8 +1,10 @@
 import { stat as fsStat } from "node:fs/promises";
+import { inspectProjectStorage } from "../../project-identity.ts";
 import { AGENTS } from "../../../constants.js";
 import {
     classifyRootSessionLocator,
     createRootSessionManager,
+    isPathInside,
     listCatalogSafeRootSessionLocators,
     listPersistedRootSessions,
     resolveCreatedRootSessionPath,
@@ -297,6 +299,24 @@ export class RuntimeLifecycle {
         const cataloged = options?.session;
         if (!cataloged) throw new Error("SessionRuntime.adoptManagedSession requires a cataloged Session");
         const currentSegment = this.services.sessionStore?.getCurrentSessionSegment(cataloged.runwieldSessionId);
+        const transcriptCwd = currentSegment?.transcriptCwd || cataloged.transcriptCwd;
+        const project = this.services.sessionStore?.getProjectById(cataloged.projectId);
+        const currentRoots = this.services.sessionStore?.listProjectRootEvidence(cataloged.projectId) ?? [];
+        const usesProjectRoot =
+            transcriptCwd === project?.registeredRoot ||
+            transcriptCwd === project?.currentRoot ||
+            currentRoots.some(
+                (root) =>
+                    root.rootState === "current" &&
+                    inspectProjectStorage(root.canonicalRoot).some(
+                        (binding) =>
+                            (binding.historicalRoots ?? [binding.root]).includes(transcriptCwd) &&
+                            isPathInside(
+                                currentSegment?.transcriptPath || cataloged.transcriptPath,
+                                binding.sessionDirectory,
+                            ),
+                    ),
+            );
         const hostedSession = this.services.sessionHost.createSession({
             id:
                 typeof options.hostedSessionId === "string" && options.hostedSessionId
@@ -306,8 +326,10 @@ export class RuntimeLifecycle {
                 currentSegment?.kind === "execution" || currentSegment?.kind === "semantic_repair"
                     ? currentSegment.transcriptCwd
                     : (options.cwd ??
-                      this.services.sessionStore?.requireSessionProjectRoot(cataloged.projectId) ??
-                      cataloged.transcriptCwd),
+                      (usesProjectRoot
+                          ? this.services.sessionStore?.requireSessionProjectRoot(cataloged.projectId)
+                          : transcriptCwd) ??
+                      transcriptCwd),
             sessionManager: null,
             managed: {
                 runwieldSessionId: cataloged.runwieldSessionId,
@@ -377,7 +399,8 @@ export class RuntimeLifecycle {
             if (options.resumeSessionId) {
                 const cataloged =
                     ownerCoordinationStore?.getSessionById(options.resumeSessionId, managedProject?.projectId) || null;
-                if (cataloged && cataloged.projectId === managedProject?.projectId) {
+                // The scoped store lookup verifies linked membership while preserving the original legacy ID.
+                if (cataloged) {
                     selectedSession = {
                         id: cataloged.piSessionId,
                         path: cataloged.transcriptPath,
@@ -393,7 +416,10 @@ export class RuntimeLifecycle {
                     if (
                         located.kind === "managed" &&
                         located.session &&
-                        located.session.projectId === managedProject?.projectId
+                        ownerCoordinationStore?.getSessionById(
+                            located.session.runwieldSessionId,
+                            managedProject?.projectId,
+                        )
                     ) {
                         selectedSession = {
                             id: located.session.piSessionId,

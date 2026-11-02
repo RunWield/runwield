@@ -1,4 +1,9 @@
-import { inspectProjectStorage, inspectProjectIdentity, type ProjectStorageLocator } from "../project-identity.ts";
+import {
+    inspectProjectStorage,
+    inspectProjectIdentity,
+    isProjectStorageRootClaimed,
+    type ProjectStorageLocator,
+} from "../project-identity.ts";
 import type { Dirent } from "node:fs";
 import { writeJsonAtomically } from "../private-json-file.ts";
 import { realpathSync } from "node:fs";
@@ -85,6 +90,7 @@ export interface AttachedWorkflowRecord {
 /** Where one project's records live. */
 export interface AttachedWorkflowLocation {
     bindings?: ProjectStorageLocator[];
+    foreignStorageRoot?: boolean;
     repositoryId?: string;
     projectRoot: string;
     workflowsDir: string;
@@ -118,6 +124,7 @@ export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLo
     const identity = inspectProjectIdentity(primaryRoot);
     return {
         bindings,
+        foreignStorageRoot: !bindings.length && isProjectStorageRootClaimed(primaryRoot),
         repositoryId: identity.kind === "existing" ? identity.identity.repositoryId : undefined,
         projectRoot: primaryRoot,
         workflowsDir:
@@ -173,13 +180,35 @@ export function attachedWorkflowBelongsToLocation(
     location: AttachedWorkflowLocation,
     record: AttachedWorkflowRecord,
 ): boolean {
-    if (record.projectRoot === location.projectRoot) return true;
-    return Boolean(
-        location.bindings?.some(
-            (binding) =>
-                binding.attachedRoot === record.projectRoot &&
-                (!record.execution || binding.repositoryId === location.repositoryId),
-        ),
+    if (!location.bindings?.length) return !location.foreignStorageRoot && record.projectRoot === location.projectRoot;
+    const requestBelongs = location.bindings.some((binding) =>
+        (binding.historicalRoots ?? [binding.attachedRoot]).includes(record.projectRoot),
+    );
+    if (!requestBelongs || !record.execution) return requestBelongs;
+    // Preparation records the actual execution repository independently of the request's origin.
+    const executionRoot = record.execution.projectRoot ?? record.projectRoot;
+    return location.bindings.some(
+        (binding) =>
+            (binding.historicalRoots ?? [binding.attachedRoot]).includes(executionRoot) &&
+            binding.repositoryId === location.repositoryId,
+    );
+}
+
+function recordMatchesStorage(
+    location: AttachedWorkflowLocation,
+    record: AttachedWorkflowRecord,
+    directory: string,
+): boolean {
+    if (!location.bindings?.length)
+        return (
+            !location.foreignStorageRoot &&
+            record.projectRoot === location.projectRoot &&
+            directory === location.workflowsDir
+        );
+    return location.bindings.some(
+        (binding) =>
+            binding.attachedDirectory === directory &&
+            (binding.historicalRoots ?? [binding.attachedRoot]).includes(record.projectRoot),
     );
 }
 
@@ -203,10 +232,7 @@ async function boundRecordPath(location: AttachedWorkflowLocation, workflowId: s
         const path = recordPath(directory, workflowId);
         const record = await readRecordAt(path);
         if (!record) continue;
-        const binding = location.bindings?.find(
-            (item) => item.attachedDirectory === directory && item.attachedRoot === record.projectRoot,
-        );
-        if (record.projectRoot !== location.projectRoot && !binding) continue;
+        if (!recordMatchesStorage(location, record, directory)) continue;
         if (found && found !== path) throw new Error("Conflicting Attached Workflow identity claims");
         found = path;
     }
@@ -218,11 +244,10 @@ export async function loadAttachedWorkflowRecord(
     location: AttachedWorkflowLocation,
     workflowId: string,
 ): Promise<LoadedAttachedWorkflow> {
-    const record = await readRecordAt(await boundRecordPath(location, workflowId));
+    const path = await boundRecordPath(location, workflowId);
+    const record = await readRecordAt(path);
     if (record) {
-        const bound =
-            record.projectRoot === location.projectRoot ||
-            location.bindings?.some((item) => item.attachedRoot === record.projectRoot);
+        const bound = recordMatchesStorage(location, record, dirname(path));
         return { status: bound ? "found" : "moved", record: projectRecord(location, record) };
     }
     const moved = await findMovedRecord(location, workflowId);
@@ -240,10 +265,7 @@ export async function loadLatestAttachedWorkflowRecord(
                 const record = await readRecordAt(join(directory, entry.name));
                 if (
                     record &&
-                    (record.projectRoot === location.projectRoot ||
-                        location.bindings?.some(
-                            (item) => item.attachedRoot === record.projectRoot && item.attachedDirectory === directory,
-                        )) &&
+                    recordMatchesStorage(location, record, directory) &&
                     record.state !== "closed" &&
                     (!latest ||
                         record.updatedAt > latest.updatedAt ||
