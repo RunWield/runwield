@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { openOwnerCoordinationDatabase } from "./database.js";
-import type { OwnerCoordinationDatabase } from "./database.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
+import type { OwnerCoordinationDatabase } from "./database.ts";
 import { hashSecret, randomHumanCode } from "./crypto.ts";
 import {
     approvePairingRequest,
