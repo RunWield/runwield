@@ -16,60 +16,62 @@ import { getCwd } from "../../constants.js";
 import defaultThemeJson from "./catppuccin-mocha.json" with { type: "json" };
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";
-import { createThemeFromJson } from "./theme-json.ts";
-import { createThemeRegistry } from "./theme-registry.ts";
+import { type ThemeInstance, type ThemeJson, createThemeFromJson } from "./theme-json.ts";
+import { type ThemeSelectionResult, createThemeRegistry } from "./theme-registry.ts";
 
-/** @typedef {import('@earendil-works/pi-coding-agent').Theme} ThemeInstance */
-/** @typedef {import('./theme-json.ts').ThemeJson} ThemeJson */
+import type { EditorTheme, MarkdownTheme, SelectListTheme } from "@earendil-works/pi-tui";
+
+export type { ThemeInstance, ThemeJson } from "./theme-json.ts";
+export type { ThemeSelectionResult } from "./theme-registry.ts";
 
 // ─── Global theme singleton key (matches the upstream) ───────────────────────
 const THEME_KEY = Symbol.for("@earendil-works/pi-coding-agent:theme");
+
+/** The upstream JavaScript singleton installs Theme on this shared symbol. */
+interface ThemeGlobalSlot {
+    [THEME_KEY]?: ThemeInstance;
+}
+
+type ThemeGlobal = typeof globalThis & ThemeGlobalSlot;
 
 export const DEFAULT_THEME_NAME = "catppuccin-mocha";
 
 /**
  * The theme proxy — reads from globalThis just like the upstream.
  * All modules import `theme` from here and get the same singleton.
- * @type {ThemeInstance}
  */
-export const theme = new Proxy(/** @type {any} */ ({}), {
+// The empty proxy target and arbitrary property forwarding mirror the upstream JavaScript bridge.
+export const theme = new Proxy({} as ThemeInstance, {
     get(_target, prop) {
-        const t = /** @type {any} */ (globalThis)[THEME_KEY];
+        const t = (globalThis as ThemeGlobal)[THEME_KEY];
         if (!t) throw new Error("Theme not initialized. Call initRunWieldTheme() first.");
-        return t[prop];
+        return t[prop as keyof ThemeInstance];
     },
 });
 
-/** @type {import('@earendil-works/pi-tui').MarkdownTheme | null} */
-let _markdownTheme = null;
+let _markdownTheme: MarkdownTheme | null = null;
 
-/** @type {import('@earendil-works/pi-tui').SelectListTheme | null} */
-let _selectListTheme = null;
+let _selectListTheme: SelectListTheme | null = null;
 
-/** @returns {import('@earendil-works/pi-tui').MarkdownTheme} */
-export function getMarkdownTheme() {
+export function getMarkdownTheme(): MarkdownTheme {
     if (!_markdownTheme) _markdownTheme = upstreamGetMarkdownTheme();
     return _markdownTheme;
 }
 
-/** @returns {import('@earendil-works/pi-tui').SelectListTheme} */
-export function getSelectListTheme() {
+export function getSelectListTheme(): SelectListTheme {
     if (!_selectListTheme) _selectListTheme = upstreamGetSelectListTheme();
     return _selectListTheme;
 }
 
-/** @returns {import('@earendil-works/pi-tui').EditorTheme} */
-export function getEditorTheme() {
+export function getEditorTheme(): EditorTheme {
     return {
-        /** @param {string} s */
-        borderColor: (s) => theme.fg("borderAccent", s),
+        borderColor: (s: string) => theme.fg("borderAccent", s),
         selectList: getSelectListTheme(),
     };
 }
 
 export const imageTheme = {
-    /** @param {string} s */
-    fallbackColor: (s) => {
+    fallbackColor: (s: string) => {
         try {
             return theme.fg("dim", s);
         } catch (_e) {
@@ -80,8 +82,7 @@ export const imageTheme = {
 
 // ─── Theme JSON → Theme instance ─────────────────────────────────────────────
 
-/** @type {ThemeJson} */
-export const DEFAULT_THEME_JSON = defaultThemeJson;
+export const DEFAULT_THEME_JSON: ThemeJson = defaultThemeJson;
 
 // Construct the embedded theme once at module load. It's both the boot default
 // and the merge floor for partial external themes.
@@ -89,9 +90,8 @@ const EMBEDDED_THEME = createThemeFromJson(DEFAULT_THEME_JSON);
 
 // ─── Local theme registry + setters (re-implemented; not in Pi's exports) ────
 
-/** @param {ThemeInstance} t */
-function installGlobalTheme(t) {
-    /** @type {any} */ (globalThis)[THEME_KEY] = t;
+function installGlobalTheme(t: ThemeInstance) {
+    (globalThis as ThemeGlobal)[THEME_KEY] = t;
 }
 
 const themeRegistry = createThemeRegistry({
@@ -104,20 +104,16 @@ const themeRegistry = createThemeRegistry({
  * Subscribe to theme changes. Returns an unsubscribe function.
  * Fires on every successful theme swap (setTheme / setThemeInstance) and
  * on the initial install via initRunWieldTheme.
- * @param {() => void} cb
- * @returns {() => void}
  */
-export function onThemeChange(cb) {
+export function onThemeChange(cb: () => void): () => void {
     return themeRegistry.onChange(cb);
 }
 
-/** @param {ThemeInstance[]} themes */
-export function setRegisteredThemes(themes) {
+export function setRegisteredThemes(themes: ThemeInstance[]) {
     themeRegistry.setRegisteredThemes(themes);
 }
 
-/** @param {ThemeInstance} themeInstance */
-export function setThemeInstance(themeInstance) {
+export function setThemeInstance(themeInstance: ThemeInstance) {
     themeRegistry.setThemeInstance(themeInstance);
 }
 
@@ -125,15 +121,12 @@ export function setThemeInstance(themeInstance) {
  * Swap to a registered theme by name.
  * Returns success false (and stays on the previous theme) if the name
  * is not registered, instead of silently substituting.
- * @param {string} name
- * @returns {{ success: boolean, error?: string }}
  */
-export function setTheme(name) {
+export function setTheme(name: string): ThemeSelectionResult {
     return themeRegistry.setTheme(name);
 }
 
-/** @returns {string[]} */
-export function getAvailableThemes() {
+export function getAvailableThemes(): string[] {
     return themeRegistry.getAvailableThemes();
 }
 
@@ -199,10 +192,8 @@ export async function discoverAndRegisterThemes() {
 /**
  * Resolve available theme JSON objects using the same package discovery and
  * partial-theme merge policy as the TUI theme registry.
- *
- * @returns {Promise<ThemeJson[]>}
  */
-export async function resolveAvailableThemeJsons() {
+export async function resolveAvailableThemeJsons(): Promise<ThemeJson[]> {
     const settings = getSettingsManager();
     const packageManager = new DefaultPackageManager({
         cwd: getCwd(),
@@ -223,10 +214,8 @@ export async function resolveAvailableThemeJsons() {
 /**
  * Resolve the currently selected theme JSON using the same default and external
  * package merge semantics as the TUI theme registry.
- *
- * @returns {Promise<ThemeJson>}
  */
-export async function resolveSelectedThemeJson() {
+export async function resolveSelectedThemeJson(): Promise<ThemeJson> {
     const settings = getSettingsManager();
     await settings.reload?.();
     const selectedThemeName = settings.getTheme() || DEFAULT_THEME_NAME;

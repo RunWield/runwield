@@ -11,7 +11,7 @@ import chalk from "chalk";
 chalk.level = 3;
 
 // Initialize the runwield theme before importing blocks (theme must be ready)
-import { initRunWieldTheme, theme } from "../theme/theme.js";
+import { initRunWieldTheme, theme } from "../theme/theme.ts";
 initRunWieldTheme();
 
 import {

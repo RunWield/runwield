@@ -1017,7 +1017,7 @@ still frame.
 
 ### Terminal adaptation
 
-Use `src/ui/theme/theme.js` and its semantic theme helpers for terminal colors and Markdown, selection, and editor
+Use `src/ui/theme/theme.ts` and its semantic theme helpers for terminal colors and Markdown, selection, and editor
 styling. Preserve the user's selected terminal theme; do not impose browser hex colors or CSS variables on ANSI output.
 See [Themes](user-documentation/themes.md). Shared intent does not require identical color values across renderers.
 

@@ -3,7 +3,7 @@ import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../test
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
+import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 

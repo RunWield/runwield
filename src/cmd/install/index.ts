@@ -11,7 +11,7 @@ import { approveMetricsExporter, listInstalledMetricsExporters } from "../../sha
 import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.ts";
 import { countPackageResourcesForSource, resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
-import { discoverAndRegisterThemes } from "../../ui/theme/theme.js";
+import { discoverAndRegisterThemes } from "../../ui/theme/theme.ts";
 
 type CommandLog = (message?: string) => void;
 

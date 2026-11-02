@@ -10,7 +10,7 @@ import {
     truncateToWidth,
     visibleWidth,
 } from "@earendil-works/pi-tui";
-import { getMarkdownTheme, getSelectListTheme, imageTheme, theme } from "../theme/theme.js";
+import { getMarkdownTheme, getSelectListTheme, imageTheme, theme } from "../theme/theme.ts";
 import { buildActiveConversationStatusMessage } from "../../shared/session/session-user-messages.ts";
 import {
     validationProgressCheckSummary,

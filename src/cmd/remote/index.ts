@@ -204,7 +204,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         }
         const { showRemoteHistory } = await import("../../ui/tui/remote-history.ts");
         const { initTUI, stopTUI } = await import("../../ui/tui/tui.ts");
-        const { initRunWieldTheme } = await import("../../ui/theme/theme.js");
+        const { initRunWieldTheme } = await import("../../ui/theme/theme.ts");
         initRunWieldTheme();
         try {
             await showRemoteHistory(initTUI(), saved);
