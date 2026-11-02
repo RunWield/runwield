@@ -100,7 +100,7 @@ The implementation evidence comes from these source files:
 - `src/cmd/acp/index.ts`
 - `src/acp/server.js`
 - `src/acp/session-map.ts`
-- `src/acp/event-mapper.js`
+- `src/acp/event-mapper.ts`
 - `src/acp/interaction-mapper.js`
 - `src/shared/session/session-runtime.ts`
 - `src/shared/session/session-runtime-events.js`
@@ -125,7 +125,7 @@ The implementation evidence comes from these source files:
 10. advertises shared commands and uses native forms first, or chat for all select, text, and approval questions,
     including command menus, when forms are not supported.
 
-Evidence: `src/acp/server.js` (`createInitializeResponse`, `createRunWieldAcpServer`), `event-mapper.js`,
+Evidence: `src/acp/server.js` (`createInitializeResponse`, `createRunWieldAcpServer`), `event-mapper.ts`,
 `interaction-mapper.js`, and `server.test.js` under `src/acp/`.
 
 **Still missing:** Session listing/resume, a native Agent selector, embedded resources, audio prompts, additional roots,
@@ -345,7 +345,7 @@ Evidence: `src/acp/server.js` (`buildAcpAvailableCommands`, `dispatchAcpBuiltinC
 
 ## `session/update` event mapping
 
-`src/acp/event-mapper.js` maps adapter-neutral Runtime events into ACP `session/update` notifications.
+`src/acp/event-mapper.ts` maps adapter-neutral Runtime events into ACP `session/update` notifications.
 
 | Runtime event                                     | ACP update                                      | Current details                                                                                                                                                  |
 | ------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -361,7 +361,7 @@ Evidence: `src/acp/server.js` (`buildAcpAvailableCommands`, `dispatchAcpBuiltinC
 | `system_status`, `cancellation`, `terminal_error` | `agent_message_chunk` when a message is present | Status and cancellation events without a message are dropped.                                                                                                    |
 | Other Runtime events                              | no ACP update                                   | Other unmapped events are dropped; see the additional mappings below.                                                                                            |
 
-Additional mappings in `src/acp/event-mapper.js`:
+Additional mappings in `src/acp/event-mapper.ts`:
 
 - `model_changed` and `thinking_level_changed` send readable text notices.
 - `command_catalog_changed` sends `available_commands_update`.
@@ -377,7 +377,7 @@ programmatic tool name is in `_meta.runwield.toolName`, not the current v1 stand
 sending `name` when available, so this omission misses a protocol recommendation even though the field is optional.
 Initial status is `in_progress`; this is valid for an already-running tool, not a compliance defect by itself.
 
-Evidence: `src/acp/event-mapper.js`, `src/acp/server.js`, and
+Evidence: `src/acp/event-mapper.ts`, `src/acp/server.js`, and
 [ACP tool calls](https://agentclientprotocol.com/protocol/v1/tool-calls).
 
 ### Usage update behavior
@@ -397,7 +397,7 @@ The mapper does not use the latest message's `inputTokens` and does not use `use
 snapshot, `tokens: null` after compaction, or unavailable capacity suppresses the update until a later usage event has
 exact values. Cost still accumulates while a context update is suppressed.
 
-Evidence: `src/acp/event-mapper.js` (`mapRuntimeEventToAcpUpdate`), `src/acp/server.js` (`mapEventWithSessionCost` and
+Evidence: `src/acp/event-mapper.ts` (`mapRuntimeEventToAcpUpdate`), `src/acp/server.js` (`mapEventWithSessionCost` and
 Runtime subscriptions), `src/acp/session-map.ts` (`addUsageCost`), and the exact-context wire test in
 `src/acp/server.test.js`.
 
@@ -559,7 +559,7 @@ used. Once supported, that feature's protocol rules apply.
 | Boolean/grouped config controls        | Not exposed by the model-and-reasoning option builder.                | Optional presentation choices, not a need by themselves.                                                                   |
 
 Implementation evidence: `src/acp/server.js` capability declarations and unsupported handlers,
-`src/acp/model-options.ts`, `src/acp/event-mapper.js`, and `src/acp/interaction-mapper.js`. Protocol basis:
+`src/acp/model-options.ts`, `src/acp/event-mapper.ts`, and `src/acp/interaction-mapper.js`. Protocol basis:
 [schema](https://agentclientprotocol.com/protocol/v1/schema),
 [content](https://agentclientprotocol.com/protocol/v1/content),
 [Session setup](https://agentclientprotocol.com/protocol/v1/session-setup),
@@ -582,7 +582,7 @@ management, Session fork, and NES are not counted as missing stable v1 requireme
 - Browser Plan review remains separate from standard ACP Plan progress and tool permissions. Adding either standard
   feature would not replace the browser approval workflow.
 
-Evidence: `src/acp/server.js`, `event-mapper.js`, and `interaction-mapper.js`; current
+Evidence: `src/acp/server.js`, `event-mapper.ts`, and `interaction-mapper.js`; current
 [elicitation](https://agentclientprotocol.com/protocol/v1/elicitation) and
 [extensibility](https://agentclientprotocol.com/protocol/v1/extensibility) docs.
 

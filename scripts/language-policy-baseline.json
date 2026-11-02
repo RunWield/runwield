@@ -1,5 +1,4 @@
 [
-    "src/acp/event-mapper.js",
     "src/acp/interaction-mapper.js",
     "src/acp/server.js",
     "src/cmd/help/index.js",
