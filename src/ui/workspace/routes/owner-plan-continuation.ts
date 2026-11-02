@@ -14,7 +14,7 @@ type PlanContinuationContext = {
     req: Request;
     params: { projectId: string; planId: string; runwieldSessionId?: string };
     state: {
-        store: import("../../../shared/owner-coordination/index.js").OwnerCoordinationStore;
+        store: import("../../../shared/owner-coordination/index.ts").OwnerCoordinationStore;
         sessionContinuation: import("../server/session-continuation.js").WorkspaceSessionContinuationService;
         ownerDevice?: { deviceId: string };
     };

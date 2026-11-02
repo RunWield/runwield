@@ -3,7 +3,7 @@ import process from "node:process";
 import { test } from "node:test";
 import stripAnsi from "strip-ansi";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { SessionContextReport } from "../../shared/session/session-context-report.ts";

@@ -14,11 +14,30 @@ import { loadCanonicalBoard, loadCanonicalWorkspaceDetail, loadDevPlanCatalogBoa
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
+import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
+import type { createWorkspaceSessionContinuationService } from "./session-continuation.js";
+import type { WorkspacePlanDetailOptions } from "./plan-adapter.js";
+
+type OwnerPlanProgressLoader = (
+    store: OwnerCoordinationStore,
+    options: Parameters<typeof import("./owner-plan-progress.ts").loadOwnerPlanProgress>[1],
+) => ReturnType<typeof import("./owner-plan-progress.ts").loadOwnerPlanProgress>;
+
+type SessionContinuation = ReturnType<typeof createWorkspaceSessionContinuationService>;
+type ProjectArtifactsModule = typeof import("./project-artifacts.ts");
+type ProjectArtifactsImporter = (specifier: string) => Promise<ProjectArtifactsModule>;
+
+interface OwnerWorkspaceGlobals {
+    [OWNER_WORKSPACE_STORE_KEY]?: OwnerCoordinationStore | null;
+    [OWNER_WORKSPACE_SESSION_CONTINUATION_KEY]?: SessionContinuation | null;
+}
+
+type OwnerWorkspaceRuntime = typeof globalThis & OwnerWorkspaceGlobals;
+
 const BUNDLED_PLAN_ADAPTER_KEY = Symbol.for("runwield.workspace.plan-adapter-module");
 // Production needs the bundled adapter; dev uses the canonical loader's native
 // Deno import so Vite does not try to resolve Core's JSR imports through Node.
-/** @type {Promise<typeof import("./project-artifacts.ts")> | undefined} */
-let bundledProjectArtifacts;
+let bundledProjectArtifacts: Promise<ProjectArtifactsModule> | undefined;
 if (!isAstroDevelopmentMode()) {
     Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.js"));
     bundledProjectArtifacts = import("./project-artifacts.ts");
@@ -27,24 +46,20 @@ if (!isAstroDevelopmentMode()) {
 export const OWNER_WORKSPACE_STORE_KEY = Symbol.for("runwield.workspace.owner-store");
 export const OWNER_WORKSPACE_SESSION_CONTINUATION_KEY = Symbol.for("runwield.workspace.session-continuation");
 
-/** @param {any} store */
-export function setAstroOwnerWorkspaceStore(store) {
-    /** @type {any} */ (globalThis)[OWNER_WORKSPACE_STORE_KEY] = store;
+export function setAstroOwnerWorkspaceStore(store: OwnerCoordinationStore | null) {
+    (globalThis as OwnerWorkspaceRuntime)[OWNER_WORKSPACE_STORE_KEY] = store;
 }
 
-/** @param {any} sessionContinuation */
-export function setAstroOwnerWorkspaceSessionContinuation(sessionContinuation) {
-    /** @type {any} */ (globalThis)[OWNER_WORKSPACE_SESSION_CONTINUATION_KEY] = sessionContinuation;
+export function setAstroOwnerWorkspaceSessionContinuation(sessionContinuation: SessionContinuation | null) {
+    (globalThis as OwnerWorkspaceRuntime)[OWNER_WORKSPACE_SESSION_CONTINUATION_KEY] = sessionContinuation;
 }
 
-/** @returns {any} */
 export function getAstroOwnerWorkspaceStore() {
-    return /** @type {any} */ (globalThis)[OWNER_WORKSPACE_STORE_KEY] || null;
+    return (globalThis as OwnerWorkspaceRuntime)[OWNER_WORKSPACE_STORE_KEY] || null;
 }
 
-/** @returns {any} */
 export function getAstroOwnerWorkspaceSessionContinuation() {
-    return /** @type {any} */ (globalThis)[OWNER_WORKSPACE_SESSION_CONTINUATION_KEY] || null;
+    return (globalThis as OwnerWorkspaceRuntime)[OWNER_WORKSPACE_SESSION_CONTINUATION_KEY] || null;
 }
 
 export async function loadOwnerProjects() {
@@ -54,8 +69,7 @@ export async function loadOwnerProjects() {
     return await listOwnerProjects(store);
 }
 
-/** @param {string} projectId @param {string | null} [cookie] */
-export async function loadOwnerProjectBoard(projectId, cookie = null) {
+export async function loadOwnerProjectBoard(projectId: string, cookie: string | null = null) {
     const store = getAstroOwnerWorkspaceStore();
     if (!store && isAstroDevelopmentMode()) {
         const variant = devPlanCatalogVariant(cookie);
@@ -67,8 +81,11 @@ export async function loadOwnerProjectBoard(projectId, cookie = null) {
     return await loadCanonicalBoard(root);
 }
 
-/** @param {string} projectId @param {string} planId @param {import('./plan-adapter.js').WorkspacePlanDetailOptions} [options] */
-export async function loadOwnerProjectPlanDetail(projectId, planId, options = {}) {
+export async function loadOwnerProjectPlanDetail(
+    projectId: string,
+    planId: string,
+    options: WorkspacePlanDetailOptions = {},
+) {
     const store = getAstroOwnerWorkspaceStore();
     if (!store && isAstroDevelopmentMode()) {
         return await loadCanonicalWorkspaceDetail(currentWorkspaceCwd(), planId, options);
@@ -78,8 +95,11 @@ export async function loadOwnerProjectPlanDetail(projectId, planId, options = {}
     return await loadCanonicalWorkspaceDetail(root, planId, options);
 }
 
-/** @param {string} projectId @param {string} planId @param {string | null} runwieldSessionId */
-export async function loadOwnerProjectPlanProgress(projectId, planId, runwieldSessionId = null) {
+export async function loadOwnerProjectPlanProgress(
+    projectId: string,
+    planId: string,
+    runwieldSessionId: string | null = null,
+) {
     const store = getAstroOwnerWorkspaceStore();
     if (
         !store &&
@@ -91,25 +111,22 @@ export async function loadOwnerProjectPlanProgress(projectId, planId, runwieldSe
     }
     if (!store) throw new Error("Owner Workspace store is not available.");
     const { loadOwnerPlanProgress } = await import("./owner-plan-progress.ts");
-    return await loadOwnerPlanProgress(store, { projectId, planId, runwieldSessionId });
+    return await (loadOwnerPlanProgress as OwnerPlanProgressLoader)(store, { projectId, planId, runwieldSessionId });
 }
 
-/** @param {string} projectId @param {string} artifactType @param {string} sourceId */
-export async function loadOwnerProjectArtifact(projectId, artifactType, sourceId) {
+export async function loadOwnerProjectArtifact(projectId: string, artifactType: string, sourceId: string) {
     const store = getAstroOwnerWorkspaceStore();
     if (!store) throw new Error("Owner Workspace store is not available.");
     const root = requireOwnerProjectRoot(store, projectId);
     const module = isAstroDevelopmentMode()
-        ? await Function(
-              "specifier",
-              "return import(specifier)",
-          )(new URL("./project-artifacts.ts", import.meta.url).href)
+        ? await (Function("specifier", "return import(specifier)") as ProjectArtifactsImporter)(
+              new URL("./project-artifacts.ts", import.meta.url).href,
+          )
         : await bundledProjectArtifacts;
-    return await module.readProjectArtifact(root, artifactType, sourceId);
+    return await module!.readProjectArtifact(root, artifactType, sourceId);
 }
 
-/** @param {string} projectId @param {string} runwieldSessionId @param {string} artifactId */
-export async function loadOwnerSessionArtifact(projectId, runwieldSessionId, artifactId) {
+export async function loadOwnerSessionArtifact(projectId: string, runwieldSessionId: string, artifactId: string) {
     const store = getAstroOwnerWorkspaceStore();
     if (
         !store &&
@@ -123,10 +140,9 @@ export async function loadOwnerSessionArtifact(projectId, runwieldSessionId, art
     const root = requireOwnerProjectRoot(store, projectId);
     const session = store.getSessionById(runwieldSessionId);
     if (!session || !sessionBelongsToOwnerProject(store, session, projectId)) throw new Error("Session not found.");
-    const artifact = store.listSessionArtifacts(runwieldSessionId).find(
-        /** @param {import('../../../shared/session/file-session-store-types.ts').SessionArtifactReference} candidate */
-        (candidate) => candidate.artifactId === artifactId,
-    );
+    const artifact = store
+        .listSessionArtifacts(runwieldSessionId)
+        .find((candidate) => candidate.artifactId === artifactId);
     if (!artifact) throw new Error("Session artifact not found.");
     return await readSessionArtifact(root, artifact);
 }

@@ -8,21 +8,58 @@ import {
 } from "./protocol.js";
 import { buildApiUrl, normalizeServerUrl } from "./urls.ts";
 
-/**
- * @typedef {Object} CollaborationClientOptions
- * @property {string} serverUrl
- * @property {string} [bearerCapability]
- * @property {typeof fetch} fetch
- */
+import type {
+    AppendCommentPayload,
+    AppendRevisionPayload,
+    CommentStateChangePayload,
+    CreateSharedSpacePayload,
+    SharedSpaceLifecyclePayload,
+} from "./protocol.js";
+
+export type { AppendCommentPayload, AppendRevisionPayload, CreateSharedSpacePayload } from "./protocol.js";
+
+export interface CollaborationClientOptions {
+    serverUrl: string;
+    bearerCapability?: string;
+    fetch: typeof globalThis.fetch;
+}
+
+/** JSON transport and error payloads remain opaque until validated by their consumers. */
+export interface CollaborationApiErrorOptions {
+    status?: number;
+    payload?: unknown;
+    secrets?: string[];
+}
+
+export interface CollaborationRequestHeaders {
+    [name: string]: string;
+}
+
+export interface CollaborationRequestOptions {
+    method?: string;
+    body?: unknown;
+    headers?: CollaborationRequestHeaders;
+    auth?: boolean;
+}
+
+export type CollaborationCommentStatePayload = Pick<CommentStateChangePayload, "action">;
+export type CollaborationLifecyclePayload = Pick<SharedSpaceLifecyclePayload, "action">;
+
+interface RawApiErrorPayload {
+    message?: unknown;
+}
+
+interface RedactedJsonFields {
+    [key: string]: unknown;
+}
 
 export const SYSTEM_COLLABORATION_FETCH = globalThis.fetch.bind(globalThis);
 
 export class CollaborationApiError extends Error {
-    /**
-     * @param {string} message
-     * @param {{ status?: number, payload?: unknown, secrets?: string[] }} [options]
-     */
-    constructor(message, options = {}) {
+    declare status: number | undefined;
+    declare payload: unknown;
+
+    constructor(message: string, options: CollaborationApiErrorOptions = {}) {
         super(redactSecrets(message, options.secrets));
         this.name = "CollaborationApiError";
         this.status = options.status;
@@ -31,22 +68,19 @@ export class CollaborationApiError extends Error {
 }
 
 export class CollaborationClient {
-    /** @param {CollaborationClientOptions} options */
-    constructor(options) {
+    declare serverUrl: string;
+    declare bearerCapability: string | undefined;
+    declare fetch: typeof globalThis.fetch;
+
+    constructor(options: CollaborationClientOptions) {
         this.serverUrl = normalizeServerUrl(options.serverUrl);
         this.bearerCapability = options.bearerCapability;
         this.fetch = options.fetch;
     }
 
-    /**
-     * @param {string} path
-     * @param {{ method?: string, body?: unknown, headers?: Record<string, string>, auth?: boolean }} [options]
-     * @returns {Promise<unknown>}
-     */
-    async requestJson(path, options = {}) {
+    async requestJson(path: string, options: CollaborationRequestOptions = {}): Promise<unknown> {
         const url = buildApiUrl(this.serverUrl, path);
-        /** @type {Record<string, string>} */
-        const headers = {
+        const headers: CollaborationRequestHeaders = {
             Accept: "application/json",
             ...(options.headers ?? {}),
         };
@@ -56,8 +90,7 @@ export class CollaborationClient {
             }
             headers.Authorization = `Bearer ${this.bearerCapability}`;
         }
-        /** @type {RequestInit} */
-        const init = { method: options.method ?? "GET", headers };
+        const init: RequestInit = { method: options.method ?? "GET", headers };
         if (options.body !== undefined) {
             headers["Content-Type"] = "application/json";
             init.body = JSON.stringify(options.body);
@@ -86,8 +119,7 @@ export class CollaborationClient {
         return payload;
     }
 
-    /** @param {import("./protocol.js").CreateSharedSpacePayload} payload */
-    async createSharedSpace(payload) {
+    async createSharedSpace(payload: CreateSharedSpacePayload) {
         return await this.requestJson("/api/spaces", {
             method: "POST",
             auth: false,
@@ -95,39 +127,33 @@ export class CollaborationClient {
         });
     }
 
-    /** @param {string} spaceId */
-    async getSharedSpace(spaceId) {
+    async getSharedSpace(spaceId: string) {
         return await this.requestJson(`/api/spaces/${encodeURIComponent(spaceId)}`);
     }
 
-    /** @param {string} spaceId @param {number} revision */
-    async getRevision(spaceId, revision) {
+    async getRevision(spaceId: string, revision: number) {
         return await this.requestJson(`/api/spaces/${encodeURIComponent(spaceId)}/revisions/${revision}`);
     }
 
-    /** @param {string} spaceId @param {import("./protocol.js").AppendRevisionPayload} payload */
-    async appendRevision(spaceId, payload) {
+    async appendRevision(spaceId: string, payload: AppendRevisionPayload) {
         return await this.requestJson(`/api/spaces/${encodeURIComponent(spaceId)}/revisions`, {
             method: "POST",
             body: normalizeAppendRevisionPayload(payload),
         });
     }
 
-    /** @param {string} spaceId @param {number} revision */
-    async listComments(spaceId, revision) {
+    async listComments(spaceId: string, revision: number) {
         return await this.requestJson(`/api/spaces/${encodeURIComponent(spaceId)}/revisions/${revision}/comments`);
     }
 
-    /** @param {string} spaceId @param {number} revision @param {import("./protocol.js").AppendCommentPayload} payload */
-    async appendComment(spaceId, revision, payload) {
+    async appendComment(spaceId: string, revision: number, payload: AppendCommentPayload) {
         return await this.requestJson(`/api/spaces/${encodeURIComponent(spaceId)}/revisions/${revision}/comments`, {
             method: "POST",
             body: normalizeAppendCommentPayload(payload),
         });
     }
 
-    /** @param {string} spaceId @param {string} commentId @param {{ action: "resolve" | "reopen" }} payload */
-    async setCommentState(spaceId, commentId, payload) {
+    async setCommentState(spaceId: string, commentId: string, payload: CollaborationCommentStatePayload) {
         return await this.requestJson(
             `/api/spaces/${encodeURIComponent(spaceId)}/comments/${encodeURIComponent(commentId)}/state`,
             {
@@ -137,30 +163,23 @@ export class CollaborationClient {
         );
     }
 
-    /** @param {string} spaceId @param {{ action: "close" | "delete" }} payload */
-    async updateSharedSpaceLifecycle(spaceId, payload) {
+    async updateSharedSpaceLifecycle(spaceId: string, payload: CollaborationLifecyclePayload) {
         return await this.requestJson(`/api/spaces/${encodeURIComponent(spaceId)}/lifecycle`, {
             method: "POST",
             body: payload,
         });
     }
 
-    /** @param {string} spaceId */
-    async deleteSharedSpace(spaceId) {
+    async deleteSharedSpace(spaceId: string) {
         return await this.updateSharedSpaceLifecycle(spaceId, { action: "delete" });
     }
 }
 
-/** @param {CollaborationClientOptions} options */
-export function createCollaborationClient(options) {
+export function createCollaborationClient(options: CollaborationClientOptions) {
     return new CollaborationClient(options);
 }
 
-/**
- * @param {string} text
- * @returns {unknown}
- */
-function parseJsonOrUndefined(text) {
+function parseJsonOrUndefined(text: string): unknown {
     if (text.trim() === "") return undefined;
     try {
         return JSON.parse(text);
@@ -169,27 +188,17 @@ function parseJsonOrUndefined(text) {
     }
 }
 
-/**
- * @param {unknown} payload
- * @returns {string | undefined}
- */
-function getErrorMessage(payload) {
+function getErrorMessage(payload: unknown): string | undefined {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
-    const record = /** @type {Record<string, unknown>} */ (payload);
+    const record = payload as RawApiErrorPayload;
     return typeof record.message === "string" ? record.message : undefined;
 }
 
-/**
- * @param {unknown} payload
- * @param {string[] | undefined} secrets
- * @returns {unknown}
- */
-function redactPayload(payload, secrets) {
+function redactPayload(payload: unknown, secrets: string[] | undefined): unknown {
     if (typeof payload === "string") return redactSecrets(payload, secrets);
     if (!payload || typeof payload !== "object") return payload;
     if (Array.isArray(payload)) return payload.map((item) => redactPayload(item, secrets));
-    /** @type {Record<string, unknown>} */
-    const redacted = {};
+    const redacted: RedactedJsonFields = {};
     for (const [key, value] of Object.entries(payload)) redacted[key] = redactPayload(value, secrets);
     return redacted;
 }

@@ -714,6 +714,12 @@ artifact-based handoff. Shared runtime tests do not qualify either Codex surface
 - **Saved planning context:** Given process loss before Triage or planning completes, `/runwield:plan-review` restores
   the pending action. `get_instructions` returns the saved explicit request and, for the Planner, the saved Triage
   outcome. A new conversation does not need the old conversation's text.
+- **Existing-Plan planning handoff:** Given a user-selected draft Epic child on its target branch and a dirty invoking
+  checkout, native activation or continuation binds that exact Plan identity. Before Planner edits, an explicit Core
+  planning operation prepares the authoritative workspace and supplies its cwd and Plan path. Retrying the same action
+  reuses preparation and preserves unrelated invoking-checkout changes. Passive status, instruction, and document reads
+  do not create planning worktrees. Preparation failures stop dependent work for repair and native retry; they do not
+  authorize manual worktrees, proxy instructions, or implementation of another child.
 - **Saved delivery recovery:** Given process loss during Code Review, recording, artifact sealing, publication, or
   cleanup, a fresh Claude conversation uses `status` and `/runwield:validate` to resume from shared durable evidence.
   Accepted sections and decisions are not repeated. Plans, work, Work Records, and recovery evidence remain available;

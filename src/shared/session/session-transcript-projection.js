@@ -7,7 +7,7 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { dirname, resolve } from "node:path";
-import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-agent-session.js";
+import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-agent-session.ts";
 import { readPersistedWorkflowContext } from "./workflow-context-session.js";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";

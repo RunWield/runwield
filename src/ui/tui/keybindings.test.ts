@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { type Component, Image } from "@earendil-works/pi-tui";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 import { type KeybindingsContext, installKeybindings } from "./keybindings.ts";
 
 import type { ImageAttachment } from "../../shared/session/types.js";

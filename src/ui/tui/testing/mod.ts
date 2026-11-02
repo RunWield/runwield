@@ -1,6 +1,6 @@
 export type { GoldenChildOptions, GoldenChildResult } from "./subprocess-runner.ts";
 export type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.js";
-export { GoldenScenarioActor } from "./scenario-actor.js";
+export { GoldenScenarioActor } from "./scenario-actor.ts";
 export { assertEventIncludes, assertScreenIncludes, runGoldenScenario } from "./scenario-runner.js";
 export { runGoldenChild, sanitizeGoldenChildEnv } from "./subprocess-runner.ts";
 export { createGoldenIsolatedEnvironment } from "./isolated-environment.ts";
@@ -10,7 +10,7 @@ export type {
     GoldenModelConfigOptions,
     GoldenModelDefinition,
 } from "./isolated-environment.ts";
-export { ScriptedReviewSurface } from "./scripted-review-surface.js";
+export { ScriptedReviewSurface } from "./scripted-review-surface.ts";
 export type {
     VirtualTerminalOptions,
     VirtualTerminalSize,
@@ -40,4 +40,27 @@ export {
     assertStateStringIncludes,
     assertStateValue,
     assertVisibleText,
-} from "./portfolio-assertions.js";
+} from "./portfolio-assertions.ts";
+
+export type { GoldenCoverageCallback } from "./portfolio-assertions.ts";
+
+export type {
+    GoldenScriptToolCall,
+    GoldenScriptTurn,
+    GoldenTurnRequest,
+    GoldenTurnResolver,
+} from "./scenario-actor.ts";
+
+export type {
+    ScriptedReviewDecision,
+    ScriptedReviewAnnotation,
+    ScriptedReviewImage,
+    ScriptedHumanReviewDecision,
+    ScriptedUserFix,
+    ScriptedRuntimeInteraction,
+    ScriptedSurfaceRequest,
+    ConsumedScriptedReview,
+    ConsumedScriptedHumanReview,
+    ConsumedScriptedInteraction,
+    ResolveExecutionCwd,
+} from "./scripted-review-surface.ts";

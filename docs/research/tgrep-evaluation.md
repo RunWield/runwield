@@ -28,7 +28,7 @@ architectural commitment was made.
   returns no matches until its first build completes. A disk-only index does not refresh on search. The documented way
   to search current files is `--no-index`, which gives up indexed search. Source:
   [agent guide, freshness and startup behavior](https://github.com/microsoft/tgrep/blob/main/AGENTS.md).
-- RunWield's [grep wrapper](../../src/tools/grep.js) delegates to Pi's grep. The installed Pi 0.85.1 implementation in
+- RunWield's [grep wrapper](../../src/tools/grep.ts) delegates to Pi's grep. The installed Pi 0.85.1 implementation in
   `node_modules/@earendil-works/pi-coding-agent/dist/core/tools/grep.js` invokes ripgrep with `--hidden`. tgrep bypasses
   its index when this flag is present. A simple executable replacement would therefore lose the expected index benefit.
   Source: local installed code and

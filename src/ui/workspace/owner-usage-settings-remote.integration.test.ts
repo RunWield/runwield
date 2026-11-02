@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { configureRemotePersonalResources } from "../../shared/remote/personal-resources.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 

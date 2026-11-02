@@ -1,14 +1,14 @@
 # PRD: RunWield Session Host and ACP Integration
 
-**Document role: Living central PRD.** Principles and lasting requirements for external ACP clients, protocol
-compatibility, and chat-channel integration.
+**Document role: Living central PRD.** Principles and lasting requirements for ACP clients, including first-party
+Workspace access, external-client compatibility, and chat-channel integration.
 
 Keep this document as current product guidance. Fold lasting requirements from completed feature PRDs here;
 implementation steps belong in Plans, architectural choices in ADRs, and delivery evidence in Work Records.
 
 **Status:** Working ACP integration with JetBrains AI Chat, the Air plugin, and OpenAB chat workflows\
 **Author:** Gandazgul + RunWield Ideator\
-**Last Updated:** 2026-10-06
+**Last Updated:** 2026-11-01
 
 ---
 
@@ -75,11 +75,13 @@ gateway is deferred until a demonstrated product need justifies it.
 
 ## Capability Requirements
 
-ACP owns external-client compatibility and channel-specific journeys. Shared Session and Plan behavior is owned by Core.
+ACP owns protocol access, external-client compatibility, and channel-specific journeys. Shared Session and Plan behavior
+is owned by Core; Workspace owns the first-party desktop/browser journeys.
 Stage labels below are delivery scope, not new lifecycle states or claims of shipped interoperability.
 
 - [ACP Session access](#acp-session-access)
 - [Protocol negotiation and interactions](#protocol-negotiation-and-interactions)
+- [Workspace client access](#workspace-client-access) — target; local desktop and browser separation
 - [Chat workflow access](#telegram-workflow-access)
 - [Interrupted-work recovery](#interrupted-work-recovery)
 - [Reference-client portability](#reference-client-portability)
@@ -304,6 +306,48 @@ requirement.
 - When the client displays cost, the advertised ACP shape and cumulative USD Session cost are accurate.
 - Given Pair Execution through ACP, the increment report returns `end_turn`. Later prompt requests can discuss it and
   then resolve it without a Pair form; final completion still requires a later accepted user turn.
+
+### Workspace client access
+
+**Scope and maturity:** Target, not implemented. Workspace currently constructs a runtime in its server. The owner
+requires first-party Workspace clients to control a separate `wld` process through ACP plus extensions, with local
+desktop first and network-runtime access later. See
+[Desktop Workspace](runwield-workspace-prd.md#desktop-workspace) and
+[proposed ADR-0021](../adr/0021-electron-workspace-acp-client.md).
+
+**Requirement: Carry the full workbench through the runtime contract.** A Workspace client can discover admitted
+Projects and saved Sessions, read bounded history and current observations, converse, configure supported choices,
+answer interactions, and perform revision-checked artifact/review/workflow operations without hosting Core execution
+or writing canonical lifecycle state itself. Existing Core services own validation, access checks, request receipts,
+writer exclusion, persistence, and recovery. Browser and desktop use the same protocol semantics.
+
+**Requirement: Prefer standard ACP and negotiate the remainder.** Use standard capabilities where they cover an
+operation, including Session discovery when supported by the selected baseline. Remaining workbench features are
+explicitly advertised, versioned extensions. Missing required capabilities are explained before dependent mutations.
+Extensions that anticipate ACP v2 follow its semantics where practical while v1 interoperability remains supported;
+draft alignment is not a v2 conformance claim. No client must understand Workspace extensions for ordinary ACP work.
+
+**Requirement: Recover observations without repeating effects.** A client can rebuild a current view after a dropped
+subscription or process interruption. Stable runtime/Project/Session identity and authoritative revisions prevent
+cross-host aliasing, stale decisions, and duplicate effects. Transport reconnect never independently grants permission
+to replay a prompt or workflow action. File and review resources stay scoped to the selected runtime.
+
+**Requirement: Distinguish authentication domains.** Core model-provider configuration is independent of a future
+Workspace account and of remote-host trust. Local ACP use does not require hosted Workspace identity. Runtime network
+transport, authentication, and disconnect semantics are separately specified before claiming remote support.
+
+**Acceptance scenarios:**
+
+- A desktop and a browser client complete the same Session and Plan review through real ACP connections; their hosts
+  do not construct `SessionRuntime` or mutate canonical workflow state outside the runtime contract.
+- A client discovers persisted Sessions, reads bounded history, and continues one also visible in an idle TUI; history
+  and current settings agree with Core's committed state.
+- An older runtime lacks a required workbench capability; the client explains incompatibility and sends no dependent
+  mutation. An ordinary external ACP client continues working without the extension.
+- A duplicate action, stale revision, or wrong-Project Session reference receives the same authoritative rejection or
+  recorded result through either UI host, without a second execution.
+- After lost observations, the client refreshes current evidence without duplicated transcript entries or replaying
+  uncertain work. Provider setup failures identify provider setup rather than demanding Workspace cloud sign-in.
 
 <a id="62-required-user-journey"></a>
 

@@ -30,11 +30,11 @@ import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderSt
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getRemoteSessionSaveBridge } from "./root-session.js";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
-import { createSingleEditToolDefinition } from "../../tools/edit.js";
-import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.js";
+import { createSingleEditToolDefinition } from "../../tools/edit.ts";
+import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.ts";
 import { wrapPlanSafeFileTool } from "../../tools/plan-safe-file-tools.ts";
-import { createRunWieldGrepToolDefinition } from "../../tools/grep.js";
-import { createRunWieldReadToolDefinition } from "../../tools/read.js";
+import { createRunWieldGrepToolDefinition } from "../../tools/grep.ts";
+import { createRunWieldReadToolDefinition } from "../../tools/read.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { intersectBashAllowedCommands } from "../bash-command-policy.ts";
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
@@ -121,7 +121,7 @@ import {
     getSettingsManager,
 } from "../settings.js";
 import { modelSupportsImageInput, prepareImagesForModel, resolveVisionFallbackModel } from "./image-attachments.ts";
-import { readPersistedActiveAgentName, readPersistedModelState, recordActiveAgent } from "./active-agent-session.js";
+import { readPersistedActiveAgentName, readPersistedModelState, recordActiveAgent } from "./active-agent-session.ts";
 import {
     assertPersonalResourcePath,
     personalAgentsRoot,
@@ -132,7 +132,7 @@ import {
 import { getBundledAgentDefsPath } from "./agent-assets.ts";
 import { expandSkill, listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.ts";
-import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.js";
+import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.ts";
 import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.js";
 import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "../workflow/execution-metrics.ts";
 import { describeRuntimeTool } from "./tool-event-title.ts";

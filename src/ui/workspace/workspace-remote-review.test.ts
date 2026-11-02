@@ -15,8 +15,8 @@ import {
     buildRemoteCommentPayload,
     normalizeRemoteCommentPayload,
     remoteCommentToPlannotatorAnnotation,
-} from "./react/remote-review-payload.js";
-import type { RemoteCommentRecord, RemoteSelectionMeta } from "./react/remote-review-payload.js";
+} from "./react/remote-review-payload.ts";
+import type { RemoteCommentRecord, RemoteSelectionMeta } from "./react/remote-review-payload.ts";
 import { RemoteCommentStateList } from "./react/RemoteCommentStateList.tsx";
 
 test("remote review legacy anchors stay in Plannotator sidebar without fallback highlighting metadata", () => {

@@ -6,15 +6,32 @@
  * filesystem mutation is delegated to the underlying tool implementation.
  */
 
-import { createWriteToolDefinition } from "@earendil-works/pi-coding-agent";
-import { createSingleEditToolDefinition } from "./edit.js";
+import { createWriteToolDefinition, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createSingleEditToolDefinition } from "./edit.ts";
+import type { TextContent } from "@earendil-works/pi-ai";
 
-/**
- * @param {unknown} path
- * @param {string} toolName
- * @returns {string | null}
- */
-function validateMarkdownPath(path, toolName) {
+type NativeWriteToolDefinition = ReturnType<typeof createWriteToolDefinition>;
+type NativeEditToolDefinition = ReturnType<typeof createSingleEditToolDefinition>;
+type NativeWriteResult = Awaited<ReturnType<NativeWriteToolDefinition["execute"]>>;
+type NativeEditResult = Awaited<ReturnType<NativeEditToolDefinition["execute"]>>;
+
+interface BlockedDocsResult {
+    content: TextContent[];
+    details: null;
+    isError: true;
+}
+
+export type WriteDocsToolDefinition = ToolDefinition<
+    NativeWriteToolDefinition["parameters"],
+    NativeWriteResult["details"] | null
+>;
+
+export type EditDocsToolDefinition = ToolDefinition<
+    NativeEditToolDefinition["parameters"],
+    NativeEditResult["details"] | null
+>;
+
+function validateMarkdownPath(path: unknown, toolName: string): string | null {
     if (typeof path !== "string" || !path.trim()) {
         return `${toolName}: path is required and must end with .md.`;
     }
@@ -28,11 +45,7 @@ function validateMarkdownPath(path, toolName) {
     return null;
 }
 
-/**
- * @param {string} message
- * @returns {{ content: Array<{ type: "text", text: string }>, details: null, isError: true }}
- */
-function blockedResult(message) {
+function blockedResult(message: string): BlockedDocsResult {
     return {
         content: [{ type: "text", text: message }],
         details: null,
@@ -40,16 +53,11 @@ function blockedResult(message) {
     };
 }
 
-/**
- * Create a write tool that only accepts `.md` paths.
- *
- * @param {string} cwd
- * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>}
- */
-export function createWriteDocsToolDefinition(cwd) {
+/** Create a write tool that only accepts `.md` paths. */
+export function createWriteDocsToolDefinition(cwd: string): WriteDocsToolDefinition {
     const original = createWriteToolDefinition(cwd);
-    const originalExecute = /** @type {any} */ (original.execute);
-    const tool = /** @type {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} */ (original);
+    const originalExecute = original.execute;
+    const tool = original as WriteDocsToolDefinition;
 
     tool.name = "write_docs";
     tool.label = "write_docs";
@@ -62,7 +70,7 @@ export function createWriteDocsToolDefinition(cwd) {
         "Prefer edit_docs for focused updates to an existing Markdown file",
     ];
     tool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
-        const typedParams = /** @type {{ path?: unknown, content?: unknown }} */ (params);
+        const typedParams = params;
         const validationError = validateMarkdownPath(typedParams.path, "write_docs");
         if (validationError) return blockedResult(validationError);
         return await originalExecute(toolCallId, params, signal, onUpdate, ctx);
@@ -71,16 +79,11 @@ export function createWriteDocsToolDefinition(cwd) {
     return tool;
 }
 
-/**
- * Create an edit tool that only accepts `.md` paths.
- *
- * @param {string} cwd
- * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>}
- */
-export function createEditDocsToolDefinition(cwd) {
+/** Create an edit tool that only accepts `.md` paths. */
+export function createEditDocsToolDefinition(cwd: string): EditDocsToolDefinition {
     const original = createSingleEditToolDefinition(cwd);
-    const originalExecute = /** @type {any} */ (original.execute);
-    const tool = /** @type {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} */ (original);
+    const originalExecute = original.execute;
+    const tool = original as EditDocsToolDefinition;
 
     tool.name = "edit_docs";
     tool.label = "edit_docs";
@@ -93,7 +96,7 @@ export function createEditDocsToolDefinition(cwd) {
         "oldText must match exactly one location, including whitespace and newlines",
     ];
     tool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
-        const typedParams = /** @type {{ path?: unknown }} */ (params);
+        const typedParams = params;
         const validationError = validateMarkdownPath(typedParams.path, "edit_docs");
         if (validationError) return blockedResult(validationError);
         return await originalExecute(toolCallId, params, signal, onUpdate, ctx);

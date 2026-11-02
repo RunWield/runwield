@@ -1,4 +1,4 @@
-import { resolveResumeAgentName } from ".././active-agent-session.js";
+import { resolveResumeAgentName } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import {
     classifyRootSessionLocator,

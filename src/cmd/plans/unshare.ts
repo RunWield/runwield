@@ -13,7 +13,7 @@ import {
     CollaborationApiError,
     createCollaborationClient,
     SYSTEM_COLLABORATION_FETCH,
-} from "../../shared/collaboration/client.js";
+} from "../../shared/collaboration/client.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.js";
 import {

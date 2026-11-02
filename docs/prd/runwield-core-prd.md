@@ -371,6 +371,10 @@ fetch or clone Git data, change refs or worktrees, take writer locks, or schedul
 documents without creating runtime storage. Ready reads retain registered document-worktree authority and locally
 available target snapshots; they do not replace current workflow facts with a stale primary copy. A registered
 document must belong to an attached Git worktree of the same Project before its bytes can supply authority.
+Doctor does not require a target branch for a draft Epic with no children, saved attempts, or execution evidence.
+A missing target for an approved Epic or one with children or attempt history remains a diagnostic, as does unreadable
+target evidence. If a cached child snapshot has no ID, Doctor retains the ID already assigned to the current document
+with the same name and parent. An explicit target ID remains authoritative.
 
 When adoption, controller preparation, or required local target evidence is missing, safe documents remain browseable
 with workflow details pending. Read availability is separate from Plan status and Front Matter. Unsafe or unreadable
@@ -417,6 +421,12 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given missing local target evidence, browsing reports pending workflow details rather than claiming no children or
   fetching the target, including missing promised objects in a partial clone. Available target-only documents are read
   directly from local Git objects without temporary files.
+- Given an unstarted draft Epic with no children or saved attempts, Doctor accepts a missing target without creating
+  it. An approved Epic, an Epic with children or attempt history, an invalid target, or unreadable target evidence still
+  produces a target diagnostic.
+- Given a cached child snapshot without an ID and a current document with an assigned ID, Doctor retains that identity
+  without rewriting either document. A target-only child without an ID still produces a missing-ID diagnostic; an
+  explicit target ID is not replaced by a different local ID.
 - Given a registered document worktree, ready reads use its current document and controller facts; missing or unsafe
   authority never authorizes fallback to stale primary workflow facts. An unattached directory or another repository
   cannot authorize a document or action. Other healthy Plans remain available.
@@ -963,6 +973,15 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Fresh, focused repair verification.** Validation Repair Engineer instructions require rerunning every
+previously failing test file identified in the repair context, plus focused checks for the repairs, after the final
+edit using the project's supported runner. Non-test failures require the relevant failing checks. Later edits require
+rerunning those checks before task completion. Reports give exact commands and results, identify unverified items, and
+leave full validation pending. Repair guidance distinguishes assertion/build failures, timeouts or suspected hangs,
+and interrupted/unstarted checks. Timeouts prompt wait and contention diagnosis rather than automatic deadline
+increases; they do not alone prove deadlock. Missing reports after a timeout remain incomplete evidence. This is Agent
+guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
+
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
 load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
 runtime and cannot report success without running the Astro checker.
@@ -979,6 +998,10 @@ progress display comes from the confirmed validation and publication results of 
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
   a failure keeps the workflow in repair.
+- Given edits after passing focused repair checks, the Repair Engineer is instructed to rerun every supplied failing
+  test file and repair-focused check before task completion and report the fresh results.
+- Given a timeout with no test report, repair guidance treats the report as incomplete evidence, investigates the
+  waiting operation, and does not assume an assertion defect or increase the timeout automatically.
 - Given passed checks and a process restart, the Plan stays implemented and resumes semantic review.
 - Given a Session that shows failed checks from an earlier attempt, a resumed delivery that publishes successfully
   reports completion with current results.
@@ -2451,6 +2474,12 @@ home. Relative paths and `~` refer to that account. Paths are data, not shell co
 canonical directory. Git is optional; a symlink or worktree resolves canonically. An invalid or inaccessible target
 fails clearly without creating it or silently using another directory. Project identity follows the
 [remote project locator](#project-context-and-initialization), separate from execution cwd.
+
+**Requirement: Use the connected terminal size.** The remote TUI uses the laptop terminal's full width and height at
+startup. Resizing the terminal updates the remote layout without reconnecting.
+
+**Acceptance scenario:** Given a 180-column, 54-row terminal, the remote TUI uses that size. When the terminal changes
+to 212 columns and 62 rows, the connected TUI updates to that size.
 
 **Connection prerequisites:** Follow [automatic private runtime preparation](#installation-and-updates), which owns
 exact version/build/protocol/checksum checks, prerequisites, caches, and staging repair. A release uses its exact

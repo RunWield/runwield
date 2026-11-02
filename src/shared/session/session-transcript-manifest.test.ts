@@ -10,7 +10,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
-import type { PersistedActiveAgentState } from "./active-agent-session.js";
+import type { PersistedActiveAgentState } from "./active-agent-session.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";

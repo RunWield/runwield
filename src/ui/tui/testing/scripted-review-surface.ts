@@ -7,51 +7,101 @@ import { writeFileSync as fsWriteFileSync } from "node:fs";
 
 import { getCwd } from "../../../constants.js";
 
-/**
- * @typedef {Object} ScriptedReviewDecision
- * @property {boolean} approved
- * @property {boolean} [conversationTurn]
- * @property {string} [feedback]
- * @property {boolean} [canceled]
- * @property {string} [approvalAction]
- * @property {"engineer"|"frontend-engineer"} [executionAgent]
- * @property {"autonomous"|"pair"} [collaborationRecommendation]
- * @property {unknown} [plan]
- */
+export interface ScriptedReviewDecision {
+    approved: boolean;
+    conversationTurn?: boolean;
+    feedback?: string;
+    canceled?: boolean;
+    approvalAction?: string;
+    executionAgent?: "engineer" | "frontend-engineer";
+    collaborationRecommendation?: "autonomous" | "pair";
+    /** Opaque Plan payload supplied by the JavaScript scenario runner. */
+    plan?: unknown;
+}
 
-/**
- * @typedef {Object} ScriptedHumanReviewDecision
- * @property {boolean} [manual] Leave the real browser review unanswered for terminal-driven cancellation.
- * @property {boolean} [conversationTurn]
- * @property {boolean} [approved]
- * @property {string} [feedback]
- * @property {boolean} [canceled]
- * @property {boolean} [exit]
- * @property {Array<{ file?: string, path?: string, filePath?: string, line?: number, text?: string, comment?: string }>} [annotations]
- * @property {Array<{ path: string, name: string }>} [images]
- *
- * @typedef {Object} ScriptedRuntimeInteraction
- * @property {"select"|"text"|"approval"} type
- * @property {string} [promptIncludes]
- * @property {string|null} [value]
- * @property {boolean} [optional] The prompt may be absent when asynchronous work finished before reload.
- * @property {{ path: string, text: string, target?: "project"|"execution"|"repair", planName?: string, commands?: string[] }} [userFixesFirst] what the user does in the
- * project before answering. RunWield pauses precisely when it needs a person to change
- * something, so a scenario that cannot model the person changing it can only ever test
- * giving up — never the Retry that follows.
- */
+export interface ScriptedReviewAnnotation {
+    file?: string;
+    path?: string;
+    filePath?: string;
+    line?: number;
+    text?: string;
+    comment?: string;
+}
+
+export interface ScriptedReviewImage {
+    path: string;
+    name: string;
+}
+
+export interface ScriptedHumanReviewDecision {
+    /** Leave the real browser review unanswered for terminal-driven cancellation. */
+    manual?: boolean;
+    conversationTurn?: boolean;
+    approved?: boolean;
+    feedback?: string;
+    canceled?: boolean;
+    exit?: boolean;
+    annotations?: ScriptedReviewAnnotation[];
+    images?: ScriptedReviewImage[];
+}
+
+export interface ScriptedUserFix {
+    path: string;
+    text: string;
+    target?: "project" | "execution" | "repair";
+    planName?: string;
+    commands?: string[];
+}
+
+export interface ScriptedRuntimeInteraction {
+    type: "select" | "text" | "approval";
+    promptIncludes?: string;
+    value?: string | null;
+    /** The prompt may be absent when asynchronous work finished before reload. */
+    optional?: boolean;
+    /**
+     * What the user does in the project before answering. RunWield pauses precisely when
+     * it needs a person to change something, so a scenario that cannot model the person
+     * changing it can only ever test giving up — never the Retry that follows.
+     */
+    userFixesFirst?: ScriptedUserFix;
+}
+
+/** Requests cross the JavaScript scenario-runner boundary without validation. */
+export interface ScriptedSurfaceRequest {
+    [key: string]: unknown;
+    prompt?: unknown;
+}
+
+export interface ConsumedScriptedReview {
+    request: ScriptedSurfaceRequest;
+    decision: ScriptedReviewDecision;
+}
+
+export interface ConsumedScriptedHumanReview {
+    request: ScriptedSurfaceRequest;
+    decision: ScriptedHumanReviewDecision;
+}
+
+export interface ConsumedScriptedInteraction {
+    request: ScriptedSurfaceRequest;
+    interaction: ScriptedRuntimeInteraction;
+    userFixCwd?: string;
+    userFixPath?: string;
+}
+
+export type ResolveExecutionCwd = (planName?: string) => string;
 
 export class ScriptedReviewSurface {
-    /** @param {ScriptedReviewDecision[]} decisions */
-    constructor(decisions) {
-        /** @type {ScriptedReviewDecision[]} */
+    declare decisions: ScriptedReviewDecision[];
+    declare consumed: ConsumedScriptedReview[];
+
+    constructor(decisions: ScriptedReviewDecision[]) {
         this.decisions = decisions.map((decision) => ({ ...decision }));
-        /** @type {Array<{ request: Record<string, unknown>, decision: ScriptedReviewDecision }>} */
         this.consumed = [];
     }
 
-    /** @param {Record<string, unknown>} request */
-    submit(request) {
+    submit(request: ScriptedSurfaceRequest) {
         if (!this.decisions.length) {
             throw new Error("Unexpected Plan Review interaction: no scripted decisions remain.");
         }
@@ -77,16 +127,15 @@ export class ScriptedReviewSurface {
 }
 
 export class ScriptedHumanReviewSurface {
-    /** @param {ScriptedHumanReviewDecision[]} decisions */
-    constructor(decisions) {
-        /** @type {ScriptedHumanReviewDecision[]} */
+    declare decisions: ScriptedHumanReviewDecision[];
+    declare consumed: ConsumedScriptedHumanReview[];
+
+    constructor(decisions: ScriptedHumanReviewDecision[]) {
         this.decisions = decisions.map((decision) => ({ ...decision }));
-        /** @type {Array<{ request: Record<string, unknown>, decision: ScriptedHumanReviewDecision }>} */
         this.consumed = [];
     }
 
-    /** @param {Record<string, unknown>} request */
-    submit(request) {
+    submit(request: ScriptedSurfaceRequest) {
         if (!this.decisions.length) {
             throw new Error("Unexpected Code Review interaction: no scripted decisions remain.");
         }
@@ -112,23 +161,17 @@ export class ScriptedHumanReviewSurface {
 }
 
 export class ScriptedInteractionSurface {
-    /**
-     * @param {ScriptedRuntimeInteraction[]} interactions
-     * @param {(planName?: string) => string} [resolveExecutionCwd]
-     */
-    constructor(interactions, resolveExecutionCwd = () => getCwd()) {
-        /** @type {ScriptedRuntimeInteraction[]} */
+    declare interactions: ScriptedRuntimeInteraction[];
+    declare consumed: ConsumedScriptedInteraction[];
+    declare resolveExecutionCwd: ResolveExecutionCwd;
+
+    constructor(interactions: ScriptedRuntimeInteraction[], resolveExecutionCwd: ResolveExecutionCwd = () => getCwd()) {
         this.interactions = interactions.map((interaction) => ({ ...interaction }));
-        /** @type {Array<{ request: Record<string, unknown>, interaction: ScriptedRuntimeInteraction, userFixCwd?: string, userFixPath?: string }>} */
         this.consumed = [];
         this.resolveExecutionCwd = resolveExecutionCwd;
     }
 
-    /**
-     * @param {"select"|"text"|"approval"} type
-     * @param {Record<string, unknown>} request
-     */
-    next(type, request) {
+    next(type: ScriptedRuntimeInteraction["type"], request: ScriptedSurfaceRequest) {
         if (!this.interactions.length) throw new Error(`Unexpected Runtime interaction: ${type}`);
         const interaction = this.interactions.shift();
         if (!interaction) throw new Error(`Unexpected Runtime interaction: ${type}`);
@@ -142,8 +185,7 @@ export class ScriptedInteractionSurface {
                 )}, got ${JSON.stringify(String(request.prompt || ""))}`,
             );
         }
-        /** @type {{ request: Record<string, unknown>, interaction: ScriptedRuntimeInteraction, userFixCwd?: string, userFixPath?: string }} */
-        const consumed = { request, interaction };
+        const consumed: ConsumedScriptedInteraction = { request, interaction };
         this.consumed.push(consumed);
         if (interaction.userFixesFirst) {
             const repairMatch = String(request.prompt || "").match(/Open ([^,\n]+), fix the files/);

@@ -1,10 +1,13 @@
 /** Preserve the named development compile arguments while using the pinned Bun builder. */
+import { dirname, join } from "node:path";
 import { compileBun, bunArtifactTarget } from "./compile-bun.ts";
+import { verifyBuildArtifact } from "./build-metadata.ts";
 
 interface CompileCommandOptions {
     output: string;
     target?: string;
     expectBuildId?: string;
+    remote?: boolean;
 }
 
 const TARGETS = [
@@ -26,6 +29,10 @@ export function parseCompileCommand(args: string[]): CompileCommandOptions {
                     "Run bun run install:locked before bun run compile; dependency refresh requires an explicit lockfile update.",
             );
         }
+        if (argument === "--remote") {
+            options.remote = true;
+            continue;
+        }
         const separator = argument.indexOf("=");
         const name = separator < 0 ? argument : argument.slice(0, separator);
         if (!["--output", "--target", "--expect-build-id"].includes(name)) {
@@ -43,10 +50,18 @@ export function parseCompileCommand(args: string[]): CompileCommandOptions {
             options.target = target;
         }
     }
+    if (options.remote && options.target) throw new Error("compile --remote cannot be combined with --target.");
     return options;
 }
 
 if (import.meta.main) {
     const options = parseCompileCommand(process.argv.slice(2));
     await compileBun(options.output, options.target, undefined, options.expectBuildId);
+    if (options.remote) {
+        const { buildId } = await verifyBuildArtifact(options.output);
+        for (const target of ["bun-linux-x64", "bun-linux-arm64"]) {
+            const artifact = join(dirname(options.output), `wld-${bunArtifactTarget(target)}`);
+            await compileBun(artifact, target, undefined, buildId);
+        }
+    }
 }

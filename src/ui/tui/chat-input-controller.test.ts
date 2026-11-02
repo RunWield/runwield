@@ -8,7 +8,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";

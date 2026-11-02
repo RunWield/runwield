@@ -9,7 +9,7 @@ import { getCwd } from "../../constants.js";
 import { removeMetricsExporterApprovals } from "../../shared/extensions/metrics-exporter.ts";
 import { resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
-import { discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.js";
+import { discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.ts";
 
 const DEFAULT_THEME = "catppuccin-mocha";
 

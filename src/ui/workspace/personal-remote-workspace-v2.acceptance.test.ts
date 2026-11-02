@@ -15,7 +15,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { loadPlan, savePlan } from "../../plan-store.js";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";

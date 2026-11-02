@@ -11,8 +11,12 @@
  *   issuing owner-database SQL directly.
  */
 
-import { getOwnerCoordinationDatabaseEpoch, openOwnerCoordinationDatabase } from "./database.js";
-import { openFileSessionStore } from "../session/file-session-store.ts";
+import {
+    getOwnerCoordinationDatabaseEpoch,
+    openOwnerCoordinationDatabase,
+    type OpenOwnerDatabaseOptions,
+} from "./database.js";
+import { openFileSessionStore, type FileSessionStore } from "../session/file-session-store.ts";
 import { getOwnerCoordinationDatabasePath, OWNER_COORDINATION_DB_FILENAME } from "./paths.ts";
 import { OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
 import {
@@ -43,88 +47,114 @@ import {
 export { getOwnerCoordinationDatabasePath, OWNER_COORDINATION_DB_FILENAME, OWNER_COORDINATION_SCHEMA_VERSION };
 export { OWNER_CSRF_COOKIE, OWNER_DEVICE_COOKIE, OWNER_DEVICE_MAX_AGE_SECONDS } from "./devices.ts";
 
-/**
- * @typedef {Object} OwnerCoordinationStore
- * @property {string} path
- * @property {() => void} close
- * @property {(options: Parameters<typeof registerProject>[1]) => ReturnType<typeof registerProject>} registerProject
- * @property {ReturnType<typeof openFileSessionStore>['ensureRuntimeProject']} ensureRuntimeProject
- * @property {() => ReturnType<typeof listProjects>} listProjects
- * @property {ReturnType<typeof openFileSessionStore>['listSessionProjects']} listSessionProjects
- * @property {(projectId: string) => ReturnType<typeof getProjectById>} getProjectById
- * @property {(projectId: string) => ReturnType<typeof getProjectHealth>} getProjectHealth
- * @property {(projectId: string) => ReturnType<typeof listProjectRootEvidence>} listProjectRootEvidence
- * @property {(projectId: string, enabled: boolean, options?: Parameters<typeof setProjectEnabled>[3]) => ReturnType<typeof setProjectEnabled>} setProjectEnabled
- * @property {(projectId: string) => ReturnType<typeof removeProject>} removeProject
- * @property {(options: Parameters<typeof relinkProject>[1]) => ReturnType<typeof relinkProject>} relinkProject
- * @property {(projectId: string) => ReturnType<typeof requireEnabledProjectRoot>} requireEnabledProjectRoot
- * @property {(projectId: string) => string} requireSessionProjectRoot
- * @property {ReturnType<typeof openFileSessionStore>['ensureSessionCatalogRecord']} ensureSessionCatalogRecord
- * @property {ReturnType<typeof openFileSessionStore>['ensureSessionCatalogRecordAndAcquire']} ensureSessionCatalogRecordAndAcquire
- * @property {ReturnType<typeof openFileSessionStore>['findSessionByLocator']} findSessionByLocator
- * @property {ReturnType<typeof openFileSessionStore>['getSessionById']} getSessionById
- * @property {ReturnType<typeof openFileSessionStore>['readSessionManifest']} readSessionManifest
- * @property {ReturnType<typeof openFileSessionStore>['archiveSession']} archiveSession
- * @property {ReturnType<typeof openFileSessionStore>['unarchiveSession']} unarchiveSession
- * @property {ReturnType<typeof openFileSessionStore>['listProjectSessions']} listProjectSessions
- * @property {ReturnType<typeof openFileSessionStore>['catalogProjectSessions']} catalogProjectSessions
- * @property {ReturnType<typeof openFileSessionStore>['listSessionTranscriptSegments']} listSessionTranscriptSegments
- * @property {ReturnType<typeof openFileSessionStore>['listSessionArtifacts']} listSessionArtifacts
- * @property {ReturnType<typeof openFileSessionStore>['listSessionPlanAssociations']} listSessionPlanAssociations
- * @property {ReturnType<typeof openFileSessionStore>['getLastPlanReview']} getLastPlanReview
- * @property {ReturnType<typeof openFileSessionStore>['getCurrentSessionSegment']} getCurrentSessionSegment
- * @property {ReturnType<typeof openFileSessionStore>['appendSessionTranscriptSegment']} appendSessionTranscriptSegment
- * @property {ReturnType<typeof openFileSessionStore>['validateSuccessorSegmentLocator']} validateSuccessorSegmentLocator
- * @property {ReturnType<typeof openFileSessionStore>['sealSessionTranscriptSegment']} sealSessionTranscriptSegment
- * @property {ReturnType<typeof openFileSessionStore>['findOrphanRolloverCandidates']} findOrphanRolloverCandidates
- * @property {ReturnType<typeof openFileSessionStore>['inspectSegmentRolloverRecovery']} inspectSegmentRolloverRecovery
- * @property {ReturnType<typeof openFileSessionStore>['discardOrphanRolloverCandidate']} discardOrphanRolloverCandidate
- * @property {(options?: Parameters<typeof createPairingRequest>[1]) => ReturnType<typeof createPairingRequest>} createPairingRequest
- * @property {(code: string, options?: Parameters<typeof approvePairingRequest>[2]) => ReturnType<typeof approvePairingRequest>} approvePairingRequest
- * @property {(proof: string, options?: Parameters<typeof getPairingRequestByProof>[2]) => ReturnType<typeof getPairingRequestByProof>} getPairingRequestByProof
- * @property {(proof: string, options?: Parameters<typeof claimPairingRequest>[2]) => ReturnType<typeof claimPairingRequest>} claimPairingRequest
- * @property {() => ReturnType<typeof listDevices>} listDevices
- * @property {(credential: string, options?: Parameters<typeof verifyDeviceCredential>[2]) => ReturnType<typeof verifyDeviceCredential>} verifyDeviceCredential
- * @property {(deviceId: string, csrf: string) => ReturnType<typeof verifyDeviceCsrf>} verifyDeviceCsrf
- * @property {(deviceId: string, options?: Parameters<typeof revokeDevice>[2]) => ReturnType<typeof revokeDevice>} revokeDevice
- * @property {() => string | null} getDatabaseEpoch
- * @property {ReturnType<typeof openFileSessionStore>['createRemoteSessionOwner']} createRemoteSessionOwner
- * @property {ReturnType<typeof openFileSessionStore>['recoverRemoteSession']} recoverRemoteSession
- * @property {ReturnType<typeof openFileSessionStore>['readActiveSessionTranscript']} readActiveSessionTranscript
- * @property {ReturnType<typeof openFileSessionStore>['writeActiveSessionTranscript']} writeActiveSessionTranscript
- * @property {ReturnType<typeof openFileSessionStore>['migrateActiveSessionTranscript']} migrateActiveSessionTranscript
- * @property {ReturnType<typeof openFileSessionStore>['inspectSessionActivation']} inspectSessionActivation
- * @property {ReturnType<typeof openFileSessionStore>['acquireSessionActivation']} acquireSessionActivation
- * @property {ReturnType<typeof openFileSessionStore>['changeSessionActivationPhase']} changeSessionActivationPhase
- * @property {ReturnType<typeof openFileSessionStore>['registerSessionArtifact']} registerSessionArtifact
- * @property {ReturnType<typeof openFileSessionStore>['stagePlanAssociation']} stagePlanAssociation
- * @property {ReturnType<typeof openFileSessionStore>['recordLastPlanReview']} recordLastPlanReview
- * @property {ReturnType<typeof openFileSessionStore>['publishGenerationAndRelease']} publishGenerationAndRelease
- * @property {ReturnType<typeof openFileSessionStore>['commitSegmentRolloverAndPublish']} commitSegmentRolloverAndPublish
- * @property {ReturnType<typeof openFileSessionStore>['releaseUnchangedActivation']} releaseUnchangedActivation
- * @property {ReturnType<typeof openFileSessionStore>['recoverSessionControl']} recoverSessionControl
- * @property {ReturnType<typeof openFileSessionStore>['markSessionReconcileRequired']} markSessionReconcileRequired
- * @property {ReturnType<typeof openFileSessionStore>['markSessionReconcileRequiredWithProof']} markSessionReconcileRequiredWithProof
- * @property {ReturnType<typeof openFileSessionStore>['markSessionUncertain']} markSessionUncertain
- * @property {(options: Parameters<typeof findOperationReceiptByRequest>[1]) => ReturnType<typeof findOperationReceiptByRequest>} findOperationReceiptByRequest
- * @property {(options: Parameters<typeof createOrGetOperationReceipt>[1]) => ReturnType<typeof createOrGetOperationReceipt>} createOrGetOperationReceipt
- * @property {(operationId: string, updates: Parameters<typeof updateOperationReceipt>[2]) => ReturnType<typeof updateOperationReceipt>} updateOperationReceipt
- * @property {(operationId: string) => ReturnType<typeof getOperationReceipt>} getOperationReceipt
- */
+export interface OpenOwnerCoordinationStoreOptions extends OpenOwnerDatabaseOptions {
+    sessionBaseDir?: string;
+}
+
+export interface OwnerCoordinationStore extends Pick<
+    FileSessionStore,
+    | "ensureRuntimeProject"
+    | "listSessionProjects"
+    | "ensureSessionCatalogRecord"
+    | "ensureSessionCatalogRecordAndAcquire"
+    | "findSessionByLocator"
+    | "getSessionById"
+    | "readSessionManifest"
+    | "archiveSession"
+    | "unarchiveSession"
+    | "listProjectSessions"
+    | "catalogProjectSessions"
+    | "listSessionTranscriptSegments"
+    | "listSessionArtifacts"
+    | "listSessionPlanAssociations"
+    | "getLastPlanReview"
+    | "getCurrentSessionSegment"
+    | "appendSessionTranscriptSegment"
+    | "validateSuccessorSegmentLocator"
+    | "sealSessionTranscriptSegment"
+    | "findOrphanRolloverCandidates"
+    | "inspectSegmentRolloverRecovery"
+    | "discardOrphanRolloverCandidate"
+    | "createRemoteSessionOwner"
+    | "recoverRemoteSession"
+    | "readActiveSessionTranscript"
+    | "writeActiveSessionTranscript"
+    | "migrateActiveSessionTranscript"
+    | "inspectSessionActivation"
+    | "acquireSessionActivation"
+    | "changeSessionActivationPhase"
+    | "registerSessionArtifact"
+    | "stagePlanAssociation"
+    | "recordLastPlanReview"
+    | "publishGenerationAndRelease"
+    | "commitSegmentRolloverAndPublish"
+    | "releaseUnchangedActivation"
+    | "recoverSessionControl"
+    | "markSessionReconcileRequired"
+    | "markSessionReconcileRequiredWithProof"
+    | "markSessionUncertain"
+> {
+    path: string;
+    close: () => void;
+    registerProject: (options: Parameters<typeof registerProject>[1]) => ReturnType<typeof registerProject>;
+    listProjects: () => ReturnType<typeof listProjects>;
+    getProjectById: (projectId: string) => ReturnType<typeof getProjectById>;
+    getProjectHealth: (projectId: string) => ReturnType<typeof getProjectHealth>;
+    listProjectRootEvidence: (projectId: string) => ReturnType<typeof listProjectRootEvidence>;
+    setProjectEnabled: (
+        projectId: string,
+        enabled: boolean,
+        options?: Parameters<typeof setProjectEnabled>[3],
+    ) => ReturnType<typeof setProjectEnabled>;
+    removeProject: (projectId: string) => ReturnType<typeof removeProject>;
+    relinkProject: (options: Parameters<typeof relinkProject>[1]) => ReturnType<typeof relinkProject>;
+    requireEnabledProjectRoot: (projectId: string) => ReturnType<typeof requireEnabledProjectRoot>;
+    requireSessionProjectRoot: (projectId: string) => string;
+    createPairingRequest: (
+        options?: Parameters<typeof createPairingRequest>[1],
+    ) => ReturnType<typeof createPairingRequest>;
+    approvePairingRequest: (
+        code: string,
+        options?: Parameters<typeof approvePairingRequest>[2],
+    ) => ReturnType<typeof approvePairingRequest>;
+    getPairingRequestByProof: (
+        proof: string,
+        options?: Parameters<typeof getPairingRequestByProof>[2],
+    ) => ReturnType<typeof getPairingRequestByProof>;
+    claimPairingRequest: (
+        proof: string,
+        options?: Parameters<typeof claimPairingRequest>[2],
+    ) => ReturnType<typeof claimPairingRequest>;
+    listDevices: () => ReturnType<typeof listDevices>;
+    verifyDeviceCredential: (
+        credential: string,
+        options?: Parameters<typeof verifyDeviceCredential>[2],
+    ) => ReturnType<typeof verifyDeviceCredential>;
+    verifyDeviceCsrf: (deviceId: string, csrf: string) => ReturnType<typeof verifyDeviceCsrf>;
+    revokeDevice: (deviceId: string, options?: Parameters<typeof revokeDevice>[2]) => ReturnType<typeof revokeDevice>;
+    getDatabaseEpoch: () => string | null;
+    findOperationReceiptByRequest: (
+        options: Parameters<typeof findOperationReceiptByRequest>[1],
+    ) => ReturnType<typeof findOperationReceiptByRequest>;
+    createOrGetOperationReceipt: (
+        options: Parameters<typeof createOrGetOperationReceipt>[1],
+    ) => ReturnType<typeof createOrGetOperationReceipt>;
+    updateOperationReceipt: (
+        operationId: string,
+        updates: Parameters<typeof updateOperationReceipt>[2],
+    ) => ReturnType<typeof updateOperationReceipt>;
+    getOperationReceipt: (operationId: string) => ReturnType<typeof getOperationReceipt>;
+}
 
 /**
  * Open the public owner coordination store without exposing raw SQLite handles.
  * Internal migration tests and service modules may import database.js directly;
  * adapters should consume this narrow method surface.
- *
- * @param {import('./database.js').OpenOwnerDatabaseOptions & { sessionBaseDir?: string }} [options]
- * @returns {OwnerCoordinationStore}
  */
-export function openOwnerCoordinationStore(options = {}) {
+export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOptions = {}): OwnerCoordinationStore {
     const database = openOwnerCoordinationDatabase(options);
     const sessionStore = openFileSessionStore({ baseDir: options.sessionBaseDir });
-    /** @param {string} projectId */
-    const resolveSessionProject = (projectId) => {
+    const resolveSessionProject = (projectId: string) => {
         const direct = sessionStore.getProjectById(projectId);
         if (direct) return direct;
         const workspaceProject = getProjectById(database, projectId);

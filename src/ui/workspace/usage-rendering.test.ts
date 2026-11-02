@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Window } from "happy-dom";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { test } from "node:test";

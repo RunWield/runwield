@@ -4,7 +4,7 @@
 
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes } from "../testing/scenario-runner.js";
-import { assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
+import { assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 interface CapturedPlan {
     name?: string;

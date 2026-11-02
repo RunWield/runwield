@@ -16,7 +16,7 @@ import {
     ValidationHandoffBlock,
 } from "./blocks.js";
 import stripAnsi from "strip-ansi";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 
 initRunWieldTheme();
 

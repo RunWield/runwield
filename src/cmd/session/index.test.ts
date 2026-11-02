@@ -4,7 +4,7 @@ import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { runSessionCommand } from "./index.ts";
-import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 
 type SessionInfoResult = Awaited<ReturnType<SessionRuntime["getSessionInfo"]>>;
 type SessionInfoProjection = Exclude<SessionInfoResult, null | { ok: false }>;

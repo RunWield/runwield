@@ -6,21 +6,68 @@ import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 
 import { join } from "node:path";
 
-/**
- * @typedef {{ dir: string, assets: Map<string, string>, contentTypes: Map<string, string> }} StoredWidget
- */
+export interface StoredWidget {
+    dir: string;
+    assets: Map<string, string>;
+    contentTypes: Map<string, string>;
+}
 
-/**
- * @typedef {Object} ReviewWidgetStore
- * @property {Map<string, StoredWidget>} widgets
- * @property {(guide: Record<string, unknown>, jobId: unknown) => Promise<Record<string, unknown>>} registerGuideWidgets
- * @property {() => Promise<void>} cleanup
- */
+/** Guide and fixture fields originate in JavaScript and retain their existing runtime checks. */
+export interface ReviewWidgetGuide {
+    [key: string]: unknown;
+    widgetAssets?: unknown;
+    sections?: unknown;
+}
 
-/** @returns {ReviewWidgetStore} */
-export function createReviewWidgetStore() {
-    /** @type {ReviewWidgetStore["widgets"]} */
-    const widgets = new Map();
+export interface ReviewWidgetStore {
+    widgets: Map<string, StoredWidget>;
+    registerGuideWidgets: (guide: ReviewWidgetGuide, jobId: unknown) => Promise<ReviewWidgetGuide>;
+    cleanup: () => Promise<void>;
+}
+
+export interface ReviewWidgetPayload {
+    [key: string]: unknown;
+    guidedReviewFixture?: unknown;
+}
+
+export interface ReviewWidgetApiState {
+    token: string;
+    reviewPayload: ReviewWidgetPayload;
+    widgets?: ReviewWidgetStore;
+}
+
+interface RawWidgetSection {
+    blocks?: unknown;
+}
+
+interface RawReviewWidget {
+    [key: string]: unknown;
+    type?: unknown;
+    id?: unknown;
+    widgetId?: unknown;
+    entry?: unknown;
+    html?: unknown;
+    assets?: unknown;
+    data?: unknown;
+    title?: unknown;
+    reason?: unknown;
+}
+
+interface RawWidgetAsset {
+    widgetId?: unknown;
+    id?: unknown;
+    name?: unknown;
+    path?: unknown;
+    content?: unknown;
+    contentType?: unknown;
+}
+
+interface HtmlEntityMap {
+    [char: string]: string;
+}
+
+export function createReviewWidgetStore(): ReviewWidgetStore {
+    const widgets: ReviewWidgetStore["widgets"] = new Map();
     return {
         widgets,
         registerGuideWidgets: (guide, jobId) => registerGuideWidgets(widgets, guide, String(jobId || "guide")),
@@ -31,13 +78,7 @@ export function createReviewWidgetStore() {
     };
 }
 
-/**
- * @param {Request} request
- * @param {URL} url
- * @param {{ token: string, reviewPayload: Record<string, unknown>, widgets?: ReviewWidgetStore }} state
- * @returns {Response | null}
- */
-export function reviewWidgetApi(request, url, state) {
+export function reviewWidgetApi(request: Request, url: URL, state: ReviewWidgetApiState): Response | null {
     const match = /^\/api\/review\/widgets\/([^/]+)\/([^/]+)$/.exec(url.pathname);
     if (!match || request.method !== "GET") return null;
     const widgetId = decodeURIComponent(match[1]);
@@ -52,27 +93,22 @@ export function reviewWidgetApi(request, url, state) {
     return widgetResponse(String(widget.html || defaultWidgetHtml(widget)), url.origin, widgetId, [assetName]);
 }
 
-/**
- * @param {ReviewWidgetStore["widgets"]} widgets
- * @param {Record<string, unknown>} guide
- * @param {string} jobId
- */
-async function registerGuideWidgets(widgets, guide, jobId) {
+async function registerGuideWidgets(widgets: ReviewWidgetStore["widgets"], guide: ReviewWidgetGuide, jobId: string) {
     const cloned = structuredClone(guide);
-    const guideRecord = /** @type {Record<string, unknown>} */ (cloned);
+    const guideRecord = cloned;
     const topAssets = Array.isArray(guideRecord.widgetAssets) ? guideRecord.widgetAssets : [];
-    const sections = Array.isArray(guideRecord.sections) ? guideRecord.sections : [];
+    const sections: RawWidgetSection[] = Array.isArray(guideRecord.sections) ? guideRecord.sections : [];
     for (const section of sections) {
         if (!section || typeof section !== "object") continue;
-        const blocks = Array.isArray(section.blocks) ? section.blocks : [];
+        const blocks: RawReviewWidget[] = Array.isArray(section.blocks) ? section.blocks : [];
         for (const block of blocks) {
             if (!block || typeof block !== "object" || block.type !== "widget") continue;
-            const widget = /** @type {Record<string, unknown>} */ (block);
+            const widget = block;
             const rawId = String(widget.id || widget.widgetId || "widget");
             const id = `${jobId}-${rawId}-${crypto.randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 140);
             const dir = await mkdtemp(join(tmpdir(), "runwield-guide-widget-"));
-            /** @type {StoredWidget} */
-            const stored = { dir, assets: new Map(), contentTypes: new Map() };
+
+            const stored: StoredWidget = { dir, assets: new Map(), contentTypes: new Map() };
             await writeAsset(
                 stored,
                 "index.html",
@@ -80,7 +116,7 @@ async function registerGuideWidgets(widgets, guide, jobId) {
                 "text/html; charset=utf-8",
             );
             for (const asset of collectWidgetAssets(rawId, widget, topAssets)) {
-                const record = /** @type {Record<string, unknown>} */ (asset);
+                const record = asset as RawWidgetAsset;
                 await writeAsset(
                     stored,
                     String(record.name || record.path),
@@ -96,32 +132,29 @@ async function registerGuideWidgets(widgets, guide, jobId) {
         }
     }
     delete guideRecord.widgetAssets;
-    return /** @type {Record<string, unknown>} */ (cloned);
+    return cloned;
 }
 
-/** @param {Record<string, unknown>} widget */
-function defaultWidgetHtml(widget) {
+function defaultWidgetHtml(widget: RawReviewWidget) {
     const data = JSON.stringify(widget.data || {});
-    return `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#0f172a;color:#e2e8f0;font:14px system-ui;padding:16px}button{border:1px solid #38bdf8;background:#082f49;color:#e0f2fe;border-radius:8px;padding:8px 10px}</style><h1>${
-        escapeHtml(String(widget.title || "Guided Review Widget"))
-    }</h1><p>${
-        escapeHtml(String(widget.reason || "Interactive visual aid."))
-    }</p><button id="toggle">Toggle sample state</button><pre id="out"></pre><script>const data=${data};let on=false;toggle.onclick=()=>{on=!on;out.textContent=JSON.stringify({active:on,data},null,2)};toggle.click();</script>`;
+    return `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#0f172a;color:#e2e8f0;font:14px system-ui;padding:16px}button{border:1px solid #38bdf8;background:#082f49;color:#e0f2fe;border-radius:8px;padding:8px 10px}</style><h1>${escapeHtml(
+        String(widget.title || "Guided Review Widget"),
+    )}</h1><p>${escapeHtml(
+        String(widget.reason || "Interactive visual aid."),
+    )}</p><button id="toggle">Toggle sample state</button><pre id="out"></pre><script>const data=${data};let on=false;toggle.onclick=()=>{on=!on;out.textContent=JSON.stringify({active:on,data},null,2)};toggle.click();</script>`;
 }
 
-/** @param {string} rawId @param {Record<string, unknown>} widget @param {unknown[]} topAssets */
-function collectWidgetAssets(rawId, widget, topAssets) {
-    const local = Array.isArray(widget.assets) ? widget.assets : [];
+function collectWidgetAssets(rawId: string, widget: RawReviewWidget, topAssets: unknown[]) {
+    const local: unknown[] = Array.isArray(widget.assets) ? widget.assets : [];
     const scoped = topAssets.filter((asset) => {
         if (!asset || typeof asset !== "object") return false;
-        const record = /** @type {Record<string, unknown>} */ (asset);
+        const record = asset as RawWidgetAsset;
         return record.widgetId === rawId || record.id === rawId;
     });
     return [...local, ...scoped].filter((asset) => asset && typeof asset === "object");
 }
 
-/** @param {StoredWidget} stored @param {string} assetName @param {string} content @param {string} contentType */
-async function writeAsset(stored, assetName, content, contentType) {
+async function writeAsset(stored: StoredWidget, assetName: string, content: string, contentType: string) {
     if (!/^[A-Za-z0-9._-]{1,120}$/.test(assetName)) throw new Error(`Unsafe widget asset name: ${assetName}`);
     const path = join(stored.dir, assetName);
     await fsWriteFile(path, content);
@@ -129,8 +162,7 @@ async function writeAsset(stored, assetName, content, contentType) {
     stored.contentTypes.set(assetName, contentType);
 }
 
-/** @param {StoredWidget} widget @param {string} origin @param {string} widgetId @param {string} assetName */
-function serveStoredWidget(widget, origin, widgetId, assetName) {
+function serveStoredWidget(widget: StoredWidget, origin: string, widgetId: string, assetName: string) {
     const path = widget.assets.get(assetName);
     if (!path) return Response.json({ error: "Widget asset not allowed" }, { status: 404 });
     const contentType = widget.contentTypes.get(assetName) || "application/octet-stream";
@@ -143,8 +175,7 @@ function serveStoredWidget(widget, origin, widgetId, assetName) {
     });
 }
 
-/** @param {string} html @param {string} origin @param {string} widgetId @param {string[]} assets */
-function widgetResponse(html, origin, widgetId, assets) {
+function widgetResponse(html: string, origin: string, widgetId: string, assets: string[]) {
     return new Response(html, {
         headers: {
             "content-type": "text/html; charset=utf-8",
@@ -154,13 +185,12 @@ function widgetResponse(html, origin, widgetId, assets) {
     });
 }
 
-/** @param {string} origin @param {string} widgetId @param {string[]} assets */
-function widgetCsp(origin, widgetId, assets) {
+function widgetCsp(origin: string, widgetId: string, assets: string[]) {
     const safeOrigin = origin.replace(/;|,|\s/g, "");
     const assetSources = assets
         .filter((asset) => asset !== "index.html")
-        .map((asset) =>
-            `${safeOrigin}/api/review/widgets/${encodeURIComponent(widgetId)}/${encodeURIComponent(asset)}`
+        .map(
+            (asset) => `${safeOrigin}/api/review/widgets/${encodeURIComponent(widgetId)}/${encodeURIComponent(asset)}`,
         );
     const localAssetSources = assetSources.join(" ");
     const localSuffix = localAssetSources ? ` ${localAssetSources}` : "";
@@ -179,21 +209,19 @@ function widgetCsp(origin, widgetId, assets) {
     ].join("; ");
 }
 
-/** @param {Record<string, unknown>} payload @param {string} id */
-function findFixtureWidget(payload, id) {
+function findFixtureWidget(payload: ReviewWidgetPayload, id: string) {
     const guide = payload.guidedReviewFixture;
     if (!guide || typeof guide !== "object") return null;
-    const guideRecord = /** @type {{ sections?: unknown }} */ (guide);
-    for (const section of Array.isArray(guideRecord.sections) ? guideRecord.sections : []) {
-        for (const block of Array.isArray(section?.blocks) ? section.blocks : []) {
+    const guideRecord = guide as ReviewWidgetGuide;
+    for (const section of (Array.isArray(guideRecord.sections) ? guideRecord.sections : []) as RawWidgetSection[]) {
+        for (const block of (Array.isArray(section?.blocks) ? section.blocks : []) as RawReviewWidget[]) {
             if (block?.type === "widget" && (block.id || block.widgetId) === id) return block;
         }
     }
     return null;
 }
 
-/** @param {string} value */
-function escapeHtml(value) {
-    const entities = /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" });
+function escapeHtml(value: string) {
+    const entities: HtmlEntityMap = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
     return value.replace(/[&<>"]/g, (char) => entities[char] || char);
 }

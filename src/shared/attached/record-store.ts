@@ -71,6 +71,8 @@ export interface AttachedWorkflowRecord {
     acceptedOperations: Record<string, AcceptedOperation>;
     triageOutcome: TriageOutcome | null;
     plan: AttachedPlanReference | null;
+    /** Marks explicit preparation of this Planner action; paths remain Core-resolved. */
+    planningActionId?: string;
     review: AttachedReviewRound | null;
     execution: AttachedExecution | null;
     pendingConsent: AttachedPendingConsent | null;

@@ -6,28 +6,29 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
  */
 
 import { dirname, join, parse } from "node:path";
-import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, type SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSettingsDir, getSettingsManager } from "../settings.js";
-import { isEnabledPackageResource } from "../package-resources.ts";
+import { isEnabledPackageResource, type ResolvedResource } from "../package-resources.ts";
 
-/**
- * @typedef {import("../package-resources.ts").ResolvedResource} ResolvedResource
- * @typedef {import("../package-resources.ts").ResolvedPaths} ResolvedPaths
- */
+interface ManifestRecord {
+    pi?: unknown;
+    wld?: unknown;
+    compatible?: unknown;
+    extensionApi?: unknown;
+    kind?: unknown;
+}
 
-/**
- * @param {unknown} value
- * @returns {value is Record<string, unknown>}
- */
-function isRecord(value) {
+export interface WldExtensionResourceOptions {
+    cwd?: string;
+    agentDir?: string;
+    settingsManager?: SettingsManager;
+}
+
+function isRecord(value: unknown): value is ManifestRecord {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-/**
- * @param {unknown} manifest
- * @returns {boolean}
- */
-export function isWldCompatibleExtensionManifest(manifest) {
+export function isWldCompatibleExtensionManifest(manifest: unknown): boolean {
     if (!isRecord(manifest)) return false;
     const pi = manifest.pi;
     if (!isRecord(pi)) return false;
@@ -37,11 +38,7 @@ export function isWldCompatibleExtensionManifest(manifest) {
     return wld.compatible === true && wld.extensionApi === 1 && wld.kind === "code-extension";
 }
 
-/**
- * @param {string} filePath
- * @returns {Promise<boolean>}
- */
-async function fileExists(filePath) {
+async function fileExists(filePath: string): Promise<boolean> {
     try {
         const stat = await fsStat(filePath);
         return stat.isFile();
@@ -50,11 +47,7 @@ async function fileExists(filePath) {
     }
 }
 
-/**
- * @param {string} startDir
- * @returns {Promise<string | null>}
- */
-async function findNearestPackageRoot(startDir) {
+async function findNearestPackageRoot(startDir: string): Promise<string | null> {
     let current = startDir;
     while (true) {
         if (await fileExists(join(current, "package.json"))) return current;
@@ -64,35 +57,23 @@ async function findNearestPackageRoot(startDir) {
     }
 }
 
-/**
- * @param {ResolvedResource} resource
- * @returns {Promise<string | null>}
- */
-export async function findPackageRootForExtensionResource(resource) {
+export async function findPackageRootForExtensionResource(resource: ResolvedResource): Promise<string | null> {
     const baseDir = resource.metadata?.baseDir;
-    if (baseDir && await fileExists(join(baseDir, "package.json"))) return baseDir;
+    if (baseDir && (await fileExists(join(baseDir, "package.json")))) return baseDir;
     return await findNearestPackageRoot(dirname(resource.path));
 }
 
-/**
- * @param {string} packageRoot
- * @returns {Promise<Record<string, unknown> | null>}
- */
-async function readPackageJson(packageRoot) {
+async function readPackageJson(packageRoot: string): Promise<ManifestRecord | null> {
     try {
         const raw = await fsReadFile(join(packageRoot, "package.json"), "utf8");
-        const parsed = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
         return isRecord(parsed) ? parsed : null;
     } catch {
         return null;
     }
 }
 
-/**
- * @param {ResolvedResource} resource
- * @returns {Promise<boolean>}
- */
-export async function isWldCompatibleExtensionResource(resource) {
+export async function isWldCompatibleExtensionResource(resource: ResolvedResource): Promise<boolean> {
     if (!isEnabledPackageResource(resource)) return false;
     const packageRoot = await findPackageRootForExtensionResource(resource);
     if (!packageRoot) return false;
@@ -100,13 +81,10 @@ export async function isWldCompatibleExtensionResource(resource) {
     return isWldCompatibleExtensionManifest(manifest);
 }
 
-/**
- * @param {ResolvedResource[]} resources
- * @returns {Promise<ResolvedResource[]>}
- */
-export async function filterWldCompatibleExtensionResources(resources) {
-    /** @type {ResolvedResource[]} */
-    const compatible = [];
+export async function filterWldCompatibleExtensionResources(
+    resources: ResolvedResource[],
+): Promise<ResolvedResource[]> {
+    const compatible: ResolvedResource[] = [];
     for (const resource of resources) {
         if (await isWldCompatibleExtensionResource(resource)) {
             compatible.push(resource);
@@ -115,11 +93,7 @@ export async function filterWldCompatibleExtensionResources(resources) {
     return compatible;
 }
 
-/**
- * @param {ResolvedResource[]} resources
- * @returns {string[]}
- */
-export function getWldExtensionPaths(resources) {
+export function getWldExtensionPaths(resources: ResolvedResource[]): string[] {
     return resources.map((resource) => resource.path);
 }
 
@@ -128,19 +102,14 @@ export function getWldExtensionPaths(resources) {
  * missing packages. Package metadata is author self-attestation of compatibility;
  * install-time consent controls whether extension resources are present/enabled
  * in settings.
- *
- * @param {{
- *   cwd?: string,
- *   agentDir?: string,
- *   settingsManager?: any,
- * }} [options]
- * @returns {Promise<ResolvedResource[]>}
  */
-export async function resolveInstalledWldExtensionResources(options = {}) {
+export async function resolveInstalledWldExtensionResources(
+    options: WldExtensionResourceOptions = {},
+): Promise<ResolvedResource[]> {
     const packageManager = new DefaultPackageManager({
         cwd: options.cwd || getCwd(),
         agentDir: options.agentDir || getSettingsDir("global"),
-        settingsManager: /** @type {any} */ (options.settingsManager || getSettingsManager()),
+        settingsManager: options.settingsManager || getSettingsManager(),
     });
 
     const resolved = await packageManager.resolve(() => Promise.resolve("skip"));

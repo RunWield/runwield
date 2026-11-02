@@ -16,7 +16,7 @@ import {
     setCompactionReserveTokens,
     setCustomSetting,
 } from "../../shared/settings.js";
-import { theme } from "../../ui/theme/theme.js";
+import { theme } from "../../ui/theme/theme.ts";
 import { printCommandHelp } from "../help/index.js";
 import { editPolicySetting, getPolicySettings } from "./policies.ts";
 

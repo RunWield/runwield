@@ -79,6 +79,8 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "- Report Triage with `triage_report`. Put the Core `triage_report` arguments (`routingIntent`, " +
         "`complexity`, `summary`, `workKind`, `sessionName`) in `payload.outcome`.",
     planner: [
+        "- Before Planner dispatch or edits, the coordinator calls start_planning with the current action ID. For an existing Plan, activation or start_planning supplies existingPlan with its planName and planId (and targetBranch when specified). Never infer authority from request prose alone.",
+        "- Fetch your own get_instructions. Require context.planningRequired to be false and use context.planningCwd for every command and edit. An existing Plan also requires matching context.planId, context.planName, and context.planPath. If missing, stop and return the preparation blocker. Do not create worktrees, edit the invoking checkout, or use proxy instructions or temporary Core scripts.",
         "- Before you write the Plan, fetch current instructions with `get_instructions` and show the user the returned `context.projectSetup` paths: `plan_written` " +
             "creates them in the repository. When the list is empty, nothing new is created.",
         "- Submit with `plan_written`. Put `planName`, and optionally `executionAgent` and " +

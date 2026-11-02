@@ -3,7 +3,7 @@
  * Command to manually compact the session context.
  */
 
-import { theme } from "../../ui/theme/theme.js";
+import { theme } from "../../ui/theme/theme.ts";
 import type { CommandContext } from "../registry.js";
 
 function notifyCompactionFinished(options: CommandContext) {

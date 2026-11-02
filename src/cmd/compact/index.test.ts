@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import type { CommandContext } from "../registry.js";
 import { runCompactCommand } from "./index.ts";
-import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 
 type CompactRuntime = NonNullable<CommandContext["sessionRuntime"]>;
 type FixtureCompactResult = Partial<Awaited<ReturnType<CompactRuntime["compactSession"]>>>;

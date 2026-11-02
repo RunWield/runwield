@@ -24,7 +24,7 @@ export type OwnerPlanActionHttpResult = {
     };
 };
 
-type OwnerCoordinationStore = import("../../../shared/owner-coordination/index.js").OwnerCoordinationStore;
+type OwnerCoordinationStore = import("../../../shared/owner-coordination/index.ts").OwnerCoordinationStore;
 
 function httpStatusForResult(result: PlanActionResult): number {
     if (result.kind === "success") return 200;

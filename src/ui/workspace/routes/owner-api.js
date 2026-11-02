@@ -431,7 +431,7 @@ export async function ownerProjectFileContentApi(ctx) {
 
 /**
  * Resolve a saved association even when navigation supplied only a Plan ID.
- * @param {import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore} store
+ * @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store
  * @param {string} projectId
  * @param {string} planId
  */
