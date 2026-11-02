@@ -36,7 +36,7 @@ import {
     claimPairingRequest,
     createPairingRequest,
     getPairingRequestByProof,
-} from "./pairing.js";
+} from "./pairing.ts";
 import {
     createOrGetOperationReceipt,
     findOperationReceiptByRequest,
@@ -319,3 +319,13 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
         getOperationReceipt: (operationId) => getOperationReceipt(database, operationId),
     };
 }
+
+export type {
+    PairingRequestState,
+    PairingRequest,
+    PairingRequestClockOptions,
+    CreatePairingRequestOptions,
+    CreatedPairingRequest,
+    ClaimPairingRequestOptions,
+    ClaimedPairingRequest,
+} from "./pairing.ts";
