@@ -70,7 +70,6 @@
     "src/ui/workspace/routes/api/review-handlers.js",
     "src/ui/workspace/routes/owner-api.js",
     "src/ui/workspace/routes/owner-session-api.js",
-    "src/ui/workspace/routes/remote-api.js",
     "src/ui/workspace/server.js",
     "src/ui/workspace/server/astro-canonical-data.js",
     "src/ui/workspace/server/plan-adapter.js",

@@ -12,10 +12,47 @@ import {
 } from "../../../shared/collaboration/protocol.js";
 import { RemoteWorkspaceError } from "../server/remote-adapter.js";
 
+import type { CapabilityScope } from "../../../shared/collaboration/capabilities.ts";
+import type { RemoteWorkspaceAdapter } from "../server/remote-adapter.js";
+
+export interface RemoteApiRouterOptions {
+    maxRequestBytes?: number;
+}
+
+export interface RemoteApiState extends RemoteApiRouterOptions {
+    collaboration: RemoteWorkspaceAdapter;
+}
+
+export interface RemoteApiRouteParams {
+    [name: string]: string;
+}
+
+export interface RemoteApiContext {
+    req: Request;
+    request: Request;
+    url: URL;
+    params: RemoteApiRouteParams | null;
+    state: RemoteApiState;
+}
+
+export type RemoteApiRouteHandler = (context: RemoteApiContext) => Response | Promise<Response>;
+
+export interface RemoteApiRouter {
+    get: (pattern: string, handler: RemoteApiRouteHandler) => void;
+    post: (pattern: string, handler: RemoteApiRouteHandler) => void;
+}
+
+/** Raw JSON fields are spread before the existing protocol normalizers validate them. */
+interface RemoteApiJsonFields {
+    [name: string]: unknown;
+    commentId?: unknown;
+    spaceId?: unknown;
+    action?: unknown;
+}
+
 export const DEFAULT_REMOTE_MAX_REQUEST_BYTES = 5 * 1024 * 1024;
 
-/** @param {{ get: Function, post: Function }} app */
-export function registerRemoteApiRoutes(app) {
+export function registerRemoteApiRoutes(app: RemoteApiRouter) {
     app.post("/api/spaces", createSpaceApi);
     app.get("/api/spaces/:spaceId", getSpaceApi);
     app.get("/api/spaces/:spaceId/revisions/:revision", getRevisionApi);
@@ -26,8 +63,7 @@ export function registerRemoteApiRoutes(app) {
     app.post("/api/spaces/:spaceId/lifecycle", lifecycleApi);
 }
 
-/** @param {any} ctx */
-async function createSpaceApi(ctx) {
+async function createSpaceApi(ctx: RemoteApiContext) {
     try {
         const payload = normalizeCreateSharedSpacePayload(await readJson(ctx));
         const hasReviewer = payload.capabilities.some((capability) => capability.scope === REVIEWER_SCOPE);
@@ -44,10 +80,9 @@ async function createSpaceApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-async function getSpaceApi(ctx) {
+async function getSpaceApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
         await requireCapability(ctx, spaceId, REVIEWER_SCOPE);
         return json(ctx.state.collaboration.getSharedSpace(spaceId));
     } catch (error) {
@@ -55,11 +90,10 @@ async function getSpaceApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-async function getRevisionApi(ctx) {
+async function getRevisionApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
-        const revision = assertRevisionParam(ctx.params.revision);
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
+        const revision = assertRevisionParam(ctx.params!.revision);
         await requireCapability(ctx, spaceId, REVIEWER_SCOPE);
         return json({ revision: ctx.state.collaboration.getRevision(spaceId, revision) });
     } catch (error) {
@@ -67,29 +101,30 @@ async function getRevisionApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-async function appendRevisionApi(ctx) {
+async function appendRevisionApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
         await requireCapability(ctx, spaceId, MAINTAINER_SCOPE);
         const payload = normalizeAppendRevisionPayload(await readJson(ctx));
-        return json({
-            revision: ctx.state.collaboration.appendRevision(
-                spaceId,
-                payload.payloadCiphertext,
-                payload.expectedRevision,
-            ),
-        }, 201);
+        return json(
+            {
+                revision: ctx.state.collaboration.appendRevision(
+                    spaceId,
+                    payload.payloadCiphertext,
+                    payload.expectedRevision,
+                ),
+            },
+            201,
+        );
     } catch (error) {
         return errorJson(error);
     }
 }
 
-/** @param {any} ctx */
-async function listCommentsApi(ctx) {
+async function listCommentsApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
-        const revision = assertRevisionParam(ctx.params.revision);
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
+        const revision = assertRevisionParam(ctx.params!.revision);
         await requireCapability(ctx, spaceId, REVIEWER_SCOPE);
         return json({ comments: ctx.state.collaboration.listComments(spaceId, revision) });
     } catch (error) {
@@ -97,11 +132,10 @@ async function listCommentsApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-async function appendCommentApi(ctx) {
+async function appendCommentApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
-        const revision = assertRevisionParam(ctx.params.revision);
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
+        const revision = assertRevisionParam(ctx.params!.revision);
         await requireCapability(ctx, spaceId, REVIEWER_SCOPE);
         const payload = normalizeAppendCommentPayload(await readJson(ctx));
         return json({ comment: ctx.state.collaboration.appendComment(spaceId, revision, payload.ciphertext) }, 201);
@@ -110,25 +144,29 @@ async function appendCommentApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-async function setCommentStateApi(ctx) {
+async function setCommentStateApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
         await requireCapability(ctx, spaceId, REVIEWER_SCOPE);
-        const commentId = assertNonEmptyString(ctx.params.commentId, "commentId");
-        const payload = normalizeCommentStateChangePayload({ commentId, ...(await readJson(ctx)) });
+        const commentId = assertNonEmptyString(ctx.params!.commentId, "commentId");
+        const payload = normalizeCommentStateChangePayload({
+            commentId,
+            ...((await readJson(ctx)) as RemoteApiJsonFields),
+        });
         return json({ comment: ctx.state.collaboration.setCommentState(spaceId, commentId, payload.action) });
     } catch (error) {
         return errorJson(error);
     }
 }
 
-/** @param {any} ctx */
-async function lifecycleApi(ctx) {
+async function lifecycleApi(ctx: RemoteApiContext) {
     try {
-        const spaceId = assertNonEmptyString(ctx.params.spaceId, "spaceId");
+        const spaceId = assertNonEmptyString(ctx.params!.spaceId, "spaceId");
         await requireCapability(ctx, spaceId, MAINTAINER_SCOPE);
-        const payload = normalizeSharedSpaceLifecyclePayload({ spaceId, ...(await readJson(ctx)) });
+        const payload = normalizeSharedSpaceLifecyclePayload({
+            spaceId,
+            ...((await readJson(ctx)) as RemoteApiJsonFields),
+        });
         if (payload.action === "close") return json(ctx.state.collaboration.closeSharedSpace(spaceId));
         ctx.state.collaboration.deleteSharedSpace(spaceId);
         return json({ deleted: true, spaceId });
@@ -137,9 +175,8 @@ async function lifecycleApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-async function readJson(ctx) {
-    const request = /** @type {Request} */ (ctx.req);
+async function readJson(ctx: RemoteApiContext): Promise<unknown> {
+    const request = ctx.req;
     const maxBytes = Number(ctx.state.maxRequestBytes ?? DEFAULT_REMOTE_MAX_REQUEST_BYTES);
     const contentLength = request.headers.get("content-length");
     if (contentLength !== null && Number(contentLength) > maxBytes) throw tooLarge(maxBytes);
@@ -151,8 +188,7 @@ async function readJson(ctx) {
     }
 }
 
-/** @param {Request} request @param {number} maxBytes */
-async function readBoundedText(request, maxBytes) {
+async function readBoundedText(request: Request, maxBytes: number) {
     if (!request.body) return "";
     const reader = request.body.getReader();
     const decoder = new TextDecoder();
@@ -165,7 +201,9 @@ async function readBoundedText(request, maxBytes) {
         if (total > maxBytes) {
             try {
                 await reader.cancel();
-            } catch { /* ignore cancel failures */ }
+            } catch {
+                /* ignore cancel failures */
+            }
             throw tooLarge(maxBytes);
         }
         text += decoder.decode(value, { stream: true });
@@ -173,8 +211,7 @@ async function readBoundedText(request, maxBytes) {
     return text + decoder.decode();
 }
 
-/** @param {number} maxBytes */
-function tooLarge(maxBytes) {
+function tooLarge(maxBytes: number) {
     return new RemoteWorkspaceError(
         "request_too_large",
         `Remote Workspace request body exceeds the ${maxBytes} byte limit.`,
@@ -182,36 +219,31 @@ function tooLarge(maxBytes) {
     );
 }
 
-/** @param {any} ctx @param {string} spaceId @param {"reviewer" | "maintainer"} scope */
-async function requireCapability(ctx, spaceId, scope) {
+async function requireCapability(ctx: RemoteApiContext, spaceId: string, scope: CapabilityScope) {
     const capability = extractBearerCapability(ctx.req);
     await ctx.state.collaboration.verifyCapability(spaceId, capability, scope);
 }
 
-/** @param {Request} request */
-function extractBearerCapability(request) {
+function extractBearerCapability(request: Request) {
     const header = request.headers.get("authorization") ?? "";
     const match = /^Bearer\s+(.+)$/i.exec(header);
     if (!match) throw new RemoteWorkspaceError("unauthorized", "Bearer capability is required.", 401);
     return match[1].trim();
 }
 
-/** @param {unknown} value */
-function assertRevisionParam(value) {
+function assertRevisionParam(value: unknown) {
     const revision = Number(value);
     return assertPositiveInteger(revision, "revision");
 }
 
-/** @param {unknown} data @param {number} [status] */
-function json(data, status = 200) {
+function json(data: unknown, status = 200) {
     return Response.json(data, {
         status,
         headers: { "cache-control": "no-store" },
     });
 }
 
-/** @param {unknown} error */
-function errorJson(error) {
+function errorJson(error: unknown) {
     if (error instanceof RemoteWorkspaceError) {
         return json({ error: error.code, message: error.message, status: error.status }, error.status);
     }
