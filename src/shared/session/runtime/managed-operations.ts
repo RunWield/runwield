@@ -742,7 +742,7 @@ export class RuntimeManagedOperations {
                     ? transcriptProjectSessionDir
                     : undefined;
             const { sessionManager } = await openPersistedRootSession({
-                cwd: generationSegment?.transcriptCwd || hostedSession.cwd,
+                cwd: hostedSession.cwd,
                 sessionId: generationSegment?.piSessionId || managed.piSessionId,
                 sessionPath: transcriptPath,
                 sessionDir: managedProjectSessionDir,

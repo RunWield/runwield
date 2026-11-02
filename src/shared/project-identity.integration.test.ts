@@ -29,23 +29,24 @@ function admitted(result: ProjectIdentityAdmission): ProjectIdentity {
 }
 async function assertStoredBinding(home: string, identity: ProjectIdentity, root: string) {
     const canonicalRoot = await realpath(root);
-    deepEqual(
-        JSON.parse(await readFile(join(home, ".wld", "projects", identity.projectId, "project.wld.json"), "utf8")),
-        {
-            version: 1,
-            projectId: identity.projectId,
-            displayName: basename(canonicalRoot),
-            personalOwner: identity.personalOwner,
-            repositories: [
-                {
-                    repositoryId: identity.repositoryId,
-                    remote: null,
-                    decision: "new",
-                    checkouts: [{ checkoutId: identity.checkoutId, root: canonicalRoot }],
-                },
-            ],
-        },
+    const { storageLocators, ...record } = JSON.parse(
+        await readFile(join(home, ".wld", "projects", identity.projectId, "project.wld.json"), "utf8"),
     );
+    ok(Array.isArray(storageLocators));
+    deepEqual(record, {
+        version: 1,
+        projectId: identity.projectId,
+        displayName: basename(canonicalRoot),
+        personalOwner: identity.personalOwner,
+        repositories: [
+            {
+                repositoryId: identity.repositoryId,
+                remote: null,
+                decision: "new",
+                checkouts: [{ checkoutId: identity.checkoutId, root: canonicalRoot }],
+            },
+        ],
+    });
 }
 function localContext(home: string): ProjectLaunchContext {
     return { executionAccountHome: home, personalOwner: { kind: "execution-account", identity: home } };

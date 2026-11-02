@@ -8,6 +8,12 @@ import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
 import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
 export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../private-json-file.ts";
+import {
+    assertUnclaimedSessionRoot,
+    establishProjectSessionStorage,
+    inspectProjectStorage,
+    inspectSessionProjectRoots,
+} from "../project-identity.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import type { FileSessionManifest, FileSessionProject } from "./file-session-store-types.ts";
 import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
@@ -96,6 +102,42 @@ export function ensureProject(
     const stat = statSync(enteredRoot);
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
     const canonicalRoot = realpathSync.native(enteredRoot);
+    const bindings = inspectProjectStorage(canonicalRoot).filter(
+        (item) => dirname(item.sessionDirectory) === resolve(baseDir),
+    );
+    const bound = bindings.find((item) => item.root === canonicalRoot) ?? bindings[0];
+    if (bound) {
+        const path = projectPath(bound.sessionDirectory);
+        if (pathExists(path)) {
+            const project = readJson<FileSessionProject>(path);
+            if (project.remote || project.projectId !== bound.sessionProjectId)
+                throw new Error("Bound Session project is unavailable");
+            establishProjectSessionStorage(canonicalRoot, project.projectId, bound.sessionDirectory);
+            return project;
+        }
+        // Only a locator with no prior history can create a new project record.
+        if (bound.sessionStoreEstablished || listManifests(bound.sessionDirectory, true).length)
+            throw new Error("Bound Session project is unavailable");
+        const timestamp = isoNow(now);
+        const project: FileSessionProject = {
+            projectId: bound.sessionProjectId,
+            displayName: basename(enteredRoot),
+            registeredRoot: bound.root,
+            currentRoot: bound.root,
+            lifecycle: "enabled",
+            accessScope: "local_runtime",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            disabledAt: null,
+            removedAt: null,
+            restoredAt: null,
+            relinkedAt: null,
+        };
+        writeJsonAtomically(path, project);
+        establishProjectSessionStorage(canonicalRoot, project.projectId, bound.sessionDirectory);
+        return project;
+    }
+    assertUnclaimedSessionRoot(canonicalRoot);
     const existing = listProjectsFromDisk(baseDir).find(
         (project) =>
             !project.remote &&
@@ -198,7 +240,9 @@ export function recordRemoteHostAnswer(
 }
 
 export function sessionDirForProject(baseDir: string, project: FileSessionProject): string {
-    return project.remote ? join(baseDir, project.projectId) : sessionDirForRoot(baseDir, project.currentRoot);
+    return project.remote
+        ? join(baseDir, project.projectId)
+        : join(baseDir, encodeCwdForSessionDir(resolve(project.currentRoot)));
 }
 
 export function listProjectsFromDisk(baseDir: string): FileSessionProject[] {
@@ -221,10 +265,40 @@ export function listProjectsFromDisk(baseDir: string): FileSessionProject[] {
 }
 
 export function findProject(baseDir: string, projectId: string): FileSessionProject | null {
-    return listProjectsFromDisk(baseDir).find((project) => project.projectId === projectId) || null;
+    const projects = listProjectsFromDisk(baseDir);
+    const direct = projects.find((project) => project.projectId === projectId);
+    if (direct) return direct;
+    for (const root of inspectSessionProjectRoots(projectId)) {
+        for (const binding of inspectProjectStorage(root)) {
+            if (dirname(binding.sessionDirectory) !== resolve(baseDir)) continue;
+            const project = projects.find((item) => item.projectId === binding.sessionProjectId);
+            if (project) return project;
+        }
+    }
+    return null;
+}
+
+export function relatedSessionProjects(baseDir: string, projectId: string): FileSessionProject[] {
+    const projects = listProjectsFromDisk(baseDir);
+    const roots = inspectSessionProjectRoots(projectId);
+    const ids = new Set([projectId]);
+    for (const root of roots)
+        for (const binding of inspectProjectStorage(root)) {
+            if (dirname(binding.sessionDirectory) === resolve(baseDir)) ids.add(binding.sessionProjectId);
+        }
+    return projects.filter((project) => ids.has(project.projectId));
+}
+
+export function sessionProjectMatches(baseDir: string, actualId: string, requestedId: string): boolean {
+    return (
+        actualId === requestedId ||
+        relatedSessionProjects(baseDir, requestedId).some((project) => project.projectId === actualId)
+    );
 }
 
 export function rootEvidence(project: FileSessionProject) {
+    const roots = inspectSessionProjectRoots(project.projectId);
+    if (roots.length) return roots.map((root) => ({ enteredRoot: root, canonicalRoot: root, rootState: "current" }));
     return [
         {
             enteredRoot: project.registeredRoot,
@@ -302,7 +376,9 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
         // recovery descriptors still belong to the original Project's bundle.
         const baseDir = dirname(sessionDir);
         const project = findProject(baseDir, candidate.projectId);
-        const ownerSessionDir = sessionDirForRoot(baseDir, project?.currentRoot || candidate.transcriptCwd);
+        const ownerSessionDir = project
+            ? sessionDirForProject(baseDir, project)
+            : sessionDirForRoot(baseDir, candidate.transcriptCwd);
         const path = manifestPath(ownerSessionDir, runwieldSessionId);
 
         if (pathExists(path)) {
@@ -360,12 +436,16 @@ export function findManifestById(
     baseDir: string,
     runwieldSessionId: string,
 ): { path: string; manifest: FileSessionManifest } | null {
+    let result: { path: string; manifest: FileSessionManifest } | null = null;
     for (const project of listProjectsFromDisk(baseDir)) {
         const sessionDir = sessionDirForProject(baseDir, project);
         const found = listManifests(sessionDir).find((item) => item.manifest.runwieldSessionId === runwieldSessionId);
-        if (found) return found;
+        if (found && found.manifest.projectId === project.projectId) {
+            if (result && result.path !== found.path) throw new Error("Conflicting Session identity claims");
+            result = found;
+        }
     }
-    return null;
+    return result;
 }
 
 interface ManifestFingerprint {
@@ -487,14 +567,29 @@ export class FileSessionManifestCache {
 
     resolve(runwieldSessionId: string, projectId?: string): { path: string; manifest: FileSessionManifest } | null {
         const cached = this.#manifests.get(runwieldSessionId);
-        if (cached) return this.#readRestoringPath(cached.path);
+        if (cached) {
+            for (const project of listProjectsFromDisk(this.#baseDir)) {
+                const otherPath = manifestPath(sessionDirForProject(this.#baseDir, project), runwieldSessionId);
+                if (otherPath === cached.path || !pathExists(otherPath)) continue;
+                const other = this.readPath(otherPath);
+                if (other?.manifest.projectId === project.projectId)
+                    throw new Error("Conflicting Session identity claims");
+            }
+            const found = this.#readRestoringPath(cached.path);
+            return found && (!projectId || sessionProjectMatches(this.#baseDir, found.manifest.projectId, projectId))
+                ? found
+                : null;
+        }
         if (projectId) {
-            const project = this.#project(projectId);
-            if (!project) return null;
-            const path = manifestPath(sessionDirForProject(this.#baseDir, project), runwieldSessionId);
-            const found = this.#readRestoringPath(path);
-            if (!found || found.manifest.projectId !== projectId) return null;
-            return found;
+            let result: { path: string; manifest: FileSessionManifest } | null = null;
+            for (const project of relatedSessionProjects(this.#baseDir, projectId)) {
+                const path = manifestPath(sessionDirForProject(this.#baseDir, project), runwieldSessionId);
+                const found = this.#readRestoringPath(path);
+                if (!found || found.manifest.projectId !== project.projectId) continue;
+                if (result && result.path !== found.path) throw new Error("Conflicting Session identity claims");
+                result = found;
+            }
+            return result;
         }
         const found = findManifestById(this.#baseDir, runwieldSessionId);
         if (!found) return null;

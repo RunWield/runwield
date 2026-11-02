@@ -281,6 +281,7 @@ export class RuntimeLifecycle {
     }
 
     adoptManagedSession(options: {
+        cwd?: string;
         session: import("../../owner-coordination/sessions.js").CatalogedSession;
         generation?: number | null;
         acknowledgedEventId?: string | null;
@@ -301,7 +302,12 @@ export class RuntimeLifecycle {
                 typeof options.hostedSessionId === "string" && options.hostedSessionId
                     ? options.hostedSessionId
                     : crypto.randomUUID(),
-            cwd: currentSegment?.transcriptCwd || cataloged.transcriptCwd,
+            cwd:
+                currentSegment?.kind === "execution" || currentSegment?.kind === "semantic_repair"
+                    ? currentSegment.transcriptCwd
+                    : (options.cwd ??
+                      this.services.sessionStore?.requireSessionProjectRoot(cataloged.projectId) ??
+                      cataloged.transcriptCwd),
             sessionManager: null,
             managed: {
                 runwieldSessionId: cataloged.runwieldSessionId,

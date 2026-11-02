@@ -17,26 +17,27 @@ import {
 const fixture = defineCommittedGitFixture();
 async function assertStoredBinding(home: string, identity: ProjectIdentity, roots: string[], checkouts = [identity]) {
     const canonicalRoots = await Promise.all(roots.map((root) => realpath(root)));
-    deepEqual(
-        JSON.parse(await readFile(join(home, ".wld", "projects", identity.projectId, "project.wld.json"), "utf8")),
-        {
-            version: 1,
-            projectId: identity.projectId,
-            displayName: basename(canonicalRoots[0]),
-            personalOwner: identity.personalOwner,
-            repositories: [
-                {
-                    repositoryId: identity.repositoryId,
-                    remote: null,
-                    decision: "new",
-                    checkouts: checkouts.map((checkout, index) => ({
-                        checkoutId: checkout.checkoutId,
-                        root: canonicalRoots[index],
-                    })),
-                },
-            ],
-        },
+    const { storageLocators, ...record } = JSON.parse(
+        await readFile(join(home, ".wld", "projects", identity.projectId, "project.wld.json"), "utf8"),
     );
+    ok(Array.isArray(storageLocators));
+    deepEqual(record, {
+        version: 1,
+        projectId: identity.projectId,
+        displayName: basename(canonicalRoots[0]),
+        personalOwner: identity.personalOwner,
+        repositories: [
+            {
+                repositoryId: identity.repositoryId,
+                remote: null,
+                decision: "new",
+                checkouts: checkouts.map((checkout, index) => ({
+                    checkoutId: checkout.checkoutId,
+                    root: canonicalRoots[index],
+                })),
+            },
+        ],
+    });
 }
 function admitted(result: ProjectIdentityAdmission): ProjectIdentity {
     equal(result.kind, "existing", JSON.stringify(result));

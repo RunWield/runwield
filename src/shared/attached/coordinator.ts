@@ -97,6 +97,8 @@ import {
     parseValidationInput,
 } from "./operations.ts";
 import {
+    attachedWorkflowBelongsToLocation,
+    currentAttachedProjectRoot,
     scrubAttachedChat,
     withoutAttachedChat,
     attachedValidationHolderSettled,
@@ -194,7 +196,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "triaging" && pending) return { kind: "triage", ...pending };
     if (record.state === "awaiting_planning" && pending) {
-        return { kind: "plan", ...pending, projectSetup: await projectSetupFor(record.projectRoot) };
+        return { kind: "plan", ...pending, projectSetup: await projectSetupFor(currentAttachedProjectRoot(record)) };
     }
     if (record.state === "awaiting_review" && record.plan && record.review) {
         return {
@@ -233,7 +235,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
         };
     }
     if (record.state === "implementing" && record.execution && record.plan && pending) {
-        const executionCwd = record.execution.executionCwd || record.projectRoot;
+        const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
         return {
             kind: "implementation",
             ...pending,
@@ -284,7 +286,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     // Neither delivery nor Core-advance projection may take that call's claimed revision.
     if (
         holder &&
-        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(currentAttachedProjectRoot(record)), holder)) &&
         !(await isLockHolderGone(JSON.stringify(holder)))
     )
         return record;
@@ -302,13 +304,13 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     )
         return record;
     if (record.state === "validating" || record.state === "reviewed") {
-        const delivered = await loadPlan(record.projectRoot, record.plan.planName).catch(() => null);
+        const delivered = await loadPlan(currentAttachedProjectRoot(record), record.plan.planName).catch(() => null);
         const receipt = delivered?.attrs.publicationReceipt;
         if (
             receipt &&
-            !(await findActiveByPlanName(record.projectRoot, record.plan.planName)) &&
+            !(await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName)) &&
             (await isCommitPublishedToTarget({
-                projectRoot: record.projectRoot,
+                projectRoot: currentAttachedProjectRoot(record),
                 targetBranch: receipt.targetBranch,
                 commit: receipt.publishedCommit,
             }).catch(() => false))
@@ -322,7 +324,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
                     reason: "delivered",
                     completionMode: "publication",
                     workRecord: (
-                        await readPublishedDeliverySources(record.projectRoot, {
+                        await readPublishedDeliverySources(currentAttachedProjectRoot(record), {
                             artifactCommit: receipt.publishedCommit,
                             planName: record.plan.planName,
                             planId: record.plan.planId,
@@ -337,12 +339,14 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     const executionRoot = record.execution?.executionCwd;
     const location = executionRoot
         ? { plan: await loadPlan(executionRoot, record.plan.planName).catch(() => null), archived: false }
-        : await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
+        : await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
               readOnly: true,
           });
     const { plan, archived } = location;
     const archivedPlan =
-        !plan && !archived ? await loadArchivedPlan(executionRoot || record.projectRoot, record.plan.planId) : null;
+        !plan && !archived
+            ? await loadArchivedPlan(executionRoot || currentAttachedProjectRoot(record), record.plan.planId)
+            : null;
     // Missing execution documents are restored by the completion authority, not this projection.
     if (!plan && !archived && !archivedPlan) {
         if (record.execution) return record;
@@ -372,7 +376,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         record.state === "validating" &&
         status === "verified" &&
         (plan?.attrs.deliveryEvidence?.mode === "non_git_in_place" ||
-            (await findActiveByPlanName(record.projectRoot, record.plan.planName)))
+            (await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName)))
     )
         return record;
     if (record.state === "validating" && ["implemented", "validated_ci", "reviewed"].includes(status || "")) {
@@ -394,7 +398,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         // checkpoint and registry settlement. Keep the issued action for retry.
         if (record.execution.executionMode === "worktree") {
             const entry = record.execution.worktreeId
-                ? await findById(record.projectRoot, record.execution.worktreeId)
+                ? await findById(currentAttachedProjectRoot(record), record.execution.worktreeId)
                 : null;
             if (entry?.status !== "completed") return record;
         }
@@ -603,7 +607,7 @@ async function loadForOperation(
             ),
         };
     }
-    if (loaded.status === "moved") {
+    if (loaded.status === "moved" || !attachedWorkflowBelongsToLocation(location, loaded.record)) {
         return {
             result: await rejected(
                 operation,
@@ -616,7 +620,10 @@ async function loadForOperation(
 
 export async function activate(envelope: ActivateEnvelope): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
-    const workflowId = workflowIdFor(location.projectRoot, envelope.operationId);
+    const workflowId = workflowIdFor(
+        location.bindings?.[0]?.attachedRoot ?? location.projectRoot,
+        envelope.operationId,
+    );
     const replay = async (current: AttachedWorkflowRecord): Promise<Decision> => {
         const saved = Object.hasOwn(current.acceptedOperations, envelope.operationId)
             ? current.acceptedOperations[envelope.operationId]
@@ -629,6 +636,8 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
     };
 
     const loaded = await loadAttachedWorkflowRecord(location, workflowId);
+    if (loaded.status === "moved")
+        return await rejected("activate", rejection("project_moved", "Workflow belongs to another Project."));
     if (loaded.status !== "missing") return (await replay(loaded.record)).result;
 
     const now = new Date().toISOString();
@@ -1132,7 +1141,7 @@ export async function openAttachedReviewRound(
         workflowId,
         async (current) => {
             if (!current) throw new Error("workflow_not_found: No Attached Workflow has this workflowId.");
-            if (current.projectRoot !== location.projectRoot) {
+            if (!attachedWorkflowBelongsToLocation(location, current)) {
                 throw new Error("project_moved: This workflow belongs elsewhere.");
             }
             const reconciled = await reconcilePlanPosition(current);
@@ -1206,7 +1215,7 @@ export async function applyAttachedReviewDecision(
         workflowId,
         async (current) => {
             if (!current) throw new Error("workflow_not_found: No Attached Workflow has this workflowId.");
-            if (current.projectRoot !== location.projectRoot) {
+            if (!attachedWorkflowBelongsToLocation(location, current)) {
                 throw new Error("project_moved: This workflow belongs elsewhere.");
             }
             const saved = current.review;
@@ -1329,7 +1338,7 @@ export async function saveAttachedReviewChat(
 ): Promise<void> {
     const location = locateAttachedWorkflows(projectRoot);
     const transaction = await transactAttachedWorkflowRecord(location, workflowId, async (current) => {
-        if (!current || current.projectRoot !== location.projectRoot)
+        if (!current || !attachedWorkflowBelongsToLocation(location, current))
             throw new Error("The Attached workflow cannot be restored.");
         const reconciled = await reconcilePlanPosition(current);
         if (reconciled !== current)
@@ -1403,7 +1412,7 @@ async function reviewReply(
         location,
         envelope.workflowId,
         async (current) => {
-            if (!current || current.projectRoot !== location.projectRoot)
+            if (!current || !attachedWorkflowBelongsToLocation(location, current))
                 return {
                     result: {
                         result: await rejected(
@@ -1588,7 +1597,10 @@ async function readStatusState(
     if (loaded.status === "missing") {
         return await rejected("status", rejection("workflow_not_found", "No Attached Workflow has this workflowId."));
     }
-    const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
+    const recovery =
+        loaded.status === "moved" || !attachedWorkflowBelongsToLocation(location, loaded.record)
+            ? movedRecovery(location, loaded.record)
+            : null;
     const compatibility = envelope.evidence ? assessCompatibility(envelope.evidence) : undefined;
     if (envelope.inspectOnly || (compatibility && isBlockingCompatibility(compatibility))) {
         return {
@@ -2187,7 +2199,7 @@ export async function runValidationOperation(
         }
     }
     if (operation === "start_validation" && resume) {
-        resume = await reconcileConsumedHostResume(current.projectRoot, current.plan.planName, resume);
+        resume = await reconcileConsumedHostResume(currentAttachedProjectRoot(current), current.plan.planName, resume);
     }
     if (resume?.kind === "reviewer") {
         try {
@@ -2231,7 +2243,7 @@ export async function runValidationOperation(
     }
     try {
         const result = await continueHostTurnValidation({
-            projectRoot: claimed.projectRoot,
+            projectRoot: currentAttachedProjectRoot(claimed),
             planName: current.plan.planName,
             resume,
             signal: options.signal,
@@ -2357,11 +2369,11 @@ async function validateAttachedReviewerCandidate(
     resume: Extract<import("../workflow/validation-host-contract.ts").ValidationHostResume, { kind: "reviewer" }>,
 ): Promise<void> {
     if (!record.plan) throw new Error("The Plan is missing.");
-    const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
+    const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
         readOnly: true,
     });
     if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
-    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
+    const entry = await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName);
     await assertHostReviewerCandidate({
         cwd: source.documentRoot,
         baseBranch: source.plan.attrs.worktreeBaseBranch || "",

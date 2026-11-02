@@ -30,7 +30,7 @@ dependencies:
     - "external-plan-store/establish-stable-project-identity"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Preserve Session and Connect Continuity
