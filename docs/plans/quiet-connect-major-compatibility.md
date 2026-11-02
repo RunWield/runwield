@@ -16,7 +16,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Quiet Connect Compatibility Across Qualified Release Families

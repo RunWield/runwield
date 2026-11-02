@@ -29,8 +29,10 @@ first-party plugins. A Connect plugin lets users explicitly invoke RunWield work
 while that host retains the conversation and makes every model call. _Avoid_: Plugin mode, always-on RunWield, trial
 mode
 
-**Compatibility Matrix**: Core-owned, versioned data of tested External Agent Host versions, adapter contracts,
-capabilities, and limits for a Connect adapter. Activation checks it; only acceptance evidence adds tested entries.
+**Compatibility Matrix**: Core-owned, versioned qualified release families, adapter contracts, minimum versions, and
+separate exact acceptance-run evidence for a Connect adapter. Stable hosts share coverage within a major; pre-1.0 hosts
+share coverage within a minor. New families require qualification. Policy coverage does not claim an individual run.
+Every evidence-carrying operation checks compatibility; nonblocking assessments stay internal and work continues quietly.
 _Avoid_: support list, capability manifest
 
 **Attached Mode**: The internal architecture underlying RunWield Connect, in which an External Agent Host makes every
