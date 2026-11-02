@@ -2249,10 +2249,16 @@ Updates keep personal and project settings, and bundled presets stay selectable 
 - Validation Repair Engineer uses Engineer's model and thinking level when it has none of its own.
 - Pi-authenticated providers, OpenAI-compatible discovery through `/models`, and local or custom providers through
   `models.json` are supported.
+- OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
+  reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
 - Antigravity CLI offers its Flash and Pro families and thinking levels.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
+
+**Acceptance scenario:** Given a fresh installation, OpenAI subscription sign-in reaches the browser authorization
+prompt with a valid agent host UUID. Repeating sign-in after a restart uses the same UUID; another installation uses
+its own UUID. An unreadable or invalid saved identity reports a storage error without replacing it or credentials.
 
 **Requirement: Recover from temporary model-service failures.** Pi-backed requests retry temporary connection,
 rate-limit, and server failures, including `Unexpected EOF`, under the [retry
