@@ -3,7 +3,7 @@ import type { HostedSession } from "./hosted-session.js";
 import { readRequestAttemptEntries, type RequestAttemptEntry } from "./request-dispatch.ts";
 import { workflowAttemptKey } from "./task-completion-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import { readPersistedActiveAgentName } from "./active-agent-session.js";
+import { readPersistedActiveAgentName } from "./active-agent-session.ts";
 
 export const PAIR_CHECKPOINT_CUSTOM_TYPE = "runwield.pair_checkpoint";
 

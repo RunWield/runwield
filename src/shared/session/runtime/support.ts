@@ -1,5 +1,5 @@
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
-import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.js";
+import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { getModelRegistry } from "../../models/model-registry.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";

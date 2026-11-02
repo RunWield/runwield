@@ -4,7 +4,7 @@
  */
 
 import { createAgentHandler } from "./agent-handler.js";
-import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.js";
+import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
 import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
 import {
     appendDebugLog,
