@@ -17,7 +17,7 @@ import { ExecutionMetricsRecorder } from "../../../../shared/workflow/execution-
 import { buildAiReviewPrompt, validateAiReviewResult } from "../../../../shared/standalone-review/ai-review.ts";
 import { recordWorkflowMetric } from "../../../../shared/workflow/metrics.js";
 import { parseDiffFiles } from "../../../../shared/workflow/review-diff-tool.ts";
-import { createReviewWidgetStore } from "./review-widget-handlers.js";
+import { createReviewWidgetStore } from "./review-widget-handlers.ts";
 
 /** @typedef {import("../../../../cmd/guided-review/protocol.ts").GuidedReviewUsage} GuideUsageTotals */
 

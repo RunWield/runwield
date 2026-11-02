@@ -48,7 +48,7 @@ import {
     reviewLocalConfigApi,
     reviewOpenInAppsApi,
 } from "./routes/api/review-file-handlers.ts";
-import { reviewWidgetApi } from "./routes/api/review-widget-handlers.js";
+import { reviewWidgetApi } from "./routes/api/review-widget-handlers.ts";
 import {
     devicesApi,
     ownerDashboardApi,
