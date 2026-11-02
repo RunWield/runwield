@@ -317,7 +317,7 @@ flowchart LR
 
 Core review logic lives in workflow modules and knows only the semantic request and response. Browser-aware plan/code
 review implementations live under `src/ui/review/`. The TUI maps interactions in
-`src/ui/tui/runtime-interaction-adapter.js`; ACP maps them in `src/acp/interaction-mapper.js`.
+`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `src/acp/interaction-mapper.js`.
 
 ## Root cause of the duplicated TUI blocks
 
@@ -958,7 +958,7 @@ flowchart LR
 
 The TUI creates one `SessionRuntime`, retains opaque Runtime session IDs, and never constructs or receives a
 `SessionHost`, `HostedSession`, Pi `SessionManager`, or Pi `AgentSession`. `runtime-adapter.js` renders semantic events
-into terminal blocks, while `runtime-interaction-adapter.js` implements selection, text, approval, and browser review
+into terminal blocks, while `runtime-interaction-adapter.ts` implements selection, text, approval, and browser review
 interactions.
 
 Natural-language turns and live-session slash commands call public `SessionRuntime` methods. Commands that operate on

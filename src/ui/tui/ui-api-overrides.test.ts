@@ -11,7 +11,7 @@ import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
-import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
