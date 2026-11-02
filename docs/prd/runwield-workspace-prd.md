@@ -939,6 +939,10 @@ starts with the front matter card hidden. Show front matter reveals it, and Hide
 keeps the full Markdown, including editable front matter, regardless of the card's visibility. On phones, document
 actions sit above the title, not beside its first lines.
 
+**Requirement: Plan-relative links.** Plan Review resolves relative document links from the reviewed Plan's directory,
+including nested child Plans and each Sequence tab. Project-root source references remain project-root references.
+Linked-file reads stay inside the reviewed Project.
+
 **Requirement: Contained working-file reads.** Code Review validates the OS-resolved path of the opened file before
 reading response bytes from that same file object. A concurrent directory replacement cannot redirect the read outside
 the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
@@ -1081,6 +1085,8 @@ every action stays available.
 - Given a Workspace Plan review, chat replies and revisions stay on the page. Approval returns to its Session in the
   same tab. Code Review chat stays on the page; approval or no-chat feedback returns to its Session. A failed decision
   stays in review.
+- Given a child Plan in `docs/plans/external-plan-store/` with a `../external-plan-store.md` link, Plan Review opens
+  `docs/plans/external-plan-store.md` in standalone and Workspace review without changing the pending review.
 - Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
 - Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
   the read; outside files stay unchanged.
