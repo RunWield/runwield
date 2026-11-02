@@ -23,7 +23,7 @@ import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { HostedSession } from "../../hosted-session.js";
 import { setCustomSetting } from "../../../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.js";
-import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.js";
+import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.ts";
 import { prepareClaudeCliCommand, removeClaudeCliPromptFile } from "./command.ts";
 import { ClaudeCliExecutionSession } from "./execution-session.ts";
 import { ClaudeCliBackendError } from "./failure.ts";

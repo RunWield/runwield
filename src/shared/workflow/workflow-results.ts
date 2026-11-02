@@ -6,11 +6,83 @@
  * compatibility data only.
  */
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-function extractText(value) {
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/pi-ai";
+import type { ImageAttachment } from "../session/types.js";
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { ReviewAdvisory, ReviewFinding } from "./review-outcome.ts";
+
+/** Legacy message content is inspected without changing the existing field checks. */
+interface RawTextBlock {
+    type?: string;
+    text?: unknown;
+    content?: unknown;
+    contentText?: unknown;
+}
+
+interface RawTaskCompletedDetails {
+    message?: unknown;
+}
+
+interface RawMessageDetails {
+    details?: unknown;
+}
+
+interface RawMessageContent {
+    content?: unknown;
+}
+
+interface RawImageBlock {
+    type?: unknown;
+    data?: unknown;
+    mimeType?: unknown;
+}
+
+export interface WorkflowResultDetails {
+    outcome?: JsonValue;
+    approved?: JsonValue;
+    feedback?: JsonValue;
+    findings?: JsonValue;
+    advisories?: JsonValue;
+    planName?: JsonValue;
+    triageMeta?: JsonValue;
+    message?: JsonValue;
+}
+
+export type ReviewOutcome = "approved" | "feedback";
+
+export interface ReviewOutcomeResult {
+    outcome: ReviewOutcome;
+    approved: boolean;
+    feedback: string;
+    findings: ReviewFinding[];
+    advisories: ReviewAdvisory[];
+}
+
+export type PlanOutcome =
+    | "approved_execute"
+    | "approved_decompose"
+    | "saved"
+    | "feedback"
+    | "conversation"
+    | "canceled"
+    | "repair_required"
+    | "no_call";
+
+export interface PlanOutcomeResult {
+    outcome: PlanOutcome;
+    planName?: string;
+    triageMeta?: TriageMeta;
+    feedback?: string;
+    images?: ImageAttachment[];
+}
+
+export interface WorkflowTaskCompletedReport {
+    completed: boolean;
+    message: string;
+}
+
+function extractText(value: unknown): string {
     if (typeof value === "string") return value.trim();
     if (!value || typeof value !== "object") return "";
 
@@ -18,31 +90,23 @@ function extractText(value) {
         return value.map(extractText).filter(Boolean).join("\n").trim();
     }
 
-    const block = /** @type {{ type?: string, text?: unknown, content?: unknown, contentText?: unknown }} */ (value);
+    const block = value as RawTextBlock;
     if (typeof block.text === "string") return block.text.trim();
     if (typeof block.contentText === "string") return block.contentText.trim();
     if (block.type === "tool_result") return extractText(block.content);
     return "";
 }
 
-/**
- * @param {unknown} details
- * @returns {string | null}
- */
-function extractTaskCompletedMessage(details) {
+function extractTaskCompletedMessage(details: unknown): string | null {
     if (!details || typeof details !== "object") return null;
-    const message = /** @type {{ message?: unknown }} */ (details).message;
+    const message = (details as RawTaskCompletedDetails).message;
     return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
 /**
  * Read the latest task_completed report message from a message stream.
- *
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @param {number} [fromIndex]
- * @returns {string | null}
  */
-export function readLatestTaskCompletedMessage(messages, fromIndex) {
+export function readLatestTaskCompletedMessage(messages: AgentMessage[], fromIndex?: number): string | null {
     const start = fromIndex != null && fromIndex <= messages.length ? fromIndex : 0;
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
@@ -53,7 +117,7 @@ export function readLatestTaskCompletedMessage(messages, fromIndex) {
             "toolName" in msg &&
             msg.toolName === "task_completed"
         ) {
-            return extractTaskCompletedMessage(/** @type {{ details?: unknown }} */ (msg).details);
+            return extractTaskCompletedMessage((msg as RawMessageDetails).details);
         }
     }
     return null;
@@ -66,13 +130,9 @@ export function readLatestTaskCompletedMessage(messages, fromIndex) {
  * Falls back to the latest task_completed message because execution agents often
  * report their summary through the terminal tool call instead of a final text
  * response.
- *
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @returns {string | null}
  */
-export function extractAssistantOutput(messages) {
-    /** @type {string | null} */
-    let taskCompletedMessage = null;
+export function extractAssistantOutput(messages: AgentMessage[]): string | null {
+    let taskCompletedMessage: string | null = null;
 
     for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i];
@@ -85,12 +145,12 @@ export function extractAssistantOutput(messages) {
             "toolName" in msg &&
             msg.toolName === "task_completed"
         ) {
-            taskCompletedMessage = extractTaskCompletedMessage(/** @type {{ details?: unknown }} */ (msg).details);
+            taskCompletedMessage = extractTaskCompletedMessage((msg as RawMessageDetails).details);
         }
 
         if (!("role" in msg) || msg.role !== "assistant") continue;
 
-        const text = extractText(/** @type {{ content?: unknown }} */ (msg).content);
+        const text = extractText((msg as RawMessageContent).content);
         if (text) {
             return text;
         }
@@ -100,41 +160,13 @@ export function extractAssistantOutput(messages) {
 }
 
 /**
- * @typedef {Object} WorkflowResultDetails
- * @property {unknown} [outcome]
- * @property {unknown} [approved]
- * @property {unknown} [feedback]
- * @property {unknown} [findings]
- * @property {unknown} [advisories]
- * @property {unknown} [planName]
- * @property {unknown} [triageMeta]
- * @property {unknown} [message]
- */
-
-/**
  * Pi tool-result details are JSON values. Only plain records can contain the
  * compatibility fields read by this module.
- *
- * @param {import('@earendil-works/pi-ai').JsonValue | undefined} details
- * @returns {WorkflowResultDetails | null}
  */
-function readWorkflowResultDetails(details) {
+function readWorkflowResultDetails(details: JsonValue | undefined): WorkflowResultDetails | null {
     if (!details || typeof details !== "object" || Array.isArray(details)) return null;
-    return /** @type {WorkflowResultDetails} */ (details);
+    return details as WorkflowResultDetails;
 }
-
-/**
- * @typedef {"approved" | "feedback"} ReviewOutcome
- */
-
-/**
- * @typedef {Object} ReviewOutcomeResult
- * @property {ReviewOutcome} outcome
- * @property {boolean} approved
- * @property {string} feedback
- * @property {import('../../tools/review-complete.ts').ReviewFinding[]} findings
- * @property {import('../../tools/review-complete.ts').ReviewAdvisory[]} advisories
- */
 
 /**
  * Read the latest review_complete tool result from a message stream.
@@ -144,12 +176,8 @@ function readWorkflowResultDetails(details) {
  *
  * When `fromIndex` is provided, only messages at or after that index are searched,
  * preventing stale outcomes from earlier turns from being picked up.
- *
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @param {number} [fromIndex] - Only search messages from this index onwards.
- * @returns {ReviewOutcomeResult | null}
  */
-export function readLatestReviewOutcome(messages, fromIndex) {
+export function readLatestReviewOutcome(messages: AgentMessage[], fromIndex?: number): ReviewOutcomeResult | null {
     const start = fromIndex != null && fromIndex <= messages.length ? fromIndex : 0;
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
@@ -164,15 +192,11 @@ export function readLatestReviewOutcome(messages, fromIndex) {
             const outcome = details?.outcome;
             if (details && (outcome === "approved" || outcome === "feedback")) {
                 return {
-                    outcome: /** @type {ReviewOutcome} */ (outcome),
+                    outcome: outcome,
                     approved: details.approved === true,
                     feedback: typeof details.feedback === "string" ? details.feedback : "",
-                    findings: Array.isArray(details.findings)
-                        ? /** @type {import('../../tools/review-complete.ts').ReviewFinding[]} */ (details.findings)
-                        : [],
-                    advisories: Array.isArray(details.advisories)
-                        ? /** @type {import('../../tools/review-complete.ts').ReviewAdvisory[]} */ (details.advisories)
-                        : [],
+                    findings: Array.isArray(details.findings) ? (details.findings as ReviewFinding[]) : [],
+                    advisories: Array.isArray(details.advisories) ? (details.advisories as ReviewAdvisory[]) : [],
                 };
             }
         }
@@ -181,29 +205,12 @@ export function readLatestReviewOutcome(messages, fromIndex) {
 }
 
 /**
- * @typedef {"approved_execute" | "approved_decompose" | "saved" | "feedback" | "conversation" | "canceled" | "repair_required" | "no_call"} PlanOutcome
- */
-
-/**
- * @typedef {Object} PlanOutcomeResult
- * @property {PlanOutcome} outcome
- * @property {string} [planName]
- * @property {import('../../tools/plan-written.ts').TriageMeta} [triageMeta]
- * @property {string} [feedback]
- * @property {Array<{base64: string, mimeType: string}>} [images]
- */
-
-/**
  * Read the latest plan_written tool result's outcome from a message stream.
  *
  * When `fromIndex` is provided, only messages at or after that index are searched,
  * preventing stale outcomes from earlier turns from being picked up.
- *
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @param {number} [fromIndex] - Only search messages from this index onwards (exclusive lower bound)
- * @returns {PlanOutcomeResult | null}
  */
-export function readLatestPlanOutcome(messages, fromIndex) {
+export function readLatestPlanOutcome(messages: AgentMessage[], fromIndex?: number): PlanOutcomeResult | null {
     const start = fromIndex != null ? fromIndex : 0;
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
@@ -211,13 +218,11 @@ export function readLatestPlanOutcome(messages, fromIndex) {
             const details = readWorkflowResultDetails(msg.details);
             const outcome = details?.outcome;
             if (outcome) {
-                const images = readToolResultImages(/** @type {{ content?: unknown }} */ (msg).content);
+                const images = readToolResultImages((msg as RawMessageContent).content);
                 return {
-                    outcome: /** @type {PlanOutcome} */ (outcome),
-                    planName: /** @type {string | undefined} */ (details.planName),
-                    triageMeta: /** @type {import('../../tools/plan-written.ts').TriageMeta | undefined} */ (
-                        details.triageMeta
-                    ),
+                    outcome: outcome as PlanOutcome,
+                    planName: details.planName as string | undefined,
+                    triageMeta: details.triageMeta as TriageMeta | undefined,
                     feedback: typeof details.feedback === "string" ? details.feedback : undefined,
                     ...(images.length > 0 && { images }),
                 };
@@ -227,15 +232,11 @@ export function readLatestPlanOutcome(messages, fromIndex) {
     return null;
 }
 
-/**
- * @param {unknown} content
- * @returns {Array<{base64: string, mimeType: string}>}
- */
-function readToolResultImages(content) {
+function readToolResultImages(content: unknown): ImageAttachment[] {
     if (!Array.isArray(content)) return [];
     return content.flatMap((block) => {
         if (!block || typeof block !== "object") return [];
-        const image = /** @type {{type?: unknown, data?: unknown, mimeType?: unknown}} */ (block);
+        const image = block as RawImageBlock;
         if (image.type !== "image" || typeof image.data !== "string" || typeof image.mimeType !== "string") {
             return [];
         }
@@ -250,12 +251,8 @@ function readToolResultImages(content) {
  * preventing stale completions from earlier root turns from advancing workflow state.
  * If the returned message stream is shorter than `fromIndex`, treat it as a fresh
  * or sliced transcript and search it from the beginning.
- *
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @param {number} [fromIndex] - Only search messages from this index onwards.
- * @returns {boolean}
  */
-export function readLatestTaskCompletedOutcome(messages, fromIndex) {
+export function readLatestTaskCompletedOutcome(messages: AgentMessage[], fromIndex?: number): boolean {
     return readLatestTaskCompletedReport(messages, fromIndex).completed;
 }
 
@@ -265,12 +262,11 @@ export function readLatestTaskCompletedOutcome(messages, fromIndex) {
  * Semantic repair needs the report itself, not just the completion signal: the
  * next Reviewer round independently verifies the repair agent's per-item
  * dispositions, so the claims must survive the dispatch.
- *
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @param {number} [fromIndex] - Only search messages from this index onwards.
- * @returns {{ completed: boolean, message: string }}
  */
-export function readLatestTaskCompletedReport(messages, fromIndex) {
+export function readLatestTaskCompletedReport(
+    messages: AgentMessage[],
+    fromIndex?: number,
+): WorkflowTaskCompletedReport {
     const start = fromIndex != null && fromIndex <= messages.length ? fromIndex : 0;
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
