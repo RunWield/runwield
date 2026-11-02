@@ -9,7 +9,7 @@ import { type Container, type Editor, Image, Key, matchesKey, type TUI } from "@
 import { stopTUI } from "./tui.ts";
 import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-session.ts";
 import type { ImageAttachment } from "../../shared/session/types.js";
-import { imageTheme } from "../theme/theme.js";
+import { imageTheme } from "../theme/theme.ts";
 import type { GenerationGuard } from "./generation-guard.ts";
 import type { UiAPI } from "./types.js";
 

@@ -973,9 +973,23 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Fresh, focused repair verification.** Validation Repair Engineer instructions require rerunning every
+previously failing test file identified in the repair context, plus focused checks for the repairs, after the final
+edit using the project's supported runner. Non-test failures require the relevant failing checks. Later edits require
+rerunning those checks before task completion. Reports give exact commands and results, identify unverified items, and
+leave full validation pending. Repair guidance distinguishes assertion/build failures, timeouts or suspected hangs,
+and interrupted/unstarted checks. Timeouts prompt wait and contention diagnosis rather than automatic deadline
+increases; they do not alone prove deadlock. Missing reports after a timeout remain incomplete evidence. This is Agent
+guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
+
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
 load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
 runtime and cannot report success without running the Astro checker.
+
+**Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
+failed run's diagnostics alongside the user's additional instructions. Host repair packets identify that run and its
+Git candidate when available. Older Plan failure text must not replace that evidence. Follow-up completion still
+requires the complete configured validation command.
 
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
@@ -989,10 +1003,16 @@ progress display comes from the confirmed validation and publication results of 
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
   a failure keeps the workflow in repair.
+- Given edits after passing focused repair checks, the Repair Engineer is instructed to rerun every supplied failing
+  test file and repair-focused check before task completion and report the fresh results.
+- Given a timeout with no test report, repair guidance treats the report as incomplete evidence, investigates the
+  waiting operation, and does not assume an assertion defect or increase the timeout automatically.
 - Given passed checks and a process restart, the Plan stays implemented and resumes semantic review.
 - Given a Session that shows failed checks from an earlier attempt, a resumed delivery that publishes successfully
   reports completion with current results.
 - Given failed checks or review, the user sees repair progress or a concrete recovery choice.
+- Given successive CI failures with different diagnostics, Engineer follow-up includes the latest run and candidate
+  plus custom user text, and does not substitute a previously repaired failure.
 
 #### Manual QA checklist
 
@@ -2541,6 +2561,9 @@ removal as completed cleanup.
   guidance applies. RunWield neither invents a repository nor validates on the laptop.
 - Given an active Agent, a long-running owned subprocess, and an Agent-started server, normal exit stops them and
   retains saved work. No background Agent or server remains active.
+- Given normal exit during a healthy personal-mount storage check, shutdown lets the bounded check settle before
+  unmounting and removes the private mount root without reporting cleanup uncertainty. A timed-out kernel request
+  still keeps the sealed root and reports cleanup uncertainty.
 - Given abrupt laptop or network loss, detected loss stops owned work without a final client message, including
   detached descendants and orphans of a force-killed TUI. Unrelated server processes remain running. Unconfirmed
   termination is reported honestly within the cleanup limits above.

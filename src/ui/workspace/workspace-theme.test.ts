@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
-import { resolveSelectedThemeJson } from "../theme/theme.js";
+import { resolveSelectedThemeJson } from "../theme/theme.ts";
 import { renderRunWieldThemeCss } from "../design-system/theme-bridge.ts";
 import { createWorkspaceApp } from "./server.js";
 import { GET } from "./pages/theme.css.ts";

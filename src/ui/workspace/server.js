@@ -5,7 +5,7 @@ import { env, versions } from "node:process";
 import { readFile } from "node:fs/promises";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { sessionArtifactKindLabel } from "../../shared/session/session-sidebar.ts";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.js";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
@@ -21,7 +21,7 @@ import {
     plansApi,
     workspaceApi,
 } from "./routes/api/handlers.ts";
-import { registerRemoteApiRoutes } from "./routes/remote-api.js";
+import { registerRemoteApiRoutes } from "./routes/remote-api.ts";
 import {
     registerReviewDecisionPromise,
     resolveReviewDecision,
@@ -48,7 +48,7 @@ import {
     reviewLocalConfigApi,
     reviewOpenInAppsApi,
 } from "./routes/api/review-file-handlers.ts";
-import { reviewWidgetApi } from "./routes/api/review-widget-handlers.js";
+import { reviewWidgetApi } from "./routes/api/review-widget-handlers.ts";
 import {
     devicesApi,
     ownerDashboardApi,
@@ -758,6 +758,17 @@ export function createReviewWorkspaceApp(options) {
  */
 async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token }) {
     const payload = { ...reviewPayload, token, mode: "workflow" };
+    if (reviewType === "plan") {
+        const relativePlanPath = (path) =>
+            typeof path === "string" ? relative(cwd, resolve(cwd, path)).replaceAll("\\", "/") : path;
+        payload.planPath = relativePlanPath(payload.planPath);
+        if (Array.isArray(payload.sequenceDocuments)) {
+            payload.sequenceDocuments = payload.sequenceDocuments.map((document) => ({
+                ...document,
+                planPath: relativePlanPath(document.planPath),
+            }));
+        }
+    }
     if (reviewType === "code" && typeof reviewPayload.targetBranch === "string") {
         try {
             payload.rawPatch = await getWorktreeReviewDiff(

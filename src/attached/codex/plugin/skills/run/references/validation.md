@@ -5,6 +5,10 @@ revision, and `payload: {}`. Core runs the configured checks; do not start a sec
 while Core sends progress. The installed plugin gives each tool up to 3600 seconds; it does not change Codex's normal
 permissions. After an interrupted or timed-out call, read `status` before continuing the saved validation attempt.
 
+For `validation_running`, keep waiting for the active operation. Inspect-only status reports its operation ID,
+start time, and latest available checkpoint phase without advancing it. A slow call is not proof of interruption;
+do not call `start_validation` while this action is present. Recovery is appropriate only for `validation_recovery`.
+
 For `validation`, read the requested kind and current action identity. If compact status returns `requestAvailable`
 instead of a request, fetch `get_instructions` to read the decision. Each worker checks its fetched instruction
 contract is `runwield.attached.validation/1` before acting. Core owns rounds, findings, budgets, candidate freshness, and gate outcomes.

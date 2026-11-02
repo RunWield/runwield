@@ -23,7 +23,11 @@ export type ValidationReviewState = {
     lastRepairReport?: string;
 };
 
-export type PendingCiDecision = { ciAttempts: number; failureReason: string };
+export type CiRunEvidence = {
+    runId: string;
+    candidateIdentity?: string;
+};
+export type PendingCiDecision = { ciAttempts: number; failureReason: string; evidence?: CiRunEvidence };
 export type HostReviewerContinuation = { semanticRound: number; correctionCount: number; correction?: string };
 type PendingHostDecision = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "decision" }>;
 type PendingHostRepair = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>;

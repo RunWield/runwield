@@ -164,10 +164,45 @@ async function projectSetupFor(projectRoot: string): Promise<string[]> {
     return setup;
 }
 
+/** Status and admission use the same durable ownership evidence, without reclaiming it. */
+async function validationOperationIsActive(record: AttachedWorkflowRecord): Promise<boolean> {
+    const holder = record.validation?.holder;
+    return Boolean(
+        holder &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await isLockHolderGone(JSON.stringify(holder))),
+    );
+}
+
 async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNextAction> {
     const pending = record.pendingAction;
     if (record.state === "validating") {
-        if (record.validation?.request && record.validation.actionId && !record.validation.resume) {
+        if (await validationOperationIsActive(record)) {
+            const source = record.plan
+                ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true })
+                : null;
+            const checkpoint = source?.plan?.attrs.validationCheckpoint;
+            return {
+                kind: "validation_running",
+                operationId: record.validation?.operationId,
+                operation: record.validation?.operation,
+                startedAt: record.validation?.holder?.startedAt,
+                ...(checkpoint && {
+                    progress: {
+                        phase: checkpoint.nextPhase,
+                        checkpointState: checkpoint.state,
+                        updatedAt: checkpoint.updatedAt,
+                    },
+                }),
+                guidance: "Core validation is active. Wait for the current call; inspect status for progress.",
+            };
+        }
+        if (
+            record.validation?.request &&
+            record.validation.actionId &&
+            !record.validation.resume &&
+            !record.validation.operationId
+        ) {
             const request = record.validation.request;
             if (request.kind === "recorder") return { kind: "recorder", actionId: record.validation.actionId, request };
             if (request.kind === "decision" && request.interaction.type === "code_review") {
@@ -2163,11 +2198,7 @@ export async function runValidationOperation(
         return await rejected(operation, rejection("action_superseded", "No validation action is pending."), current);
     }
     const checkpoint = current.validation ?? { coverage: [] };
-    if (
-        checkpoint.holder &&
-        !(await attachedValidationHolderSettled(location, checkpoint.holder)) &&
-        !(await isLockHolderGone(JSON.stringify(checkpoint.holder)))
-    ) {
+    if (await validationOperationIsActive(current)) {
         return await rejected(
             operation,
             rejection("workflow_busy", "Core validation is running. Retry after the active call returns."),
@@ -2331,7 +2362,12 @@ export async function runValidationOperation(
             operationId: checkpoint.operationId ?? envelope.operationId,
             operation: checkpoint.operationId ? checkpoint.operation : operation,
             evidence: checkpoint.operationId ? checkpoint.evidence : { ...envelope.evidence, coreVersion: VERSION },
-            holder: { pid: process.pid, hostname: getLockHostname(), token: crypto.randomUUID() },
+            holder: {
+                pid: process.pid,
+                hostname: getLockHostname(),
+                token: crypto.randomUUID(),
+                startedAt: new Date().toISOString(),
+            },
         },
     };
     const claim = await writeAttachedWorkflowRecord(location, claimed, current.revision);

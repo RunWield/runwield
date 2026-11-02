@@ -5,7 +5,7 @@ import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
-import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
+import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { createUiApi } from "./api.js";
 import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";

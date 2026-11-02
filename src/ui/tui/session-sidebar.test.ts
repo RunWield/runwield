@@ -9,7 +9,7 @@ import {
     TuiSessionSidebar,
     tuiSessionSidebarProjection,
 } from "./session-sidebar.ts";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 
 initRunWieldTheme();
 

@@ -121,7 +121,7 @@ import {
     getSettingsManager,
 } from "../settings.js";
 import { modelSupportsImageInput, prepareImagesForModel, resolveVisionFallbackModel } from "./image-attachments.ts";
-import { readPersistedActiveAgentName, readPersistedModelState, recordActiveAgent } from "./active-agent-session.js";
+import { readPersistedActiveAgentName, readPersistedModelState, recordActiveAgent } from "./active-agent-session.ts";
 import {
     assertPersonalResourcePath,
     personalAgentsRoot,

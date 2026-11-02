@@ -12,27 +12,55 @@ import { loadAgentDef, normalizeAgentInternalName } from "./agents.js";
 export const ACTIVE_AGENT_CUSTOM_TYPE = "runwield.active_agent";
 export const MANUAL_MODEL_CUSTOM_TYPE = "runwield.manual_model";
 
-/** @typedef {Pick<import('./hosted-session.js').MinimalSessionManagerLike, 'getBranch' | 'getEntries'>} SessionEntryReader */
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { MinimalSessionManagerLike } from "./hosted-session.js";
 
-/**
- * @typedef {Object} PersistedModelState
- * @property {string} provider
- * @property {string} model
- */
+export type SessionEntryReader = Pick<MinimalSessionManagerLike, "getBranch" | "getEntries">;
 
-/**
- * @typedef {Object} ModelChangeEntry
- * @property {string} [type]
- * @property {string} [provider]
- * @property {string} [modelId]
- */
+export interface PersistedModelState {
+    provider: string;
+    model: string;
+}
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
- * @param {string} provider
- * @param {string} model
- */
-export function recordManualModelSelection(sessionManager, provider, model) {
+export interface ModelChangeEntry {
+    type?: string;
+    provider?: string;
+    modelId?: string;
+}
+
+export interface PersistedActiveAgentState {
+    agentName: string;
+    displayName?: string;
+}
+
+/** Persisted custom data remains opaque until the existing field checks validate it. */
+interface RawManualModelData {
+    provider?: unknown;
+    model?: unknown;
+}
+
+interface RawManualModelEntry {
+    type?: string;
+    customType?: string;
+    data?: RawManualModelData;
+}
+
+interface RawActiveAgentData {
+    agentName?: unknown;
+    displayName?: unknown;
+}
+
+interface RawActiveAgentEntry {
+    type?: string;
+    customType?: string;
+    data?: RawActiveAgentData;
+}
+
+export function recordManualModelSelection(
+    sessionManager: SessionManager | undefined,
+    provider: string,
+    model: string,
+) {
     if (!sessionManager?.appendCustomEntry || !model?.trim()) return;
 
     try {
@@ -45,16 +73,14 @@ export function recordManualModelSelection(sessionManager, provider, model) {
     }
 }
 
-/**
- * @param {SessionEntryReader | undefined} sessionManager
- * @param {string} [agentName] Only return a choice owned by this active Agent.
- * @returns {PersistedModelState | null}
- */
-export function readPersistedManualModelState(sessionManager, agentName) {
+/** When agentName is supplied, only return a choice owned by that active Agent. */
+export function readPersistedManualModelState(
+    sessionManager: SessionEntryReader | undefined,
+    agentName?: string,
+): PersistedModelState | null {
     const entries = getSessionEntries(sessionManager);
     let activeAgent = "";
-    /** @type {PersistedModelState | null} */
-    let selection = null;
+    let selection: PersistedModelState | null = null;
     for (const entry of entries) {
         const recordedAgent = readAgentNameFromEntry(entry);
         if (recordedAgent) {
@@ -66,8 +92,7 @@ export function readPersistedManualModelState(sessionManager, agentName) {
             continue;
         }
         if (!entry || typeof entry !== "object") continue;
-        const typed =
-            /** @type {{ type?: string, customType?: string, data?: { provider?: unknown, model?: unknown } }} */ (entry);
+        const typed = entry as RawManualModelEntry;
         if (typed.type !== "custom" || typed.customType !== MANUAL_MODEL_CUSTOM_TYPE) continue;
         if (typeof typed.data?.model !== "string" || !typed.data.model.trim()) continue;
         selection = {
@@ -79,18 +104,7 @@ export function readPersistedManualModelState(sessionManager, agentName) {
     return selection;
 }
 
-/**
- * @typedef {Object} PersistedActiveAgentState
- * @property {string} agentName
- * @property {string} [displayName]
- */
-
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
- * @param {string} agentName
- * @param {string} [displayName]
- */
-export function recordActiveAgent(sessionManager, agentName, displayName) {
+export function recordActiveAgent(sessionManager: SessionManager | undefined, agentName: string, displayName?: string) {
     if (!sessionManager?.appendCustomEntry || !agentName) return;
 
     try {
@@ -107,11 +121,7 @@ export function recordActiveAgent(sessionManager, agentName, displayName) {
     }
 }
 
-/**
- * @param {SessionEntryReader | null | undefined} sessionManager
- * @returns {string | null}
- */
-export function readPersistedActiveAgentName(sessionManager) {
+export function readPersistedActiveAgentName(sessionManager: SessionEntryReader | null | undefined): string | null {
     const entries = getSessionEntries(sessionManager);
 
     for (let i = entries.length - 1; i >= 0; i--) {
@@ -122,16 +132,12 @@ export function readPersistedActiveAgentName(sessionManager) {
     return null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
- * @returns {PersistedModelState | null}
- */
-export function readPersistedModelState(sessionManager) {
+export function readPersistedModelState(sessionManager: SessionManager | undefined): PersistedModelState | null {
     const entries = getSessionEntries(sessionManager);
     for (let i = entries.length - 1; i >= 0; i--) {
         const entry = entries[i];
         if (!entry || typeof entry !== "object") continue;
-        const typed = /** @type {ModelChangeEntry} */ (entry);
+        const typed = entry as ModelChangeEntry;
         if (typed.type !== "model_change" || !typed.modelId?.trim()) continue;
         return {
             provider: typed.provider?.trim() || "",
@@ -141,11 +147,7 @@ export function readPersistedModelState(sessionManager) {
     return null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
- * @returns {Promise<string>}
- */
-export async function resolveResumeAgentName(sessionManager) {
+export async function resolveResumeAgentName(sessionManager: SessionManager | undefined): Promise<string> {
     const entries = getSessionEntries(sessionManager);
     const projectRoot = sessionManager?.getCwd?.();
 
@@ -171,36 +173,24 @@ export async function resolveResumeAgentName(sessionManager) {
     return AGENTS.ROUTER;
 }
 
-/**
- * @param {SessionEntryReader | null | undefined} sessionManager
- * @returns {unknown[]}
- */
-function getSessionEntries(sessionManager) {
+function getSessionEntries(sessionManager: SessionEntryReader | null | undefined): unknown[] {
     const entries = sessionManager?.getBranch?.() || sessionManager?.getEntries?.() || [];
     return Array.isArray(entries) ? entries : [];
 }
 
-/**
- * @param {unknown} entry
- * @returns {PersistedActiveAgentState | null}
- */
-export function readActiveAgentFromEntry(entry) {
+export function readActiveAgentFromEntry(entry: unknown): PersistedActiveAgentState | null {
     if (!entry || typeof entry !== "object") return null;
-    if (/** @type {{ type?: string }} */ (entry).type !== "custom") return null;
-    const customType = /** @type {{ customType?: string }} */ (entry).customType;
+    if ((entry as RawActiveAgentEntry).type !== "custom") return null;
+    const customType = (entry as RawActiveAgentEntry).customType;
     if (customType !== ACTIVE_AGENT_CUSTOM_TYPE) return null;
 
-    const data = /** @type {{ data?: { agentName?: unknown, displayName?: unknown } }} */ (entry).data;
+    const data = (entry as RawActiveAgentEntry).data;
     const agentName = typeof data?.agentName === "string" ? data.agentName.trim() : "";
     if (!agentName) return null;
     const displayName = typeof data?.displayName === "string" ? data.displayName.trim() : "";
     return { agentName, ...(displayName ? { displayName } : {}) };
 }
 
-/**
- * @param {unknown} entry
- * @returns {string}
- */
-function readAgentNameFromEntry(entry) {
+function readAgentNameFromEntry(entry: unknown): string {
     return readActiveAgentFromEntry(entry)?.agentName || "";
 }

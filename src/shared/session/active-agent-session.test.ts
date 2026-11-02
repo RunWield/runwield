@@ -14,7 +14,7 @@ import {
     type PersistedActiveAgentState,
     type PersistedModelState,
     type SessionEntryReader,
-} from "./active-agent-session.js";
+} from "./active-agent-session.ts";
 
 type FixtureEntryData = Partial<PersistedActiveAgentState & PersistedModelState>;
 type SessionBranch = ReturnType<NonNullable<SessionEntryReader["getBranch"]>>;

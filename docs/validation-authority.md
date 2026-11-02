@@ -68,6 +68,22 @@ enter the same Core decision branches without running CI first: Retry runs CI on
 request, and Stop pauses. A later invocation without an answer runs CI again. Operational retry waits return a pause
 instead of sleeping.
 
+Attached status checks the same durable operation holder and settlement evidence as operation admission. An unsettled
+holder projects `validation_running` before any pending host action, with its operation ID, start time, and the latest
+available checkpoint phase. Inspection never clears the holder, advances validation, or treats elapsed time as proof
+of interruption. A settled or dead holder permits the existing recovery path and original operation-ID replay.
+
+CI exhaustion saves the latest failure with its CI run ID and, for Git checkouts, the implementation candidate hash
+captured before the command. Engineer follow-up retains this evidence and the user's text; it never substitutes the
+Plan's older `failureReason`. Legacy saved decisions without run identity retain their recorded diagnostics without
+inventing provenance. Repair completion still runs the full configured command before review and publication.
+
+Run `bun scripts/connect-codex-validation-acceptance.ts` to qualify the installed Codex plugin through native MCP in a
+disposable repository. Add `--core <compiled executable>` to qualify a frozen compiled candidate without replacing the
+user's installed Core. It holds real CI at an external boundary, checks read-only active status and replay, exhausts
+distinct failures, and interrupts the host before recovering. It stops at the reviewer handoff and does not claim
+model-dispatch or publication acceptance. Summary, response, and timing evidence are saved in the printed directory.
+
 ### Session completion events
 
 Every Agent-owned workflow step ends through its accepted completion tool. The validation owner registers its listener

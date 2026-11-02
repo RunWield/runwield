@@ -5,7 +5,7 @@ import { createReplayEvents } from "../../shared/session/session-transcript-proj
 import { createUiApi } from "./api.js";
 import { SpinnerBlock } from "./blocks.js";
 import { createTuiDisplayConsumer } from "./runtime-display.ts";
-import { theme } from "../theme/theme.js";
+import { theme } from "../theme/theme.ts";
 
 function safeLabel(value: string): string {
     // deno-lint-ignore no-control-regex -- Durable host labels must not send terminal controls.

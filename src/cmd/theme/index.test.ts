@@ -15,7 +15,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { DEFAULT_THEME_NAME, getAvailableThemes, initRunWieldTheme, setTheme, theme } from "../../ui/theme/theme.js";
+import { DEFAULT_THEME_NAME, getAvailableThemes, initRunWieldTheme, setTheme, theme } from "../../ui/theme/theme.ts";
 import { runThemeCommand } from "./index.ts";
 
 const FIXTURE_THEME_NAME = "fixture-command-theme";

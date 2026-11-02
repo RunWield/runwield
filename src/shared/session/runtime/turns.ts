@@ -6,7 +6,7 @@ import { resolveNamedInvocation, withNamedInvocationDisplayMessage } from ".././
 import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.js";
 import { rollSessionTranscriptSegment } from ".././segment-rollover.ts";
 import { promptTemplateWorkflowConflict, resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
-import { recordManualModelSelection } from "../active-agent-session.js";
+import { recordManualModelSelection } from "../active-agent-session.ts";
 import { getAgentDisplayName } from "../agents.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from ".././session-runtime-interactions.js";
 

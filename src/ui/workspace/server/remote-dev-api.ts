@@ -1,7 +1,7 @@
 import type { APIContext } from "astro";
 import type { RemoteWorkspaceAdapter } from "./remote-adapter.js";
 import process from "node:process";
-import { DEFAULT_REMOTE_MAX_REQUEST_BYTES, registerRemoteApiRoutes } from "../routes/remote-api.js";
+import { DEFAULT_REMOTE_MAX_REQUEST_BYTES, registerRemoteApiRoutes } from "../routes/remote-api.ts";
 import { openRemoteWorkspaceAdapter } from "./remote-adapter.js";
 import { isRemoteDevelopmentModeEnabled } from "./remote-mode.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
@@ -10,21 +10,12 @@ const REMOTE_DEV_APP_KEY = Symbol.for("runwield.workspace.remote-dev-app");
 const REMOTE_DEV_DB_PATH_KEY = Symbol.for("runwield.workspace.remote-dev-db-path");
 const REMOTE_DEV_CONFIG_KEY = Symbol.for("runwield.workspace.remote-dev-config");
 
-type RemoteRouteParams = Record<string, string>;
-interface RemoteDevRouterOptions {
-    maxRequestBytes?: number;
-}
-interface RemoteDevRouteState extends RemoteDevRouterOptions {
-    collaboration: RemoteWorkspaceAdapter;
-}
-interface RemoteDevRouteContext {
-    req: Request;
-    request: Request;
-    url: URL;
-    params: RemoteRouteParams | null;
-    state: RemoteDevRouteState;
-}
-type RemoteDevRouteHandler = (context: RemoteDevRouteContext) => Response | Promise<Response>;
+import type {
+    RemoteApiRouteParams as RemoteRouteParams,
+    RemoteApiRouterOptions as RemoteDevRouterOptions,
+    RemoteApiRouteHandler as RemoteDevRouteHandler,
+} from "../routes/remote-api.ts";
+
 type RemoteDevRequestHandler = (request: Request) => Promise<Response>;
 interface RemoteDevRoute {
     method: string;
