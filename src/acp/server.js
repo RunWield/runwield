@@ -15,7 +15,7 @@ import { getSelectedDefaultModelAvailability } from "../shared/session/model-rea
 import { createSessionRuntime, SessionTurnInProgressError } from "../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
 import { AcpSessionMap, normalizeAcpSessionIdForLoad } from "./session-map.ts";
-import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.js";
+import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.ts";
 import { createAcpInteractionAdapter } from "./interaction-mapper.js";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 import { buildAcpModelOptions } from "./model-options.ts";
