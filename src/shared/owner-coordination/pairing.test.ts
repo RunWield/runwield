@@ -13,7 +13,7 @@ import {
     createPairingRequest,
     getPairingRequestByProof,
     stripTerminalControlCharacters,
-} from "./pairing.js";
+} from "./pairing.ts";
 import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 
 function idFactory() {

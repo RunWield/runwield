@@ -1,5 +1,4 @@
 [
-    "src/acp/event-mapper.js",
     "src/acp/interaction-mapper.js",
     "src/acp/server.js",
     "src/cmd/help/index.js",
@@ -9,7 +8,6 @@
     "src/shared/collaboration/protocol.js",
     "src/shared/collaboration/secrets.js",
     "src/shared/owner-coordination/database.js",
-    "src/shared/owner-coordination/pairing.js",
     "src/shared/owner-coordination/projects.js",
     "src/shared/owner-coordination/session-activations.js",
     "src/shared/owner-coordination/sessions.js",
@@ -50,7 +48,6 @@
     "src/ui/tui/golden-scenarios/project-workflow.js",
     "src/ui/tui/mermaid-markdown.js",
     "src/ui/tui/runtime-adapter.js",
-    "src/ui/tui/runtime-interaction-adapter.js",
     "src/ui/tui/testing/child-protocol.js",
     "src/ui/tui/testing/scenario-runner.js",
     "src/ui/tui/types.js",

@@ -221,7 +221,7 @@ for (const choice of ["skip", "open", "dismiss"]) {
                 suppressStartupHeader: true,
                 setActiveModel: () => Promise.resolve({ status: "active" }),
             });
-            const { createTuiInteractionAdapter } = await import("./runtime-interaction-adapter.js");
+            const { createTuiInteractionAdapter } = await import("./runtime-interaction-adapter.ts");
             const adapter = createTuiInteractionAdapter(view.uiAPI, { browser: NO_OPEN_BROWSER_PORT });
             tui.start();
             try {

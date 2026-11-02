@@ -6,44 +6,45 @@
 import { getCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.js";
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
 
-/** @param {unknown} value */
-function safeMeta(value) {
+import type { SessionNotification, SessionUpdate, ToolCallContent, UsageUpdate } from "@agentclientprotocol/sdk";
+import type { ContextUsage } from "@earendil-works/pi-coding-agent";
+import type { RuntimeToolContentBlock, SessionRuntimeEvent } from "../shared/session/session-runtime-events.js";
+
+export type { SessionNotification, SessionUpdate } from "@agentclientprotocol/sdk";
+export type AcpContextUsage = Pick<ContextUsage, "tokens" | "contextWindow">;
+export type RuntimeAcpMetadata = NonNullable<SessionRuntimeEvent["_meta"]>;
+
+export interface AcpUsageUpdate extends UsageUpdate {
+    sessionUpdate: "usage_update";
+}
+
+function safeMeta(value: unknown) {
     if (value === undefined) return undefined;
     if (!value || typeof value !== "object") return { runwield: value };
     return {
         runwield: Object.fromEntries(
-            Object.entries(/** @type {Record<string, unknown>} */ (value)).filter(([, entry]) => entry !== undefined),
+            Object.entries(value as RuntimeAcpMetadata).filter(([, entry]) => entry !== undefined),
         ),
     };
 }
 
-/**
- * @param {import('../shared/session/session-runtime-events.js').SessionRuntimeEvent} event
- * @param {Record<string, unknown>} [extra]
- */
-function runtimeMeta(event, extra = {}) {
-    const raw = /** @type {{ _meta?: unknown }} */ (event)._meta;
-    const base = raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
-    const merged = Object.fromEntries(
-        Object.entries({ ...base, ...extra }).filter(([, value]) => value !== undefined),
-    );
+function runtimeMeta(event: SessionRuntimeEvent, extra: RuntimeAcpMetadata = {}) {
+    const raw = event._meta;
+    const base = raw && typeof raw === "object" ? raw : {};
+    const merged = Object.fromEntries(Object.entries({ ...base, ...extra }).filter(([, value]) => value !== undefined));
     return Object.keys(merged).length > 0 ? safeMeta(merged) : undefined;
 }
 
-/**
- * ACP uses the same content-block shapes inside one protocol wrapper.
- * @param {import('../shared/session/session-runtime-events.js').RuntimeToolContentBlock[]} content
- */
-function mapToolContent(content) {
-    return content.map((block) => ({ type: "content", content: block }));
+/** ACP uses the same content-block shapes inside one protocol wrapper. */
+function mapToolContent(content: RuntimeToolContentBlock[]): ToolCallContent[] {
+    return content.map((block): ToolCallContent => ({ type: "content", content: block }));
 }
 
-/**
- * @param {{ tokens: number | null, contextWindow: number } | null} contextUsage exact current Runtime context usage
- * @param {number} [sessionCostUsd] cumulative USD cost of the ACP Session so far
- * @returns {Record<string, any> | null}
- */
-export function mapRuntimeContextToAcpUpdate(contextUsage, sessionCostUsd = 0) {
+/** Map exact current Runtime context usage and cumulative ACP Session cost in USD. */
+export function mapRuntimeContextToAcpUpdate(
+    contextUsage: AcpContextUsage | null,
+    sessionCostUsd = 0,
+): AcpUsageUpdate | null {
     const used = contextUsage?.tokens;
     const size = contextUsage?.contextWindow;
     if (typeof used !== "number" || !Number.isFinite(used) || used < 0) return null;
@@ -56,13 +57,11 @@ export function mapRuntimeContextToAcpUpdate(contextUsage, sessionCostUsd = 0) {
     };
 }
 
-/**
- * @param {import('../shared/session/session-runtime-events.js').SessionRuntimeEvent} event
- * @param {number} [sessionCostUsd] cumulative USD cost of the ACP Session so far
- * @param {{ tokens: number | null, contextWindow: number } | null} [contextUsage] exact current Runtime context usage
- * @returns {Record<string, any> | null}
- */
-export function mapRuntimeEventToAcpUpdate(event, sessionCostUsd = 0, contextUsage = null) {
+export function mapRuntimeEventToAcpUpdate(
+    event: SessionRuntimeEvent,
+    sessionCostUsd = 0,
+    contextUsage: AcpContextUsage | null = null,
+): SessionUpdate | null {
     switch (event.type) {
         case RuntimeEventTypes.USER_MESSAGE:
             return {
@@ -156,9 +155,8 @@ export function mapRuntimeEventToAcpUpdate(event, sessionCostUsd = 0, contextUsa
             };
         }
         case RuntimeEventTypes.MODEL_CHANGED: {
-            const model = event.provider && !event.model.includes("/")
-                ? `${event.provider}/${event.model}`
-                : event.model;
+            const model =
+                event.provider && !event.model.includes("/") ? `${event.provider}/${event.model}` : event.model;
             return {
                 sessionUpdate: "agent_message_chunk",
                 content: { type: "text", text: `Model changed: ${model}` },
@@ -188,7 +186,8 @@ export function mapRuntimeEventToAcpUpdate(event, sessionCostUsd = 0, contextUsa
                         description: command.description,
                         ...(command.usage?.[0] ? { input: { hint: command.usage[0].replace(/^.*?\s+/, "") } } : {}),
                     })),
-                    ...(event.promptTemplates || []).filter((template) => !getCommandDefinition(template.name))
+                    ...(event.promptTemplates || [])
+                        .filter((template) => !getCommandDefinition(template.name))
                         .map((template) => ({
                             name: template.name,
                             description: template.description || "Prompt template",
@@ -235,14 +234,12 @@ export function mapRuntimeEventToAcpUpdate(event, sessionCostUsd = 0, contextUsa
     }
 }
 
-/**
- * @param {string} acpSessionId
- * @param {import('../shared/session/session-runtime-events.js').SessionRuntimeEvent} event
- * @param {number} [sessionCostUsd] cumulative USD cost of the ACP Session so far
- * @param {{ tokens: number | null, contextWindow: number } | null} [contextUsage] exact current Runtime context usage
- * @returns {Record<string, any> | null}
- */
-export function mapRuntimeEventToAcpSessionNotification(acpSessionId, event, sessionCostUsd = 0, contextUsage = null) {
+export function mapRuntimeEventToAcpSessionNotification(
+    acpSessionId: string,
+    event: SessionRuntimeEvent,
+    sessionCostUsd = 0,
+    contextUsage: AcpContextUsage | null = null,
+): SessionNotification | null {
     const update = mapRuntimeEventToAcpUpdate(event, sessionCostUsd, contextUsage);
     if (!update) return null;
     return { sessionId: acpSessionId, update };

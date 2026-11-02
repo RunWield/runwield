@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { createTuiInteractionAdapter as createAdapterImplementation } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter as createAdapterImplementation } from "./runtime-interaction-adapter.ts";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
