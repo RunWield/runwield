@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
 import { readFile as fsReadFile } from "node:fs/promises";

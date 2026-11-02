@@ -16,7 +16,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 

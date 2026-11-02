@@ -8,58 +8,64 @@
  * via pi-coding-agent's tool registry (custom tools take precedence).
  */
 
-import { createEditToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
-const singleEditSchema = Type.Object({
-    path: Type.String({ description: "Path to the file to edit (relative or absolute)." }),
-    oldText: Type.String({
-        description: "Exact text to replace. It must match one unique region in the file.",
-    }),
-    newText: Type.String({ description: "Replacement text for oldText." }),
-}, { additionalProperties: false });
+import { createEditToolDefinition, type EditToolDetails, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "@earendil-works/pi-ai";
+const singleEditSchema = Type.Object(
+    {
+        path: Type.String({ description: "Path to the file to edit (relative or absolute)." }),
+        oldText: Type.String({
+            description: "Exact text to replace. It must match one unique region in the file.",
+        }),
+        newText: Type.String({ description: "Replacement text for oldText." }),
+    },
+    { additionalProperties: false },
+);
 
-/**
- * Accept a few stale/legacy argument shapes while advertising a single-edit schema.
- *
- * @param {unknown} input
- * @returns {{ path: string, oldText: string, newText: string }}
- */
-function prepareSingleEditArguments(input) {
+type SingleEditArguments = Static<typeof singleEditSchema>;
+export type SingleEditToolDefinition = ToolDefinition<typeof singleEditSchema, EditToolDetails | undefined>;
+
+interface LegacyEditChange {
+    oldText?: unknown;
+    newText?: unknown;
+}
+
+interface LegacyEditArguments {
+    path?: unknown;
+    file_path?: unknown;
+    oldText?: unknown;
+    newText?: unknown;
+    edits?: LegacyEditChange[];
+}
+
+/** Accept stale/legacy argument shapes while advertising a single-edit schema. */
+function prepareSingleEditArguments(input: unknown): SingleEditArguments {
     if (!input || typeof input !== "object") {
-        return /** @type {{ path: string, oldText: string, newText: string }} */ (input);
+        return input as SingleEditArguments;
     }
 
-    const args = /** @type {Record<string, unknown>} */ (input);
-    const path = typeof args.path === "string"
-        ? args.path
-        : typeof args.file_path === "string"
-        ? args.file_path
-        : undefined;
+    const args = input as LegacyEditArguments;
+    const path =
+        typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : undefined;
 
     if (typeof path === "string" && typeof args.oldText === "string" && typeof args.newText === "string") {
         return { path, oldText: args.oldText, newText: args.newText };
     }
 
     if (typeof path === "string" && Array.isArray(args.edits) && args.edits.length === 1) {
-        const edit = /** @type {{ oldText?: unknown, newText?: unknown }} */ (args.edits[0]);
+        const edit = args.edits[0];
         if (typeof edit?.oldText === "string" && typeof edit?.newText === "string") {
             return { path, oldText: edit.oldText, newText: edit.newText };
         }
     }
 
-    return /** @type {{ path: string, oldText: string, newText: string }} */ (input);
+    return input as SingleEditArguments;
 }
 
-/**
- * Create a single-replacement edit tool that preserves upstream errors.
- *
- * @param {string} cwd - Current working directory.
- * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>}
- */
-export function createSingleEditToolDefinition(cwd) {
+/** Create a single-replacement edit tool that preserves upstream errors. */
+export function createSingleEditToolDefinition(cwd: string): SingleEditToolDefinition {
     const original = createEditToolDefinition(cwd);
     const originalExecute = original.execute;
-    const tool = /** @type {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} */ (original);
+    const tool: SingleEditToolDefinition = original as unknown as SingleEditToolDefinition;
 
     tool.description =
         "Edit a single file by replacing one exact text block. Use multi_file_edit for multiple replacements or multiple files.";
@@ -72,9 +78,7 @@ export function createSingleEditToolDefinition(cwd) {
     tool.parameters = singleEditSchema;
     tool.prepareArguments = prepareSingleEditArguments;
     tool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
-        const singleEditParams = /** @type {{ path: string, oldText: string, newText: string }} */ (
-            /** @type {unknown} */ (params)
-        );
+        const singleEditParams = params;
         const editParams = {
             path: singleEditParams.path,
             edits: [{ oldText: singleEditParams.oldText, newText: singleEditParams.newText }],

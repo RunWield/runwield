@@ -3,7 +3,7 @@ import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/str
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 

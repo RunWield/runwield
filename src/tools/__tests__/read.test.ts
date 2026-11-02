@@ -16,7 +16,7 @@ import {
     type DisplayImage,
     type ReadToolArgs,
     type ToolContentPart,
-} from "../read.js";
+} from "../read.ts";
 
 initTheme();
 

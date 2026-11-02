@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { savePlan, loadPlan, ensurePlanIdentity } from "../../plan-store.js";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { collectArtifactConversationReply } from "./react/artifact-conversation.ts";

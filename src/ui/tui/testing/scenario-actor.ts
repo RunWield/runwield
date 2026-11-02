@@ -3,44 +3,53 @@
  * Protocol-checked deterministic model script dispatcher for Golden scenarios.
  */
 
-import { fauxAssistantMessage, fauxText, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+    fauxAssistantMessage,
+    fauxText,
+    fauxThinking,
+    fauxToolCall,
+    type AssistantMessage,
+} from "@earendil-works/pi-ai";
 
-/**
- * @typedef {Object} GoldenScriptTurn
- * @property {string} id
- * @property {string} agent
- * @property {string} [phase]
- * @property {number} [ordinal]
- * @property {string} [planName]
- * @property {string[]} [availableTools]
- * @property {string[]} [requiredTools]
- * @property {string[]} [forbiddenTools]
- * @property {unknown} [response]
- * @property {string} [text]
- * @property {string} [thinking]
- * @property {Array<{ name: string, arguments: unknown, id?: string }>} [toolCalls]
- * @property {boolean} [optional]
- */
+export interface GoldenScriptToolCall {
+    name: string;
+    arguments: unknown;
+    id?: string;
+}
 
-/**
- * @typedef {Object} GoldenTurnRequest
- * @property {string} agent
- * @property {string} [phase]
- * @property {number} [ordinal]
- * @property {string} [planName] Workflow Plan the Runtime reports as executing.
- * @property {string[]} [availableTools]
- */
+export interface GoldenScriptTurn {
+    id: string;
+    agent: string;
+    phase?: string;
+    ordinal?: number;
+    planName?: string;
+    availableTools?: string[];
+    requiredTools?: string[];
+    forbiddenTools?: string[];
+    response?: unknown;
+    text?: string;
+    thinking?: string;
+    toolCalls?: GoldenScriptToolCall[];
+    optional?: boolean;
+}
 
-/** @param {string[]} value */
-function normalizeSet(value = []) {
+export interface GoldenTurnRequest {
+    agent: string;
+    phase?: string;
+    ordinal?: number;
+    /** Workflow Plan the Runtime reports as executing. */
+    planName?: string;
+    availableTools?: string[];
+}
+
+export type GoldenTurnResolver = (context: unknown, options: unknown) => GoldenTurnRequest;
+type FauxToolArguments = Parameters<typeof fauxToolCall>[1];
+
+function normalizeSet(value: string[] = []) {
     return new Set(value.map((item) => String(item)));
 }
 
-/**
- * @param {GoldenScriptTurn} turn
- * @param {GoldenTurnRequest} request
- */
-function turnMatches(turn, request) {
+function turnMatches(turn: GoldenScriptTurn, request: GoldenTurnRequest) {
     if (turn.agent !== request.agent) return false;
     if (turn.phase && turn.phase !== request.phase) return false;
     // An Epic runs several child Plans through the same Agent and phase, so a turn
@@ -51,32 +60,27 @@ function turnMatches(turn, request) {
     return true;
 }
 
-/**
- * @param {GoldenScriptTurn} turn
- * @returns {import('@earendil-works/pi-ai').AssistantMessage}
- */
-export function createFauxMessageForTurn(turn) {
-    if (turn.response && typeof turn.response === "object") return /** @type {any} */ (turn.response);
-    const blocks = [];
+export function createFauxMessageForTurn(turn: GoldenScriptTurn): AssistantMessage {
+    if (turn.response && typeof turn.response === "object") return turn.response as AssistantMessage;
+    const blocks: AssistantMessage["content"] = [];
     if (turn.thinking) blocks.push(fauxThinking(turn.thinking));
     if (turn.text || typeof turn.response === "string") blocks.push(fauxText(turn.text || String(turn.response || "")));
     for (const toolCall of turn.toolCalls || []) {
-        blocks.push(fauxToolCall(toolCall.name, /** @type {any} */ (toolCall.arguments), { id: toolCall.id }));
+        blocks.push(fauxToolCall(toolCall.name, toolCall.arguments as FauxToolArguments, { id: toolCall.id }));
     }
     return fauxAssistantMessage(blocks.length === 1 ? blocks[0] : blocks);
 }
 
 export class GoldenScenarioActor {
-    /** @param {GoldenScriptTurn[]} script */
-    constructor(script) {
-        /** @type {GoldenScriptTurn[]} */
+    declare remaining: GoldenScriptTurn[];
+    declare consumed: GoldenScriptTurn[];
+
+    constructor(script: GoldenScriptTurn[]) {
         this.remaining = script.map((turn) => ({ ...turn }));
-        /** @type {GoldenScriptTurn[]} */
         this.consumed = [];
     }
 
-    /** @param {GoldenTurnRequest} request */
-    next(request) {
+    next(request: GoldenTurnRequest) {
         const availableTools = normalizeSet(request.availableTools);
         let matches = this.remaining.filter((turn) => turnMatches(turn, request));
         if (matches.length > 1 && request.ordinal !== undefined) {
@@ -95,16 +99,16 @@ export class GoldenScenarioActor {
         }
         if (matches.length === 0) {
             throw new Error(
-                `Unexpected scripted turn for agent=${request.agent} phase=${request.phase || ""}; remaining=${
-                    this.remaining.map((turn) => turn.id).join(",")
-                }`,
+                `Unexpected scripted turn for agent=${request.agent} phase=${request.phase || ""}; remaining=${this.remaining
+                    .map((turn) => turn.id)
+                    .join(",")}`,
             );
         }
         if (matches.length > 1) {
             throw new Error(
-                `Ambiguous scripted turn for agent=${request.agent} phase=${request.phase || ""}; matches=${
-                    matches.map((turn) => turn.id).join(",")
-                }`,
+                `Ambiguous scripted turn for agent=${request.agent} phase=${request.phase || ""}; matches=${matches
+                    .map((turn) => turn.id)
+                    .join(",")}`,
             );
         }
         const turn = matches[0];
@@ -145,11 +149,9 @@ export class GoldenScenarioActor {
      * Return a faux-provider response factory that dispatches through the same
      * protocol checks as direct actor use. The caller supplies actual Agent and
      * phase identity from Runtime/Agent context rather than prompt text.
-     *
-     * @param {(context: unknown, options: unknown) => GoldenTurnRequest} resolveTurn
      */
-    toFauxResponseFactory(resolveTurn) {
-        return (/** @type {unknown} */ context, /** @type {unknown} */ options) => {
+    toFauxResponseFactory(resolveTurn: GoldenTurnResolver) {
+        return (context: unknown, options: unknown) => {
             this.next(resolveTurn(context, options));
             const turn = this.consumed.at(-1);
             if (!turn) throw new Error("Faux response factory did not consume a scripted turn.");

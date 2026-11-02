@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { __test, createRunWieldGrepToolDefinition, type RunWieldGrepParams } from "../grep.js";
+import { __test, createRunWieldGrepToolDefinition, type RunWieldGrepParams } from "../grep.ts";
 
 type GrepTool = ReturnType<typeof createRunWieldGrepToolDefinition>;
 type GrepToolContext = Parameters<GrepTool["execute"]>[4];

@@ -29,7 +29,7 @@ import { HostedSession } from "../session/hosted-session.js";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { RuntimeEventTypes } from "../session/session-runtime-events.js";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { executePlan, executePreparedPlanSegmentHandoff } from "./plan-executor.ts";

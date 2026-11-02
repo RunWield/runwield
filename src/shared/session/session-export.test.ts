@@ -7,7 +7,7 @@ import process from "node:process";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { SessionHost } from "./session-host.ts";
 import { SessionRuntime, createSessionRuntime } from "./session-runtime.ts";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.js";

@@ -8,7 +8,7 @@ import { DefaultPackageManager, type PackageSource, SettingsManager } from "@ear
 import { relative } from "node:path";
 import { getCwd } from "../../constants.js";
 import { approveMetricsExporter, listInstalledMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
-import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.js";
+import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.ts";
 import { countPackageResourcesForSource, resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { discoverAndRegisterThemes } from "../../ui/theme/theme.js";

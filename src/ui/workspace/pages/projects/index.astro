@@ -2,7 +2,7 @@
 import ProjectRootForm from "../../islands/ProjectRootForm.tsx";
 import type { OwnerProjectView } from "../../server/owner-projects.ts";
 import SettingsLayout from "../../layouts/SettingsLayout.astro";
-import { loadOwnerProjects } from "../../server/astro-owner-data.js";
+import { loadOwnerProjects } from "../../server/astro-owner-data.ts";
 
 const projects = await loadOwnerProjects();
 ---

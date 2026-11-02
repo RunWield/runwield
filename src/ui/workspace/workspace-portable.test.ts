@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { versions } from "node:process";
 import { test } from "node:test";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { startWorkspaceServer } from "./server.js";
 
 test("portable Workspace renders pairing, serves assets and enforces owner authentication over HTTP", async () => {

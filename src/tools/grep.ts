@@ -7,22 +7,24 @@ import { stat as fsStat } from "node:fs/promises";
  * treated as one literal filesystem path.
  */
 
-import { createGrepToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { createGrepToolDefinition, type GrepToolDetails, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "@earendil-works/pi-ai";
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { getHomeDir } from "../constants.js";
 
 const grepSchema = Type.Object({
     pattern: Type.String({ description: "Search pattern (regex or literal string)." }),
-    path: Type.Optional(Type.Union([
-        Type.String({
-            description:
-                "Directory or file to search. May contain shell-style multiple paths, e.g. 'src tests'. Defaults to current directory.",
-        }),
-        Type.Array(Type.String(), {
-            description: "Directories or files to search. Use this for multiple search roots.",
-        }),
-    ])),
+    path: Type.Optional(
+        Type.Union([
+            Type.String({
+                description:
+                    "Directory or file to search. May contain shell-style multiple paths, e.g. 'src tests'. Defaults to current directory.",
+            }),
+            Type.Array(Type.String(), {
+                description: "Directories or files to search. Use this for multiple search roots.",
+            }),
+        ]),
+    ),
     glob: Type.Optional(Type.String({ description: "Filter files by glob pattern, e.g. '*.js' or '**/*.test.js'." })),
     ignoreCase: Type.Optional(Type.Boolean({ description: "Case-insensitive search (default: false)." })),
     literal: Type.Optional(Type.Boolean({ description: "Treat pattern as literal string instead of regex." })),
@@ -30,43 +32,41 @@ const grepSchema = Type.Object({
     limit: Type.Optional(Type.Number({ description: "Maximum number of matches to return (default: 100)." })),
 });
 
-/**
- * @typedef {{
- *   pattern: string,
- *   path?: string | string[],
- *   paths?: string[],
- *   glob?: string,
- *   ignoreCase?: boolean,
- *   literal?: boolean,
- *   context?: number,
- *   limit?: number,
- * }} RunWieldGrepParams
- *
- * @typedef {{
- *   path: string,
- *   glob?: string,
- *   prefix?: string,
- *   fileBasename?: string,
- *   forcePrefix?: boolean,
- * }} SearchTarget
- */
+export interface RunWieldGrepParams extends Static<typeof grepSchema> {
+    paths?: string[];
+}
 
-/**
- * @param {string} targetPath
- * @param {string} cwd
- * @returns {string}
- */
-function resolveToCwd(targetPath, cwd) {
+export type RunWieldGrepToolDefinition = ToolDefinition<typeof grepSchema, GrepToolDetails | undefined>;
+
+interface SearchTarget {
+    path: string;
+    glob?: string;
+    prefix?: string;
+    fileBasename?: string;
+    forcePrefix?: boolean;
+}
+
+interface RawGrepArguments {
+    path?: unknown;
+    paths?: unknown;
+}
+
+interface GrepContentPart {
+    type: string;
+    text?: string;
+}
+
+interface GrepSearchResult {
+    content: GrepContentPart[];
+    details?: GrepToolDetails;
+}
+
+function resolveToCwd(targetPath: string, cwd: string): string {
     const expanded = targetPath.startsWith("~/") ? join(getHomeDir(), targetPath.slice(2)) : targetPath;
     return isAbsolute(expanded) ? expanded : join(cwd, expanded);
 }
 
-/**
- * @param {string} targetPath
- * @param {string} cwd
- * @returns {Promise<boolean>}
- */
-async function pathExists(targetPath, cwd) {
+async function pathExists(targetPath: string, cwd: string): Promise<boolean> {
     try {
         await fsStat(resolveToCwd(targetPath, cwd));
         return true;
@@ -76,28 +76,15 @@ async function pathExists(targetPath, cwd) {
     }
 }
 
-/**
- * @param {string} targetPath
- * @param {string} cwd
- * @returns {Promise<boolean>}
- */
-async function isDirectory(targetPath, cwd) {
+async function isDirectory(targetPath: string, cwd: string): Promise<boolean> {
     return (await fsStat(resolveToCwd(targetPath, cwd))).isDirectory();
 }
 
-/**
- * @param {string} value
- * @returns {boolean}
- */
-function hasGlobSyntax(value) {
+function hasGlobSyntax(value: string): boolean {
     return /[*?\[]/.test(value);
 }
 
-/**
- * @param {string} token
- * @returns {{ path: string, glob: string }}
- */
-function splitGlobToken(token) {
+function splitGlobToken(token: string) {
     const normalizedToken = token.replace(/\\/g, "/");
     const absolute = normalizedToken.startsWith("/");
     const segments = normalizedToken.split("/");
@@ -115,16 +102,10 @@ function splitGlobToken(token) {
     };
 }
 
-/**
- * @param {string} value
- * @returns {string[]}
- */
-function splitShellLike(value) {
-    /** @type {string[]} */
-    const tokens = [];
+function splitShellLike(value: string): string[] {
+    const tokens: string[] = [];
     let token = "";
-    /** @type {"'" | '"' | null} */
-    let quote = null;
+    let quote: "'" | '"' | null = null;
     let escaped = false;
 
     for (const char of value) {
@@ -161,41 +142,27 @@ function splitShellLike(value) {
     return tokens;
 }
 
-/**
- * @param {string} targetPath
- * @param {string} cwd
- * @returns {string}
- */
-function displayPath(targetPath, cwd) {
+function displayPath(targetPath: string, cwd: string): string {
     const absolute = resolveToCwd(targetPath, cwd);
     const rel = relative(cwd, absolute).replace(/\\/g, "/");
     if (rel && !rel.startsWith("..")) return rel;
     return targetPath.replace(/\\/g, "/");
 }
 
-/**
- * @param {unknown} input
- * @returns {RunWieldGrepParams}
- */
-function prepareGrepArguments(input) {
+function prepareGrepArguments(input: unknown): RunWieldGrepParams {
     if (!input || typeof input !== "object") {
-        return /** @type {RunWieldGrepParams} */ (input);
+        return input as RunWieldGrepParams;
     }
 
-    const args = /** @type {Record<string, unknown>} */ (input);
+    const args = input as RawGrepArguments;
     if (args.path === undefined && Array.isArray(args.paths)) {
-        return /** @type {RunWieldGrepParams} */ ({ ...args, path: args.paths });
+        return { ...args, path: args.paths } as RunWieldGrepParams;
     }
 
-    return /** @type {RunWieldGrepParams} */ (input);
+    return input as RunWieldGrepParams;
 }
 
-/**
- * @param {string | string[] | undefined} rawPath
- * @param {string} cwd
- * @returns {Promise<string[]>}
- */
-async function normalizePathTokens(rawPath, cwd) {
+async function normalizePathTokens(rawPath: RunWieldGrepParams["path"], cwd: string): Promise<string[]> {
     if (Array.isArray(rawPath)) {
         return rawPath.map((path) => path.trim()).filter(Boolean);
     }
@@ -207,16 +174,13 @@ async function normalizePathTokens(rawPath, cwd) {
     return tokens.length > 0 ? tokens : ["."];
 }
 
-/**
- * @param {string | string[] | undefined} rawPath
- * @param {string | undefined} explicitGlob
- * @param {string} cwd
- * @returns {Promise<SearchTarget[]>}
- */
-async function buildSearchTargets(rawPath, explicitGlob, cwd) {
+async function buildSearchTargets(
+    rawPath: RunWieldGrepParams["path"],
+    explicitGlob: RunWieldGrepParams["glob"],
+    cwd: string,
+): Promise<SearchTarget[]> {
     const tokens = await normalizePathTokens(rawPath, cwd);
-    /** @type {SearchTarget[]} */
-    const targets = [];
+    const targets: SearchTarget[] = [];
 
     for (const token of tokens) {
         if (hasGlobSyntax(token) && !(await pathExists(token, cwd))) {
@@ -259,12 +223,7 @@ async function buildSearchTargets(rawPath, explicitGlob, cwd) {
     return targets;
 }
 
-/**
- * @param {string} line
- * @param {SearchTarget} target
- * @returns {string}
- */
-function prefixOutputLine(line, target) {
+function prefixOutputLine(line: string, target: SearchTarget): string {
     if (!target.prefix || !/^.+?(?::\d+: |-\d+- )/.test(line)) return line;
     if (line.startsWith(`${target.prefix}/`)) return line;
 
@@ -278,12 +237,7 @@ function prefixOutputLine(line, target) {
     return `${target.prefix}/${line}`;
 }
 
-/**
- * @param {{ content: Array<{ type: string, text?: string }>, details?: any }} result
- * @param {SearchTarget} target
- * @returns {string}
- */
-function extractPrefixedText(result, target) {
+function extractPrefixedText(result: GrepSearchResult, target: SearchTarget): string {
     return result.content
         .map((part) => part.text || "")
         .join("")
@@ -294,13 +248,8 @@ function extractPrefixedText(result, target) {
         .trim();
 }
 
-/**
- * @param {Array<{ details?: any }>} results
- * @returns {any}
- */
-function mergeDetails(results) {
-    /** @type {Record<string, unknown>} */
-    const details = {};
+function mergeDetails(results: Pick<GrepSearchResult, "details">[]): GrepToolDetails | undefined {
+    const details: GrepToolDetails = {};
     for (const result of results) {
         if (result.details?.matchLimitReached) {
             details.matchLimitReached = Math.max(
@@ -314,14 +263,10 @@ function mergeDetails(results) {
     return Object.keys(details).length > 0 ? details : undefined;
 }
 
-/**
- * @param {string} cwd
- * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>}
- */
-export function createRunWieldGrepToolDefinition(cwd) {
+export function createRunWieldGrepToolDefinition(cwd: string): RunWieldGrepToolDefinition {
     const original = createGrepToolDefinition(cwd);
     const originalExecute = original.execute;
-    const tool = /** @type {import('@earendil-works/pi-coding-agent').ToolDefinition<any, any>} */ (original);
+    const tool = original as unknown as RunWieldGrepToolDefinition;
 
     tool.description =
         "Search file contents for a pattern. Accepts one path, multiple paths, or shell-style path text such as 'src tests'. Respects .gitignore.";
@@ -333,7 +278,7 @@ export function createRunWieldGrepToolDefinition(cwd) {
     tool.parameters = grepSchema;
     tool.prepareArguments = prepareGrepArguments;
     tool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
-        const grepParams = /** @type {RunWieldGrepParams} */ (params);
+        const grepParams: RunWieldGrepParams = params;
         const targets = await buildSearchTargets(grepParams.path, grepParams.glob, cwd);
 
         if (targets.length === 1 && !Array.isArray(grepParams.path) && !targets[0].forcePrefix) {
@@ -347,10 +292,8 @@ export function createRunWieldGrepToolDefinition(cwd) {
             );
         }
 
-        /** @type {Array<{ content: Array<{ type: string, text?: string }>, details?: any }>} */
-        const results = [];
-        /** @type {string[]} */
-        const outputBlocks = [];
+        const results: GrepSearchResult[] = [];
+        const outputBlocks: string[] = [];
         let remainingLimit = grepParams.limit;
 
         for (const target of targets) {

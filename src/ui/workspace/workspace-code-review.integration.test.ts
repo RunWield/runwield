@@ -15,7 +15,7 @@ import {
 import { assertEquals, assertFalse, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 
