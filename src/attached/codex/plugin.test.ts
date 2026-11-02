@@ -110,6 +110,7 @@ test("Codex routes every workflow phase to its packaged action instructions", as
         implementation: "references/implementation.md",
         implemented: "references/validation.md",
         validation_recovery: "references/validation.md",
+        validation_running: "references/validation.md",
         validation: "references/validation.md",
         code_review: "references/validation.md",
         recorder: "references/validation.md",

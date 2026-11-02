@@ -509,7 +509,9 @@ exec ${quote(realGit)} "$@"
             const status = await fixture.status();
             assertEquals(status.state, "validating");
             assertEquals(status.revision, claim.record.revision);
-            assertEquals(status.nextAction.kind, "validation_recovery");
+            assert(status.nextAction.kind === "validation_running");
+            assertEquals(status.nextAction.operationId, input.operationId);
+            assertEquals(status.nextAction.operation, "work_record_completed");
             assertEquals(await readRecordBytes(fixture.root, fixture.workflowId), bytes);
         }
         const concurrent = await fixture.call("start_validation", await fixture.status());

@@ -63,6 +63,16 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
         };
     }
     if (action.kind === "return_to_host") return { ...summary, reason: action.reason, message: action.message };
+    if (action.kind === "validation_running") {
+        return {
+            ...summary,
+            operationId: action.operationId,
+            operation: action.operation,
+            startedAt: action.startedAt,
+            progress: action.progress,
+            guidance: action.guidance,
+        };
+    }
     if (action.kind === "validation_recovery") {
         return { ...summary, guidance: action.guidance, resultKind: action.resultKind, recovery: action.recovery };
     }

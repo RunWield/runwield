@@ -361,6 +361,7 @@ export interface AttachedValidationCheckpoint {
 
 export interface AttachedValidationHolder {
     token?: string;
+    startedAt?: string;
     pid: number;
     hostname: string;
 }

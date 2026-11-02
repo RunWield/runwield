@@ -37,7 +37,7 @@ Core owns host and version compatibility.
    and `payload: {}`. Then follow the Implementation flow in `/runwield:request`: ask any plain-text consent question,
    disclose the execution directory and branch, dispatch a fresh host subagent without host worktree isolation, and
    submit its bullet report as `task_completed.message` from this conversation. After a decline, stop; do not restart.
-5. For `implementation`, restore the worker with `/runwield:implement`. For `implemented`, `validation`, or
+5. For `implementation`, restore the worker with `/runwield:implement`. For `implemented`, `validation`, `validation_running`, or
    `validation_recovery`, follow `/runwield:validate`. Publication remains pending after validation. An absent workflow
    does not create a new request.
 

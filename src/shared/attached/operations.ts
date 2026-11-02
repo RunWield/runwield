@@ -266,6 +266,12 @@ export interface AttachedPlanningAction extends PendingHostAction {
     planId?: string;
 }
 
+export interface AttachedValidationProgress {
+    phase: import("../workflow/validation-checkpoint.ts").ValidationCheckpointPhase;
+    checkpointState: import("../workflow/validation-checkpoint.ts").ValidationCheckpointState;
+    updatedAt: string;
+}
+
 export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
     | AttachedPlanningAction
@@ -287,6 +293,14 @@ export type AttachedNextAction = (
           kind: "validation";
           actionId: string;
           request: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+      }
+    | {
+          kind: "validation_running";
+          operationId?: string;
+          operation?: AttachedOperationName;
+          startedAt?: string;
+          progress?: AttachedValidationProgress;
+          guidance: string;
       }
     | {
           kind: "validation_recovery";

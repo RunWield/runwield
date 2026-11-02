@@ -670,6 +670,12 @@ start or resume from the user's intent; a resume first presents the latest open 
 [Cross-host continuation](#compatibility-and-honest-availability) owns the required originating-host disclosure and
 artifact-based handoff. Shared runtime tests do not qualify either Codex surface's complete live journey.
 
+**Requirement: Distinguish active validation from recovery.** Read-only inspection identifies an owned, unsettled
+validation operation as running, with its operation identity, start time, and available checkpoint progress. It does
+not suggest starting another validation operation. Recovery guidance appears after the operation has settled or its
+owner is gone; elapsed time alone does not establish interruption. Shared Core owns
+[latest-failure repair context](runwield-core-prd.md#validation) and full validation before publication.
+
 **Requirement: Start with necessary setup and preserve work after interruption.**
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
@@ -711,6 +717,9 @@ artifact-based handoff. Shared runtime tests do not qualify either Codex surface
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.
   Codex uses its single RunWield skill for the saved step instead of requiring separate commands or an internal ID.
+- Given CI held at an external boundary during a validation call, concurrent inspect-only status reports running and
+  leaves durable records unchanged. A duplicate start is rejected. After actual interruption, native recovery resumes
+  safely and replay does not duplicate completed CI or receipt application.
 - **Saved planning context:** Given process loss before Triage or planning completes, `/runwield:plan-review` restores
   the pending action. `get_instructions` returns the saved explicit request and, for the Planner, the saved Triage
   outcome. A new conversation does not need the old conversation's text.

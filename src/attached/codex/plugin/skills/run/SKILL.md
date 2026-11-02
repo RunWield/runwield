@@ -46,11 +46,11 @@ when Core describes it as untested.
 After every tool result, follow `workflow.nextAction`, including a result that rejects a stale call. Read the relevant
 reference before handling its actions; move to another reference when the returned action changes.
 
-| Current action                                                                             | Reference                                           |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `triage`, `plan`, `review`                                                                 | [Planning and Plan review](references/planning.md)  |
-| `plan_ready`, `plan_saved`, `consent`, `implementation`                                    | [Implementation](references/implementation.md)      |
-| `implemented`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
+| Current action                                                                                                   | Reference                                           |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `triage`, `plan`, `review`                                                                                       | [Planning and Plan review](references/planning.md)  |
+| `plan_ready`, `plan_saved`, `consent`, `implementation`                                                          | [Implementation](references/implementation.md)      |
+| `implemented`, `validation_running`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
 
 For `return_to_host`, report Core's outcome and return to ordinary Codex work. Unsupported request types do not become
 FEATURE workflows by changing their classification. An unrecognized action or role contract is a recoverable

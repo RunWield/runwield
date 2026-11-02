@@ -986,6 +986,11 @@ guidance, not an additional runtime admission gate; existing validation commands
 load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
 runtime and cannot report success without running the Astro checker.
 
+**Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
+failed run's diagnostics alongside the user's additional instructions. Host repair packets identify that run and its
+Git candidate when available. Older Plan failure text must not replace that evidence. Follow-up completion still
+requires the complete configured validation command.
+
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
 progress display comes from the confirmed validation and publication results of the current attempt.
@@ -1006,6 +1011,8 @@ progress display comes from the confirmed validation and publication results of 
 - Given a Session that shows failed checks from an earlier attempt, a resumed delivery that publishes successfully
   reports completion with current results.
 - Given failed checks or review, the user sees repair progress or a concrete recovery choice.
+- Given successive CI failures with different diagnostics, Engineer follow-up includes the latest run and candidate
+  plus custom user text, and does not substitute a previously repaired failure.
 
 #### Manual QA checklist
 
@@ -2554,6 +2561,9 @@ removal as completed cleanup.
   guidance applies. RunWield neither invents a repository nor validates on the laptop.
 - Given an active Agent, a long-running owned subprocess, and an Agent-started server, normal exit stops them and
   retains saved work. No background Agent or server remains active.
+- Given normal exit during a healthy personal-mount storage check, shutdown lets the bounded check settle before
+  unmounting and removes the private mount root without reporting cleanup uncertainty. A timed-out kernel request
+  still keeps the sealed root and reports cleanup uncertainty.
 - Given abrupt laptop or network loss, detected loss stops owned work without a final client message, including
   detached descendants and orphans of a force-killed TUI. Unrelated server processes remain running. Unconfirmed
   termination is reported honestly within the cleanup limits above.
