@@ -71,6 +71,14 @@ Workspace focuses on:
 The detailed requirements and maturity of each capability live in
 [runwield-workspace-prd.md](runwield-workspace-prd.md).
 
+**Target direction:** Workspace also becomes an Electron desktop application sharing the browser UI and controlling
+the independent `wld` runtime through ACP and extensions. The first delivery is free local work without a Workspace
+account. Later capabilities add an optional hosted Workspace identity and cloud features, plus access to a runtime on
+another network machine. Native mobile apps are deferred. These are targets, not available product claims; the owning
+[desktop](runwield-workspace-prd.md#desktop-workspace),
+[identity](runwield-workspace-prd.md#workspace-identity-and-cloud-services), and
+[network runtime](runwield-workspace-prd.md#network-runtime-access) requirements distinguish their maturity.
+
 <a id="23-runwield-connect"></a>
 
 <a id="3-runwield-connect"></a>
@@ -192,13 +200,13 @@ scope belong to [Core Work records](runwield-core-prd.md#work-records).
 These five documents are this project's living PRDs. The product-family capabilities below own shared product promises;
 each surface document owns its detailed behavior. A reference adds context, not another independently maintained copy.
 
-| Owning PRD                                                     | Capability scope                                                                                                              |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [RunWield](#capability-requirements)                           | Reviewed intent, consistent cross-surface outcomes, durable knowledge, public documentation, independent adoption and privacy |
-| [Core](runwield-core-prd.md#capability-requirements)           | Routing, Plan review/lifecycle, execution, validation, recovery, Sessions, context, records, customization, PRD authoring     |
-| [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, Project access, knowledge search, pairing                        |
-| [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                   |
-| [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance              |
+| Owning PRD                                                     | Capability scope                                                                                                               |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [RunWield](#capability-requirements)                           | Reviewed intent, consistent cross-surface outcomes, durable knowledge, public documentation, independent adoption and privacy  |
+| [Core](runwield-core-prd.md#capability-requirements)           | Routing, Plan review/lifecycle, execution, validation, recovery, Sessions, context, records, customization, PRD authoring      |
+| [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, target desktop/identity/network access, Project access and search |
+| [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                    |
+| [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | Client Sessions, target Workspace access, negotiated interactions, Telegram reference journey, recovery and conformance        |
 
 Workspace owns [Personal usage and outcomes](runwield-workspace-prd.md#personal-usage-and-outcomes), including its
 owner-only browser report and Project access. Core owns the

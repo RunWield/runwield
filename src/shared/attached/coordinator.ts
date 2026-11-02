@@ -13,6 +13,7 @@
  */
 
 import { getHomeDir } from "../../constants.js";
+import { prepareAttachedPlanning, resolvePlanningSelection } from "./planning.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
@@ -80,6 +81,8 @@ import {
     type AttachedWorkflowView,
     MAX_ATTACHED_INPUT_BYTES,
     parseActivateInput,
+    parseStartPlanningInput,
+    type StartPlanningEnvelope,
     parsePlanWrittenInput,
     parseStartExecutionInput,
     parseStatusInput,
@@ -194,7 +197,24 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "triaging" && pending) return { kind: "triage", ...pending };
     if (record.state === "awaiting_planning" && pending) {
-        return { kind: "plan", ...pending, projectSetup: await projectSetupFor(record.projectRoot) };
+        const location = record.plan
+            ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true })
+            : null;
+        const planningRequired = record.planningActionId !== pending.actionId || Boolean(location?.planningNotStarted);
+        const ready = !planningRequired && (!record.plan || location?.plan?.attrs.planId === record.plan.planId);
+        return {
+            kind: "plan",
+            ...pending,
+            projectSetup: await projectSetupFor(record.projectRoot),
+            planningRequired: !ready,
+            ...(record.plan && { planName: record.plan.planName, planId: record.plan.planId }),
+            ...(ready && {
+                planningCwd: location?.documentRoot || record.projectRoot,
+                ...(record.plan && {
+                    planPath: join(location!.documentRoot, "docs/plans", `${record.plan.planName}.md`),
+                }),
+            }),
+        };
     }
     if (record.state === "awaiting_review" && record.plan && record.review) {
         return {
@@ -631,6 +651,18 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
     const loaded = await loadAttachedWorkflowRecord(location, workflowId);
     if (loaded.status !== "missing") return (await replay(loaded.record)).result;
 
+    let selectedPlan: AttachedPlanReference | null = null;
+    if (envelope.payload.existingPlan) {
+        try {
+            selectedPlan = (await resolvePlanningSelection(location.projectRoot, envelope.payload.existingPlan)).plan;
+        } catch (error) {
+            return await rejected(
+                "activate",
+                rejection("invalid_input", error instanceof Error ? error.message : String(error)),
+            );
+        }
+    }
+
     const now = new Date().toISOString();
     const compatibility = assessCompatibility(envelope.evidence);
     const evidence = { ...envelope.evidence, coreVersion: VERSION, compatibility };
@@ -650,7 +682,7 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
         },
         acceptedOperations: {},
         triageOutcome: null,
-        plan: null,
+        plan: selectedPlan,
         review: null,
         execution: null,
         pendingConsent: null,
@@ -710,6 +742,72 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
     return await commit(location, "triage_report", loaded.record.revision, await decide(loaded.record), decide);
 }
 
+/** Explicit planning entry, including continuation of an older unbound workflow. */
+export async function startPlanning(envelope: StartPlanningEnvelope): Promise<AttachedOperationResult> {
+    const location = locateAttachedWorkflows(envelope.projectRoot);
+    const transaction = await transactAttachedWorkflowRecord<AttachedOperationResult>(
+        location,
+        envelope.workflowId,
+        async (current): Promise<Decision> => {
+            if (!current)
+                return {
+                    result: await rejected(
+                        "start_planning",
+                        rejection("workflow_not_found", "The workflow no longer exists."),
+                    ),
+                };
+            if (current.projectRoot !== location.projectRoot)
+                return {
+                    result: await rejected(
+                        "start_planning",
+                        rejection("project_moved", "The project location changed."),
+                    ),
+                };
+            const checked = await checkWorkflowOperation("start_planning", envelope, current, "awaiting_planning");
+            if (checked) return checked;
+            try {
+                const selection = envelope.payload.existingPlan || current.plan;
+                if (
+                    current.plan &&
+                    selection &&
+                    (current.plan.planId !== selection.planId ||
+                        current.plan.planName !== canonicalizeStoredPlanName(selection.planName).name)
+                ) {
+                    throw new Error("This workflow is already bound to a different Plan.");
+                }
+                let plan = current.plan;
+                if (selection) {
+                    const selected = await resolvePlanningSelection(location.projectRoot, selection);
+                    plan =
+                        current.planningActionId === envelope.payload.actionId && !selected.location.planningNotStarted
+                            ? selected.plan
+                            : await prepareAttachedPlanning(location.projectRoot, selection);
+                }
+                return await accept("start_planning", envelope, current, {
+                    state: current.state,
+                    pendingAction: current.pendingAction,
+                    plan,
+                    planningActionId: envelope.payload.actionId,
+                });
+            } catch (error) {
+                return {
+                    result: await rejected(
+                        "start_planning",
+                        rejection("invalid_input", error instanceof Error ? error.message : String(error)),
+                        current,
+                    ),
+                };
+            }
+        },
+    );
+    return transaction.status === "busy"
+        ? await rejected(
+              "start_planning",
+              rejection("workflow_busy", "Another RunWield process holds this workflow. Retry."),
+          )
+        : transaction.result;
+}
+
 type PlanSubmission =
     | { ok: true; plan: AttachedPlanReference; revision: string; controllerRevision: number }
     | { ok: false; message: string };
@@ -723,14 +821,18 @@ async function submitPlanDocument(
     projectRoot: string,
     payload: PlanWrittenPayload,
     triage: TriageOutcome,
+    expectedPlan: AttachedPlanReference | null,
 ): Promise<PlanSubmission> {
     let planName;
     let location;
     try {
         planName = canonicalizeStoredPlanName(payload.planName).name;
+        if (expectedPlan && planName !== expectedPlan.planName) {
+            return { ok: false, message: "Submit only the Plan bound to this workflow." };
+        }
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
-        location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+        location = await resolveWorkflowPlanLocation(projectRoot, planName);
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
@@ -739,6 +841,9 @@ async function submitPlanDocument(
             ok: false,
             message: `docs/plans/${planName}.md not found. Write the Plan first, then call plan_written again.`,
         };
+    }
+    if (expectedPlan && location.plan.attrs.planId !== expectedPlan.planId) {
+        return { ok: false, message: "The bound Plan identity changed. Nothing was submitted." };
     }
 
     const updates: Partial<PlanFrontMatter> = { classification: triage.classification, complexity: triage.complexity };
@@ -806,7 +911,12 @@ export async function planWritten(envelope: PlanWrittenEnvelope): Promise<Attach
                     ),
                 };
             }
-            const submitted = await submitPlanDocument(envelope.projectRoot, envelope.payload, current.triageOutcome);
+            const submitted = await submitPlanDocument(
+                envelope.projectRoot,
+                envelope.payload,
+                current.triageOutcome,
+                current.plan,
+            );
             if (!submitted.ok) {
                 return {
                     result: await rejected("plan_written", rejection("invalid_outcome", submitted.message), current),
@@ -1682,6 +1792,10 @@ async function runParsedOperation(
         const parsed = parseActivateInput(projectRoot, input);
         return parsed.ok ? await activate(parsed.envelope) : await rejected(name, parsed.rejection);
     }
+    if (name === "start_planning") {
+        const parsed = parseStartPlanningInput(projectRoot, input);
+        return parsed.ok ? await startPlanning(parsed.envelope) : await rejected(name, parsed.rejection);
+    }
     if (name === "triage_report") {
         const parsed = parseTriageReportInput(projectRoot, input);
         return parsed.ok ? await triageReport(parsed.envelope) : await rejected(name, parsed.rejection);
@@ -1763,7 +1877,8 @@ async function withRoleInstructions(
         };
     }
     if (action?.kind !== "triage" && action?.kind !== "plan" && action?.kind !== "implementation") return result;
-    const text = await resolveAttachedRoleInstructions(projectRoot, action.role, hostId);
+    const instructionRoot = action.kind === "plan" ? action.planningCwd || projectRoot : projectRoot;
+    const text = await resolveAttachedRoleInstructions(instructionRoot, action.role, hostId);
     return {
         ...result,
         instructions: {

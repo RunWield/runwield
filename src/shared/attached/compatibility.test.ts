@@ -140,6 +140,7 @@ const payloads: Record<AttachedLifecycleOperationName, AttachedJsonObject> = {
         outcome: { routingIntent: "PLANNED_CHANGE", complexity: "LOW", summary: "Add value", workKind: "FEATURE" },
     },
     plan_written: { actionId: "pending", planName: "p" },
+    start_planning: { actionId: "pending" },
     start_execution: {},
     task_completed: { actionId: "pending", message: "- Implemented the requested value and checked the result." },
     start_validation: {},

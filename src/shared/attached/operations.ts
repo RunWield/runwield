@@ -27,6 +27,7 @@ export type AttachedOperationName =
     | "triage_report"
     | "status"
     | "plan_written"
+    | "start_planning"
     | "start_execution"
     | "task_completed"
     | "start_validation"
@@ -109,7 +110,19 @@ export interface AttachedOperationEnvelope<Payload> {
 export interface ActivatePayload {
     requestText: string;
     hostRequestId: string;
+    existingPlan?: ExistingPlanningPlan;
 }
+
+/** User-selected identity; filesystem authority is always resolved by Core. */
+export interface ExistingPlanningPlan extends AttachedPlanReference {
+    targetBranch?: string;
+}
+
+export interface StartPlanningPayload {
+    actionId: string;
+    existingPlan?: ExistingPlanningPlan;
+}
+export type StartPlanningEnvelope = WorkflowOperationEnvelope<StartPlanningPayload>;
 
 export interface TriageReportPayload {
     actionId: string;
@@ -243,9 +256,19 @@ export interface PendingHostAction {
     imagePaths?: string[];
 }
 
+export interface AttachedPlanningAction extends PendingHostAction {
+    kind: "plan";
+    projectSetup: string[];
+    planningRequired: boolean;
+    planningCwd?: string;
+    planPath?: string;
+    planName?: string;
+    planId?: string;
+}
+
 export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
-    | ({ kind: "plan"; projectSetup: string[] } & PendingHostAction)
+    | AttachedPlanningAction
     | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
     | { kind: "plan_ready"; planName: string; guidance: string }
     | { kind: "plan_saved"; planName: string; guidance: string }
@@ -493,7 +516,7 @@ export function parseHostEvidence(input: AttachedJsonValue | undefined) {
 export function parseActivateInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): ActivateEnvelope => {
         const object = readObject(input, "", ["operationId", "evidence", "payload"]);
-        const payload = readObject(object.payload, "payload", ["requestText", "hostRequestId"]);
+        const payload = readObject(object.payload, "payload", ["requestText", "hostRequestId", "existingPlan"]);
         return {
             projectRoot,
             operationId: readIdentifier(object, "operationId", "operationId"),
@@ -501,9 +524,34 @@ export function parseActivateInput(projectRoot: string, input: AttachedJsonValue
             payload: {
                 requestText: readText(payload, "requestText", "payload.requestText", MAX_REQUEST_TEXT_LENGTH),
                 hostRequestId: readIdentifier(payload, "hostRequestId", "payload.hostRequestId"),
+                existingPlan: readExistingPlanningPlan(payload.existingPlan),
             },
         };
     });
+}
+
+function readExistingPlanningPlan(value: AttachedJsonValue | undefined): ExistingPlanningPlan | undefined {
+    if (value === undefined) return undefined;
+    const plan = readObject(value, "payload.existingPlan", ["planName", "planId", "targetBranch"]);
+    return {
+        planName: readText(plan, "planName", "payload.existingPlan.planName", MAX_SHORT_TEXT_LENGTH),
+        planId: readIdentifier(plan, "planId", "payload.existingPlan.planId"),
+        targetBranch: readOptionalText(
+            plan,
+            "targetBranch",
+            "payload.existingPlan.targetBranch",
+            MAX_SHORT_TEXT_LENGTH,
+        ),
+    };
+}
+
+export function parseStartPlanningInput(projectRoot: string, input: AttachedJsonValue | undefined) {
+    return parse(input, (): StartPlanningEnvelope =>
+        readWorkflowEnvelope(projectRoot, input, ["actionId", "existingPlan"], (payload) => ({
+            actionId: readIdentifier(payload, "actionId", "payload.actionId"),
+            existingPlan: readExistingPlanningPlan(payload.existingPlan),
+        })),
+    );
 }
 
 function readWorkflowEnvelope<Payload>(
@@ -712,7 +760,31 @@ export interface AttachedOperationDescriptor {
 }
 
 /** Host-facing descriptions and JSON Schemas. `parse*Input` above stays the authority. */
+const EXISTING_PLANNING_PLAN_SCHEMA = {
+    type: "object",
+    additionalProperties: false,
+    required: ["planName", "planId"],
+    properties: {
+        planName: {
+            type: "string",
+            maxLength: MAX_SHORT_TEXT_LENGTH,
+            description: "Existing Plan name relative to docs/plans/, without .md.",
+        },
+        planId: IDENTIFIER_SCHEMA,
+        targetBranch: { type: "string", maxLength: MAX_SHORT_TEXT_LENGTH },
+    },
+};
+
 export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
+    {
+        name: "start_planning",
+        description:
+            "Prepare the pending Planner action through Core before dispatch or edits. For an existing Plan, supply its name and Plan ID (also when continuing an older unbound workflow). Core binds it and prepares its authoritative directory. Retries reuse preparation; passive reads never prepare.",
+        inputSchema: workflowOperationSchema(["actionId"], {
+            actionId: IDENTIFIER_SCHEMA,
+            existingPlan: EXISTING_PLANNING_PLAN_SCHEMA,
+        }),
+    },
     {
         name: "activate",
         description:
@@ -731,6 +803,7 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
                     properties: {
                         requestText: { type: "string", maxLength: MAX_REQUEST_TEXT_LENGTH },
                         hostRequestId: IDENTIFIER_SCHEMA,
+                        existingPlan: EXISTING_PLANNING_PLAN_SCHEMA,
                     },
                 },
             },

@@ -246,6 +246,7 @@
     "src/shared/attached/execution-recovery.test.ts",
     "src/shared/attached/plan-review-chat.test.ts",
     "src/shared/attached/plan-written.test.ts",
+    "src/shared/attached/planning-handoff.test.ts",
     "src/shared/attached/review-decision.test.ts",
     "src/shared/attached/review-host.test.ts",
     "src/shared/attached/review-round.test.ts",

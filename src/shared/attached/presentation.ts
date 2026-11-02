@@ -21,6 +21,14 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
             contractVersion: action.contractVersion,
             contextAvailable: true,
             instructionsAvailable: true,
+            ...(action.kind === "plan" && {
+                planningRequired: action.planningRequired,
+                projectSetup: action.projectSetup,
+                ...(action.planningCwd && { planningCwd: action.planningCwd }),
+                ...(action.planPath && { planPath: action.planPath }),
+                ...(action.planName && { planName: action.planName }),
+                ...(action.planId && { planId: action.planId }),
+            }),
         };
     }
     if (action.kind === "implementation") {

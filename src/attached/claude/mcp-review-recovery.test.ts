@@ -71,6 +71,7 @@ test("fresh MCP status restores the same pending round and transport close stops
             assertEquals(
                 tools.tools.map(({ name }) => name),
                 [
+                    "start_planning",
                     "activate",
                     "triage_report",
                     "review_reply",

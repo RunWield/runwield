@@ -371,6 +371,10 @@ fetch or clone Git data, change refs or worktrees, take writer locks, or schedul
 documents without creating runtime storage. Ready reads retain registered document-worktree authority and locally
 available target snapshots; they do not replace current workflow facts with a stale primary copy. A registered
 document must belong to an attached Git worktree of the same Project before its bytes can supply authority.
+Doctor does not require a target branch for a draft Epic with no children, saved attempts, or execution evidence.
+A missing target for an approved Epic or one with children or attempt history remains a diagnostic, as does unreadable
+target evidence. If a cached child snapshot has no ID, Doctor retains the ID already assigned to the current document
+with the same name and parent. An explicit target ID remains authoritative.
 
 When adoption, controller preparation, or required local target evidence is missing, safe documents remain browseable
 with workflow details pending. Read availability is separate from Plan status and Front Matter. Unsafe or unreadable
@@ -417,6 +421,12 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given missing local target evidence, browsing reports pending workflow details rather than claiming no children or
   fetching the target, including missing promised objects in a partial clone. Available target-only documents are read
   directly from local Git objects without temporary files.
+- Given an unstarted draft Epic with no children or saved attempts, Doctor accepts a missing target without creating
+  it. An approved Epic, an Epic with children or attempt history, an invalid target, or unreadable target evidence still
+  produces a target diagnostic.
+- Given a cached child snapshot without an ID and a current document with an assigned ID, Doctor retains that identity
+  without rewriting either document. A target-only child without an ID still produces a missing-ID diagnostic; an
+  explicit target ID is not replaced by a different local ID.
 - Given a registered document worktree, ready reads use its current document and controller facts; missing or unsafe
   authority never authorizes fallback to stale primary workflow facts. An unattached directory or another repository
   cannot authorize a document or action. Other healthy Plans remain available.
@@ -2451,6 +2461,12 @@ home. Relative paths and `~` refer to that account. Paths are data, not shell co
 canonical directory. Git is optional; a symlink or worktree resolves canonically. An invalid or inaccessible target
 fails clearly without creating it or silently using another directory. Project identity follows the
 [remote project locator](#project-context-and-initialization), separate from execution cwd.
+
+**Requirement: Use the connected terminal size.** The remote TUI uses the laptop terminal's full width and height at
+startup. Resizing the terminal updates the remote layout without reconnecting.
+
+**Acceptance scenario:** Given a 180-column, 54-row terminal, the remote TUI uses that size. When the terminal changes
+to 212 columns and 62 rows, the connected TUI updates to that size.
 
 **Connection prerequisites:** Follow [automatic private runtime preparation](#installation-and-updates), which owns
 exact version/build/protocol/checksum checks, prerequisites, caches, and staging repair. A release uses its exact

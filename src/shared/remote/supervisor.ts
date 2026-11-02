@@ -506,6 +506,17 @@ export async function runRemoteSupervisor(): Promise<void> {
         process.on("SIGINT", onSignal);
         process.on("SIGTERM", onSignal);
         process.on("SIGHUP", onSignal);
+        // The view owns a detached group, outside the SSH tty foreground group.
+        const onResize = () => {
+            if (!childExited) {
+                try {
+                    process.kill(view.pid, "SIGWINCH");
+                } catch {
+                    /* The view exited before the resize. */
+                }
+            }
+        };
+        process.on("SIGWINCH", onResize);
         // Admit terminal input only after the pump is running. The launcher
         // waits for readiness before showing the view or forwarding input.
         if (
@@ -569,6 +580,7 @@ export async function runRemoteSupervisor(): Promise<void> {
             process.off("SIGINT", onSignal);
             process.off("SIGTERM", onSignal);
             process.off("SIGHUP", onSignal);
+            process.off("SIGWINCH", onResize);
             if (normalViewExit) {
                 confirmCleanup = () => control(header, "shutdown");
                 // Descendant grace and mount cleanup can exceed the laptop health deadline.
