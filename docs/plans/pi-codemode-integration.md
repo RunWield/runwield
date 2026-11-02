@@ -18,12 +18,12 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "0d8a278a10ab0c563f3c4bfa6275f8f8056f3b68"
 workRecord:
     status: "failed"
     lastAttemptAt: "2026-11-02T21:02:01.334Z"
     error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
+status: "verified"
 ---
 
 # Integrate Pi codemode into RunWield
